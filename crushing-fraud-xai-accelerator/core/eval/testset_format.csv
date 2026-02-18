@@ -1,0 +1,11 @@
+# Test set format for Program Integrity XAI Accelerator (v0.1)
+# Notes:
+# - No direct PII/PHI; use surrogate ids and synthetic or de-identified data.
+# - One row = one scored unit (e.g., entity, entity-month, claim, or event).
+# - Labels may be human feedback, audit outcomes, or proxy outcomes.
+# - Use additional domain-specific columns as needed per domain pack.
+
+tenant_id,program_id,env,core_version,domain_pack_id,domain_pack_version,use_case_id,use_case_version,indicator_id,indicator_version,unit_of_scoring,entity_id,entity_type,scoring_run_id,score,severity_band,queue_included,label_type,label_value,label_timestamp,feedback_label,feedback_reason_tags,explanation_usefulness,evidence_adequacy,case_id,action_taken,action_taken_date,notes
+T001,MEDICARE_FFS,dev,0.1.0,medicare_ffs,0.1.0,usecase_dme_no_pa,0.1.0,IND_DME_NO_PA,0.1.0,entity_month,ENT_0001,provider,SCORE_RUN_2026-01-15-01,0.89,high,true,audit,true_positive,2026-01-30T15:42:00Z,true_positive,"high_amounts;questionable_patterns",5,5,CASE_12345,"referred_for_audit",2026-02-02T10:03:00Z,"Classic example; aligns with SME expectations"
+T001,MEDICARE_FFS,dev,0.1.0,medicare_ffs,0.1.0,usecase_dme_no_pa,0.1.0,IND_DME_NO_PA,0.1.0,entity_month,ENT_0002,provider,SCORE_RUN_2026-01-15-01,0.77,medium,true,feedback,false_positive,2026-01-22T09:10:00Z,false_positive,"legit_spike;seasonality",2,4,CASE_12346,"no_action",2026-01-22T11:30:00Z,"Seasonal uptick; evidence adequate, explanation missed seasonality"
+T001,MEDICARE_FFS,dev,0.1.0,medicare_ffs,0.1.0,usecase_dme_no_pa,0.1.0,IND_DME_NO_PA,0.1.0,entity_month,ENT_0003,provider,SCORE_RUN_2026-01-15-01,0.65,medium,false,none,,,"",,,"","","","","Row not queued; may be used for calibration only"
