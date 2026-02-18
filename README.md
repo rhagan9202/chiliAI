@@ -1,89 +1,141 @@
-# Crushing Fraud XAI Accelerator (v0.1)
+# Program Integrity XAI Accelerator (v0.1)
 
-A reusable, domain-pack–based accelerator for detecting anomalous patterns and potential fraud schemes across healthcare claims and enrollment data, while keeping humans meaningfully in the loop.
+A reusable, domain-pack-based accelerator for detecting anomalous patterns and potential fraud/waste/abuse schemes across healthcare claims and enrollment data, while keeping humans meaningfully in the loop (triage support; not automated enforcement).  
+This repo is structured to be lifecycle-ready: Frame → Detect/Explain → Validate → Operate, with evaluation gates, monitoring, and a pause/discontinue mechanism.
+
+---
 
 ## Why this exists
-This accelerator packages repeatable, explainable AI workflows to:
-- Detect anomalies and trends that can be translated into novel program-integrity indicators (starting from Medicare FFS claims as in the CMS “Crushing Fraud” Chili Cook-Off framing). 
-- Reduce labor-intensive analytic processes while maintaining effective oversight through human review and auditable governance.
 
-## What it supports (v0.1)
-This repo is designed as a **Core Kit + Domain Packs** model:
+Program integrity work is capacity-limited and evidence-sensitive. This accelerator standardizes:
+- What an “indicator” is and what it must output (scores + reason codes + evidence bundle pointers + next steps).
+- How humans validate and improve it (investigator review + structured feedback + evaluation gates).
+- How it stays safe and stable (monitoring, drift checks, incident response, and governed change control).
 
-### Core Kit (reusable across all domains)
-- Indicator contract (standard output format: score + reason codes + evidence bundle pointers + next steps)
-- Human-in-loop workflow (SME framing → investigator validation → operational monitoring)
-- Evaluation harness and go-live gates (testing/validation requirements + acceptance criteria)
-- Monitoring & operations (telemetry contract, drift checks, weekly ops review)
-- Governance/change control (auditable change log, approvals, pause/discontinue policy)
-- UI/UX specifications (common screens + field dictionary)
-- Reference architectures (AWS + Azure secure deployment patterns)
+---
 
-### Domain Packs (use-case specific)
-- Schema + feature dictionary + indicator library + evidence bundle spec + eval dataset spec
+## What this repo contains
 
-Included domain packs in v0.1:
-- Medicare FFS claims (Hospice / Part B / DME style workflows)
-- Marketplace enrollment integrity (agent/broker)
-- Medicaid claims integrity (dental / vision)
+### Core Kit (reusable across domains)
 
-## How the accelerator works (high level)
-1) **Frame**: SMEs define the problem, acceptable evidence, and indicator hypotheses.
-2) **Detect**: Indicators score entities/events (rules, peer outliers, time-series, graph patterns; models can be added behind the same contract).
-3) **Explain**: Every case includes (a) reason codes and (b) an evidence bundle; optional local/network/temporal explanation payloads.
-4) **Validate**: Investigators label outcomes and explanation usefulness; feedback drives threshold tuning and quality metrics.
-5) **Operate**: Ongoing monitoring detects drift and performance degradation; governance processes control changes and enable pause/discontinue.
+Core Kit components are meant to be used together; templates are just the “forms” that record decisions made while using docs/eval/monitoring/UI.
 
-## Safety, governance, and “human elements”
-This accelerator is designed to support decision-making, not automate enforcement.
-Key controls:
-- Mandatory human review prior to any consequential action.
-- Evaluation gates before go-live, and ongoing testing/validation after go-live.
-- Continuous monitoring and an explicit pause/discontinue mechanism when performance is not appropriate.
-- Audit logging and change control for thresholds/models/data changes.
+- `core/docs/` (build/run + contracts + governance)
+  - Overview, roles/RACI, delivery playbook, indicator contract, explainability spec, evaluation harness guidance, monitoring/ops guidance, governance/change control, security/privacy, reference architectures, release/versioning.
+- `core/templates/` (C01–C09 “decision artifacts”)
+  - Use-case canvas, indicator builder, high-impact screening, model card, data provenance, eval plan/acceptance, go-live checklist, weekly ops review, change request.
+- `core/eval/` (evaluation assets)
+  - Test set format, scoring rubric, explanation quality rubric, evaluation report template.
+- `core/monitoring/` (operate safely)
+  - Telemetry contract, dashboards spec, drift checks, incident runbook, pause/discontinue policy.
+- `core/ui/` (human-in-the-loop workflow spec)
+  - Screen specs, fields dictionary, and (optional) API contract for integrations.
 
-(See `/core/docs/` and `/core/templates/` for operational templates and required artifacts.)
+### Domain packs (use-case specific)
 
-## Repo structure
-- `/core/` : common docs, templates, UI specs, evaluation, monitoring, governance, reference architectures
-- `/domain-packs/` : domain-specific schemas, indicators, evidence bundles, eval dataset specs
-- `/code-starters/` : optional starter notebooks/pipeline skeletons/IaC skeletons (implementation dependent)
+Each folder under `domain-packs/` is a deployable module that defines:
+- `schema.md`: Domain entity/event model.
+- `feature_dictionary.md`: Canonical feature families + windows + drift monitoring set.
+- `evidence_bundle_spec.md`: What must be shown to investigators + completeness rules.
+- `indicators.v0.1.md`: Indicator library (reason codes, thresholds/logic, next steps).
+- `eval_dataset_spec.md`: Sampling + labeling instructions tailored to the domain.
+- `README.md`: How to run this domain pack and what it’s for.
 
-## Quick start (for a new delivery team)
-1) Pick a domain pack under `/domain-packs/`.
-2) Run an SME framing workshop and complete:
-   - `core/templates/C01_use-case-canvas.md`
-   - `core/templates/C02_indicator-builder.md` (5–10 indicators to start)
-   - `core/templates/C05_data-provenance.md`
-3) Implement the triage workflow (UI or integration) to support:
-   - Case queue + evidence bundle viewer + investigator feedback capture
-4) Execute evaluation and sign-off:
-   - `core/templates/C06_eval-plan-acceptance.md`
-   - `core/templates/C07_go-live-checklist.md`
-5) Go live with monitoring and weekly ops:
-   - `core/templates/C08_weekly-ops-review.md`
-   - Change control via `core/templates/C09_change-request.md`
+v0.1 domain packs:
+- `domain-packs/medicareffsclaims/`
+- `domain-packs/marketplaceagentbrokerenrollment/`
+- `domain-packs/medicaiddentalvisionclaims/`
 
-## Definition of Done (v0.1 go-live)
-A use case is considered “live” only when:
-- Data provenance is documented and approved.
-- Indicators have evidence bundles and reason codes.
-- Evaluation acceptance criteria are met and signed off.
-- Monitoring dashboards are live and weekly ops review is scheduled.
-- Change control and pause/discontinue workflow are in place.
+---
 
-## Who should use this repo
-- Program integrity operations leads
-- Investigators / case reviewers
-- Analytics/ML engineers and solution architects
-- Security/privacy/governance reviewers
+## How to use the components (end-to-end)
 
-## Contributing and versioning
-- Core Kit changes require governance approval and CHANGELOG updates.
-- Domain pack changes must preserve the core indicator contract.
-- Any threshold/model/data change must be logged via the Change Request template.
+### 1) Frame (SME + ops alignment)
+Use:
+- `core/docs/00overview.md` + `core/docs/01roles-raci.md` to align responsibilities, scope, and guardrails.
+- `core/ui/fieldsdictionary.md` + `core/ui/screensspec.md` to ensure the workflow captures evidence, feedback, approvals, and audit fields.
 
-## License / data handling note
-This repo is intended to be deployed in client-controlled environments.
-Do not commit sensitive datasets or PII/PHI. Use synthetic or de-identified examples only.
+Record:
+- `core/templates/C01use-case-canvas.md` (decision supported, downstream action, harms, guardrails, success criteria).
 
+Output:
+- A configured use-case instance (usecaseid/usecaseversion) pointing at one domain pack.
+
+### 2) Configure indicators (domain pack → indicator contract)
+Use:
+- `core/docs/03indicator-contract.md` to implement every indicator with the same output fields (score, reason codes, evidence pointers, next steps, monitoring hooks).
+- `core/docs/04explainability-spec.md` to ensure local/temporal/network explanations are evidence-linked and usable.
+- `domain-packs/<pack>/indicators.v0.1.md` + `domain-packs/<pack>/feature_dictionary.md` + `domain-packs/<pack>/evidence_bundle_spec.md` to implement scoring + evidence assembly per indicator.
+
+Record:
+- `core/templates/C02indicator-builder.md` for each indicator promoted beyond “draft.”
+
+Output:
+- A scoring job that produces (a) queues and (b) evidence bundles consistent with the contract.
+
+### 3) Validate (evaluation gates + investigator labeling)
+Use:
+- `core/eval/` assets to build the test set, run evaluation, and standardize results (Precision@K proxy, explanation usefulness, evidence adequacy, stability).
+- `domain-packs/<pack>/eval_dataset_spec.md` for domain-specific sampling and labeling guidance.
+
+Record:
+- `core/templates/C06eval-plan-acceptance.md` (thresholds + acceptance gates) and `core/templates/C04model-card-xai.md` (limitations + intended use).
+- If needed: `core/templates/C03high-impact-ai-screen.md` (triage-only vs consequential scope + added controls).
+
+Output:
+- A signed evaluation decision: approve/pilot/pause/revise, with an eval report and change requests for any modifications.
+
+### 4) Go-live (ops + safety readiness)
+Use:
+- `core/monitoring/telemetrycontract.md` + `core/monitoring/dashboardsspec.md` to instrument throughput, quality, drift, evidence missingness, and governance activity.
+- `core/monitoring/driftchecks.md` + `core/monitoring/incidentrunbook.md` for response procedures when data shifts or quality drops.
+- `core/monitoring/pausediscontinuepolicy.md` to stop indicators safely when performance is not appropriate.
+
+Record:
+- `core/templates/C07go-live-checklist.md` and schedule `core/templates/C08weekly-ops-review.md`.
+
+Output:
+- A production pilot with monitoring, weekly review cadence, and change control enforced.
+
+### 5) Operate (monitor → tune → govern)
+Use:
+- Dashboards + drift checks weekly; treat investigator feedback as the primary signal for precision proxy and explanation usefulness.
+- `core/templates/C09change-request.md` for any change to thresholds, peer groups, evidence requirements, features, or models (with rollback plan + validation).
+
+Output:
+- A governed iteration loop that improves top-K usefulness without silently changing behavior.
+
+---
+
+## Repo layout (suggested)
+
+- `core/docs/`
+- `core/templates/`
+- `core/eval/`
+- `core/monitoring/`
+- `core/ui/`
+- `domain-packs/`
+- `code-starters/` (optional notebooks/pipelines/IaC skeletons; implementation-dependent)
+
+---
+
+## Definition of Done (v0.1)
+
+A use case is “live” only when:
+- Data provenance is documented and approved (`core/templates/C05data-provenance.md`).
+- Each approved indicator has reason codes, evidence requirements, and next steps documented (`core/templates/C02indicator-builder.md`) and implemented per the contract.
+- Evaluation gates are met and signed (`core/templates/C06eval-plan-acceptance.md`) including explanation usefulness and evidence adequacy.
+- Monitoring dashboards and drift checks are running (`core/monitoring/`) and weekly ops review is scheduled (`core/templates/C08weekly-ops-review.md`).
+- Change control + pause/discontinue path is usable (`core/templates/C09change-request.md` + `core/monitoring/pausediscontinuepolicy.md`).
+
+---
+
+## Quick start (10 business days)
+
+Follow `core/docs/02delivery-playbook.md` to run one domain pack end-to-end with 3–5 indicators first, then scale indicator coverage after feedback is flowing.
+
+---
+
+## Data handling note
+
+This repo is intended for deployment in client-controlled environments. Do not commit PHI/PII or sensitive datasets; use synthetic or de-identified examples only.
