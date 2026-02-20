@@ -50,6 +50,17 @@ v0.1 domain packs:
 - `domain-packs/medicaid_dental_vision_claims/`
 - `domain-packs/dmepos_suppliers_risks/`
 
+### Code starters (implementation scaffolding)
+
+Optional templates and skeletons to accelerate technical implementation. These are not prescriptive and can be adapted to your stack and cloud provider.
+
+- `code-starters/notebooks/` (exploratory and prototyping)
+  - Feature building, indicator scoring, and explanation generation notebooks ready to customize per domain pack.
+- `code-starters/pipelines/` (production orchestration)
+  - Pipeline skeleton for scheduling and monitoring batch scoring jobs.
+- `code-starters/iac/` (infrastructure as code)
+  - Terraform skeleton for deploying compute, storage, and monitoring resources on cloud platforms.
+
 ---
 
 ## How to use the components (end-to-end)
