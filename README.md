@@ -13,7 +13,7 @@ This repo is structured to be lifecycle-ready: Frame → Detect/Explain → Vali
   - How humans validate and improve it (investigator review + structured feedback + evaluation gates).
   - How it stays safe and stable (monitoring, drift checks, incident response, and governed change control).
 - **Ensure Governance and Compliance**: To provide procurement and governance-ready artifacts by default, aligning with federal AI governance expectations (e.g., risk classification, test/validation plans, post-deployment monitoring, data rights required in OMB M-25-21 and M-25-22), as well as agency-wide guidance (HHS AI strategy, CMS AI Playbook)
-- **Future-Ready Design**: To be easily adaptable for future advancements, allowing capabilities to translate into Agent Skills to automate certain or most steps over time
+- **Future-Ready Design**: To be easily adaptable for future advancements, allowing components to translate into Agent Skills to automate certain or most steps over time
 
 ---
 
