@@ -1,461 +1,251 @@
-# Core UI Fields Dictionary (v0.1)
-
-## Purpose
-Defines the canonical field names, types, and semantics used across:
-- UI screens (dashboards, triage queue, evidence viewer, feedback, governance)
-- API payloads (read/write)
-- Telemetry events (UI actions + workflow changes)
-- Storage tables (case state, feedback, evidence bundle metadata)
-
-This is the contract that keeps Core UI reusable across domain packs.
+# Fields Dictionary
+**IntegrityAI · Program Integrity Accelerator**
+`domain-pack/docs/fields_dictionary.md`
 
 ---
 
-## Conventions
+## Overview
 
-### Naming
-- Use `snake_case` for all fields.
-- IDs are strings unless explicitly numeric (to support composite keys and GUIDs).
-- Timestamps are ISO-8601 UTC strings (e.g., `2026-02-17T22:05:11Z`).
+This dictionary defines every data field surfaced in the IntegrityAI UI. Fields are organized by **domain entity** — the logical object they describe — and each entry notes which screens consume the field, whether it is program-specific, and how it should be configured when adapting to a new domain pack.
 
-### Data types
-- `string`, `number`, `integer`, `boolean`, `timestamp`, `array<T>`, `object`
+### Conventions
 
-### Common enums
-- `env`: `dev | test | prod`
-- `severity_band`: `low | medium | high | critical`
-- `case_status`: `new | in_review | needs_more_info | escalated | closed_no_action | closed_action_taken | duplicate | error`
-- `indicator_status`: `draft | pilot | prod | paused | retired`
-- `evidence_completeness`: `complete | partial | insufficient`
-- `feedback_label`: `true_positive | false_positive | unclear | duplicate | not_applicable`
-- `explanation_usefulness`: `1 | 2 | 3 | 4 | 5` (1=not useful, 5=very useful)
-- `evidence_adequacy`: `1 | 2 | 3 | 4 | 5`
-- `approval_decision`: `approved | rejected | needs_revision`
-- `pii_classification`: `none | pii | phi | pii_phi`
+| Symbol | Meaning |
+|--------|---------|
+| 🔒 | Core field — present in all domain packs, value may vary |
+| 🔧 | Configurable field — label, logic, or source varies by domain pack |
+| ➕ | Extension point — field may not exist in all programs; add when applicable |
+| `[PROGRAM]` | Placeholder — replace with program-specific value at configuration time |
 
-### Version triplet (always present in persisted records)
-- `core_version`: SemVer for Core Kit
-- `domain_pack_version`: SemVer per domain pack
-- `use_case_version`: SemVer per deployed use case instance (client-specific config)
+### Domain Pack Dimensions Covered
+
+A **domain pack** is the configuration layer that adapts the accelerator to a specific program. The fields in this dictionary vary across six dimensions:
+
+1. **Program type** (Medicare FFS, Medicaid FFS, CHIP, etc.)
+2. **Anomaly signal types** and their detection metadata
+3. **Policy corpus** and knowledge graph sources
+4. **UI terminology and field labels**
+5. **User roles and permissions**
+6. **Claims data schema and code systems** (HCPCS, ICD, NDC, etc.)
 
 ---
 
-## Global fields (present in most records)
+## Entity: Program
 
-### Tenant + deployment
-- `tenant_id` (string): Client tenant / org identifier.
-- `program_id` (string): Program identifier (e.g., Medicare FFS PI Ops, Marketplace integrity).
-- `env` (string enum): `dev|test|prod`.
+The top-level context object. Drives the program switcher, color theming, and data segmentation across all screens.
 
-### Versioning
-- `core_version` (string)
-- `domain_pack_id` (string): Stable pack identifier (e.g., `medicare_ffs`).
-- `domain_pack_version` (string)
-- `use_case_id` (string): Stable identifier for a specific deployed use case.
-- `use_case_version` (string)
-
-### Audit metadata
-- `created_at` (timestamp)
-- `created_by` (string): User or service principal id.
-- `updated_at` (timestamp)
-- `updated_by` (string)
-
-### Data classification
-- `pii_classification` (string enum): `none|pii|phi|pii_phi`
-- `access_policy_id` (string): Reference to access policy governing the record.
+| Field | Type | Description | Domain Pack Notes | Screens |
+|-------|------|-------------|-------------------|---------|
+| `program.id` 🔒 | `string` | Unique identifier for the program. | `medicare_ffs`, `medicaid_ffs`. Extend with `chip`, `part_d`, `mapd`, etc. | All |
+| `program.label` 🔒 | `string` | Display name shown in UI headers and badges. | e.g., "Medicare FFS", "Medicaid FFS". Configure per pack. | All |
+| `program.color` 🔒 | `hex string` | Primary accent color for this program's UI theme. | Medicare: `#00d4ff` (cyan). Medicaid: `#a855f7` (purple). Assign a distinct color per program. | All |
+| `program.claimsSchema` 🔧 | `enum` | Coding system used for procedure codes. | `HCPCS` for Medicare/Medicaid FFS. `NDC` for Part D. `CPT` for commercial packs. | Provider Deep-Dive, Feed |
+| `program.policyCorpus` 🔧 | `string[]` | List of policy source identifiers indexed in the PKG for this program. | Medicare: `["CMS_IOM", "CMS_PIM", "OIG_WorkPlan", "NCCI", "AMA_CPT"]`. Medicaid: add `["State_Plan_Amendments", "CMS_CMCS_Guidance"]`. | Policy Analysis tab, Policy Intelligence |
+| `program.mac` ➕ | `string` | Medicare Administrative Contractor jurisdiction (Medicare FFS only). | Only relevant for Medicare FFS. Omit for Medicaid. | Dashboard, Provider Deep-Dive |
+| `program.statePlan` ➕ | `string` | State Medicaid Plan identifier (Medicaid FFS only). | Only relevant for Medicaid. Omit for Medicare. | Dashboard, Provider Deep-Dive |
 
 ---
 
-## Use-case canvas fields (C01)
+## Entity: Provider
 
-- `use_case_name` (string)
-- `use_case_description` (string)
-- `primary_user_role` (string): e.g., investigator, queue_owner.
-- `workflow_step_supported` (string): triage / evidence_prep / qa / monitoring.
-- `primary_entity_type` (string): provider, beneficiary, agent, broker, claim, enrollment_event, etc.
-- `secondary_entity_types` (array<string>)
-- `target_outcome_definition` (string): what “positive” means for triage.
-- `non_goals` (array<string>)
+A healthcare entity — individual practitioner, group practice, facility, or supplier — identified by NPI.
 
-### Data sources
-- `data_sources` (array<object>):
-  - `source_name` (string)
-  - `owner_team` (string)
-  - `refresh_cadence` (string)
-  - `known_issues` (array<string>)
-- `freshness_requirement_hours` (number)
-- `lookback_days` (integer)
-
-### Risks + mitigations
-- `risk_statements` (array<string>)
-- `mitigations` (array<string>)
-- `pause_authority_role` (string)
-
-### Success metrics (targets)
-- `target_precision_at_k` (number)
-- `k_value` (integer)
-- `target_time_to_evidence_seconds` (integer)
-- `target_explanation_usefulness_avg` (number)
-- `target_evidence_adequacy_avg` (number)
+| Field | Type | Description | Domain Pack Notes | Screens |
+|-------|------|-------------|-------------------|---------|
+| `provider.npi` 🔒 | `string(10)` | National Provider Identifier. 10-digit CMS-assigned unique ID. | Universal across Medicare and Medicaid FFS. Not applicable to Part D (use DEA/NPI hybrid). | Feed, Provider Deep-Dive, Case Management |
+| `provider.name` 🔒 | `string` | Legal name of the provider or organization. | Source from NPPES registry. | All |
+| `provider.type` 🔒 | `enum` | Entity type classification. | `individual`, `group`, `facility`, `supplier`, `pharmacy`. Drives peer cohort selection logic. | Feed, Provider Deep-Dive |
+| `provider.specialty` 🔧 | `string` | Primary CMS specialty code and label. | Medicare: uses CMS specialty codes 01–89. Medicaid: may use state-specific taxonomy codes. Configure taxonomy mapping per pack. | Feed, Provider Deep-Dive |
+| `provider.city` 🔒 | `string` | Practice city from NPPES enrollment record. | — | Feed, Provider Deep-Dive |
+| `provider.state` 🔒 | `string(2)` | Practice state abbreviation. | Drives peer cohort geographic filtering. | Feed, Provider Deep-Dive |
+| `provider.mac` ➕ | `string` | Medicare Administrative Contractor serving this provider's jurisdiction. | Medicare FFS only. | Provider Deep-Dive |
+| `provider.enrollmentStatus` 🔒 | `enum` | Active enrollment status in the program. | `active`, `revoked`, `suspended`, `excluded`. Drives alert badges. | Provider Deep-Dive |
+| `provider.peerCohortId` 🔧 | `string` | Identifier of the AI-assigned peer comparison cohort. | Cohort definition (specialty × geography × volume tier) is configurable per domain pack. | Provider Deep-Dive |
+| `provider.peerCohortSize` 🔒 | `integer` | Number of providers in the assigned peer cohort. | Displayed as `n=847` in peer comparison charts. | Provider Deep-Dive |
 
 ---
 
-## Indicator definition fields (C02)
+## Entity: AnomalySignal
 
-### Identity
-- `indicator_id` (string): Stable ID (never reuse for different logic).
-- `indicator_name` (string)
-- `indicator_status` (string enum)
-- `indicator_owner` (string): person/team
-- `sme_reviewer` (string)
+A single detected anomaly pattern linked to a provider or claim. Multiple signals may be associated with one provider.
 
-### Scope + unit
-- `unit_of_scoring` (string): `entity | entity_month | claim | event`
-- `entity_type` (string)
-- `inclusion_criteria_text` (string)
-- `exclusion_criteria_text` (string)
+| Field | Type | Description | Domain Pack Notes | Screens |
+|-------|------|-------------|-------------------|---------|
+| `signal.id` 🔒 | `string` | Unique signal identifier. | System-generated. | Feed, Provider Deep-Dive |
+| `signal.type` 🔧 | `enum` | Anomaly category. | Configure valid types per domain pack. Core types: `billing_pattern`, `network`, `trend_shift`, `beneficiary_abuse`. Add program-specific types (e.g., `pharmacy_dispensing` for Part D). | Feed, Provider Deep-Dive |
+| `signal.subtype` 🔧 | `string` | Specific anomaly pattern within a type. | Examples: `upcoding`, `unbundling`, `hcpcs_consolidation`, `referral_ring`, `impossible_day`. Map to domain-specific patterns per pack. | Feed, Provider Deep-Dive |
+| `signal.flag` 🔒 | `string` | Short human-readable label displayed in the UI as a chip. | e.g., `UPCODING · HCPCS CONSOLIDATION`. Configurable per signal subtype. | Feed, Provider Deep-Dive |
+| `signal.riskScore` 🔒 | `integer (0–100)` | Composite AI risk score. Higher = greater anomaly severity. | Threshold bands are configurable: default `HIGH ≥ 90`, `MED ≥ 75`, `LOW < 75`. Adjust per program risk tolerance. | Feed, Provider Deep-Dive, Case Management |
+| `signal.confidenceLevel` 🔒 | `float (0–1)` | Model confidence in the signal detection. Displayed as percentage. | Confidence threshold for surfacing to analysts is configurable. Default: surface if `confidence ≥ 0.70`. | Feed, Provider Deep-Dive |
+| `signal.atRisk` 🔒 | `currency string` | Estimated dollar amount at risk for this signal. | Derived from claims data × peer-adjusted expected billing. Calculation method may differ by program. | Feed, Provider Deep-Dive, Case Management |
+| `signal.detectedAt` 🔒 | `ISO 8601 datetime` | Timestamp when the AI model first detected the signal. | — | Feed, Provider Deep-Dive |
+| `signal.daysSinceDetection` 🔒 | `integer` | Days elapsed since detection. Derived from `detectedAt`. | Used for aging/urgency indicators in the feed. | Feed |
+| `signal.codes` 🔧 | `string[]` | Procedure or diagnosis codes associated with the signal. | For HCPCS/CPT-based signals. Replace with `NDC` codes for Part D. | Provider Deep-Dive |
+| `signal.peerPercentile` 🔧 | `float (0–100)` | Provider's percentile rank within peer cohort for the primary metric. | Displayed as "Top 1.3% nationally." Configure peer metric per signal type. | Provider Deep-Dive |
+| `signal.trendData` 🔧 | `object[]` | Time-series data supporting the signal visualization. | Schema varies by signal type. See `SignalTrendPoint` schema below. | Provider Deep-Dive — Overview tab |
 
-### Logic/model
-- `indicator_type` (string): `rule | peer | time_series | graph | ml | composite`
-- `feature_inputs` (array<object>):
-  - `feature_name` (string)
-  - `feature_definition` (string)
-  - `window_days` (integer, optional)
-- `missingness_handling` (string)
-- `threshold_definition` (string)
-- `score_range_min` (number)
-- `score_range_max` (number)
+### Sub-schema: SignalTrendPoint
 
-### Reason codes (catalog)
-- `reason_code_catalog` (array<object>):
-  - `reason_code` (string): e.g., `RC001`
-  - `title` (string)
-  - `description` (string)
-  - `trigger_logic_text` (string)
-  - `user_facing_copy` (string)
-
-### UX guardrails copy
-- `one_sentence_explanation` (string)
-- `what_this_does_not_mean` (array<string>)
-- `prohibited_language` (array<string>)
-
-### Evidence requirements
-- `required_evidence_items` (array<string>)
-- `evidence_time_window_days` (integer)
-- `insufficient_evidence_conditions` (array<string>)
+| Field | Type | Description |
+|-------|------|-------------|
+| `period` | `string` | Display label for the time period (e.g., `"Mar'23"`). |
+| `providerValue` | `float` | Provider's metric value for this period. |
+| `peerMedian` | `float` | Peer cohort median for the same period. |
+| `peer90thPct` | `float` | 90th percentile peer value for the same period. |
+| `anomalyFlag` | `boolean` | Whether this period was individually flagged as anomalous. |
 
 ---
 
-## Scoring output record (entity-level)
+## Entity: PolicyCitation
 
-This is what powers the risk dashboard and triage queue.
+A policy document section retrieved from the Policy Knowledge Graph (PKG) in response to an anomaly signal query.
 
-### Identifiers
-- `scoring_run_id` (string): Batch run identifier.
-- `scored_at` (timestamp)
-- `indicator_id` (string)
-- `indicator_version` (string): internal/version tag for the indicator definition used.
-- `entity_id` (string)
-- `entity_type` (string)
-- `entity_display_name` (string, optional)
-- `time_bucket_start` (timestamp, optional): for entity-month scoring.
-- `time_bucket_end` (timestamp, optional)
-
-### Core outputs
-- `score` (number)
-- `severity_band` (string enum)
-- `confidence` (number, optional): 0–1 if used.
-- `evidence_completeness` (string enum)
-
-### Explanations (structured)
-- `reason_codes` (array<object>):
-  - `reason_code` (string)
-  - `rank` (integer)
-  - `contribution` (number, optional): relative importance.
-  - `short_explanation` (string)
-
-### Evidence bundle link
-- `evidence_bundle_id` (string)
-- `evidence_bundle_uri` (string, optional): pointer to stored artifact.
-- `recommended_next_steps` (array<string>)
-
-### Comparators/benchmarks (optional but recommended)
-- `peer_group_id` (string, optional)
-- `peer_percentile` (number, optional)
-- `baseline_rate` (number, optional)
+| Field | Type | Description | Domain Pack Notes | Screens |
+|-------|------|-------------|-------------------|---------|
+| `citation.id` 🔒 | `string` | Unique citation identifier within the PKG. | — | Provider Deep-Dive — Policy tab |
+| `citation.source` 🔒 | `string` | Formal citation string for the source document. | e.g., `CMS IOM Pub. 100-04, Ch. 12 §30.6.1`. Format per program's citation standard. | Provider Deep-Dive — Policy tab, Policy Intelligence |
+| `citation.title` 🔒 | `string` | Title of the retrieved policy section. | — | Provider Deep-Dive — Policy tab |
+| `citation.ruleType` 🔧 | `enum` | Classification of the policy instrument. | Core types: `coding_requirement`, `billing_integrity`, `program_integrity`, `federal_statute`, `regulatory`, `oig_priority`, `coding_standard`. Extend per program corpus. | Provider Deep-Dive — Policy tab |
+| `citation.relevanceScore` 🔒 | `integer (0–100)` | PKG retrieval relevance score for this citation relative to the query signal. | Drives ranking and display order. Configurable retrieval threshold (default: surface if `relevance ≥ 70`). | Provider Deep-Dive — Policy tab |
+| `citation.snippet` 🔒 | `string` | Extracted verbatim text passage from the policy document. | Max display length: 300 characters. Truncate with ellipsis. | Provider Deep-Dive — Policy tab |
+| `citation.documentUrl` ➕ | `string` | Link to the full source document. | Include when the policy document is publicly accessible (e.g., CMS.gov, eCFR.gov). | Provider Deep-Dive — Policy tab |
+| `citation.effectiveDate` ➕ | `ISO 8601 date` | Effective date of the cited policy version. | Important for enforcement validity — a policy must have been in effect during the claim period. | Provider Deep-Dive — Policy tab |
 
 ---
 
-## Triage queue fields
+## Entity: PolicyDetermination
 
-### Queue row
-- `queue_id` (string)
-- `queue_name` (string)
-- `queue_owner` (string)
-- `queue_rank` (integer): ordering position.
-- `queue_score` (number): usually same as `score`.
-- `queue_bucket` (string, optional): e.g., high priority, watchlist.
-- `assigned_to` (string, optional)
-- `assignment_updated_at` (timestamp, optional)
+The AI-generated assessment of whether a flagged anomaly signal constitutes a policy violation, produced by grounding the signal against retrieved policy citations.
 
-### Filters (UI state)
-- `filter_severity_bands` (array<string>)
-- `filter_indicator_ids` (array<string>)
-- `filter_entity_types` (array<string>)
-- `filter_time_range_start` (timestamp, optional)
-- `filter_time_range_end` (timestamp, optional)
-- `filter_program_tags` (array<string>, optional)
-
-### Work tracking
-- `first_viewed_at` (timestamp, optional)
-- `last_viewed_at` (timestamp, optional)
-- `investigator_notes` (string, optional)
+| Field | Type | Description | Domain Pack Notes | Screens |
+|-------|------|-------------|-------------------|---------|
+| `determination.signalId` 🔒 | `string` | Reference to the parent `AnomalySignal`. | — | Provider Deep-Dive — Policy tab |
+| `determination.verdict` 🔒 | `enum` | AI determination outcome. | Values: `likely_violation`, `possible_violation`, `corner_case`, `no_violation`. Labels and color mapping configurable per pack. | Provider Deep-Dive — Policy tab |
+| `determination.confidence` 🔒 | `float (0–1)` | Model confidence in the determination. | Displayed as a percentage. Low confidence (<70%) should surface a "Further Review Required" qualifier. | Provider Deep-Dive — Policy tab |
+| `determination.reasoningChain` 🔒 | `string` | Plain-language narrative explaining the AI's reasoning, grounded in retrieved citations. | Auditable text field. Should reference specific policy sources by citation ID. | Provider Deep-Dive — Policy tab |
+| `determination.citationIds` 🔒 | `string[]` | IDs of `PolicyCitation` records used as grounding evidence. | — | Provider Deep-Dive — Policy tab |
+| `determination.policyGap` ➕ | `string` | If detected, a plain-language description of an ambiguity or gap in the cited policy that complicates enforcement. | Feeds into `PolicyGap` entity for the Policy Intelligence screen. | Provider Deep-Dive — Policy tab, Policy Intelligence |
 
 ---
 
-## Case record (workflow state)
+## Entity: ComplianceAction
 
-A case links one or more queue items/evidence bundles to a review workflow.
+A recommended investigative or compliance step generated from a policy determination.
 
-### Identity
-- `case_id` (string)
-- `external_case_id` (string, optional): if integrated with a case management tool.
-- `case_status` (string enum)
-- `opened_at` (timestamp)
-- `closed_at` (timestamp, optional)
-
-### Relationships
-- `primary_entity_id` (string)
-- `primary_entity_type` (string)
-- `linked_queue_items` (array<object>):
-  - `indicator_id` (string)
-  - `scoring_run_id` (string)
-  - `evidence_bundle_id` (string)
-
-### Actions + outcomes
-- `action_taken` (string, optional): free text or controlled vocabulary by client.
-- `action_taken_date` (timestamp, optional)
-- `disposition_summary` (string, optional)
-- `sme_escalation_required` (boolean, optional)
-- `escalated_to` (string, optional)
+| Field | Type | Description | Domain Pack Notes | Screens |
+|-------|------|-------------|-------------------|---------|
+| `action.id` 🔒 | `string` | Unique action identifier. | — | Provider Deep-Dive — Policy tab, Case Management |
+| `action.type` 🔧 | `enum` | Action category. | Core types: `immediate`, `investigation`, `compliance`. Extend with `referral`, `prepayment_edit`, `exclusion` per program. | Provider Deep-Dive — Policy tab |
+| `action.label` 🔧 | `string` | Short action name displayed as a header. | e.g., "Prepayment Edit", "Records Request". Configure terminology per program. CMS uses "Additional Documentation Request (ADR)" not "Records Request." | Provider Deep-Dive — Policy tab |
+| `action.description` 🔒 | `string` | Full plain-language description of the recommended action. | — | Provider Deep-Dive — Policy tab |
+| `action.priority` 🔒 | `enum` | Urgency level. | `high`, `medium`, `low`. Drives color coding: `high` = red, `medium` = amber, `low` = cyan. | Provider Deep-Dive — Policy tab |
+| `action.caseId` ➕ | `string` | Case ID if this action has been logged to Case Management. | Populated after analyst assigns action to a case. | Case Management |
 
 ---
 
-## Evidence bundle fields (viewer payload)
+## Entity: PolicyGap
 
-### Evidence bundle metadata
-- `evidence_bundle_id` (string)
-- `generated_at` (timestamp)
-- `generated_by` (string): service id
-- `evidence_time_window_start` (timestamp)
-- `evidence_time_window_end` (timestamp)
-- `evidence_completeness` (string enum)
-- `missing_evidence_items` (array<string>)
-- `limitations_text` (array<string>)  : short disclaimers
+A systemic gap, ambiguity, or weakness in CMS policy or oversight rules identified through cross-case pattern analysis. Surfaces in the Policy Intelligence screen for CMS leadership.
 
-### Summary block (top of viewer)
-- `summary_title` (string)
-- `summary_bullets` (array<string>)
-- `primary_reason_codes` (array<string>)
-- `what_this_does_not_mean` (array<string>)
-
-### Timeline events
-- `timeline_events` (array<object>):
-  - `event_id` (string)
-  - `event_timestamp` (timestamp)
-  - `event_type` (string)
-  - `event_title` (string)
-  - `event_description` (string, optional)
-  - `amount` (number, optional)
-  - `units` (number, optional)
-  - `code` (string, optional): procedure/drug/etc.
-  - `source_pointer` (object): see Source pointers
-
-### Tables (optional UI tabs)
-- `evidence_tables` (array<object>):
-  - `table_title` (string)
-  - `rows` (array<object>): free-form row dicts, but each row should carry `source_pointer`
-
-### Network slice (optional)
-- `network` (object, optional):
-  - `nodes` (array<object>):
-    - `node_id` (string)
-    - `node_type` (string)
-    - `label` (string, optional)
-  - `edges` (array<object>):
-    - `edge_id` (string)
-    - `source_node_id` (string)
-    - `target_node_id` (string)
-    - `edge_type` (string)
-    - `evidence_strength` (number, optional)
-    - `source_pointer` (object, optional)
-
-### Source pointers (required structure)
-- `source_pointer` (object):
-  - `source_system` (string)
-  - `source_table` (string)
-  - `primary_key` (string)
-  - `record_timestamp` (timestamp, optional)
-  - `extract_timestamp` (timestamp, optional)
-
-### Reproducibility
-- `config_snapshot_id` (string)
-- `feature_build_run_id` (string, optional)
-- `code_artifact_version` (string, optional)
+| Field | Type | Description | Domain Pack Notes | Screens |
+|-------|------|-------------|-------------------|---------|
+| `gap.id` 🔒 | `string` | Unique gap identifier. | — | Policy Intelligence |
+| `gap.title` 🔒 | `string` | Short descriptive title of the gap. | — | Policy Intelligence |
+| `gap.severity` 🔒 | `enum` | Impact severity classification. | `critical`, `high`, `medium`, `low`. Drives alert coloring and sort order. | Policy Intelligence |
+| `gap.scope` 🔧 | `string` | Policy or functional area where the gap exists. | e.g., "E&M & Procedure Coding", "Statistical Aberrant Billing". Configure per program's policy landscape. | Policy Intelligence |
+| `gap.source` 🔒 | `string` | Primary policy citation where the gap originates. | References `citation.source` format. | Policy Intelligence |
+| `gap.description` 🔒 | `string` | Plain-language description of the gap and its enforcement implications. | — | Policy Intelligence |
+| `gap.recommendation` 🔒 | `string` | Specific, actionable policy change or oversight measure recommended to close the gap. | — | Policy Intelligence |
+| `gap.programImpact` 🔒 | `enum` | Which programs are affected. | `medicare`, `medicaid`, `both`. Used for program-filter display logic. | Policy Intelligence |
+| `gap.affectedProviders` 🔒 | `integer` | Estimated number of providers whose behavior is enabled by this gap. | — | Policy Intelligence |
+| `gap.estimatedExposure` 🔒 | `currency string` | Estimated total dollar exposure attributable to this gap across the program. | — | Policy Intelligence |
+| `gap.casesExposing` 🔒 | `integer` | Count of active or historical cases that demonstrate this gap. | Used for gap severity matrix chart. | Policy Intelligence |
 
 ---
 
-## Feedback capture fields
+## Entity: Case
 
-Feedback is the core learning loop; keep it structured.
+An investigative case record created when an analyst escalates a provider or claim anomaly for formal review.
 
-### Identity
-- `feedback_id` (string)
-- `case_id` (string)
-- `submitted_at` (timestamp)
-- `submitted_by` (string)
-
-### Labels and rationale
-- `feedback_label` (string enum)
-- `reason_tags` (array<string>): controlled vocabulary (client-configured).
-- `free_text_notes` (string, optional)
-
-### Explanation and evidence quality
-- `explanation_usefulness` (integer 1–5)
-- `evidence_adequacy` (integer 1–5)
-- `missing_evidence_reported` (array<string>, optional)
-- `confusing_reason_codes` (array<string>, optional)
-
-### Effort proxy (optional)
-- `time_spent_minutes` (number, optional)
-- `clicked_artifacts` (array<string>, optional): e.g., “timeline”, “network”, “raw_records”.
-
-### Outcome linkage (optional)
-- `confirmed_outcome` (string, optional): audit-confirmed outcome if later available.
-- `confirmed_outcome_date` (timestamp, optional)
+| Field | Type | Description | Domain Pack Notes | Screens |
+|-------|------|-------------|-------------------|---------|
+| `case.id` 🔒 | `string` | Unique case identifier. | Format: `[PROGRAM_PREFIX]-[YEAR]-[SEQUENCE]`. e.g., `MC-2024-0891` for Medicare. Configure prefix per program. | Case Management |
+| `case.providerId` 🔒 | `string` | NPI of the subject provider. | — | Case Management |
+| `case.providerName` 🔒 | `string` | Display name of the subject provider. | — | Case Management |
+| `case.signalType` 🔒 | `string` | Primary anomaly signal type driving the case. | Derived from `signal.type + signal.subtype`. | Case Management |
+| `case.riskScore` 🔒 | `integer (0–100)` | Risk score at time of case creation. | Inherited from `signal.riskScore`. May be updated as investigation progresses. | Case Management |
+| `case.status` 🔧 | `enum` | Current case lifecycle status. | Core statuses: `pending`, `under_review`, `escalated`, `closed_confirmed`, `closed_cleared`. Extend with program-specific statuses (e.g., `referred_doj`, `prepayment_hold`). | Case Management |
+| `case.analyst` 🔒 | `string` | Full name of the assigned investigator. | `null` displays as "Unassigned" with amber coloring. | Case Management |
+| `case.atRisk` 🔒 | `currency string` | Dollar amount under investigation. | `—` if not yet quantified. | Case Management |
+| `case.openedDate` 🔒 | `ISO 8601 date` | Date the case was formally opened. | Displayed in short format `MMM DD` in the case table. | Case Management |
+| `case.actions` ➕ | `ComplianceAction[]` | Actions logged against this case. | Populated from Policy tab recommendations promoted to the case. | Case Management |
+| `case.notes` ➕ | `string` | Free-text investigator notes. | Append-only audit trail. | Case Management |
 
 ---
 
-## Indicator health dashboard fields
+## Entity: KPISummary
 
-### Aggregates (per indicator per period)
-- `period_start` (timestamp)
-- `period_end` (timestamp)
-- `indicator_id` (string)
-- `items_scored` (integer)
-- `items_queued` (integer)
-- `avg_score` (number)
-- `severity_distribution` (object): e.g., `{low: 120, medium: 45, high: 10}`
-- `feedback_count` (integer)
+Aggregated program-level metrics displayed on the Executive Dashboard.
 
-### Quality
-- `precision_at_k` (number, optional)
-- `yield_at_k` (number, optional)
-- `explanation_usefulness_avg` (number, optional)
-- `evidence_adequacy_avg` (number, optional)
-- `missing_critical_evidence_rate` (number, optional)
-
-### Drift/stability
-- `stability_at_k` (number, optional)
-- `drift_flags` (array<string>, optional)
-- `data_freshness_hours` (number, optional)
-- `missingness_rate` (number, optional)
+| Field | Type | Description | Domain Pack Notes | Screens |
+|-------|------|-------------|-------------------|---------|
+| `kpi.flaggedProviders` 🔒 | `string` | Count of providers with active anomaly signals this quarter. | Format: locale string with comma separator. | Dashboard |
+| `kpi.potentialRecovery` 🔒 | `currency string` | Sum of `signal.atRisk` across all active signals. | Display in $M or $B depending on program scale. Configure abbreviation threshold. | Dashboard |
+| `kpi.casesResolved` 🔒 | `string` | Count of cases closed this quarter (both confirmed and cleared). | — | Dashboard |
+| `kpi.avgConfidence` 🔒 | `string` | Average AI confidence level across all active detections. | Displayed as percentage. | Dashboard |
+| `kpi.period` 🔒 | `string` | The reporting period label. | e.g., "This Quarter", "FY2024 YTD". Configure per program reporting cadence. | Dashboard |
 
 ---
 
-## Governance + change control fields
+## Entity: Investigator
 
-### Change request
-- `change_request_id` (string)
-- `change_title` (string)
-- `change_type` (array<string>)
-- `requested_by` (string)
-- `requested_at` (timestamp)
-- `motivation_text` (string)
-- `risk_assessment_text` (string)
+A program integrity staff member. Used for queue health display and case assignment.
 
-### Proposed change payload (structured pointers)
-- `affected_indicator_ids` (array<string>)
-- `proposed_thresholds` (object, optional)
-- `proposed_reason_code_changes` (object, optional)
-- `proposed_evidence_bundle_changes` (object, optional)
-- `proposed_monitoring_changes` (object, optional)
-
-### Validation + approvals
-- `validation_plan_uri` (string, optional)
-- `validation_results_uri` (string, optional)
-- `approval_records` (array<object>):
-  - `approver_role` (string)
-  - `approver_id` (string)
-  - `decision` (string enum)
-  - `decision_at` (timestamp)
-  - `comments` (string, optional)
-
-### Rollback
-- `last_known_good_snapshot_id` (string, optional)
-- `rollback_executed` (boolean, optional)
-- `rollback_at` (timestamp, optional)
-- `rollback_by` (string, optional)
+| Field | Type | Description | Domain Pack Notes | Screens |
+|-------|------|-------------|-------------------|---------|
+| `investigator.id` 🔒 | `string` | Unique user identifier. | Sourced from identity provider / SSO. | Case Management, Dashboard |
+| `investigator.name` 🔒 | `string` | Full display name. | — | Case Management, Dashboard |
+| `investigator.initials` 🔒 | `string(2)` | Two-letter initials for avatar display. | Derived from name. | Top navigation bar |
+| `investigator.role` 🔧 | `enum` | User role governing screen access. | Core roles: `analyst`, `supervisor`, `cms_leader`. Map to program-specific role taxonomy. See `navigation_flow.md` for role-gated screens. | All |
+| `investigator.activeCases` 🔒 | `integer` | Count of cases currently assigned with status `under_review` or `escalated`. | — | Dashboard — Queue Health |
+| `investigator.pendingCases` 🔒 | `integer` | Count of cases assigned but not yet started (`pending`). | — | Dashboard — Queue Health |
+| `investigator.closedCases` 🔒 | `integer` | Count of cases closed by this investigator this quarter. | — | Dashboard — Queue Health |
+| `investigator.capacityPct` 🔒 | `integer (0–100)` | Derived workload capacity utilization percentage. | Calculation: `(activeCases / maxCases) * 100`. `maxCases` is configurable per program. Color thresholds: `≥80` red, `≥60` amber, `<60` green. | Dashboard — Queue Health |
 
 ---
 
-## Pause / discontinue controls (ops safety)
+## Screen Cross-Reference Index
 
-- `control_action_id` (string)
-- `action_type` (string): `pause_indicator | resume_indicator | retire_indicator | pause_use_case | resume_use_case`
-- `target_type` (string): `indicator | use_case`
-- `target_id` (string)
-- `action_reason` (string)
-- `effective_at` (timestamp)
-- `expires_at` (timestamp, optional)
-- `issued_by` (string)
-- `notified_roles` (array<string>, optional)
+Quick lookup: which entities appear on which screens.
 
----
-
-## UI audit event fields (viewer and workflow actions)
-
-These fields should be emitted for audit and governance monitoring.
-
-- `audit_event_id` (string)
-- `event_timestamp` (timestamp)
-- `event_type` (string):
-  - `view_queue`
-  - `view_entity_dashboard`
-  - `open_case`
-  - `view_evidence_bundle`
-  - `export_evidence`
-  - `submit_feedback`
-  - `approve_change`
-  - `pause_indicator`
-  - `resume_indicator`
-- `actor_id` (string)
-- `actor_role` (string)
-- `ip_address` (string, optional)
-- `user_agent` (string, optional)
-
-Object references:
-- `object_type` (string): `case | evidence_bundle | indicator | use_case | export`
-- `object_id` (string)
-- `related_ids` (object, optional): `{case_id, evidence_bundle_id, indicator_id, entity_id}`
-
-Outcome:
-- `result` (string): `success | denied | error`
-- `error_code` (string, optional)
-- `error_message` (string, optional)
+| Screen | Primary Entities | Secondary Entities |
+|--------|------------------|--------------------|
+| Dashboard | `KPISummary`, `Investigator` | `Program` |
+| Anomaly Feed | `AnomalySignal`, `Provider` | `Program` |
+| Provider Deep-Dive — Overview | `Provider`, `AnomalySignal` | `Program` |
+| Provider Deep-Dive — Policy Analysis | `PolicyCitation`, `PolicyDetermination`, `ComplianceAction` | `AnomalySignal`, `Provider` |
+| Provider Deep-Dive — Evidence Log | `AnomalySignal`, `Case` | `Provider` |
+| Provider Deep-Dive — Billing Timeline | `AnomalySignal` | `Provider` |
+| Case Management | `Case`, `Investigator` | `Provider`, `AnomalySignal` |
+| Policy Intelligence | `PolicyGap` | `Program`, `PolicyCitation` |
+| AI Investigator Panel | All entities (contextual) | — |
 
 ---
 
-## Client-configured vocabularies (recommended)
-These should be versioned per use case.
+## Domain Pack Configuration Checklist
 
-- `reason_tags_vocab` (array<object>): `{tag, description}`
-- `action_taken_vocab` (array<object>): `{action, description}`
-- `entity_type_vocab` (array<object>): `{entity_type, description}`
-- `event_type_vocab` (array<object>): `{event_type, description}`
+When adapting this accelerator to a new program, review the following field-level configuration points:
 
----
-
-## Notes
-- Domain packs may extend this dictionary with domain-specific fields, but Core screens must not require them to function.
-- Any additional fields must preserve traceability (source pointers) and version triplet.
+- [ ] Set `program.id`, `program.label`, `program.color` for each supported program
+- [ ] Define `program.claimsSchema` and configure code system lookups accordingly
+- [ ] Populate `program.policyCorpus` with the indexed knowledge graph sources for the program
+- [ ] Map `signal.type` and `signal.subtype` enums to program-specific anomaly patterns
+- [ ] Configure `signal.riskScore` threshold bands to match program risk tolerance
+- [ ] Define `provider.specialty` taxonomy mapping (CMS codes vs. state taxonomy codes)
+- [ ] Set `provider.peerCohortId` cohort definition logic (specialty × geography × volume)
+- [ ] Extend `action.type` and `action.label` with program-specific investigation actions
+- [ ] Add `case.id` prefix per program convention
+- [ ] Extend `case.status` with program-specific lifecycle states
+- [ ] Configure `investigator.role` mapping to program's organizational role taxonomy
+- [ ] Set `investigator.capacityPct` `maxCases` denominator per program staffing model
+- [ ] Add any `➕` extension fields required for the program (e.g., `provider.mac`, `provider.statePlan`)

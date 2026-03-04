@@ -1,209 +1,347 @@
-# Core UI Navigation Flow (v0.1)
-
-Purpose: Define the navigational routes and end-to-end user flows across Core UI screens, and map each key UI action to the telemetry/audit events required by `core/monitoring/telemetrycontract.md`.
-This document is aligned to the v0.1 intent: triage support (not automated enforcement), human-in-the-loop validation, and operational governance (monitoring + change control + pause/discontinue).
-
-Related specs (normative):
-- `core/ui/screens_spec.md` (screen catalog, required actions, validations).
-- `core/ui/fields_dictionary.md` (canonical field names for case, evidence bundle, feedback, governance).
-- `core/monitoring/telemetrycontract.md` (event envelope and required events).
-- `core/monitoring/dashboardsspec.md`, `core/monitoring/driftchecks.md` (how telemetry rolls up into ops + drift + trust dashboards).
-- `core/docs/governance-change-control.md` (approval gates, C09 change request discipline).
+# Navigation Flow
+**IntegrityAI · Program Integrity Accelerator**
+`domain-pack/docs/navigation_flow.md`
 
 ---
 
-## 1) Route map (UI IA)
+## Overview
 
-Routes are role-filtered in left navigation; deep links may exist (e.g., `/case/:case_id`) but must enforce RBAC on load.
+This document defines the complete navigation architecture of the IntegrityAI UI — screen-to-screen flows, role-based access rules, external system entry points, deep-link routing conventions, and overlay/panel states. It serves as the authoritative reference for both development and domain pack configuration.
 
-Core routes:
-- `/use-cases` → UC01 Use-case Canvas (list/select; optional list in v0.1).
-- `/use-cases/:use_case_id` → UC01 Use-case Canvas (detail).
-- `/indicators` → IND01 Indicator Builder (list).
-- `/indicators/:indicator_id` → IND02 Indicator Builder (detail).
-- `/risk` → RISK01 Risk Dashboard.
-- `/queue/:queue_name` → QUEUE01 Triage Queue.
-- `/case/:case_id` → CASE01 Case View + Evidence Bundle Viewer (includes FB01 inline).
-- `/health` → HLTH01 Indicator Health Dashboard.
-- `/governance/changes` → GOV01 Governance Change Log (read).
-- `/governance/changes/new` → GOV02 Change Request (create).
-- `/governance/changes/:change_id` → GOV02 Change Request (detail/decide).
-- `/controls` → CTRL01 Pause/Resume/Retire Controls.
-- `/audit` → AUD01 Security Audit View.
-- `/admin` → ADMIN01 Admin (optional v0.1).
+### Navigation Philosophy
 
-Global search (header):
-- Search by `entity_id`, `case_id`, `external_case_ref`.
-- Results link to `/case/:case_id` when a case exists; otherwise to RISK01 entity drill-in.
+The UI is a **workflow-forward single-page application**: every navigation decision is grounded in the investigative workflow, not arbitrary information architecture. The three primary user journeys are:
+
+1. **Supervisor Journey** — Monitor program health, review queue, escalate cases
+2. **Analyst Journey** — Triage anomaly feed, investigate a provider, log findings to a case
+3. **CMS Leadership Journey** — Review program-level policy gaps and approve policy briefs
+
+All three journeys share the same shell (sidebar nav, top bar, AI panel), but each role's entry screen and default view differ. See [Role-Based Access](#role-based-access) below.
 
 ---
 
-## 2) Canonical telemetry naming (and legacy mapping)
+## Screen Inventory
 
-The telemetry contract appears in two compatible “shapes” in v0.1 materials:
-- Canonical (recommended): `queueviewed`, `caseopened`, `evidenceviewed`, `feedbacksubmitted`, `casestatuschanged`, etc.
-- Legacy UI event names that appeared earlier: `uiviewqueue`, `uiopencase`, `uiviewevidencebundle`, `uiexportevidence`, `uisubmitfeedback`, `uichangecasestatus`.
-
-### 2.1 Compatibility mapping
-Implementations MAY emit canonical event names only, or MAY emit both during transition; downstream dashboards must map legacy → canonical.
-
-| Canonical eventname (recommended) | Legacy eventtype (if present) |
-|---|---|
-| `queueviewed` | `uiviewqueue` |
-| `caseopened` | `uiopencase` |
-| `evidenceviewed` | `uiviewevidencebundle` |
-| `evidenceexported` (optional alias; see note) | `uiexportevidence` |
-| `feedbacksubmitted` | `uisubmitfeedback` |
-| `casestatuschanged` | `uichangecasestatus` |
-| `indicatorpaused` | `safetycontrolaction` (actiontype=pauseindicator) |
-| `indicatorresumed` | `safetycontrolaction` (actiontype=resumeindicator) |
-
-Note: If you already log `uiexportevidence` as defined, you can treat it as the export event for dashboards/audit; a separate canonical `evidenceexported` is not required in v0.1.
+| Screen ID | Route | Label | Primary Role(s) |
+|-----------|-------|-------|-----------------|
+| `dashboard` | `/dashboard` | Dashboard | Supervisor, Analyst |
+| `feed` | `/feed` | Anomaly Feed | Analyst, Supervisor |
+| `provider` | `/provider/:npi` | Provider Deep-Dive | Analyst |
+| `cases` | `/cases` | Case Management | Analyst, Supervisor |
+| `policy` | `/policy` | Policy Intelligence | CMS Leader, Supervisor |
+| `[ai-panel]` | Overlay (all routes) | AI Investigator | Analyst, Supervisor |
 
 ---
 
-## 3) End-to-end navigation flows (with telemetry)
+## Primary Navigation Flow
 
-### Flow A — Frame (Use-case + Indicator definition)
-Goal: Create/maintain the framed use case and indicator definitions with explicit guardrails, evidence requirements, and governance-ready approvals.
+The main screen-to-screen flow accessible via the persistent left sidebar.
 
-A1. Enter UC01 Use-case Canvas
-1) User navigates to `/use-cases/:use_case_id` (UC01).
-2) System enforces RBAC; if denied → emit `accessdenied`.
-3) User views the use case definition (triage-only intent, non-goals, evidence requirements, success metrics, approvals).
-Telemetry:
-- (Optional) emit a generic `securityaccessevent` (objecttype=usecase, action=view, result=success) if audit wants full coverage.
+```mermaid
+flowchart TD
+    ENTRY([User Login])
+    ENTRY --> ROLE{User Role?}
 
-A2. Edit use case (role-gated)
-1) PI Ops Lead (or Admin) edits fields and saves changes.
-2) For production-impacting changes (scope, data sources, guardrails, success metric targets), user SHOULD be routed to GOV02 to raise a change request before applying the change in prod.
-Telemetry:
-- `governancechangerequestcreated` / `changerequestcreated` (changetype includes datachange/uichange/securitychange as applicable; rationalesummary references UC01 scope change).
+    ROLE -->|Supervisor| DASH
+    ROLE -->|Analyst| FEED
+    ROLE -->|CMS Leader| POLICY
 
-A3. Navigate to IND01/IND02
-1) From UC01, user clicks “View indicators in scope” → `/indicators?use_case_id=...`.
-2) Analytics creates/edits indicator in IND02, including reason codes, evidence requirements, and “what this does NOT mean”.
-Telemetry:
-- For draft-only saves: log locally (optional) but do not require governance events.
-- For prod-impacting updates: `changerequestcreated` then `changerequestapproved` then `changeimplemented`.
+    DASH[Dashboard\n/dashboard]
+    FEED[Anomaly Feed\n/feed]
+    PROV[Provider Deep-Dive\n/provider/:npi]
+    CASES[Case Management\n/cases]
+    POLICY[Policy Intelligence\n/policy]
 
----
+    DASH -->|Sidebar nav| FEED
+    DASH -->|Sidebar nav| PROV
+    DASH -->|Sidebar nav| CASES
+    DASH -->|Sidebar nav| POLICY
 
-### Flow B — Validate (Triage, Evidence, Feedback)
-Goal: Move from scored outputs to human-reviewed, evidence-linked feedback that supports evaluation gates and continuous monitoring.
+    FEED -->|"Click 'Review' on alert row"| PROV
+    FEED -->|Sidebar nav| DASH
+    FEED -->|Sidebar nav| CASES
 
-B0. Scoring pipeline produces queue items (system-driven)
-1) System runs scoring: `scoringrunstarted` → `scoringruncompleted` and `indicatoroutputstats` per indicator.
-2) When a queue item/case is created, system emits `casegenerated` with `case_id`, `target_entity_id`, `triggering_indicator_ids`, `evidencebundleid`, `evidencecompletenessflag`, and `reasoncodes`.
+    PROV -->|Sidebar nav| FEED
+    PROV -->|Sidebar nav| CASES
+    PROV -->|Sidebar nav| POLICY
 
-B1. Investigator opens triage queue
-1) Investigator navigates to `/queue/:queue_name` (QUEUE01).
-2) Investigator applies filters and sorts; queue paginates/lazy-loads.
-Telemetry:
-- `queueviewed` (payload: queuename/queueid, filtersapplied/filterstate, itemsreturned).
-- Legacy alternative: `uiviewqueue`.
+    CASES -->|Sidebar nav| FEED
+    CASES -->|"Click case row → provider context"| PROV
 
-B2. Investigator opens case
-1) Investigator clicks queue row → `/case/:case_id`.
-2) Case header loads: case state, involved indicators, top reason codes, confidence band, evidence completeness status.
-Telemetry:
-- `caseopened` (payload: caseid, queuename, openedfrom).
-- Legacy alternative: `uiopencase`.
-
-B3. Investigator views evidence bundle
-1) Investigator selects Evidence tab(s): timeline/tables/network (if present).
-2) If sensitive drill-in is requested, enforce S-permission; if denied, show redacted view and emit `accessdenied`.
-Telemetry:
-- `evidenceviewed` (payload includes: evidencebundleid, sensitiveevidenceaccessed, evidencetypesviewed, optional loadtimems).
-- Legacy alternative: `uiviewevidencebundle` with viewdurationms.
-- `securityaccessevent` (objecttype=evidencebundle, action=view, result=success/denied/error) for audit-grade trails.
-
-B4. Investigator exports evidence (if allowed)
-1) Investigator clicks Export (CASE01).
-2) Enforce export permissions; log output format and size.
-Telemetry:
-- Legacy: `uiexportevidence` (exportformat, exportsizebytes).
-- Also emit `securityaccessevent` (objecttype=export, action=export, result=success/denied/error).
-
-B5. Investigator submits structured feedback (FB01 inline)
-1) Investigator selects outcome (suspicious / not_suspicious / insufficient_evidence), reason tags, explanation usefulness, evidence adequacy, and next action.
-2) UI enforces required fields (e.g., reason tags for non-insufficient outcomes; missing evidence list for insufficient evidence).
-Telemetry:
-- `feedbacksubmitted` (labeloutcome, labelreasontags, labelexplanationusefulness, labelevidenceadequacy, labelnextaction, notespresent).
-- Legacy: `uisubmitfeedback` (feedbacklabel, reasontags, explanationusefulness, evidenceadequacy).
-
-B6. Investigator changes case status
-1) Investigator updates case status (e.g., new → inreview → closed/referred/escalated/needsMoreInfo).
-2) Status transition must follow allowed enums and require reason where applicable.
-Telemetry:
-- `casestatuschanged` (oldstatus, newstatus, changereason/statusreason).
-- Legacy: `uichangecasestatus`.
+    POLICY -->|"Click 'View Affected Cases'"| CASES
+    POLICY -->|Sidebar nav| DASH
+```
 
 ---
 
-### Flow C — Operate (Health, Drift, Governance, Pause/Resume)
-Goal: Monitor indicators in production, detect drift/performance decline, apply controlled changes, and pause/resume/retire when needed.
+## Detailed Journey Flows
 
-C1. Monitoring jobs compute metrics and drift
-1) Monitoring service emits `monitoringmetricscomputed` (period metrics, and optionally by-indicator metrics).
-2) Drift job emits `driftcheckcompleted` (or legacy `monitoringdriftcheckcompleted`) with metric values and pass/warn/fail status.
-3) When thresholds are exceeded, system emits `monitoringalertraised`.
+### Journey 1 — Supervisor: Daily Queue Review
 
-C2. PI Ops / Analytics open HLTH01
-1) User navigates to `/health`.
-2) User reviews PK proxy, actionable explanation rate, evidence missingness, queue aging, drift flags, and recent changes.
-Telemetry:
-- (Optional) `securityaccessevent` (objecttype=dashboard, action=view, result=success).
+```mermaid
+flowchart LR
+    A([Login]) --> B[Dashboard\nReview KPIs & queue health]
+    B -->|Alert: unassigned cases spike| C[Case Management\nFilter by status = Pending]
+    C -->|Select analyst| D{Assign cases}
+    D -->|Assign| E[Case updated → analyst notified]
+    D -->|Need context| F[Provider Deep-Dive\nReview signals]
+    F -->|Policy unclear| G[Policy Analysis tab\nReview determinations]
+    G --> D
+    E --> H[Return to Dashboard\nMonitor queue capacity]
+```
 
-C3. Create change request (GOV02) from HLTH01
-1) User clicks “Create change request” on an alert or degrading metric.
-2) GOV02 requires rationale, risk assessment, validation plan pointer, and rollback plan.
-Telemetry:
-- `changerequestcreated` / `governancechangerequestcreated`.
-
-C4. Approve/reject change request
-1) Approver opens `/governance/changes/:change_id` and decides (approved/rejected/needs revision).
-Telemetry:
-- `changerequestapproved` OR legacy `governancechangerequestdecision`.
-
-C5. Implement change (deploy config/model/threshold updates)
-1) Change is implemented (effective time recorded; artifacts updated; rollback available captured).
-Telemetry:
-- `changeimplemented`.
-
-C6. Pause / resume / retire (CTRL01)
-1) PI Ops or Security/Privacy navigates to `/controls`.
-2) Executes control action with reason and effective time; action is written to governance log.
-Telemetry:
-- Preferred: `indicatorpaused` / `indicatorresumed` (if implemented).
-- Or: `safetycontrolaction` with actiontype pauseindicator/resumeindicator/retireindicator/pauseusecase/resumeusecase.
+**Key decision points:**
+- Dashboard `Queue Health` capacity bar turns red (≥80%) → trigger: navigate to Case Management to reassign
+- Provider risk score ≥90 + status `Pending` → trigger: supervisor escalates manually to `Escalated`
 
 ---
 
-## 4) Error, denial, and incident paths
+### Journey 2 — Analyst: Investigate and Case an Alert
 
-### 4.1 Access denied (RBAC or sensitivity restriction)
-When a user attempts to access a forbidden route or sensitive evidence drill-in:
-- UI shows a safe “access restricted” message with no sensitive leakage.
-- Telemetry MUST include `accessdenied` with resourcetype/resourceid/denialreason, and SHOULD include `securityaccessevent` with result=denied.
+```mermaid
+flowchart TD
+    A([Login]) --> B[Anomaly Feed\nDefault landing screen]
+    B -->|Filter by signal type| C[Filtered feed view]
+    C -->|Expand row inline| D[Inline AI reason code\nquick review]
+    D -->|Needs full investigation| E[Provider Deep-Dive\n/provider/:npi]
+    D -->|Not actionable| F[Dismiss / Monitor]
 
-### 4.2 Evidence missing / insufficient evidence
-When CASE01 detects missing critical evidence elements:
-- UI forces low-confidence/INSUFFICIENT_EVIDENCE state and prompts structured missing evidence reporting in FB01.
-- Monitoring should treat spikes in insufficient evidence feedback or evidence missingness as an alertable condition.
+    E --> G[Overview tab\nReview 3 signal evidence panels]
+    G -->|Open AI panel| H[AI Investigator\nAsk questions about signals]
+    H --> G
 
-### 4.3 Production incident workflows (handoff)
-SEV2+ incidents must connect to:
-- `monitoringalertraised` (detection) → pause if needed (`safetycontrolaction` / `indicatorpaused`) → remediation via GOV02 change request → validation and resume.
+    G -->|Click Policy Analysis tab| I[Policy Analysis tab\nReview citations + determination]
+    I -->|Determination = Likely Violation| J[Promote action to case]
+    I -->|Determination = Possible Violation| K[Flag for supervisor review]
+    I -->|Corner case| L[Close signal / monitor]
+
+    J --> M[Case Management\nNew case created]
+    M -->|Add notes| N[Case logged with evidence]
+    N -->|Return to feed| B
+```
+
+**Key decision points:**
+- Signal `riskScore < 75` AND `confidenceLevel < 0.75` → analyst may dismiss without full deep-dive
+- Policy determination `verdict = likely_violation` AND `confidence ≥ 0.85` → direct promotion to case
+- Policy determination `verdict = possible_violation` → route to supervisor for escalation decision
 
 ---
 
-## 5) Minimum “happy path” instrumentation checklist (v0.1)
+### Journey 3 — CMS Leader: Policy Brief Review
 
-If time is tight, these events are the minimum to support ops + monitoring + governance loops end-to-end:
-- Data: `dataingestcompleted`, `dataqualitycheckcompleted`.
-- Scoring: `scoringruncompleted` (or `indicatorscoringcompleted`), `casegenerated`.
-- UI: `queueviewed`, `caseopened`, `evidenceviewed`, `feedbacksubmitted`, `casestatuschanged`, and `uiexportevidence` if export is enabled.
-- Monitoring: `monitoringmetricscomputed`, `driftcheckcompleted`, `monitoringalertraised`.
-- Governance + safety: `changerequestcreated`, `changerequestapproved`/decision, `changeimplemented`, `safetycontrolaction` (pause/resume/retire).
-- Audit: `securityaccessevent` + `accessdenied` for sensitive evidence and exports.
+```mermaid
+flowchart LR
+    A([Login]) --> B[Policy Intelligence\nDefault landing screen]
+    B -->|Review KPIs| C[Scan gap trend chart]
+    C -->|Select gap| D[Expand gap detail card]
+    D -->|Review recommendation| E{Action?}
+    E -->|Approve| F[Add to Policy Brief\nexport]
+    E -->|Need case evidence| G[View Affected Cases\n/cases filtered by gap.id]
+    G --> D
+    F --> H[Export Policy Brief\n.pdf / .docx]
+```
+
+---
+
+## Role-Based Access
+
+### Role Definitions
+
+| Role ID | Label | Description |
+|---------|-------|-------------|
+| `analyst` | Program Integrity Analyst | Front-line investigator. Triages feed, investigates providers, creates cases. |
+| `supervisor` | Supervisory Analyst / Manager | Reviews queue health, assigns cases, escalates, approves actions. |
+| `cms_leader` | CMS Program Leadership | Reviews systemic policy gaps, approves policy change recommendations. |
+
+> **Domain Pack Note:** Map these core roles to your program's organizational role taxonomy in the domain pack configuration. For example, a Medicaid pack may have `state_pi_analyst`, `state_program_director`, and `cms_cmcs_liaison` roles that map to `analyst`, `supervisor`, and `cms_leader` respectively.
+
+---
+
+### Screen Access Matrix
+
+| Screen | `analyst` | `supervisor` | `cms_leader` |
+|--------|-----------|--------------|--------------|
+| Dashboard | ✅ Read | ✅ Read + Queue management | ✅ Read-only |
+| Anomaly Feed | ✅ Full access | ✅ Full access | 🚫 Hidden |
+| Provider Deep-Dive — Overview | ✅ Full access | ✅ Full access | 🚫 Hidden |
+| Provider Deep-Dive — Policy Analysis | ✅ Read + promote actions | ✅ Read + approve escalations | 🚫 Hidden |
+| Provider Deep-Dive — Evidence Log | ✅ Read + add notes | ✅ Read + add notes | 🚫 Hidden |
+| Provider Deep-Dive — Billing Timeline | ✅ Read | ✅ Read | 🚫 Hidden |
+| Case Management | ✅ Own cases | ✅ All cases + assign | 🚫 Hidden |
+| Policy Intelligence | 🚫 Hidden | ✅ Read-only | ✅ Full access + export |
+| AI Investigator Panel | ✅ Full access | ✅ Full access | ✅ Read-only context |
+
+---
+
+### Default Landing Screen by Role
+
+| Role | Default Screen | Rationale |
+|------|---------------|-----------|
+| `analyst` | Anomaly Feed (`/feed`) | Primary work surface — triage starts here |
+| `supervisor` | Dashboard (`/dashboard`) | Queue health and KPIs are the supervisor's first concern |
+| `cms_leader` | Policy Intelligence (`/policy`) | Systemic view is the only relevant screen |
+
+---
+
+### Permission-Gated UI Elements
+
+These specific UI controls are hidden or disabled based on role, even when a screen is accessible:
+
+| UI Element | Condition | Behavior |
+|------------|-----------|----------|
+| Case assignment dropdown | `role = analyst` | Shows own name only; cannot assign to others |
+| Case assignment dropdown | `role = supervisor` | Shows all active investigators |
+| "Add to Policy Brief" button | `role ≠ cms_leader` | Hidden |
+| "Export Policy Brief" button | `role ≠ cms_leader` | Hidden |
+| Case status → `Escalated` | `role = analyst` | Disabled; analyst can request escalation, supervisor confirms |
+| Provider Deep-Dive — Policy Analysis "Approve Escalation" | `role ≠ supervisor` | Hidden |
+| Dashboard — Queue Health analyst capacity bars | `role = analyst` | Shows own row only |
+
+---
+
+## External System Entry Points
+
+These are the inbound navigation paths from systems outside the IntegrityAI UI — e.g., email notifications, claims processing systems, or external dashboards.
+
+### Entry Point 1 — Alert Notification Email → Provider Deep-Dive
+
+**Trigger:** System generates an email or notification when a new high-risk signal is detected.
+**Inbound URL:** `/provider/:npi?signal=:signalId&tab=overview`
+**Behavior:**
+- Navigates directly to Provider Deep-Dive for the specified NPI
+- Activates the Overview tab
+- Highlights the signal card matching `:signalId` (scroll into view, pulse animation)
+- AI panel auto-opens with pre-loaded analysis for the signal
+
+**Domain Pack Note:** Configure the notification trigger `riskScore` threshold. Default: notify on `riskScore ≥ 90`. Adjust per program's alert volume tolerance.
+
+---
+
+### Entry Point 2 — Claims Processing System → Anomaly Feed (Filtered)
+
+**Trigger:** Claims adjudication system flags a claim and passes the provider NPI or claim ID to IntegrityAI.
+**Inbound URL:** `/feed?providerNpi=:npi` or `/feed?claimId=:claimId`
+**Behavior:**
+- Opens the Anomaly Feed pre-filtered to the specified provider or claim
+- Filter chip displays the NPI or claim ID as an active filter
+- If only one result matches, auto-expands the inline AI reason code
+
+---
+
+### Entry Point 3 — Case Referral Email → Case Management
+
+**Trigger:** A supervisor assigns a case to an analyst; analyst receives an email with a direct link.
+**Inbound URL:** `/cases?caseId=:caseId`
+**Behavior:**
+- Opens Case Management with the specified case highlighted and scrolled into view
+- Case row is in expanded state showing case details
+- Quick navigation link to the associated provider deep-dive is surfaced inline
+
+---
+
+### Entry Point 4 — Policy Brief Export Link → Policy Intelligence
+
+**Trigger:** A CMS leadership stakeholder receives a shared policy brief link.
+**Inbound URL:** `/policy?gapId=:gapId`
+**Behavior:**
+- Opens Policy Intelligence with the specified gap's detail card expanded
+- All other gap cards are collapsed
+- Export button is prominently surfaced
+
+**Domain Pack Note:** Policy brief links may require elevated authentication. Configure session handling for external leadership link access.
+
+---
+
+## Deep-Link & URL Routing Conventions
+
+### Route Schema
+
+```
+/[screen]/[optional-resource-id]?[query-params]
+```
+
+### Defined Routes
+
+| Route | Screen | Path Params | Query Params | Notes |
+|-------|--------|-------------|--------------|-------|
+| `/dashboard` | Dashboard | — | `?program=[id]` | Overrides program switcher on load |
+| `/feed` | Anomaly Feed | — | `?type=[signal_type]` `?npi=[npi]` `?claimId=[id]` | Applies filter on load |
+| `/provider/:npi` | Provider Deep-Dive | `npi` | `?signal=[signalId]` `?tab=[tab_id]` `?program=[id]` | `:npi` is the 10-digit NPI |
+| `/cases` | Case Management | — | `?caseId=[id]` `?status=[status]` `?analyst=[analyst_id]` | `caseId` expands the matched row |
+| `/policy` | Policy Intelligence | — | `?gapId=[id]` `?program=[id]` | `gapId` expands the matched gap card |
+
+### Tab IDs for Provider Deep-Dive
+
+| `?tab=` value | Opens |
+|---------------|-------|
+| `overview` | Overview tab (default) |
+| `policy` | Policy Analysis tab |
+| `evidence` | Evidence Log tab |
+| `timeline` | Billing Timeline tab |
+
+### Program Switcher via Query Param
+
+Appending `?program=medicare` or `?program=medicaid` to any route will activate that program context on load, overriding the user's last-used program. Used by external notification systems to link directly into the correct program context.
+
+---
+
+## Overlay & Panel States
+
+These states layer on top of screen content without changing the route.
+
+### AI Investigator Panel
+
+| State | Trigger | Behavior |
+|-------|---------|----------|
+| **Closed** (default) | — | Panel hidden. Sidebar toggle button shows inactive state. |
+| **Open** | Click "AI Investigator" in sidebar | Panel slides in from right (420px wide). Main content area gains `margin-right: 420px`. Transition: `cubic-bezier(.16,1,.3,1) 0.4s`. |
+| **Pre-loaded context** | Navigate to Provider Deep-Dive while panel is open | Panel content updates to reflect the current provider. Pre-loads AI analysis for the provider's top signal. |
+| **Auto-open** | Inbound deep-link with `?signal=` param | Panel opens automatically with analysis pre-loaded for the specified signal. |
+
+**Domain Pack Note:** The AI panel's pre-loaded prompt template is configurable per domain pack. Configure the system prompt to reference program-specific terminology and policy corpus.
+
+---
+
+### Anomaly Feed — Inline Reason Code Expansion
+
+| State | Trigger | Behavior |
+|-------|---------|----------|
+| **Collapsed** (default) | — | Row shows provider name, signal type, risk score, confidence, at-risk amount, action button. |
+| **Expanded** | Click anywhere on the row body | Row expands below to reveal AI inline reason code panel. Only one row expanded at a time (exclusive toggle). |
+| **Collapsed** | Click expanded row again | Row collapses. Smooth height transition. |
+
+---
+
+### Policy Gap Detail Cards (Policy Intelligence)
+
+| State | Trigger | Behavior |
+|-------|---------|----------|
+| **Collapsed** (default) | — | Row shows gap title, source, severity badge, scope, exposure, program impact, chevron. |
+| **Expanded** | Click gap row | Expands below to reveal description, stats, recommendation, and action buttons. Only one card expanded at a time. |
+| **Deep-linked open** | Inbound `?gapId=` param | The matching card is expanded on load; all others remain collapsed. |
+
+---
+
+## Program Switcher Behavior
+
+The program switcher in the sidebar allows toggling between Medicare FFS and Medicaid FFS (or any configured programs).
+
+| Event | Behavior |
+|-------|----------|
+| Switch program | All screen data re-fetches for the new program context. KPIs, feed, cases, and policy gaps all update. |
+| Switch program on Provider Deep-Dive | If the current provider exists in the new program, data updates. If not, user is redirected to the feed for the new program. |
+| Switch program on Policy Intelligence | Policy gap list re-filters to the selected program (`gap.programImpact` filter applied). |
+| Deep-link with `?program=` | Program switcher initializes to the specified program, overriding the user's last session state. |
+
+**Domain Pack Note:** To add a new program to the switcher, register it in the `programs` configuration object with `id`, `label`, and `color`. The switcher renders dynamically from this config — no UI code changes required.
+
+---
+
+## Navigation Anti-Patterns to Avoid
+
+The following navigation behaviors are explicitly **not supported** and should not be introduced in domain pack extensions:
+
+- **Full page reloads** on program switch — all transitions must be client-side state updates
+- **Nested routing within Provider Deep-Dive tabs** — tabs are UI state only, not sub-routes (tabs do not update the URL)
+- **Back-button dependency** — the UI should not assume browser history. All context needed to render a screen must be in the URL or session state
+- **Role-gated screens with broken routes** — a `cms_leader` navigating to `/feed` directly should be gracefully redirected to `/policy`, not shown an error

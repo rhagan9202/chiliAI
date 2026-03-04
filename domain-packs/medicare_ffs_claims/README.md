@@ -3,7 +3,7 @@ DomainPackId: medicareffsclaims
 Version: 0.1.0
 
 # Purpose
-- Medicare FFS claims (Hospice, Part B, DME) anomaly-to-indicator pack for triage support: peer outliers, time-series change points, and optional network/ring signals.
+- Medicare FFS claims (Carrier, DME, Hospice) anomaly-to-indicator pack for triage support: peer outliers, time-series change points, and optional network/ring signals.
 - Intended use is prioritization and investigation support; it is not designed for automated enforcement or final determinations.
 
 # What’s in this pack
