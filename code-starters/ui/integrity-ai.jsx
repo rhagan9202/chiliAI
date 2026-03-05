@@ -10,7 +10,8 @@ import {
   TrendingUp, Share2, Download, ChevronDown,
   BookOpen, GitBranch, Scale, Landmark, Link2,
   ChevronRight, TriangleAlert, Lightbulb, ClipboardList,
-  BarChart2, Globe, AlertCircle, ArrowRight
+  BarChart2, Globe, AlertCircle, ArrowRight, ThumbsUp, ThumbsDown,
+  Clock, CheckSquare, XCircle, PlayCircle, PauseCircle
 } from "lucide-react";
 
 // ── DESIGN TOKENS ─────────────────────────────────────────────────────────────
@@ -318,14 +319,14 @@ const policyTrends = [
 ];
 
 const cases = [
-  {id:'MC-2024-0891',prov:'Advanced Pain Specialists',type:'Billing + Trend',risk:94,status:'Under Review',analyst:'J. Morrison',amt:'$1.4M',date:'Sep 4'},
-  {id:'MC-2024-0887',prov:'Sunrise Medical Group',type:'Network',risk:91,status:'Escalated',analyst:'T. Williams',amt:'$1.2M',date:'Sep 2'},
-  {id:'MC-2024-0872',prov:'Dr. James Kellerman',type:'Billing',risk:89,status:'Pending',analyst:'Unassigned',amt:'$547K',date:'Sep 1'},
-  {id:'MC-2024-0854',prov:'Gulf Coast DME Supply',type:'Billing',risk:87,status:'Under Review',analyst:'M. Johnson',amt:'$890K',date:'Aug 28'},
-  {id:'MC-2024-0831',prov:'Premier Diagnostics LLC',type:'Network',risk:83,status:'Closed · Confirmed',analyst:'J. Morrison',amt:'$720K',date:'Aug 15'},
-  {id:'MC-2024-0819',prov:'Dr. Maria Santos',type:'Trend',risk:79,status:'Closed · Cleared',analyst:'R. Davis',amt:'—',date:'Aug 10'},
-  {id:'MC-2024-0802',prov:'Coastal Rehab Center',type:'Network',risk:74,status:'Pending',analyst:'Unassigned',amt:'$1.1M',date:'Aug 22'},
-  {id:'MC-2024-0791',prov:'Dr. Robert Chen',type:'Billing',risk:71,status:'Under Review',analyst:'T. Williams',amt:'$380K',date:'Aug 20'},
+  {id:'MC-2024-0891',prov:'Advanced Pain Specialists',npi:'1234567890',type:'Billing + Trend',risk:94,status:'Under Review',analyst:'J. Morrison',amt:'$1.4M',date:'Sep 4'},
+  {id:'MC-2024-0887',prov:'Sunrise Medical Group',npi:'9876543210',type:'Network',risk:91,status:'Escalated',analyst:'T. Williams',amt:'$1.2M',date:'Sep 2'},
+  {id:'MC-2024-0872',prov:'Dr. James Kellerman',npi:'1122334455',type:'Billing',risk:89,status:'Pending',analyst:'Unassigned',amt:'$547K',date:'Sep 1'},
+  {id:'MC-2024-0854',prov:'Gulf Coast DME Supply',npi:'5544332211',type:'Billing',risk:87,status:'Under Review',analyst:'M. Johnson',amt:'$890K',date:'Aug 28'},
+  {id:'MC-2024-0831',prov:'Premier Diagnostics LLC',npi:'6677889900',type:'Network',risk:83,status:'Closed · Confirmed',analyst:'J. Morrison',amt:'$720K',date:'Aug 15'},
+  {id:'MC-2024-0819',prov:'Dr. Maria Santos',npi:'0099887766',type:'Trend',risk:79,status:'Closed · Cleared',analyst:'R. Davis',amt:'—',date:'Aug 10'},
+  {id:'MC-2024-0802',prov:'Coastal Rehab Center',npi:'1357924680',type:'Network',risk:74,status:'Pending',analyst:'Unassigned',amt:'$1.1M',date:'Aug 22'},
+  {id:'MC-2024-0791',prov:'Dr. Robert Chen',npi:'2468013579',type:'Billing',risk:71,status:'Under Review',analyst:'T. Williams',amt:'$380K',date:'Aug 20'},
 ];
 
 const canned = {
@@ -499,33 +500,43 @@ function Dashboard({ prog }) {
 }
 
 // ── ANOMALY FEED ──────────────────────────────────────────────────────────────
-function AnomalyFeed({ onSelect }) {
+function AnomalyFeed({ onSelect, feedback = {}, onFeedback = () => {} }) {
   const [expanded, setExpanded] = useState(null);
   const [filter, setFilter] = useState('All');
   const types = ['All','Billing','Network','Trend'];
-  const rows = filter === 'All' ? feed : feed.filter(r => r.type.includes(filter));
+  
+  // Helper to get latest feedback for provider
+  const getLatestFeedback = (npi) => {
+    if (!feedback[npi] || !feedback[npi].overall) return null;
+    return feedback[npi].overall[0];
+  };
+  
+  let rows = filter === 'All' ? feed : feed.filter(r => r.type.includes(filter));
 
   return (
     <div style={{ padding:24, display:'flex', flexDirection:'column', gap:16 }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <div>
           <div style={{ ...oxan, fontSize:18, fontWeight:700, color:C.text }}>Anomaly Detection Feed</div>
-          <div style={{ fontSize:12, color:C.dim, marginTop:3 }}>{feed.length} active alerts · sorted by risk score</div>
+          <div style={{ fontSize:12, color:C.dim, marginTop:3 }}>{rows.length} of {feed.length} alerts · sorted by risk score</div>
         </div>
-        <div style={{ display:'flex', gap:7 }}>
-          {types.map(t => (
-            <button key={t} onClick={() => setFilter(t)} style={{
-              padding:'6px 14px', borderRadius:6, border:`1px solid ${filter===t ? C.cyan : C.b1}`,
-              background: filter===t ? `${C.cyan}15` : 'transparent',
-              color: filter===t ? C.cyan : C.dim, fontSize:12, cursor:'pointer',
-            }}>{t}</button>
-          ))}
+        <div style={{ display:'flex', gap:10 }}>
+          <div style={{ display:'flex', gap:5, alignItems:'center' }}>
+            <span style={{ fontSize:10, color:C.muted, ...mono, marginRight:3 }}>ANOMALY TYPE:</span>
+            {types.map(t => (
+              <button key={t} onClick={() => setFilter(t)} style={{
+                padding:'5px 12px', borderRadius:5, border:`1px solid ${filter===t ? C.cyan : C.b1}`,
+                background: filter===t ? `${C.cyan}15` : 'transparent',
+                color: filter===t ? C.cyan : C.dim, fontSize:11, cursor:'pointer',
+              }}>{t}</button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Column headers */}
       <div style={{
-        display:'grid', gridTemplateColumns:'2.2fr 1fr 110px 110px 80px 100px',
+        display:'grid', gridTemplateColumns:'2.2fr 1fr 110px 110px 80px 160px',
         padding:'8px 16px', background:C.s3, borderRadius:7, border:`1px solid ${C.b0}`,
         ...mono, fontSize:10, color:C.muted, letterSpacing:'0.06em',
       }}>
@@ -533,22 +544,38 @@ function AnomalyFeed({ onSelect }) {
         <span>RISK SCORE</span><span>AI CONFIDENCE</span><span>AT RISK</span><span>ACTION</span>
       </div>
 
-      {rows.map((r, i) => (
-        <div key={r.id} className="fu" style={{
-          background:C.s2, border:`1px solid ${expanded===r.id ? C.b2 : C.b0}`,
-          borderRadius:10, overflow:'hidden',
-          animationDelay:`${i*0.04}s`,
-        }}>
+      {rows.map((r, i) => {
+        const fb = getLatestFeedback(r.npi);
+        const fbColor = fb ? (fb.verdict === 'confirmed' ? C.red : fb.verdict === 'legitimate' ? C.green : fb.verdict === 'watch' ? C.cyan : C.amber) : null;
+        return (
+          <div key={r.id} className="fu" style={{
+            background:C.s2, border:`1px solid ${expanded===r.id ? C.b2 : (fb ? fbColor+'40' : C.b0)}`,
+            borderRadius:10, overflow:'hidden',
+            animationDelay:`${i*0.04}s`,
+          }}>
           <div onClick={() => setExpanded(expanded===r.id ? null : r.id)} style={{
-            display:'grid', gridTemplateColumns:'2.2fr 1fr 110px 110px 80px 100px',
+            display:'grid', gridTemplateColumns:'2.2fr 1fr 110px 110px 80px 160px',
             padding:'14px 16px', cursor:'pointer', alignItems:'center',
           }}>
             <div>
-              <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{r.name}</div>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{r.name}</div>
+                {fb && (
+                  <div style={{ padding:'2px 7px', borderRadius:4, background:`${fbColor}15`, border:`1px solid ${fbColor}30`, fontSize:9, color:fbColor, ...mono, display:'flex', alignItems:'center', gap:4 }}>
+                    {fb.verdict === 'confirmed' ? <AlertCircle size={9}/> : fb.verdict === 'legitimate' ? <CheckCircle size={9}/> : <Clock size={9}/>}
+                    {fb.verdict === 'confirmed' ? 'CONFIRMED' : fb.verdict === 'legitimate' ? 'LEGITIMATE' : fb.verdict === 'watch' ? 'ON WATCH' : 'REVIEW'}
+                  </div>
+                )}
+              </div>
               <div style={{ ...mono, fontSize:10, color:C.muted, marginTop:2 }}>NPI: {r.npi} · {r.city} · {r.spec}</div>
               <div style={{ marginTop:6 }}>
                 <Chip label={r.flag} color={C.red} />
               </div>
+              {fb && fb.comment && (
+                <div style={{ marginTop:5, fontSize:10, color:C.dim, fontStyle:'italic' }}>
+                  "{fb.comment}" — {fb.investigator?.name}
+                </div>
+              )}
             </div>
             <div style={{ fontSize:12, color:C.dim }}>{r.type}</div>
             <RiskBadge score={r.risk} />
@@ -582,25 +609,289 @@ function AnomalyFeed({ onSelect }) {
               </div>
             </div>
           )}
-        </div>
-      ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 // ── PROVIDER DEEP-DIVE ────────────────────────────────────────────────────────
-function ProviderDive({ provider, prog }) {
-  const [tab, setTab] = useState('overview');
+function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) {
+  const [tab, setTab] = useState('signals');
   const ac = programs[prog].color;
   const p = provider || feed[0];
+  const providerId = p.npi;
+  const verdictOptions = [
+    { value: 'confirmed', label: 'Confirmed Issue', color: C.red, desc: 'AI flags are accurate — this pattern warrants escalation or formal investigation' },
+    { value: 'legitimate', label: 'Legitimate Case', color: C.green, desc: 'Flagged patterns have valid explanations — case can be closed with documentation' },
+    { value: 'review', label: 'Needs Further Review', color: C.amber, desc: 'Insufficient information to make final determination — additional investigation required' },
+    { value: 'watch', label: 'On Watch', color: C.cyan, desc: 'Not actionable now but warrants continued monitoring for emerging patterns' },
+  ];
+  // Helper to get latest feedback for section
+  function latest(section) {
+    if (!feedback[providerId]) return null;
+    if (section === 'overall') return feedback[providerId].overall?.[0] || null;
+    return feedback[providerId].components?.[section]?.[0] || null;
+  }
+  // Helper to get all feedback for section
+  function allFeedback(section) {
+    if (!feedback[providerId]) return [];
+    if (section === 'overall') return feedback[providerId].overall || [];
+    return feedback[providerId].components?.[section] || [];
+  }
+
+  // Feedback UI for a section (component-level: agree/disagree/review)
+  function ComponentFeedback({ section, label }) {
+    const [verdict, setVerdict] = useState('');
+    const [comment, setComment] = useState('');
+    const [showComment, setShowComment] = useState(false);
+    const [show, setShow] = useState(false);
+    const [pendingVerdict, setPendingVerdict] = useState(null);
+    const last = latest(section);
+    const componentOptions = [
+      { value: 'agree', label: 'Confirms Issue', icon: XCircle, selectedColor: C.red },
+      { value: 'disagree', label: 'Legitimate', icon: CheckCircle, selectedColor: C.green },
+      { value: 'review', label: 'Needs Review', icon: Clock, selectedColor: C.amber },
+    ];
+    
+    const handleVote = (vote) => {
+      setPendingVerdict(vote);
+    };
+    
+    const handleSave = () => {
+      if (pendingVerdict) {
+        onFeedback(providerId, section, pendingVerdict, comment);
+        setVerdict(pendingVerdict);
+        setPendingVerdict(null);
+        setComment('');
+        setShowComment(false);
+      }
+    };
+    
+    const currentColor = componentOptions.find(opt => opt.value === pendingVerdict)?.selectedColor || C.cyan;
+    
+    return (
+      <div style={{ marginTop: 12, padding:'10px 12px', background:`${C.s3}90`, border:`1px solid ${C.b0}`, borderRadius:6 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <span style={{ fontSize:11, color:C.muted, ...mono }}>YOUR ASSESSMENT:</span>
+            {componentOptions.map(opt => {
+              const Icon = opt.icon;
+              const isSelected = last?.verdict === opt.value;
+              const isPending = pendingVerdict === opt.value;
+              const displayColor = isSelected ? opt.selectedColor : (isPending ? opt.selectedColor : C.muted);
+              return (
+                <button key={opt.value} onClick={() => handleVote(opt.value)}
+                  style={{ padding:'4px 10px', borderRadius:5, border:`1px solid ${(isSelected || isPending) ? opt.selectedColor+'80' : C.b1}`, 
+                    background:(isSelected || isPending)?`${opt.selectedColor}20`:'transparent', color:displayColor, fontSize:10, cursor:'pointer',
+                    display:'flex', alignItems:'center', gap:5 }}>
+                  <Icon size={11}/> {opt.label}
+                </button>
+              );
+            })}
+            <button onClick={() => setShowComment(c => !c)}
+              style={{ padding:'4px 10px', borderRadius:5, border:`1px solid ${C.b1}`, background:'transparent', 
+                color:C.cyan, fontSize:10, cursor:'pointer', display:'flex', alignItems:'center', gap:4 }}>
+              + Comment
+            </button>
+            {pendingVerdict && (
+              <button onClick={handleSave}
+                style={{ padding:'4px 12px', borderRadius:5, border:`1px solid ${currentColor}`, background:`${currentColor}30`, 
+                  color:currentColor, fontSize:10, cursor:'pointer', fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
+                <CheckCircle size={11}/> Save
+              </button>
+            )}
+          </div>
+          {allFeedback(section).length > 0 && (
+            <button onClick={()=>setShow(s=>!s)} style={{ fontSize:10, color:C.cyan, background:'none', border:'none', cursor:'pointer', ...mono }}>
+              {show ? 'HIDE' : 'SHOW'} HISTORY ({allFeedback(section).length})
+            </button>
+          )}
+        </div>
+        {showComment && (
+          <div style={{ marginTop:8 }}>
+            <input
+              type="text"
+              placeholder="Add optional comment..."
+              value={comment}
+              onChange={e => setComment(e.target.value)}
+              style={{ fontSize:11, padding:'6px 10px', borderRadius:5, border:`1px solid ${C.b1}`, width:'100%', background:C.s2, color:C.text }}
+            />
+          </div>
+        )}
+        {last && (
+          <div style={{ fontSize:10, color:C.dim, marginTop:6, paddingTop:6, borderTop:`1px solid ${C.b0}` }}>
+            <b style={{ color:componentOptions.find(v=>v.value===last.verdict)?.selectedColor }}>{componentOptions.find(v=>v.value===last.verdict)?.label}</b>
+            {last.comment && <> · <span style={{ fontStyle:'italic' }}>"{last.comment}"</span></>}
+            <span style={{ marginLeft:8 }}>— {last.investigator?.name} · {last.timestamp?.slice(11,16)}</span>
+          </div>
+        )}
+        {show && allFeedback(section).length > 1 && (
+          <div style={{ marginTop:6, fontSize:9, color:C.muted, paddingTop:6, borderTop:`1px solid ${C.b0}` }}>
+            <div style={{ marginBottom:4, ...mono }}>HISTORY:</div>
+            {allFeedback(section).slice(1).map((f,i) => (
+              <div key={i} style={{ marginBottom:3, paddingLeft:8 }}>
+                <b style={{ color:componentOptions.find(v=>v.value===f.verdict)?.selectedColor }}>{componentOptions.find(v=>v.value===f.verdict)?.label}</b>
+                {f.comment && <> · {f.comment}</>}
+                <span style={{ marginLeft:6, color:C.muted }}>— {f.investigator?.name} · {f.timestamp?.slice(0,16).replace('T',' ')}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Overall case-level feedback
+  function OverallFeedback() {
+    const [selectedVerdict, setSelectedVerdict] = useState('');
+    const [comment, setComment] = useState('');
+    const [confirmed, setConfirmed] = useState(false);
+    const last = latest('overall');
+    
+    // Check for conflicting feedback - get list of signals marked as "Confirms Issue"
+    const confirmedIssueSignals = reasons.filter(r => {
+      const compFb = latest(r.section);
+      return compFb && compFb.verdict === 'agree'; // 'agree' value now means "Confirms Issue"
+    });
+    const hasConfirmedIssues = confirmedIssueSignals.length > 0;
+    
+    // Show consistency check if user selects "Legitimate Case" but has confirmed issue signals
+    const showConsistencyCheck = selectedVerdict === 'legitimate' && hasConfirmedIssues;
+    
+    const handleSubmit = () => {
+      if (!selectedVerdict) {
+        return; // Do nothing if no verdict selected
+      }
+      
+      // Validate: if has confirmed issues but marking as legitimate, require comment and confirmation
+      if (hasConfirmedIssues && selectedVerdict === 'legitimate') {
+        if (!comment || !confirmed) {
+          return; // Prevent submission without notes and checkbox
+        }
+      }
+      
+      onFeedback(providerId, 'overall', selectedVerdict, comment);
+      setComment('');
+      setConfirmed(false);
+      setSelectedVerdict('');
+    };
+    
+    const currentColor = verdictOptions.find(opt => opt.value === selectedVerdict)?.color || C.cyan;
+    
+    return (
+      <div style={{ marginTop:16, padding:'14px 16px', background:`${C.cyan}08`, border:`1px solid ${C.cyan}20`, borderRadius:8 }}>
+        <div style={{ ...mono, fontSize:10, color:C.cyan, letterSpacing:'0.07em', marginBottom:10 }}>INVESTIGATOR JUDGEMENT - FINAL RULING</div>
+        
+        {/* Radio button options with descriptions */}
+        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:12 }}>
+          {verdictOptions.map(opt => {
+            const isSelected = selectedVerdict === opt.value;
+            const isPreviouslySelected = last?.verdict === opt.value;
+            const displayColor = isSelected ? opt.color : (isPreviouslySelected ? opt.color : C.muted);
+            return (
+              <label key={opt.value} style={{ cursor:'pointer' }}>
+                <div style={{ 
+                  padding:'8px 14px', borderRadius:6, border:`1px solid ${isSelected ? opt.color+'90' : C.b1}`, 
+                  background:isSelected?`${opt.color}22`:'transparent', 
+                  display:'flex', alignItems:'flex-start', gap:10
+                }}>
+                  <input 
+                    type="radio" 
+                    name="verdict" 
+                    value={opt.value}
+                    checked={isSelected}
+                    onChange={() => setSelectedVerdict(opt.value)}
+                    style={{ marginTop:3, cursor:'pointer' }}
+                  />
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:displayColor, marginBottom:2 }}>{opt.label}</div>
+                    <div style={{ fontSize:10, color:isSelected ? opt.color : C.dim, fontWeight:400, lineHeight:1.4 }}>{opt.desc}</div>
+                  </div>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+        
+        <input
+          type="text"
+          placeholder={showConsistencyCheck ? "Notes required to resolve consistency check" : "Add notes (optional)"}
+          value={comment}
+          onChange={e => setComment(e.target.value)}
+          style={{ fontSize:12, padding:'8px 12px', borderRadius:6, border:`1px solid ${showConsistencyCheck ? C.amber : C.b1}`, width:'100%', background:C.s2, color:C.text, marginBottom:10 }}
+        />
+        
+        {/* Consistency Check - shows immediately when Legitimate Case is selected with confirmed issue signals */}
+        {showConsistencyCheck && (
+          <div style={{ marginBottom:10, fontSize:11, color:C.amber, background:`${C.amber}10`, border:`1px solid ${C.amber}30`, borderRadius:6, padding:'10px 12px' }}>
+            <div style={{ display:'flex', alignItems:'flex-start', gap:6, marginBottom:8 }}>
+              <AlertCircle size={14} style={{ flexShrink:0, marginTop:1 }}/>
+              <div>
+                <div style={{ fontWeight:700, marginBottom:4, fontSize:12 }}>⚠️ Consistency Check Required</div>
+                <div style={{ fontSize:10, lineHeight:1.6, marginBottom:8 }}>
+                  You marked the following signal{confirmedIssueSignals.length > 1 ? 's' : ''} as "<span style={{ color:C.red, fontWeight:600 }}>Confirms Issue</span>" but are marking this case as "<span style={{ color:C.green, fontWeight:600 }}>Legitimate Case</span>":
+                </div>
+                <div style={{ marginLeft:12, marginBottom:10 }}>
+                  {confirmedIssueSignals.map((sig, i) => (
+                    <div key={i} style={{ fontSize:10, color:C.text, marginBottom:3, display:'flex', alignItems:'center', gap:6 }}>
+                      <div style={{ width:5, height:5, borderRadius:'50%', background:sig.color }}/>
+                      <b>{sig.label}</b>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ background:C.s2, border:`1px solid ${C.amber}40`, borderRadius:6, padding:'8px 10px' }}>
+                  <label style={{ display:'flex', alignItems:'flex-start', gap:8, cursor:'pointer', fontSize:10 }}>
+                    <input 
+                      type="checkbox" 
+                      checked={confirmed} 
+                      onChange={e => setConfirmed(e.target.checked)}
+                      style={{ marginTop:2, cursor:'pointer' }}
+                    />
+                    <span style={{ flex:1, lineHeight:1.5 }}>
+                      <b>I confirm this case is legitimate despite the flagged signals.</b> I have entered notes above explaining why the AI signals do not indicate fraud in this specific case.
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Submit button */}
+        <button 
+          onClick={handleSubmit}
+          disabled={!selectedVerdict || (showConsistencyCheck && (!comment || !confirmed))}
+          style={{ 
+            padding:'10px 20px', borderRadius:6, border:`1px solid ${selectedVerdict ? currentColor : C.b1}`, 
+            background:selectedVerdict ? `${currentColor}30` : C.s3, 
+            color:selectedVerdict ? currentColor : C.muted, 
+            fontSize:13, cursor:(selectedVerdict && (!showConsistencyCheck || (comment && confirmed))) ? 'pointer' : 'not-allowed',
+            fontWeight:600, ...oxan, width:'100%',
+            opacity: (selectedVerdict && (!showConsistencyCheck || (comment && confirmed))) ? 1 : 0.5
+          }}>
+          Submit Assessment
+        </button>
+        
+        {last && (
+          <div style={{ marginTop:10, fontSize:11, color:C.dim, paddingTop:8, borderTop:`1px solid ${C.cyan}20` }}>
+            <b style={{ color:verdictOptions.find(v=>v.value===last.verdict)?.color }}>{verdictOptions.find(v=>v.value===last.verdict)?.label}</b>
+            {last.comment && <> · <span style={{ fontStyle:'italic' }}>"{last.comment}"</span></>}
+            <span style={{ marginLeft:8 }}>— {last.investigator?.name} · {last.timestamp?.slice(0,19).replace('T',' ')}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const reasons = [
     { icon:TrendingUp, label:'HCPCS Consolidation', color:C.red,
-      desc:`Unique procedure codes fell from 47 → 6 over 18 months. Top 3 codes now represent 98% of all billing. Pattern is consistent with systematic code selection to maximize reimbursement.` },
+      desc:`Unique procedure codes fell from 47 → 6 over 18 months. Top 3 codes now represent 98% of all billing. Pattern is consistent with systematic code selection to maximize reimbursement.`, section:'hcpcs_consolidation' },
     { icon:AlertTriangle, label:'E&M Upcoding', color:C.amber,
-      desc:`99215 (highest-complexity visit) accounts for 78% of E&M claims vs. peer median of 18%. Provider ranks in the top 1.3% nationally — statistically improbable without systematic miscoding.` },
+      desc:`99215 (highest-complexity visit) accounts for 78% of E&M claims vs. peer median of 18%. Provider ranks in the top 1.3% nationally — statistically improbable without systematic miscoding.`, section:'em_upcoding' },
     { icon:Share2, label:'Network Co-billing', color:C.amber,
-      desc:`34% of patients share treatment history with Sunrise Medical Group (also flagged, NPI 9876543210). Mutual referral density is 4.2× expected for independent practices.` },
+      desc:`34% of patients share treatment history with Sunrise Medical Group (also flagged, NPI 9876543210). Mutual referral density is 4.2× expected for independent practices.`, section:'network_cobilling' },
   ];
 
   return (
@@ -644,13 +935,13 @@ function ProviderDive({ provider, prog }) {
             <div style={{ ...mono, fontSize:10, color:C.cyan, letterSpacing:'0.07em', marginBottom:12 }}>
               AI ANALYSIS · 3 ANOMALY SIGNALS DETECTED
             </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
-              {reasons.map((r,i) => (
-                <div key={i} style={{ display:'flex', gap:11, padding:'11px 14px', background:C.s2, borderRadius:8, border:`1px solid ${C.b0}`, alignItems:'flex-start' }}>
-                  <r.icon size={14} color={r.color} style={{ marginTop:2, flexShrink:0 }} />
-                  <div>
-                    <div style={{ ...oxan, fontSize:12, fontWeight:700, color:C.text, marginBottom:3 }}>{r.label}</div>
-                    <div style={{ fontSize:12, color:C.dim, lineHeight:1.6 }}>{r.desc}</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:13 }}>
+              {reasons.map((r, i) => (
+                <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', borderBottom:`1px solid ${C.b1}30`, paddingBottom:8, marginBottom:8 }}>
+                  <r.icon size={18} color={r.color} style={{ marginTop:2 }}/>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13, fontWeight:600, color:r.color }}>{r.label}</div>
+                    <div style={{ fontSize:12, color:C.text, marginTop:2 }}>{r.desc}</div>
                   </div>
                 </div>
               ))}
@@ -662,7 +953,7 @@ function ProviderDive({ provider, prog }) {
       {/* Tabs */}
       <div style={{ display:'flex', borderBottom:`1px solid ${C.b0}` }}>
         {[
-          { id:'overview', label:'Overview' },
+          { id:'signals', label:'Signal Explanation' },
           { id:'policy',   label:'Policy Analysis', badge:true },
           { id:'evidence', label:'Evidence Log' },
           { id:'timeline', label:'Billing Timeline' },
@@ -676,17 +967,15 @@ function ProviderDive({ provider, prog }) {
             display:'flex', alignItems:'center', gap:7,
           }}>
             {t.label}
-            {t.badge && (
-              <span style={{ padding:'1px 6px', borderRadius:4, background:`${C.green}18`, border:`1px solid ${C.green}40`, fontSize:9, color:C.green, ...mono }}>PKG</span>
-            )}
+            {t.badge && <span style={{ marginLeft:6, background:C.cyan, color:'#fff', borderRadius:4, fontSize:9, padding:'1px 5px' }}>NEW</span>}
           </button>
         ))}
       </div>
 
-      {tab === 'overview' && (
-        <div style={{ display:'flex', flexDirection:'column', gap:14 }} className="fu">
+      {tab === 'signals' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
 
-          {/* ── SIGNAL 1: HCPCS CONSOLIDATION ──────────────────────────────── */}
+          {/* ── SIGNAL 1: HCPCS CODE CONSOLIDATION ─────────────────────────── */}
           <div style={{ background:C.s2, border:`1px solid ${C.b0}`, borderRadius:12, overflow:'hidden' }}>
             <div style={{ padding:'14px 20px', background:`${C.red}08`, borderBottom:`1px solid ${C.b0}`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -695,67 +984,89 @@ function ProviderDive({ provider, prog }) {
                 </div>
                 <div>
                   <div style={{ ...oxan, fontWeight:700, fontSize:13, color:C.text }}>Signal 1 · HCPCS Code Consolidation</div>
-                  <div style={{ fontSize:11, color:C.dim, marginTop:1 }}>Systematic reduction in procedure code diversity — indicator of deliberate cherry-picking</div>
+                  <div style={{ fontSize:11, color:C.dim, marginTop:1 }}>Billing collapsed from 47 unique codes to 6 codes — 98% concentration on just 3 high-paying codes</div>
                 </div>
               </div>
               <Chip label="HIGH SEVERITY" color={C.red}/>
             </div>
             <div style={{ padding:20, display:'flex', gap:16 }}>
-              {/* Dual-axis line chart */}
-              <div style={{ flex:2 }}>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:12, ...mono }}>UNIQUE HCPCS CODES (↓) vs. TOP-3 BILLING CONCENTRATION % (↑) · Mar 2023 – Aug 2024</div>
+              {/* Left: Dual-axis chart (2/3 width) */}
+              <div style={{ flex:2, display:'flex', flexDirection:'column' }}>
+                <div style={{ fontSize:11, color:C.muted, marginBottom:12, ...mono }}>CODE DIVERSITY COLLAPSE & CONCENTRATION RISE · 18-MONTH TREND</div>
                 <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={hcpcs} margin={{ top:5, right:20, bottom:5, left:-18 }}>
+                  <AreaChart data={hcpcs} margin={{ top:5, right:40, bottom:5, left:-20 }}>
+                    <defs>
+                      <linearGradient id="gCodes" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={C.red} stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor={C.red} stopOpacity={0.02}/>
+                      </linearGradient>
+                      <linearGradient id="gConc" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={C.amber} stopOpacity={0.2}/>
+                        <stop offset="95%" stopColor={C.amber} stopOpacity={0.02}/>
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke={C.b0} />
-                    <XAxis dataKey="m" tick={{ fill:C.muted, fontSize:9, fontFamily:'IBM Plex Mono' }} axisLine={false} tickLine={false} interval={2} />
-                    <YAxis yAxisId="l" tick={{ fill:C.muted, fontSize:9, fontFamily:'IBM Plex Mono' }} axisLine={false} tickLine={false} />
-                    <YAxis yAxisId="r" orientation="right" tick={{ fill:C.muted, fontSize:9, fontFamily:'IBM Plex Mono' }} axisLine={false} tickLine={false} />
-                    <Tooltip {...tipStyle} />
-                    <Line yAxisId="l" type="monotone" dataKey="codes" stroke={C.cyan} strokeWidth={2.5} dot={false} name="Unique HCPCS Codes" />
-                    <Line yAxisId="r" type="monotone" dataKey="top3" stroke={C.red} strokeWidth={2.5} dot={false} name="Top-3 Billing %" strokeDasharray="5 3" />
-                  </LineChart>
+                    <XAxis dataKey="m" tick={{ fill:C.muted, fontSize:9, fontFamily:'IBM Plex Mono' }} axisLine={false} tickLine={false} interval={3}/>
+                    <YAxis yAxisId="left" tick={{ fill:C.muted, fontSize:9, fontFamily:'IBM Plex Mono' }} axisLine={false} tickLine={false} domain={[0,50]}/>
+                    <YAxis yAxisId="right" orientation="right" tick={{ fill:C.muted, fontSize:9, fontFamily:'IBM Plex Mono' }} axisLine={false} tickLine={false} domain={[0,100]} tickFormatter={v=>`${v}%`}/>
+                    <Tooltip {...tipStyle} formatter={(v, name)=>[name === 'Unique Codes' ? `${v} codes` : `${v}%`, name]}/>
+                    <Area yAxisId="left" type="monotone" dataKey="codes" stroke={C.red} strokeWidth={2.5} fill="url(#gCodes)" name="Unique Codes"/>
+                    <Area yAxisId="right" type="monotone" dataKey="top3" stroke={C.amber} strokeWidth={1.5} fill="url(#gConc)" name="Top 3 Concentration" strokeDasharray="4 3"/>
+                  </AreaChart>
                 </ResponsiveContainer>
-                <div style={{ display:'flex', gap:20, marginTop:8 }}>
-                  {[{c:C.cyan,l:'Unique HCPCS Codes (left axis)',dash:false},{c:C.red,l:'Top-3 Code Billing % (right axis)',dash:true}].map((x,i)=>(
-                    <div key={i} style={{ display:'flex', alignItems:'center', gap:7, fontSize:10, color:C.dim }}>
-                      <div style={{ width:18, height:2, background:x.c, opacity: x.dash ? 0.8 : 1 }} />
-                      {x.l}
-                    </div>
-                  ))}
+                <div style={{ display:'flex', gap:14, marginTop:8 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:10, color:C.dim }}>
+                    <div style={{ width:14, height:2, background:C.red }}/> Unique HCPCS Codes (47 → 6)
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:10, color:C.dim }}>
+                    <div style={{ width:14, height:2, background:C.amber }}/> Top 3 Code Concentration (38% → 98%)
+                  </div>
                 </div>
               </div>
-              {/* Key stats + top codes */}
-              <div style={{ flex:1, display:'flex', flexDirection:'column', gap:10 }}>
-                <div style={{ display:'flex', gap:8 }}>
-                  {[{v:'47→6',l:'Code diversity collapse',c:C.red},{v:'98%',l:'Billing in top-3 codes',c:C.red}].map((s,i)=>(
-                    <div key={i} style={{ flex:1, background:C.s3, border:`1px solid ${C.b0}`, borderRadius:8, padding:'10px 12px' }}>
-                      <div style={{ ...oxan, fontSize:20, fontWeight:800, color:s.c }}>{s.v}</div>
-                      <div style={{ fontSize:10, color:C.muted, marginTop:3, lineHeight:1.4 }}>{s.l}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ background:C.s3, border:`1px solid ${C.b0}`, borderRadius:8, padding:'12px 14px', flex:1 }}>
-                  <div style={{ ...mono, fontSize:9, color:C.muted, letterSpacing:'0.07em', marginBottom:10 }}>TOP 6 CODES · 98% OF BILLING</div>
+
+              {/* Right: Metrics + Table (1/3 width) */}
+              <div style={{ flex:1, display:'flex', flexDirection:'column', gap:12 }}>
+                {/* Key metrics */}
+                <div style={{ display:'flex', flexDirection:'row', gap:10 }}>
                   {[
-                    {c:'99215',d:'Complex office visit',pct:61},
-                    {c:'99214',d:'Moderate office visit',pct:14},
-                    {c:'64483',d:'Lumbar nerve block',pct:11},
-                    {c:'62323',d:'Epidural injection',pct:7},
-                    {c:'72148',d:'Lumbar MRI',pct:4},
-                    {c:'20610',d:'Joint injection',pct:3},
-                  ].map((r,i)=>(
-                    <div key={i} style={{ marginBottom:7 }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
-                        <span style={{ ...mono, fontSize:10, color:C.text }}>{r.c} <span style={{ color:C.muted, fontSize:9 }}>— {r.d}</span></span>
-                        <span style={{ ...mono, fontSize:10, color: i===0 ? C.red : C.dim }}>{r.pct}%</span>
-                      </div>
-                      <div style={{ height:3, background:C.b0, borderRadius:2, overflow:'hidden' }}>
-                        <div style={{ width:`${r.pct}%`, height:'100%', background: i===0 ? C.red : C.b2, borderRadius:2 }}/>
-                      </div>
+                    {v:'47 → 6', l:'Code diversity collapse', c:C.red, sub:'87% reduction in 18 months'},
+                    {v:'98%', l:'Top 3 concentration', c:C.amber, sub:'up from 38% baseline'},
+                  ].map((s,i)=>(
+                    <div key={i} style={{ background:C.s3, border:`1px solid ${C.b0}`, borderRadius:8, padding:'12px 14px', flex:1 }}>
+                      <div style={{ ...oxan, fontSize:20, fontWeight:800, color:s.c, lineHeight:1 }}>{s.v}</div>
+                      <div style={{ fontSize:10, color:C.dim, marginTop:5, lineHeight:1.3 }}>{s.l}</div>
+                      <div style={{ fontSize:9, color:C.muted, marginTop:2 }}>{s.sub}</div>
                     </div>
                   ))}
                 </div>
+
+                {/* Top 6 codes table */}
+                <div style={{ flex:1, background:C.s3, border:`1px solid ${C.b0}`, borderRadius:8, padding:'12px 14px', display:'flex', flexDirection:'column' }}>
+                  <div style={{ fontSize:10, color:C.muted, marginBottom:10, ...mono }}>TOP 6 CODES · CURRENT MIX</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:6, flex:1 }}>
+                    {[
+                      {code:'99215', name:'Office visit, level 5', pct:42},
+                      {code:'99214', name:'Office visit, level 4', pct:35},
+                      {code:'99213', name:'Office visit, level 3', pct:21},
+                      {code:'96372', name:'Therapeutic injection', pct:1.2},
+                      {code:'36415', name:'Venipuncture', pct:0.5},
+                      {code:'85025', name:'CBC', pct:0.3},
+                    ].map((row,i)=>(
+                      <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', paddingBottom:5, borderBottom: i < 5 ? `1px solid ${C.b0}` : 'none' }}>
+                        <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+                          <span style={{ ...mono, fontSize:11, fontWeight:700, color:C.text }}>{row.code}</span>
+                          <span style={{ fontSize:9, color:C.dim, lineHeight:1.2 }}>{row.name}</span>
+                        </div>
+                        <span style={{ ...mono, fontSize:11, fontWeight:700, color:i<3 ? C.red : C.muted, marginLeft:8 }}>{row.pct}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
+            </div>
+            {/* Component-level feedback for Signal 1 */}
+            <div style={{ padding:'0 20px 16px 20px' }}>
+              <ComponentFeedback section="hcpcs_consolidation" label="HCPCS Code Consolidation Signal" />
             </div>
           </div>
 
@@ -842,6 +1153,10 @@ function ProviderDive({ provider, prog }) {
                   </div>
                 ))}
               </div>
+            </div>
+            {/* Component-level feedback for Signal 2 */}
+            <div style={{ padding:'0 20px 16px 20px' }}>
+              <ComponentFeedback section="em_upcoding" label="E&M Upcoding Signal" />
             </div>
           </div>
 
@@ -971,6 +1286,10 @@ function ProviderDive({ provider, prog }) {
                   </div>
                 </div>
               </div>
+            </div>
+            {/* Component-level feedback for Signal 3 */}
+            <div style={{ padding:'0 20px 16px 20px' }}>
+              <ComponentFeedback section="network_cobilling" label="Network Co-billing Signal" />
             </div>
           </div>
 
@@ -1125,6 +1444,11 @@ function ProviderDive({ provider, prog }) {
                     </div>
                   </div>
                 </div>
+                
+                {/* Component-level feedback for Policy Signal */}
+                <div style={{ padding:'0 20px 16px 20px' }}>
+                  <ComponentFeedback section={`policy_${sig.id}`} label={`${sig.signal} Policy Analysis`} />
+                </div>
               </div>
             );
           })}
@@ -1185,6 +1509,9 @@ function ProviderDive({ provider, prog }) {
           </ResponsiveContainer>
         </div>
       )}
+
+      {/* Investigator Judgement - Final Ruling - Bottom of Page */}
+      <OverallFeedback />
     </div>
   );
 }
@@ -1384,12 +1711,28 @@ function PolicyIntel({ prog }) {
 }
 
 // ── CASE MANAGEMENT ───────────────────────────────────────────────────────────
-function CaseMgmt() {
+function CaseMgmt({ feedback = {}, onFeedback = () => {} }) {
   const sc = { 'Under Review':C.cyan, 'Escalated':C.red, 'Pending':C.amber, 'Closed · Confirmed':C.green, 'Closed · Cleared':C.muted };
   const summary = [
     {l:'Pending',n:2,c:C.amber},{l:'Under Review',n:3,c:C.cyan},
     {l:'Escalated',n:1,c:C.red},{l:'Confirmed',n:1,c:C.green},{l:'Cleared',n:1,c:C.muted},
   ];
+  
+  // Helper to get latest feedback for case
+  const getLatestFeedback = (npi) => {
+    if (!feedback[npi] || !feedback[npi].overall) return null;
+    return feedback[npi].overall[0];
+  };
+  
+  // Helper to determine suggested action based on feedback
+  const getSuggestedAction = (caseItem) => {
+    const fb = getLatestFeedback(caseItem.npi);
+    if (!fb) return { action: 'Review Needed', color: C.amber, icon: Clock };
+    if (fb.verdict === 'confirmed') return { action: 'Escalate', color: C.red, icon: ArrowUp };
+    if (fb.verdict === 'legitimate') return { action: 'Close · Clear', color: C.green, icon: CheckCircle };
+    if (fb.verdict === 'watch') return { action: 'Monitor', color: C.cyan, icon: AlertCircle };
+    return { action: 'More Info Needed', color: C.amber, icon: AlertCircle };
+  };
 
   return (
     <div style={{ padding:24, display:'flex', flexDirection:'column', gap:18 }}>
@@ -1418,17 +1761,46 @@ function CaseMgmt() {
       </div>
 
       <div style={{ background:C.s2, border:`1px solid ${C.b0}`, borderRadius:12, overflow:'hidden' }} className="fu">
+        {/* Group header row */}
         <div style={{
-          display:'grid', gridTemplateColumns:'130px 2fr 1fr 80px 130px 120px 90px 80px',
+          display:'grid', gridTemplateColumns:'150px 400px 2px 1fr 1fr 1fr 2px 1fr 1fr 1fr',
+          padding:'8px 18px 4px 18px', background:C.s3, borderBottom:`1px solid ${C.b0}50`,
+        }}>
+          <div style={{ gridColumn:'1 / 3' }}></div>
+          <div style={{ borderLeft:`2px solid ${C.cyan}40` }}></div>
+          <div style={{ gridColumn:'4 / 7', display:'flex', alignItems:'center', gap:5 }}>
+            <Bot size={10} style={{ color:C.cyan }}/>
+            <span style={{ ...mono, fontSize:9, color:C.cyan, letterSpacing:'0.08em' }}>AI FINDINGS</span>
+          </div>
+          <div style={{ borderLeft:`2px solid ${C.cyan}40` }}></div>
+          <div style={{ gridColumn:'8 / 11', display:'flex', alignItems:'center', gap:5, paddingLeft:12 }}>
+            <User size={10} style={{ color:C.cyan }}/>
+            <span style={{ ...mono, fontSize:9, color:C.cyan, letterSpacing:'0.08em' }}>CASE MANAGEMENT WORKFLOW</span>
+          </div>
+        </div>
+        
+        {/* Column header row */}
+        <div style={{
+          display:'grid', gridTemplateColumns:'150px 400px 2px 1fr 1fr 1fr 2px 1fr 1fr 1fr',
           padding:'10px 18px', background:C.s3, borderBottom:`1px solid ${C.b0}`,
           ...mono, fontSize:10, color:C.muted, letterSpacing:'0.06em',
         }}>
-          <span>CASE ID</span><span>PROVIDER</span><span>TYPE</span><span>RISK</span>
-          <span>STATUS</span><span>ANALYST</span><span>AT RISK</span><span>OPENED</span>
+          <span>CASE ID</span><span>PROVIDER</span>
+          <div style={{ borderLeft:`2px solid ${C.cyan}40` }}></div>
+          <span style={{ paddingLeft:12 }}>TYPE</span>
+          <span>RISK</span>
+          <span>AT RISK</span>
+          <div style={{ borderLeft:`2px solid ${C.cyan}40` }}></div>
+          <span style={{ paddingLeft:12 }}>STATUS</span><span>ANALYST</span><span>INVESTIGATOR ACTION</span>
         </div>
-        {cases.map((c, i) => (
+        {cases.map((c, i) => {
+          const fb = getLatestFeedback(c.npi);
+          const suggestedAction = getSuggestedAction(c);
+          const ActionIcon = suggestedAction.icon;
+          const riskColor = c.risk >= 90 ? C.red : c.risk >= 75 ? C.amber : C.green;
+          return (
           <div key={c.id} style={{
-            display:'grid', gridTemplateColumns:'130px 2fr 1fr 80px 130px 120px 90px 80px',
+            display:'grid', gridTemplateColumns:'150px 400px 2px 1fr 1fr 1fr 2px 1fr 1fr 1fr',
             padding:'13px 18px', alignItems:'center',
             borderBottom: i < cases.length-1 ? `1px solid ${C.b0}` : 'none',
             transition:'background 0.15s', cursor:'pointer',
@@ -1437,10 +1809,20 @@ function CaseMgmt() {
             onMouseLeave={e=>e.currentTarget.style.background='transparent'}
           >
             <span style={{ ...mono, fontSize:11, color:C.cyan }}>{c.id}</span>
-            <div style={{ fontSize:13, fontWeight:500, color:C.text }}>{c.prov}</div>
-            <span style={{ fontSize:11, color:C.dim }}>{c.type}</span>
-            <RiskBadge score={c.risk} />
             <div>
+              <div style={{ fontSize:13, fontWeight:500, color:C.text }}>{c.prov}</div>
+              {fb && fb.comment && (
+                <div style={{ fontSize:9, color:C.dim, marginTop:2, fontStyle:'italic' }}>
+                  "{fb.comment.slice(0,50)}{fb.comment.length > 50 ? '...' : ''}"
+                </div>
+              )}
+            </div>
+            <div style={{ borderLeft:`2px solid ${C.cyan}40`, height:'100%' }}></div>
+            <span style={{ fontSize:11, color:C.dim, paddingLeft:12 }}>{c.type}</span>
+            <RiskBadge score={c.risk} />
+            <span style={{ ...oxan, fontSize:12, fontWeight:700, color: c.amt==='—' ? C.muted : riskColor }}>{c.amt}</span>
+            <div style={{ borderLeft:`2px solid ${C.cyan}40`, height:'100%' }}></div>
+            <div style={{ paddingLeft:12 }}>
               <span style={{
                 padding:'3px 8px', borderRadius:4, fontSize:10, ...mono,
                 background:`${sc[c.status]}15`, border:`1px solid ${sc[c.status]}30`,
@@ -1448,10 +1830,21 @@ function CaseMgmt() {
               }}>{c.status}</span>
             </div>
             <span style={{ fontSize:12, color: c.analyst==='Unassigned' ? C.amber : C.dim }}>{c.analyst}</span>
-            <span style={{ ...oxan, fontSize:12, fontWeight:700, color: c.amt==='—' ? C.muted : C.amber }}>{c.amt}</span>
-            <span style={{ ...mono, fontSize:10, color:C.muted }}>{c.date}</span>
+            <div>
+              {fb ? (
+                <div style={{ 
+                  padding:'5px 10px', borderRadius:5, fontSize:10, ...mono,
+                  background:`${suggestedAction.color}15`, border:`1px solid ${suggestedAction.color}40`,
+                  color:suggestedAction.color, whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:5
+                }}>
+                  <ActionIcon size={11}/> {suggestedAction.action}
+                </div>
+              ) : (
+                <span style={{ fontSize:10, color:C.muted, ...mono }}>Pending Review</span>
+              )}
+            </div>
           </div>
-        ))}
+        )})}
       </div>
     </div>
   );
@@ -1543,6 +1936,10 @@ export default function App() {
   const [prog, setProg] = useState('medicare');
   const [aiOpen, setAiOpen] = useState(false);
   const [selProv, setSelProv] = useState(null);
+  // Feedback state: { [providerId]: { overall: [history], components: { [section]: [history] } } }
+  const [feedback, setFeedback] = useState({});
+  // Mock investigator info
+  const investigator = { id: 'inv-001', name: 'J. Morrison' };
   const pd = programs[prog];
 
   const nav = [
@@ -1554,6 +1951,35 @@ export default function App() {
   ];
 
   const handleSelect = (prov) => { setSelProv(prov); setScreen('provider'); };
+
+  // Feedback update handler
+  const handleFeedback = (providerId, section, verdict, comment) => {
+    setFeedback(prev => {
+      const now = new Date().toISOString();
+      const entry = { verdict, comment, investigator, timestamp: now };
+      const prevProv = prev[providerId] || { overall: [], components: {} };
+      if (section === 'overall') {
+        return {
+          ...prev,
+          [providerId]: {
+            ...prevProv,
+            overall: [entry, ...(prevProv.overall || [])],
+          }
+        };
+      } else {
+        return {
+          ...prev,
+          [providerId]: {
+            ...prevProv,
+            components: {
+              ...prevProv.components,
+              [section]: [entry, ...(prevProv.components?.[section] || [])],
+            },
+          }
+        };
+      }
+    });
+  };
 
   return (
     <>
@@ -1568,8 +1994,8 @@ export default function App() {
                 <Shield size={17} color="#fff"/>
               </div>
               <div>
-                <div style={{ ...oxan, fontSize:15, fontWeight:800, color:C.text, letterSpacing:'0.01em' }}>IntegrityAI</div>
-                <div style={{ fontSize:10, color:C.muted }}>Program Integrity Platform</div>
+                <div style={{ ...oxan, fontSize:15, fontWeight:800, color:C.text, letterSpacing:'0.01em' }}>KPMG Fraud Fighter</div>
+                <div style={{ fontSize:10, color:C.muted }}>Explainable AI Fraud Detection</div>
               </div>
             </div>
           </div>
@@ -1621,7 +2047,7 @@ export default function App() {
               fontSize:13, cursor:'pointer',
             }}>
               <Bot size={15}/>AI Investigator
-              {aiOpen && <div style={{ marginLeft:'auto', width:7, height:7, borderRadius:'50%', background:C.cyan, boxShadow:`0 0 8px ${C.cyan}`, animation:'pulseRing 2s infinite' }}/>}
+              {aiOpen && <div style={{ marginLeft:'auto', width:7, height:7, borderRadius:'50%', background:C.cyan, boxShadow:`0 0 8px ${C.cyan}`, animation:'pulseRing 2s infinite' }}/>} 
             </button>
           </div>
         </div>
@@ -1653,9 +2079,9 @@ export default function App() {
           {/* Content */}
           <div style={{ flex:1, overflowY:'auto' }}>
             {screen==='dashboard' && <Dashboard prog={prog}/>}
-            {screen==='feed'      && <AnomalyFeed onSelect={handleSelect}/>}
-            {screen==='provider'  && <ProviderDive provider={selProv} prog={prog}/>}
-            {screen==='cases'     && <CaseMgmt/>}
+            {screen==='feed'      && <AnomalyFeed onSelect={handleSelect} feedback={feedback} onFeedback={handleFeedback}/>}
+            {screen==='provider'  && <ProviderDive provider={selProv} prog={prog} feedback={feedback} onFeedback={handleFeedback}/>}
+            {screen==='cases'     && <CaseMgmt feedback={feedback} onFeedback={handleFeedback}/>}
             {screen==='policy'    && <PolicyIntel prog={prog}/>}
           </div>
         </div>
