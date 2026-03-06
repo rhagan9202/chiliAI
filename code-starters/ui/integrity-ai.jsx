@@ -967,7 +967,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
             display:'flex', alignItems:'center', gap:7,
           }}>
             {t.label}
-            {t.badge && <span style={{ marginLeft:6, background:C.cyan, color:'#fff', borderRadius:4, fontSize:9, padding:'1px 5px' }}>NEW</span>}
+            {t.badge && <span style={{ marginLeft:6, background:C.cyan, color:'#fff', borderRadius:4, fontSize:9, padding:'1px 5px' }}>BETA</span>}
           </button>
         ))}
       </div>
@@ -1307,7 +1307,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
             <div style={{ flex:1 }}>
               <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:4 }}>
                 <span style={{ ...oxan, fontSize:14, fontWeight:700, color:C.text }}>Policy Knowledge Graph — Active Analysis</span>
-                <span style={{ padding:'2px 8px', borderRadius:4, background:`${C.green}18`, border:`1px solid ${C.green}40`, fontSize:9, color:C.green, ...mono }}>PKG v2.4</span>
+                <span style={{ padding:'2px 8px', borderRadius:4, background:`${C.green}18`, border:`1px solid ${C.green}40`, fontSize:9, color:C.green, ...mono }}>BETA</span>
               </div>
               <div style={{ fontSize:12, color:C.dim, lineHeight:1.6 }}>
                 3 anomaly signals queried against CMS policy corpus · <span style={{ color:C.text }}>8 policy sections retrieved</span> · Grounding complete.
@@ -1535,7 +1535,7 @@ function PolicyIntel({ prog }) {
           <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:5 }}>
             <div style={{ padding:8, borderRadius:9, background:`${C.green}15` }}><Landmark size={18} color={C.green}/></div>
             <div style={{ ...oxan, fontSize:18, fontWeight:700, color:C.text }}>Policy Intelligence</div>
-            <span style={{ padding:'2px 9px', borderRadius:5, background:`${C.green}15`, border:`1px solid ${C.green}35`, fontSize:9, ...mono, color:C.green }}>FOR CMS LEADERSHIP</span>
+            <span style={{ padding:'2px 9px', borderRadius:5, background:`${C.green}15`, border:`1px solid ${C.green}35`, fontSize:9, ...mono, color:C.green }}>EXECUTIVE VIEW</span>
           </div>
           <div style={{ fontSize:12, color:C.dim, marginLeft:46 }}>
             AI-identified gaps, ambiguities, and recommended changes in CMS policy and oversight — derived from pattern analysis across all flagged cases.
@@ -1763,7 +1763,7 @@ function CaseMgmt({ feedback = {}, onFeedback = () => {} }) {
       <div style={{ background:C.s2, border:`1px solid ${C.b0}`, borderRadius:12, overflow:'hidden' }} className="fu">
         {/* Group header row */}
         <div style={{
-          display:'grid', gridTemplateColumns:'150px 400px 2px 1fr 1fr 1fr 2px 1fr 1fr 1fr',
+          display:'grid', gridTemplateColumns:'110px 240px 2px 1fr 1fr 1fr 2px 1fr 1fr 1fr',
           padding:'8px 18px 4px 18px', background:C.s3, borderBottom:`1px solid ${C.b0}50`,
         }}>
           <div style={{ gridColumn:'1 / 3' }}></div>
@@ -1781,7 +1781,7 @@ function CaseMgmt({ feedback = {}, onFeedback = () => {} }) {
         
         {/* Column header row */}
         <div style={{
-          display:'grid', gridTemplateColumns:'150px 400px 2px 1fr 1fr 1fr 2px 1fr 1fr 1fr',
+          display:'grid', gridTemplateColumns:'110px 240px 2px 1fr 1fr 1fr 2px 1fr 1fr 1fr',
           padding:'10px 18px', background:C.s3, borderBottom:`1px solid ${C.b0}`,
           ...mono, fontSize:10, color:C.muted, letterSpacing:'0.06em',
         }}>
@@ -1800,7 +1800,7 @@ function CaseMgmt({ feedback = {}, onFeedback = () => {} }) {
           const riskColor = c.risk >= 90 ? C.red : c.risk >= 75 ? C.amber : C.green;
           return (
           <div key={c.id} style={{
-            display:'grid', gridTemplateColumns:'150px 400px 2px 1fr 1fr 1fr 2px 1fr 1fr 1fr',
+            display:'grid', gridTemplateColumns:'110px 240px 2px 1fr 1fr 1fr 2px 1fr 1fr 1fr',
             padding:'13px 18px', alignItems:'center',
             borderBottom: i < cases.length-1 ? `1px solid ${C.b0}` : 'none',
             transition:'background 0.15s', cursor:'pointer',
@@ -2031,7 +2031,7 @@ export default function App() {
                 <item.icon size={15}/>
                 <span style={{ flex:1 }}>{item.label}</span>
                 {item.badge && (
-                  <span style={{ padding:'1px 5px', borderRadius:3, background:`${C.green}18`, border:`1px solid ${C.green}35`, fontSize:8, color:C.green, ...mono }}>PKG</span>
+                  <span style={{ padding:'1px 5px', borderRadius:3, background:`${C.green}18`, border:`1px solid ${C.green}35`, fontSize:8, color:C.green, ...mono }}>BETA</span>
                 )}
               </button>
             ))}
