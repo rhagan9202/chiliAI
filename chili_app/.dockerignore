@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.vite/
+.git/
+.github/
+.idea/
+.vscode/
+*.md
+!README.md

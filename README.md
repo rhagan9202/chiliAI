@@ -44,6 +44,28 @@ chiliAI/
 
 ## Quick Start
 
+### Docker (Recommended)
+
+```bash
+# Development — full stack with hot-reload
+cp .env.example .env          # create local config (gitignored)
+make dev                       # or: docker compose -f docker-compose.dev.yaml up --build
+
+# Production — built images, nginx, no hot-reload
+make prod                      # or: docker compose up --build -d
+```
+
+| Service | Dev URL | Prod URL |
+|---------|---------|----------|
+| Frontend (Vite / nginx) | http://localhost:5173 | http://localhost |
+| Backend API | http://localhost:8000 | http://localhost/api/ |
+| API health check | http://localhost:8000/health | http://localhost/api/health |
+| Neo4j browser | http://localhost:7474 | http://localhost:7474 |
+| Qdrant dashboard | http://localhost:6333/dashboard | http://localhost:6333/dashboard |
+| MinIO console | http://localhost:9001 | http://localhost:9001 |
+
+See `make help` for all available commands.
+
 ### Prerequisites
 
 - Python ≥ 3.12

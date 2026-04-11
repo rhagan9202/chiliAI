@@ -4,4 +4,29 @@ version = "0.1.0"
 description = "chiliAI backend — FastAPI gateway, pipeline workers, and analytics modules for a domain-reconfigurable Graph RAG analytics platform."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "redis>=5.0",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "httpx>=0.28",
+]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["api*", "agent*", "shared*", "config*", "events*", "storage*",
+           "ingestion*", "graph*", "vectorstore*", "embeddings*", "rag*",
+           "llm*", "analytics*", "monitoring*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

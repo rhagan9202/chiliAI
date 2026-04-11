@@ -6,7 +6,18 @@ Python 3.12 backend for the chiliAI platform — a domain-reconfigurable Graph R
 
 ## Current State
 
-Early-stage scaffold. `main.py` is a minimal entry point. No service framework, API layer, or test suite is established yet.
+Working FastAPI application factory with domain configuration system. The full module structure below is the target — most analytics and pipeline modules are not yet implemented.
+
+### What's functional
+
+- **`shared/`** — Generic platform types (`Entity`, `Relationship`, `Alert`, `EvidencePack`, `KnowledgeBase`), config-definition types (`EntityDefinition`, `PropertyDefinition`, `PropertyType`, `RelationshipDefinition`), protocols (`Configurable`), and utilities. **No hardcoded domain-specific types** — all domain entities use `Entity(type, properties)` validated against config.
+- **`config/`** — Domain configuration schema (`DomainConfig` Pydantic model with cross-field validation), YAML/JSON loader, and two default configs (`medicare_fraud.yaml`, `food_supply_chain.yaml`).
+- **`api/app.py`** — FastAPI app factory with `/health` endpoint, CORS middleware, and config router.
+- **`api/routers/config.py`** — `GET /config/domain` returns the active domain configuration as JSON.
+- **`api/dependencies.py`** — Dependency injection wiring. `get_domain_config()` loads config once and caches.
+- **`agent/coordinator.py`** — Worker entry point (`python -m agent.coordinator`) that starts an async loop.
+- **`main.py`** — Uvicorn launcher for local development.
+- **`Dockerfile`** — Multi-stage build producing a production-ready image.
 
 ## Target Module Structure
 
@@ -72,3 +83,27 @@ pyright
 ## Configuration
 
 The backend reads a domain configuration YAML/JSON file at startup (path set via `CHILI_CONFIG_PATH` environment variable). This configuration defines entity types, relationships, enabled capabilities, and alert thresholds. See [`docs/architecture.md` §9](../docs/architecture.md#9-domain-configuration-model).
+
+### Setting the config path
+
+```bash
+# Environment variable (preferred in containers)
+export CHILI_CONFIG_PATH=/app/config/defaults/medicare_fraud.yaml
+
+# Or pass explicitly in code
+from config.loader import load_config
+cfg = load_config("config/defaults/medicare_fraud.yaml")
+```
+
+### Available default configs
+
+| File | Domain |
+|------|--------|
+| `config/defaults/medicare_fraud.yaml` | Medicare fraud detection (4 entities, 4 relationships, all capabilities) |
+| `config/defaults/food_supply_chain.yaml` | Food supply chain monitoring (4 entities, 3 relationships, partial capabilities) |
+
+### Creating a new domain
+
+1. Copy an existing default and modify entity types, relationships, and thresholds.
+2. Set `CHILI_CONFIG_PATH` to the new file.
+3. Restart the backend. The frontend picks up the new config via `GET /config/domain`.

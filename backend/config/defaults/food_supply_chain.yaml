@@ -1,0 +1,80 @@
+domain:
+  name: food_supply_chain
+  display_name: "Food Supply Chain Monitoring"
+  description: "Safety and compliance monitoring for food supply chain operations"
+
+entities:
+  - name: supplier
+    display_label: "Supplier"
+    icon: factory
+    properties:
+      supplier_id: { type: string, display: "Supplier ID" }
+      name: { type: string, display: "Name" }
+      country: { type: string, display: "Country" }
+      certification: { type: enum, display: "Certification", enum_values: ["organic", "fair_trade", "gmp", "haccp", "none"] }
+
+  - name: shipment
+    display_label: "Shipment"
+    icon: truck
+    properties:
+      tracking_id: { type: string, display: "Tracking ID" }
+      weight_kg: { type: decimal, display: "Weight (kg)" }
+      ship_date: { type: date, display: "Ship Date" }
+      temperature_log: { type: list, display: "Temperature Log" }
+
+  - name: inspection
+    display_label: "Inspection"
+    icon: clipboard
+    properties:
+      inspection_id: { type: string, display: "Inspection ID" }
+      result: { type: enum, display: "Result", enum_values: ["pass", "fail", "conditional"] }
+      inspector: { type: string, display: "Inspector" }
+      date: { type: date, display: "Inspection Date" }
+
+  - name: facility
+    display_label: "Facility"
+    icon: building
+    properties:
+      facility_id: { type: string, display: "Facility ID" }
+      name: { type: string, display: "Name" }
+      type: { type: string, display: "Facility Type" }
+
+relationships:
+  - name: shipped_by
+    display_label: "Shipped By"
+    source: shipment
+    target: supplier
+
+  - name: inspected_at
+    display_label: "Inspected At"
+    source: inspection
+    target: facility
+
+  - name: supplied_by
+    display_label: "Supplied By"
+    source: facility
+    target: supplier
+
+capabilities:
+  timeseries: true
+  gnn: false
+  risk_scoring: true
+  rag_chat: true
+  explainability: false
+
+ingestion:
+  sources:
+    - type: file_upload
+      formats: [csv, json, pdf]
+    - type: api_push
+      format: json
+      endpoint: /ingest/shipments
+
+alerts:
+  thresholds:
+    supplier:
+      risk_score: 0.70
+    shipment:
+      anomaly_sigma: 2.0
+    inspection:
+      risk_score: 0.60

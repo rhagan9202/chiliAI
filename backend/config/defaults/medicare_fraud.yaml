@@ -1,0 +1,84 @@
+domain:
+  name: medicare_fraud
+  display_name: "Medicare Fraud Detection"
+  description: "Fraud detection and investigator support for Medicare claims"
+
+entities:
+  - name: provider
+    display_label: "Provider"
+    icon: stethoscope
+    properties:
+      npi: { type: string, display: "NPI" }
+      specialty: { type: string, display: "Specialty" }
+      state: { type: string, display: "State" }
+
+  - name: beneficiary
+    display_label: "Beneficiary"
+    icon: person
+    properties:
+      hic_number: { type: string, display: "HIC Number" }
+      age: { type: integer, display: "Age" }
+      chronic_conditions: { type: list, display: "Chronic Conditions" }
+
+  - name: claim
+    display_label: "Claim"
+    icon: document
+    properties:
+      claim_id: { type: string, display: "Claim ID" }
+      amount: { type: decimal, display: "Billed Amount" }
+      service_date: { type: date, display: "Date of Service" }
+      procedure_codes: { type: list, display: "Procedure Codes" }
+
+  - name: facility
+    display_label: "Facility"
+    icon: building
+    properties:
+      facility_id: { type: string, display: "Facility ID" }
+      name: { type: string, display: "Name" }
+      type: { type: string, display: "Facility Type" }
+
+relationships:
+  - name: submitted_by
+    display_label: "Submitted By"
+    source: claim
+    target: provider
+
+  - name: billed_for
+    display_label: "Billed For"
+    source: claim
+    target: beneficiary
+
+  - name: performed_at
+    display_label: "Performed At"
+    source: claim
+    target: facility
+
+  - name: referred_by
+    display_label: "Referred By"
+    source: provider
+    target: provider
+
+capabilities:
+  timeseries: true
+  gnn: true
+  risk_scoring: true
+  rag_chat: true
+  explainability: true
+
+ingestion:
+  sources:
+    - type: file_upload
+      formats: [pdf, docx, txt, csv, json]
+    - type: api_push
+      format: json
+      endpoint: /ingest/claims
+
+alerts:
+  thresholds:
+    provider:
+      risk_score: 0.75
+      anomaly_sigma: 2.5
+    beneficiary:
+      risk_score: 0.80
+    claim:
+      amount_percentile: 99
