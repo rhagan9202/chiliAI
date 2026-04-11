@@ -1,0 +1,7 @@
+[project]
+name = "chili-backend"
+version = "0.1.0"
+description = "chiliAI backend — FastAPI gateway, pipeline workers, and analytics modules for a domain-reconfigurable Graph RAG analytics platform."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
