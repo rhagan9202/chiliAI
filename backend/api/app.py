@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routers.config import router as config_router
+from api.routers.knowledgebases import router as knowledgebases_router
 
 
 def create_app() -> FastAPI:
@@ -31,5 +32,6 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(config_router)
+    app.include_router(knowledgebases_router)
 
     return app

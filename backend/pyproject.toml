@@ -8,6 +8,7 @@ dependencies = [
     "fastapi>=0.115",
     "httpx>=0.28",
     "openpyxl>=3.1",
+    "python-multipart>=0.0.9",
     "uvicorn[standard]>=0.34",
     "pypdf>=5.4",
     "redis>=5.0",

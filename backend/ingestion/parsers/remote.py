@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 import httpx
 
 from ingestion.models import ParsedDocument, SourceDocument
+from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.exceptions import RemoteFetchError, UnsupportedFormatError
 from ingestion.parsers.protocols import RemoteDocumentPayload, RemoteDocumentFetcher
 from ingestion.parsers.registry import ParserRegistry
@@ -70,24 +71,9 @@ def parse_remote_document(
     registry: ParserRegistry,
     fetcher: RemoteDocumentFetcher,
 ) -> ParsedDocument:
-    """Fetch a remote document and dispatch it to the resolved parser."""
-    payload = fetcher.fetch(source)
-    resolved_format = (
-        source.document_format
-        or payload.inferred_format
-        or infer_format_from_content_type(payload.media_type)
-        or infer_format_from_filename(payload.filename)
-    )
-    if resolved_format is None:
-        raise UnsupportedFormatError("Unable to resolve remote document format.")
-
-    enriched_source = source.model_copy(
-        update={
-            "document_format": resolved_format,
-            "filename": source.filename or payload.filename,
-            "media_type": source.media_type or payload.media_type,
-            "size_bytes": payload.size_bytes,
-            "uri": payload.final_url,
-        }
-    )
-    return registry.parse(enriched_source, payload.content)
+    """Fetch a remote document and dispatch it through the parser orchestrator."""
+    orchestrator = DocumentParsingOrchestrator(registry, fetcher=fetcher)
+    try:
+        return orchestrator.parse_source(source).parsed_document
+    except UnsupportedFormatError as exc:
+        raise UnsupportedFormatError("Unable to resolve remote document format.") from exc

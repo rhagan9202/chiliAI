@@ -12,7 +12,6 @@ from ingestion.parsers.json import JsonParser
 from ingestion.parsers.pdf import PdfParser
 from ingestion.parsers.protocols import DocumentParser, RemoteDocumentFetcher, RemoteDocumentPayload
 from ingestion.parsers.registry import ParserRegistry, create_default_registry
-from ingestion.parsers.remote import HttpxRemoteDocumentFetcher, parse_remote_document
 from ingestion.parsers.txt import TextParser
 from ingestion.parsers.xlsx import XlsxParser
 
@@ -21,7 +20,6 @@ __all__ = [
     "CsvParser",
     "DocxParser",
     "DocumentParser",
-    "HttpxRemoteDocumentFetcher",
     "JsonParser",
     "ParserError",
     "ParserRegistry",
@@ -33,5 +31,4 @@ __all__ = [
     "UnsupportedFormatError",
     "XlsxParser",
     "create_default_registry",
-    "parse_remote_document",
 ]

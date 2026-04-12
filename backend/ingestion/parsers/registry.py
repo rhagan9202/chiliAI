@@ -28,6 +28,10 @@ class ParserRegistry:
             raise UnsupportedFormatError(f"No parser registered for format '{document_format.value}'.")
         return parser
 
+    def supports(self, document_format: DocumentFormat) -> bool:
+        """Return whether a parser is registered for the given format."""
+        return document_format in self._parsers
+
     def parse(self, source: SourceDocument, content: bytes) -> ParsedDocument:
         if source.document_format is None:
             raise UnsupportedFormatError("Source document format is not resolved.")
