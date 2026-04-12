@@ -1,6 +1,6 @@
 # Project Guidelines
 
-> The authoritative architecture reference is [`docs/architecture.md`](../docs/architecture.md). These guidelines are the condensed operating rules for agents working in this repo.
+> The authoritative architecture reference is `docs/architecture.md`. These guidelines are the condensed operating rules for agents working in this repo.
 
 ## Project Scope
 - This repository is a monorepo with a Python 3.12 backend in `backend/` and a React 19 + TypeScript frontend in `chili_app/`.

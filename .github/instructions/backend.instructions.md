@@ -6,7 +6,7 @@ applyTo: "backend/**/*.py"
 
 # Backend Architecture And Quality
 
-> See [`docs/architecture.md` §5](../../docs/architecture.md#5-backend-module-decomposition) for the full module tree, responsibility matrix, and dependency rules.
+> See `docs/architecture.md` §5 for the full module tree, responsibility matrix, and dependency rules.
 
 ## Language And Typing
 
@@ -18,7 +18,7 @@ applyTo: "backend/**/*.py"
 - The backend is organized into 16 modules: `api/`, `ingestion/`, `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/`, `analytics/` (with sub-modules `timeseries/`, `gnn/`, `risk/`, `explainability/`), `agent/`, `monitoring/`, `shared/`, `config/`, `events/`, `storage/`.
 - Keep modules loosely coupled and narrowly scoped. Each module owns its internal implementation and exposes a narrow public contract.
 - The `api/` module is a FastAPI gateway — thin routing, request validation, and dependency injection. **No business logic in routers.**
-- The `shared/` module provides stable domain types (`Entity`, `Relationship`, `Claim`, `Provider`, `Beneficiary`, `Alert`, `EvidencePack`, `KnowledgeBase`), protocol definitions, and small utilities. It must stay dependency-light and must never contain business logic.
+- The `shared/` module provides stable domain types (`Entity`, `Relationship`, `Alert`, `EvidencePack`, `KnowledgeBase`), config-definition types, protocol definitions, and small utilities. It must stay dependency-light and must never contain business logic.
 
 ## Cross-Module Interaction
 
