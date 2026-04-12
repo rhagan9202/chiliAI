@@ -36,7 +36,12 @@ def test_drain_ingestion_events_processes_uploaded_documents() -> None:
         ],
     )
 
-    processed = drain_ingestion_events(event_bus, service)
+    processed = drain_ingestion_events(
+        event_bus,
+        service,
+        consumer_group="test-workers",
+        consumer_name="worker-1",
+    )
 
     assert processed == 1
     assert any(isinstance(event, DocumentsParsedEvent) for event in event_bus.published_events)

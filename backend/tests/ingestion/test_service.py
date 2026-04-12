@@ -46,6 +46,7 @@ def test_register_documents_stores_content_and_publishes_event() -> None:
     stored = object_store.get_bytes(receipts[0].storage_key or "")
     assert stored.content == b'{"claim_id": "42"}'
     assert isinstance(event_bus.published_events[0], DocumentsUploadedEvent)
+    assert event_bus.published_events[0].event_type == "documents.uploaded"
 
 
 def test_ingest_task_parses_stored_document_and_publishes_parsed_event() -> None:

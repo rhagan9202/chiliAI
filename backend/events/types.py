@@ -36,7 +36,7 @@ class DocumentReference(BaseModel):
 
 
 class DocumentsUploadedEvent(EventBase):
-    event_type: Literal["docs.uploaded"] = "docs.uploaded"
+    event_type: Literal["documents.uploaded"] = "documents.uploaded"
     documents: list[DocumentReference]
 
 

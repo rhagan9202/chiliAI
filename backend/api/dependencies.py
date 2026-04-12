@@ -6,8 +6,8 @@ from functools import lru_cache
 
 from config.loader import load_config
 from config.schema import DomainConfig
-from events.adapters.in_memory import InMemoryEventBus
 from events.protocols import EventBus
+from events.runtime import EventBusSettings, create_event_bus, load_event_bus_settings
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import ParserRegistry, create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
@@ -48,9 +48,15 @@ def get_parser_orchestrator() -> DocumentParsingOrchestrator:
 
 
 @lru_cache(maxsize=1)
+def get_event_bus_settings() -> EventBusSettings:
+    """Return the runtime event transport settings."""
+    return load_event_bus_settings()
+
+
+@lru_cache(maxsize=1)
 def get_event_bus() -> EventBus:
     """Return the event bus implementation for API-triggered workflows."""
-    return InMemoryEventBus()
+    return create_event_bus(get_event_bus_settings())
 
 
 @lru_cache(maxsize=1)

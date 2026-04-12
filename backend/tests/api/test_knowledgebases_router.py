@@ -47,3 +47,4 @@ def test_register_documents_returns_202_and_publishes_event(
     payload = response.json()
     assert payload["documents"][0]["knowledge_base_id"] == "kb-1"
     assert isinstance(event_bus.published_events[0], DocumentsUploadedEvent)
+    assert event_bus.published_events[0].event_type == "documents.uploaded"
