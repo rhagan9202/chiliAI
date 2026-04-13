@@ -21,6 +21,8 @@ from events.types import (
     LlmCompletionReference,
     RagCompletedEvent,
     RagCompletionReference,
+    RiskScoredEvent,
+    RiskScoredReference,
     TimeseriesAnalyzedEvent,
     TimeseriesAnalyzedReference,
     ValidatedDocumentReference,
@@ -274,3 +276,24 @@ def test_event_codec_round_trips_gnn_analyzed_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "gnn.analyzed"
+
+
+def test_event_codec_round_trips_risk_scored_event() -> None:
+    event = RiskScoredEvent(
+        assessments=[
+            RiskScoredReference(
+                knowledge_base_id="kb-1",
+                request_id="request-1",
+                entity_id="provider-7",
+                overall_score=0.82,
+                risk_level="high",
+                factor_count=3,
+            )
+        ]
+    )
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "risk.scored"

@@ -211,6 +211,20 @@ class GnnAnalyzedEvent(EventBase):
     analyses: list[GnnAnalyzedReference]
 
 
+class RiskScoredReference(BaseModel):
+    knowledge_base_id: str
+    request_id: str
+    entity_id: str
+    overall_score: float = Field(ge=0.0, le=1.0)
+    risk_level: str
+    factor_count: int = Field(ge=0)
+
+
+class RiskScoredEvent(EventBase):
+    event_type: Literal["risk.scored"] = "risk.scored"
+    assessments: list[RiskScoredReference]
+
+
 class DocumentFailureReference(BaseModel):
     knowledge_base_id: str
     source_document_id: str
@@ -249,6 +263,7 @@ AnyEvent = (
     | RagCompletedEvent
     | TimeseriesAnalyzedEvent
     | GnnAnalyzedEvent
+    | RiskScoredEvent
     | DocumentsFailedEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent
