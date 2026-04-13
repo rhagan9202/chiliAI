@@ -25,6 +25,12 @@ from storage.protocols import ObjectStore
 class IngestionService:
     """Coordinate document registration, parsing, and event publication."""
 
+    # TODO(production): Add idempotency checks (deduplicate by content hash).
+    # Add error recovery: if event publication fails after storage, persist a
+    # retry record. Add progress reporting via events or status polling.
+    # Make I/O operations async (object store, event bus). Add configurable
+    # file size limits and content-type whitelisting at this layer.
+
     def __init__(
         self,
         parser_orchestrator: ParserOrchestrator,

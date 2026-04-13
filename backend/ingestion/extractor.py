@@ -33,6 +33,16 @@ from shared.utils import generate_id
 class PatternDocumentExtractor:
 	"""Baseline config-driven extractor using property label matching patterns."""
 
+	# TODO(production): This is a regex-based baseline extractor. Implement an
+	# LlmDocumentExtractor that uses the LLM service with structured prompts to
+	# extract entities and relationships. The LLM extractor should:
+	# - Accept a prompt template per entity type from config
+	# - Support confidence calibration beyond coverage heuristics
+	# - Perform coreference resolution across chunks (same entity, different mentions)
+	# - Deduplicate entities with fuzzy matching before emitting candidates
+	# - Extract cross-chunk relationships (currently limited to intra-chunk)
+	# See docs/architecture.md §6 ingestion pipeline.
+
 	def __init__(
 		self,
 		entity_definitions: list[EntityDefinition],

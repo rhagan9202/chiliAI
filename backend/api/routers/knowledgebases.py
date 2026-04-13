@@ -20,6 +20,15 @@ class DocumentRegistrationResponse(BaseModel):
 
 router = APIRouter(prefix="/knowledgebases", tags=["knowledge-bases"])
 
+# TODO(production): Add missing CRUD endpoints:
+# - GET /knowledgebases — list all knowledge bases
+# - POST /knowledgebases — create a new knowledge base
+# - GET /knowledgebases/{kb_id} — get KB metadata
+# - DELETE /knowledgebases/{kb_id} — delete entire KB and all associated data
+# - GET /knowledgebases/{kb_id}/documents — list documents in KB
+# - GET /knowledgebases/{kb_id}/documents/{doc_id}/status — ingestion status
+# - DELETE /knowledgebases/{kb_id}/documents/{doc_id} — remove a document
+
 
 @router.post(
 	"/{knowledge_base_id}/documents",
@@ -32,6 +41,13 @@ async def register_knowledge_base_documents(
 	ingestion_service: IngestionServiceProtocol = Depends(get_ingestion_service),
 ) -> DocumentRegistrationResponse:
 	"""Register uploaded documents and enqueue ingestion work."""
+	# TODO(production): Add input validation and security hardening:
+	# - Validate knowledge_base_id format (alphanumeric + dashes)
+	# - Verify KB exists before accepting documents
+	# - Enforce max file size (e.g. 100MB) and max file count per request
+	# - Whitelist content types (reject unexpected MIME types)
+	# - Add filename sanitization (prevent path traversal)
+	# - Add async timeout on upload.read() for large files
 	submissions: list[DocumentSubmission] = []
 	for upload in files:
 		submissions.append(

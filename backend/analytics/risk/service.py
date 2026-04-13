@@ -22,6 +22,14 @@ from shared.utils import generate_id
 class RiskService:
     """Coordinate signal loading, weighted scoring, and event publication."""
 
+    # TODO(production): Replace simple weighted-sum scoring with pluggable risk
+    # models (logistic regression, gradient boosting, ensemble). Add temporal risk
+    # trending (compare current score to historical baseline). Add risk explanation
+    # generation linking scores to specific evidence. Add batch assessment for
+    # evaluating all entities in a knowledge base. Add caching for repeated
+    # assessments of the same entity. Current _score_factors() is a basic linear
+    # weighting — needs ML-backed alternatives as configurable strategies.
+
     def __init__(self, signal_source: RiskSignalSourceProtocol, *, event_bus: EventBus) -> None:
         self._signal_source = signal_source
         self._event_bus = event_bus

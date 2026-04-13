@@ -43,6 +43,13 @@ class EventBus(Protocol):
 
     def ack(self, deliveries: list[EventDelivery]) -> None: ...
 
+    # TODO(production): Add dead-letter support and consumer lifecycle methods:
+    # - dead_letter(delivery: EventDelivery, reason: str) -> None
+    # - pending(event_types, consumer_group) -> list[EventDelivery]  # XPENDING equivalent
+    # - claim(event_types, consumer_group, min_idle_ms) -> list[EventDelivery]  # XCLAIM
+    # Add async variants (AsyncEventBus) for non-blocking publish/consume.
+    # Add stream lifecycle: trim(event_type, max_len) and destroy_consumer_group().
+
 
 __all__ = [
     "EventBus",

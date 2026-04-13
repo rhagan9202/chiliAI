@@ -14,6 +14,12 @@ from shared.utils import generate_id
 class LlmService:
     """Coordinate request rendering, client invocation, and event publication."""
 
+    # TODO(production): Add retry logic with exponential backoff for provider errors
+    # and rate limits. Add streaming response support (stream_generate method).
+    # Add pre-flight token budget checking. Add model capability registry to
+    # select models by feature (vision, tool use, context length). Add fallback
+    # model support: if primary model fails, try a configured secondary.
+
     def __init__(self, client: LlmClientProtocol, *, event_bus: EventBus) -> None:
         self._client = client
         self._event_bus = event_bus

@@ -14,6 +14,14 @@ from storage.protocols import ObjectStore
 class GraphService:
     """Persist validated runtime objects and publish graph update events."""
 
+    # TODO(production): This service is write-only. Add read/query methods to support
+    # the dashboard and investigation workbench (get_entity, query_neighborhood,
+    # search_entities, compute_metrics). Add batch chunking for large upserts
+    # (split entity/relationship lists to avoid oversized transactions). Add
+    # transaction semantics: entity + relationship upserts should be atomic — if
+    # relationships fail, roll back entity changes. Add idempotency (change
+    # detection / version tracking on upsert to avoid redundant writes).
+
     def __init__(
         self,
         repository: GraphRepository,

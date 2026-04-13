@@ -11,6 +11,15 @@ from vectorstore.models import MetadataValue, VectorMatch, VectorRecord
 class VectorStoreProtocol(Protocol):
     """Persist embedding records and execute similarity search."""
 
+    # TODO(production): Extend with CRUD and lifecycle operations:
+    # - delete_records(kb_id, record_ids: list[str]) -> int  (deleted count)
+    # - get_record(kb_id, record_id) -> VectorRecord | None
+    # - count_records(kb_id) -> int
+    # - create_namespace(kb_id) / delete_namespace(kb_id) for KB lifecycle
+    # - list_records(kb_id, limit, cursor) -> PaginatedResult  (scroll API)
+    # Add hybrid search support (keyword + vector). Add range/list metadata filters.
+    # Add production adapters: PgvectorStore, QdrantStore, WeaviateStore.
+
     def upsert_records(
         self,
         knowledge_base_id: str,

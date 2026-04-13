@@ -47,6 +47,10 @@ def load_event_bus_settings() -> EventBusSettings:
 
 def create_event_bus(settings: EventBusSettings | None = None) -> EventBus:
     """Create an event bus adapter for the configured runtime."""
+    # TODO(production): Wire event bus settings from DomainConfig YAML instead of
+    # env-only. Add connection health check (PING) on startup. Support TLS/auth
+    # for Redis connections (rediss:// URIs, password, client certs). Add connection
+    # pool configuration (max_connections, socket_timeout, retry_on_timeout).
     resolved = settings or load_event_bus_settings()
     if resolved.backend == "redis":
         return RedisStreamsEventBus(

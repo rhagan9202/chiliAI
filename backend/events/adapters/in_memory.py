@@ -38,6 +38,8 @@ class InMemoryEventBus:
         *,
         consumer_group: str,
     ) -> None:
+        # TODO(production): Track consumer groups and pending message state so the
+        # in-memory adapter mirrors Redis Streams semantics for integration tests.
         return None
 
     def consume(

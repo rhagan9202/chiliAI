@@ -24,6 +24,13 @@ from shared.utils import generate_id
 class TimeseriesService:
     """Coordinate historical-series loading, anomaly detection, and event publication."""
 
+    # TODO(production): Replace basic z-score anomaly detection with production
+    # algorithms: seasonal decomposition (STL), ARIMA/Prophet forecasting,
+    # isolation forests, or change-point detection. Add sliding window support
+    # for continuous monitoring. Add multi-metric correlation analysis.
+    # Current _detect_anomalies() uses a simple z-score threshold over a
+    # fixed baseline window — needs configurable detection strategies.
+
     def __init__(self, history_source: TimeSeriesHistorySourceProtocol, *, event_bus: EventBus) -> None:
         self._history_source = history_source
         self._event_bus = event_bus

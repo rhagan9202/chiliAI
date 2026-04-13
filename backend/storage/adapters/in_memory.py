@@ -10,6 +10,10 @@ __all__ = ["InMemoryObjectStore"]
 class InMemoryObjectStore:
     """A process-local object store keyed by object path."""
 
+    # TODO(production): Add delete(), exists(), list_keys() to match the extended
+    # ObjectStore protocol. Add thread-safety (threading.Lock) for concurrent access
+    # in multi-threaded test scenarios.
+
     def __init__(self) -> None:
         self._objects: dict[str, StoredObject] = {}
 

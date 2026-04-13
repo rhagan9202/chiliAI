@@ -20,6 +20,12 @@ from vectorstore.service_models import (
 class VectorService:
     """Coordinate vector indexing and similarity search through injected ports."""
 
+    # TODO(production): Add delete flow for knowledge base teardown/reindexing.
+    # Add object store persistence of indexing results for audit trail (like graph
+    # service does). Add batch size limits with chunking for large submissions.
+    # Add dimension pre-validation at service layer for clearer error messages.
+    # Add record retrieval by ID for debugging and evidence pack assembly.
+
     def __init__(self, store: VectorStoreProtocol, *, event_bus: EventBus) -> None:
         self._store = store
         self._event_bus = event_bus

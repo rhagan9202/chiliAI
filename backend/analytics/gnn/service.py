@@ -16,6 +16,14 @@ from shared.utils import generate_id
 class GnnService:
     """Coordinate graph snapshot loading, scoring, link prediction, and event publication."""
 
+    # TODO(production): Replace heuristic scoring with real GNN inference:
+    # - Integrate PyTorch Geometric or DGL for node classification / link prediction
+    # - Support configurable GNN architectures (GCN, GAT, GraphSAGE)
+    # - Add community detection (Louvain, label propagation)
+    # - Add node embedding export for downstream use by the embeddings module
+    # Current _score_nodes() uses simple degree centrality and _predict_links()
+    # uses Jaccard similarity — both need ML-backed replacements.
+
     def __init__(self, snapshot_source: GraphSnapshotSourceProtocol, *, event_bus: EventBus) -> None:
         self._snapshot_source = snapshot_source
         self._event_bus = event_bus

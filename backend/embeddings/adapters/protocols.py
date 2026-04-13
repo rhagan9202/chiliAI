@@ -11,6 +11,13 @@ from embeddings.models import EmbeddingRequest, EmbeddingResult
 class EmbedderProtocol(Protocol):
     """Generate vectors from embedding requests."""
 
+    # TODO(production): Extend protocol with model introspection and health methods:
+    # - get_model_info() -> EmbeddingModelInfo (name, dimensions, max tokens, provider)
+    # - health_check() -> bool
+    # Add async variant for non-blocking embedding in pipeline workers.
+    # Implement production adapters: OpenAIEmbedder, SentenceTransformersEmbedder.
+    # See docs/architecture.md §5 embeddings module.
+
     def embed(self, request: EmbeddingRequest) -> EmbeddingResult: ...
 
 

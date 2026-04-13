@@ -11,6 +11,11 @@ from analytics.risk.models import RiskProfile
 class RiskSignalSourceProtocol(Protocol):
     """Load risk signals for a specific entity."""
 
+    # TODO(production): Extend with batch loading and real-time signal streaming:
+    # - load_profiles(kb_id, entity_ids: list[str]) -> list[RiskProfile]
+    # - stream_signals(kb_id) -> AsyncIterator[RiskSignal]
+    # Implement production adapters that compute signals from the graph + vectorstore.
+
     def load_profile(self, *, knowledge_base_id: str, entity_id: str) -> RiskProfile: ...
 
 

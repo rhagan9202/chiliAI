@@ -84,12 +84,20 @@ def get_event_bus() -> EventBus:
 @lru_cache(maxsize=1)
 def get_object_store() -> ObjectStore:
     """Return the object store implementation for raw document content."""
+    # TODO(production): Select object store adapter from config/env (S3, GCS, MinIO)
+    # instead of hardcoding InMemoryObjectStore. Add connection health verification.
     return InMemoryObjectStore()
 
 
 @lru_cache(maxsize=1)
 def get_ingestion_service() -> IngestionService:
     """Return the ingestion service used by API routes and tests."""
+    # TODO(production): Add dependency factories for all remaining services:
+    # get_graph_service, get_vectorstore_service, get_embeddings_service,
+    # get_llm_service, get_rag_service, get_agent_service, get_monitoring_service,
+    # get_risk_service, get_timeseries_service, get_gnn_service,
+    # get_explainability_service. Each should select adapters from config.
+    # Add cache invalidation mechanism (LRU_cache cannot be reloaded at runtime).
     return IngestionService(
         get_parser_orchestrator(),
         object_store=get_object_store(),

@@ -17,6 +17,12 @@ from shared.utils import generate_id
 class ExtractionResultValidator:
     """Validate extracted candidates against config-defined entity and relationship schemas."""
 
+    # TODO(production): Add confidence threshold filtering (discard candidates below
+    # a configurable minimum confidence). Add duplicate entity detection (same type +
+    # similar properties within the same document). Add validation warnings for
+    # near-misses (e.g. optional property missing). Add property-type-aware value
+    # validation (date format, numeric ranges, enum membership from config).
+
     def __init__(
         self,
         entity_definitions: list[EntityDefinition],

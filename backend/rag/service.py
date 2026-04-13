@@ -19,6 +19,12 @@ from shared.utils import generate_id
 class RagService:
     """Coordinate query embedding, retrieval, context assembly, and answer generation."""
 
+    # TODO(production): Add retry logic with backoff on retrieval/generation failures.
+    # Add timeout enforcement per pipeline stage. Add streaming response support.
+    # Add request caching/memoization for repeated questions. Add graceful
+    # degradation: if graph expansion fails, continue with basic context rather
+    # than propagating the error. Add circuit breaker for flaky LLM providers.
+
     def __init__(
         self,
         query_embedder: QueryEmbedderProtocol,

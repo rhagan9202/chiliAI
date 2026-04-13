@@ -32,6 +32,10 @@ from events.types import (
 
 
 EVENT_TYPE_REGISTRY: dict[str, type[EventBase]] = {
+    # TODO(production): Replace manual registry with auto-discovery from EventBase
+    # subclasses (use __init_subclass__ or a class decorator) so new event types
+    # are registered automatically. Add schema_version field to serialized payloads
+    # for backward-compatible deserialization across deployments.
     "agent.workflow.started": AgentWorkflowStartedEvent,
     "alerts.created": AlertsCreatedEvent,
     "kb.create": KnowledgeBaseCreatedEvent,

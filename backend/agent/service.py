@@ -14,6 +14,11 @@ from shared.utils import generate_id
 class AgentService:
     """Coordinate workflow submission, persistence, and event publication."""
 
+    # TODO(production): Add idempotency key to prevent duplicate workflow submissions.
+    # Add get_workflow_status / cancel_workflow methods. If event_bus.publish() fails
+    # after the run is persisted, the workflow is orphaned — add retry or compensating
+    # transaction. Add async variants for non-blocking API integration.
+
     def __init__(self, run_store: WorkflowRunStoreProtocol, *, event_bus: EventBus) -> None:
         self._run_store = run_store
         self._event_bus = event_bus

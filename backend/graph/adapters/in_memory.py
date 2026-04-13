@@ -11,6 +11,12 @@ __all__ = ["InMemoryGraphRepository"]
 class InMemoryGraphRepository(GraphRepository):
     """Persist graph objects in process-local dictionaries keyed by knowledge base."""
 
+    # TODO(production): Add get_entity, delete_entity, get_neighbors, count methods
+    # to match the extended GraphRepository protocol. Add referential integrity
+    # checks (relationships must reference existing entity IDs). Add property
+    # merge logic on upsert (currently blindly overwrites). Add clear(kb_id)
+    # for knowledge base teardown.
+
     def __init__(self) -> None:
         self._entities: dict[str, dict[str, Entity]] = {}
         self._relationships: dict[str, dict[str, Relationship]] = {}

@@ -78,6 +78,9 @@ class AlertsConfig(BaseModel):
     """Alert thresholds keyed by entity type, then metric name."""
 
     thresholds: dict[str, dict[str, float]]
+    # TODO(production): Extend with dedup_window_seconds: int, max_alerts_per_entity: int,
+    # suppression_rules: list[SuppressionRule], escalation_policies: list[EscalationPolicy].
+    # Add severity_levels: list[str] to make severity tiers configurable per domain.
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +101,17 @@ class DomainConfig(BaseModel):
     capabilities: CapabilitiesConfig
     ingestion: IngestionConfig
     alerts: AlertsConfig
+    # TODO(production): Add configuration sections for all external subsystems:
+    # - graph: GraphDbConfig (backend: neo4j|memgraph|neptune, connection URI, pool size)
+    # - vectorstore: VectorStoreConfig (backend: pgvector|qdrant|weaviate, connection, dims)
+    # - llm: LlmConfig (provider: openai|anthropic|local, model, API key env, temperature)
+    # - embeddings: EmbeddingsConfig (provider, model, dimensions, batch limits)
+    # - storage: ObjectStoreConfig (backend: s3|gcs|minio|local, bucket, credentials env)
+    # - events: EventBusConfig (absorb EventBusSettings from events/runtime.py into YAML)
+    # - monitoring: MonitoringConfig (alerting rules, evaluation intervals, dedup windows)
+    # - rag: RagConfig (top_k, expansion_depth, reranking, system_prompt template)
+    # Add schema_version: str for config format versioning and migration.
+    # See docs/architecture.md §9 and docs/config_engine_plan.md.
 
     @model_validator(mode="after")
     def _validate_cross_references(self) -> DomainConfig:

@@ -14,6 +14,13 @@ from shared.utils import generate_id
 class EmbeddingsService:
     """Coordinate request normalization, embedding generation, and event publication."""
 
+    # TODO(production): Implement graph-metric embedding flow (architecture specifies
+    # hybrid text + graph-metric embeddings). Add model routing: select embedder by
+    # model_name when multiple providers are configured. Add embedding caching to
+    # avoid re-embedding identical content. Add batch chunking to respect provider
+    # token-per-batch and rate limits. Add retry with backoff for provider failures.
+    # Add object store persistence of embedding results for reproducibility.
+
     def __init__(self, embedder: EmbedderProtocol, *, event_bus: EventBus) -> None:
         self._embedder = embedder
         self._event_bus = event_bus

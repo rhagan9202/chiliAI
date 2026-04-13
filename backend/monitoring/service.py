@@ -17,6 +17,17 @@ from shared.utils import generate_id
 class MonitoringService:
     """Coordinate monitoring batch loading, threshold evaluation, and alert publication."""
 
+    # TODO(production): Replace simple threshold-based alerting with production
+    # monitoring capabilities:
+    # - Anomaly detection algorithms (z-score, isolation forest, historical baseline)
+    # - Time-window aggregation ("N observations exceeding threshold in M minutes")
+    # - Alert deduplication (same entity+metric within a configurable window = 1 alert)
+    # - Alert suppression / maintenance windows
+    # - Rate limiting to prevent alert storms on large datasets
+    # - Entity-type-aware thresholds (configurable per entity type in DomainConfig)
+    # - Alert grouping/correlation for related entities
+    # Current implementation fires one alert per observation above threshold.
+
     def __init__(self, observation_source: ObservationSourceProtocol, *, event_bus: EventBus) -> None:
         self._observation_source = observation_source
         self._event_bus = event_bus

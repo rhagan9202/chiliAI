@@ -73,6 +73,10 @@ def build_worker_dependencies(
     The event transport is selected at runtime so tests can keep using the
     in-memory adapter while deployed workers consume Redis Streams.
     """
+    # TODO(production): Replace hardcoded InMemoryObjectStore/InMemoryGraphRepository
+    # with adapter selection from DomainConfig (S3, Neo4j, etc.). Wire embeddings,
+    # vectorstore, RAG, LLM, analytics, and monitoring services here for full
+    # pipeline support (currently only ingestion→graph stages are wired).
     config = load_config()
     event_settings = load_event_bus_settings()
     event_bus = create_event_bus(event_settings)
@@ -332,6 +336,11 @@ def handle_event(
     event_bus: EventBus,
 ) -> int:
     """Handle a single event and return the number of processed documents."""
+    # TODO(production): Wrap each handler call in try/except to isolate failures
+    # per event. Route failed events to a dead-letter queue instead of crashing
+    # the worker. Add per-event-type metrics (processed count, error count,
+    # latency). Extend to handle post-graph pipeline stages: graph.updated →
+    # embeddings, vectors.indexed → analytics, analysis.complete → monitoring.
     event = delivery.event
     if isinstance(event, DocumentsUploadedEvent):
         return len(ingestion_service.process_documents_uploaded(event))
@@ -398,6 +407,10 @@ def drain_ingestion_events(
     )
     ackable: list[EventDelivery] = []
     for delivery in deliveries:
+        # TODO(production): Wrap handle_event() in try/except to isolate per-event
+        # failures. Failed events should be routed to a dead-letter queue rather
+        # than blocking the entire batch. Track retry count per event and discard
+        # poison messages after N attempts.
         processed += handle_event(
             delivery,
             ingestion_service,
@@ -416,6 +429,11 @@ def drain_ingestion_events(
 
 async def run_worker() -> None:
     """Main worker loop — connects to Redis and processes events."""
+    # TODO(production): Add signal handlers for SIGTERM/SIGHUP for graceful shutdown.
+    # Wrap the main loop in try/except to handle transient failures with backoff
+    # instead of crashing. Add health check endpoint or heartbeat signal for
+    # container orchestrator liveness probes. Add metrics export (events processed,
+    # error count, latency per event type).
     redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
     logger.info("Worker starting — REDIS_URL=%s", redis_url)
     (

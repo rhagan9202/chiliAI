@@ -23,6 +23,12 @@ from shared.utils import generate_id
 class ExplainabilityService:
     """Coordinate context loading, evidence assembly, and event publication."""
 
+    # TODO(production): Integrate SHAP/LIME for model-agnostic feature attribution.
+    # Add LLM-generated narrative explanations (natural language reasoning).
+    # Add configurable evidence selection strategies (top-k by score, diversity
+    # sampling, subgraph-aware selection). Current _build_reasoning() concatenates
+    # rationale strings — needs structured narrative generation.
+
     def __init__(self, context_source: ExplainabilityContextSourceProtocol, *, event_bus: EventBus) -> None:
         self._context_source = context_source
         self._event_bus = event_bus

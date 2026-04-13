@@ -18,6 +18,10 @@ class QueryEmbedderProtocol(Protocol):
 class ContextRetrieverProtocol(Protocol):
     """Retrieve relevant context items for a query vector."""
 
+    # TODO(production): Add min_score threshold, cursor-based pagination, and
+    # hybrid search (keyword + semantic). Add reranking stage parameter.
+    # Add timeout_ms for retrieval deadline enforcement.
+
     def retrieve(
         self,
         *,
@@ -32,6 +36,9 @@ class ContextRetrieverProtocol(Protocol):
 class GraphContextExpanderProtocol(Protocol):
     """Expand retrieval matches into graph-oriented context."""
 
+    # TODO(production): Add configurable expansion depth, entity type filters,
+    # and timeout parameters. Implement Neo4j-backed expander adapter.
+
     def expand(
         self,
         *,
@@ -43,6 +50,11 @@ class GraphContextExpanderProtocol(Protocol):
 @runtime_checkable
 class AnswerGeneratorProtocol(Protocol):
     """Generate a final answer from normalized rag context."""
+
+    # TODO(production): Add streaming interface:
+    # - stream_generate(request: RagGenerationRequest) -> Iterator[str]
+    # Add token budget awareness and citation formatting options.
+    # Implement production adapters: OpenAI, Anthropic, LangChain wrappers.
 
     def generate(self, request: RagGenerationRequest) -> RagGenerationResult: ...
 

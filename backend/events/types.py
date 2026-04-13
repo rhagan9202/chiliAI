@@ -17,6 +17,9 @@ class EventBase(BaseModel):
 
     event_type: str
     occurred_at: datetime = Field(default_factory=_utc_now)
+    # TODO(production): Add correlation_id: str = Field(default_factory=generate_id) for
+    # distributed tracing across pipeline stages. Add source: str | None for producer
+    # identification. Add schema_version: int = 1 for event envelope versioning.
 
 
 class KnowledgeBaseCreatedEvent(EventBase):

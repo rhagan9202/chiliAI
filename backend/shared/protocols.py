@@ -15,6 +15,13 @@ class Configurable(Protocol):
     def configure(self, config: DomainConfig) -> None: ...
 
 
+# TODO(production): Add cross-cutting protocols consumed by multiple modules:
+# - HealthCheckable: async def health_check() -> HealthStatus for readiness probes
+# - Lifecycle: async def start() / async def stop() for graceful startup/shutdown
+# - Measurable: def get_metrics() -> dict[str, float] for observability export
+# See docs/architecture.md §12 for monitoring and observability requirements.
+
+
 __all__ = [
     "Configurable",
 ]

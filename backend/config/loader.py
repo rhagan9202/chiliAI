@@ -27,6 +27,10 @@ def load_config(path: str | Path | None = None) -> DomainConfig:
     Raises ``ConfigLoadError`` on file-not-found, parse errors, or
     schema validation failures.
     """
+    # TODO(production): Support config overlay/merging (base + env-specific layer).
+    # Add secrets resolution for ${ENV_VAR} placeholders in config values.
+    # Cache the loaded DomainConfig and support hot-reload via file watcher or
+    # API endpoint. See docs/config_engine_plan.md for the full config engine plan.
     resolved = _resolve_path(path)
 
     raw = _read_file(resolved)

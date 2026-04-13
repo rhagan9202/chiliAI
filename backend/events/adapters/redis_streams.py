@@ -28,6 +28,8 @@ class RedisStreamsEventBus(EventBus):
         self._stream_name_resolver = stream_name_resolver
 
     def publish(self, event: AnyEvent) -> str | None:
+        # TODO(production): Add connection error handling with retry and backoff.
+        # Add MAXLEN/XTRIM to prevent unbounded stream growth.
         stream = self._stream_name_resolver(event.event_type)
         message_id = self._client.xadd(stream, encode_event(event))
         return _decode_redis_string(message_id)
@@ -82,6 +84,9 @@ class RedisStreamsEventBus(EventBus):
         return deliveries
 
     def ack(self, deliveries: list[EventDelivery]) -> None:
+        # TODO(production): Add XPENDING/XCLAIM for reprocessing stale messages.
+        # Implement dead-letter routing for messages that fail N times.
+        # Add graceful shutdown (stop consuming, finish in-flight, then exit).
         by_stream: dict[tuple[str, str], list[str]] = {}
         for delivery in deliveries:
             if delivery.stream is None or delivery.consumer_group is None or delivery.event_id is None:

@@ -21,6 +21,8 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
+        # TODO(production): Read allowed origins from config or ALLOWED_ORIGINS env var.
+        # Current origins are hardcoded for local dev only.
         allow_origins=[
             "http://localhost:5173",  # Vite dev server
             "http://localhost:80",
@@ -33,9 +35,24 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, str]:
+        # TODO(production): Check actual subsystem health (event bus connectivity,
+        # object store accessibility, graph DB connection). Return degraded status
+        # with details when subsystems are unhealthy. Add /readiness endpoint for
+        # Kubernetes probes. See docs/architecture.md §12.
         return {"status": "ok"}
 
     app.include_router(config_router)
     app.include_router(knowledgebases_router)
+
+    # TODO(production): Add missing routers required by the frontend:
+    # - routers/workflows.py: POST/GET/DELETE /workflows for pipeline management
+    # - routers/alerts.py: GET /alerts, POST /alerts/{id}/acknowledge
+    # - routers/graph.py: GET /graph/entities, /graph/entities/{id}/relationships
+    # - routers/chat.py: POST /chat/conversations/{id}/messages (RAG chat)
+    # - routers/analytics.py: GET /analytics/timeseries, /risk-scores, /gnn-clusters
+    # - routers/evidence.py: GET /evidence-packs/{id}
+    # Add middleware: request logging/tracing, rate limiting, auth (JWT/OIDC),
+    # global error handler, request correlation ID, API versioning (/v1/).
+    # See docs/architecture.md §7 for API gateway requirements.
 
     return app

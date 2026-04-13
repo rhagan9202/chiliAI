@@ -11,6 +11,11 @@ from rag.service_models import RagQueryRequest, RagQueryResponse
 class RagServiceProtocol(Protocol):
     """Service boundary for retrieval-augmented answer generation."""
 
+    # TODO(production): Add streaming answer generation:
+    # - stream_answer(request: RagQueryRequest) -> Iterator[RagStreamChunk]
+    # Add request validation, batch answering, and metrics/observability.
+    # See docs/architecture.md §8 for RAG Chat page requirements.
+
     def answer(self, request: RagQueryRequest) -> RagQueryResponse: ...
 
 

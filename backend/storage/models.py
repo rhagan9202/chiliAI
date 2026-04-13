@@ -22,6 +22,9 @@ class StoredObject(BaseModel):
     size_bytes: int = Field(ge=0)
     media_type: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
+    # TODO(production): Add created_at/updated_at timestamps, etag/version_id for
+    # optimistic concurrency, and checksum: str | None for integrity verification.
+    # Add ListObjectsResult model for paginated listing with cursor support.
 
 
 __all__ = [

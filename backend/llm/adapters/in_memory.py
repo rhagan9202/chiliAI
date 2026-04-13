@@ -10,6 +10,14 @@ __all__ = ["InMemoryLlmClient"]
 class InMemoryLlmClient:
     """A deterministic llm client that echoes the latest user message."""
 
+    # TODO(production): This is a test-only echo stub. Production adapters must:
+    # - Make real API calls to LLM providers (OpenAI, Anthropic, etc.)
+    # - Implement proper token counting (tiktoken or provider API)
+    # - Support streaming responses with SSE
+    # - Support tool/function calling with JSON schemas
+    # - Handle rate limiting with retry and exponential backoff
+    # - Log request/response metrics (latency, token usage, cost)
+
     def __init__(self, *, provider: str = "in-memory") -> None:
         self._provider = provider
 
