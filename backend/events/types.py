@@ -90,6 +90,45 @@ class EntitiesExtractedEvent(EventBase):
     documents: list[ExtractedDocumentReference]
 
 
+class ValidatedDocumentReference(BaseModel):
+    knowledge_base_id: str
+    source_document_id: str
+    parsed_document_id: str
+    extraction_result_id: str
+    validation_report_id: str
+    valid_entity_count: int = Field(ge=0)
+    valid_relationship_count: int = Field(ge=0)
+    entity_error_count: int = Field(ge=0)
+    relationship_error_count: int = Field(ge=0)
+    storage_key: str | None = None
+    parsed_document_storage_key: str | None = None
+    chunks_storage_key: str | None = None
+    extraction_storage_key: str | None = None
+    validation_storage_key: str | None = None
+
+
+class EntitiesValidatedEvent(EventBase):
+    event_type: Literal["entities.validated"] = "entities.validated"
+    documents: list[ValidatedDocumentReference]
+
+
+class GraphUpdatedDocumentReference(BaseModel):
+    knowledge_base_id: str
+    source_document_id: str
+    parsed_document_id: str
+    extraction_result_id: str
+    validation_report_id: str
+    upserted_entity_count: int = Field(ge=0)
+    upserted_relationship_count: int = Field(ge=0)
+    validation_storage_key: str | None = None
+    graph_update_storage_key: str | None = None
+
+
+class GraphUpdatedEvent(EventBase):
+    event_type: Literal["graph.updated"] = "graph.updated"
+    documents: list[GraphUpdatedDocumentReference]
+
+
 class DocumentFailureReference(BaseModel):
     knowledge_base_id: str
     source_document_id: str
@@ -120,6 +159,8 @@ AnyEvent = (
     | DocumentsParsedEvent
     | DocumentsChunkedEvent
     | EntitiesExtractedEvent
+    | EntitiesValidatedEvent
+    | GraphUpdatedEvent
     | DocumentsFailedEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent

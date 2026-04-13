@@ -8,7 +8,7 @@ entities:
     display_label: "Provider"
     icon: stethoscope
     properties:
-      npi: { type: string, display: "NPI" }
+      npi: { type: string, display: "NPI", required: true, pattern: "^[0-9]{10}$" }
       specialty: { type: string, display: "Specialty" }
       state: { type: string, display: "State" }
 
@@ -16,24 +16,24 @@ entities:
     display_label: "Beneficiary"
     icon: person
     properties:
-      hic_number: { type: string, display: "HIC Number" }
-      age: { type: integer, display: "Age" }
+      hic_number: { type: string, display: "HIC Number", required: true }
+      age: { type: integer, display: "Age", min_value: 0, max_value: 120 }
       chronic_conditions: { type: list, display: "Chronic Conditions" }
 
   - name: claim
     display_label: "Claim"
     icon: document
     properties:
-      claim_id: { type: string, display: "Claim ID" }
-      amount: { type: decimal, display: "Billed Amount" }
-      service_date: { type: date, display: "Date of Service" }
+      claim_id: { type: string, display: "Claim ID", required: true }
+      amount: { type: decimal, display: "Billed Amount", required: true, min_value: 0 }
+      service_date: { type: date, display: "Date of Service", required: true }
       procedure_codes: { type: list, display: "Procedure Codes" }
 
   - name: facility
     display_label: "Facility"
     icon: building
     properties:
-      facility_id: { type: string, display: "Facility ID" }
+      facility_id: { type: string, display: "Facility ID", required: true }
       name: { type: string, display: "Name" }
       type: { type: string, display: "Facility Type" }
 

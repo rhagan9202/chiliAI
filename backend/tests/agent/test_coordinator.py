@@ -2,23 +2,36 @@
 
 from __future__ import annotations
 
-from agent.coordinator import drain_ingestion_events, handle_documents_chunked, handle_documents_parsed
+from agent.coordinator import (
+    drain_ingestion_events,
+    handle_documents_chunked,
+    handle_documents_parsed,
+    handle_entities_extracted,
+    handle_entities_validated,
+)
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import (
     ChunkedDocumentReference,
     DocumentsChunkedEvent,
     DocumentsParsedEvent,
     EntitiesExtractedEvent,
+    EntitiesValidatedEvent,
+    ExtractedDocumentReference,
+    GraphUpdatedEvent,
     ParsedDocumentReference,
+    ValidatedDocumentReference,
 )
+from graph.adapters.in_memory import InMemoryGraphRepository
+from graph.builder import create_graph_builder
 from ingestion.chunker import ChunkingResult, create_document_chunker
 from ingestion.extractor import create_document_extractor
-from ingestion.models import ExtractionResult, ParsedDocument
+from ingestion.models import ExtractionResult, ParsedDocument, ValidationReport
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
 from ingestion.service import IngestionService
 from ingestion.service_models import DocumentSubmission
+from ingestion.validator import create_extraction_validator
 from storage.adapters.in_memory import InMemoryObjectStore
 
 
@@ -27,6 +40,8 @@ def test_drain_ingestion_events_processes_uploaded_documents() -> None:
     object_store = InMemoryObjectStore()
     chunker = create_document_chunker()
     extractor = create_document_extractor([])
+    validator = create_extraction_validator([], [])
+    graph_builder = create_graph_builder(InMemoryGraphRepository())
     service = IngestionService(
         DocumentParsingOrchestrator(
             create_default_registry(),
@@ -52,6 +67,8 @@ def test_drain_ingestion_events_processes_uploaded_documents() -> None:
         service,
         chunker,
         extractor,
+        validator,
+        graph_builder,
         object_store,
         consumer_group="test-workers",
         consumer_name="worker-1",
@@ -66,6 +83,8 @@ def test_drain_ingestion_events_processes_parsed_documents_into_chunks() -> None
     object_store = InMemoryObjectStore()
     chunker = create_document_chunker()
     extractor = create_document_extractor([])
+    validator = create_extraction_validator([], [])
+    graph_builder = create_graph_builder(InMemoryGraphRepository())
     service = IngestionService(
         DocumentParsingOrchestrator(
             create_default_registry(),
@@ -91,6 +110,8 @@ def test_drain_ingestion_events_processes_parsed_documents_into_chunks() -> None
         service,
         chunker,
         extractor,
+        validator,
+        graph_builder,
         object_store,
         consumer_group="test-workers",
         consumer_name="worker-1",
@@ -100,6 +121,8 @@ def test_drain_ingestion_events_processes_parsed_documents_into_chunks() -> None
         service,
         chunker,
         extractor,
+        validator,
+        graph_builder,
         object_store,
         consumer_group="test-workers",
         consumer_name="worker-1",
@@ -124,7 +147,9 @@ def test_drain_ingestion_events_processes_chunked_documents_into_extractions() -
     event_bus = InMemoryEventBus()
     object_store = InMemoryObjectStore()
     chunker = create_document_chunker()
-    extractor = create_document_extractor(create_default_registry() and [])
+    extractor = create_document_extractor([])
+    validator = create_extraction_validator([], [])
+    graph_builder = create_graph_builder(InMemoryGraphRepository())
     service = IngestionService(
         DocumentParsingOrchestrator(
             create_default_registry(),
@@ -150,6 +175,8 @@ def test_drain_ingestion_events_processes_chunked_documents_into_extractions() -
         service,
         chunker,
         extractor,
+        validator,
+        graph_builder,
         object_store,
         consumer_group="test-workers",
         consumer_name="worker-1",
@@ -159,6 +186,8 @@ def test_drain_ingestion_events_processes_chunked_documents_into_extractions() -
         service,
         chunker,
         extractor,
+        validator,
+        graph_builder,
         object_store,
         consumer_group="test-workers",
         consumer_name="worker-1",
@@ -168,6 +197,8 @@ def test_drain_ingestion_events_processes_chunked_documents_into_extractions() -
         service,
         chunker,
         extractor,
+        validator,
+        graph_builder,
         object_store,
         consumer_group="test-workers",
         consumer_name="worker-1",
@@ -185,6 +216,69 @@ def test_drain_ingestion_events_processes_chunked_documents_into_extractions() -
     )
     extraction_result = ExtractionResult.model_validate_json(stored_extraction.content)
     assert extraction_result.parsed_document_id == extracted_events[0].documents[0].parsed_document_id
+
+
+def test_drain_ingestion_events_processes_extracted_documents_into_validations() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    chunker = create_document_chunker()
+    extractor = create_document_extractor([])
+    validator = create_extraction_validator([], [])
+    graph_builder = create_graph_builder(InMemoryGraphRepository())
+    service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(),
+            fetcher=HttpxRemoteDocumentFetcher(),
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    service.register_documents(
+        "kb-1",
+        [
+            DocumentSubmission(
+                filename="claims.json",
+                content=b'{"claim_id": "42"}',
+                content_type="application/json",
+            )
+        ],
+    )
+
+    for _ in range(3):
+        drain_ingestion_events(
+            event_bus,
+            service,
+            chunker,
+            extractor,
+            validator,
+            graph_builder,
+            object_store,
+            consumer_group="test-workers",
+            consumer_name="worker-1",
+        )
+    validated_count = drain_ingestion_events(
+        event_bus,
+        service,
+        chunker,
+        extractor,
+        validator,
+        graph_builder,
+        object_store,
+        consumer_group="test-workers",
+        consumer_name="worker-1",
+    )
+
+    assert validated_count == 1
+    validated_events = [
+        event for event in event_bus.published_events if isinstance(event, EntitiesValidatedEvent)
+    ]
+    assert len(validated_events) == 1
+    assert validated_events[0].documents[0].validation_storage_key is not None
+
+    stored_report = object_store.get_bytes(validated_events[0].documents[0].validation_storage_key or "")
+    report = ValidationReport.model_validate_json(stored_report.content)
+    assert report.extraction_result_id == validated_events[0].documents[0].extraction_result_id
 
 
 def test_handle_documents_parsed_publishes_chunked_event() -> None:
@@ -277,3 +371,145 @@ def test_handle_documents_chunked_publishes_entities_extracted_event() -> None:
     stored_extraction = object_store.get_bytes(reference.extraction_storage_key)
     extraction_result = ExtractionResult.model_validate_json(stored_extraction.content)
     assert extraction_result.source_document_id == "doc-1"
+
+
+def test_handle_entities_extracted_publishes_entities_validated_event() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    extraction_result = ExtractionResult(
+        id="extract-1",
+        source_document_id="doc-1",
+        parsed_document_id="parsed-1",
+    )
+    extraction_storage_key = "knowledgebases/kb-1/extractions/extract-1.json"
+    object_store.put_bytes(
+        extraction_storage_key,
+        extraction_result.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    processed = handle_entities_extracted(
+        EntitiesExtractedEvent(
+            documents=[
+                ExtractedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    extraction_result_id="extract-1",
+                    entity_count=0,
+                    relationship_count=0,
+                    extraction_storage_key=extraction_storage_key,
+                )
+            ]
+        ),
+        extraction_validator=create_extraction_validator([], []),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    assert processed == 1
+    assert isinstance(event_bus.published_events[-1], EntitiesValidatedEvent)
+    reference = event_bus.published_events[-1].documents[0]
+    assert reference.validation_storage_key == "knowledgebases/kb-1/validations/extract-1.json"
+
+
+def test_handle_entities_validated_publishes_graph_updated_event() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    validation_report = ValidationReport(
+        id="validate-1",
+        extraction_result_id="extract-1",
+        source_document_id="doc-1",
+    )
+    validation_storage_key = "knowledgebases/kb-1/validations/extract-1.json"
+    object_store.put_bytes(
+        validation_storage_key,
+        validation_report.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    processed = handle_entities_validated(
+        EntitiesValidatedEvent(
+            documents=[
+                ValidatedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    extraction_result_id="extract-1",
+                    validation_report_id="validate-1",
+                    valid_entity_count=0,
+                    valid_relationship_count=0,
+                    entity_error_count=0,
+                    relationship_error_count=0,
+                    validation_storage_key=validation_storage_key,
+                )
+            ]
+        ),
+        graph_builder=create_graph_builder(InMemoryGraphRepository()),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    assert processed == 1
+    assert isinstance(event_bus.published_events[-1], GraphUpdatedEvent)
+    reference = event_bus.published_events[-1].documents[0]
+    assert reference.graph_update_storage_key == "knowledgebases/kb-1/graph_updates/extract-1.json"
+
+
+def test_drain_ingestion_events_processes_validated_documents_into_graph_updates() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    chunker = create_document_chunker()
+    extractor = create_document_extractor([])
+    validator = create_extraction_validator([], [])
+    graph_builder = create_graph_builder(InMemoryGraphRepository())
+    service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(),
+            fetcher=HttpxRemoteDocumentFetcher(),
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    service.register_documents(
+        "kb-1",
+        [
+            DocumentSubmission(
+                filename="claims.json",
+                content=b'{"claim_id": "42"}',
+                content_type="application/json",
+            )
+        ],
+    )
+
+    for _ in range(4):
+        drain_ingestion_events(
+            event_bus,
+            service,
+            chunker,
+            extractor,
+            validator,
+            graph_builder,
+            object_store,
+            consumer_group="test-workers",
+            consumer_name="worker-1",
+        )
+    graph_count = drain_ingestion_events(
+        event_bus,
+        service,
+        chunker,
+        extractor,
+        validator,
+        graph_builder,
+        object_store,
+        consumer_group="test-workers",
+        consumer_name="worker-1",
+    )
+
+    assert graph_count == 1
+    graph_events = [
+        event for event in event_bus.published_events if isinstance(event, GraphUpdatedEvent)
+    ]
+    assert len(graph_events) == 1
+    assert graph_events[0].documents[0].graph_update_storage_key is not None

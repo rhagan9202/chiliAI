@@ -14,7 +14,10 @@ from events.types import (
     DocumentFailureReference,
     DocumentReference,
     EntitiesExtractedEvent,
+    EntitiesValidatedEvent,
     ExtractedDocumentReference,
+    GraphUpdatedDocumentReference,
+    GraphUpdatedEvent,
     DocumentsChunkedEvent,
     DocumentsFailedEvent,
     DocumentsParsedEvent,
@@ -22,6 +25,7 @@ from events.types import (
     EventBase,
     KnowledgeBaseCreatedEvent,
     ParsedDocumentReference,
+    ValidatedDocumentReference,
 )
 
 __all__ = [
@@ -31,7 +35,10 @@ __all__ = [
     "DocumentFailureReference",
     "DocumentReference",
     "EntitiesExtractedEvent",
+    "EntitiesValidatedEvent",
     "ExtractedDocumentReference",
+    "GraphUpdatedDocumentReference",
+    "GraphUpdatedEvent",
     "DocumentsChunkedEvent",
     "DocumentsFailedEvent",
     "DocumentsParsedEvent",
@@ -43,6 +50,7 @@ __all__ = [
     "InMemoryEventBus",
     "KnowledgeBaseCreatedEvent",
     "ParsedDocumentReference",
+    "ValidatedDocumentReference",
     "RedisStreamsEventBus",
     "create_event_bus",
     "decode_event",

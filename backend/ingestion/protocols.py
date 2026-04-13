@@ -6,7 +6,7 @@ from typing import Protocol, runtime_checkable
 
 from events.types import DocumentsUploadedEvent
 from ingestion.chunker import ChunkingResult
-from ingestion.models import ExtractionResult, ParsedDocument
+from ingestion.models import ExtractionResult, ParsedDocument, ValidationReport
 from ingestion.orchestrators.protocols import DocumentParseFailure, ParseResult
 from ingestion.service_models import DocumentReceipt, DocumentSubmission, IngestionTask
 
@@ -45,3 +45,10 @@ class DocumentExtractorProtocol(Protocol):
     """Extract entity candidates from chunked documents."""
 
     def extract_document(self, chunking_result: ChunkingResult) -> ExtractionResult: ...
+
+
+@runtime_checkable
+class DocumentValidatorProtocol(Protocol):
+    """Validate extracted candidates against config-defined runtime schemas."""
+
+    def validate_extraction(self, extraction_result: ExtractionResult) -> ValidationReport: ...

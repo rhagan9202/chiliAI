@@ -18,6 +18,7 @@ from ingestion.chunker import (
 	resolve_chunking_config,
 )
 from ingestion.extractor import PatternDocumentExtractor, create_document_extractor
+from ingestion.validator import ExtractionResultValidator, create_extraction_validator
 from ingestion.models import (
 	CandidateEntity,
 	CandidateRelationship,
@@ -34,7 +35,11 @@ from ingestion.models import (
 	TextSpan,
 	ValidationReport,
 )
-from ingestion.protocols import DocumentChunkerProtocol, DocumentExtractorProtocol
+from ingestion.protocols import (
+	DocumentChunkerProtocol,
+	DocumentExtractorProtocol,
+	DocumentValidatorProtocol,
+)
 
 __all__ = [
 	"CandidateEntity",
@@ -47,8 +52,10 @@ __all__ = [
 	"DocumentChunker",
 	"DocumentChunkerProtocol",
 	"DocumentExtractorProtocol",
+	"DocumentValidatorProtocol",
 	"ExtractionEvidence",
 	"ExtractionResult",
+	"ExtractionResultValidator",
 	"FixedSizeSplitter",
 	"PatternDocumentExtractor",
 	"HeuristicTokenizer",
@@ -67,5 +74,6 @@ __all__ = [
 	"ValidationReport",
 	"create_document_chunker",
 	"create_document_extractor",
+	"create_extraction_validator",
 	"resolve_chunking_config",
 ]

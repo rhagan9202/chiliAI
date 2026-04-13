@@ -8,7 +8,7 @@ entities:
     display_label: "Supplier"
     icon: factory
     properties:
-      supplier_id: { type: string, display: "Supplier ID" }
+      supplier_id: { type: string, display: "Supplier ID", required: true }
       name: { type: string, display: "Name" }
       country: { type: string, display: "Country" }
       certification: { type: enum, display: "Certification", enum_values: ["organic", "fair_trade", "gmp", "haccp", "none"] }
@@ -17,16 +17,16 @@ entities:
     display_label: "Shipment"
     icon: truck
     properties:
-      tracking_id: { type: string, display: "Tracking ID" }
-      weight_kg: { type: decimal, display: "Weight (kg)" }
-      ship_date: { type: date, display: "Ship Date" }
+      tracking_id: { type: string, display: "Tracking ID", required: true }
+      weight_kg: { type: decimal, display: "Weight (kg)", min_value: 0 }
+      ship_date: { type: date, display: "Ship Date", required: true }
       temperature_log: { type: list, display: "Temperature Log" }
 
   - name: inspection
     display_label: "Inspection"
     icon: clipboard
     properties:
-      inspection_id: { type: string, display: "Inspection ID" }
+      inspection_id: { type: string, display: "Inspection ID", required: true }
       result: { type: enum, display: "Result", enum_values: ["pass", "fail", "conditional"] }
       inspector: { type: string, display: "Inspector" }
       date: { type: date, display: "Inspection Date" }
@@ -35,7 +35,7 @@ entities:
     display_label: "Facility"
     icon: building
     properties:
-      facility_id: { type: string, display: "Facility ID" }
+      facility_id: { type: string, display: "Facility ID", required: true }
       name: { type: string, display: "Name" }
       type: { type: string, display: "Facility Type" }
 

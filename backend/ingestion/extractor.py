@@ -18,8 +18,15 @@ import json
 import re
 
 from ingestion.chunker import ChunkingResult
-from ingestion.models import CandidateEntity, Chunk, ExtractionEvidence, ExtractionResult, TextSpan
-from shared.types import EntityDefinition
+from ingestion.models import (
+	CandidateEntity,
+	CandidateRelationship,
+	Chunk,
+	ExtractionEvidence,
+	ExtractionResult,
+	TextSpan,
+)
+from shared.types import EntityDefinition, RelationshipDefinition
 from shared.utils import generate_id
 
 
@@ -29,18 +36,25 @@ class PatternDocumentExtractor:
 	def __init__(
 		self,
 		entity_definitions: list[EntityDefinition],
+		relationship_definitions: list[RelationshipDefinition] | None = None,
 		*,
 		extraction_method: str = "pattern_v1",
 	) -> None:
 		self._entity_definitions = entity_definitions
+		self._relationship_definitions = relationship_definitions or []
 		self._extraction_method = extraction_method
 
 	def extract_document(self, chunking_result: ChunkingResult) -> ExtractionResult:
 		candidate_entities: list[CandidateEntity] = []
+		candidate_relationships: list[CandidateRelationship] = []
 		warnings: list[str] = []
 
 		for chunk in chunking_result.chunks:
-			candidate_entities.extend(self._extract_entities_from_chunk(chunking_result, chunk))
+			chunk_entities = self._extract_entities_from_chunk(chunking_result, chunk)
+			candidate_entities.extend(chunk_entities)
+			candidate_relationships.extend(
+				self._extract_relationships_from_chunk(chunking_result, chunk, chunk_entities)
+			)
 
 		if not candidate_entities:
 			warnings.append("No entity candidates extracted from persisted chunks.")
@@ -51,7 +65,7 @@ class PatternDocumentExtractor:
 			parsed_document_id=chunking_result.parsed_document_id,
 			chunks=chunking_result.chunks,
 			candidate_entities=candidate_entities,
-			candidate_relationships=[],
+			candidate_relationships=candidate_relationships,
 			warnings=warnings,
 		)
 
@@ -115,13 +129,57 @@ class PatternDocumentExtractor:
 			)
 		return candidates
 
+	def _extract_relationships_from_chunk(
+		self,
+		chunking_result: ChunkingResult,
+		chunk: Chunk,
+		candidate_entities: list[CandidateEntity],
+	) -> list[CandidateRelationship]:
+		candidates: list[CandidateRelationship] = []
+		for relationship_definition in self._relationship_definitions:
+			source_candidates = [
+				candidate
+				for candidate in candidate_entities
+				if candidate.type == relationship_definition.source
+			]
+			target_candidates = [
+				candidate
+				for candidate in candidate_entities
+				if candidate.type == relationship_definition.target
+			]
+			for source_candidate, target_candidate in _candidate_pairs(
+				source_candidates,
+				target_candidates,
+				chunk=chunk,
+				allow_self_reference=relationship_definition.source == relationship_definition.target,
+			):
+				candidates.append(
+					CandidateRelationship(
+						id=generate_id(),
+						source_document_id=chunking_result.source_document_id,
+						chunk_id=chunk.id,
+						type=relationship_definition.name,
+						source_candidate_id=source_candidate.id,
+						target_candidate_id=target_candidate.id,
+						confidence=min(source_candidate.confidence, target_candidate.confidence),
+						extraction_method=self._extraction_method,
+						evidence=_relationship_evidence(chunk, source_candidate, target_candidate),
+						metadata={
+							"source_entity_type": source_candidate.type,
+							"target_entity_type": target_candidate.type,
+						},
+					)
+				)
+		return candidates
+
 
 def create_document_extractor(
 	entity_definitions: list[EntityDefinition],
+	relationship_definitions: list[RelationshipDefinition] | None = None,
 ) -> PatternDocumentExtractor:
 	"""Create the default document extractor for ingestion workers."""
 
-	return PatternDocumentExtractor(entity_definitions)
+	return PatternDocumentExtractor(entity_definitions, relationship_definitions)
 
 
 def _match_property_value(content: str, property_name: str) -> tuple[str, int, int] | None:
@@ -145,6 +203,89 @@ def _coerce_value(value: str) -> object:
 		return json.loads(stripped)
 	except json.JSONDecodeError:
 		return stripped.strip('"')
+
+
+def _candidate_pairs(
+	source_candidates: list[CandidateEntity],
+	target_candidates: list[CandidateEntity],
+	*,
+	chunk: Chunk,
+	allow_self_reference: bool,
+) -> list[tuple[CandidateEntity, CandidateEntity]]:
+	if not source_candidates or not target_candidates:
+		return []
+
+	if allow_self_reference:
+		sorted_candidates = sorted(source_candidates, key=_candidate_anchor)
+		if len(sorted_candidates) == 1:
+			return [(sorted_candidates[0], sorted_candidates[0])]
+		return [
+			(sorted_candidates[index], sorted_candidates[index + 1])
+			for index in range(len(sorted_candidates) - 1)
+		]
+
+	scored_pairs: list[tuple[float, CandidateEntity, CandidateEntity]] = []
+	for source_candidate in source_candidates:
+		for target_candidate in target_candidates:
+			if source_candidate.id == target_candidate.id:
+				continue
+			scored_pairs.append(
+				(_relationship_pair_score(chunk, source_candidate, target_candidate), source_candidate, target_candidate)
+			)
+
+	scored_pairs.sort(key=lambda item: item[0])
+	used_sources: set[str] = set()
+	used_targets: set[str] = set()
+	pairs: list[tuple[CandidateEntity, CandidateEntity]] = []
+	for _score, source_candidate, target_candidate in scored_pairs:
+		if source_candidate.id in used_sources or target_candidate.id in used_targets:
+			continue
+		used_sources.add(source_candidate.id)
+		used_targets.add(target_candidate.id)
+		pairs.append((source_candidate, target_candidate))
+	return pairs
+
+
+def _relationship_pair_score(
+	chunk: Chunk,
+	source_candidate: CandidateEntity,
+	target_candidate: CandidateEntity,
+) -> float:
+	source_anchor = _candidate_anchor(source_candidate)
+	target_anchor = _candidate_anchor(target_candidate)
+	distance_penalty = abs(source_anchor - target_anchor)
+	confidence_bonus = -(source_candidate.confidence + target_candidate.confidence)
+	structured_record_bonus = -5.0 if (chunk.metadata.section_heading or "").startswith("record ") else 0.0
+	return distance_penalty + confidence_bonus + structured_record_bonus
+
+
+def _candidate_anchor(candidate: CandidateEntity) -> int:
+	for evidence in candidate.evidence:
+		if evidence.span is not None and evidence.span.start_offset is not None:
+			return evidence.span.start_offset
+	return 10**9
+
+
+def _relationship_evidence(
+	chunk: Chunk,
+	source_candidate: CandidateEntity,
+	target_candidate: CandidateEntity,
+) -> list[ExtractionEvidence]:
+	evidence: list[ExtractionEvidence] = []
+	for candidate in (source_candidate, target_candidate):
+		if candidate.evidence:
+			evidence.append(candidate.evidence[0].model_copy())
+	if evidence:
+		return evidence
+	return [
+		ExtractionEvidence(
+			chunk_id=chunk.id,
+			quote=chunk.content,
+			rationale=(
+				f"Linked '{source_candidate.type}' to '{target_candidate.type}' within the same chunk."
+			),
+		)
+	]
 
 
 __all__ = ["PatternDocumentExtractor", "create_document_extractor"]
