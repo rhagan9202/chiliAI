@@ -141,6 +141,33 @@ class VectorsIndexedEvent(EventBase):
     records: list[VectorIndexedReference]
 
 
+class LlmCompletionReference(BaseModel):
+    knowledge_base_id: str | None = None
+    request_id: str
+    model_name: str
+    provider: str
+    message_count: int = Field(ge=1)
+    completion_length: int = Field(ge=0)
+
+
+class LlmCompletedEvent(EventBase):
+    event_type: Literal["llm.completed"] = "llm.completed"
+    completions: list[LlmCompletionReference]
+
+
+class EmbeddingGeneratedReference(BaseModel):
+    knowledge_base_id: str | None = None
+    request_id: str
+    item_count: int = Field(ge=1)
+    dimensions: int = Field(gt=0)
+    model_name: str
+
+
+class EmbeddingsGeneratedEvent(EventBase):
+    event_type: Literal["embeddings.generated"] = "embeddings.generated"
+    batches: list[EmbeddingGeneratedReference]
+
+
 class DocumentFailureReference(BaseModel):
     knowledge_base_id: str
     source_document_id: str
@@ -174,6 +201,8 @@ AnyEvent = (
     | EntitiesValidatedEvent
     | GraphUpdatedEvent
     | VectorsIndexedEvent
+    | LlmCompletedEvent
+    | EmbeddingsGeneratedEvent
     | DocumentsFailedEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent

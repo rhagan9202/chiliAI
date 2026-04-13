@@ -8,11 +8,15 @@ from events.types import (
     DocumentReference,
     DocumentsChunkedEvent,
     DocumentsUploadedEvent,
+    EmbeddingGeneratedReference,
+    EmbeddingsGeneratedEvent,
     EntitiesExtractedEvent,
     EntitiesValidatedEvent,
     ExtractedDocumentReference,
     GraphUpdatedDocumentReference,
     GraphUpdatedEvent,
+    LlmCompletedEvent,
+    LlmCompletionReference,
     ValidatedDocumentReference,
     VectorIndexedReference,
     VectorsIndexedEvent,
@@ -159,3 +163,44 @@ def test_event_codec_round_trips_vectors_indexed_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "vectors.indexed"
+
+
+def test_event_codec_round_trips_llm_completed_event() -> None:
+    event = LlmCompletedEvent(
+        completions=[
+            LlmCompletionReference(
+                knowledge_base_id="kb-1",
+                request_id="request-1",
+                model_name="in-memory-test-model",
+                provider="in-memory",
+                message_count=2,
+                completion_length=24,
+            )
+        ]
+    )
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "llm.completed"
+
+
+def test_event_codec_round_trips_embeddings_generated_event() -> None:
+    event = EmbeddingsGeneratedEvent(
+        batches=[
+            EmbeddingGeneratedReference(
+                knowledge_base_id="kb-1",
+                request_id="request-1",
+                item_count=2,
+                dimensions=4,
+                model_name="in-memory-embedder",
+            )
+        ]
+    )
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "embeddings.generated"
