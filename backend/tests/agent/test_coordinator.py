@@ -22,7 +22,7 @@ from events.types import (
     ValidatedDocumentReference,
 )
 from graph.adapters.in_memory import InMemoryGraphRepository
-from graph.builder import create_graph_builder
+from graph.service import create_graph_service
 from ingestion.chunker import ChunkingResult, create_document_chunker
 from ingestion.extractor import create_document_extractor
 from ingestion.models import ExtractionResult, ParsedDocument, ValidationReport
@@ -41,7 +41,11 @@ def test_drain_ingestion_events_processes_uploaded_documents() -> None:
     chunker = create_document_chunker()
     extractor = create_document_extractor([])
     validator = create_extraction_validator([], [])
-    graph_builder = create_graph_builder(InMemoryGraphRepository())
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
     service = IngestionService(
         DocumentParsingOrchestrator(
             create_default_registry(),
@@ -68,7 +72,7 @@ def test_drain_ingestion_events_processes_uploaded_documents() -> None:
         chunker,
         extractor,
         validator,
-        graph_builder,
+        graph_service,
         object_store,
         consumer_group="test-workers",
         consumer_name="worker-1",
@@ -84,7 +88,11 @@ def test_drain_ingestion_events_processes_parsed_documents_into_chunks() -> None
     chunker = create_document_chunker()
     extractor = create_document_extractor([])
     validator = create_extraction_validator([], [])
-    graph_builder = create_graph_builder(InMemoryGraphRepository())
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
     service = IngestionService(
         DocumentParsingOrchestrator(
             create_default_registry(),
@@ -111,7 +119,7 @@ def test_drain_ingestion_events_processes_parsed_documents_into_chunks() -> None
         chunker,
         extractor,
         validator,
-        graph_builder,
+        graph_service,
         object_store,
         consumer_group="test-workers",
         consumer_name="worker-1",
@@ -122,7 +130,7 @@ def test_drain_ingestion_events_processes_parsed_documents_into_chunks() -> None
         chunker,
         extractor,
         validator,
-        graph_builder,
+        graph_service,
         object_store,
         consumer_group="test-workers",
         consumer_name="worker-1",
@@ -149,7 +157,11 @@ def test_drain_ingestion_events_processes_chunked_documents_into_extractions() -
     chunker = create_document_chunker()
     extractor = create_document_extractor([])
     validator = create_extraction_validator([], [])
-    graph_builder = create_graph_builder(InMemoryGraphRepository())
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
     service = IngestionService(
         DocumentParsingOrchestrator(
             create_default_registry(),
@@ -176,7 +188,7 @@ def test_drain_ingestion_events_processes_chunked_documents_into_extractions() -
         chunker,
         extractor,
         validator,
-        graph_builder,
+        graph_service,
         object_store,
         consumer_group="test-workers",
         consumer_name="worker-1",
@@ -187,7 +199,7 @@ def test_drain_ingestion_events_processes_chunked_documents_into_extractions() -
         chunker,
         extractor,
         validator,
-        graph_builder,
+        graph_service,
         object_store,
         consumer_group="test-workers",
         consumer_name="worker-1",
@@ -198,7 +210,7 @@ def test_drain_ingestion_events_processes_chunked_documents_into_extractions() -
         chunker,
         extractor,
         validator,
-        graph_builder,
+        graph_service,
         object_store,
         consumer_group="test-workers",
         consumer_name="worker-1",
@@ -224,7 +236,11 @@ def test_drain_ingestion_events_processes_extracted_documents_into_validations()
     chunker = create_document_chunker()
     extractor = create_document_extractor([])
     validator = create_extraction_validator([], [])
-    graph_builder = create_graph_builder(InMemoryGraphRepository())
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
     service = IngestionService(
         DocumentParsingOrchestrator(
             create_default_registry(),
@@ -252,7 +268,7 @@ def test_drain_ingestion_events_processes_extracted_documents_into_validations()
             chunker,
             extractor,
             validator,
-            graph_builder,
+            graph_service,
             object_store,
             consumer_group="test-workers",
             consumer_name="worker-1",
@@ -263,7 +279,7 @@ def test_drain_ingestion_events_processes_extracted_documents_into_validations()
         chunker,
         extractor,
         validator,
-        graph_builder,
+        graph_service,
         object_store,
         consumer_group="test-workers",
         consumer_name="worker-1",
@@ -445,9 +461,12 @@ def test_handle_entities_validated_publishes_graph_updated_event() -> None:
                 )
             ]
         ),
-        graph_builder=create_graph_builder(InMemoryGraphRepository()),
+        graph_service=create_graph_service(
+            InMemoryGraphRepository(),
+            object_store=object_store,
+            event_bus=event_bus,
+        ),
         object_store=object_store,
-        event_bus=event_bus,
     )
 
     assert processed == 1
@@ -462,7 +481,11 @@ def test_drain_ingestion_events_processes_validated_documents_into_graph_updates
     chunker = create_document_chunker()
     extractor = create_document_extractor([])
     validator = create_extraction_validator([], [])
-    graph_builder = create_graph_builder(InMemoryGraphRepository())
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
     service = IngestionService(
         DocumentParsingOrchestrator(
             create_default_registry(),
@@ -490,7 +513,7 @@ def test_drain_ingestion_events_processes_validated_documents_into_graph_updates
             chunker,
             extractor,
             validator,
-            graph_builder,
+            graph_service,
             object_store,
             consumer_group="test-workers",
             consumer_name="worker-1",
@@ -501,7 +524,7 @@ def test_drain_ingestion_events_processes_validated_documents_into_graph_updates
         chunker,
         extractor,
         validator,
-        graph_builder,
+        graph_service,
         object_store,
         consumer_group="test-workers",
         consumer_name="worker-1",

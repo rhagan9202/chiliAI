@@ -15,6 +15,8 @@ class GraphUpsertResult(BaseModel):
     """Summary of one graph upsert operation."""
 
     knowledge_base_id: str
+    source_document_id: str
+    parsed_document_id: str
     validation_report_id: str
     extraction_result_id: str
     upserted_entity_ids: list[str] = Field(default_factory=list)

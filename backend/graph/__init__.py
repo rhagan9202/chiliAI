@@ -1,16 +1,24 @@
-"""Graph module contracts and builder exports."""
+"""Public exports for the graph service module."""
 
 from __future__ import annotations
 
 from graph.adapters.in_memory import InMemoryGraphRepository
-from graph.builder import GraphBuilder, create_graph_builder
+from graph.adapters.protocols import GraphRepository
+from graph.exceptions import GraphError, GraphPersistenceError
 from graph.models import GraphUpsertResult
-from graph.protocols import GraphRepository
+from graph.protocols import GraphServiceProtocol
+from graph.service import GraphService, create_graph_service
+from graph.service_models import GraphBuildReceipt, GraphBuildTask
 
 __all__ = [
-    "GraphBuilder",
+    "GraphBuildReceipt",
+    "GraphBuildTask",
+    "GraphError",
+    "GraphPersistenceError",
     "GraphRepository",
+    "GraphService",
+    "GraphServiceProtocol",
     "GraphUpsertResult",
     "InMemoryGraphRepository",
-    "create_graph_builder",
+    "create_graph_service",
 ]

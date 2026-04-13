@@ -1,4 +1,4 @@
-"""Tests for the in-memory graph repository."""
+"""Tests for the in-memory graph adapter."""
 
 from __future__ import annotations
 
