@@ -1,5 +1,7 @@
 """Parser orchestration helpers for the ingestion module."""
 
+from __future__ import annotations
+
 from ingestion.orchestrators.batch import BatchDocumentParsingOrchestrator, BatchParseItem
 from ingestion.orchestrators.format_resolver import DefaultFormatResolver
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator

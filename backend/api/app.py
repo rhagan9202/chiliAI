@@ -1,5 +1,7 @@
 """FastAPI application factory for the chiliAI backend API gateway."""
 
+from __future__ import annotations
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

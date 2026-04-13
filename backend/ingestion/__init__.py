@@ -1,5 +1,7 @@
 """Ingestion module exports."""
 
+from __future__ import annotations
+
 from ingestion.models import (
 	CandidateEntity,
 	CandidateRelationship,

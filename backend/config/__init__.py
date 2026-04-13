@@ -5,6 +5,8 @@ and validates cross-field constraints (relationship references,
 uniqueness, enum requirements).
 """
 
+from __future__ import annotations
+
 from config.loader import ConfigLoadError, load_config
 from config.schema import DomainConfig
 

@@ -1,5 +1,7 @@
 """Event bus adapters."""
 
+from __future__ import annotations
+
 from events.adapters.in_memory import InMemoryEventBus
 from events.adapters.redis_streams import RedisStreamsEventBus
 

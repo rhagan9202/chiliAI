@@ -1,5 +1,7 @@
 """Parser package exports."""
 
+from __future__ import annotations
+
 from ingestion.parsers.csv import CsvParser
 from ingestion.parsers.docx import DocxParser
 from ingestion.parsers.exceptions import (

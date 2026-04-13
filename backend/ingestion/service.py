@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from ingestion.models import DocumentFormat, SourceDocument, SourceType
-from ingestion.orchestrators.parser import DocumentParsingOrchestrator
-from ingestion.orchestrators.protocols import DocumentParseFailure, ParseResult
+from ingestion.orchestrators.protocols import (
+    DocumentParseFailure,
+    ParseResult,
+    ParserOrchestrator,
+)
 from ingestion.service_models import DocumentReceipt, DocumentSubmission, IngestionTask
 from events.protocols import EventBus
 from events.types import (
@@ -24,7 +27,7 @@ class IngestionService:
 
     def __init__(
         self,
-        parser_orchestrator: DocumentParsingOrchestrator,
+        parser_orchestrator: ParserOrchestrator,
         *,
         object_store: ObjectStore,
         event_bus: EventBus,

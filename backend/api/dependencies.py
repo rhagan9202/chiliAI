@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import cast
+
+from fastapi import Depends
 
 from config.loader import load_config
 from config.schema import DomainConfig
@@ -24,6 +27,13 @@ def get_domain_config() -> DomainConfig:
     of the process.  To reload, restart the server.
     """
     return load_config()
+
+
+def get_domain_config_payload(
+    config: DomainConfig = Depends(get_domain_config),
+) -> dict[str, object]:
+    """Return the active domain configuration as a plain mapping."""
+    return cast(dict[str, object], config.model_dump())
 
 
 @lru_cache(maxsize=1)

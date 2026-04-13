@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Depends
 
-from api.dependencies import get_domain_config
-from config.schema import DomainConfig
+from api.dependencies import get_domain_config_payload
 
 router = APIRouter(prefix="/config", tags=["configuration"])
 
 
 @router.get("/domain")
 async def get_domain(
-    config: DomainConfig = Depends(get_domain_config),
-) -> dict[str, Any]:
+    config: dict[str, object] = Depends(get_domain_config_payload),
+) -> dict[str, object]:
     """Return the active domain configuration."""
-    return config.model_dump()
+    return config

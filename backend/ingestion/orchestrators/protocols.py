@@ -60,3 +60,18 @@ class ParserOrchestrator(Protocol):
     ) -> ParseResult: ...
 
     def parse_source(self, source: SourceDocument) -> ParseResult: ...
+
+    def safe_parse_content(
+        self,
+        source: SourceDocument,
+        content: bytes,
+        *,
+        content_type: str | None = None,
+        filename: str | None = None,
+        uri: str | None = None,
+    ) -> ParseResult | DocumentParseFailure: ...
+
+    def safe_parse_source(
+        self,
+        source: SourceDocument,
+    ) -> ParseResult | DocumentParseFailure: ...
