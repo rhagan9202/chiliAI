@@ -24,3 +24,8 @@ class VectorStoreProtocol(Protocol):
         limit: int,
         filters: dict[str, MetadataValue] | None = None,
     ) -> list[VectorMatch]: ...
+
+
+__all__ = [
+    "VectorStoreProtocol",
+]

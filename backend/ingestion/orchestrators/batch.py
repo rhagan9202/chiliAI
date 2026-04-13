@@ -8,6 +8,8 @@ from ingestion.models import SourceDocument
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.orchestrators.protocols import BatchParseResult, DocumentParseFailure, ParseResult
 
+__all__ = ["BatchDocumentParsingOrchestrator", "BatchParseItem"]
+
 
 class BatchParseItem(BaseModel):
     """A single batch parse unit for local or remote orchestration."""

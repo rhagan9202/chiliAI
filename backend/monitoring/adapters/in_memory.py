@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from monitoring.models import MonitoringBatch
 
+__all__ = ["InMemoryObservationSource"]
+
 
 class InMemoryObservationSource:
     """A seeded source of monitoring batches keyed by knowledge base and batch id."""

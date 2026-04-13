@@ -19,6 +19,8 @@ from ingestion.parsers.exceptions import ParserError, RemoteFetchError
 from ingestion.parsers.protocols import RemoteDocumentFetcher
 from ingestion.parsers.registry import ParserRegistry
 
+__all__ = ["DocumentParsingOrchestrator"]
+
 
 class DocumentParsingOrchestrator:
     """Coordinate local and remote parsing with consistent lifecycle updates."""

@@ -225,3 +225,8 @@ class IngestionService:
         parsed_document_id: str,
     ) -> str:
         return f"knowledgebases/{knowledge_base_id}/parsed/{parsed_document_id}.json"
+
+
+__all__ = [
+    "IngestionService",
+]

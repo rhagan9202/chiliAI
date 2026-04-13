@@ -18,3 +18,8 @@ class TimeSeriesHistorySourceProtocol(Protocol):
         entity_id: str,
         metric_name: str,
     ) -> TimeSeriesSeries: ...
+
+
+__all__ = [
+    "TimeSeriesHistorySourceProtocol",
+]

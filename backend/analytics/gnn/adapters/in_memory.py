@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from analytics.gnn.models import GraphSnapshot
 
+__all__ = ["InMemoryGraphSnapshotSource"]
+
 
 class InMemoryGraphSnapshotSource:
     """A seeded source of graph snapshots keyed by knowledge base."""

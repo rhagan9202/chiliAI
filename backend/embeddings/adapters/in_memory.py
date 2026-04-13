@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from embeddings.models import EmbeddingMetadata, EmbeddingRequest, EmbeddingResult
 
+__all__ = ["InMemoryEmbedder"]
+
 
 class InMemoryEmbedder:
     """A deterministic embedder that converts text statistics into fixed-size vectors."""

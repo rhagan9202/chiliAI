@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 
 from ingestion.models import IngestionStatus, ParsedDocument, SourceDocument
 
+__all__ = ["enrich_source_document", "mark_failed", "mark_parsed", "mark_parsing"]
+
 
 def mark_parsing(source: SourceDocument) -> SourceDocument:
     """Return a copy of the source document marked as parsing."""

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from storage.models import StoredObject, StoredObjectWriteResult
 
+__all__ = ["InMemoryObjectStore"]
+
 
 class InMemoryObjectStore:
     """A process-local object store keyed by object path."""

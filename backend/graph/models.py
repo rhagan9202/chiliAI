@@ -22,3 +22,8 @@ class GraphUpsertResult(BaseModel):
     upserted_entity_ids: list[str] = Field(default_factory=list)
     upserted_relationship_ids: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_utc_now)
+
+
+__all__ = [
+    "GraphUpsertResult",
+]

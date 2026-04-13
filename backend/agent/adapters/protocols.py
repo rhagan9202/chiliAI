@@ -14,3 +14,8 @@ class WorkflowRunStoreProtocol(Protocol):
     def save_run(self, run: WorkflowRun) -> WorkflowRun: ...
 
     def get_run(self, workflow_id: str) -> WorkflowRun: ...
+
+
+__all__ = [
+    "WorkflowRunStoreProtocol",
+]

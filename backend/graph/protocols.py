@@ -12,3 +12,8 @@ class GraphServiceProtocol(Protocol):
     """Service boundary for graph updates consumed by worker orchestration."""
 
     def upsert_task(self, task: GraphBuildTask) -> GraphBuildReceipt: ...
+
+
+__all__ = [
+    "GraphServiceProtocol",
+]

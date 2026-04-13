@@ -50,3 +50,10 @@ class IngestionTask(BaseModel):
     source_document: SourceDocument
     storage_key: str | None = None
     content_type: str | None = None
+
+
+__all__ = [
+    "DocumentReceipt",
+    "DocumentSubmission",
+    "IngestionTask",
+]

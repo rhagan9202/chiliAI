@@ -12,3 +12,8 @@ class RagServiceProtocol(Protocol):
     """Service boundary for retrieval-augmented answer generation."""
 
     def answer(self, request: RagQueryRequest) -> RagQueryResponse: ...
+
+
+__all__ = [
+    "RagServiceProtocol",
+]

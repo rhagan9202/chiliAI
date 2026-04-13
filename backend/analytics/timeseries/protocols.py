@@ -12,3 +12,8 @@ class TimeseriesServiceProtocol(Protocol):
     """Service boundary for time-series anomaly detection."""
 
     def analyze(self, request: TimeseriesAnalysisRequest) -> TimeseriesAnalysisResponse: ...
+
+
+__all__ = [
+    "TimeseriesServiceProtocol",
+]

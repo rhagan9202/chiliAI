@@ -13,3 +13,10 @@ class EmbeddingConfigurationError(EmbeddingError):
 
 class EmbeddingProviderError(EmbeddingError):
     """Raised when the configured embedder cannot produce vectors."""
+
+
+__all__ = [
+    "EmbeddingConfigurationError",
+    "EmbeddingError",
+    "EmbeddingProviderError",
+]

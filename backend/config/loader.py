@@ -92,3 +92,9 @@ def _validate(data: dict[str, Any]) -> DomainConfig:
         raise ConfigLoadError(
             f"Config validation failed:\n{exc}"
         ) from exc
+
+
+__all__ = [
+    "ConfigLoadError",
+    "load_config",
+]

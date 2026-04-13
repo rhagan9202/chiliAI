@@ -13,3 +13,10 @@ class VectorDimensionMismatchError(VectorError):
 
 class VectorStoreError(VectorError):
     """Raised when vector storage or search operations fail."""
+
+
+__all__ = [
+    "VectorDimensionMismatchError",
+    "VectorError",
+    "VectorStoreError",
+]

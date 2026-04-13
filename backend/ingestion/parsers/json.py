@@ -8,6 +8,8 @@ from ingestion.models import DocumentFormat, ParsedDocument, SourceDocument, Str
 from ingestion.parsers.exceptions import ParserError
 from ingestion.parsers.utils import build_parser_metadata, decode_text_content
 
+__all__ = ["JsonParser"]
+
 
 class JsonParser:
     """Parse JSON objects and arrays into ParsedDocument structures."""

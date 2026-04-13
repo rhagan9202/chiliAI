@@ -14,6 +14,13 @@ from rag.models import (
     RetrievedContextItem,
 )
 
+__all__ = [
+    "InMemoryAnswerGenerator",
+    "InMemoryContextRetriever",
+    "InMemoryGraphContextExpander",
+    "InMemoryQueryEmbedder",
+]
+
 
 class InMemoryQueryEmbedder:
     """A deterministic embedder that encodes simple text statistics."""

@@ -10,6 +10,8 @@ from ingestion.models import DocumentFormat, ParsedDocument, SourceDocument, Str
 from ingestion.parsers.exceptions import ParserError
 from ingestion.parsers.utils import build_parser_metadata
 
+__all__ = ["XlsxParser"]
+
 
 class XlsxParser:
     """Parse Excel workbooks into structured records."""

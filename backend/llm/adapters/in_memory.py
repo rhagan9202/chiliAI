@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from llm.models import CompletionMetadata, GenerationRequest, GenerationResult, MessageRole
 
+__all__ = ["InMemoryLlmClient"]
+
 
 class InMemoryLlmClient:
     """A deterministic llm client that echoes the latest user message."""

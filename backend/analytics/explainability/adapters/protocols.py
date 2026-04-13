@@ -12,3 +12,8 @@ class ExplainabilityContextSourceProtocol(Protocol):
     """Load explanation context for a specific alert."""
 
     def load_context(self, *, knowledge_base_id: str, alert_id: str) -> ExplanationContext: ...
+
+
+__all__ = [
+    "ExplainabilityContextSourceProtocol",
+]

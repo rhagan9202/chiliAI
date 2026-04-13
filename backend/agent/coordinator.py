@@ -38,6 +38,18 @@ from ingestion.validator import ExtractionResultValidator, create_extraction_val
 from storage.protocols import ObjectStore
 from storage.adapters.in_memory import InMemoryObjectStore
 
+__all__ = [
+    "build_worker_dependencies",
+    "drain_ingestion_events",
+    "handle_documents_chunked",
+    "handle_documents_parsed",
+    "handle_entities_extracted",
+    "handle_entities_validated",
+    "handle_event",
+    "main",
+    "run_worker",
+]
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",

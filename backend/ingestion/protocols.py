@@ -52,3 +52,11 @@ class DocumentValidatorProtocol(Protocol):
     """Validate extracted candidates against config-defined runtime schemas."""
 
     def validate_extraction(self, extraction_result: ExtractionResult) -> ValidationReport: ...
+
+
+__all__ = [
+    "DocumentChunkerProtocol",
+    "DocumentExtractorProtocol",
+    "DocumentValidatorProtocol",
+    "IngestionServiceProtocol",
+]

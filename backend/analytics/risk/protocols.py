@@ -12,3 +12,8 @@ class RiskServiceProtocol(Protocol):
     """Service boundary for composite risk scoring."""
 
     def assess(self, request: RiskAssessmentRequest) -> RiskAssessmentResponse: ...
+
+
+__all__ = [
+    "RiskServiceProtocol",
+]

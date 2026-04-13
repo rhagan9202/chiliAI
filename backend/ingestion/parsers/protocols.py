@@ -41,3 +41,10 @@ class RemoteDocumentFetcher(Protocol):
     """Fetch remote bytes for a source document."""
 
     def fetch(self, source: SourceDocument) -> RemoteDocumentPayload: ...
+
+
+__all__ = [
+    "DocumentParser",
+    "RemoteDocumentFetcher",
+    "RemoteDocumentPayload",
+]

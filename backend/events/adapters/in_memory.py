@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from events.protocols import EventDelivery
 from events.types import AnyEvent
 
+__all__ = ["InMemoryEventBus"]
+
 
 @dataclass(slots=True)
 class _QueuedEvent:

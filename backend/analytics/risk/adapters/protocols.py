@@ -12,3 +12,8 @@ class RiskSignalSourceProtocol(Protocol):
     """Load risk signals for a specific entity."""
 
     def load_profile(self, *, knowledge_base_id: str, entity_id: str) -> RiskProfile: ...
+
+
+__all__ = [
+    "RiskSignalSourceProtocol",
+]

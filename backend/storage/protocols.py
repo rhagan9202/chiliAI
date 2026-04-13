@@ -21,3 +21,8 @@ class ObjectStore(Protocol):
     ) -> StoredObjectWriteResult: ...
 
     def get_bytes(self, key: str) -> StoredObject: ...
+
+
+__all__ = [
+    "ObjectStore",
+]

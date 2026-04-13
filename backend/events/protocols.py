@@ -42,3 +42,9 @@ class EventBus(Protocol):
     ) -> list[EventDelivery]: ...
 
     def ack(self, deliveries: list[EventDelivery]) -> None: ...
+
+
+__all__ = [
+    "EventBus",
+    "EventDelivery",
+]

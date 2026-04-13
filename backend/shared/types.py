@@ -321,3 +321,18 @@ def _matches_property_type(value: Any, definition: PropertyDefinition) -> bool:
     if property_type is PropertyType.NESTED:
         return isinstance(value, dict)
     return False
+
+
+__all__ = [
+    "Alert",
+    "Entity",
+    "EntityDefinition",
+    "EvidencePack",
+    "KnowledgeBase",
+    "PropertyDefinition",
+    "PropertyType",
+    "Relationship",
+    "RelationshipDefinition",
+    "validate_entity",
+    "validate_relationship",
+]

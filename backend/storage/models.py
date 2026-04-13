@@ -22,3 +22,9 @@ class StoredObject(BaseModel):
     size_bytes: int = Field(ge=0)
     media_type: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
+
+
+__all__ = [
+    "StoredObject",
+    "StoredObjectWriteResult",
+]

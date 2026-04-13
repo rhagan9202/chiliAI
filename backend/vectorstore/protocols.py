@@ -19,3 +19,8 @@ class VectorServiceProtocol(Protocol):
     def index(self, request: VectorIndexRequest) -> list[VectorIndexReceipt]: ...
 
     def search(self, request: VectorSearchRequest) -> VectorSearchResponse: ...
+
+
+__all__ = [
+    "VectorServiceProtocol",
+]

@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.routers.config import router as config_router
 from api.routers.knowledgebases import router as knowledgebases_router
 
+__all__ = ["create_app"]
+
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""

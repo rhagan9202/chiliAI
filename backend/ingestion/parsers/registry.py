@@ -8,6 +8,8 @@ from ingestion.models import DocumentFormat, ParsedDocument, SourceDocument
 from ingestion.parsers.exceptions import UnsupportedFormatError
 from ingestion.parsers.protocols import DocumentParser
 
+__all__ = ["ParserRegistry", "create_default_registry"]
+
 
 class ParserRegistry:
     """Map document formats to parser implementations."""

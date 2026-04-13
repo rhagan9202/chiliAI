@@ -18,6 +18,18 @@ from ingestion.service import IngestionService
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.protocols import ObjectStore
 
+__all__ = [
+    "get_domain_config",
+    "get_domain_config_payload",
+    "get_event_bus",
+    "get_event_bus_settings",
+    "get_ingestion_service",
+    "get_object_store",
+    "get_parser_orchestrator",
+    "get_parser_registry",
+    "get_remote_fetcher",
+]
+
 
 @lru_cache(maxsize=1)
 def get_domain_config() -> DomainConfig:

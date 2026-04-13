@@ -8,12 +8,14 @@ import json
 import os
 import re
 from string import Formatter
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
-from config.schema import ChunkingConfig
 from ingestion.models import Chunk, ChunkMetadata, ParsedDocument, StructuredRecord
+
+if TYPE_CHECKING:
+	from config.schema import ChunkingConfig
 from shared.utils import generate_id
 
 
@@ -432,8 +434,9 @@ class DocumentChunker:
 
 def resolve_chunking_config(config: ChunkingConfig | None = None) -> ChunkingConfig:
 	"""Return chunking config with optional environment overrides applied."""
+	from config.schema import ChunkingConfig as _ChunkingConfig
 
-	base = config or ChunkingConfig()
+	base = config or _ChunkingConfig()
 	data = base.model_dump()
 
 	strategy = os.environ.get("CHILI_CHUNKING_STRATEGY")
@@ -456,7 +459,7 @@ def resolve_chunking_config(config: ChunkingConfig | None = None) -> ChunkingCon
 	if record_template is not None:
 		data["record_template"] = record_template
 
-	return ChunkingConfig.model_validate(data)
+	return _ChunkingConfig.model_validate(data)
 
 
 def create_document_chunker(config: ChunkingConfig | None = None) -> DocumentChunker:

@@ -12,3 +12,8 @@ class MonitoringServiceProtocol(Protocol):
     """Service boundary for active monitoring evaluation."""
 
     def evaluate(self, request: MonitoringEvaluationRequest) -> MonitoringEvaluationResponse: ...
+
+
+__all__ = [
+    "MonitoringServiceProtocol",
+]

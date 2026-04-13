@@ -12,3 +12,8 @@ class LlmClientProtocol(Protocol):
     """Generate text completions from normalized llm requests."""
 
     def generate(self, request: GenerationRequest) -> GenerationResult: ...
+
+
+__all__ = [
+    "LlmClientProtocol",
+]

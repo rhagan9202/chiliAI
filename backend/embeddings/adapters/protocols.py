@@ -12,3 +12,8 @@ class EmbedderProtocol(Protocol):
     """Generate vectors from embedding requests."""
 
     def embed(self, request: EmbeddingRequest) -> EmbeddingResult: ...
+
+
+__all__ = [
+    "EmbedderProtocol",
+]

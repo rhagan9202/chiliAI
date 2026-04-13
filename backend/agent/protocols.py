@@ -12,3 +12,8 @@ class AgentServiceProtocol(Protocol):
     """Service boundary for workflow orchestration requests."""
 
     def start_workflow(self, request: WorkflowSubmissionRequest) -> WorkflowSubmissionResponse: ...
+
+
+__all__ = [
+    "AgentServiceProtocol",
+]

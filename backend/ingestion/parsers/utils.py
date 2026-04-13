@@ -7,6 +7,14 @@ from pathlib import PurePosixPath
 from ingestion.models import DocumentFormat
 from ingestion.parsers.exceptions import ContentDecodingError
 
+__all__ = [
+    "build_parser_metadata",
+    "decode_text_content",
+    "infer_format_from_content_type",
+    "infer_format_from_filename",
+    "normalize_newlines",
+]
+
 _CONTENT_TYPE_MAP: dict[str, DocumentFormat] = {
     "application/json": DocumentFormat.JSON,
     "application/pdf": DocumentFormat.PDF,

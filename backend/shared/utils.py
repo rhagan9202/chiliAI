@@ -14,3 +14,9 @@ def generate_id() -> str:
 def normalize_text(text: str) -> str:
     """Lowercase, strip, and collapse internal whitespace."""
     return re.sub(r"\s+", " ", text.strip().lower())
+
+
+__all__ = [
+    "generate_id",
+    "normalize_text",
+]

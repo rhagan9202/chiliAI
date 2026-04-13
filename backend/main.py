@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import uvicorn
 
+__all__ = ["main"]
+
 
 def main() -> None:
     uvicorn.run(

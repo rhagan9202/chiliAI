@@ -13,3 +13,8 @@ class Configurable(Protocol):
     """A module or service that accepts domain configuration at init time."""
 
     def configure(self, config: DomainConfig) -> None: ...
+
+
+__all__ = [
+    "Configurable",
+]

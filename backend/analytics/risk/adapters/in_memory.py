@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from analytics.risk.models import RiskProfile
 
+__all__ = ["InMemoryRiskSignalSource"]
+
 
 class InMemoryRiskSignalSource:
     """A seeded source of risk profiles keyed by knowledge base and entity."""

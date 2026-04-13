@@ -14,6 +14,8 @@ from ingestion.parsers.protocols import RemoteDocumentPayload, RemoteDocumentFet
 from ingestion.parsers.registry import ParserRegistry
 from ingestion.parsers.utils import infer_format_from_content_type, infer_format_from_filename
 
+__all__ = ["HttpxRemoteDocumentFetcher", "parse_remote_document"]
+
 
 class HttpxRemoteDocumentFetcher(RemoteDocumentFetcher):
     """Fetch remote document bytes over HTTPS using httpx."""

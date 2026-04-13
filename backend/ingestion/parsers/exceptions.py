@@ -17,3 +17,11 @@ class RemoteFetchError(ParserError):
 
 class ContentDecodingError(ParserError):
     """Raised when bytes cannot be decoded into text."""
+
+
+__all__ = [
+    "ContentDecodingError",
+    "ParserError",
+    "RemoteFetchError",
+    "UnsupportedFormatError",
+]

@@ -13,3 +13,10 @@ class MonitoringConfigurationError(MonitoringError):
 
 class MonitoringSourceError(MonitoringError):
     """Raised when the configured observation source cannot return monitoring data."""
+
+
+__all__ = [
+    "MonitoringConfigurationError",
+    "MonitoringError",
+    "MonitoringSourceError",
+]

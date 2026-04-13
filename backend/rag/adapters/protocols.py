@@ -45,3 +45,11 @@ class AnswerGeneratorProtocol(Protocol):
     """Generate a final answer from normalized rag context."""
 
     def generate(self, request: RagGenerationRequest) -> RagGenerationResult: ...
+
+
+__all__ = [
+    "AnswerGeneratorProtocol",
+    "ContextRetrieverProtocol",
+    "GraphContextExpanderProtocol",
+    "QueryEmbedderProtocol",
+]

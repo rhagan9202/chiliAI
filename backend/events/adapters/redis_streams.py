@@ -11,6 +11,8 @@ from events.codec import decode_event, encode_event
 from events.protocols import EventBus, EventDelivery
 from events.types import AnyEvent
 
+__all__ = ["RedisStreamsEventBus"]
+
 
 class RedisStreamsEventBus(EventBus):
     """Redis Streams-backed event bus implementation."""

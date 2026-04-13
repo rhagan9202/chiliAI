@@ -12,3 +12,8 @@ class LlmServiceProtocol(Protocol):
     """Service boundary for llm generation."""
 
     def generate(self, request: GenerateRequest) -> CompletionResponse: ...
+
+
+__all__ = [
+    "LlmServiceProtocol",
+]

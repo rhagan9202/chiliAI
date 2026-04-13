@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from agent.models import WorkflowRun
 
+__all__ = ["InMemoryWorkflowRunStore"]
+
 
 class InMemoryWorkflowRunStore:
     """A seeded workflow run store keyed by workflow id."""

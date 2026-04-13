@@ -9,6 +9,8 @@ from api.dependencies import get_ingestion_service
 from ingestion.protocols import IngestionServiceProtocol
 from ingestion.service_models import DocumentReceipt, DocumentSubmission
 
+__all__ = ["DocumentRegistrationResponse", "router"]
+
 
 class DocumentRegistrationResponse(BaseModel):
 	"""Response model for document registration requests."""

@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends
 
 from api.dependencies import get_domain_config_payload
 
+__all__ = ["router"]
+
 router = APIRouter(prefix="/config", tags=["configuration"])
 
 

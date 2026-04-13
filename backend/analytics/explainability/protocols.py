@@ -12,3 +12,8 @@ class ExplainabilityServiceProtocol(Protocol):
     """Service boundary for evidence-pack generation."""
 
     def generate(self, request: ExplainabilityRequest) -> ExplainabilityResponse: ...
+
+
+__all__ = [
+    "ExplainabilityServiceProtocol",
+]

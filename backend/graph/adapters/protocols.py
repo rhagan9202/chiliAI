@@ -22,3 +22,8 @@ class GraphRepository(Protocol):
     def get_entities(self, knowledge_base_id: str) -> list[Entity]: ...
 
     def get_relationships(self, knowledge_base_id: str) -> list[Relationship]: ...
+
+
+__all__ = [
+    "GraphRepository",
+]

@@ -12,3 +12,8 @@ class EmbeddingsServiceProtocol(Protocol):
     """Service boundary for embedding generation."""
 
     def embed(self, request: EmbedRequest) -> EmbedResponse: ...
+
+
+__all__ = [
+    "EmbeddingsServiceProtocol",
+]

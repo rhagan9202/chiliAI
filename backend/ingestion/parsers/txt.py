@@ -5,6 +5,8 @@ from __future__ import annotations
 from ingestion.models import DocumentFormat, ParsedDocument, SourceDocument
 from ingestion.parsers.utils import build_parser_metadata, decode_text_content
 
+__all__ = ["TextParser"]
+
 
 class TextParser:
     """Parse plain-text bytes into a normalized ParsedDocument."""

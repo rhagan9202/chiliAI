@@ -12,3 +12,8 @@ class GnnServiceProtocol(Protocol):
     """Service boundary for graph neural network style analysis."""
 
     def analyze(self, request: GnnAnalysisRequest) -> GnnAnalysisResponse: ...
+
+
+__all__ = [
+    "GnnServiceProtocol",
+]

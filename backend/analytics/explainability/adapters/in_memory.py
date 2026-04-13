@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from analytics.explainability.models import ExplanationContext
 
+__all__ = ["InMemoryExplainabilityContextSource"]
+
 
 class InMemoryExplainabilityContextSource:
     """A seeded source of explainability contexts keyed by knowledge base and alert."""

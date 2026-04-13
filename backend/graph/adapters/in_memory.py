@@ -5,6 +5,8 @@ from __future__ import annotations
 from graph.adapters.protocols import GraphRepository
 from shared.types import Entity, Relationship
 
+__all__ = ["InMemoryGraphRepository"]
+
 
 class InMemoryGraphRepository(GraphRepository):
     """Persist graph objects in process-local dictionaries keyed by knowledge base."""

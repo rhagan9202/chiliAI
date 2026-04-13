@@ -8,6 +8,8 @@ from vectorstore.adapters.protocols import VectorStoreProtocol
 from vectorstore.exceptions import VectorDimensionMismatchError
 from vectorstore.models import MetadataValue, VectorMatch, VectorRecord
 
+__all__ = ["InMemoryVectorStore"]
+
 
 class InMemoryVectorStore(VectorStoreProtocol):
     """Store vector records in process-local dictionaries keyed by knowledge base."""

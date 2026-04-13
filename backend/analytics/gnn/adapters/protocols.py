@@ -12,3 +12,8 @@ class GraphSnapshotSourceProtocol(Protocol):
     """Load a graph snapshot for analysis."""
 
     def load_snapshot(self, *, knowledge_base_id: str) -> GraphSnapshot: ...
+
+
+__all__ = [
+    "GraphSnapshotSourceProtocol",
+]

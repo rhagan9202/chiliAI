@@ -10,6 +10,8 @@ from ingestion.models import DocumentFormat, ParsedDocument, SourceDocument
 from ingestion.parsers.exceptions import ParserError
 from ingestion.parsers.utils import build_parser_metadata, normalize_newlines
 
+__all__ = ["DocxParser"]
+
 
 class DocxParser:
     """Extract normalized text from DOCX paragraphs and tables."""

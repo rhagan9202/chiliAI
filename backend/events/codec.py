@@ -90,3 +90,10 @@ def _decode_value(value: str | bytes) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8")
     return value
+
+
+__all__ = [
+    "EVENT_TYPE_REGISTRY",
+    "decode_event",
+    "encode_event",
+]

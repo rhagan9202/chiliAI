@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from analytics.timeseries.models import TimeSeriesSeries
 
+__all__ = ["InMemoryTimeSeriesHistorySource"]
+
 
 class InMemoryTimeSeriesHistorySource:
     """A seeded source of historical metric observations."""
