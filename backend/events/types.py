@@ -129,6 +129,18 @@ class GraphUpdatedEvent(EventBase):
     documents: list[GraphUpdatedDocumentReference]
 
 
+class VectorIndexedReference(BaseModel):
+    knowledge_base_id: str
+    record_id: str
+    content_id: str
+    dimension: int = Field(gt=0)
+
+
+class VectorsIndexedEvent(EventBase):
+    event_type: Literal["vectors.indexed"] = "vectors.indexed"
+    records: list[VectorIndexedReference]
+
+
 class DocumentFailureReference(BaseModel):
     knowledge_base_id: str
     source_document_id: str
@@ -161,6 +173,7 @@ AnyEvent = (
     | EntitiesExtractedEvent
     | EntitiesValidatedEvent
     | GraphUpdatedEvent
+    | VectorsIndexedEvent
     | DocumentsFailedEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent

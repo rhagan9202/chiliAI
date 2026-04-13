@@ -18,6 +18,7 @@ from events.types import (
     DocumentsUploadedEvent,
     EventBase,
     KnowledgeBaseCreatedEvent,
+    VectorsIndexedEvent,
 )
 
 
@@ -29,6 +30,7 @@ EVENT_TYPE_REGISTRY: dict[str, type[EventBase]] = {
     "entities.extracted": EntitiesExtractedEvent,
     "entities.validated": EntitiesValidatedEvent,
     "graph.updated": GraphUpdatedEvent,
+    "vectors.indexed": VectorsIndexedEvent,
     "documents.failed": DocumentsFailedEvent,
     "claims.received": ClaimsReceivedEvent,
     "claims.ingested": ClaimsIngestedEvent,

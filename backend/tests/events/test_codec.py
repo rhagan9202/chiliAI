@@ -14,6 +14,8 @@ from events.types import (
     GraphUpdatedDocumentReference,
     GraphUpdatedEvent,
     ValidatedDocumentReference,
+    VectorIndexedReference,
+    VectorsIndexedEvent,
 )
 
 
@@ -138,3 +140,22 @@ def test_event_codec_round_trips_graph_updated_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "graph.updated"
+
+
+def test_event_codec_round_trips_vectors_indexed_event() -> None:
+    event = VectorsIndexedEvent(
+        records=[
+            VectorIndexedReference(
+                knowledge_base_id="kb-1",
+                record_id="record-1",
+                content_id="content-1",
+                dimension=3,
+            )
+        ]
+    )
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "vectors.indexed"

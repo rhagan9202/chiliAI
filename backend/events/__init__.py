@@ -26,6 +26,8 @@ from events.types import (
     KnowledgeBaseCreatedEvent,
     ParsedDocumentReference,
     ValidatedDocumentReference,
+    VectorIndexedReference,
+    VectorsIndexedEvent,
 )
 
 __all__ = [
@@ -51,6 +53,8 @@ __all__ = [
     "KnowledgeBaseCreatedEvent",
     "ParsedDocumentReference",
     "ValidatedDocumentReference",
+    "VectorIndexedReference",
+    "VectorsIndexedEvent",
     "RedisStreamsEventBus",
     "create_event_bus",
     "decode_event",
