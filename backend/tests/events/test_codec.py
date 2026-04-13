@@ -17,6 +17,8 @@ from events.types import (
     GraphUpdatedEvent,
     LlmCompletedEvent,
     LlmCompletionReference,
+    RagCompletedEvent,
+    RagCompletionReference,
     ValidatedDocumentReference,
     VectorIndexedReference,
     VectorsIndexedEvent,
@@ -204,3 +206,25 @@ def test_event_codec_round_trips_embeddings_generated_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "embeddings.generated"
+
+
+def test_event_codec_round_trips_rag_completed_event() -> None:
+    event = RagCompletedEvent(
+        replies=[
+            RagCompletionReference(
+                knowledge_base_id="kb-1",
+                request_id="request-1",
+                provider="in-memory",
+                model_name="in-memory-rag-model",
+                context_item_count=2,
+                citation_count=2,
+                answer_length=84,
+            )
+        ]
+    )
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "rag.completed"

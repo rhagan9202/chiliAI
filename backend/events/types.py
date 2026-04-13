@@ -168,6 +168,21 @@ class EmbeddingsGeneratedEvent(EventBase):
     batches: list[EmbeddingGeneratedReference]
 
 
+class RagCompletionReference(BaseModel):
+    knowledge_base_id: str
+    request_id: str
+    provider: str
+    model_name: str
+    context_item_count: int = Field(ge=0)
+    citation_count: int = Field(ge=0)
+    answer_length: int = Field(ge=0)
+
+
+class RagCompletedEvent(EventBase):
+    event_type: Literal["rag.completed"] = "rag.completed"
+    replies: list[RagCompletionReference]
+
+
 class DocumentFailureReference(BaseModel):
     knowledge_base_id: str
     source_document_id: str
@@ -203,6 +218,7 @@ AnyEvent = (
     | VectorsIndexedEvent
     | LlmCompletedEvent
     | EmbeddingsGeneratedEvent
+    | RagCompletedEvent
     | DocumentsFailedEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent
