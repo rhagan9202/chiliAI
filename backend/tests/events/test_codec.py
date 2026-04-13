@@ -10,6 +10,8 @@ from events.types import (
     DocumentsUploadedEvent,
     EmbeddingGeneratedReference,
     EmbeddingsGeneratedEvent,
+    ExplainabilityGeneratedEvent,
+    ExplainabilityGeneratedReference,
     EntitiesExtractedEvent,
     EntitiesValidatedEvent,
     ExtractedDocumentReference,
@@ -297,3 +299,25 @@ def test_event_codec_round_trips_risk_scored_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "risk.scored"
+
+
+def test_event_codec_round_trips_explainability_generated_event() -> None:
+    event = ExplainabilityGeneratedEvent(
+        evidence_packs=[
+            ExplainabilityGeneratedReference(
+                knowledge_base_id="kb-1",
+                request_id="request-1",
+                alert_id="alert-1",
+                evidence_pack_id="pack-1",
+                evidence_item_count=2,
+                subgraph_node_count=3,
+                subgraph_edge_count=2,
+            )
+        ]
+    )
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "explainability.generated"

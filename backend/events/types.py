@@ -225,6 +225,21 @@ class RiskScoredEvent(EventBase):
     assessments: list[RiskScoredReference]
 
 
+class ExplainabilityGeneratedReference(BaseModel):
+    knowledge_base_id: str
+    request_id: str
+    alert_id: str
+    evidence_pack_id: str
+    evidence_item_count: int = Field(ge=0)
+    subgraph_node_count: int = Field(ge=0)
+    subgraph_edge_count: int = Field(ge=0)
+
+
+class ExplainabilityGeneratedEvent(EventBase):
+    event_type: Literal["explainability.generated"] = "explainability.generated"
+    evidence_packs: list[ExplainabilityGeneratedReference]
+
+
 class DocumentFailureReference(BaseModel):
     knowledge_base_id: str
     source_document_id: str
@@ -264,6 +279,7 @@ AnyEvent = (
     | TimeseriesAnalyzedEvent
     | GnnAnalyzedEvent
     | RiskScoredEvent
+    | ExplainabilityGeneratedEvent
     | DocumentsFailedEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent
