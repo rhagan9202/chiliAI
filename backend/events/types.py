@@ -240,6 +240,19 @@ class ExplainabilityGeneratedEvent(EventBase):
     evidence_packs: list[ExplainabilityGeneratedReference]
 
 
+class AgentWorkflowStartedReference(BaseModel):
+    workflow_id: str
+    knowledge_base_id: str
+    trigger_event_type: str
+    step_count: int = Field(ge=1)
+    status: str
+
+
+class AgentWorkflowStartedEvent(EventBase):
+    event_type: Literal["agent.workflow.started"] = "agent.workflow.started"
+    workflows: list[AgentWorkflowStartedReference]
+
+
 class DocumentFailureReference(BaseModel):
     knowledge_base_id: str
     source_document_id: str
@@ -280,6 +293,7 @@ AnyEvent = (
     | GnnAnalyzedEvent
     | RiskScoredEvent
     | ExplainabilityGeneratedEvent
+    | AgentWorkflowStartedEvent
     | DocumentsFailedEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent

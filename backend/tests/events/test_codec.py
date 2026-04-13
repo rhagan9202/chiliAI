@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from events.codec import decode_event, encode_event
 from events.types import (
+    AgentWorkflowStartedEvent,
+    AgentWorkflowStartedReference,
     ChunkedDocumentReference,
     DocumentReference,
     DocumentsChunkedEvent,
@@ -53,6 +55,26 @@ def test_event_codec_round_trips_documents_uploaded_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "documents.uploaded"
+
+
+def test_event_codec_round_trips_agent_workflow_started_event() -> None:
+    event = AgentWorkflowStartedEvent(
+        workflows=[
+            AgentWorkflowStartedReference(
+                workflow_id="workflow-1",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                step_count=3,
+                status="running",
+            )
+        ]
+    )
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "agent.workflow.started"
 
 
 def test_event_codec_round_trips_documents_chunked_event() -> None:
