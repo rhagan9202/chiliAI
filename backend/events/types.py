@@ -197,6 +197,20 @@ class TimeseriesAnalyzedEvent(EventBase):
     analyses: list[TimeseriesAnalyzedReference]
 
 
+class GnnAnalyzedReference(BaseModel):
+    knowledge_base_id: str
+    request_id: str
+    node_count: int = Field(ge=0)
+    edge_count: int = Field(ge=0)
+    predicted_link_count: int = Field(ge=0)
+    cluster_count: int = Field(ge=0)
+
+
+class GnnAnalyzedEvent(EventBase):
+    event_type: Literal["gnn.analyzed"] = "gnn.analyzed"
+    analyses: list[GnnAnalyzedReference]
+
+
 class DocumentFailureReference(BaseModel):
     knowledge_base_id: str
     source_document_id: str
@@ -234,6 +248,7 @@ AnyEvent = (
     | EmbeddingsGeneratedEvent
     | RagCompletedEvent
     | TimeseriesAnalyzedEvent
+    | GnnAnalyzedEvent
     | DocumentsFailedEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent

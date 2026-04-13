@@ -13,6 +13,8 @@ from events.types import (
     EntitiesExtractedEvent,
     EntitiesValidatedEvent,
     ExtractedDocumentReference,
+    GnnAnalyzedEvent,
+    GnnAnalyzedReference,
     GraphUpdatedDocumentReference,
     GraphUpdatedEvent,
     LlmCompletedEvent,
@@ -251,3 +253,24 @@ def test_event_codec_round_trips_timeseries_analyzed_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "timeseries.analyzed"
+
+
+def test_event_codec_round_trips_gnn_analyzed_event() -> None:
+    event = GnnAnalyzedEvent(
+        analyses=[
+            GnnAnalyzedReference(
+                knowledge_base_id="kb-1",
+                request_id="request-1",
+                node_count=4,
+                edge_count=3,
+                predicted_link_count=1,
+                cluster_count=2,
+            )
+        ]
+    )
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "gnn.analyzed"
