@@ -19,6 +19,8 @@ from events.types import (
     LlmCompletionReference,
     RagCompletedEvent,
     RagCompletionReference,
+    TimeseriesAnalyzedEvent,
+    TimeseriesAnalyzedReference,
     ValidatedDocumentReference,
     VectorIndexedReference,
     VectorsIndexedEvent,
@@ -228,3 +230,24 @@ def test_event_codec_round_trips_rag_completed_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "rag.completed"
+
+
+def test_event_codec_round_trips_timeseries_analyzed_event() -> None:
+    event = TimeseriesAnalyzedEvent(
+        analyses=[
+            TimeseriesAnalyzedReference(
+                knowledge_base_id="kb-1",
+                request_id="request-1",
+                entity_id="provider-7",
+                metric_name="claim_volume",
+                observation_count=12,
+                anomaly_count=1,
+            )
+        ]
+    )
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "timeseries.analyzed"

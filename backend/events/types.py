@@ -183,6 +183,20 @@ class RagCompletedEvent(EventBase):
     replies: list[RagCompletionReference]
 
 
+class TimeseriesAnalyzedReference(BaseModel):
+    knowledge_base_id: str
+    request_id: str
+    entity_id: str
+    metric_name: str
+    observation_count: int = Field(ge=0)
+    anomaly_count: int = Field(ge=0)
+
+
+class TimeseriesAnalyzedEvent(EventBase):
+    event_type: Literal["timeseries.analyzed"] = "timeseries.analyzed"
+    analyses: list[TimeseriesAnalyzedReference]
+
+
 class DocumentFailureReference(BaseModel):
     knowledge_base_id: str
     source_document_id: str
@@ -219,6 +233,7 @@ AnyEvent = (
     | LlmCompletedEvent
     | EmbeddingsGeneratedEvent
     | RagCompletedEvent
+    | TimeseriesAnalyzedEvent
     | DocumentsFailedEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent
