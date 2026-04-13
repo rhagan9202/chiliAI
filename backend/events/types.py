@@ -253,6 +253,19 @@ class AgentWorkflowStartedEvent(EventBase):
     workflows: list[AgentWorkflowStartedReference]
 
 
+class AlertCreatedReference(BaseModel):
+    knowledge_base_id: str
+    alert_id: str
+    entity_id: str
+    severity: str
+    evidence_pack_id: str | None = None
+
+
+class AlertsCreatedEvent(EventBase):
+    event_type: Literal["alerts.created"] = "alerts.created"
+    alerts: list[AlertCreatedReference]
+
+
 class DocumentFailureReference(BaseModel):
     knowledge_base_id: str
     source_document_id: str
@@ -294,6 +307,7 @@ AnyEvent = (
     | RiskScoredEvent
     | ExplainabilityGeneratedEvent
     | AgentWorkflowStartedEvent
+    | AlertsCreatedEvent
     | DocumentsFailedEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent

@@ -10,6 +10,8 @@ from events.runtime import EventBusSettings, create_event_bus, load_event_bus_se
 from events.types import (
     AgentWorkflowStartedEvent,
     AgentWorkflowStartedReference,
+    AlertCreatedReference,
+    AlertsCreatedEvent,
     ChunkedDocumentReference,
     ClaimsIngestedEvent,
     ClaimsReceivedEvent,
@@ -49,6 +51,8 @@ from events.types import (
 __all__ = [
     "AgentWorkflowStartedEvent",
     "AgentWorkflowStartedReference",
+    "AlertCreatedReference",
+    "AlertsCreatedEvent",
     "ChunkedDocumentReference",
     "ClaimsIngestedEvent",
     "ClaimsReceivedEvent",

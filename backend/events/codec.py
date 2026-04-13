@@ -7,6 +7,7 @@ from collections.abc import Mapping
 
 from events.types import (
     AgentWorkflowStartedEvent,
+    AlertsCreatedEvent,
     AnyEvent,
     ClaimsIngestedEvent,
     ClaimsReceivedEvent,
@@ -32,6 +33,7 @@ from events.types import (
 
 EVENT_TYPE_REGISTRY: dict[str, type[EventBase]] = {
     "agent.workflow.started": AgentWorkflowStartedEvent,
+    "alerts.created": AlertsCreatedEvent,
     "kb.create": KnowledgeBaseCreatedEvent,
     "documents.uploaded": DocumentsUploadedEvent,
     "documents.parsed": DocumentsParsedEvent,

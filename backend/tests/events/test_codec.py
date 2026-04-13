@@ -6,6 +6,8 @@ from events.codec import decode_event, encode_event
 from events.types import (
     AgentWorkflowStartedEvent,
     AgentWorkflowStartedReference,
+    AlertCreatedReference,
+    AlertsCreatedEvent,
     ChunkedDocumentReference,
     DocumentReference,
     DocumentsChunkedEvent,
@@ -75,6 +77,26 @@ def test_event_codec_round_trips_agent_workflow_started_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "agent.workflow.started"
+
+
+def test_event_codec_round_trips_alerts_created_event() -> None:
+    event = AlertsCreatedEvent(
+        alerts=[
+            AlertCreatedReference(
+                knowledge_base_id="kb-1",
+                alert_id="alert-1",
+                entity_id="provider-7",
+                severity="high",
+                evidence_pack_id="pack-1",
+            )
+        ]
+    )
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "alerts.created"
 
 
 def test_event_codec_round_trips_documents_chunked_event() -> None:
