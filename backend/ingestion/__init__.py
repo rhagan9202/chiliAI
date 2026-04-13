@@ -2,6 +2,22 @@
 
 from __future__ import annotations
 
+from ingestion.chunker import (
+	ChunkingResult,
+	ChunkingStrategy,
+	DocumentChunker,
+	FixedSizeSplitter,
+	HeuristicTokenizer,
+	RecursiveCharacterSplitter,
+	SentenceSplitter,
+	StructuredRecordChunker,
+	TextChunk,
+	TiktokenTokenizer,
+	Tokenizer,
+	create_document_chunker,
+	resolve_chunking_config,
+)
+from ingestion.extractor import PatternDocumentExtractor, create_document_extractor
 from ingestion.models import (
 	CandidateEntity,
 	CandidateRelationship,
@@ -18,20 +34,38 @@ from ingestion.models import (
 	TextSpan,
 	ValidationReport,
 )
+from ingestion.protocols import DocumentChunkerProtocol, DocumentExtractorProtocol
 
 __all__ = [
 	"CandidateEntity",
 	"CandidateRelationship",
 	"Chunk",
 	"ChunkMetadata",
+	"ChunkingResult",
+	"ChunkingStrategy",
 	"DocumentFormat",
+	"DocumentChunker",
+	"DocumentChunkerProtocol",
+	"DocumentExtractorProtocol",
 	"ExtractionEvidence",
 	"ExtractionResult",
+	"FixedSizeSplitter",
+	"PatternDocumentExtractor",
+	"HeuristicTokenizer",
 	"IngestionStatus",
 	"ParsedDocument",
+	"RecursiveCharacterSplitter",
 	"SourceDocument",
 	"SourceType",
+	"SentenceSplitter",
 	"StructuredRecord",
+	"StructuredRecordChunker",
+	"TextChunk",
 	"TextSpan",
+	"TiktokenTokenizer",
+	"Tokenizer",
 	"ValidationReport",
+	"create_document_chunker",
+	"create_document_extractor",
+	"resolve_chunking_config",
 ]

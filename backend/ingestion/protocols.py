@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from events.types import DocumentsUploadedEvent
+from ingestion.chunker import ChunkingResult
+from ingestion.models import ExtractionResult, ParsedDocument
 from ingestion.orchestrators.protocols import DocumentParseFailure, ParseResult
 from ingestion.service_models import DocumentReceipt, DocumentSubmission, IngestionTask
 
@@ -25,3 +27,21 @@ class IngestionServiceProtocol(Protocol):
         self,
         event: DocumentsUploadedEvent,
     ) -> list[ParseResult | DocumentParseFailure]: ...
+
+
+@runtime_checkable
+class DocumentChunkerProtocol(Protocol):
+    """Chunk parsed documents into extraction-ready units."""
+
+    def chunk_document(
+        self,
+        parsed_document: ParsedDocument,
+        source_document_id: str,
+    ) -> ChunkingResult: ...
+
+
+@runtime_checkable
+class DocumentExtractorProtocol(Protocol):
+    """Extract entity candidates from chunked documents."""
+
+    def extract_document(self, chunking_result: ChunkingResult) -> ExtractionResult: ...

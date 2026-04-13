@@ -8,10 +8,14 @@ from events.codec import decode_event, encode_event
 from events.protocols import EventBus, EventDelivery
 from events.runtime import EventBusSettings, create_event_bus, load_event_bus_settings
 from events.types import (
+    ChunkedDocumentReference,
     ClaimsIngestedEvent,
     ClaimsReceivedEvent,
     DocumentFailureReference,
     DocumentReference,
+    EntitiesExtractedEvent,
+    ExtractedDocumentReference,
+    DocumentsChunkedEvent,
     DocumentsFailedEvent,
     DocumentsParsedEvent,
     DocumentsUploadedEvent,
@@ -21,10 +25,14 @@ from events.types import (
 )
 
 __all__ = [
+    "ChunkedDocumentReference",
     "ClaimsIngestedEvent",
     "ClaimsReceivedEvent",
     "DocumentFailureReference",
     "DocumentReference",
+    "EntitiesExtractedEvent",
+    "ExtractedDocumentReference",
+    "DocumentsChunkedEvent",
     "DocumentsFailedEvent",
     "DocumentsParsedEvent",
     "DocumentsUploadedEvent",

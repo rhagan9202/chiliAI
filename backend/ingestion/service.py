@@ -129,6 +129,20 @@ class IngestionService:
             outcome = self._parser_orchestrator.safe_parse_source(task.source_document)
 
         if isinstance(outcome, ParseResult):
+            parsed_document_storage_key = self._build_parsed_storage_key(
+                task.knowledge_base_id,
+                outcome.parsed_document.id,
+            )
+            self._object_store.put_bytes(
+                parsed_document_storage_key,
+                outcome.parsed_document.model_dump_json().encode("utf-8"),
+                media_type="application/json",
+                metadata={
+                    "knowledge_base_id": task.knowledge_base_id,
+                    "source_document_id": outcome.source_document.id,
+                    "parsed_document_id": outcome.parsed_document.id,
+                },
+            )
             self._event_bus.publish(
                 DocumentsParsedEvent(
                     documents=[
@@ -144,6 +158,7 @@ class IngestionService:
                                 else None
                             ),
                             storage_key=task.storage_key,
+                            parsed_document_storage_key=parsed_document_storage_key,
                         )
                     ]
                 )
@@ -203,3 +218,10 @@ class IngestionService:
     ) -> str:
         suffix = filename or "document"
         return f"knowledgebases/{knowledge_base_id}/documents/{source_document_id}/{suffix}"
+
+    @staticmethod
+    def _build_parsed_storage_key(
+        knowledge_base_id: str,
+        parsed_document_id: str,
+    ) -> str:
+        return f"knowledgebases/{knowledge_base_id}/parsed/{parsed_document_id}.json"

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from shared.types import EntityDefinition, RelationshipDefinition
 
@@ -46,10 +46,32 @@ class IngestionSourceConfig(BaseModel):
     endpoint: str | None = None
 
 
+class ChunkingConfig(BaseModel):
+    """Configuration for parsed document chunking."""
+
+    strategy: Literal["recursive", "fixed_size", "sentence"] = "recursive"
+    chunk_size: int = Field(default=1000, gt=0)
+    chunk_overlap: int = Field(default=200, ge=0)
+    min_chunk_size: int = Field(default=50, gt=0)
+    record_template: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_sizes(self) -> ChunkingConfig:
+        if self.chunk_overlap >= self.chunk_size:
+            raise ValueError("chunk_overlap must be smaller than chunk_size.")
+        if self.min_chunk_size > self.chunk_size:
+            if "min_chunk_size" not in self.model_fields_set:
+                self.min_chunk_size = self.chunk_size
+                return self
+            raise ValueError("min_chunk_size must be <= chunk_size.")
+        return self
+
+
 class IngestionConfig(BaseModel):
     """Ingestion configuration."""
 
     sources: list[IngestionSourceConfig]
+    chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
 
 
 class AlertsConfig(BaseModel):

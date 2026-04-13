@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ingestion.models import ParsedDocument
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import DocumentReference, DocumentsFailedEvent, DocumentsParsedEvent, DocumentsUploadedEvent
 from ingestion.models import SourceDocument, SourceType
@@ -69,6 +70,13 @@ def test_ingest_task_parses_stored_document_and_publishes_parsed_event() -> None
 
     assert isinstance(event_bus.published_events[-1], DocumentsParsedEvent)
     assert outcome.parsed_document.records[0].fields["claim_id"] == "42"  # type: ignore[union-attr]
+    parsed_event = event_bus.published_events[-1]
+    assert parsed_event.documents[0].parsed_document_storage_key is not None
+
+    stored = object_store.get_bytes(parsed_event.documents[0].parsed_document_storage_key or "")
+    parsed_document = ParsedDocument.model_validate_json(stored.content)
+    assert parsed_document.id == outcome.parsed_document.id
+    assert parsed_document.records[0].fields["claim_id"] == "42"
 
 
 def test_process_documents_uploaded_publishes_failure_for_unresolved_format() -> None:

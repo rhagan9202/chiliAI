@@ -48,11 +48,46 @@ class ParsedDocumentReference(BaseModel):
     parser_version: str | None = None
     document_format: str | None = None
     storage_key: str | None = None
+    parsed_document_storage_key: str | None = None
 
 
 class DocumentsParsedEvent(EventBase):
     event_type: Literal["documents.parsed"] = "documents.parsed"
     documents: list[ParsedDocumentReference]
+
+
+class ChunkedDocumentReference(BaseModel):
+    knowledge_base_id: str
+    source_document_id: str
+    parsed_document_id: str
+    chunk_count: int = Field(ge=0)
+    strategy: str
+    storage_key: str | None = None
+    parsed_document_storage_key: str | None = None
+    chunks_storage_key: str | None = None
+
+
+class DocumentsChunkedEvent(EventBase):
+    event_type: Literal["documents.chunked"] = "documents.chunked"
+    documents: list[ChunkedDocumentReference]
+
+
+class ExtractedDocumentReference(BaseModel):
+    knowledge_base_id: str
+    source_document_id: str
+    parsed_document_id: str
+    extraction_result_id: str
+    entity_count: int = Field(ge=0)
+    relationship_count: int = Field(ge=0)
+    storage_key: str | None = None
+    parsed_document_storage_key: str | None = None
+    chunks_storage_key: str | None = None
+    extraction_storage_key: str | None = None
+
+
+class EntitiesExtractedEvent(EventBase):
+    event_type: Literal["entities.extracted"] = "entities.extracted"
+    documents: list[ExtractedDocumentReference]
 
 
 class DocumentFailureReference(BaseModel):
@@ -83,6 +118,8 @@ AnyEvent = (
     KnowledgeBaseCreatedEvent
     | DocumentsUploadedEvent
     | DocumentsParsedEvent
+    | DocumentsChunkedEvent
+    | EntitiesExtractedEvent
     | DocumentsFailedEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent

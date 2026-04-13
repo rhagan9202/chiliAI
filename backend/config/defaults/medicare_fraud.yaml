@@ -66,6 +66,11 @@ capabilities:
   explainability: true
 
 ingestion:
+  chunking:
+    strategy: recursive
+    chunk_size: 1000
+    chunk_overlap: 200
+    min_chunk_size: 50
   sources:
     - type: file_upload
       formats: [pdf, docx, txt, csv, json]

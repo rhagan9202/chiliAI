@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from config.schema import (
     AlertsConfig,
     CapabilitiesConfig,
+    ChunkingConfig,
     DomainConfig,
     DomainInfo,
     IngestionConfig,
@@ -86,6 +87,12 @@ class TestDomainConfigValid:
         cfg = _make_config(entities=ents, relationships=rels)
         assert len(cfg.relationships) == 1
 
+    def test_ingestion_chunking_defaults(self) -> None:
+        cfg = _make_config()
+        assert cfg.ingestion.chunking.strategy == "recursive"
+        assert cfg.ingestion.chunking.chunk_size == 1000
+        assert cfg.ingestion.chunking.chunk_overlap == 200
+
     def test_self_referencing_relationship(self) -> None:
         ents = [_minimal_entity("node")]
         rels = [
@@ -152,6 +159,21 @@ class TestDomainConfigValidation:
     def test_missing_required_fields(self) -> None:
         with pytest.raises(ValidationError):
             DomainConfig.model_validate({"domain": {"name": "x"}})
+
+
+class TestChunkingConfig:
+    def test_default_min_chunk_size_is_capped_for_small_chunk_sizes(self) -> None:
+        config = ChunkingConfig(chunk_size=24, chunk_overlap=4)
+
+        assert config.min_chunk_size == 24
+
+    def test_chunk_overlap_must_be_smaller_than_chunk_size(self) -> None:
+        with pytest.raises(ValidationError, match="chunk_overlap"):
+            ChunkingConfig(chunk_size=100, chunk_overlap=100)
+
+    def test_min_chunk_size_must_not_exceed_chunk_size(self) -> None:
+        with pytest.raises(ValidationError, match="min_chunk_size"):
+            ChunkingConfig(chunk_size=100, min_chunk_size=101)
 
 
 # ---------------------------------------------------------------------------
