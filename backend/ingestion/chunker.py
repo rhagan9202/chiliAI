@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 import json
 import os
 import re
@@ -16,11 +16,7 @@ from ingestion.models import Chunk, ChunkMetadata, ParsedDocument, StructuredRec
 
 if TYPE_CHECKING:
 	from config.schema import ChunkingConfig
-from shared.utils import generate_id
-
-
-def _utc_now() -> datetime:
-	return datetime.now(timezone.utc)
+from shared.utils import generate_id, utc_now
 
 
 @dataclass(frozen=True)
@@ -39,7 +35,7 @@ class ChunkingResult(BaseModel):
 	parsed_document_id: str
 	chunks: list[Chunk] = Field(default_factory=list)
 	strategy_used: str
-	chunked_at: datetime = Field(default_factory=_utc_now)
+	chunked_at: datetime = Field(default_factory=utc_now)
 
 
 @runtime_checkable
@@ -339,7 +335,7 @@ class StructuredRecordChunker:
 				value = repr(value)
 			elif conversion == "s":
 				value = str(value)
-			rendered_parts.append(format(value, format_spec))
+			rendered_parts.append(format(value, format_spec or ""))
 		return "".join(rendered_parts)
 
 	@staticmethod

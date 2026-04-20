@@ -40,9 +40,9 @@ As a platform developer, I want `KnowledgeBase` to carry `updated_at` and richer
 - Do NOT modify any files outside `backend/shared/types.py` and `backend/tests/shared/test_types.py`
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=shared tests/shared/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=shared tests/shared/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)

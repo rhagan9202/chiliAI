@@ -44,9 +44,9 @@ As a platform developer, I want `GraphService.upsert_task` to split large entity
 - Do NOT roll back successful batches when a later batch fails — each batch is independently committed
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=graph tests/graph/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=graph tests/graph/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)

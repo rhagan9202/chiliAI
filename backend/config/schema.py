@@ -74,6 +74,82 @@ class IngestionConfig(BaseModel):
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
 
 
+class GraphDbConfig(BaseModel):
+    """Configuration for selecting the graph database backend."""
+
+    backend: Literal["neo4j", "memgraph", "in_memory"] = "in_memory"
+    uri: str | None = None
+    pool_size: int = 10
+    auth_env_var: str | None = None
+
+
+class VectorStoreConfig(BaseModel):
+    """Configuration for selecting the vector store backend."""
+
+    backend: Literal["qdrant", "pgvector", "in_memory"] = "in_memory"
+    uri: str | None = None
+    dimensions: int = Field(default=384, gt=0)
+    distance_metric: Literal["cosine", "dot", "euclidean"] = "cosine"
+    # Cross-validation with EmbeddingsConfig.dimensions is deferred to E1-S06.
+
+
+class LlmConfig(BaseModel):
+    """Configuration for selecting the LLM provider and model."""
+
+    provider: Literal["openai", "anthropic", "local"] = "local"
+    model: str = "local-default"
+    api_key_env_var: str | None = None
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=4096, gt=0)
+
+
+class EmbeddingsConfig(BaseModel):
+    """Configuration for selecting the embeddings provider and model."""
+
+    provider: Literal["openai", "sentence_transformers", "local"] = (
+        "sentence_transformers"
+    )
+    model: str = "all-MiniLM-L6-v2"
+    dimensions: int = Field(default=384, gt=0)
+    batch_size: int = Field(default=32, gt=0)
+    api_key_env_var: str | None = None
+
+
+class ObjectStoreConfig(BaseModel):
+    """Configuration for selecting the object store backend."""
+
+    backend: Literal["s3", "gcs", "minio", "local"] = "local"
+    bucket: str | None = None
+    base_path: str | None = None
+    credentials_env_var: str | None = None
+
+
+class EventBusConfig(BaseModel):
+    """Configuration for selecting the event transport backend."""
+
+    backend: Literal["redis", "in_memory"] = "in_memory"
+    uri: str | None = None
+    stream_prefix: str = "chili"
+    consumer_group: str = "chili-workers"
+
+
+class MonitoringConfig(BaseModel):
+    """Configuration for alert deduplication and evaluation cadence."""
+
+    evaluation_interval_seconds: int = Field(default=300, gt=0)
+    dedup_window_seconds: int = Field(default=3600, gt=0)
+    max_alerts_per_entity: int = Field(default=10, gt=0)
+
+
+class RagConfig(BaseModel):
+    """Configuration for retrieval-augmented generation behavior."""
+
+    top_k: int = Field(default=5, gt=0)
+    expansion_depth: int = Field(default=2, ge=0)
+    reranking_enabled: bool = False
+    system_prompt_template: str | None = None
+
+
 class AlertsConfig(BaseModel):
     """Alert thresholds keyed by entity type, then metric name."""
 
@@ -95,26 +171,53 @@ class DomainConfig(BaseModel):
     backend modules via dependency injection.
     """
 
+    schema_version: str = "1.0"
     domain: DomainInfo
     entities: list[EntityDefinition]
     relationships: list[RelationshipDefinition]
     capabilities: CapabilitiesConfig
     ingestion: IngestionConfig
+    graph: GraphDbConfig | None = None
+    vectorstore: VectorStoreConfig | None = None
+    llm: LlmConfig | None = None
+    embeddings: EmbeddingsConfig | None = None
+    storage: ObjectStoreConfig | None = None
+    events: EventBusConfig | None = None
+    monitoring: MonitoringConfig | None = None
+    rag: RagConfig | None = None
     alerts: AlertsConfig
-    # TODO(production): Add configuration sections for all external subsystems:
-    # - graph: GraphDbConfig (backend: neo4j|memgraph|neptune, connection URI, pool size)
-    # - vectorstore: VectorStoreConfig (backend: pgvector|qdrant|weaviate, connection, dims)
-    # - llm: LlmConfig (provider: openai|anthropic|local, model, API key env, temperature)
-    # - embeddings: EmbeddingsConfig (provider, model, dimensions, batch limits)
-    # - storage: ObjectStoreConfig (backend: s3|gcs|minio|local, bucket, credentials env)
-    # - events: EventBusConfig (absorb EventBusSettings from events/runtime.py into YAML)
-    # - monitoring: MonitoringConfig (alerting rules, evaluation intervals, dedup windows)
-    # - rag: RagConfig (top_k, expansion_depth, reranking, system_prompt template)
-    # Add schema_version: str for config format versioning and migration.
-    # See docs/architecture.md §9 and docs/config_engine_plan.md.
 
     @model_validator(mode="after")
     def _validate_cross_references(self) -> DomainConfig:
+        provided_vectorstore = self.vectorstore
+        provided_embeddings = self.embeddings
+
+        if (
+            provided_vectorstore is not None
+            and provided_embeddings is not None
+            and provided_vectorstore.dimensions != provided_embeddings.dimensions
+        ):
+            raise ValueError(
+                "Embeddings dimensions must match vectorstore dimensions when both sections are configured."
+            )
+
+        if self.graph is None:
+            self.graph = GraphDbConfig()
+        if self.vectorstore is None:
+            self.vectorstore = VectorStoreConfig()
+        if self.llm is None:
+            self.llm = LlmConfig()
+        if self.embeddings is None:
+            self.embeddings = EmbeddingsConfig()
+        if self.storage is None:
+            self.storage = ObjectStoreConfig()
+        if self.events is None:
+            self.events = EventBusConfig()
+        if self.monitoring is None:
+            self.monitoring = MonitoringConfig()
+        if self.rag is None:
+            self.rag = RagConfig()
+
         errors: list[str] = []
 
         # --- duplicate entity names ---
@@ -170,6 +273,14 @@ __all__ = [
     "ChunkingConfig",
     "DomainConfig",
     "DomainInfo",
+    "GraphDbConfig",
     "IngestionConfig",
     "IngestionSourceConfig",
+    "EmbeddingsConfig",
+    "EventBusConfig",
+    "LlmConfig",
+    "MonitoringConfig",
+    "ObjectStoreConfig",
+    "RagConfig",
+    "VectorStoreConfig",
 ]

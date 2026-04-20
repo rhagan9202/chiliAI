@@ -32,7 +32,7 @@ All protocol definitions in `protocols.py` files align with their service implem
 - `ingestion`, `graph`, `embeddings`, `vectorstore`, `rag`, `llm`, `agent`, `monitoring` — protocols match services
 - `shared/types.py` canonical types (`Entity`, `Relationship`, `Alert`, `KnowledgeBase`) used consistently — no shadow definitions
 
-**One concern**: `shared/types.py` has production TODOs (missing `created_at`, `version`, `acknowledged_at` fields on several types). These must be added before release.
+**One concern**: `shared/types.py` still has production TODOs on some platform records, mainly around a proper alert severity enum plus future `KnowledgeBase` ownership/config-version fields. These must be added before release.
 
 ### 1.2 Boundary Bleeding — PASS
 
@@ -44,7 +44,7 @@ Every external system has a proper protocol:
 
 | System | Protocol | Production Adapter | Status |
 |--------|----------|--------------------|--------|
-| Graph DB | `GraphRepository` | **MISSING** (in-memory only) | BLOCKED |
+| Graph DB | `GraphRepository` | Optional Neo4j adapter plus in-memory scaffolding | ⚠️ Optional dependency; integration requires configured Neo4j |
 | Vector Store | `VectorStoreProtocol` | **MISSING** (in-memory only) | BLOCKED |
 | Object Storage | `ObjectStore` | **MISSING** (in-memory only) | BLOCKED |
 | LLM | `LlmClientProtocol` | **MISSING** (echo stub only) | BLOCKED |
@@ -58,24 +58,18 @@ Business logic never imports vendor SDKs directly. DI wiring injects only via pr
 | Area | Drift | Impact |
 |------|-------|--------|
 | Missing API routers | 6 of 8 target routers not created (`alerts`, `investigation`, `rag`, `ws`, `analytics`, `evidence`) | Frontend cannot communicate with backend for critical paths |
-| Graph service write-only | No query/read methods despite architecture requiring them for Dashboard + Investigation | Blocks entire frontend investigation workbench |
+| Graph service query surface partial | Read/query methods now exist for entity lookup, neighborhood traversal, search, and metrics, but `get_subgraph` and production-backed query adapters are still missing | Investigation and RAG can proceed on in-memory scaffolding only |
 | Agent coordinator incomplete | `steps.py` missing; multi-step state machine not fully wired | Event-driven orchestration loop incomplete |
-| Config schema incomplete | Missing subsystem config sections (`graph:`, `vectorstore:`, `llm:`, `embeddings:`, `storage:`, `events:`, `monitoring:`, `rag:`) | Adapter selection hardcoded in DI layer |
+| Production adapter matrix incomplete | Domain configuration and DI selection are now wired, but most subsystems still only have in-memory adapters available | Production deployment still depends on implementing concrete vendor adapters |
 | Analytics modules empty | All 4 sub-modules (`timeseries/`, `gnn/`, `risk/`, `explainability/`) contain only `__init__.py` | Flow B (Active Monitoring) cannot progress past graph update |
 
 ### 1.5 Vendor Lock-in — PASS
 
-Zero direct vendor SDK imports in business logic. Redis-specific code isolated to `events/adapters/redis_streams.py`. Config-driven adapter selection not yet implemented but architecture supports it.
+Zero direct vendor SDK imports in business logic. Redis-specific code isolated to `events/adapters/redis_streams.py`. Config-driven adapter selection is now implemented in the DI layer for the currently available adapter set.
 
-### 1.6 Consistency & Duplication — PASS (minor issue)
+### 1.6 Consistency & Duplication — PASS
 
-No shadow type definitions. One utility duplication found: `_utc_now()` defined in 4+ locations:
-- `events/types.py`
-- `ingestion/models.py`
-- `ingestion/chunker.py`
-- `vectorstore/models.py`
-
-**Fix**: Consolidate into `shared/utils.py` and import everywhere.
+No shadow type definitions. UTC timestamp generation is consolidated through `shared.utils.utc_now()`, and the prior module-local `_utc_now()` helpers have been removed.
 
 ### 1.7 Overall Code Quality — GOOD
 
@@ -93,13 +87,13 @@ No shadow type definitions. One utility duplication found: `_utc_now()` defined 
 
 | Module | Implementation | Tests | Coverage | Key Gap |
 |--------|---------------|-------|----------|---------|
-| **shared/** | 95% | ✅ | ~90% | Missing audit trail fields (`created_at`, `version`) |
-| **config/** | 90% | ⚠️ | ~65% | Missing subsystem config sections; loader tests incomplete |
+| **shared/** | 95% | ✅ | **97%** | Core audit fields are in place; remaining gaps are alert severity enum and KB metadata TODOs |
+| **config/** | 97% | ✅ | ~98% | Config sections are defined; DI/runtime wiring still needs E1-S07 |
 | **events/** | 80% | ✅ | ~85% | No dead-letter queue; no XPENDING/XCLAIM fault tolerance |
 | **ingestion/** | 85% | ✅ | **93%** | LLM-powered extraction deferred; no async I/O |
 | **agent/** | 70% | ✅ | **88%** | Embeddings handler missing; no dead-letter; no durable state |
 | **api/** | 40% | ✅ | ~80% | 6 of 8 routers missing; no auth middleware; no file validation |
-| **graph/** | 20% | ⚠️ | ~50% | **Write-only** — no query methods; no production adapters |
+| **graph/** | 35% | ✅ | **96%** | In-memory read/query methods implemented; no production adapters yet |
 | **vectorstore/** | 30% | ✅ | ~85% | No production adapters; no metadata filtering |
 | **embeddings/** | 20% | ✅ | ~80% | No production adapters; no configurable dimension/model |
 | **storage/** | 30% | ⚠️ | ~70% | No S3/MinIO/local adapters; no streaming upload |
@@ -172,17 +166,15 @@ All post-graph stages missing: analytics pipeline empty, monitoring service stub
 
 | # | Issue | Files Affected | Blocks | Effort |
 |---|-------|----------------|--------|--------|
-| 1 | **Graph query API missing** — service is write-only, no `get_entity`, `query_neighborhood`, `search_entities` | `graph/service.py`, `graph/adapters/protocols.py`, `graph/adapters/in_memory.py` | Dashboard, Investigation Workbench, Analytics loop, KB summary | M (2-3 days) |
-| 2 | **Config-driven adapter selection missing** — adapters hardcoded to in-memory in DI layer | `config/schema.py`, `api/dependencies.py` | All production deployments; all real adapters | M (2-3 days) |
-| 3 | **Embeddings not wired in coordinator** — pipeline stops after graph.updated | `agent/coordinator.py` | RAG chat, vector search, entire retrieval path | S (1 day) |
+| 1 | **Production adapter implementations missing** — DI selection exists, but most subsystems still only expose in-memory adapters | `graph/adapters/*`, `vectorstore/adapters/*`, `embeddings/adapters/*`, `llm/adapters/*`, `storage/adapters/*` | All production deployments; all real adapters | M (2-3 days) |
+| 2 | **Embeddings not wired in coordinator** — pipeline stops after graph.updated | `agent/coordinator.py` | RAG chat, vector search, entire retrieval path | S (1 day) |
 
 ### Tier 2 — Capability Gaps (blocks specific features)
 
 | # | Issue | Files Affected | Blocks | Effort |
 |---|-------|----------------|--------|--------|
-| 4 | **Production graph adapter (Neo4j)** | `graph/adapters/neo4j.py` (new) | Real graph persistence | M (2-3 days) |
-| 5 | **Production vector adapter (Qdrant)** | `vectorstore/adapters/qdrant.py` (new) | Real vector search | M (2-3 days) |
-| 6 | **Production embeddings adapter (OpenAI or sentence-transformers)** | `embeddings/adapters/openai.py` or `sentence_transformers.py` (new) | Real embedding generation | M (2-3 days) |
+| 4 | **Production vector adapter (Qdrant)** | `vectorstore/adapters/qdrant.py` (new) | Real vector search | M (2-3 days) |
+| 5 | **Production embeddings adapter (OpenAI or sentence-transformers)** | `embeddings/adapters/openai.py` or `sentence_transformers.py` (new) | Real embedding generation | M (2-3 days) |
 | 7 | **Production LLM adapter (OpenAI/Anthropic)** | `llm/adapters/openai.py` (new) | RAG answers, entity extraction | M (2-3 days) |
 | 8 | **Production storage adapter (S3/MinIO)** | `storage/adapters/s3.py` (new) | Persistent document storage | M (2-3 days) |
 | 9 | **RAG pipeline implementation + tests** | `rag/service.py`, `rag/adapters/`, new tests | RAG chat endpoint | L (4-5 days) |
@@ -202,8 +194,8 @@ All post-graph stages missing: analytics pipeline empty, monitoring service stub
 | 18 | **Auth/RBAC middleware** (JWT/OIDC, role enforcement) | M (2-3 days) |
 | 19 | **CI/CD pipeline** (GitHub Actions: lint + typecheck + test + build) | S (1-2 days) |
 | 20 | **Input validation hardening** (file size limits, content-type whitelist, filename sanitization) | S (1 day) |
-| 21 | **Utility consolidation** (`_utc_now()` duplication across 4+ files → `shared/utils.py`) | S (0.5 days) |
-| 22 | **Shared type completion** (add `created_at`, `version`, audit fields to Entity/Relationship/Alert) | S (0.5 days) |
+| 21 | **Utility consolidation** (`_utc_now()` duplication across 4+ files → `shared/utils.py`) | Complete |
+| 22 | **Shared type follow-up** (severity enum, remaining KB metadata, future alert lifecycle polish) | S (0.5 days) |
 | 23 | **K8s manifests + IaC** (deployments, services, configmaps, Helm/Terraform) | L (5+ days) |
 | 24 | **Frontend — entire application** (routing, 6 pages, graph viz, API client, state mgmt, WebSocket) | XL (4-6 weeks) |
 
@@ -227,14 +219,14 @@ All post-graph stages missing: analytics pipeline empty, monitoring service stub
 
 | Task | Owner | Duration | Dependencies | Deliverable |
 |------|-------|----------|-------------|-------------|
-| 1.1 Graph query API (get_entity, query_neighborhood, search) | E1 | 3 days | None | graph/service.py read methods + in-memory adapter + tests |
-| 1.2 Config-driven adapter selection | E3 | 3 days | None | config/schema.py subsystem sections + DI wiring |
+| 1.1 Graph query API (get_entity, query_neighborhood, search) | E1 | Complete | None | graph/service.py read methods + in-memory adapter + tests |
+| 1.2 Config-driven adapter selection | E3 | Complete | None | config/schema.py subsystem sections + DI wiring |
 | 1.3 Embeddings wiring in coordinator | E2 | 1 day | None | agent/coordinator.py handles embeddings.completed |
-| 1.4 Shared type completion + utility consolidation | E2 | 1 day | None | shared/types.py audit fields, shared/utils.py _utc_now() |
+| 1.4 Shared type completion + utility consolidation | E2 | Complete | None | shared/types.py audit fields, shared/utils.py `utc_now()` |
 | 1.5 CI/CD pipeline (GitHub Actions) | E3 | 2 days | None | Lint + typecheck + test + build on every PR |
 | 1.6 Input validation hardening | E2 | 1 day | None | File size limits, content-type whitelist in routers |
 | 1.7 Frontend app shell + routing | E4 | 3 days | None | React Router, layout, config fetching |
-| 1.8 Neo4j graph adapter | E1 | 3 days | 1.1 | graph/adapters/neo4j.py + integration tests |
+| 1.8 Neo4j graph adapter | E1 | Complete | 1.1 | graph/adapters/neo4j_adapter.py + integration tests |
 | 1.9 Production vector adapter (Qdrant) | E3 | 3 days | 1.2 | vectorstore/adapters/qdrant.py + tests |
 | 1.10 Production LLM adapter (OpenAI) | E2 | 3 days | 1.2 | llm/adapters/openai.py + tests |
 
@@ -353,7 +345,7 @@ Week  1  2  3  4  5  6  7  8  9  10  11  12
 
 ### New Files Required
 
-- `graph/adapters/neo4j.py` — Neo4j graph adapter
+- `graph/adapters/neo4j_adapter.py` — Neo4j graph adapter
 - `vectorstore/adapters/qdrant.py` — Qdrant vector adapter
 - `embeddings/adapters/sentence_transformers.py` — sentence-transformers adapter
 - `embeddings/adapters/openai.py` — OpenAI embeddings adapter
@@ -377,15 +369,13 @@ Week  1  2  3  4  5  6  7  8  9  10  11  12
 
 ### Existing Files Requiring Modification
 
-- `graph/service.py` — Add read/query methods
+- `graph/service.py` — Add future `get_subgraph` support
 - `graph/adapters/protocols.py` — Extend with query protocol methods
 - `graph/adapters/in_memory.py` — Implement query methods
-- `config/schema.py` — Add subsystem config sections (graph, vectorstore, llm, etc.)
-- `api/dependencies.py` — Config-driven adapter selection
+- `api/dependencies.py` — Extend backend selection as production adapters land
 - `api/app.py` — Register new routers
 - `agent/coordinator.py` — Wire embeddings handler + analytics handlers
-- `shared/types.py` — Add `created_at`, `version`, audit trail fields
-- `shared/utils.py` — Add `utc_now()`, consolidate utility functions
+- `shared/types.py` — Finish remaining shared-type TODOs (severity enum, KB metadata)
 - `chili_app/src/App.tsx` — Replace template with app shell
 - `chili_app/package.json` — Add dependencies (React Router, TanStack Query, Zustand, graph viz library)
 

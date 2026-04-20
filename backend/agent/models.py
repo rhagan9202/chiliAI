@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field, model_validator
 
+from shared.utils import utc_now
+
 
 MetadataValue = str | int | float | bool
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 class WorkflowStepStatus(str, Enum):
@@ -48,7 +46,7 @@ class WorkflowRun(BaseModel):
     trigger_event_type: str
     status: WorkflowRunStatus = WorkflowRunStatus.RUNNING
     steps: list[WorkflowStepState] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=_utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
 
     @model_validator(mode="after")

@@ -158,7 +158,12 @@ def handle_documents_parsed(
             )
         )
     if references:
-        event_bus.publish(DocumentsChunkedEvent(documents=references))
+        event_bus.publish(
+            DocumentsChunkedEvent(
+                correlation_id=event.correlation_id,
+                documents=references,
+            )
+        )
     return len(references)
 
 
@@ -217,7 +222,12 @@ def handle_documents_chunked(
             )
         )
     if references:
-        event_bus.publish(EntitiesExtractedEvent(documents=references))
+        event_bus.publish(
+            EntitiesExtractedEvent(
+                correlation_id=event.correlation_id,
+                documents=references,
+            )
+        )
     return len(references)
 
 
@@ -283,7 +293,12 @@ def handle_entities_extracted(
             )
         )
     if references:
-        event_bus.publish(EntitiesValidatedEvent(documents=references))
+        event_bus.publish(
+            EntitiesValidatedEvent(
+                correlation_id=event.correlation_id,
+                documents=references,
+            )
+        )
     return len(references)
 
 
@@ -316,6 +331,7 @@ def handle_entities_validated(
                 extraction_result_id=document.extraction_result_id,
                 validation_report_id=document.validation_report_id,
                 validation_storage_key=document.validation_storage_key,
+                correlation_id=event.correlation_id,
                 entities=validation_report.valid_entities,
                 relationships=validation_report.valid_relationships,
             )

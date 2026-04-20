@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from pydantic import BaseModel, Field, model_validator
 
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+from shared.utils import utc_now
 
 
 class MonitoringObservation(BaseModel):
@@ -18,7 +16,7 @@ class MonitoringObservation(BaseModel):
     entity_type: str
     metric_name: str
     score: float = Field(ge=0.0, le=1.0)
-    observed_at: datetime = Field(default_factory=_utc_now)
+    observed_at: datetime = Field(default_factory=utc_now)
     rationale: str
     evidence_pack_id: str | None = None
 

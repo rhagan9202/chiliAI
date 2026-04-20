@@ -56,9 +56,9 @@ As a platform developer, I want `api/dependencies.py` to select adapter implemen
 - Do NOT modify any files outside the target files listed above
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=api tests/api/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=api tests/api/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)

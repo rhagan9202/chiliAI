@@ -53,10 +53,10 @@ As a platform developer, I want a single `utc_now()` function in `shared/utils.p
 - Do NOT change `datetime.now(timezone.utc)` to any other timestamp implementation
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=shared tests/shared/` >= 85% coverage for affected module
-- [ ] `grep -r "_utc_now" backend/ --include="*.py"` returns zero results (excluding `__pycache__`)
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=shared tests/shared/` >= 85% coverage for affected module
+- [x] `grep -r "_utc_now" backend/ --include="*.py"` returns zero results (excluding `__pycache__`)
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)

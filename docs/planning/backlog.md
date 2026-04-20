@@ -50,6 +50,8 @@
 
 ### E1-S01: Add audit and versioning fields to Entity
 
+**Status:** Complete on April 20, 2026.
+
 **As a** platform developer, **I want** `Entity` to carry `created_at`, `updated_at`, and `version` fields, **so that** graph merge logic can detect changes and enforce optimistic concurrency control.
 
 **Acceptance Criteria:**
@@ -68,6 +70,8 @@
 
 ### E1-S02: Add audit and versioning fields to Relationship
 
+Status: Complete on April 20, 2026.
+
 **As a** platform developer, **I want** `Relationship` to carry `created_at`, `updated_at`, `version`, and an optional `weight` field, **so that** relationship upserts support concurrency control and weighted graph algorithms.
 
 **Acceptance Criteria:**
@@ -85,6 +89,8 @@
 
 ### E1-S03: Consolidate `_utc_now()` into `shared/utils.py`
 
+Status: Complete on April 20, 2026.
+
 **As a** platform developer, **I want** a single `utc_now()` function in `shared/utils.py` replacing the duplicated `_utc_now()` definitions across 9+ modules, **so that** timestamp generation has one canonical source and can be patched in a single place during tests.
 
 **Acceptance Criteria:**
@@ -101,6 +107,8 @@
 ---
 
 ### E1-S04: Add graph database configuration section to DomainConfig
+
+Status: Complete on April 20, 2026.
 
 **As a** platform operator, **I want** a `GraphDbConfig` section in the domain configuration, **so that** the graph adapter backend, connection URI, and pool settings are selected from config instead of hardcoded.
 
@@ -121,6 +129,8 @@
 
 ### E1-S05: Add vector store configuration section to DomainConfig
 
+Status: Complete on April 20, 2026.
+
 **As a** platform operator, **I want** a `VectorStoreConfig` section in the domain configuration, **so that** the vector store backend, connection, and dimensionality are config-driven.
 
 **Acceptance Criteria:**
@@ -133,16 +143,18 @@
 |----------|------|--------------|
 | P1 | S | None |
 
-**Notes:** `dimensions` must match the embedding model output size. Cross-validate with `EmbeddingsConfig.dimensions` at config load time (add a model validator).
+**Notes:** `dimensions` must match the embedding model output size. Cross-validation with `EmbeddingsConfig.dimensions` is deferred to E1-S06.
 
 ---
 
 ### E1-S06: Add LLM, embeddings, storage, events, monitoring, and RAG configuration sections to DomainConfig
 
+Status: Complete on April 20, 2026.
+
 **As a** platform operator, **I want** configuration sections for LLM, embeddings, object storage, events, monitoring, and RAG, **so that** every external subsystem is configurable from a single YAML surface.
 
 **Acceptance Criteria:**
-1. `config/schema.py` defines: `LlmConfig` (provider, model, api_key_env_var, temperature, max_tokens), `EmbeddingsConfig` (provider, model, dimensions, batch_size), `ObjectStoreConfig` (backend, bucket, endpoint_url, credentials_env_var), `EventBusConfig` (backend, redis_url, consumer_group, max_retries), `MonitoringConfig` (evaluation_interval_seconds, dedup_window_seconds), `RagConfig` (top_k, expansion_depth, reranking_enabled, system_prompt_template).
+1. `config/schema.py` defines: `LlmConfig` (provider, model, api_key_env_var, temperature, max_tokens), `EmbeddingsConfig` (provider, model, dimensions, batch_size), `ObjectStoreConfig` (backend, bucket, base_path, credentials_env_var), `EventBusConfig` (backend, uri, stream_prefix, consumer_group), `MonitoringConfig` (evaluation_interval_seconds, dedup_window_seconds, max_alerts_per_entity), `RagConfig` (top_k, expansion_depth, reranking_enabled, system_prompt_template).
 2. Each section is an optional field on `DomainConfig` that defaults to a sensible in-memory/local value.
 3. `schema_version: str = "1.0"` is added to `DomainConfig` for future migration support.
 4. Cross-field validator ensures `EmbeddingsConfig.dimensions == VectorStoreConfig.dimensions` when both are present.
@@ -158,12 +170,14 @@
 
 ### E1-S07: Config-driven adapter selection in the DI layer
 
+Status: Complete on April 20, 2026.
+
 **As a** platform developer, **I want** `api/dependencies.py` to select adapter implementations based on `DomainConfig` subsystem sections, **so that** switching from in-memory to production adapters requires only a config change — no code edits.
 
 **Acceptance Criteria:**
-1. `get_object_store()` reads `DomainConfig.storage.backend` and instantiates the matching adapter (in_memory, s3, local_fs). Falls back to in_memory when the section is absent.
-2. A new `get_graph_service()` factory reads `DomainConfig.graph.backend` and selects InMemoryGraphRepository or Neo4jGraphRepository.
-3. Factory functions exist for `get_vectorstore_service()`, `get_embeddings_service()`, `get_llm_service()`, `get_rag_service()`.
+1. For each subsystem (`graph`, `vectorstore`, `embeddings`, `llm`, `storage`, `events`, `monitoring`), `api/dependencies.py` contains a factory that reads the corresponding `DomainConfig` section and returns the appropriate adapter or service instance.
+2. When a config section is absent, the factory defaults to the in-memory/local adapter path.
+3. Factory functions exist for `get_graph_service()`, `get_vectorstore_service()`, `get_embeddings_service()`, `get_llm_service()`, `get_monitoring_service()`, while preserving existing `get_object_store()` and `get_event_bus()` call sites.
 4. Each factory raises a clear `ConfigurationError` if the requested backend is not yet implemented.
 5. Existing tests that rely on in-memory defaults still pass.
 
@@ -176,6 +190,8 @@
 ---
 
 ### E1-S08: Enrich event envelope with correlation_id, source, and schema_version
+
+Status: Complete on April 20, 2026.
 
 **As a** platform developer, **I want** every event to carry a `correlation_id`, `source`, and `schema_version`, **so that** distributed traces can be correlated end-to-end and event consumers can handle envelope evolution gracefully.
 
@@ -195,6 +211,8 @@
 
 ### E1-S09: Add updated_at and status enrichment to KnowledgeBase
 
+**Status:** Complete on April 20, 2026.
+
 **As a** platform developer, **I want** `KnowledgeBase` to carry `updated_at` and richer status lifecycle fields, **so that** the KB listing endpoint can show accurate last-modified timestamps and status progression.
 
 **Acceptance Criteria:**
@@ -212,6 +230,8 @@
 
 ### E1-S10: Add structured fields to EvidencePack and Alert
 
+**Status:** Complete on April 20, 2026.
+
 **As a** platform developer, **I want** `EvidencePack` to carry `created_at` and `source_documents`, and `Alert` to carry `updated_at`, `resolved_by`, and `resolution_notes`, **so that** the alert investigation UI has sufficient metadata for audit and resolution tracking.
 
 **Acceptance Criteria:**
@@ -223,7 +243,7 @@
 |----------|------|--------------|
 | P2 | S | E1-S03 |
 
-**Notes:** The `severity` field TODO for a proper enum can be addressed here or deferred. Recommend converting to `Literal["low", "medium", "high", "critical"]`.
+**Notes:** The `severity` field TODO for a proper enum remains deferred to a later story.
 
 ---
 
@@ -232,6 +252,8 @@
 > Extend the write-only graph module with query capabilities, transaction semantics, and a production adapter so that the investigation workbench, dashboard, and RAG chat can read graph data.
 
 ### E2-S01: Extend GraphRepository protocol with read/query methods
+
+**Status:** Complete on April 20, 2026.
 
 **As a** platform developer, **I want** the `GraphRepository` protocol to define `get_entity`, `get_neighbors`, `get_entities_by_type`, `search_entities`, `count_entities`, `count_relationships`, and `delete_entity`, **so that** all graph adapters provide a consistent query surface.
 
@@ -249,6 +271,8 @@
 ---
 
 ### E2-S02: Implement read/query methods on InMemoryGraphRepository
+
+**Status:** Complete on April 20, 2026.
 
 **As a** platform developer, **I want** the in-memory graph adapter to implement all query methods from the extended protocol, **so that** tests and local development can exercise the full graph surface without a database.
 
@@ -270,6 +294,8 @@
 
 ### E2-S03: Extend GraphServiceProtocol and GraphService with query methods
 
+**Status:** Complete on April 20, 2026.
+
 **As a** platform developer, **I want** the graph service to expose `get_entity`, `query_neighborhood`, `search_entities`, `get_subgraph`, and `compute_metrics` through the service protocol, **so that** API routers and the RAG module can query the graph through a clean service boundary.
 
 **Acceptance Criteria:**
@@ -287,6 +313,8 @@
 ---
 
 ### E2-S04: Neo4j production graph adapter
+
+**Status:** Complete on April 20, 2026.
 
 **As a** platform operator, **I want** a Neo4j adapter implementing `GraphRepository`, **so that** the platform can persist graph data durably with Cypher query capabilities.
 
@@ -307,6 +335,8 @@
 ---
 
 ### E2-S05: Add transaction semantics to graph upsert
+
+**Status:** Complete on April 20, 2026.
 
 **As a** platform developer, **I want** entity and relationship upserts within a single `GraphBuildTask` to execute atomically, **so that** a failure mid-upsert does not leave the graph in an inconsistent state.
 
@@ -341,6 +371,8 @@
 | P2 | S | E2-S05 |
 
 **Notes:** Batch boundaries are per-transaction. This trades full atomicity for practical operability on large documents.
+
+**Status:** Complete. `GraphService` now batches entity and relationship upserts by constructor-configured size and raises partial-progress errors without rolling back earlier committed batches.
 
 ---
 

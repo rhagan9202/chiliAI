@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import pytest
+
 from agent.coordinator import (
+    build_worker_dependencies,
     drain_ingestion_events,
+    handle_event,
     handle_documents_chunked,
     handle_documents_parsed,
     handle_entities_extracted,
     handle_entities_validated,
 )
+from config.loader import load_config
+from events.protocols import EventDelivery
+from events.runtime import EventBusSettings
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import (
     ChunkedDocumentReference,
@@ -18,6 +25,7 @@ from events.types import (
     EntitiesValidatedEvent,
     ExtractedDocumentReference,
     GraphUpdatedEvent,
+    KnowledgeBaseCreatedEvent,
     ParsedDocumentReference,
     ValidatedDocumentReference,
 )
@@ -33,6 +41,70 @@ from ingestion.service import IngestionService
 from ingestion.service_models import DocumentSubmission
 from ingestion.validator import create_extraction_validator
 from storage.adapters.in_memory import InMemoryObjectStore
+
+
+def test_build_worker_dependencies_assembles_ingestion_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    defaults_dir = (
+        __file__
+        .replace("tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml")
+    )
+    monkeypatch.setattr("agent.coordinator.load_config", lambda: load_config(defaults_dir))
+    monkeypatch.setattr(
+        "agent.coordinator.load_event_bus_settings",
+        lambda: EventBusSettings(backend="in-memory"),
+    )
+
+    (
+        event_bus,
+        ingestion_service,
+        document_chunker,
+        document_extractor,
+        extraction_validator,
+        graph_service,
+        object_store,
+        event_settings,
+    ) = build_worker_dependencies()
+
+    assert isinstance(event_bus, InMemoryEventBus)
+    assert isinstance(ingestion_service, IngestionService)
+    assert document_chunker is not None
+    assert document_extractor is not None
+    assert extraction_validator is not None
+    assert graph_service is not None
+    assert isinstance(object_store, InMemoryObjectStore)
+    assert event_settings.backend == "in-memory"
+
+
+def test_handle_event_returns_zero_for_unhandled_event() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(),
+            fetcher=HttpxRemoteDocumentFetcher(),
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    processed = handle_event(
+        EventDelivery(event=KnowledgeBaseCreatedEvent(knowledge_base_id="kb-1")),
+        service,
+        document_chunker=create_document_chunker(),
+        document_extractor=create_document_extractor([]),
+        extraction_validator=create_extraction_validator([], []),
+        graph_service=create_graph_service(
+            InMemoryGraphRepository(),
+            object_store=object_store,
+            event_bus=event_bus,
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    assert processed == 0
 
 
 def test_drain_ingestion_events_processes_uploaded_documents() -> None:
@@ -316,6 +388,7 @@ def test_handle_documents_parsed_publishes_chunked_event() -> None:
 
     processed = handle_documents_parsed(
         DocumentsParsedEvent(
+            correlation_id="corr-123",
             documents=[
                 ParsedDocumentReference(
                     knowledge_base_id="kb-1",
@@ -334,6 +407,7 @@ def test_handle_documents_parsed_publishes_chunked_event() -> None:
 
     assert processed == 1
     assert isinstance(event_bus.published_events[-1], DocumentsChunkedEvent)
+    assert event_bus.published_events[-1].correlation_id == "corr-123"
     reference = event_bus.published_events[-1].documents[0]
     assert reference.parsed_document_storage_key == storage_key
     assert reference.chunks_storage_key == "knowledgebases/kb-1/chunks/parsed-1.json"
@@ -446,6 +520,7 @@ def test_handle_entities_validated_publishes_graph_updated_event() -> None:
 
     processed = handle_entities_validated(
         EntitiesValidatedEvent(
+            correlation_id="corr-graph-123",
             documents=[
                 ValidatedDocumentReference(
                     knowledge_base_id="kb-1",
@@ -471,6 +546,7 @@ def test_handle_entities_validated_publishes_graph_updated_event() -> None:
 
     assert processed == 1
     assert isinstance(event_bus.published_events[-1], GraphUpdatedEvent)
+    assert event_bus.published_events[-1].correlation_id == "corr-graph-123"
     reference = event_bus.published_events[-1].documents[0]
     assert reference.graph_update_storage_key == "knowledgebases/kb-1/graph_updates/extract-1.json"
 

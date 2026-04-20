@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from pydantic import BaseModel, Field, model_validator
 
 from ingestion.models import DocumentFormat, IngestionStatus, SourceDocument, SourceType
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+from shared.utils import utc_now
 
 
 class DocumentSubmission(BaseModel):
@@ -40,7 +37,7 @@ class DocumentReceipt(BaseModel):
     storage_key: str | None = None
     uri: str | None = None
     document_format: DocumentFormat | None = None
-    created_at: datetime = Field(default_factory=_utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class IngestionTask(BaseModel):

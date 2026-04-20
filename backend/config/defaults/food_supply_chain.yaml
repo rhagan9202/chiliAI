@@ -75,6 +75,55 @@ ingestion:
       format: json
       endpoint: /ingest/shipments
 
+# graph:
+#   backend: in_memory  # use neo4j or memgraph for external graph databases
+#   uri: null
+#   pool_size: 10
+#   auth_env_var: GRAPH_DB_AUTH
+
+# vectorstore:
+#   backend: in_memory  # use qdrant or pgvector for external vector indexes
+#   uri: null
+#   dimensions: 384
+#   distance_metric: cosine
+
+# llm:
+#   provider: local
+#   model: local-default
+#   api_key_env_var: null
+#   temperature: 0.7
+#   max_tokens: 4096
+
+# embeddings:
+#   provider: sentence_transformers
+#   model: all-MiniLM-L6-v2
+#   dimensions: 384
+#   batch_size: 32
+#   api_key_env_var: null
+
+# storage:
+#   backend: local
+#   bucket: null
+#   base_path: null
+#   credentials_env_var: null
+
+# events:
+#   backend: in_memory
+#   uri: null
+#   stream_prefix: chili
+#   consumer_group: chili-workers
+
+# monitoring:
+#   evaluation_interval_seconds: 300
+#   dedup_window_seconds: 3600
+#   max_alerts_per_entity: 10
+
+# rag:
+#   top_k: 5
+#   expansion_depth: 2
+#   reranking_enabled: false
+#   system_prompt_template: null
+
 alerts:
   thresholds:
     supplier:

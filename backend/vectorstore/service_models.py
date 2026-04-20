@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from pydantic import BaseModel, Field, model_validator
 
+from shared.utils import utc_now
 from vectorstore.models import MetadataValue
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 class VectorIndexSubmission(BaseModel):
@@ -48,7 +45,7 @@ class VectorIndexReceipt(BaseModel):
     record_id: str
     content_id: str
     dimension: int = Field(gt=0)
-    created_at: datetime = Field(default_factory=_utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class VectorSearchRequest(BaseModel):

@@ -49,10 +49,10 @@ As a platform developer, I want every event to carry a `correlation_id`, `source
 - Do NOT modify any files outside the target files listed above
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=events tests/events/` >= 85% coverage for events module
-- [ ] `pytest --cov=agent tests/agent/` >= 85% coverage for agent module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=events tests/events/` >= 85% coverage for events module
+- [x] `pytest --cov=agent tests/agent/` >= 85% coverage for agent module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)

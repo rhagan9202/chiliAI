@@ -54,9 +54,9 @@ As a platform operator, I want a Neo4j adapter implementing `GraphRepository`, s
 - Do NOT add retry/backoff logic — keep the adapter simple for now
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=graph tests/graph/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=graph tests/graph/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)

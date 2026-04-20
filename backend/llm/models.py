@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field, model_validator
 
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+from shared.utils import utc_now
 
 
 class MessageRole(str, Enum):
@@ -40,7 +38,7 @@ class CompletionMetadata(BaseModel):
     model_name: str
     temperature: float = Field(ge=0.0, le=2.0)
     max_tokens: int = Field(gt=0)
-    created_at: datetime = Field(default_factory=_utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class GenerationRequest(BaseModel):
