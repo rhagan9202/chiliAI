@@ -19,8 +19,13 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "pyright>=1.1",
     "pytest>=8.0",
     "pytest-cov>=6.0",
+    "ruff>=0.11",
+]
+neo4j = [
+    "neo4j>=5,<6",
 ]
 
 [build-system]
@@ -34,3 +39,14 @@ include = ["api*", "agent*", "shared*", "config*", "events*", "storage*",
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: tests that require external services or optional dependencies",
+]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+include = ["graph", "tests/graph"]
+exclude = ["**/__pycache__", "chili_backend.egg-info"]
