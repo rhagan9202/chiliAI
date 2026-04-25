@@ -269,7 +269,14 @@ def test_neo4j_repository_get_neighbors_uses_variable_length_path_pattern(
     }
     driver.results = [
         [{"entity": root_node}],
-        [{"root": root_node, "path": _FakePath([root_node, neighbor_node], [relationship])}],
+        [
+            {
+                "root": root_node,
+                "path": _FakePath([root_node, neighbor_node], [relationship]),
+                "relationship_source_ids": ["entity-1"],
+                "relationship_target_ids": ["entity-2"],
+            }
+        ],
         [{"entity": root_node}],
     ]
 
@@ -280,6 +287,80 @@ def test_neo4j_repository_get_neighbors_uses_variable_length_path_pattern(
     assert [relationship.id for relationship in result.relationships] == ["relationship-1"]
     assert [entity.id for entity in zero_depth_result.entities] == ["entity-1"]
     assert "*1..2" in driver.queries[1][0]
+
+
+def test_neo4j_repository_get_neighbors_preserves_inbound_relationship_direction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    root_node: FakeRecord = {
+        "entity_id": "entity-1",
+        "type": "claim",
+        "properties": {},
+        "metadata": {},
+        "created_at": "2026-04-20T00:00:00+00:00",
+        "updated_at": None,
+        "version": 1,
+    }
+    neighbor_node: FakeRecord = {
+        "entity_id": "entity-2",
+        "type": "provider",
+        "properties": {},
+        "metadata": {},
+        "created_at": "2026-04-20T00:00:00+00:00",
+        "updated_at": None,
+        "version": 1,
+    }
+    relationship: FakeRecord = {
+        "relationship_id": "relationship-1",
+        "type": "submitted_by",
+        "properties": {},
+        "created_at": "2026-04-20T00:00:00+00:00",
+        "updated_at": None,
+        "version": 1,
+        "weight": None,
+    }
+    driver.results = [
+        [{"entity": root_node}],
+        [
+            {
+                "root": root_node,
+                "path": _FakePath([root_node, neighbor_node], [relationship]),
+                "relationship_source_ids": ["entity-2"],
+                "relationship_target_ids": ["entity-1"],
+            }
+        ],
+    ]
+
+    result = repository.get_neighbors("kb-1", "entity-1", depth=1, direction="in")
+
+    assert len(result.relationships) == 1
+    assert result.relationships[0].source_id == "entity-2"
+    assert result.relationships[0].target_id == "entity-1"
+
+
+def test_neo4j_repository_get_neighbors_rejects_invalid_direction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+
+    with pytest.raises(ValueError, match="direction must be one of"):
+        repository.get_neighbors(
+            "kb-1",
+            "entity-1",
+            depth=1,
+            direction="sideways",  # type: ignore[arg-type]
+        )
 
 
 def test_neo4j_repository_transaction_commits_and_reuses_driver_transaction(

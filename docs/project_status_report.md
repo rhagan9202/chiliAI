@@ -18,7 +18,7 @@ chiliAI is an **architecturally sound early-stage scaffold** at approximately **
 | **Architectural Integrity** | STRONG — protocols, adapters, boundaries respected |
 | **Code Quality** | GOOD — types consistent, no contract slippage, clean boundaries |
 | **Implementation Completeness** | LOW (~30%) — most modules are scaffolds or stubs |
-| **Production Readiness** | NOT READY — no production adapters, no auth, no observability |
+| **Production Readiness** | NOT READY — several production adapters still missing, no auth, no observability |
 | **Test Coverage** | INCONSISTENT — 5 modules at 0%; 6 modules at 80%+ |
 
 ---
@@ -45,7 +45,7 @@ Every external system has a proper protocol:
 | System | Protocol | Production Adapter | Status |
 |--------|----------|--------------------|--------|
 | Graph DB | `GraphRepository` | Optional Neo4j adapter plus in-memory scaffolding | ⚠️ Optional dependency; integration requires configured Neo4j |
-| Vector Store | `VectorStoreProtocol` | **MISSING** (in-memory only) | BLOCKED |
+| Vector Store | `VectorStoreProtocol` | Optional Qdrant adapter plus in-memory scaffolding | ⚠️ Optional dependency; integration requires configured Qdrant |
 | Object Storage | `ObjectStore` | **MISSING** (in-memory only) | BLOCKED |
 | LLM | `LlmClientProtocol` | **MISSING** (echo stub only) | BLOCKED |
 | Embeddings | `EmbedderProtocol` | **MISSING** (MD5 stub only) | BLOCKED |
@@ -93,8 +93,8 @@ No shadow type definitions. UTC timestamp generation is consolidated through `sh
 | **ingestion/** | 85% | ✅ | **93%** | LLM-powered extraction deferred; no async I/O |
 | **agent/** | 70% | ✅ | **88%** | Embeddings handler missing; no dead-letter; no durable state |
 | **api/** | 40% | ✅ | ~80% | 6 of 8 routers missing; no auth middleware; no file validation |
-| **graph/** | 35% | ✅ | **96%** | In-memory read/query methods implemented; no production adapters yet |
-| **vectorstore/** | 30% | ✅ | ~85% | No production adapters; no metadata filtering |
+| **graph/** | 55% | ✅ | **90%** | In-memory and optional Neo4j adapters implemented; upserts use per-batch transaction semantics; live Neo4j integration requires configured test database |
+| **vectorstore/** | 45% | ✅ | ~85% | In-memory and optional Qdrant adapters implemented; advanced metadata filtering remains future work |
 | **embeddings/** | 20% | ✅ | ~80% | No production adapters; no configurable dimension/model |
 | **storage/** | 30% | ⚠️ | ~70% | No S3/MinIO/local adapters; no streaming upload |
 | **llm/** | 20% | ❌ | **0%** | No production adapters; 0 tests; no OpenAI/Anthropic/Ollama |
@@ -344,8 +344,6 @@ Week  1  2  3  4  5  6  7  8  9  10  11  12
 
 ### New Files Required
 
-- `graph/adapters/neo4j_adapter.py` — Neo4j graph adapter
-- `vectorstore/adapters/qdrant_adapter.py` — Qdrant vector adapter
 - `embeddings/adapters/sentence_transformers.py` — sentence-transformers adapter
 - `embeddings/adapters/openai.py` — OpenAI embeddings adapter
 - `llm/adapters/openai.py` — OpenAI LLM adapter
@@ -390,7 +388,7 @@ Week  1  2  3  4  5  6  7  8  9  10  11  12
 | ingestion/ | 93% | ≥85% | ✅ Met |
 | agent/ | 88% | ≥85% | ✅ Met |
 | api/ | ~80% | ≥85% | 5% gap |
-| graph/ | ~50% | ≥85% | 35% gap |
+| graph/ | 90% | ≥85% | ✅ Met |
 | vectorstore/ | ~85% | ≥85% | ✅ Met |
 | embeddings/ | ~80% | ≥85% | 5% gap |
 | storage/ | ~70% | ≥85% | 15% gap |

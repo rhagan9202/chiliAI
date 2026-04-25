@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Generator, Iterable, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from datetime import datetime
 import importlib
@@ -260,6 +260,10 @@ class Neo4jGraphRepository(GraphRepository):
         depth: int,
         direction: Literal["in", "out", "both"],
     ) -> SubgraphResult:
+        if direction not in {"in", "out", "both"}:
+            msg = "direction must be one of 'in', 'out', or 'both'"
+            raise ValueError(msg)
+
         root_entity = self.get_entity(knowledge_base_id, entity_id)
         if root_entity is None:
             return SubgraphResult()
@@ -276,7 +280,16 @@ class Neo4jGraphRepository(GraphRepository):
         OPTIONAL MATCH path = {pattern}
         WHERE path IS NULL
            OR all(relationship IN relationships(path) WHERE relationship.knowledge_base_id = $knowledge_base_id)
-        RETURN root, path
+        RETURN root,
+               path,
+               CASE
+                   WHEN path IS NULL THEN []
+                   ELSE [relationship IN relationships(path) | startNode(relationship).entity_id]
+               END AS relationship_source_ids,
+               CASE
+                   WHEN path IS NULL THEN []
+                   ELSE [relationship IN relationships(path) | endNode(relationship).entity_id]
+               END AS relationship_target_ids
         """
 
         try:
@@ -303,16 +316,17 @@ class Neo4jGraphRepository(GraphRepository):
             if path is None:
                 continue
 
+            relationship_source_ids = cast(Sequence[str], record["relationship_source_ids"])
+            relationship_target_ids = cast(Sequence[str], record["relationship_target_ids"])
+
             for node in path.nodes:
                 entity = self._node_to_entity(node)
                 entities_by_id.setdefault(entity.id, entity)
             for index, relationship in enumerate(path.relationships):
-                source_node = path.nodes[index]
-                target_node = path.nodes[index + 1]
                 materialized = self._relationship_to_model(
                     relationship,
-                    source_id=cast(str, source_node["entity_id"]),
-                    target_id=cast(str, target_node["entity_id"]),
+                    source_id=relationship_source_ids[index],
+                    target_id=relationship_target_ids[index],
                 )
                 relationships_by_id.setdefault(materialized.id, materialized)
 
@@ -435,7 +449,7 @@ class Neo4jGraphRepository(GraphRepository):
         return cast(int, records[0]["count"]) if records else 0
 
     @contextmanager
-    def _transaction_scope(self) -> Iterator[None]:
+    def _transaction_scope(self) -> Generator[None, None, None]:
         if self._active_transaction is not None:
             raise RuntimeError("Nested Neo4j transactions are not supported.")
 

@@ -1,5 +1,11 @@
 # Story E2-S05: Add transaction semantics to graph upsert
 
+> Historical note: E2-S06 later refined `GraphService.upsert_task` from task-wide
+> atomicity to per-batch transaction semantics for large graph upserts. The
+> repository/adapters still provide transaction rollback guarantees for each
+> transaction scope, but the current service intentionally does not roll back
+> previously committed batches when a later batch fails.
+
 ## Story
 As a platform developer, I want entity and relationship upserts within a single `GraphBuildTask` to execute atomically.
 

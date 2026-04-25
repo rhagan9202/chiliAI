@@ -5,16 +5,22 @@ from __future__ import annotations
 import os
 from collections.abc import Sequence
 from uuid import uuid4
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
-from qdrant_client import QdrantClient
-from qdrant_client import models as qdrant_models
 
 from config.schema import VectorStoreConfig
 from vectorstore.adapters.qdrant_adapter import QdrantClientProtocol, QdrantVectorStore
 from vectorstore.exceptions import VectorDimensionMismatchError
 from vectorstore.models import VectorRecord
+
+if TYPE_CHECKING:
+    from qdrant_client import QdrantClient
+    from qdrant_client import models as qdrant_models
+else:
+    qdrant_client = pytest.importorskip("qdrant_client")
+    qdrant_models = pytest.importorskip("qdrant_client.models")
+    QdrantClient = qdrant_client.QdrantClient
 
 
 class _FakeQueryResponse:
@@ -130,7 +136,12 @@ def test_qdrant_vector_store_search_translates_filters_and_returns_matches() -> 
         client=cast(QdrantClientProtocol, client),
     )
 
-    matches = store.search("kb-1", [1.0, 0.0], 5, {"source": "policy", "rank": 1})
+    matches = store.search(
+        "kb-1",
+        [1.0, 0.0],
+        5,
+        {"source": "policy", "rank": 1, "risk_score": 0.75},
+    )
 
     assert [match.content_id for match in matches] == ["content-1"]
     query_filter = client.queries[0][2]
@@ -139,11 +150,15 @@ def test_qdrant_vector_store_search_translates_filters_and_returns_matches() -> 
     assert [condition.key for condition in conditions] == [
         "metadata.source",
         "metadata.rank",
+        "metadata.risk_score",
     ]
-    assert [cast(qdrant_models.MatchValue, condition.match).value for condition in conditions] == [
+    assert [cast(qdrant_models.MatchValue, condition.match).value for condition in conditions[:2]] == [
         "policy",
         1,
     ]
+    risk_range = cast(qdrant_models.Range, conditions[2].range)
+    assert risk_range.gte == 0.75
+    assert risk_range.lte == 0.75
 
 
 def test_qdrant_vector_store_delete_records_targets_collection_ids() -> None:
@@ -196,8 +211,6 @@ def test_qdrant_vector_store_rejects_dimension_mismatch() -> None:
 
 @pytest.mark.integration
 def test_qdrant_vector_store_round_trip_search() -> None:
-    pytest.importorskip("qdrant_client")
-
     uri = os.getenv("QDRANT_URL")
     if uri is None:
         pytest.skip("QDRANT_URL is required for Qdrant integration tests.")

@@ -5,6 +5,11 @@ As a platform operator, I want a Qdrant adapter implementing `VectorStoreProtoco
 
 **Status:** Complete on April 20, 2026.
 
+> Validation note: Qdrant adapter tests require the optional `qdrant` extra
+> (`pip install -e ".[dev,qdrant]"`). Without that extra, the Qdrant-specific
+> test module skips at collection time because `qdrant-client` is intentionally
+> optional.
+
 ## Acceptance Criteria
 1. `vectorstore/adapters/qdrant_adapter.py` implements `VectorStoreProtocol` (upsert_records, search, delete_records).
 2. Connection is configured via `VectorStoreConfig` (uri, distance_metric).

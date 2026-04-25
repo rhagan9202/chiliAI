@@ -20,6 +20,7 @@ if TYPE_CHECKING:
         PointIdsList,
         PointStruct,
         QueryResponse,
+        Range,
         ScoredPoint,
         VectorParams,
     )
@@ -68,6 +69,7 @@ class QdrantModelsProtocol(Protocol):
     FieldCondition: type[FieldCondition]
     MatchValue: type[MatchValue]
     PointIdsList: type[PointIdsList]
+    Range: type[Range]
 
 try:  # pragma: no cover - optional dependency
     from qdrant_client import QdrantClient
@@ -221,10 +223,7 @@ class QdrantVectorStore(VectorStoreProtocol):
         models_module = _require_qdrant_models()
         return models_module.Filter(
             must=[
-                models_module.FieldCondition(
-                    key=f"metadata.{key}",
-                    match=models_module.MatchValue(value=_coerce_filter_value(value)),
-                )
+                _field_condition_for_filter(key, value)
                 for key, value in filters.items()
             ]
         )
@@ -259,10 +258,21 @@ def _distance_for(distance_metric: str) -> Distance:
         raise ValueError(f"Unsupported Qdrant distance metric '{distance_metric}'.") from exc
 
 
-def _coerce_filter_value(value: MetadataValue) -> str | int | bool:
-    if isinstance(value, float):
-        return str(value)
+def _coerce_filter_value(value: str | int | bool) -> str | int | bool:
     return value
+
+
+def _field_condition_for_filter(key: str, value: MetadataValue) -> FieldCondition:
+    models_module = _require_qdrant_models()
+    if isinstance(value, float):
+        return models_module.FieldCondition(
+            key=f"metadata.{key}",
+            range=models_module.Range(gte=value, lte=value),
+        )
+    return models_module.FieldCondition(
+        key=f"metadata.{key}",
+        match=models_module.MatchValue(value=_coerce_filter_value(value)),
+    )
 
 
 def _require_qdrant_client_class() -> type[QdrantClientType]:

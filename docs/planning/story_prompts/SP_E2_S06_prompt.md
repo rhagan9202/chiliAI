@@ -6,7 +6,7 @@ As a platform developer, I want `GraphService.upsert_task` to split large entity
 ## Acceptance Criteria
 1. `GraphService` accepts a `batch_size: int = 500` constructor parameter.
 2. Entities and relationships are chunked into batches of `batch_size` and upserted sequentially, each in its own transaction.
-3. If a batch fails, an error is raised with the count of successfully upserted entities before the failure.
+3. If a batch fails, an error is raised with the counts of successfully upserted entities and relationships before the failure.
 4. Test with 1500 entities and batch_size=500 verifies three batches execute.
 
 ## Priority / Size / Dependencies

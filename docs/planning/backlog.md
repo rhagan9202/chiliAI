@@ -338,6 +338,12 @@ Status: Complete on April 20, 2026.
 
 **Status:** Complete on April 20, 2026.
 
+**Clarification:** Complete as repository/adaptor transaction support. E2-S06
+later refined `GraphService.upsert_task` from task-wide atomicity to
+per-batch transaction semantics; prior successful batches intentionally remain
+committed when a later batch fails, and `BatchUpsertError` reports partial
+progress.
+
 **As a** platform developer, **I want** entity and relationship upserts within a single `GraphBuildTask` to execute atomically, **so that** a failure mid-upsert does not leave the graph in an inconsistent state.
 
 **Acceptance Criteria:**
@@ -363,7 +369,7 @@ Status: Complete on April 20, 2026.
 **Acceptance Criteria:**
 1. `GraphService` accepts a `batch_size: int = 500` constructor parameter.
 2. Entities and relationships are chunked into batches of `batch_size` and upserted sequentially, each in its own transaction.
-3. If a batch fails, an error is raised with the count of successfully upserted entities before the failure.
+3. If a batch fails, an error is raised with the counts of successfully upserted entities and relationships before the failure.
 4. Test with 1500 entities and batch_size=500 verifies three batches execute.
 
 | Priority | Size | Dependencies |
@@ -401,6 +407,8 @@ Status: Complete on April 20, 2026.
 **Notes:** Use `qdrant_client.QdrantClient` with gRPC transport for performance. Parameterize collection naming as `chili_{knowledge_base_id}` to avoid collisions.
 
 **Implementation note:** The adapter provides `delete_records` as an adapter-local method to satisfy the story requirement while preserving the current `VectorStoreProtocol` contract unchanged.
+
+**Validation note:** Qdrant adapter tests require the optional `qdrant` extra (`pip install -e ".[dev,qdrant]"`). Without it, the Qdrant-specific test module skips because `qdrant-client` is intentionally optional.
 
 ---
 
@@ -1002,7 +1010,7 @@ Status: Complete on April 20, 2026.
 |----------|------|--------------|
 | P0 | S | E3-S02 |
 
-**Notes:** E3-S02 delivers the Qdrant adapter. This adapter translates between the RAG and vectorstore module contracts.
+**Notes:** E3-S01 delivers the Qdrant adapter. This adapter translates between the RAG and vectorstore module contracts.
 
 ---
 

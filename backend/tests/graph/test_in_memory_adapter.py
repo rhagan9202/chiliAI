@@ -108,6 +108,20 @@ def test_get_entities_by_type_applies_pagination(populated_repository: InMemoryG
     assert populated_repository.get_entities_by_type("kb-1", "facility", limit=10, offset=0) == []
 
 
+def test_get_entities_by_type_returns_empty_for_non_positive_limit_or_negative_offset(
+    populated_repository: InMemoryGraphRepository,
+) -> None:
+    assert populated_repository.get_entities_by_type(
+        "kb-1", "provider", limit=0, offset=0
+    ) == []
+    assert populated_repository.get_entities_by_type(
+        "kb-1", "provider", limit=-1, offset=0
+    ) == []
+    assert populated_repository.get_entities_by_type(
+        "kb-1", "provider", limit=10, offset=-1
+    ) == []
+
+
 def test_search_entities_matches_string_properties_case_insensitively(
     populated_repository: InMemoryGraphRepository,
 ) -> None:
@@ -132,6 +146,13 @@ def test_search_entities_ignores_non_string_properties_and_blank_queries() -> No
 
     assert repository.search_entities("kb-1", "125", limit=10) == []
     assert repository.search_entities("kb-1", "   ", limit=10) == []
+
+
+def test_search_entities_returns_empty_for_non_positive_limit(
+    populated_repository: InMemoryGraphRepository,
+) -> None:
+    assert populated_repository.search_entities("kb-1", "alice", limit=0) == []
+    assert populated_repository.search_entities("kb-1", "alice", limit=-1) == []
 
 
 def test_get_neighbors_traverses_outbound_bfs(populated_repository: InMemoryGraphRepository) -> None:
@@ -164,6 +185,18 @@ def test_get_neighbors_returns_empty_for_missing_entity() -> None:
 
     assert neighbors.entities == []
     assert neighbors.relationships == []
+
+
+def test_get_neighbors_rejects_invalid_direction(
+    populated_repository: InMemoryGraphRepository,
+) -> None:
+    with pytest.raises(ValueError, match="direction must be one of"):
+        populated_repository.get_neighbors(
+            "kb-1",
+            "entity-1",
+            depth=1,
+            direction="sideways",  # type: ignore[arg-type]
+        )
 
 
 def test_get_neighbors_uses_rebuilt_adjacency_after_mutation(

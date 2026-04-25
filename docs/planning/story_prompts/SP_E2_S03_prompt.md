@@ -1,7 +1,9 @@
 # Story E2-S03: Extend GraphServiceProtocol and GraphService with query methods
 
 ## Story
-As a platform developer, I want the graph service to expose `get_entity`, `query_neighborhood`, `search_entities`, `get_subgraph`, and `compute_metrics` through the service protocol.
+As a platform developer, I want the graph service to expose `get_entity`, `query_neighborhood`, `search_entities`, and `compute_metrics` through the service protocol.
+
+> Note: `get_subgraph` is intentionally deferred from E2-S03. Although it was mentioned in earlier planning text, it is not part of the acceptance criteria for this story because `GraphRepository` does not yet expose a filtered-subgraph query surface, and that protocol must not be modified here.
 
 ## Acceptance Criteria
 1. `graph/protocols.py:GraphServiceProtocol` adds: `get_entity(kb_id, entity_id) -> Entity | None`, `query_neighborhood(kb_id, entity_id, depth) -> SubgraphResult`, `search_entities(kb_id, query, limit, offset) -> list[Entity]`, `compute_metrics(kb_id) -> GraphMetrics`.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import AbstractContextManager, contextmanager
 from copy import deepcopy
-from typing import Iterator
+from typing import Generator
 from typing import Literal
 
 from graph.models import SubgraphResult
@@ -64,6 +64,10 @@ class InMemoryGraphRepository(GraphRepository):
         depth: int,
         direction: Literal["in", "out", "both"],
     ) -> SubgraphResult:
+        if direction not in {"in", "out", "both"}:
+            msg = "direction must be one of 'in', 'out', or 'both'"
+            raise ValueError(msg)
+
         entity_bucket = self._entities.get(knowledge_base_id, {})
         if entity_id not in entity_bucket:
             return SubgraphResult()
@@ -118,6 +122,9 @@ class InMemoryGraphRepository(GraphRepository):
         limit: int,
         offset: int,
     ) -> list[Entity]:
+        if limit <= 0 or offset < 0:
+            return []
+
         matching_entities = [
             entity
             for entity in self.get_entities(knowledge_base_id)
@@ -131,6 +138,9 @@ class InMemoryGraphRepository(GraphRepository):
         query: str,
         limit: int,
     ) -> list[Entity]:
+        if limit <= 0:
+            return []
+
         normalized_query = query.strip().lower()
         if not normalized_query:
             return []
@@ -174,7 +184,7 @@ class InMemoryGraphRepository(GraphRepository):
         self._adjacency_is_stale.add(knowledge_base_id)
 
     @contextmanager
-    def _transaction_scope(self, knowledge_base_id: str) -> Iterator[None]:
+    def _transaction_scope(self, knowledge_base_id: str) -> Generator[None, None, None]:
         entities_snapshot = deepcopy(self._entities.get(knowledge_base_id, {}))
         relationships_snapshot = deepcopy(self._relationships.get(knowledge_base_id, {}))
 
@@ -234,6 +244,9 @@ class InMemoryGraphRepository(GraphRepository):
             return self._inbound_relationships.get(knowledge_base_id, {}).get(entity_id, [])
         if direction == "out":
             return self._outbound_relationships.get(knowledge_base_id, {}).get(entity_id, [])
+        if direction != "both":
+            msg = "direction must be one of 'in', 'out', or 'both'"
+            raise ValueError(msg)
 
         return [
             *self._outbound_relationships.get(knowledge_base_id, {}).get(entity_id, []),

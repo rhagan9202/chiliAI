@@ -143,6 +143,70 @@ def test_graph_service_upsert_task_chunks_large_entity_batches() -> None:
     assert repository.count_entities("kb-1") == 1500
 
 
+def test_graph_service_upsert_task_chunks_large_relationship_batches() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    repository = InMemoryGraphRepository()
+    service = create_graph_service(
+        repository,
+        object_store=object_store,
+        event_bus=event_bus,
+        batch_size=500,
+    )
+    relationship_batch_sizes: list[int] = []
+
+    original_upsert_relationships = repository.upsert_relationships
+
+    def recording_upsert_relationships(
+        knowledge_base_id: str,
+        relationships: list[Relationship],
+    ) -> list[Relationship]:
+        relationship_batch_sizes.append(len(relationships))
+        return original_upsert_relationships(knowledge_base_id, relationships)
+
+    repository.upsert_relationships = recording_upsert_relationships  # type: ignore[method-assign]
+
+    receipt = service.upsert_task(
+        GraphBuildTask(
+            knowledge_base_id="kb-1",
+            source_document_id="doc-1",
+            parsed_document_id="parsed-1",
+            extraction_result_id="extract-1",
+            validation_report_id="validate-1",
+            validation_storage_key="knowledgebases/kb-1/validations/extract-1.json",
+            entities=[
+                Entity(id=f"entity-{index}", type="claim", properties={"claim_id": str(index)})
+                for index in range(1501)
+            ],
+            relationships=[
+                Relationship(
+                    id=f"relationship-{index}",
+                    type="related_to",
+                    source_id=f"entity-{index}",
+                    target_id=f"entity-{index + 1}",
+                )
+                for index in range(1500)
+            ],
+        )
+    )
+
+    repository.upsert_relationships = original_upsert_relationships  # type: ignore[method-assign]
+
+    assert relationship_batch_sizes == [500, 500, 500]
+    assert receipt.upserted_relationship_count == 1500
+    assert repository.count_relationships("kb-1") == 1500
+
+
+def test_create_graph_service_rejects_non_positive_batch_size() -> None:
+    with pytest.raises(ValueError, match="batch_size"):
+        create_graph_service(
+            InMemoryGraphRepository(),
+            object_store=InMemoryObjectStore(),
+            event_bus=InMemoryEventBus(),
+            batch_size=0,
+        )
+
+
 def test_graph_service_upsert_task_raises_batch_error_and_keeps_prior_batches() -> None:
     event_bus = InMemoryEventBus()
     object_store = InMemoryObjectStore()
@@ -218,6 +282,47 @@ def test_graph_service_upsert_task_raises_batch_error_and_keeps_prior_batches() 
     assert repository.count_entities("kb-1") == 3
     assert repository.count_relationships("kb-1") == 2
     assert event_bus.published_events == []
+    with pytest.raises(KeyError):
+        object_store.get_bytes("knowledgebases/kb-1/graph_updates/extract-1.json")
+
+
+def test_graph_service_upsert_task_suppresses_artifact_and_event_on_entity_failure() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    repository = InMemoryGraphRepository()
+    service = create_graph_service(
+        repository,
+        object_store=object_store,
+        event_bus=event_bus,
+        batch_size=2,
+    )
+
+    def failing_upsert_entities(
+        knowledge_base_id: str,
+        entities: list[Entity],
+    ) -> list[Entity]:
+        raise RuntimeError("entity upsert failed")
+
+    repository.upsert_entities = failing_upsert_entities  # type: ignore[method-assign]
+
+    with pytest.raises(BatchUpsertError) as exc_info:
+        service.upsert_task(
+            GraphBuildTask(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-1",
+                parsed_document_id="parsed-1",
+                extraction_result_id="extract-1",
+                validation_report_id="validate-1",
+                validation_storage_key="knowledgebases/kb-1/validations/extract-1.json",
+                entities=[Entity(id="entity-1", type="claim", properties={"claim_id": "42"})],
+            )
+        )
+
+    assert exc_info.value.successful_entity_count == 0
+    assert exc_info.value.successful_relationship_count == 0
+    assert event_bus.published_events == []
+    with pytest.raises(KeyError):
+        object_store.get_bytes("knowledgebases/kb-1/graph_updates/extract-1.json")
 
 
 @pytest.fixture()
