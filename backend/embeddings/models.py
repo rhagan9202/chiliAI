@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import cast
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -28,7 +29,9 @@ class EmbeddingRequest(BaseModel):
     request_id: str
     knowledge_base_id: str | None = None
     model_name: str
-    items: list[EmbeddingItem] = Field(default_factory=list)
+    items: list[EmbeddingItem] = Field(
+        default_factory=lambda: cast(list[EmbeddingItem], [])
+    )
 
     @model_validator(mode="after")
     def _validate_items(self) -> EmbeddingRequest:
@@ -50,7 +53,9 @@ class EmbeddingResult(BaseModel):
     """Internal embedding batch result returned by an embedder adapter."""
 
     request_id: str
-    vectors: dict[str, list[float]] = Field(default_factory=dict)
+    vectors: dict[str, list[float]] = Field(
+        default_factory=lambda: cast(dict[str, list[float]], {})
+    )
     metadata: EmbeddingMetadata
 
     @model_validator(mode="after")

@@ -30,6 +30,9 @@ neo4j = [
 qdrant = [
     "qdrant-client[grpc]>=1.9",
 ]
+sentence-transformers = [
+    "sentence-transformers>=3.0",
+]
 
 [build-system]
 requires = ["setuptools>=75.0"]

@@ -48,7 +48,7 @@ Every external system has a proper protocol:
 | Vector Store | `VectorStoreProtocol` | Optional Qdrant adapter plus in-memory scaffolding | ⚠️ Optional dependency; integration requires configured Qdrant |
 | Object Storage | `ObjectStore` | **MISSING** (in-memory only) | BLOCKED |
 | LLM | `LlmClientProtocol` | **MISSING** (echo stub only) | BLOCKED |
-| Embeddings | `EmbedderProtocol` | **MISSING** (MD5 stub only) | BLOCKED |
+| Embeddings | `EmbedderProtocol` | Optional sentence-transformers adapter plus in-memory scaffolding | ⚠️ Optional dependency; DI/coordinator wiring still pending |
 | Event Bus | `EventBus` | Redis Streams ✅ + InMemory ✅ | READY |
 
 Business logic never imports vendor SDKs directly. DI wiring injects only via protocol types.
@@ -95,7 +95,7 @@ No shadow type definitions. UTC timestamp generation is consolidated through `sh
 | **api/** | 40% | ✅ | ~80% | 6 of 8 routers missing; no auth middleware; no file validation |
 | **graph/** | 55% | ✅ | **90%** | In-memory and optional Neo4j adapters implemented; upserts use per-batch transaction semantics; live Neo4j integration requires configured test database |
 | **vectorstore/** | 45% | ✅ | ~85% | In-memory and optional Qdrant adapters implemented; advanced metadata filtering remains future work |
-| **embeddings/** | 20% | ✅ | ~80% | No production adapters; no configurable dimension/model |
+| **embeddings/** | 45% | ✅ | **90%** | Optional sentence-transformers adapter implemented; DI/coordinator wiring and cloud embeddings remain future work |
 | **storage/** | 30% | ⚠️ | ~70% | No S3/MinIO/local adapters; no streaming upload |
 | **llm/** | 20% | ❌ | **0%** | No production adapters; 0 tests; no OpenAI/Anthropic/Ollama |
 | **rag/** | 10% | ❌ | **0%** | Pipeline is pseudo-code; 0 tests; no error handling |
@@ -173,7 +173,7 @@ All post-graph stages missing: analytics pipeline empty, monitoring service stub
 
 | # | Issue | Files Affected | Blocks | Effort |
 |---|-------|----------------|--------|--------|
-| 5 | **Production embeddings adapter (OpenAI or sentence-transformers)** | `embeddings/adapters/openai.py` or `sentence_transformers.py` (new) | Real embedding generation | M (2-3 days) |
+| 5 | **Cloud embeddings adapter (OpenAI)** | `embeddings/adapters/openai.py` (new) | Cloud-hosted embedding generation | M (2-3 days) |
 | 7 | **Production LLM adapter (OpenAI/Anthropic)** | `llm/adapters/openai.py` (new) | RAG answers, entity extraction | M (2-3 days) |
 | 8 | **Production storage adapter (S3/MinIO)** | `storage/adapters/s3.py` (new) | Persistent document storage | M (2-3 days) |
 | 9 | **RAG pipeline implementation + tests** | `rag/service.py`, `rag/adapters/`, new tests | RAG chat endpoint | L (4-5 days) |
@@ -239,7 +239,7 @@ All post-graph stages missing: analytics pipeline empty, monitoring service stub
 |------|-------|----------|-------------|-------------|
 | 2.1 RAG pipeline implementation + tests | E2 | 5 days | 1.3, 1.9, 1.10 | Full embed→retrieve→expand→generate pipeline + 85% coverage |
 | 2.2 API routers (alerts, investigation, rag, ws) | E1 | 5 days | 1.1, 1.8 | 6 new routers wired to services |
-| 2.3 Production embeddings adapter (sentence-transformers) | E3 | 3 days | 1.2 | embeddings/adapters/sentence_transformers.py + tests |
+| 2.3 Production embeddings adapter (sentence-transformers) | E3 | Done | 1.2 | `embeddings/adapters/sentence_transformers_adapter.py` + tests |
 | 2.4 Production storage adapter (S3/MinIO) | E3 | 3 days | 1.2 | storage/adapters/s3.py + tests |
 | 2.5 Risk scoring engine | E5 | 4 days | 1.1, 1.8 | analytics/risk/scorer.py + tests + 85% coverage |
 | 2.6 Timeseries anomaly detection | E5 | 6 days | 1.1, 1.8 | analytics/timeseries/detector.py + tests |
@@ -344,7 +344,6 @@ Week  1  2  3  4  5  6  7  8  9  10  11  12
 
 ### New Files Required
 
-- `embeddings/adapters/sentence_transformers.py` — sentence-transformers adapter
 - `embeddings/adapters/openai.py` — OpenAI embeddings adapter
 - `llm/adapters/openai.py` — OpenAI LLM adapter
 - `llm/adapters/anthropic.py` — Anthropic LLM adapter

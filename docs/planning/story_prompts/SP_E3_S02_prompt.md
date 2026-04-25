@@ -1,5 +1,7 @@
 # Story E3-S02: Sentence-Transformers Embeddings Adapter
 
+**Status:** Complete on April 25, 2026.
+
 ## Story
 As a platform developer, I want an embeddings adapter using `sentence-transformers`, so that the platform can generate high-quality local embeddings without external API calls.
 
@@ -10,6 +12,11 @@ As a platform developer, I want an embeddings adapter using `sentence-transforme
 4. The adapter normalizes output vectors to unit length for cosine similarity.
 5. `sentence-transformers` is listed as an optional dependency.
 6. Unit test uses a small model (`all-MiniLM-L6-v2`) and verifies output dimensions and non-zero vectors.
+
+> Validation note: Unit tests use a deterministic fake model at the
+> sentence-transformers boundary so normal CI does not download model weights.
+> The adapter keeps `sentence-transformers` optional and raises a clear install
+> error when the extra is missing at runtime.
 
 ## Priority / Size / Dependencies
 - **Priority:** P1
@@ -51,9 +58,9 @@ As a platform developer, I want an embeddings adapter using `sentence-transforme
 - Do not create utility modules outside `embeddings/` for model management
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=embeddings tests/embeddings/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=embeddings tests/embeddings/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)

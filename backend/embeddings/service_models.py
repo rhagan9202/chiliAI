@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -23,7 +25,9 @@ class EmbedRequest(BaseModel):
 
     knowledge_base_id: str | None = None
     model_name: str = "in-memory-embedder"
-    submissions: list[EmbedSubmission] = Field(default_factory=list)
+    submissions: list[EmbedSubmission] = Field(
+        default_factory=lambda: cast(list[EmbedSubmission], [])
+    )
 
     @model_validator(mode="after")
     def _validate_submissions(self) -> EmbedRequest:
@@ -36,7 +40,7 @@ class EmbeddedItem(BaseModel):
     """One embedded item returned to callers."""
 
     content_id: str
-    vector: list[float] = Field(default_factory=list)
+    vector: list[float] = Field(default_factory=lambda: cast(list[float], []))
 
 
 class EmbedResponse(BaseModel):
@@ -45,7 +49,9 @@ class EmbedResponse(BaseModel):
     request_id: str
     model_name: str
     dimensions: int = Field(gt=0)
-    items: list[EmbeddedItem] = Field(default_factory=list)
+    items: list[EmbeddedItem] = Field(
+        default_factory=lambda: cast(list[EmbeddedItem], [])
+    )
 
 
 __all__ = ["EmbedRequest", "EmbedResponse", "EmbedSubmission", "EmbeddedItem"]

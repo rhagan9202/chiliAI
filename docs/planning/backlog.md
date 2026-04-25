@@ -414,6 +414,8 @@ progress.
 
 ### E3-S02: Sentence-Transformers embeddings adapter
 
+**Status:** Complete on April 25, 2026.
+
 **As a** platform developer, **I want** an embeddings adapter using `sentence-transformers`, **so that** the platform can generate high-quality local embeddings without external API calls.
 
 **Acceptance Criteria:**
@@ -429,6 +431,15 @@ progress.
 | P1 | M | E1-S06 |
 
 **Notes:** Default model should be configurable via `EmbeddingsConfig.model`. GPU vs CPU fallback should be automatic via PyTorch.
+
+**Implementation note:** `SentenceTransformersEmbedder` loads the configured
+model once at construction, supports deterministic model injection for unit
+tests, chunks requests by `EmbeddingsConfig.batch_size`, validates configured
+dimensions, and normalizes all vectors to unit length.
+
+**Validation note:** The `sentence-transformers` extra is optional. Unit tests
+mock the model boundary to avoid network/model downloads in CI while still
+covering dimensions, batching, normalization, and zero-vector rejection.
 
 ---
 
