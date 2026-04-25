@@ -11,13 +11,17 @@ from shared.utils import utc_now
 MetadataValue = str | int | float | bool
 
 
+def _empty_embedding() -> list[float]:
+    return []
+
+
 class VectorRecord(BaseModel):
     """A persisted embedding record in a vector namespace."""
 
     id: str
     knowledge_base_id: str
     content_id: str
-    embedding: list[float] = Field(default_factory=list)
+    embedding: list[float] = Field(default_factory=_empty_embedding)
     content: str | None = None
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
     indexed_at: datetime = Field(default_factory=utc_now)

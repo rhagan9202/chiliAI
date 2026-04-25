@@ -382,6 +382,8 @@ Status: Complete on April 20, 2026.
 
 ### E3-S01: Qdrant vector store adapter
 
+**Status:** Complete on April 20, 2026.
+
 **As a** platform operator, **I want** a Qdrant adapter implementing `VectorStoreProtocol`, **so that** vector similarity search is backed by a scalable, production-grade engine.
 
 **Acceptance Criteria:**
@@ -397,6 +399,8 @@ Status: Complete on April 20, 2026.
 | P1 | M | E1-S05 |
 
 **Notes:** Use `qdrant_client.QdrantClient` with gRPC transport for performance. Parameterize collection naming as `chili_{knowledge_base_id}` to avoid collisions.
+
+**Implementation note:** The adapter provides `delete_records` as an adapter-local method to satisfy the story requirement while preserving the current `VectorStoreProtocol` contract unchanged.
 
 ---
 

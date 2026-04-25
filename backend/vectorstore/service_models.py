@@ -10,11 +10,23 @@ from shared.utils import utc_now
 from vectorstore.models import MetadataValue
 
 
+def _empty_embedding() -> list[float]:
+    return []
+
+
+def _empty_submissions() -> list[VectorIndexSubmission]:
+    return []
+
+
+def _empty_matches() -> list[VectorSearchMatch]:
+    return []
+
+
 class VectorIndexSubmission(BaseModel):
     """A single embedding payload submitted to the vectorstore service."""
 
     content_id: str
-    embedding: list[float] = Field(default_factory=list)
+    embedding: list[float] = Field(default_factory=_empty_embedding)
     content: str | None = None
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
 
@@ -29,7 +41,7 @@ class VectorIndexRequest(BaseModel):
     """A batch vector-indexing request for one knowledge base."""
 
     knowledge_base_id: str
-    submissions: list[VectorIndexSubmission] = Field(default_factory=list)
+    submissions: list[VectorIndexSubmission] = Field(default_factory=_empty_submissions)
 
     @model_validator(mode="after")
     def _validate_submissions(self) -> VectorIndexRequest:
@@ -52,7 +64,7 @@ class VectorSearchRequest(BaseModel):
     """A vector similarity-search request."""
 
     knowledge_base_id: str
-    query_vector: list[float] = Field(default_factory=list)
+    query_vector: list[float] = Field(default_factory=_empty_embedding)
     limit: int = Field(default=5, gt=0)
     filters: dict[str, MetadataValue] = Field(default_factory=dict)
 
@@ -78,7 +90,7 @@ class VectorSearchResponse(BaseModel):
 
     knowledge_base_id: str
     query_dimension: int = Field(gt=0)
-    matches: list[VectorSearchMatch] = Field(default_factory=list)
+    matches: list[VectorSearchMatch] = Field(default_factory=_empty_matches)
 
 
 __all__ = [

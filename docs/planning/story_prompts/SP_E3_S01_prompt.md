@@ -3,6 +3,8 @@
 ## Story
 As a platform operator, I want a Qdrant adapter implementing `VectorStoreProtocol`, so that vector similarity search is backed by a scalable, production-grade engine.
 
+**Status:** Complete on April 20, 2026.
+
 ## Acceptance Criteria
 1. `vectorstore/adapters/qdrant_adapter.py` implements `VectorStoreProtocol` (upsert_records, search, delete_records).
 2. Connection is configured via `VectorStoreConfig` (uri, distance_metric).
@@ -51,9 +53,9 @@ As a platform operator, I want a Qdrant adapter implementing `VectorStoreProtoco
 - Do not create utility modules outside `vectorstore/` for Qdrant-specific helpers
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=vectorstore tests/vectorstore/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=vectorstore tests/vectorstore/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)

@@ -166,14 +166,13 @@ All post-graph stages missing: analytics pipeline empty, monitoring service stub
 
 | # | Issue | Files Affected | Blocks | Effort |
 |---|-------|----------------|--------|--------|
-| 1 | **Production adapter implementations missing** — DI selection exists, but most subsystems still only expose in-memory adapters | `graph/adapters/*`, `vectorstore/adapters/*`, `embeddings/adapters/*`, `llm/adapters/*`, `storage/adapters/*` | All production deployments; all real adapters | M (2-3 days) |
+| 1 | **Production adapter implementations still incomplete** — DI selection exists, but several subsystems still only expose in-memory adapters | `embeddings/adapters/*`, `llm/adapters/*`, `storage/adapters/*` | All production deployments; remaining real adapters | M (2-3 days) |
 | 2 | **Embeddings not wired in coordinator** — pipeline stops after graph.updated | `agent/coordinator.py` | RAG chat, vector search, entire retrieval path | S (1 day) |
 
 ### Tier 2 — Capability Gaps (blocks specific features)
 
 | # | Issue | Files Affected | Blocks | Effort |
 |---|-------|----------------|--------|--------|
-| 4 | **Production vector adapter (Qdrant)** | `vectorstore/adapters/qdrant.py` (new) | Real vector search | M (2-3 days) |
 | 5 | **Production embeddings adapter (OpenAI or sentence-transformers)** | `embeddings/adapters/openai.py` or `sentence_transformers.py` (new) | Real embedding generation | M (2-3 days) |
 | 7 | **Production LLM adapter (OpenAI/Anthropic)** | `llm/adapters/openai.py` (new) | RAG answers, entity extraction | M (2-3 days) |
 | 8 | **Production storage adapter (S3/MinIO)** | `storage/adapters/s3.py` (new) | Persistent document storage | M (2-3 days) |
@@ -227,7 +226,7 @@ All post-graph stages missing: analytics pipeline empty, monitoring service stub
 | 1.6 Input validation hardening | E2 | 1 day | None | File size limits, content-type whitelist in routers |
 | 1.7 Frontend app shell + routing | E4 | 3 days | None | React Router, layout, config fetching |
 | 1.8 Neo4j graph adapter | E1 | Complete | 1.1 | graph/adapters/neo4j_adapter.py + integration tests |
-| 1.9 Production vector adapter (Qdrant) | E3 | 3 days | 1.2 | vectorstore/adapters/qdrant.py + tests |
+| 1.9 Production vector adapter (Qdrant) | E3 | Complete | 1.2 | vectorstore/adapters/qdrant_adapter.py + tests |
 | 1.10 Production LLM adapter (OpenAI) | E2 | 3 days | 1.2 | llm/adapters/openai.py + tests |
 
 **Exit criteria**: Graph read/write functional with Neo4j. Config selects adapters. Pipeline runs upload → graph → embeddings → vectors. CI green.
@@ -346,7 +345,7 @@ Week  1  2  3  4  5  6  7  8  9  10  11  12
 ### New Files Required
 
 - `graph/adapters/neo4j_adapter.py` — Neo4j graph adapter
-- `vectorstore/adapters/qdrant.py` — Qdrant vector adapter
+- `vectorstore/adapters/qdrant_adapter.py` — Qdrant vector adapter
 - `embeddings/adapters/sentence_transformers.py` — sentence-transformers adapter
 - `embeddings/adapters/openai.py` — OpenAI embeddings adapter
 - `llm/adapters/openai.py` — OpenAI LLM adapter
