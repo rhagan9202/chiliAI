@@ -51,9 +51,22 @@ As a platform developer, I want the timeseries service to support isolation fore
 - Do NOT use multi-feature isolation forest — single-feature only per the AC
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=analytics/timeseries tests/analytics/timeseries/` >= 85% coverage
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=analytics/timeseries tests/analytics/timeseries/` >= 85% coverage
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `detection_strategy` now also accepts
+`"isolation_forest"`. `_detect_anomalies_isolation_forest()` lazily imports
+`sklearn.ensemble.IsolationForest`, fits a single-feature univariate model
+with a deterministic `random_state`, and converts negative `score_samples`
+output into normalized anomaly scores. `scikit-learn` was added to the
+`[analytics]` extra.
+
+## Validation Note
+From `backend/`: `.venv/bin/pytest tests/analytics/timeseries/` passes;
+isolation-forest contamination thresholds and scoring are seeded for
+deterministic outcomes. `analytics/timeseries` coverage 94%.

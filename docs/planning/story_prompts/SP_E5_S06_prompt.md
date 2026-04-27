@@ -53,9 +53,32 @@ As an analyst, I want the RAG chat response to stream token-by-token via Server-
 - Do NOT break the non-streaming path from E5-S05
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=api tests/api/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=api tests/api/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `POST /chat/conversations/{id}/messages?stream=true`
+returns a `StreamingResponse` with `media_type="text/event-stream"`. Each event
+is `data: {json}\n\n` carrying `{token, done}`; the terminal event is
+`{token: "", done: true, sources: [...]}`. Errors raised by the rag service
+during streaming are emitted as a single `{error, done: true}` event so the
+HTTP status remains 200 (SSE-style error reporting). `RagStreamChunk` was added
+to `rag/service_models.py`; `RagServiceProtocol.stream_answer` returns
+`AsyncIterator[RagStreamChunk]` and is implemented as an async generator on
+`RagService` (token-splits the canned answer for now) and on
+`InMemoryRagService`. `LlmServiceProtocol` gained an optional
+`generate_stream(request) -> AsyncIterator[str]` whose default body raises
+`NotImplementedError`, leaving concrete streaming adapters for Epic 6.
+
+## Validation Note
+From `backend/`:
+`pytest tests/api/test_chat_router.py tests/rag` passed with 20 tests
+(including dedicated SSE format / done-sentinel / unknown-KB streaming cases).
+`ruff check api/routers/chat.py rag llm/protocols.py
+tests/api/test_chat_router.py tests/rag` passed.
+`pyright api/routers/chat.py rag llm/protocols.py
+tests/api/test_chat_router.py tests/rag` passed with 0 errors.

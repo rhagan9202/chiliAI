@@ -55,9 +55,34 @@ As a platform developer, I want `build_worker_dependencies()` to select adapters
 - Do not catch and ignore `ConfigurationError` — let it propagate to fail fast on misconfiguration
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=agent tests/agent/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=agent tests/agent/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `agent/coordinator.py` now drives adapter
+selection from `DomainConfig` via per-subsystem registries
+(`_OBJECT_STORE_REGISTRY`, `_GRAPH_REGISTRY`, `_VECTOR_STORE_REGISTRY`,
+`_EMBEDDING_REGISTRY`, `_LLM_REGISTRY`). `build_object_store`,
+`build_graph_repository`, `build_vector_store`, `build_embedder`, and
+`build_llm_client` look up the configured backend, fall back silently to
+in-memory when the section equals its post-validator default, and otherwise
+delegate to a lazy-import factory. Optional adapter modules
+(`Neo4jGraphRepository`, `QdrantVectorStore`, `OpenAIEmbedder`,
+`SentenceTransformersEmbedder`, `OpenAILlmClient`, `AnthropicLlmClient`,
+`S3ObjectStore`, `LocalFsObjectStore`) are imported lazily and any
+`ImportError`, `ValueError`, or domain-specific configuration exception is
+re-raised as `agent.exceptions.ConfigurationError(subsystem=..., backend=...,
+message=...)`. `build_worker_dependencies()` now returns a
+`WorkerDependencies` dataclass that adds `vector_store` and `llm_client`
+alongside the existing pipeline subsystems.
+
+## Validation Note
+From `backend/`: `pytest tests/agent tests/events tests/api --cov=agent
+--cov=events --cov=api --cov-report=term-missing` passed with 91 tests; agent
+coverage 87%, events 96%, api 96%. `ruff check agent events api tests/agent
+tests/events tests/api` passed. `pyright agent events api tests/agent
+tests/events tests/api` reported 0 errors.

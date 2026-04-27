@@ -52,9 +52,30 @@ As an analyst, I want to create new knowledge bases and list existing ones.
 - Do NOT enforce unique KB names — duplicates are allowed per AC
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=api tests/api/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=api tests/api/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. Added `POST /knowledgebases` and
+`GET /knowledgebases` to `backend/api/routers/knowledgebases.py`. KB metadata
+is held by a new `InMemoryKnowledgeBaseRepository` (with a
+`KnowledgeBaseRepository` Protocol) under `backend/api/_kb_store.py`, wired via
+`get_knowledge_base_repository` appended to `api/dependencies.py`. Creation
+generates a UUID4 hex id via `shared.utils.generate_id`, stamps `created_at`
+with `utc_now()`, persists the KB, and publishes `KnowledgeBaseCreatedEvent`
+on the injected event bus. List endpoint supports `limit` (default 50) and
+`offset` (default 0) and returns `KbListResponse(items, total)`. Duplicate
+names are explicitly allowed — only ids are unique.
+
+## Validation Note
+From `backend/`: `.venv/bin/pytest tests/api/test_knowledgebases_router.py
+tests/events tests/storage -q` passes (121 tests). `.venv/bin/ruff check api
+events tests/api/test_knowledgebases_router.py tests/events` clean.
+`.venv/bin/pyright api/_kb_store.py api/routers/knowledgebases.py
+events/types.py events/codec.py tests/api/test_knowledgebases_router.py
+tests/events` reports 0 errors. `pytest tests/api/ --cov=api` reports
+`api/routers/knowledgebases.py` at 100% and overall api/ coverage at 96%.

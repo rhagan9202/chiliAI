@@ -54,9 +54,15 @@ As a platform developer, I want `Alert` to implement a state machine with transi
 - Do NOT modify files outside `backend/monitoring/` and `backend/tests/monitoring/`
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=monitoring tests/monitoring/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=monitoring tests/monitoring/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+`Alert.status` already typed as the full Literal in E1-S10, so `shared/types.py` was untouched. Added `AlertLifecycleError(MonitoringError)` to `monitoring/exceptions.py` (records `current_status` and `new_status`). `monitoring/service.py` exposes `transition_alert_status(alert, new_status, actor, *, resolution_notes=None) -> Alert` and a module-level `ALERT_TRANSITIONS` map: `open->{acknowledged,dismissed}`, `acknowledged->{investigating,open}`, `investigating->{resolved,dismissed,open}`, `resolved->{open}`, `dismissed->{open}`. Same-status transitions are allowed as no-ops to keep the function idempotent under retry. Resolved transitions set `resolved_by=actor` and the optional `resolution_notes`; reopen transitions clear `resolved_by`/`resolution_notes` and `acknowledged=False`. Acknowledge transitions set `acknowledged=True`. `AlertsService.acknowledge_alert` now routes through the state machine (with a fallback for legacy double-acknowledge calls so E5-S01 tests keep passing). `AlertsService.resolve_alert` retains the legacy direct-update path because E5-S02 allows resolving from any non-resolved state, including `"open"`.
+
+## Validation Note
+Parametrized tests cover all nine valid transitions; explicit tests cover invalid `open->resolved`, unknown status (`frozen`), reopen clearing resolution metadata, idempotent same-status transition, and the resolve path setting `resolved_by`/`resolution_notes`. `test_exceptions.py` confirms `AlertLifecycleError` records states and inherits from `MonitoringError`.

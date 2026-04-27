@@ -1,5 +1,7 @@
 # Story E3-S08: Extend ObjectStore Protocol with delete, exists, list_keys
 
+**Status:** Complete on April 25, 2026.
+
 ## Story
 As a platform developer, I want the `ObjectStore` protocol to include `delete(key)`, `exists(key) -> bool`, and `list_keys(prefix) -> list[str]`.
 
@@ -46,10 +48,20 @@ As a platform developer, I want the `ObjectStore` protocol to include `delete(ke
 - Do not remove or rename existing tests
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Existing tests still pass (no regressions)
-- [ ] New tests written and passing for `delete`, `exists`, `list_keys`
-- [ ] `pytest --cov=storage tests/storage/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Existing tests still pass (no regressions)
+- [x] New tests written and passing for `delete`, `exists`, `list_keys`
+- [x] `pytest --cov=storage tests/storage/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Notes
+- `ObjectStore` now exposes synchronous `delete`, `exists`, and `list_keys` methods.
+- `InMemoryObjectStore.delete()` treats missing keys as a no-op to align with S3-style delete semantics.
+- `InMemoryObjectStore.list_keys()` returns deterministic sorted keys and supports `list_keys("")` for all keys.
+
+## Validation Notes
+- `pytest tests/storage/ --cov=storage --cov-report=term-missing` passed with 15 tests and 100% storage coverage.
+- `ruff check storage tests/storage` passed.
+- `pyright storage tests/storage` passed with 0 errors.

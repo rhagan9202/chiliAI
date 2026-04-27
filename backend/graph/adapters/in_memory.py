@@ -57,6 +57,25 @@ class InMemoryGraphRepository(GraphRepository):
     def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None:
         return self._entities.get(knowledge_base_id, {}).get(entity_id)
 
+    def update_entity_properties(
+        self,
+        knowledge_base_id: str,
+        entity_id: str,
+        properties: dict[str, object],
+    ) -> Entity:
+        entity_bucket = self._entities.get(knowledge_base_id, {})
+        existing = entity_bucket.get(entity_id)
+        if existing is None:
+            raise KeyError(
+                f"Entity '{entity_id}' not found in knowledge base '{knowledge_base_id}'."
+            )
+        merged_properties = dict(existing.properties)
+        for key, value in properties.items():
+            merged_properties[key] = value
+        updated = existing.model_copy(update={"properties": merged_properties})
+        entity_bucket[entity_id] = updated
+        return updated
+
     def get_neighbors(
         self,
         knowledge_base_id: str,

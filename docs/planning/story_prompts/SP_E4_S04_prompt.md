@@ -54,10 +54,31 @@ As a platform operator, I want events that fail processing after exhausting retr
 - Do not use bare `except:` — catch specific exception types or `Exception`
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=events tests/events/` >= 85% coverage for events module
-- [ ] `pytest --cov=agent tests/agent/` >= 85% coverage for agent module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=events tests/events/` >= 85% coverage for events module
+- [x] `pytest --cov=agent tests/agent/` >= 85% coverage for agent module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. The `EventBus` protocol now exposes
+`publish_to_dlq(event, error_info)`. `events/protocols.py` adds frozen
+`DlqErrorInfo` (with `error_message`, `traceback`, `retry_count`,
+`failed_at`) and `DlqEntry` dataclasses so DLQ records are typed.
+`InMemoryEventBus` records dead-letter entries on a public
+`dlq_entries: list[DlqEntry]` for tests; `RedisStreamsEventBus` writes the
+encoded event plus error context to `{stream_name}.dlq` via `XADD`. The
+coordinator's `run_handler_with_retry` wraps each handler in a try/except,
+captures `traceback.format_exception`, and routes the failure to DLQ once
+retries are exhausted. `drain_ingestion_events` invokes the wrapper for
+every delivery and tests assert that a missing-storage-key
+`DocumentsParsedEvent` is dead-lettered after one retry.
+
+## Validation Note
+From `backend/`: `pytest tests/agent tests/events tests/api --cov=agent
+--cov=events --cov=api --cov-report=term-missing` passed with 91 tests;
+events coverage 96% and agent coverage 87%. `ruff check agent events api
+tests/agent tests/events tests/api` passed. `pyright agent events api
+tests/agent tests/events tests/api` reported 0 errors.

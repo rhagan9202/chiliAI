@@ -56,12 +56,36 @@ As a frontend developer, I want TanStack Query configured as server-state librar
 - Do NOT commit generated code to git — add `src/api/generated/` to `.gitignore` (or document the codegen step clearly)
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] `npm run build` passes (TypeScript compiles)
-- [ ] `npm run lint` passes (ESLint clean)
-- [ ] Components render without errors
-- [ ] `npm run codegen:api` script exists and runs (even if backend is not running, script should be wired up)
-- [ ] `QueryClientProvider` wraps the app in `main.tsx`
-- [ ] `useKnowledgeBases()` hook compiles and follows TanStack Query patterns
-- [ ] React Query Devtools visible in development mode
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] `npm run build` passes (TypeScript compiles)
+- [x] `npm run lint` passes (ESLint clean)
+- [x] Components render without errors
+- [x] `npm run codegen:api` script exists and runs (even if backend is not running, script should be wired up)
+- [x] `QueryClientProvider` wraps the app in `main.tsx`
+- [x] `useKnowledgeBases()` hook compiles and follows TanStack Query patterns
+- [x] React Query Devtools visible in development mode
+
+## Implementation Note
+Completed on April 27, 2026. Picked `openapi-typescript` over the heavier
+`openapi-typescript-codegen` / `@hey-api/openapi-ts` stacks: it produces a
+single typed `schema.ts` from `/openapi.json` (no runtime client) which
+pairs cleanly with the hand-rolled fetch wrapper in
+`src/lib/apiClient.ts`. `package.json` script `codegen:api` runs
+`openapi-typescript http://localhost:8000/openapi.json --output
+src/lib/api/schema.ts`. `src/lib/queryClient.ts` exports a `QueryClient`
+configured with `staleTime: 30_000`, `retry: 1`,
+`refetchOnWindowFocus: true`. `main.tsx` wraps the app in
+`<QueryClientProvider>` plus `<ReactQueryDevtools>` (only in dev via
+`import.meta.env.DEV`). `apiClient` reads
+`import.meta.env.VITE_API_BASE_URL` with `http://localhost:8000` fallback,
+serializes JSON bodies, and surfaces `ApiError` with status + parsed body.
+Sample hook `useKnowledgeBases()` calls `GET /knowledgebases`, returns a
+typed `KnowledgeBaseListResponse`, and uses a stable
+`['knowledge-bases', 'list']` query key for downstream invalidation.
+
+## Validation Note
+From `chili_app/`: `npx tsc --noEmit`, `npm run lint`, and `npm run build`
+all pass clean. `codegen:api` is wired and will fetch the schema once the
+API is running locally; running it offline emits the expected
+`ECONNREFUSED` (script wiring verified).

@@ -50,9 +50,23 @@ As a platform developer, I want the GNN service to produce node embeddings for e
 - Do NOT make `node2vec` a required dependency — it must be optional with fallback
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=analytics/gnn tests/analytics/gnn/` >= 85% coverage
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=analytics/gnn tests/analytics/gnn/` >= 85% coverage
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `GnnAnalysisResult` /
+`GnnAnalysisResponse` gained `node_embeddings: dict[str, list[float]]`.
+`_compute_embeddings()` builds the graph Laplacian, runs `numpy.linalg.eigh`,
+keeps the lowest-non-trivial eigenvectors up to the requested
+`embedding_dimension` (default 8, max 256), zero-pads short embeddings, and
+L2-normalizes. Every node receives a non-zero unit-length embedding, with a
+deterministic `[1, 0, ...]` fallback for isolated rows.
+
+## Validation Note
+From `backend/`: `.venv/bin/pytest tests/analytics/gnn/` asserts
+dimensionality and that `||v|| == 1.0` for all embeddings; sub-module
+coverage 97%.

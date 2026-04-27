@@ -57,13 +57,38 @@ As an analyst, I want a KB Manager page to view and create knowledge bases.
 - Do NOT add KB detail/drill-down view — that is part of E9-S07
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] `npm run build` passes (TypeScript compiles)
-- [ ] `npm run lint` passes (ESLint clean)
-- [ ] Components render without errors
-- [ ] KB table renders with columns: name, status, doc count, created date
-- [ ] Create form opens, validates, and submits
-- [ ] List refreshes after successful creation
-- [ ] Status badges display correctly for all lifecycle states
-- [ ] Error toast appears on API failure
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] `npm run build` passes (TypeScript compiles)
+- [x] `npm run lint` passes (ESLint clean)
+- [x] Components render without errors
+- [x] KB table renders with columns: name, status, doc count, created date
+- [x] Create form opens, validates, and submits
+- [x] List refreshes after successful creation
+- [x] Status badges display correctly for all lifecycle states
+- [x] Error toast appears on API failure
+
+## Implementation Note
+Completed on April 27, 2026. `KnowledgeBaseManager.tsx` renders a
+`KbTable` (sortable by created date) consuming `useKnowledgeBases`,
+plus a primary "Create Knowledge Base" button that opens a modal
+`CreateKbForm` posting to `POST /knowledgebases` via a new
+`useCreateKnowledgeBase` mutation that invalidates the list query on
+success. A reusable `StatusBadge` maps the five backend lifecycle
+states (active/ready/building/error/archived) to color variants in
+`KbTable.module.css`. A lightweight `Toast` component plus singleton
+`useToastStore` (Zustand) handles success/error notifications and
+auto-dismisses after 5s; the `ToastContainer` is mounted inside
+`DomainConfigProvider` in `main.tsx`. List load failures surface via a
+toast and inline message. Tests (`KbTable`, `CreateKbForm`) cover row
+rendering, empty state, sort toggle, name selection callback, and
+mutation success path.
+
+## Validation Note
+From `chili_app/`:
+- `npx tsc --noEmit` passed (0 errors)
+- `npm run lint` passed (0 problems)
+- `npx vitest run --pool=threads src/components/knowledgebase` passed
+  (10 tests across `KbTable`, `DropZone`, `CreateKbForm`)
+- `npm run build` passed.
+

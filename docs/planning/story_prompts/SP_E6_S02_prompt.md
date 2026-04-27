@@ -51,9 +51,29 @@ As a platform developer, I want a `ServiceContextRetriever` adapter that delegat
 - Do NOT invent filter translation logic beyond what the existing types support
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=rag tests/rag/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=rag tests/rag/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. Added `ServiceContextRetriever` in
+`backend/rag/adapters/vectorstore_bridge.py` that satisfies
+`ContextRetrieverProtocol` via constructor-injected `VectorServiceProtocol`
+(the actual protocol name in `vectorstore.protocols`; the backlog text refers
+to it as `VectorStoreServiceProtocol`). The adapter builds a
+`VectorSearchRequest` from `knowledge_base_id`, `query_vector`, `limit`, and
+`filters`, calls `service.search(...)`, and maps each `VectorSearchMatch` to
+a `RetrievedContextItem` while preserving `record_id`, `content_id`, score,
+content (substituting `""` when upstream content is `None` to satisfy
+`RetrievedContextItem.content: str`), and a copied metadata dict. Returns an
+empty list when no matches are found and never raises for empty results.
+Re-exported via `rag.adapters.__init__`.
+
+## Validation Note
+From `backend/`:
+`.venv/bin/pytest tests/rag/test_embeddings_bridge.py tests/rag/test_vectorstore_bridge.py -q`
+→ 12 passed. `.venv/bin/ruff check` on the four touched files → All checks
+passed. `.venv/bin/pyright` on the four touched files → 0 errors, 0 warnings.

@@ -55,10 +55,29 @@ As a platform developer, I want the coordinator to write computed risk scores an
 - Do NOT store analytics results anywhere other than the graph entity properties in this story
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=agent tests/agent/` >= 85% coverage for affected files
-- [ ] `pytest --cov=graph tests/graph/` >= 85% coverage for affected files
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=agent tests/agent/` >= 85% coverage for affected files
+- [x] `pytest --cov=graph tests/graph/` >= 85% coverage for affected files
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `GraphServiceProtocol` and `GraphRepository`
+gained `update_entity_properties(kb_id, entity_id, properties) -> Entity`.
+The implementation merges the supplied properties onto the existing
+`Entity.properties` dict and is idempotent: repeated calls with the same
+input produce the same record. Both `InMemoryGraphRepository` and
+`Neo4jGraphRepository` implement the contract; missing entities raise
+`KeyError`. After successful risk + GNN analysis the coordinator writes
+`risk_score`, `risk_level`, `risk_assessed_at` (UTC ISO timestamp),
+`community_id`, and `centrality_score` back via
+`GraphService.update_entity_properties`. Failures are logged and never
+block the analytics pipeline.
+
+## Validation Note
+From `backend/`: `tests/graph/test_in_memory_adapter.py` adds idempotency,
+merge, and missing-entity tests; `tests/agent/test_coordinator.py` asserts
+the analytics properties land on the in-memory graph. Graph-module
+coverage stays well above 85%.

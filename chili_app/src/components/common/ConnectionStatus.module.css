@@ -1,0 +1,48 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg-muted, #f4f1f8);
+  color: var(--text, #6b6375);
+  border: 1px solid var(--border, #e5e4e7);
+  white-space: nowrap;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted, #aaa);
+  flex-shrink: 0;
+}
+
+.open .dot {
+  background: #2ec27e;
+  box-shadow: 0 0 0 2px rgba(46, 194, 126, 0.2);
+}
+
+.connecting .dot,
+.reconnecting .dot {
+  background: #f5a623;
+  box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.2);
+  animation: chili-pulse 1.2s ease-in-out infinite;
+}
+
+.closed .dot {
+  background: #d64545;
+  box-shadow: 0 0 0 2px rgba(214, 69, 69, 0.2);
+}
+
+@keyframes chili-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}

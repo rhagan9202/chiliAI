@@ -51,9 +51,24 @@ As a platform developer, I want the explainability service to produce structured
 - Do NOT change the `ExplainabilityContextSourceProtocol` interface
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=analytics/explainability tests/analytics/explainability/` >= 85% coverage
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=analytics/explainability tests/analytics/explainability/` >= 85% coverage
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `ExplanationNarrative` and `NarrativeSection`
+were added to `analytics/explainability/models.py`. The service's
+`_build_narrative()` groups `ExplanationItem`s by `source_type` (preserving
+first-seen order), formats human-readable headings, and concatenates each
+group's rationales as the section body with the contributing
+`source_id`s as `evidence_refs`. `evidence_pack.reasoning` and
+`response.narrative.summary` continue to share the flattened text for
+backward compatibility.
+
+## Validation Note
+From `backend/`: `.venv/bin/pytest tests/analytics/explainability/`
+asserts deterministic section grouping, evidence-ref propagation, and
+identical `reasoning` strings; sub-module coverage 96%.

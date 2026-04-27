@@ -170,6 +170,18 @@ class GraphService:
     def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None:
         return self._repository.get_entity(knowledge_base_id, entity_id)
 
+    def update_entity_properties(
+        self,
+        knowledge_base_id: str,
+        entity_id: str,
+        properties: dict[str, object],
+    ) -> Entity:
+        """Idempotently merge properties onto an existing entity record."""
+
+        return self._repository.update_entity_properties(
+            knowledge_base_id, entity_id, properties
+        )
+
     def query_neighborhood(
         self,
         knowledge_base_id: str,

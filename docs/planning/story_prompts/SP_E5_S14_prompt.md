@@ -55,9 +55,49 @@ As a platform developer, I want all new routers registered in `api/app.py`.
 - Do NOT change CORS configuration
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=api tests/api/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=api tests/api/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `api/app.py` now registers all six new routers
+plus the pre-existing `config_router` in the order: REST routers (config,
+knowledgebases, alerts, investigation, chat, analytics) followed by the
+WebSocket router (`ws_router`). `GET /health` is preserved unchanged.
+
+DI consolidation: each router's local DI factories (e.g. `routers/alerts.py:
+get_alerts_service`, `routers/chat.py:get_rag_service`, `routers/analytics.py`
+stub factories, `routers/ws.py:get_ws_hub`) were left in place. Their existing
+unit-test suites already override them via `app.dependency_overrides[...]`,
+and hoisting them into `api/dependencies.py` would have been a churn-only
+change with no functional benefit. `routers/investigation.py` continues to
+delegate to `api.dependencies.get_graph_service` so it inherits the
+config-driven graph wiring.
+
+Cross-agent integration drift fixed: pyright flagged that
+`llm.service.LlmService` no longer satisfied `LlmServiceProtocol` after
+B3 added `generate_stream` to the protocol. Added a default
+`generate_stream` method on `LlmService` that raises `NotImplementedError`
+(matching the protocol's documented contract for adapters that do not
+support streaming). Provider-specific streaming adapters are still free to
+override.
+
+OpenAPI smoke test added in `tests/api/test_app.py`: it issues
+`GET /openapi.json`, asserts every expected route is enumerated under
+`paths`, and asserts every router's `tags` value appears in the schema. It
+also exercises both WebSocket endpoints via `TestClient.websocket_connect`.
+
+## Validation Note
+From `backend/`:
+- `.venv/bin/pytest --cov=api --cov-report=term-missing tests/api` —
+  101 passed, `api/` coverage 97% (well above the 85% gate).
+- `.venv/bin/ruff check api tests/api` — clean.
+- `.venv/bin/pyright api tests/api` — 0 errors, 0 warnings.
+- `.venv/bin/pyright` (full include set) — 0 errors, 0 warnings.
+- `.venv/bin/pytest --cov` (full backend) — 641 passed, 3 skipped (optional
+  integration markers), total coverage 95%. The 3 ruff warnings observed in
+  `tests/analytics/` and `tests/ingestion/` are pre-existing unused-import
+  flags unrelated to E5.

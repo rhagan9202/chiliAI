@@ -8,7 +8,18 @@ from typing import NoReturn, cast
 from fastapi import Depends
 
 from config.loader import load_config
-from config.schema import DomainConfig, EmbeddingsConfig, EventBusConfig, GraphDbConfig, LlmConfig, MonitoringConfig, ObjectStoreConfig, VectorStoreConfig
+from config.schema import (
+    AuthConfig,
+    DomainConfig,
+    EmbeddingsConfig,
+    EventBusConfig,
+    GraphDbConfig,
+    LlmConfig,
+    MonitoringConfig,
+    ObjectStoreConfig,
+    ValidationConfig,
+    VectorStoreConfig,
+)
 from embeddings.adapters.in_memory import InMemoryEmbedder
 from embeddings.adapters.protocols import EmbedderProtocol
 from embeddings.protocols import EmbeddingsServiceProtocol
@@ -40,6 +51,7 @@ from vectorstore.protocols import VectorServiceProtocol
 from vectorstore.service import create_vector_service
 
 __all__ = [
+    "get_auth_config",
     "get_embedder",
     "get_embeddings_service",
     "get_domain_config",
@@ -49,6 +61,7 @@ __all__ = [
     "get_graph_repository",
     "get_graph_service",
     "get_ingestion_service",
+    "get_knowledge_base_repository",
     "get_llm_client",
     "get_llm_service",
     "get_monitoring_service",
@@ -57,6 +70,7 @@ __all__ = [
     "get_parser_orchestrator",
     "get_parser_registry",
     "get_remote_fetcher",
+    "get_validation_config",
     "get_vector_store",
     "get_vectorstore_service",
 ]
@@ -248,3 +262,19 @@ def get_ingestion_service() -> IngestionService:
         object_store=get_object_store(),
         event_bus=get_event_bus(),
     )
+
+
+# --- Knowledgebases router additions (E5-S11/S12/S13) -------------------------
+# Keep this block at the end of the module so parallel router agents can append
+# their own DI factories without merge conflicts.
+
+from api._kb_store import (  # noqa: E402  (intentional bottom-of-file import)
+    InMemoryKnowledgeBaseRepository,
+    KnowledgeBaseRepository,
+)
+
+
+@lru_cache(maxsize=1)
+def get_knowledge_base_repository() -> KnowledgeBaseRepository:
+    """Return the knowledge base metadata repository used by the KB router."""
+    return InMemoryKnowledgeBaseRepository()

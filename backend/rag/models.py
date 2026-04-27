@@ -8,14 +8,34 @@ from pydantic import BaseModel, Field, model_validator
 MetadataValue = str | int | float | bool
 
 
+def _empty_floats() -> list[float]:
+    return []
+
+
+def _empty_metadata() -> dict[str, MetadataValue]:
+    return {}
+
+
+def _empty_context_nodes() -> list[GraphContextNode]:
+    return []
+
+
+def _empty_context_edges() -> list[GraphContextEdge]:
+    return []
+
+
+def _empty_retrieved_context_items() -> list[RetrievedContextItem]:
+    return []
+
+
 class ContextRecord(BaseModel):
     """A retrievable context record with its embedding."""
 
     record_id: str
     content_id: str
-    embedding: list[float] = Field(default_factory=list)
+    embedding: list[float] = Field(default_factory=_empty_floats)
     content: str
-    metadata: dict[str, MetadataValue] = Field(default_factory=dict)
+    metadata: dict[str, MetadataValue] = Field(default_factory=_empty_metadata)
 
     @model_validator(mode="after")
     def _validate_embedding(self) -> ContextRecord:
@@ -33,7 +53,7 @@ class RetrievedContextItem(BaseModel):
     content_id: str
     score: float = Field(ge=-1.0, le=1.0)
     content: str
-    metadata: dict[str, MetadataValue] = Field(default_factory=dict)
+    metadata: dict[str, MetadataValue] = Field(default_factory=_empty_metadata)
 
 
 class GraphContextNode(BaseModel):
@@ -57,8 +77,8 @@ class GraphContextEdge(BaseModel):
 class GraphContext(BaseModel):
     """Graph-derived context assembled alongside retrieved documents."""
 
-    nodes: list[GraphContextNode] = Field(default_factory=list)
-    edges: list[GraphContextEdge] = Field(default_factory=list)
+    nodes: list[GraphContextNode] = Field(default_factory=_empty_context_nodes)
+    edges: list[GraphContextEdge] = Field(default_factory=_empty_context_edges)
     summary: str | None = None
 
 
@@ -68,7 +88,7 @@ class RagGenerationRequest(BaseModel):
     request_id: str
     knowledge_base_id: str
     question: str
-    context_items: list[RetrievedContextItem] = Field(default_factory=list)
+    context_items: list[RetrievedContextItem] = Field(default_factory=_empty_retrieved_context_items)
     graph_context: GraphContext | None = None
     system_prompt: str | None = None
 
@@ -101,7 +121,7 @@ class RagWorkflowState(BaseModel):
     knowledge_base_id: str
     question: str
     query_vector: list[float] | None = None
-    context_items: list[RetrievedContextItem] = Field(default_factory=list)
+    context_items: list[RetrievedContextItem] = Field(default_factory=_empty_retrieved_context_items)
     graph_context: GraphContext | None = None
 
     @model_validator(mode="after")

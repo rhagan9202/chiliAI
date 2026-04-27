@@ -50,9 +50,15 @@ As a platform developer, I want the monitoring service to suppress duplicate ale
 - Do NOT modify files outside `backend/monitoring/`, `backend/config/schema.py`, and `backend/tests/monitoring/`
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=monitoring tests/monitoring/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=monitoring tests/monitoring/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+`MonitoringService` now keeps an in-memory `_dedup_index: dict[tuple[str, str], datetime]` keyed by `(entity_id, metric_name)`. `dedup_window_seconds` already lived on `config.schema.MonitoringConfig` and is now passed through `create_monitoring_service` (default 3600). After threshold/min-window candidates are built, the service compares the dedup index timestamp against `now`; entries inside the window increment `suppressed_count` while passing entries refresh the index timestamp. Added `suppressed_count: int = 0` to `MonitoringEvaluationResponse`. State persists across `evaluate()` calls on the same service instance.
+
+## Validation Note
+Three new tests cover (a) suppression of a repeat alert within the window, (b) emission after the window expires (forcing the index entry to look stale), and (c) per-(entity,metric) key isolation across three concurrent candidates. `pytest --cov=monitoring tests/monitoring/` reports 99%.

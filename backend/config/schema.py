@@ -3,6 +3,25 @@
 The ``DomainConfig`` model is the top-level object produced by loading a
 domain YAML/JSON configuration file.  Cross-field validation ensures
 referential integrity between entities and relationships.
+
+Secret handling -- ``*_env_var`` pattern (E10-S12)
+--------------------------------------------------
+Secrets (LLM API keys, DB credentials, object-store credentials) are
+**never** stored inline in the config file. Instead, every config section
+that needs a secret declares an ``*_env_var: str`` field -- for example
+``LlmConfig.api_key_env_var``, ``GraphDbConfig.auth_env_var``,
+``EmbeddingsConfig.api_key_env_var``, ``ObjectStoreConfig.credentials_env_var``.
+The field's value is the **name** of an environment variable (e.g.
+``"OPENAI_API_KEY"``); adapters read ``os.environ[<name>]`` at construction
+time. Required runtime secret env vars (provisioned by ops via Kubernetes
+Secrets, see ``infra/README.md``):
+
+    NEO4J_PASSWORD, REDIS_PASSWORD, QDRANT_API_KEY,
+    MINIO_ACCESS_KEY, MINIO_SECRET_KEY,
+    OPENAI_API_KEY, ANTHROPIC_API_KEY, JWT_SIGNING_KEY
+
+This keeps secret material out of the repository, out of YAML config files,
+out of logs, and out of any structured ``model_dump()`` output.
 """
 
 from __future__ import annotations
@@ -119,6 +138,7 @@ class ObjectStoreConfig(BaseModel):
     """Configuration for selecting the object store backend."""
 
     backend: Literal["s3", "gcs", "minio", "local"] = "local"
+    endpoint_url: str | None = None
     bucket: str | None = None
     base_path: str | None = None
     credentials_env_var: str | None = None
@@ -139,6 +159,8 @@ class MonitoringConfig(BaseModel):
     evaluation_interval_seconds: int = Field(default=300, gt=0)
     dedup_window_seconds: int = Field(default=3600, gt=0)
     max_alerts_per_entity: int = Field(default=10, gt=0)
+    max_alerts_per_evaluation: int = Field(default=100, gt=0)
+    grouping_window_seconds: int = Field(default=300, gt=0)
 
 
 class RagConfig(BaseModel):
@@ -157,6 +179,35 @@ class AlertsConfig(BaseModel):
     # TODO(production): Extend with dedup_window_seconds: int, max_alerts_per_entity: int,
     # suppression_rules: list[SuppressionRule], escalation_policies: list[EscalationPolicy].
     # Add severity_levels: list[str] to make severity tiers configurable per domain.
+
+
+class AuthConfig(BaseModel):
+    """JWT/OIDC authentication configuration (E10-S06)."""
+
+    enabled: bool = False
+    issuer_url: str | None = None
+    audience: str | None = None
+    jwks_uri: str | None = None
+    roles_claim: str = "roles"
+    jwks_cache_seconds: int = Field(default=3600, gt=0)
+
+
+class ValidationConfig(BaseModel):
+    """Inbound payload limits applied across the API gateway (E10-S10)."""
+
+    max_file_size_mb: int = Field(default=50, gt=0)
+    allowed_content_types: list[str] = Field(
+        default_factory=lambda: [
+            "text/plain",
+            "text/csv",
+            "application/json",
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ]
+    )
+    max_query_length: int = Field(default=10000, gt=0)
+    max_rag_question_length: int = Field(default=5000, gt=0)
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +236,8 @@ class DomainConfig(BaseModel):
     events: EventBusConfig | None = None
     monitoring: MonitoringConfig | None = None
     rag: RagConfig | None = None
+    auth: AuthConfig | None = None
+    validation: ValidationConfig | None = None
     alerts: AlertsConfig
 
     @model_validator(mode="after")
@@ -217,6 +270,10 @@ class DomainConfig(BaseModel):
             self.monitoring = MonitoringConfig()
         if self.rag is None:
             self.rag = RagConfig()
+        if self.auth is None:
+            self.auth = AuthConfig()
+        if self.validation is None:
+            self.validation = ValidationConfig()
 
         errors: list[str] = []
 
@@ -269,6 +326,7 @@ class DomainConfig(BaseModel):
 
 __all__ = [
     "AlertsConfig",
+    "AuthConfig",
     "CapabilitiesConfig",
     "ChunkingConfig",
     "DomainConfig",
@@ -282,5 +340,6 @@ __all__ = [
     "MonitoringConfig",
     "ObjectStoreConfig",
     "RagConfig",
+    "ValidationConfig",
     "VectorStoreConfig",
 ]

@@ -52,9 +52,30 @@ As a platform operator, I want the worker coordinator to retry failed pipeline s
 - Do not block the event loop during retry delays
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=agent tests/agent/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=agent tests/agent/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. A new `RetryPolicy` Pydantic model in
+`agent/models.py` captures `max_retries` (default 3),
+`base_delay_seconds` (default 1.0), `backoff_multiplier` (default 2.0), and
+exposes `delay_for_attempt(attempt)`. The coordinator's new
+`run_handler_with_retry` coroutine wraps each event handler call: it retries
+with exponential backoff via `asyncio.sleep` (injectable for tests), logs
+`event_type`, `correlation_id`, `attempt`, `delay`, and the truncated error
+message at WARN level, and after exhaustion routes the event to the DLQ via
+`event_bus.publish_to_dlq`. `drain_ingestion_events` is async and accepts
+an optional `RetryPolicy`. Tests cover the transient-failure-succeeds and
+permanent-failure-exhausts paths and assert `RetryPolicy.delay_for_attempt`
+returns the expected `1.0, 2.0, 4.0` schedule.
+
+## Validation Note
+From `backend/`: `pytest tests/agent tests/events tests/api --cov=agent
+--cov=events --cov=api --cov-report=term-missing` passed with 91 tests;
+agent coverage 87%. `ruff check agent events api tests/agent tests/events
+tests/api` passed. `pyright agent events api tests/agent tests/events
+tests/api` reported 0 errors.

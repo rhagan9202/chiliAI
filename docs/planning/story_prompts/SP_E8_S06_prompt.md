@@ -51,9 +51,15 @@ As a platform developer, I want the monitoring service to group related alerts i
 - Do NOT modify files outside `backend/monitoring/`, `backend/config/schema.py`, and `backend/tests/monitoring/`
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=monitoring tests/monitoring/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=monitoring tests/monitoring/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Added `AlertGroup(group_id, alert_ids, entity_type, created_at, correlation_reason)` to `monitoring/models.py`. `MonitoringService` accepts `grouping_window_seconds: int = 300` (also added to `MonitoringConfig`). After alert generation, `_build_alert_groups()` clusters alerts that share `entity_type` whose `created_at` timestamps fall within the tolerance into a single group; `correlation_reason` reads `f"Same entity_type '{entity_type}' within {tolerance_seconds}s window"`. Singletons and entity_types with widely-spread alerts are excluded (no singleton groups, ungrouped alerts simply omitted). `MonitoringEvaluationResponse` exposes `alert_groups: list[AlertGroup] = Field(default_factory=list[AlertGroup])`.
+
+## Validation Note
+Tests confirm: two same-entity-type alerts in the same evaluation are grouped (correlation_reason populated, alert_ids match the response alerts); alerts with distinct entity_types are not grouped; a single alert never forms a group. `test_models.py` covers `AlertGroup` round-trip construction.

@@ -66,3 +66,23 @@ As a frontend developer, I want a `useWebSocket()` hook connecting to backend We
 - [ ] Typed events parsed and dispatched to callbacks
 - [ ] Connection status indicator renders correct state
 - [ ] Tests pass for reconnection logic and event parsing
+
+## Implementation Note (2026-04-27)
+
+Implemented `useWebSocket<E>(path, onMessage, opts)` returning `{ status, retryCount }`. The hook owns the socket lifecycle, derives the absolute URL from `window.location` (configurable via `urlBuilder` for tests), and supports a `socketFactory` injection seam so tests can stub `WebSocket` without adding `mock-socket`. Disconnects trigger exponential backoff (`baseDelayMs * 2 ** attempt`, capped at `maxDelayMs`) up to `maxRetries` (default 5) before settling on `closed`. Backend keep-alive frames (`{"type":"ping"}`) and malformed JSON are filtered before reaching the consumer callback.
+
+Companion files:
+- `src/types/wsEvents.ts` — discriminated union `WsAlertCreated | WsPipelineProgress` keyed on `event_type`, plus `ConnectionStatus` and runtime `isWsEvent` / `isWsPing` guards. `WsAlertCreated` reuses the platform-shared `Alert` type from `src/types/api.ts`.
+- `src/components/common/ConnectionStatus.tsx` + `.module.css` — pill badge with pulsing dot for `connecting`/`reconnecting`, green for `open`, red for `closed`.
+- `src/test/setup.ts` — sets `globalThis.IS_REACT_ACT_ENVIRONMENT = true` so React 19 stops emitting "not configured to support act" warnings during the in-test render harness.
+
+Tests in `src/hooks/__tests__/useWebSocket.test.tsx` (vitest + jsdom) drive a hand-rolled `FakeSocket` that records constructions, exposes `open`/`close`/`emit` helpers, and verifies: initial connect, JSON dispatch, ping/malformed-JSON filtering, exponential backoff between reconnects, the `maxRetries` cutoff, and unmount cleanup.
+
+## Validation Note (2026-04-27)
+
+```
+cd /home/rdhagan92/chiliAI/chili_app
+npx tsc --noEmit                                                    # clean
+npm run lint -- src/hooks src/types src/components/common           # clean (pre-existing errors elsewhere)
+npx vitest run src/hooks/__tests__/useWebSocket.test.tsx            # 6/6 passing
+```

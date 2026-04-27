@@ -52,9 +52,25 @@ As a platform developer, I want the timeseries service to support STL seasonal d
 - Do NOT add API endpoints — this is service-layer only
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=analytics/timeseries tests/analytics/timeseries/` >= 85% coverage
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=analytics/timeseries tests/analytics/timeseries/` >= 85% coverage
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `TimeseriesAnalysisRequest` gained
+`detection_strategy: Literal["z_score", "stl_decomposition"]`, defaulting to
+`z_score`. The service routes through `_detect_anomalies_stl()`, which lazily
+imports `statsmodels.tsa.seasonal.seasonal_decompose`, decomposes the series
+into trend / seasonal / residual components, and flags residuals beyond the
+configured z-threshold. `statsmodels` was registered under the
+`[analytics]` extra. The pre-existing z-score path is untouched.
+
+## Validation Note
+From `backend/`: `.venv/bin/pytest tests/analytics/timeseries/
+--cov=analytics/timeseries --cov-report=term-missing` reports
+`analytics/timeseries` at 94% with seasonal-vs-z-score deltas asserted.
+`.venv/bin/ruff check .` and `.venv/bin/pyright` pass on the
+strict-included analytics paths.

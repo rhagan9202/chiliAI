@@ -50,9 +50,23 @@ As a platform developer, I want the risk service to compare current assessment s
 - Do NOT make trend computation block or fail if historical score is unavailable
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=analytics/risk tests/analytics/risk/` >= 85% coverage
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=analytics/risk tests/analytics/risk/` >= 85% coverage
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `RiskAssessmentResponse` gained
+`previous_score: float | None` and a `Literal` `trend` of `increasing` /
+`stable` / `decreasing` / `None`. `RiskSignalSourceProtocol` exposes
+`load_historical_score`; `InMemoryRiskSignalSource` defaults to `None` and
+honors a fixture-injected mapping. `RiskService.assess()` compares against
+the configurable `DEFAULT_TREND_DELTA_THRESHOLD` (0.05) without blocking if
+the historical lookup raises.
+
+## Validation Note
+From `backend/`: `.venv/bin/pytest tests/analytics/risk/` covers all four
+trend branches (including the no-history `None` case); sub-module coverage
+96%.

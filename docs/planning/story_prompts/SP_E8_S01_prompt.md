@@ -47,9 +47,15 @@ As a platform developer, I want the monitoring service to evaluate observations 
 - Do NOT modify files outside `backend/monitoring/` and `backend/tests/monitoring/`
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=monitoring tests/monitoring/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=monitoring tests/monitoring/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Added `window_minutes: int = 60` and `min_observations_in_window: int = 1` to `MonitoringEvaluationRequest`. `MonitoringService.evaluate()` now calls `utc_now()` once per evaluation, computes `now - timedelta(minutes=window_minutes)` as the window start, filters out observations whose `observed_at` is before that cutoff, then groups in-window observations by `(entity_id, metric_name)` and only emits an `AlertCandidate` for groups whose count of threshold-exceeding observations meets `min_observations_in_window`. Threshold comparisons run on the highest-scoring observation in each surviving group, preserving severity classification semantics.
+
+## Validation Note
+`pytest tests/monitoring/test_service.py` covers windowed filtering with multiple timestamp scenarios (inside vs outside window, min count not met, min count satisfied across two observations). Backend full suite: 808 passed / 3 skipped, monitoring coverage 99%.

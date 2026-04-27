@@ -1,0 +1,13 @@
+apiVersion: v2
+name: chili
+description: chiliAI Graph RAG analytics platform — API, worker, frontend.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - chiliai
+  - graph-rag
+  - analytics
+home: https://github.com/chiliAI/chili
+maintainers:
+  - name: chiliAI Platform Team

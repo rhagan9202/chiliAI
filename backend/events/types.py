@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import cast
 
 from pydantic import BaseModel, Field
 
+from shared.types import Alert
 from shared.utils import generate_id, utc_now
 
 
@@ -21,6 +23,11 @@ class EventBase(BaseModel):
 
 class KnowledgeBaseCreatedEvent(EventBase):
     event_type: str = "kb.create"
+    knowledge_base_id: str
+
+
+class KnowledgeBaseDeletedEvent(EventBase):
+    event_type: str = "kb.delete"
     knowledge_base_id: str
 
 
@@ -129,6 +136,22 @@ class GraphUpdatedEvent(EventBase):
     documents: list[GraphUpdatedDocumentReference]
 
 
+class EmbeddingsCompleteDocumentReference(BaseModel):
+    knowledge_base_id: str
+    source_document_id: str
+    parsed_document_id: str
+    extraction_result_id: str
+    validation_report_id: str
+    entity_count: int = Field(ge=0)
+    graph_update_storage_key: str
+    embeddings_storage_key: str
+
+
+class EmbeddingsCompleteEvent(EventBase):
+    event_type: str = "embeddings.complete"
+    documents: list[EmbeddingsCompleteDocumentReference]
+
+
 class VectorIndexedReference(BaseModel):
     knowledge_base_id: str
     record_id: str
@@ -136,9 +159,37 @@ class VectorIndexedReference(BaseModel):
     dimension: int = Field(gt=0)
 
 
+class VectorsIndexedDocumentReference(BaseModel):
+    knowledge_base_id: str
+    source_document_id: str
+    parsed_document_id: str
+    extraction_result_id: str
+    validation_report_id: str
+    vector_count: int = Field(ge=0)
+    embeddings_storage_key: str
+    record_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
 class VectorsIndexedEvent(EventBase):
     event_type: str = "vectors.indexed"
-    records: list[VectorIndexedReference]
+    records: list[VectorIndexedReference] = Field(
+        default_factory=lambda: cast(list[VectorIndexedReference], [])
+    )
+    documents: list[VectorsIndexedDocumentReference] = Field(
+        default_factory=lambda: cast(list[VectorsIndexedDocumentReference], [])
+    )
+
+
+class KnowledgeBaseReadyReference(BaseModel):
+    knowledge_base_id: str
+    entity_count: int = Field(ge=0)
+    relationship_count: int = Field(ge=0)
+    vector_count: int = Field(ge=0)
+
+
+class KnowledgeBaseReadyEvent(EventBase):
+    event_type: str = "kb.ready"
+    knowledge_bases: list[KnowledgeBaseReadyReference]
 
 
 class LlmCompletionReference(BaseModel):
@@ -266,6 +317,33 @@ class AlertsCreatedEvent(EventBase):
     alerts: list[AlertCreatedReference]
 
 
+class AlertCreatedEvent(EventBase):
+    """Single-alert event surfaced to real-time WebSocket subscribers."""
+
+    event_type: str = "alert.created"
+    alert: Alert
+
+
+class PipelineProgressEvent(EventBase):
+    """Pipeline stage progress event for a knowledge base ingestion run."""
+
+    event_type: str = "pipeline.progress"
+    knowledge_base_id: str
+    stage: str
+    progress: float = Field(ge=0.0, le=1.0)
+    message: str | None = None
+
+
+class AnalysisFailedEvent(EventBase):
+    """Emitted when an analytics pipeline stage fails for a single entity."""
+
+    event_type: str = "analysis.failed"
+    knowledge_base_id: str
+    entity_id: str
+    stage: str
+    error_message: str
+
+
 class DocumentFailureReference(BaseModel):
     knowledge_base_id: str
     source_document_id: str
@@ -292,13 +370,16 @@ class ClaimsIngestedEvent(EventBase):
 
 AnyEvent = (
     KnowledgeBaseCreatedEvent
+    | KnowledgeBaseDeletedEvent
     | DocumentsUploadedEvent
     | DocumentsParsedEvent
     | DocumentsChunkedEvent
     | EntitiesExtractedEvent
     | EntitiesValidatedEvent
     | GraphUpdatedEvent
+    | EmbeddingsCompleteEvent
     | VectorsIndexedEvent
+    | KnowledgeBaseReadyEvent
     | LlmCompletedEvent
     | EmbeddingsGeneratedEvent
     | RagCompletedEvent
@@ -308,6 +389,9 @@ AnyEvent = (
     | ExplainabilityGeneratedEvent
     | AgentWorkflowStartedEvent
     | AlertsCreatedEvent
+    | AlertCreatedEvent
+    | PipelineProgressEvent
+    | AnalysisFailedEvent
     | DocumentsFailedEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent
@@ -317,8 +401,10 @@ AnyEvent = (
 __all__ = [
     "AgentWorkflowStartedEvent",
     "AgentWorkflowStartedReference",
+    "AlertCreatedEvent",
     "AlertCreatedReference",
     "AlertsCreatedEvent",
+    "AnalysisFailedEvent",
     "AnyEvent",
     "ChunkedDocumentReference",
     "ClaimsIngestedEvent",
@@ -329,6 +415,8 @@ __all__ = [
     "DocumentsFailedEvent",
     "DocumentsParsedEvent",
     "DocumentsUploadedEvent",
+    "EmbeddingsCompleteDocumentReference",
+    "EmbeddingsCompleteEvent",
     "EmbeddingGeneratedReference",
     "EmbeddingsGeneratedEvent",
     "EntitiesExtractedEvent",
@@ -342,9 +430,13 @@ __all__ = [
     "GraphUpdatedDocumentReference",
     "GraphUpdatedEvent",
     "KnowledgeBaseCreatedEvent",
+    "KnowledgeBaseDeletedEvent",
+    "KnowledgeBaseReadyEvent",
+    "KnowledgeBaseReadyReference",
     "LlmCompletedEvent",
     "LlmCompletionReference",
     "ParsedDocumentReference",
+    "PipelineProgressEvent",
     "RagCompletedEvent",
     "RagCompletionReference",
     "RiskScoredEvent",
@@ -353,5 +445,6 @@ __all__ = [
     "TimeseriesAnalyzedReference",
     "ValidatedDocumentReference",
     "VectorIndexedReference",
+    "VectorsIndexedDocumentReference",
     "VectorsIndexedEvent",
 ]

@@ -52,9 +52,30 @@ As a platform developer, I want a `ServiceGraphContextExpander` adapter that del
 - Do NOT assume entity IDs are always present in context item metadata — handle missing IDs by skipping those items
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=rag tests/rag/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=rag tests/rag/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `rag/adapters/graph_bridge.py` introduces
+`ServiceGraphContextExpander`, which extracts entity IDs from
+`RetrievedContextItem.metadata` (probing `entity_id`, `entityId`, then
+`entity`), deduplicates them, and calls `GraphServiceProtocol.query_neighborhood`
+once per entity at a constructor-configured `depth` (default 1). Returned
+`SubgraphResult` entities and relationships are folded into a `GraphContext`
+with `GraphContextNode`/`GraphContextEdge` instances; nodes and edges are
+deduplicated by ID. When no entities are extractable or all neighborhood
+queries return empty subgraphs, the adapter returns a `GraphContext` with
+an empty summary and never raises. Constructor rejects negative depth.
+
+## Validation Note
+From `backend/`: `.venv/bin/pytest tests/rag/test_graph_bridge.py
+tests/rag/test_llm_bridge.py -q` passed (20 tests). `.venv/bin/ruff check
+rag/adapters/graph_bridge.py rag/adapters/llm_bridge.py
+tests/rag/test_graph_bridge.py tests/rag/test_llm_bridge.py` clean.
+`.venv/bin/pyright rag/adapters/graph_bridge.py rag/adapters/llm_bridge.py
+tests/rag/test_graph_bridge.py tests/rag/test_llm_bridge.py` reported 0 errors.
+Full `tests/rag/` suite (46 tests) passes.

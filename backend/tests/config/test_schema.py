@@ -163,6 +163,7 @@ class TestDomainConfigValid:
             ),
             storage=ObjectStoreConfig(
                 backend="s3",
+                endpoint_url="http://localhost:9000",
                 bucket="chili-docs",
                 base_path="knowledgebases/",
                 credentials_env_var="AWS_CREDENTIALS",
@@ -425,9 +426,25 @@ class TestObjectStoreConfig:
         config = ObjectStoreConfig()
 
         assert config.backend == "local"
+        assert config.endpoint_url is None
         assert config.bucket is None
         assert config.base_path is None
         assert config.credentials_env_var is None
+
+    def test_accepts_s3_endpoint_configuration(self) -> None:
+        config = ObjectStoreConfig(
+            backend="minio",
+            endpoint_url="http://minio:9000",
+            bucket="chili-docs",
+            base_path="knowledgebases",
+            credentials_env_var="MINIO_CREDENTIALS",
+        )
+
+        assert config.backend == "minio"
+        assert config.endpoint_url == "http://minio:9000"
+        assert config.bucket == "chili-docs"
+        assert config.base_path == "knowledgebases"
+        assert config.credentials_env_var == "MINIO_CREDENTIALS"
 
 
 class TestEventBusConfig:
@@ -471,10 +488,14 @@ class TestPropertyTypeValues:
         ids=[pt.value for pt in PropertyType],
     )
     def test_each_property_type_in_entity(self, ptype: PropertyType) -> None:
-        extra = {}
         if ptype is PropertyType.ENUM:
-            extra["enum_values"] = ["a", "b"]
-        prop = PropertyDefinition(type=ptype, display="Test", **extra)
+            prop = PropertyDefinition(
+                type=ptype,
+                display="Test",
+                enum_values=["a", "b"],
+            )
+        else:
+            prop = PropertyDefinition(type=ptype, display="Test")
         entity = EntityDefinition(
             name="test_entity",
             display_label="Test",

@@ -50,9 +50,34 @@ As an analyst, I want to send a natural-language question to a RAG-powered chat 
 - Do NOT add authentication or authorization
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=api tests/api/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=api tests/api/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `backend/api/routers/chat.py` defines
+`POST /chat/conversations/{conversation_id}/messages` accepting
+`ChatMessageRequest(content, kb_id)` and returning
+`ChatMessageResponse(content, sources)`. The router is self-contained: a local
+`get_rag_service()` factory at the top of the module returns a default
+`InMemoryRagService` (per scope guidance, `api/dependencies.py` was not
+touched). The router validates content via Pydantic (whitespace-only and
+empty bodies fail at parse time, mapped to 422), delegates to
+`RagService.answer_question(...)`, and converts `RagConfigurationError`
+raised for unknown KBs into a 404. `RagAnswer` was added to
+`rag/service_models.py`; the protocol gained `answer_question` and a stub
+implementation lives in `RagService` (reusing the existing pipeline) and
+in the new `InMemoryRagService` adapter (canned answers + KB allowlist).
+
+## Validation Note
+From `backend/`:
+`pytest tests/api/test_chat_router.py tests/rag` passed with 20 tests.
+`pytest --cov=api.routers.chat --cov=rag` reports 96% on the chat router
+and 92% overall across rag + chat.
+`ruff check api/routers/chat.py rag llm/protocols.py
+tests/api/test_chat_router.py tests/rag` passed.
+`pyright api/routers/chat.py rag llm/protocols.py
+tests/api/test_chat_router.py tests/rag` passed with 0 errors.

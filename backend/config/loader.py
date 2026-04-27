@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 from pydantic import ValidationError
@@ -86,7 +86,7 @@ def _parse_content(raw: str, path: Path) -> dict[str, Any]:
         raise ConfigLoadError(
             f"Config file {path} must contain a mapping at the top level."
         )
-    return data
+    return cast(dict[str, Any], data)
 
 
 def _validate(data: dict[str, Any]) -> DomainConfig:

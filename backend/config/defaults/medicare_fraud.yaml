@@ -105,7 +105,8 @@ ingestion:
 #   api_key_env_var: null
 
 # storage:
-#   backend: local
+#   backend: local  # use s3 or minio for S3-compatible object storage
+#   endpoint_url: null  # set for MinIO, for example http://minio:9000
 #   bucket: null
 #   base_path: null
 #   credentials_env_var: null
@@ -121,11 +122,11 @@ ingestion:
 #   dedup_window_seconds: 3600
 #   max_alerts_per_entity: 10
 
-# rag:
-#   top_k: 5
-#   expansion_depth: 2
-#   reranking_enabled: false
-#   system_prompt_template: null
+rag:
+  top_k: 5
+  expansion_depth: 2
+  reranking_enabled: false
+  system_prompt_template: "You are an expert assistant for {domain_name}. Use the provided context to answer questions about {entity_types}."
 
 alerts:
   thresholds:

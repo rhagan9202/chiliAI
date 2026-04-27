@@ -50,9 +50,40 @@ As a platform operator, I want the RAG system prompt to be loaded from `RagConfi
 - Do NOT break existing `RagService.answer()` tests — extend, don't replace
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=rag tests/rag/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=rag tests/rag/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note (2026-04-26)
+
+`RagService.answer()` and `RagService.stream_answer()` now resolve the
+generation-request system prompt through `_resolve_system_prompt`:
+
+1. If `RagQueryRequest.system_prompt` is set, use it verbatim.
+2. Else if a `DomainConfig` is injected (new optional `domain_config=` ctor
+   arg + plumbed through `create_rag_service`) and
+   `DomainConfig.rag.system_prompt_template` is set, render it with
+   `str.format_map` against a `_SafeFormatMap` so unknown `{...}` tokens are
+   preserved instead of raising. Placeholders resolved: `{domain_name}`
+   (from `DomainConfig.domain.display_name`) and `{entity_types}` (joined
+   `EntityDefinition.display_label` — `display_label` is the actual schema
+   field; the spec's `e.label` was a typo).
+3. Else `system_prompt` stays `None` and the answer-generator bridge applies
+   its own default.
+
+`RagConfig.system_prompt_template: str | None` already existed in
+`config/schema.py`; both default YAMLs now uncomment the `rag:` block and
+ship a sample template:
+`"You are an expert assistant for {domain_name}. Use the provided context to answer questions about {entity_types}."`
+
+## Validation Note (2026-04-26)
+
+```
+.venv/bin/pytest tests/rag tests/api/test_chat_router.py tests/config -q   # 130 passed
+.venv/bin/ruff check rag api/routers/chat.py config tests/rag tests/api/test_chat_router.py tests/config  # clean
+.venv/bin/pyright rag api/routers/chat.py config tests/rag tests/api/test_chat_router.py tests/config     # 0 errors
+.venv/bin/pytest tests/rag --cov=rag                                       # 95% line coverage
+```

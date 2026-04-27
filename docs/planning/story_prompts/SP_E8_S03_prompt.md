@@ -49,9 +49,15 @@ As a platform operator, I want to define suppression rules preventing alert gene
 - Do NOT modify files outside `backend/monitoring/` and `backend/tests/monitoring/`
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=monitoring tests/monitoring/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=monitoring tests/monitoring/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Added `SuppressionRule` (Pydantic v2) to `monitoring/models.py` with `entity_type: str | None`, `metric_name: str | None`, `start_time: datetime`, `end_time: datetime`, `reason: str` and a `model_validator` enforcing `end_time > start_time`. The model exposes a `matches(entity_type, metric_name, now)` helper that treats `None` dimensions as wildcards. `MonitoringService.__init__` now accepts `suppression_rules: list[SuppressionRule] | None`. Filtering runs before deduplication and threshold evaluation; each excluded observation increments `suppressed_by_rule_count`, surfaced as a new `int = 0` field on `MonitoringEvaluationResponse`. The `suppression_rules` property returns a defensive copy.
+
+## Validation Note
+New tests verify: rule with `entity_type="provider"` excludes provider observations but not claim observations; rule outside the time range is ignored; rule with `metric_name="claim_volume"` excludes only that metric. `tests/monitoring/test_models.py` adds construction tests covering wildcard, entity-type, metric, and time-range matching plus the `end_time > start_time` validator. Coverage: 99%.

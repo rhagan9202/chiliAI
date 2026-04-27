@@ -48,9 +48,28 @@ As an analyst, I want to see pipeline stage progress in real-time via WebSocket.
 - Do NOT implement pipeline control (start/stop) via WebSocket — that belongs in REST endpoints
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=api tests/api/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=api tests/api/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `WS /ws/pipeline` reuses the `WebSocketHub`
+infrastructure introduced in E5-S07. Clients send a Pydantic-validated
+`{"subscribe": {"kb_id": "..."}}` message to scope events to a single
+knowledge base; absence of a filter forwards every event. Broadcast payloads
+follow the contract `{type: "pipeline_progress", event_type, knowledge_base_id,
+stage, progress, timestamp}`. `events/types.py` adds `PipelineProgressEvent`
+(`knowledge_base_id`, `stage`, `progress: float`, optional `message`) and the
+codec registers it under `"pipeline.progress"`. Tests verify scoped filtering
+and unscoped fan-out using the TestClient anyio portal.
+
+## Validation Note
+From `backend/`:
+- `.venv/bin/pytest tests/api/test_ws_router.py tests/events -q` — 38 passed.
+- `.venv/bin/ruff check api/routers/ws.py events tests/api/test_ws_router.py
+  tests/events` — clean.
+- `.venv/bin/pyright api/routers/ws.py events tests/api/test_ws_router.py
+  tests/events` — 0 errors.

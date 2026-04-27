@@ -1,0 +1,67 @@
+.card {
+  background: var(--bg, #fff);
+  border: 1px solid var(--border, #e5e4e7);
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 110px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text, #6b6375);
+}
+
+.icon {
+  font-size: 18px;
+  color: var(--accent, #aa3bff);
+}
+
+.value {
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--text-h, #08060d);
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--text, #6b6375);
+}
+
+.error {
+  font-size: 13px;
+  color: #b91c1c;
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+@media (min-width: 640px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

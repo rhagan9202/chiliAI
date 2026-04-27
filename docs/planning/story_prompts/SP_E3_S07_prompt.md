@@ -39,6 +39,7 @@ As a platform developer, I want a local filesystem adapter implementing `ObjectS
 - Store metadata in sidecar `.meta.json` files as JSON — one per object, same directory as the object file
 - `list_keys(prefix)` should walk the directory tree and return keys matching the prefix
 - Use `tmp_path` pytest fixture for test isolation — never write to real filesystem paths in tests
+- This story is adapter-only. Do not wire `api.dependencies.get_object_store()` or the agent coordinator to instantiate `LocalFsObjectStore`; runtime provider selection remains separate integration work.
 
 ## What NOT To Do
 - Do not modify the `ObjectStore` protocol — implement it as-is (ensure E3-S08 is complete first or coordinate)
@@ -48,11 +49,26 @@ As a platform developer, I want a local filesystem adapter implementing `ObjectS
 - Do not implement file locking or concurrency control — single-process use is fine for local dev
 - Do not compress or encode stored objects — store raw bytes as-is
 - Do not create nested adapter utilities outside `storage/`
+- Do not claim this story makes the full local pipeline use filesystem storage until DI/provider wiring is implemented separately.
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=storage tests/storage/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=storage tests/storage/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Notes
+- Added `LocalFsObjectStore` in `backend/storage/adapters/local_fs_adapter.py` implementing the synchronous `ObjectStore` protocol.
+- Objects are written as raw files below a resolved configurable base directory. `ObjectStoreConfig.base_path` is used as the physical local root, and the adapter defaults to `./data/objects/` when no config path or explicit test path is supplied.
+- Metadata is stored in adjacent `.meta.json` sidecars with `key`, `size_bytes`, `media_type`, and JSON-compatible `metadata` fields.
+- Logical keys are POSIX-style only. The adapter rejects empty keys, null bytes, absolute paths, `..` path segments, `.` segments, empty object-key segments, backslashes, Windows drive forms, UNC-style prefixes, and keys ending in the reserved `.meta.json` sidecar suffix, with containment checks after path resolution.
+- `list_keys(prefix)` recursively walks the base directory, excludes sidecar files, and returns sorted logical keys matching the prefix.
+- `LocalFsObjectStore` is exported from both `storage` and `storage.adapters`.
+- This remains adapter-only. API dependency selection and worker/coordinator provider wiring were intentionally not changed.
+
+## Validation Notes
+- `cd backend && .venv/bin/pytest tests/storage/ --cov=storage --cov-report=term-missing` passed: 82 tests, 92% storage coverage.
+- `cd backend && .venv/bin/ruff check storage tests/storage` passed.
+- `cd backend && .venv/bin/pyright storage tests/storage` passed with 0 errors.

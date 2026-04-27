@@ -37,6 +37,13 @@ class GraphRepository(Protocol):
 
     def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None: ...
 
+    def update_entity_properties(
+        self,
+        knowledge_base_id: str,
+        entity_id: str,
+        properties: dict[str, object],
+    ) -> Entity: ...
+
     def get_neighbors(
         self,
         knowledge_base_id: str,

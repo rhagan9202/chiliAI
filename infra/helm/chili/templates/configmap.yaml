@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "chili.fullname" . }}-config
+  labels:
+    {{- include "chili.componentLabels" (dict "context" . "component" "config") | nindent 4 }}
+data:
+  CHILI_CONFIG_PATH: {{ .Values.config.path | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  REDIS_URL: {{ .Values.redis.uri | quote }}
+  NEO4J_URI: {{ .Values.neo4j.uri | quote }}
+  QDRANT_URL: {{ .Values.qdrant.uri | quote }}
+  MINIO_ENDPOINT: {{ .Values.minio.endpoint | quote }}
+  AUTH_ENABLED: {{ .Values.auth.enabled | quote }}
+  AUTH_ISSUER_URL: {{ .Values.auth.issuerUrl | quote }}
+  AUTH_AUDIENCE: {{ .Values.auth.audience | quote }}

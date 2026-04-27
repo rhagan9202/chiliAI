@@ -1,0 +1,47 @@
+{{- if .Values.hpa.api.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "chili.fullname" . }}-api
+  labels:
+    {{- include "chili.componentLabels" (dict "context" . "component" "api") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "chili.fullname" . }}-api
+  minReplicas: {{ .Values.hpa.api.minReplicas }}
+  maxReplicas: {{ .Values.hpa.api.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.api.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- if .Values.hpa.worker.enabled }}
+---
+# Worker scaling: CPU is a coarse proxy. Future work: scale on Redis Stream
+# pending-message depth via KEDA's redis-streams scaler.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "chili.fullname" . }}-worker
+  labels:
+    {{- include "chili.componentLabels" (dict "context" . "component" "worker") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "chili.fullname" . }}-worker
+  minReplicas: {{ .Values.hpa.worker.minReplicas }}
+  maxReplicas: {{ .Values.hpa.worker.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.worker.targetCPUUtilizationPercentage }}
+{{- end }}

@@ -60,9 +60,15 @@ As a platform developer, I want comprehensive pytest coverage for the monitoring
 - Do NOT add new test dependencies unless already present in `pyproject.toml`
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=monitoring tests/monitoring/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=monitoring tests/monitoring/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Expanded `tests/monitoring/test_service.py`, `test_models.py`, and added `test_exceptions.py`. Coverage now includes: happy-path evaluation (existing), window filtering (inside/outside, min count), dedup (within/outside window, multiple keys), suppression rules (entity_type, metric_name, time range, wildcard), rate limit (under/at/over with severity ordering), lifecycle transitions (parametrized matrix of nine valid transitions, two invalid, idempotent same-status, reopen clearing, resolve metadata), grouping (same/different entity_types, singleton ungrouped), and error paths (`MonitoringSourceError` from a raising source, `MonitoringConfigurationError` from a `ValueError` source). Stream consumer error path lives in `tests/agent/test_coordinator.py` per E8-S07.
+
+## Validation Note
+`pytest tests/monitoring/ --cov=monitoring` reports 99% line coverage (333 statements, 3 missed; the misses are defensive branches in `monitoring/adapters/in_memory.py` and `monitoring/service.py` that require unreachable conditions). All new tests are deterministic (`utc_now()` snapshot is taken once per call, dedup-expiry test seeds the index manually). Backend total: 808 passed / 3 skipped (baseline 758 + 50 new).

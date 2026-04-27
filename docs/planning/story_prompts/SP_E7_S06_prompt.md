@@ -52,9 +52,22 @@ As a platform developer, I want the risk service to support pluggable scoring st
 - Do NOT create an abstract base class — use Protocol for structural typing
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=analytics/risk tests/analytics/risk/` >= 85% coverage
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=analytics/risk tests/analytics/risk/` >= 85% coverage
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `RiskScoringStrategyProtocol` was added in
+`analytics/risk/protocols.py` and `LinearScoringStrategy` extracted to
+`analytics/risk/adapters/linear_strategy.py`. `RiskService` accepts a
+`scoring_strategy` dependency, defaulting to `LinearScoringStrategy()` for
+backward compatibility. Public `assess()` outputs are identical to the
+pre-refactor implementation.
+
+## Validation Note
+From `backend/`: `.venv/bin/pytest tests/analytics/risk/` covers
+delegation parity and `LinearScoringStrategy` in isolation; sub-module
+coverage 96%.

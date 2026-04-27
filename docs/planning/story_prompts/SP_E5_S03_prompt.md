@@ -52,9 +52,36 @@ As an analyst, I want to retrieve entity details and explore graph neighborhood 
 - Do NOT add authentication or authorization
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=api tests/api/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=api tests/api/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `api/routers/investigation.py` exposes
+`GET /investigation/entities/{entity_id}` and
+`GET /investigation/entities/{entity_id}/neighborhood` and ships its own
+self-contained `get_graph_service` factory (delegating to
+`api.dependencies.get_graph_service`) so tests override via
+`dependency_overrides` without touching `api/dependencies.py` or
+`api/app.py`. `depth` is validated through `Query(default=2, ge=1, le=5)` so
+out-of-range values yield FastAPI's automatic 422. Missing entities return
+404 from both endpoints. `graph/service_models.py` gained
+`EntityDetailResponse`, `NeighborhoodRequest`, and `NeighborhoodResponse`
+to keep the API response shape strictly typed; the underlying
+`SubgraphResult` was reused from `graph/models.py`. The protocol additions
+(`get_entity`, `query_neighborhood`) were already present from E2-S03 and
+required no further changes.
+
+## Validation Note
+From `backend/`:
+`.venv/bin/pytest tests/api/test_investigation_router.py tests/graph -q`
+passed with 63 passed / 2 skipped. `.venv/bin/ruff check
+api/routers/investigation.py graph tests/api/test_investigation_router.py
+tests/graph` reported no issues. `.venv/bin/pyright
+api/routers/investigation.py graph tests/api/test_investigation_router.py
+tests/graph` reported 0 errors. Coverage on
+`api/routers/investigation.py` is 100% (router stmts) with overall coverage
+across the new router and `graph/service_models.py` at 93%.

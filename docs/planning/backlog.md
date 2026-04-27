@@ -445,6 +445,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E3-S03: OpenAI embeddings adapter
 
+**Status:** Complete on April 25, 2026.
+
 **As a** platform developer, **I want** an embeddings adapter calling the OpenAI Embeddings API, **so that** operators can use cloud-hosted embedding models when local GPU is unavailable.
 
 **Acceptance Criteria:**
@@ -461,17 +463,23 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 **Notes:** Support both `text-embedding-3-small` and `text-embedding-3-large` via config. Never log API keys.
 
+**Implementation note:** `OpenAIEmbedder` now loads the optional SDK lazily, reads its API key from the configured environment variable, batches requests using both `EmbeddingsConfig.batch_size` and a conservative token estimate, validates returned vector dimensions, and retries only rate-limit failures with exponential backoff.
+
+**Validation note:** `pytest tests/embeddings/ --cov=embeddings --cov-report=term-missing` passed with 23 tests and 88% coverage for `embeddings`; `ruff check embeddings tests/embeddings` and `pyright embeddings tests/embeddings` also passed.
+
 ---
 
 ### E3-S04: OpenAI LLM adapter
+
+**Status:** Complete on April 25, 2026.
 
 **As a** platform developer, **I want** an LLM adapter calling the OpenAI Chat Completions API, **so that** the RAG chat and analytics explainability modules can generate natural-language outputs.
 
 **Acceptance Criteria:**
 1. `llm/adapters/openai_adapter.py` implements the LLM protocol: `generate(GenerationRequest) -> GenerationResult`.
 2. API key is read from the environment variable specified in `LlmConfig.api_key_env_var`.
-3. Token usage (prompt_tokens, completion_tokens) is captured in `CompletionMetadata`.
-4. Rate-limit errors trigger exponential backoff retry (max 3 attempts).
+3. `CompletionMetadata` includes optional `prompt_tokens` and `completion_tokens` fields, and the OpenAI adapter populates them from `response.usage` when provided.
+4. Rate-limit errors trigger exponential backoff retry for up to 3 total attempts.
 5. `openai` is listed as an optional dependency (shared with E3-S03).
 6. Unit test mocks the OpenAI client and verifies request/response mapping.
 
@@ -479,11 +487,17 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 |----------|------|--------------|
 | P1 | M | E1-S06 |
 
-**Notes:** Support `gpt-4o`, `gpt-4o-mini` via config. Do not implement streaming in this story — see E5-S04 for SSE streaming.
+**Notes:** Use `LlmConfig.model` as the OpenAI model name so values such as `gpt-4o` and `gpt-4o-mini` are configurable. Do not implement streaming in this story — see E5-S04 for SSE streaming. The adapter protocol is `llm/adapters/protocols.py:LlmClientProtocol`; `llm/protocols.py` is the service boundary.
+
+**Implementation note:** `OpenAILlmClient` now loads the optional SDK lazily, reads its API key from the configured environment variable, maps `GenerationRequest` messages to `client.chat.completions.create(...)`, captures optional usage tokens in `CompletionMetadata`, rejects blank/missing completion content, and retries only rate-limit failures with exponential backoff.
+
+**Validation note:** `pytest tests/llm/ --cov=llm --cov-report=term-missing` passed with 22 tests and 93% coverage for `llm`; `ruff check llm tests/llm` and `pyright llm tests/llm` also passed.
 
 ---
 
 ### E3-S05: Anthropic LLM adapter
+
+**Status:** Complete on April 25, 2026.
 
 **As a** platform developer, **I want** an LLM adapter calling the Anthropic Messages API, **so that** operators have a second LLM vendor option.
 
@@ -491,7 +505,7 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 1. `llm/adapters/anthropic_adapter.py` implements the LLM protocol.
 2. API key is read from the configured environment variable.
 3. Anthropic's `input_tokens` and `output_tokens` are mapped to `CompletionMetadata`.
-4. Rate-limit handling with retry.
+4. Rate-limit handling retries for up to 3 total attempts.
 5. `anthropic` is listed as an optional dependency.
 6. Unit test mocks the Anthropic client.
 
@@ -499,30 +513,52 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 |----------|------|--------------|
 | P2 | M | E1-S06 |
 
-**Notes:** Support `claude-sonnet-4-20250514` and `claude-3-5-haiku-20241022` via config.
+**Notes:** Support `claude-sonnet-4-20250514` and `claude-3-5-haiku-20241022` via `LlmConfig.model`. Map normalized `MessageRole.SYSTEM` messages to Anthropic's top-level `system` parameter, not to a `system` message role. This story remains adapter-only; API dependency and coordinator provider selection are separate production-wiring work.
+
+**Implementation note:** `AnthropicLlmClient` now loads the optional SDK lazily, reads its API key from the configured environment variable, maps normalized `MessageRole.SYSTEM` messages into Anthropic's top-level `system` field, converts only user/assistant messages into the request payload, concatenates text content blocks from the response, captures optional usage tokens in `CompletionMetadata`, and retries only rate-limit failures with exponential backoff.
+
+**Validation note:** `pytest tests/llm/ --cov=llm --cov-report=term-missing` passed with 38 tests and 92% coverage for `llm`; `ruff check llm tests/llm` and `pyright llm tests/llm` also passed from `backend/` after adding deterministic offline Anthropic adapter tests.
 
 ---
 
 ### E3-S06: S3/MinIO object storage adapter
 
+**Status:** Complete on April 25, 2026.
+
 **As a** platform operator, **I want** an object storage adapter using the S3 API, **so that** document artifacts, chunking results, and graph snapshots are persisted durably.
 
 **Acceptance Criteria:**
-1. `storage/adapters/s3_adapter.py` implements `ObjectStore` protocol: `put_bytes`, `get_bytes`, `delete`, `exists`, `list_keys`.
-2. Connection is configured via `ObjectStoreConfig` (endpoint_url for MinIO compatibility, bucket, credentials_env_var).
+1. `storage/adapters/s3_adapter.py` implements the E3-S08 `ObjectStore` protocol: `put_bytes`, `get_bytes`, `delete`, `exists`, and `list_keys(prefix: str) -> list[str]`.
+2. Connection is configured via `ObjectStoreConfig` (`endpoint_url` for MinIO compatibility, `bucket`, `base_path`, and `credentials_env_var`).
 3. Metadata is stored as S3 object metadata headers.
 4. `boto3` is listed as an optional dependency.
 5. Integration test validates put → get → delete round-trip using `moto` mock.
 
 | Priority | Size | Dependencies |
 |----------|------|--------------|
-| P1 | M | E1-S06 |
+| P1 | M | E1-S06, E3-S08 |
 
-**Notes:** Use `boto3` with `endpoint_url` override for MinIO. All keys should be prefixed with a configurable namespace to support multi-tenant buckets.
+**Notes:** E3-S08 must land before this story because the current storage protocol does not yet expose `delete`, `exists`, or `list_keys`. Use `boto3` with `endpoint_url` override for MinIO. Use `ObjectStoreConfig.base_path` as the configurable namespace/prefix for multi-tenant buckets. If `credentials_env_var` is set, read it as a JSON object with `aws_access_key_id`, `aws_secret_access_key`, and optional `aws_session_token`; otherwise use boto3's default credential provider chain. This story remains adapter-only; API DI/provider wiring is separate runtime integration work.
+
+**Implementation note:** `S3ObjectStore` implements the synchronous `ObjectStore`
+protocol with lazy `boto3` loading, optional client/factory injection, MinIO
+`endpoint_url`, JSON environment credentials, metadata headers, base-path key
+namespacing, missing-object `KeyError` semantics for reads, missing-object
+no-op deletes, and paginated sorted logical-key listings.
+
+**Validation note:** S3 adapter validation uses `moto` for an offline
+put/get/delete round-trip and fake clients for credentials, metadata,
+endpoint, optional dependency, import safety, leading-slash key rejection, and
+pagination behavior. `pytest` passed with 83 targeted config/storage tests and
+92% storage coverage; `ruff` and `pyright` passed for the requested
+storage/config scopes. This story remains adapter-only; production
+DI/coordinator wiring is intentionally not claimed.
 
 ---
 
 ### E3-S07: Local filesystem object storage adapter
+
+**Status:** Complete on April 25, 2026.
 
 **As a** platform developer, **I want** a local filesystem adapter implementing `ObjectStore`, **so that** developers can run the full pipeline locally without S3/MinIO.
 
@@ -538,11 +574,27 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 |----------|------|--------------|
 | P2 | S | None |
 
-**Notes:** This adapter requires no external dependencies. Use `pathlib.Path` for safe path construction.
+**Notes:** This adapter requires no external dependencies. Use `pathlib.Path` for safe path construction. This story is adapter-only; API DI/coordinator provider wiring remains separate integration work, so `storage.backend: local` may continue to use the in-memory adapter until that wiring story lands.
+
+**Implementation note:** `LocalFsObjectStore` now implements the synchronous
+`ObjectStore` protocol with raw file persistence under a configurable local
+root, adjacent `.meta.json` sidecars, sorted prefix listing, safe POSIX logical
+key validation that reserves the `.meta.json` suffix for sidecars, metadata JSON
+validation, missing-read `KeyError` semantics, and missing-delete no-op
+behavior. It is exported from `storage` and
+`storage.adapters`.
+
+**Validation note:** `pytest tests/storage/ --cov=storage --cov-report=term-missing`
+passed with 82 tests and 92% storage coverage; `ruff check storage
+tests/storage` and `pyright storage tests/storage` also passed from
+`backend/`. This story remains adapter-only; DI/coordinator runtime wiring was
+intentionally not changed.
 
 ---
 
 ### E3-S08: Extend ObjectStore protocol with delete, exists, list_keys
+
+**Status:** Complete on April 25, 2026.
 
 **As a** platform developer, **I want** the `ObjectStore` protocol to include `delete(key)`, `exists(key) -> bool`, and `list_keys(prefix) -> list[str]`, **so that** all storage adapters provide a complete interface for lifecycle management.
 
@@ -557,6 +609,10 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 **Notes:** This unblocks E3-S06, E3-S07, and the KB delete endpoint (E5-S12).
 
+**Implementation note:** `ObjectStore` now includes synchronous `delete`, `exists`, and `list_keys` methods. `InMemoryObjectStore` implements the full protocol, treats missing deletes as no-ops, and returns sorted deterministic listings for prefix and empty-prefix queries.
+
+**Validation note:** `pytest tests/storage/ --cov=storage --cov-report=term-missing` passed with 15 tests and 100% storage coverage; `ruff check storage tests/storage` passed; `pyright storage tests/storage` passed with 0 errors.
+
 ---
 
 ## Epic 4: Pipeline Completion (Agent Coordinator)
@@ -564,6 +620,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 > Wire the remaining pipeline stages (embeddings, vector indexing, kb.ready) and add operational resilience (dead-letter queue, retry tracking, graceful shutdown, health check) to the worker coordinator.
 
 ### E4-S01: Wire embeddings step after graph.updated
+
+**Status:** Complete on April 25, 2026.
 
 **As a** platform developer, **I want** the worker coordinator to consume `graph.updated` events, generate embeddings for upserted entities, and publish an `embeddings.complete` event, **so that** the pipeline progresses from graph to vector indexing.
 
@@ -581,9 +639,22 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 **Notes:** Entity text for embedding should be constructed by concatenating `entity.type` + key properties. The exact text template can be a simple f-string for now.
 
+**Implementation note:** `agent/coordinator.py` now dispatches `GraphUpdatedEvent`,
+loads graph update and validation artifacts through `ObjectStore`, selects
+upserted entities deterministically by ID, prefers explicit text fields before
+sorted property composition, calls the `EmbeddingsServiceProtocol`, persists an
+`EmbeddingResult` artifact under a key derived from the source graph artifact,
+and emits `EmbeddingsCompleteEvent` with the original `correlation_id`.
+
+**Validation note:** `pytest tests/agent/ --cov=agent --cov-report=term-missing`
+passed with 17 tests and 89% agent coverage; `ruff check agent events
+tests/agent` passed; `pyright agent events tests/agent` passed with 0 errors.
+
 ---
 
 ### E4-S02: Wire vector indexing step after embeddings.complete
+
+Status: Complete on April 26, 2026.
 
 **As a** platform developer, **I want** the worker coordinator to consume `embeddings.complete` events, upsert vectors into the vector store, and publish a `vectors.indexed` event, **so that** similarity search becomes available after embedding.
 
@@ -604,6 +675,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E4-S03: Emit kb.ready event at pipeline completion
 
+Status: Complete on April 26, 2026.
+
 **As a** platform developer, **I want** the worker to emit a `kb.ready` event after `vectors.indexed`, **so that** the frontend can display knowledge base readiness status and trigger downstream analytics.
 
 **Acceptance Criteria:**
@@ -622,6 +695,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 ---
 
 ### E4-S04: Dead-letter queue handling for failed pipeline events
+
+Status: Complete on April 26, 2026.
 
 **As a** platform operator, **I want** events that fail processing after exhausting retries to be moved to a dead-letter stream, **so that** failed work is preserved for inspection and replay without blocking the main pipeline.
 
@@ -643,6 +718,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E4-S05: Retry count tracking with exponential backoff
 
+Status: Complete on April 26, 2026.
+
 **As a** platform operator, **I want** the worker coordinator to retry failed pipeline steps with exponential backoff and a configurable max retry count, **so that** transient failures (network blips, API rate limits) are handled automatically.
 
 **Acceptance Criteria:**
@@ -661,6 +738,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 ---
 
 ### E4-S06: Graceful shutdown for the worker process
+
+Status: Complete on April 26, 2026.
 
 **As a** platform operator, **I want** the worker to handle SIGTERM/SIGINT gracefully by finishing the current event before exiting, **so that** container orchestrators can stop workers without corrupting in-flight work.
 
@@ -681,6 +760,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E4-S07: Worker health check endpoint
 
+Status: Complete on April 26, 2026.
+
 **As a** platform operator, **I want** the worker process to expose a lightweight health check on a configurable HTTP port, **so that** container orchestrators (Docker, Kubernetes) can verify worker liveness.
 
 **Acceptance Criteria:**
@@ -699,6 +780,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 ---
 
 ### E4-S08: Config-driven adapter wiring in the worker coordinator
+
+Status: Complete on April 26, 2026.
 
 **As a** platform developer, **I want** `build_worker_dependencies()` to select adapters from `DomainConfig` instead of hardcoding in-memory implementations, **so that** the worker uses the same config-driven wiring as the API gateway.
 
@@ -722,6 +805,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E5-S01: Alerts router — list alerts
 
+Status: Done on April 26, 2026.
+
 **As an** analyst, **I want** to list alerts with filtering by severity, entity type, and status, **so that** I can triage the most critical findings.
 
 **Acceptance Criteria:**
@@ -740,6 +825,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 ---
 
 ### E5-S02: Alerts router — acknowledge and resolve alerts
+
+Status: Done on April 26, 2026.
 
 **As an** analyst, **I want** to acknowledge and resolve alerts with optional resolution notes, **so that** my investigation progress is tracked.
 
@@ -775,6 +862,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 **Notes:** Router delegates to `GraphService.get_entity` and `GraphService.query_neighborhood`.
 
+**Status:** Done on April 26, 2026. `api/routers/investigation.py` ships with a self-contained `get_graph_service` factory; `EntityDetailResponse` and `NeighborhoodResponse` were added to `graph/service_models.py` to keep responses strictly typed. Final integration into `api/app.py` is owned by E5-S14.
+
 ---
 
 ### E5-S04: Investigation router — search entities
@@ -793,6 +882,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 | P1 | S | E2-S03 |
 
 **Notes:** This is a basic property search. Semantic search (vector similarity on entity embeddings) is a future enhancement.
+
+**Status:** Done on April 26, 2026. `GET /investigation/search` was added to `api/routers/investigation.py`, delegating to `GraphServiceProtocol.search_entities`. `EntitySearchResponse` was added to `graph/service_models.py`. Tests cover happy path, empty results, missing/blank `q`, limit/offset clamping, and offset slicing.
 
 ---
 
@@ -813,6 +904,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 **Notes:** Non-streaming response in this story. Streaming via SSE is E5-S06.
 
+**Status:** Done on April 26, 2026. `api/routers/chat.py` defines a self-contained chat router with a local `get_rag_service()` factory (per scope guidance, `api/dependencies.py` was not touched). `RagAnswer` was added to `rag/service_models.py`; `RagServiceProtocol.answer_question` and `InMemoryRagService` provide canned answers + KB allow-listing for the chat path. Empty / whitespace-only `content` returns 422 (Pydantic) and unknown `kb_id` maps `RagConfigurationError` to 404. Tests cover happy path, empty content, missing KB, and SSE streaming.
+
 ---
 
 ### E5-S06: RAG chat router — streaming response via SSE
@@ -832,9 +925,13 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 **Notes:** Use FastAPI `StreamingResponse` with an async generator. SSE reconnection / event IDs are not required for MVP.
 
+**Status:** Done on April 26, 2026. The chat router supports `?stream=true` returning `text/event-stream`, with each event framed as `data: {json}\n\n`. Tokens are emitted via `RagServiceProtocol.stream_answer` (an `AsyncIterator[RagStreamChunk]`); the terminal event carries `{"token": "", "done": true, "sources": [...]}`. `LlmServiceProtocol` gained an optional `generate_stream(request) -> AsyncIterator[str]` whose default body raises `NotImplementedError`. Streaming-side errors are emitted as `{"error": ..., "done": true}` events.
+
 ---
 
 ### E5-S07: WebSocket hub — real-time alerts
+
+**Status: Done (2026-04-26)** — see `docs/planning/story_prompts/SP_E5_S07_prompt.md`.
 
 **As an** analyst, **I want** to receive new alerts in real-time via WebSocket, **so that** I am immediately notified of high-severity findings without polling.
 
@@ -855,6 +952,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E5-S08: WebSocket hub — pipeline status
 
+**Status: Done (2026-04-26)** — see `docs/planning/story_prompts/SP_E5_S08_prompt.md`.
+
 **As an** analyst, **I want** to see pipeline stage progress in real-time via WebSocket, **so that** I know when my uploaded documents are ready for investigation.
 
 **Acceptance Criteria:**
@@ -874,6 +973,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E5-S09: Analytics router — risk scores and timeseries
 
+Status: Done on April 26, 2026.
+
 **As an** analyst, **I want** API endpoints for risk scores and timeseries data, **so that** the dashboard can display risk-ranked entities and trend charts.
 
 **Acceptance Criteria:**
@@ -892,6 +993,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 ---
 
 ### E5-S10: Analytics router — GNN cluster results
+
+Status: Done on April 26, 2026.
 
 **As an** analyst, **I want** an API endpoint for GNN clustering results, **so that** the dashboard can display detected communities and anomalous subgraphs.
 
@@ -925,6 +1028,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 |----------|------|--------------|
 | P1 | S | E1-S09 |
 
+**Status:** Done on April 26, 2026.
+
 **Notes:** KB metadata needs a persistence layer. For MVP, an in-memory dict in the KB service is acceptable. Production persistence is a future story.
 
 ---
@@ -944,6 +1049,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 |----------|------|--------------|
 | P1 | M | E5-S11, E3-S08 |
 
+**Status:** Done on April 26, 2026.
+
 **Notes:** Delete must cascade to object store (via `list_keys` prefix delete) and graph/vector store. The cascade can be synchronous for MVP or event-driven for production.
 
 ---
@@ -962,6 +1069,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 | Priority | Size | Dependencies |
 |----------|------|--------------|
 | P2 | S | E5-S11 |
+
+**Status:** Done on April 26, 2026.
 
 **Notes:** Document metadata must be stored at registration time (currently only the event payload tracks it). An in-memory document registry in the KB service is sufficient for MVP.
 
@@ -983,6 +1092,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 **Notes:** This is a wiring-only story. Each router is independently testable — this story just brings them together.
 
+**Status:** Done on April 26, 2026. All six new routers (alerts, investigation, chat, ws, analytics, knowledgebases) plus the pre-existing config router are wired in `api/app.py`. The integration drift on `LlmService` not implementing `LlmServiceProtocol.generate_stream` (introduced by E3 streaming work) was resolved by adding a default `generate_stream` to `LlmService`. Per-router DI factories were left in their router modules (the smallest-diff option) since each router's existing test suite overrides them directly.
+
 ---
 
 ## Epic 6: RAG Pipeline
@@ -990,6 +1101,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 > Wire the RAG service's four adapter slots to production implementations, add streaming support and citation formatting, make the system prompt configurable from domain config, and achieve ≥ 85 % test coverage.
 
 ### E6-S01: Production QueryEmbedder adapter — delegate to EmbeddingsService
+
+Status: Done on April 26, 2026.
 
 **As a** platform developer, **I want** a `ServiceQueryEmbedder` adapter that delegates `embed_query` to the `EmbeddingsService`, **so that** RAG queries use the same embedding model as the ingestion pipeline.
 
@@ -1001,13 +1114,15 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 | Priority | Size | Dependencies |
 |----------|------|--------------|
-| P0 | S | E3-S04 |
+| P0 | S | E3-S02, E3-S03 |
 
-**Notes:** E3-S04 delivers the sentence-transformers embeddings adapter. This story bridges the RAG module to it without introducing a direct import — only the protocol is used.
+**Notes:** E3-S02 and E3-S03 deliver the concrete embeddings adapters. This story bridges the RAG module to `EmbeddingsService` without introducing a direct adapter import — only the protocol is used.
 
 ---
 
 ### E6-S02: Production ContextRetriever adapter — delegate to VectorStoreService
+
+Status: Done on April 26, 2026.
 
 **As a** platform developer, **I want** a `ServiceContextRetriever` adapter that delegates `retrieve` to the `VectorStoreService`, **so that** RAG retrieval queries the production vector index.
 
@@ -1027,6 +1142,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E6-S03: Production GraphContextExpander adapter — delegate to GraphService
 
+Status: Done on April 26, 2026.
+
 **As a** platform developer, **I want** a `ServiceGraphContextExpander` adapter that delegates `expand` to the `GraphService`, **so that** RAG answers include graph-neighborhood context around retrieved entities.
 
 **Acceptance Criteria:**
@@ -1045,6 +1162,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E6-S04: Production AnswerGenerator adapter — delegate to LLMService
 
+Status: Done on April 26, 2026.
+
 **As a** platform developer, **I want** a `ServiceAnswerGenerator` adapter that delegates `generate` to the `LLMService`, **so that** RAG answers are produced by the configured LLM provider.
 
 **Acceptance Criteria:**
@@ -1055,13 +1174,15 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 | Priority | Size | Dependencies |
 |----------|------|--------------|
-| P0 | M | E3-S05 |
+| P0 | M | E3-S04 |
 
-**Notes:** E3-S05 delivers the OpenAI LLM adapter. Prompt template assembly should be extracted into a testable helper to allow domain-specific prompt strategies.
+**Notes:** E3-S04 delivers the OpenAI LLM adapter. Prompt template assembly should be extracted into a testable helper to allow domain-specific prompt strategies.
 
 ---
 
 ### E6-S05: Domain-configurable RAG system prompt
+
+Status: Done on April 26, 2026.
 
 **As a** platform operator, **I want** the RAG system prompt to be loaded from `RagConfig.system_prompt_template` in domain config, **so that** the same platform serves different analytical domains without code changes.
 
@@ -1080,6 +1201,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 ---
 
 ### E6-S06: Streaming RAG response support
+
+Status: Done on April 26, 2026.
 
 **As a** platform developer, **I want** `RagService` to support streaming answer generation via an iterator-based protocol method, **so that** the frontend can display partial answers as they arrive.
 
@@ -1100,6 +1223,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 ---
 
 ### E6-S07: Citation formatting with source references
+
+Status: Done on April 26, 2026.
 
 **As an** analyst, **I want** RAG responses to include structured citations linking answer claims to specific source documents and chunk offsets, **so that** I can verify the evidence behind each answer.
 
@@ -1134,6 +1259,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 **Notes:** Existing test files in `tests/rag/` have some content but the coverage is reported as minimal. Expand and fill gaps.
 
+**Status:** Done (2026-04-26). Coverage formalized at 99% (88 tests, was 95% / 65 tests). Added `tests/rag/conftest.py` with shared fixtures and filled gaps for `ValueError` → `RagConfigurationError` mapping at every pipeline stage, empty-context happy path, graph-expansion runtime/value-error paths, streaming partial failure, and in-memory adapter edge cases. Production code unchanged.
+
 ---
 
 ## Epic 7: Analytics Suite
@@ -1141,6 +1268,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 > Upgrade the four analytics sub-modules from basic heuristics to production-quality algorithms, wire analytics into the coordinator event chain, and implement the self-reinforcing analysis loop that writes scores back to the graph.
 
 ### E7-S01: Timeseries — seasonal decomposition anomaly detection
+
+Status: Done on April 26, 2026.
 
 **As a** platform developer, **I want** the timeseries service to support STL seasonal decomposition alongside z-score detection, **so that** anomaly detection accounts for seasonal patterns in time-series data.
 
@@ -1160,6 +1289,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E7-S02: Timeseries — isolation forest anomaly detection
 
+Status: Done on April 26, 2026.
+
 **As a** platform developer, **I want** the timeseries service to support isolation forest anomaly detection, **so that** multi-feature anomaly detection can catch non-distributional outliers.
 
 **Acceptance Criteria:**
@@ -1177,6 +1308,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 ---
 
 ### E7-S03: Timeseries — sliding window continuous analysis
+
+Status: Done on April 26, 2026.
 
 **As a** platform developer, **I want** the timeseries service to support sliding-window analysis over the most recent N observations, **so that** continuous monitoring detects anomalies in real-time streams without reprocessing full history.
 
@@ -1196,6 +1329,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E7-S04: GNN — community detection (Louvain)
 
+Status: Done on April 26, 2026.
+
 **As a** platform developer, **I want** the GNN service to detect communities in the graph snapshot, **so that** analysts can identify clusters of related entities (e.g., coordinated fraud rings).
 
 **Acceptance Criteria:**
@@ -1213,6 +1348,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 ---
 
 ### E7-S05: GNN — node embedding export
+
+Status: Done on April 26, 2026.
 
 **As a** platform developer, **I want** the GNN service to produce node embeddings for each entity in the graph snapshot, **so that** downstream modules (vectorstore, risk) can leverage structural similarity.
 
@@ -1232,6 +1369,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E7-S06: Risk scoring — ensemble model with configurable strategies
 
+Status: Done on April 26, 2026.
+
 **As a** platform developer, **I want** the risk service to support pluggable scoring strategies (linear, logistic, gradient boosting) behind a `RiskScoringStrategy` protocol, **so that** risk assessment quality can improve without modifying the service core.
 
 **Acceptance Criteria:**
@@ -1249,6 +1388,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 ---
 
 ### E7-S07: Risk scoring — temporal trend comparison
+
+Status: Done on April 26, 2026.
 
 **As a** platform developer, **I want** the risk service to compare the current assessment score to a historical baseline, **so that** risk reports indicate whether an entity's risk is increasing, stable, or decreasing.
 
@@ -1269,6 +1410,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E7-S08: Explainability — structured narrative generation
 
+Status: Done on April 26, 2026.
+
 **As a** platform developer, **I want** the explainability service to produce structured multi-section narratives instead of concatenated strings, **so that** the investigation workbench can render formatted evidence reports.
 
 **Acceptance Criteria:**
@@ -1288,6 +1431,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E7-S09: Explainability — SHAP/LIME feature attribution adapter
 
+Status: Done on April 26, 2026.
+
 **As a** platform developer, **I want** an explainability adapter that uses SHAP or LIME to attribute risk scores to specific features, **so that** analysts understand which input features drive risk assessment outcomes.
 
 **Acceptance Criteria:**
@@ -1305,6 +1450,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 ---
 
 ### E7-S10: Wire analytics into the coordinator event chain
+
+Status: Done on April 26, 2026.
 
 **As a** platform developer, **I want** the worker coordinator to consume `graph.updated` events and trigger the analytics pipeline (timeseries → GNN → risk → explainability), **so that** knowledge base updates automatically produce risk assessments and evidence packs.
 
@@ -1325,6 +1472,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E7-S11: Self-reinforcing loop — write risk scores back to graph
 
+Status: Done on April 26, 2026.
+
 **As a** platform developer, **I want** the coordinator to write computed risk scores and GNN community labels back to graph entity properties after analytics complete, **so that** subsequent queries and visualizations reflect the latest analysis.
 
 **Acceptance Criteria:**
@@ -1342,6 +1491,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 ---
 
 ### E7-S12: Analytics module test coverage — achieve ≥ 85 % per sub-module
+
+Status: Done on April 26, 2026.
 
 **As a** platform developer, **I want** comprehensive pytest coverage for all four analytics sub-modules, **so that** algorithm correctness is validated before production deployment.
 
@@ -1362,7 +1513,7 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 > Upgrade the monitoring service from simple threshold evaluation to production-quality alerting with deduplication, suppression, alert lifecycle management, and a continuous stream consumer.
 
-### E8-S01: Time-window aggregation for monitoring evaluation
+### E8-S01: Time-window aggregation for monitoring evaluation — Status: Done (2026-04-26)
 
 **As a** platform developer, **I want** the monitoring service to evaluate observations within configurable time windows, **so that** transient spikes are distinguished from sustained anomalies.
 
@@ -1380,7 +1531,7 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ---
 
-### E8-S02: Alert deduplication within configurable window
+### E8-S02: Alert deduplication within configurable window — Status: Done (2026-04-26)
 
 **As a** platform developer, **I want** the monitoring service to suppress duplicate alerts for the same entity and metric within a configurable deduplication window, **so that** analysts are not overwhelmed by repeated alerts for the same condition.
 
@@ -1399,7 +1550,7 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ---
 
-### E8-S03: Alert suppression rules and maintenance windows
+### E8-S03: Alert suppression rules and maintenance windows — Status: Done (2026-04-26)
 
 **As a** platform operator, **I want** to define suppression rules (entity type, metric name, time range) that prevent alert generation during planned maintenance, **so that** known maintenance windows do not produce false-positive alerts.
 
@@ -1418,7 +1569,7 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ---
 
-### E8-S04: Alert rate limiting
+### E8-S04: Alert rate limiting — Status: Done (2026-04-26)
 
 **As a** platform developer, **I want** the monitoring service to enforce a maximum alert rate per knowledge base, **so that** alert storms from large batch evaluations do not overwhelm downstream consumers.
 
@@ -1437,7 +1588,7 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ---
 
-### E8-S05: Alert lifecycle state machine
+### E8-S05: Alert lifecycle state machine — Status: Done (2026-04-26)
 
 **As a** platform developer, **I want** `Alert` to implement a state machine with transitions `open → acknowledged → investigating → resolved → dismissed`, **so that** alert management follows a consistent lifecycle with audit-safe transitions.
 
@@ -1456,7 +1607,7 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ---
 
-### E8-S06: Alert grouping and correlation
+### E8-S06: Alert grouping and correlation — Status: Done (2026-04-26)
 
 **As a** platform developer, **I want** the monitoring service to group related alerts (same entity type, similar time, connected in graph) into alert groups, **so that** analysts can investigate correlated events together.
 
@@ -1474,7 +1625,7 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ---
 
-### E8-S07: Monitoring stream consumer — continuous evaluation
+### E8-S07: Monitoring stream consumer — continuous evaluation — Status: Done (2026-04-26)
 
 **As a** platform developer, **I want** the worker coordinator to consume `graph.updated` and `analysis.complete` events and trigger continuous monitoring evaluation, **so that** new entities and updated risk scores are automatically monitored.
 
@@ -1493,7 +1644,7 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ---
 
-### E8-S08: Monitoring module test suite — achieve ≥ 85 % coverage
+### E8-S08: Monitoring module test suite — achieve ≥ 85 % coverage — Status: Done (2026-04-26)
 
 **As a** platform developer, **I want** comprehensive pytest coverage for the monitoring module, **so that** threshold evaluation, deduplication, suppression, lifecycle, and grouping are validated.
 
@@ -1516,6 +1667,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E9-S01: App shell, routing, and layout scaffold
 
+**Status:** Complete on April 27, 2026.
+
 **As a** frontend developer, **I want** a top-level app shell with sidebar navigation, route definitions for all six pages, and a responsive layout, **so that** page development can proceed in parallel on a stable navigation skeleton.
 
 **Acceptance Criteria:**
@@ -1535,6 +1688,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E9-S02: Domain config fetching and context provider
 
+**Status:** Complete on April 27, 2026.
+
 **As a** frontend developer, **I want** the app to fetch domain configuration from the API at startup and provide it via React context, **so that** all pages can render domain-specific labels, entity types, and feature gates.
 
 **Acceptance Criteria:**
@@ -1552,6 +1707,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 ---
 
 ### E9-S03: TanStack Query integration and API client setup
+
+**Status:** Complete on April 27, 2026.
 
 **As a** frontend developer, **I want** TanStack Query configured as the server-state library with a typed API client generated from the OpenAPI spec, **so that** all API interactions are type-safe, cached, and deduplicated.
 
@@ -1572,6 +1729,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E9-S04: Zustand client state setup
 
+**Status:** Complete on April 27, 2026.
+
 **As a** frontend developer, **I want** Zustand configured for client-side state (sidebar state, selected entity, active filters), **so that** UI state persists across route changes without prop drilling.
 
 **Acceptance Criteria:**
@@ -1589,6 +1748,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 ---
 
 ### E9-S05: Dashboard page
+
+**Status: Done (2026-04-27)** — see `docs/planning/story_prompts/SP_E9_S05_prompt.md`.
 
 **As an** analyst, **I want** a Dashboard page displaying key metrics (entity count, alert count, KB status, recent activity), **so that** I have an at-a-glance overview when I open the application.
 
@@ -1609,6 +1770,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ### E9-S06: Knowledge Base Manager page — list and create
 
+**Status: Done (2026-04-27)** — see `docs/planning/story_prompts/SP_E9_S06_prompt.md`.
+
 **As an** analyst, **I want** a Knowledge Base Manager page where I can view existing knowledge bases and create new ones, **so that** I can manage the data sources for my investigations.
 
 **Acceptance Criteria:**
@@ -1627,6 +1790,8 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 ---
 
 ### E9-S07: Knowledge Base Manager — document upload and delete
+
+**Status: Done (2026-04-27)** — see `docs/planning/story_prompts/SP_E9_S07_prompt.md`.
 
 **As an** analyst, **I want** to upload documents to a knowledge base and delete individual documents, **so that** I can manage the content feeding my investigations.
 
@@ -1662,9 +1827,13 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 **Notes:** E5-S01 delivers the alerts router. E9-S12 delivers the WebSocket hook for real-time updates.
 
+**Status:** Done (2026-04-27) — `pages/AlertFeed.tsx` rebuilt with `AlertTable`, `AlertFilters`, bulk acknowledge/dismiss, sortable columns, client-side date-range filtering, and WebSocket-driven cache invalidation via `useWebSocket` + `queryClient.invalidateQueries({ queryKey: ['alerts'] })`.
+
 ---
 
 ### E9-S09: Configuration Editor page
+
+**Status:** Done (2026-04-27) — CodeMirror surface (`@uiw/react-codemirror` + `@codemirror/lang-yaml`) renders the active config as pretty-printed JSON (no YAML serializer is bundled — documented deviation). `Reset to defaults` re-fetches `GET /config/domain`. Save is rendered disabled with a tooltip until `PUT /config/domain` ships in E5-S09.
 
 **As a** platform operator, **I want** a Configuration Editor page that displays and edits the domain configuration YAML, **so that** I can tune entity types, relationship types, thresholds, and system prompts without redeploying.
 
@@ -1683,7 +1852,7 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ---
 
-### E9-S10: Investigation Workbench — graph visualization
+### E9-S10: Investigation Workbench — graph visualization — Status: Done (2026-04-27)
 
 **As an** analyst, **I want** an Investigation Workbench page with an interactive graph visualization, **so that** I can visually explore entity relationships and identify suspicious patterns.
 
@@ -1703,7 +1872,7 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 ---
 
-### E9-S11: Investigation Workbench — entity detail and evidence panels
+### E9-S11: Investigation Workbench — entity detail and evidence panels — Status: Done (2026-04-27)
 
 **As an** analyst, **I want** side panels showing entity details and evidence packs when I select a node in the graph, **so that** I can review supporting data without leaving the visualization.
 
@@ -1739,9 +1908,13 @@ covering dimensions, batching, normalization, and zero-vector rejection.
 
 **Notes:** E5-S07 delivers the backend WebSocket endpoint. Use the native `WebSocket` API — no additional library needed.
 
+**Status:** Done (2026-04-27) — `hooks/useWebSocket.ts` connects with exponential backoff (max 5 retries), parses JSON to a typed discriminated union (`src/types/wsEvents.ts`), filters keep-alive pings, and exposes a `ConnectionStatus` indicator. Reconnection / cleanup verified by `src/hooks/__tests__/useWebSocket.test.tsx` against an in-test `WebSocket` stub.
+
 ---
 
 ### E9-S13: RAG Chat page
+
+**Status:** Done (2026-04-27) — `pages/RagChat.tsx` + `components/chat/*` deliver a streaming chat experience. SSE consumed via `fetch` + `ReadableStream` reader (`hooks/useChatMessages.ts`); conversation history kept in `stores/chatStore.ts` (Zustand) keyed by per-session `crypto.randomUUID()` ids. Citations render as React Router `<Link>`s to `/investigation?entity_id=...`.
 
 **As an** analyst, **I want** a RAG Chat page where I can ask questions about a knowledge base and receive answers with citations, **so that** I can investigate entities conversationally.
 

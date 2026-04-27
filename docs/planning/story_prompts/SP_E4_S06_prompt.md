@@ -45,9 +45,31 @@ As a platform operator, I want the worker to handle SIGTERM/SIGINT gracefully by
 - Do not introduce new dependencies for signal handling
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=agent tests/agent/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=agent tests/agent/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `agent/coordinator.run_worker` now creates an
+`asyncio.Event` and calls `install_signal_handlers(loop, event)` before
+entering the drain loop. `install_signal_handlers` registers
+`loop.add_signal_handler` callbacks for `SIGTERM` and `SIGINT`; the
+fallback for non-Unix platforms uses `signal.signal` with a typed callback
+shim. On signal receipt the coordinator logs
+`"Shutdown requested, finishing current event..."` exactly once via
+`SHUTDOWN_LOG_REQUESTED` and sets the shutdown event. The main loop checks
+the event between batches and exits cleanly, emitting
+`"Worker stopped gracefully."` (the `SHUTDOWN_LOG_DONE` constant) in the
+`finally` block. Tests cover the signal handler path
+(`os.kill(os.getpid(), SIGTERM)`), the manual flag-flip path, and a
+graceful-shutdown sequence that asserts the final log message.
+
+## Validation Note
+From `backend/`: `pytest tests/agent tests/events tests/api --cov=agent
+--cov=events --cov=api --cov-report=term-missing` passed with 91 tests;
+agent coverage 87%. `ruff check agent events api tests/agent tests/events
+tests/api` passed. `pyright agent events api tests/agent tests/events
+tests/api` reported 0 errors.

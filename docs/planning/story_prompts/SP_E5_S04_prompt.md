@@ -49,9 +49,31 @@ As an analyst, I want to search for entities by text query across properties.
 - Do NOT add authentication or authorization
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=api tests/api/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=api tests/api/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `api/routers/investigation.py` adds
+`GET /investigation/search` next to the entity-detail and neighborhood
+endpoints from E5-S03. `q` is enforced as required and non-empty via
+`Query(..., min_length=1)`, `limit` clamps through `Query(default=20, ge=1,
+le=500)`, and `offset` is bounded by `Query(default=0, ge=0)`. The router
+is a thin pass-through to `GraphServiceProtocol.search_entities`, which was
+already part of the protocol surface from E2-S03. The response shape
+`EntitySearchResponse(items: list[Entity], total: int)` was added to
+`graph/service_models.py` to keep the API response shape strictly typed.
+
+## Validation Note
+From `backend/`:
+`.venv/bin/pytest tests/api/test_investigation_router.py tests/graph -q`
+passed with 63 passed / 2 skipped. `.venv/bin/ruff check
+api/routers/investigation.py graph tests/api/test_investigation_router.py
+tests/graph` reported no issues. `.venv/bin/pyright
+api/routers/investigation.py graph tests/api/test_investigation_router.py
+tests/graph` reported 0 errors. Search-specific coverage is exercised by
+the new tests covering happy paths, empty result, missing/blank `q`,
+limit/offset clamping, and offset slicing.

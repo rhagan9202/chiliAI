@@ -53,9 +53,31 @@ As an analyst, I want to receive new alerts in real-time via WebSocket.
 - Do NOT create a heavyweight pub/sub system — a simple in-process broadcast hub is sufficient for now
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=api tests/api/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=api tests/api/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `backend/api/routers/ws.py` introduces a
+`WebSocketHub` registry (per-route connection lists, asyncio lock, broadcast
+with optional filter predicate) plus `WS /ws/alerts`. Subscribers receive
+`{"type": "alert", "data": Alert}` payloads filtered by an optional Pydantic
+`AlertSubscribeFilter` (`severity: list[str] | None`). A 30-second ping task
+runs in the background per connection; `WebSocketDisconnect` triggers clean
+removal from the registry. `events/types.py` adds an `AlertCreatedEvent`
+(carrying `Alert`) and the codec registers it under `"alert.created"`. The
+router does not subscribe to Redis Streams — Epic 8 wires the bridge; tests
+drive `hub.broadcast` directly via the TestClient anyio portal.
+
+## Validation Note
+From `backend/`:
+- `.venv/bin/pytest tests/api/test_ws_router.py tests/events -q` — 38 passed.
+- `.venv/bin/ruff check api/routers/ws.py events tests/api/test_ws_router.py
+  tests/events` — clean.
+- `.venv/bin/pyright api/routers/ws.py events tests/api/test_ws_router.py
+  tests/events` — 0 errors.
+- `.venv/bin/pytest tests/api/test_ws_router.py --cov=api.routers.ws` —
+  95% coverage.

@@ -51,9 +51,22 @@ As a platform developer, I want the GNN service to detect communities in the gra
 - Do NOT make community detection optional in this story — it always runs when `analyze()` is called
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=analytics/gnn tests/analytics/gnn/` >= 85% coverage
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=analytics/gnn tests/analytics/gnn/` >= 85% coverage
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `GnnCommunity(community_id, member_entity_ids,
+density)` was added to `analytics/gnn/models.py`. `_detect_communities()`
+runs `networkx.community.louvain_communities` with a fixed seed against the
+service-built graph and computes per-subgraph density via
+`networkx.density()`. Detected community IDs are merged back onto each
+`ScoredNode.cluster_id` so consumers see consistent grouping.
+
+## Validation Note
+From `backend/`: `.venv/bin/pytest tests/analytics/gnn/` includes a
+two-cluster topology test verifying member partitioning and density
+between 0 and 1; sub-module coverage 97%.

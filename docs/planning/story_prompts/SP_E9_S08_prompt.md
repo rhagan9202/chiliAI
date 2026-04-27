@@ -71,3 +71,28 @@ As an analyst, I want an Alert Feed page with filtering and bulk acknowledgment.
 - [ ] Bulk acknowledge and dismiss work on selected rows
 - [ ] Clicking alert navigates to Investigation Workbench with entity pre-selected
 - [ ] Real-time updates received via WebSocket refresh the alert list
+
+## Implementation Note (2026-04-27)
+
+Replaced the `AlertFeed` placeholder with a fully wired feed page. The page composes `AlertFilters` (severity multi-select, status select, entity-type select sourced from the loaded data, two `<input type="date">` controls), `AlertTable` (client-side sortable on severity / status / entity / created_at, row checkbox column, full-row click), and a bulk-action toolbar with Acknowledge / Dismiss buttons disabled until at least one row is selected. Sort precedence honours the requested ordering `critical > high > medium > low` via a numeric severity rank.
+
+Data flow:
+- `src/hooks/useAlerts.ts` exposes `useAlerts(filters)`, `useAcknowledgeAlerts()`, and `useDismissAlerts()`. Mutations fan out one POST per selected ID and invalidate the shared `['alerts']` query key on success.
+- `buildAlertsQueryKey(filters)` produces a structurally stable key so changing any filter triggers a refetch (covered by a unit test).
+- The page uses `useWebSocket<WsEvent>('/ws/alerts', ...)` from E9-S12; on `alert.created` it calls `queryClient.invalidateQueries({ queryKey: ['alerts'] })` to refresh the list. The connection state is rendered via `ConnectionStatus` next to the row counter.
+- Row click sets `selectedEntityId` in the Zustand `appStore` and navigates to `/investigation?entity_id=...` via `useNavigate`.
+
+`src/types/api.ts` already had `Alert` / `AlertListResponse` from F2; extended (not overwritten) with optional `kb_id`, `message`, `acknowledged_by`, and `properties` to match the story's union of fields the backend may grow into. The mandatory subset matches today's `shared.types.Alert` exactly.
+
+Tests in `src/components/alerts/__tests__/AlertTable.test.tsx` cover: severity-desc sort ordering, row checkbox toggling, full-row click invocation, and filter-driven query-key changes.
+
+## Validation Note (2026-04-27)
+
+```
+cd /home/rdhagan92/chiliAI/chili_app
+npx tsc --noEmit                                                                      # clean
+npm run lint -- src/pages/AlertFeed.tsx src/components/alerts src/hooks/useAlerts.ts  # clean
+npx vitest run src/components/alerts src/hooks/__tests__/useWebSocket.test.tsx        # 10/10 passing
+```
+
+Repository-wide `npm run build` and `npm run test:run` surface pre-existing failures in unrelated test files (`@testing-library/react` re-exports `screen`/`fireEvent`/`waitFor` rely on the missing `@testing-library/dom` peer). These are owned by other agents' stories and are out of scope here.

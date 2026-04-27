@@ -47,9 +47,35 @@ As an analyst, I want to acknowledge and resolve alerts with optional resolution
 - Do NOT implement event publishing for alert status changes — that is a service concern
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=api tests/api/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=api tests/api/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. Extended `AlertsServiceProtocol` with
+`acknowledge_alert(alert_id)` and `resolve_alert(alert_id, request)`.
+The concrete `AlertsService` enforces transitions in the service layer:
+404 surfaces as `AlertNotFoundError`, 409 (already resolved) as
+`AlertAlreadyResolvedError`. Both `POST /alerts/{alert_id}/acknowledge`
+and `POST /alerts/{alert_id}/resolve` translate those exceptions into
+`HTTPException(404)` / `HTTPException(409)` respectively. `ResolutionRequest`
+lives in `monitoring/service_models.py` and requires a non-empty
+`resolved_by` (Pydantic v2 `min_length=1`); `notes` is optional. Updated
+records carry `updated_at`, with `acknowledge_alert` setting
+`status="acknowledged"` and `acknowledged=True`, and `resolve_alert`
+setting `status="resolved"`, `resolved_by`, and `resolution_notes`.
+
+## Validation Note
+From `backend/`:
+- `.venv/bin/pytest tests/api/test_alerts_router.py tests/monitoring -q`
+  → 38 passed.
+- `.venv/bin/pytest tests/monitoring tests/api/test_alerts_router.py
+  --cov=monitoring --cov=api/routers/alerts --cov-report=term-missing`
+  → monitoring 98%, `api/routers/alerts.py` 100%.
+- `.venv/bin/ruff check api/routers/alerts.py monitoring
+  tests/api/test_alerts_router.py tests/monitoring` → All checks passed.
+- `.venv/bin/pyright api/routers/alerts.py monitoring
+  tests/api/test_alerts_router.py tests/monitoring` → 0 errors.

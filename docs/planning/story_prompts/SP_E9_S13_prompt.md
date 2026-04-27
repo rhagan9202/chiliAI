@@ -72,15 +72,69 @@ As an analyst, I want a RAG Chat page where I can ask questions and receive answ
 - Do NOT implement backend streaming — only consume the stream on the frontend
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] `npm run build` passes (TypeScript compiles)
-- [ ] `npm run lint` passes (ESLint clean)
-- [ ] Components render without errors
-- [ ] Chat UI renders with input area and message list
-- [ ] KB selector dropdown populates with available knowledge bases
-- [ ] Submitting a question sends to chat endpoint and renders streaming response
-- [ ] Citations render as clickable links to Investigation Workbench
-- [ ] Conversation history maintained across messages within session
-- [ ] Loading indicator shows during streaming
-- [ ] Auto-scroll to newest message works
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] `npm run build` passes (TypeScript compiles)
+- [x] `npm run lint` passes (ESLint clean)
+- [x] Components render without errors
+- [x] Chat UI renders with input area and message list
+- [x] KB selector dropdown populates with available knowledge bases
+- [x] Submitting a question sends to chat endpoint and renders streaming response
+- [x] Citations render as clickable links to Investigation Workbench
+- [x] Conversation history maintained across messages within session
+- [x] Loading indicator shows during streaming
+- [x] Auto-scroll to newest message works
+
+## Implementation Note
+
+Completed on April 27, 2026. RAG Chat lives at `/chat`. The page generates
+a session conversation id with `crypto.randomUUID()` (via the small
+`useSessionConversationId` hook) and posts to
+`POST /chat/conversations/{id}/messages?stream=true`, parsing the SSE
+stream returned by the backend (`backend/api/routers/chat.py`).
+
+Module layout:
+
+- `chili_app/src/pages/RagChat.tsx` — page header + `<ChatContainer>`.
+- `chili_app/src/components/chat/ChatContainer.tsx` (+ `.module.css`) —
+  KB selector (reusing `useKnowledgeBases`), streaming indicator,
+  message list, message input.
+- `chili_app/src/components/chat/MessageList.tsx` — scrollable list,
+  user vs assistant styling, citation chips, auto scroll-to-bottom.
+- `chili_app/src/components/chat/MessageInput.tsx` — `<textarea>` +
+  Send button, Enter sends / Shift+Enter newline.
+- `chili_app/src/components/chat/CitationLink.tsx` — `<Link>` to
+  `/investigation?entity_id=<id>` (URL-encoded).
+- `chili_app/src/hooks/useChatMessages.ts` — `fetch` + `ReadableStream`
+  reader. Parses `data: {...}\n\n` SSE frames, dispatches token deltas
+  to `chatStore.appendAssistantToken`, and finalizes the assistant
+  message with citations on `done: true`. The reader is always released
+  in a `finally` block; `AbortController` allows cancellation.
+- `chili_app/src/hooks/useSessionConversationId.ts` — generates a stable
+  conversation id per session (also kept fast-refresh-clean by living in
+  its own file).
+- `chili_app/src/stores/chatStore.ts` — Zustand store keyed by
+  `conversation_id` with `appendMessage`,
+  `appendAssistantToken`, `finalizeAssistantMessage`,
+  `failAssistantMessage`, and `resetConversation`.
+
+Tests:
+
+- `chili_app/src/pages/__tests__/RagChat.test.tsx` — mocks `fetch` to
+  return a `ReadableStream` of three SSE frames (two token deltas + one
+  terminal frame with `sources`). Verifies the streaming response
+  appears in the DOM, the citation renders as a Link to
+  `/investigation?entity_id=entity-7`, and the chat request is `POST`
+  with `stream=true`.
+- `chili_app/src/stores/__tests__/chatStore.test.ts` — unit tests
+  covering the six store reducers.
+
+## Validation Note
+
+From `chili_app/`:
+
+- `npx tsc --noEmit` — 0 errors in the new files.
+- `npm run lint` — clean (no errors, no warnings).
+- `./node_modules/.bin/vitest run` — 15 suites / 53 tests passing
+  (8 new tests across `RagChat.test.tsx` and `chatStore.test.ts`).
+- `npm run build` — `tsc -b && vite build` succeeds.

@@ -51,9 +51,24 @@ As a platform developer, I want an explainability adapter using SHAP/LIME for fe
 - Do NOT train complex models in tests — use minimal synthetic data
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=analytics/explainability tests/analytics/explainability/` >= 85% coverage
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=analytics/explainability tests/analytics/explainability/` >= 85% coverage
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `ShapExplainabilityContextSource` lazily
+imports `shap`, raising `ExplainabilityConfigurationError` when missing.
+The adapter resolves a SHAP-callable target (`predict_proba` preferred,
+falling back to `predict`), accepts an optional `background` masker, and
+maps SHAP attributions into `ExplanationItem` instances with normalized
+absolute scores. `shap>=0.43` was added to the `[analytics]` extra.
+
+## Validation Note
+From `backend/`: `.venv/bin/pytest
+tests/analytics/explainability/test_shap_adapter.py` skips cleanly when
+`shap` / `scikit-learn` are absent and runs 12 tests when installed.
+With shap installed, `shap_adapter.py` covers 94% of statements; the
+broader `analytics/explainability` package is at 96%.

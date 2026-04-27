@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from analytics.explainability.models import ExplanationNarrative
 from shared.types import EvidencePack
 
 
@@ -33,6 +34,7 @@ class ExplainabilityResponse(BaseModel):
     alert_id: str
     evidence_pack: EvidencePack
     evidence_items: list[ExplainabilityEvidence] = Field(default_factory=list)
+    narrative: ExplanationNarrative
 
 
 __all__ = [

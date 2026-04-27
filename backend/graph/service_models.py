@@ -20,6 +20,10 @@ def _empty_relationships() -> list[Relationship]:
     return []
 
 
+def _empty_entity_items() -> list[Entity]:
+    return []
+
+
 class GraphBuildTask(BaseModel):
     """A worker-consumable graph build task derived from validated runtime objects."""
 
@@ -64,6 +68,14 @@ class NeighborhoodQuery(BaseModel):
     direction: Literal["in", "out", "both"] = "both"
 
 
+class NeighborhoodRequest(BaseModel):
+    """API-facing request shape for investigation neighborhood queries."""
+
+    knowledge_base_id: str
+    entity_id: str
+    depth: int = Field(default=2, ge=1, le=5)
+
+
 class EntitySearchQuery(BaseModel):
     """Query parameters for graph entity search requests."""
 
@@ -71,6 +83,27 @@ class EntitySearchQuery(BaseModel):
     query: str
     limit: int = Field(ge=1, le=500)
     offset: int = Field(ge=0)
+
+
+class EntityDetailResponse(BaseModel):
+    """API-facing response wrapping a single resolved entity."""
+
+    entity: Entity
+
+
+class NeighborhoodResponse(BaseModel):
+    """API-facing response wrapping a neighborhood subgraph."""
+
+    center_entity_id: str
+    entities: list[Entity] = Field(default_factory=_empty_entities)
+    relationships: list[Relationship] = Field(default_factory=_empty_relationships)
+
+
+class EntitySearchResponse(BaseModel):
+    """API-facing response for entity search queries."""
+
+    items: list[Entity] = Field(default_factory=_empty_entity_items)
+    total: int = Field(ge=0)
 
 
 class GraphMetricsResult(BaseModel):
@@ -82,9 +115,13 @@ class GraphMetricsResult(BaseModel):
 
 
 __all__ = [
+    "EntityDetailResponse",
+    "EntitySearchQuery",
+    "EntitySearchResponse",
     "GraphBuildReceipt",
     "GraphBuildTask",
-    "EntitySearchQuery",
     "GraphMetricsResult",
     "NeighborhoodQuery",
+    "NeighborhoodRequest",
+    "NeighborhoodResponse",
 ]

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: chili-redis
+  labels:
+    app.kubernetes.io/name: chili
+    app.kubernetes.io/component: redis
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: chili
+    app.kubernetes.io/component: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+      protocol: TCP

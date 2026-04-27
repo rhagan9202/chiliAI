@@ -51,9 +51,29 @@ As a platform developer, I want the worker coordinator to consume `embeddings.co
 - Do not introduce new dependencies not already in the codebase
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=agent tests/agent/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=agent tests/agent/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `handle_embeddings_complete` is now registered
+in `handle_event` for `EmbeddingsCompleteEvent`. The handler loads the
+persisted `EmbeddingResult` artifact from the object store, resolves the
+companion `ValidationReport` to enrich `entity_type` metadata, constructs
+`VectorRecord` instances keyed `<knowledge_base_id>:<entity_id>` with
+`knowledge_base_id`, `entity_id`, `entity_type`, and the source artifact
+identifiers, and calls `VectorStoreProtocol.upsert_records`. A new
+`VectorsIndexedDocumentReference` model attaches per-document totals
+(`vector_count`, `record_ids`, `embeddings_storage_key`) to the existing
+`VectorsIndexedEvent`. The published event propagates the incoming
+`correlation_id` so downstream consumers stay correlated.
+
+## Validation Note
+From `backend/`: `pytest tests/agent tests/events tests/api --cov=agent
+--cov=events --cov=api --cov-report=term-missing` passed with 91 tests; agent
+coverage 87%. `ruff check agent events api tests/agent tests/events
+tests/api` passed. `pyright agent events api tests/agent tests/events
+tests/api` reported 0 errors.

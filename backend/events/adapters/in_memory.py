@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from events.protocols import EventDelivery
+from events.protocols import DlqEntry, DlqErrorInfo, EventDelivery
 from events.types import AnyEvent
 
 __all__ = ["InMemoryEventBus"]
@@ -22,8 +22,10 @@ class InMemoryEventBus:
 
     def __init__(self) -> None:
         self.published_events: list[AnyEvent] = []
+        self.dlq_entries: list[DlqEntry] = []
         self._queue: list[_QueuedEvent] = []
         self._next_id = 1
+        self._next_dlq_id = 1
 
     def publish(self, event: AnyEvent) -> str | None:
         event_id = str(self._next_id)
@@ -73,3 +75,19 @@ class InMemoryEventBus:
     def ack(self, deliveries: list[EventDelivery]) -> None:
         acked_ids = {delivery.event_id for delivery in deliveries if delivery.event_id is not None}
         self._queue = [entry for entry in self._queue if entry.event_id not in acked_ids]
+
+    def publish_to_dlq(
+        self,
+        event: AnyEvent,
+        error_info: DlqErrorInfo,
+    ) -> str | None:
+        entry_id = f"dlq-{self._next_dlq_id}"
+        self._next_dlq_id += 1
+        self.dlq_entries.append(
+            DlqEntry(
+                event=event,
+                error=error_info,
+                stream=f"{event.event_type}.dlq",
+            )
+        )
+        return entry_id

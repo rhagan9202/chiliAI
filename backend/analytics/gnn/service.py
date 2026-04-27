@@ -2,15 +2,38 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from math import sqrt
+from typing import TYPE_CHECKING, cast
 
 from analytics.gnn.adapters.protocols import GraphSnapshotSourceProtocol
 from analytics.gnn.exceptions import GnnConfigurationError, GnnInsufficientGraphError, GnnSourceError
-from analytics.gnn.models import GnnAnalysisResult, GraphEdgeSignal, GraphNodeSignal, PredictedLink, ScoredNode
-from analytics.gnn.service_models import GnnAnalysisRequest, GnnAnalysisResponse, GnnLinkPrediction, GnnNodeScore
+from analytics.gnn.models import (
+    GnnAnalysisResult,
+    GnnCommunity,
+    GraphEdgeSignal,
+    GraphNodeSignal,
+    PredictedLink,
+    ScoredNode,
+)
+from analytics.gnn.service_models import (
+    ClusterResult,
+    GnnAnalysisRequest,
+    GnnAnalysisResponse,
+    GnnClusterRequest,
+    GnnClusterResponse,
+    GnnCommunityResult,
+    GnnLinkPrediction,
+    GnnNodeScore,
+)
 from events.protocols import EventBus
 from events.types import GnnAnalyzedEvent, GnnAnalyzedReference
 from shared.utils import generate_id
+
+if TYPE_CHECKING:
+    import networkx as nx
+    from numpy import floating
+    from numpy.typing import NDArray
 
 
 class GnnService:
@@ -19,14 +42,19 @@ class GnnService:
     # TODO(production): Replace heuristic scoring with real GNN inference:
     # - Integrate PyTorch Geometric or DGL for node classification / link prediction
     # - Support configurable GNN architectures (GCN, GAT, GraphSAGE)
-    # - Add community detection (Louvain, label propagation)
-    # - Add node embedding export for downstream use by the embeddings module
     # Current _score_nodes() uses simple degree centrality and _predict_links()
     # uses Jaccard similarity — both need ML-backed replacements.
 
-    def __init__(self, snapshot_source: GraphSnapshotSourceProtocol, *, event_bus: EventBus) -> None:
+    def __init__(
+        self,
+        snapshot_source: GraphSnapshotSourceProtocol,
+        *,
+        event_bus: EventBus,
+        gnn_enabled: Callable[[], bool] | None = None,
+    ) -> None:
         self._snapshot_source = snapshot_source
         self._event_bus = event_bus
+        self._gnn_enabled = gnn_enabled if gnn_enabled is not None else _always_enabled
 
     def analyze(self, request: GnnAnalysisRequest) -> GnnAnalysisResponse:
         try:
@@ -40,6 +68,13 @@ class GnnService:
             raise GnnInsufficientGraphError("Graph snapshot requires at least two nodes for analysis.")
 
         scored_nodes = _score_nodes(snapshot.nodes, snapshot.edges)
+        communities = _detect_communities(snapshot.nodes, snapshot.edges)
+        scored_nodes = _assign_community_ids(scored_nodes, communities)
+        node_embeddings = _compute_embeddings(
+            snapshot.nodes,
+            snapshot.edges,
+            dimension=request.embedding_dimension,
+        )
         predicted_links = _predict_links(
             snapshot.nodes,
             snapshot.edges,
@@ -53,6 +88,8 @@ class GnnService:
             edge_count=len(snapshot.edges),
             scored_nodes=scored_nodes,
             predicted_links=predicted_links,
+            communities=communities,
+            node_embeddings=node_embeddings,
         )
         response = GnnAnalysisResponse(
             request_id=result.request_id,
@@ -71,6 +108,17 @@ class GnnService:
                 )
                 for link in result.predicted_links
             ],
+            communities=[
+                GnnCommunityResult(
+                    community_id=community.community_id,
+                    member_entity_ids=list(community.member_entity_ids),
+                    density=community.density,
+                )
+                for community in result.communities
+            ],
+            node_embeddings={
+                entity_id: list(values) for entity_id, values in result.node_embeddings.items()
+            },
         )
         self._event_bus.publish(
             GnnAnalyzedEvent(
@@ -89,14 +137,42 @@ class GnnService:
         return response
 
 
+    def list_clusters(self, request: GnnClusterRequest) -> GnnClusterResponse:
+        if not self._gnn_enabled():
+            return GnnClusterResponse(knowledge_base_id=request.knowledge_base_id, clusters=[])
+
+        try:
+            summaries = self._snapshot_source.load_clusters(knowledge_base_id=request.knowledge_base_id)
+        except ValueError as exc:
+            raise GnnConfigurationError(str(exc)) from exc
+        except Exception as exc:
+            raise GnnSourceError("Failed to load gnn cluster summaries.") from exc
+
+        clusters = [
+            ClusterResult(
+                cluster_id=summary.cluster_id,
+                entity_ids=list(summary.entity_ids),
+                anomaly_score=summary.anomaly_score,
+                label=summary.label,
+            )
+            for summary in summaries
+        ]
+        return GnnClusterResponse(knowledge_base_id=request.knowledge_base_id, clusters=clusters)
+
+
+def _always_enabled() -> bool:
+    return True
+
+
 def create_gnn_service(
     snapshot_source: GraphSnapshotSourceProtocol,
     *,
     event_bus: EventBus,
+    gnn_enabled: Callable[[], bool] | None = None,
 ) -> GnnService:
     """Create the default gnn service."""
 
-    return GnnService(snapshot_source, event_bus=event_bus)
+    return GnnService(snapshot_source, event_bus=event_bus, gnn_enabled=gnn_enabled)
 
 
 def _score_nodes(nodes: list[GraphNodeSignal], edges: list[GraphEdgeSignal]) -> list[ScoredNode]:
@@ -108,7 +184,7 @@ def _score_nodes(nodes: list[GraphNodeSignal], edges: list[GraphEdgeSignal]) -> 
         ScoredNode(
             entity_id=node.entity_id,
             score=_feature_magnitude(node.feature_values) + weights_by_node.get(node.entity_id, 0.0),
-            cluster_id=_cluster_id(node),
+            cluster_id=_fallback_cluster_id(node),
         )
         for node in nodes
     ]
@@ -140,7 +216,139 @@ def _predict_links(
     return predictions[:top_k]
 
 
-def _cluster_id(node: GraphNodeSignal) -> str:
+def _detect_communities(
+    nodes: list[GraphNodeSignal],
+    edges: list[GraphEdgeSignal],
+) -> list[GnnCommunity]:
+    nx_module = _import_networkx()
+    graph = _build_networkx_graph(nx_module, nodes, edges)
+    louvain: Callable[..., list[set[str]]] = cast(
+        Callable[..., list[set[str]]], nx_module.community.louvain_communities
+    )
+    partitions = louvain(graph, seed=42)
+    density_fn: Callable[..., float] = cast(Callable[..., float], nx_module.density)
+    communities: list[GnnCommunity] = []
+    for index, partition in enumerate(sorted(partitions, key=lambda members: sorted(members))):
+        members = sorted(partition)
+        subgraph_obj = cast("nx.Graph", graph.subgraph(members))
+        density = float(density_fn(subgraph_obj))
+        communities.append(
+            GnnCommunity(
+                community_id=f"community-{index}",
+                member_entity_ids=members,
+                density=max(0.0, min(1.0, density)),
+            )
+        )
+    return communities
+
+
+def _assign_community_ids(
+    scored_nodes: list[ScoredNode],
+    communities: list[GnnCommunity],
+) -> list[ScoredNode]:
+    assignments: dict[str, str] = {}
+    for community in communities:
+        for member_id in community.member_entity_ids:
+            assignments[member_id] = community.community_id
+    return [
+        ScoredNode(
+            entity_id=node.entity_id,
+            score=node.score,
+            cluster_id=assignments.get(node.entity_id, node.cluster_id),
+        )
+        for node in scored_nodes
+    ]
+
+
+def _compute_embeddings(
+    nodes: list[GraphNodeSignal],
+    edges: list[GraphEdgeSignal],
+    *,
+    dimension: int,
+) -> dict[str, list[float]]:
+    import numpy as np
+
+    nx_module = _import_networkx()
+    graph = _build_networkx_graph(nx_module, nodes, edges)
+    ordered_ids = [node.entity_id for node in nodes]
+    node_count = len(ordered_ids)
+    if node_count == 0:
+        return {}
+
+    to_numpy: Callable[..., "NDArray[floating[object]]"] = cast(
+        Callable[..., "NDArray[floating[object]]"], nx_module.to_numpy_array
+    )
+    adjacency_raw = to_numpy(graph, nodelist=ordered_ids, weight="weight", dtype=float)
+    adjacency: NDArray[np.float64] = np.asarray(adjacency_raw, dtype=np.float64)
+    degree_vector: NDArray[np.float64] = adjacency.sum(axis=1)
+    laplacian: NDArray[np.float64] = np.diag(degree_vector) - adjacency
+    eigh_result = np.linalg.eigh(laplacian)
+    eigenvalues: NDArray[np.float64] = eigh_result.eigenvalues
+    eigenvectors: NDArray[np.float64] = eigh_result.eigenvectors
+
+    sort_index = np.argsort(eigenvalues)
+    sorted_vectors: NDArray[np.float64] = eigenvectors[:, sort_index]
+
+    target_dim = min(dimension, max(node_count - 1, 1))
+    selected_columns: NDArray[np.float64] = sorted_vectors[:, 1 : target_dim + 1]
+    if selected_columns.shape[1] == 0:
+        selected_columns = sorted_vectors[:, :1]
+
+    if selected_columns.shape[1] < dimension:
+        padding: NDArray[np.float64] = np.zeros(
+            (node_count, dimension - selected_columns.shape[1]), dtype=np.float64
+        )
+        embedding_matrix: NDArray[np.float64] = np.hstack((selected_columns, padding))
+    else:
+        embedding_matrix = selected_columns
+
+    norms: NDArray[np.float64] = np.linalg.norm(embedding_matrix, axis=1, keepdims=True)
+    safe_norms: NDArray[np.float64] = np.where(norms > 0.0, norms, 1.0)
+    normalized: NDArray[np.float64] = embedding_matrix / safe_norms
+    fallback: NDArray[np.float64] = np.zeros(dimension, dtype=np.float64)
+    if dimension > 0:
+        fallback[0] = 1.0
+
+    embeddings: dict[str, list[float]] = {}
+    for index, entity_id in enumerate(ordered_ids):
+        row: NDArray[np.float64] = normalized[index]
+        row_norm = float(np.linalg.norm(row))
+        if row_norm == 0.0:
+            embeddings[entity_id] = [float(value) for value in fallback]
+        else:
+            embeddings[entity_id] = [float(value) for value in row]
+    return embeddings
+
+
+def _build_networkx_graph(
+    nx_module: object,
+    nodes: list[GraphNodeSignal],
+    edges: list[GraphEdgeSignal],
+) -> "nx.Graph":
+    graph_factory: Callable[[], "nx.Graph"] = cast(
+        Callable[[], "nx.Graph"], getattr(nx_module, "Graph")
+    )
+    graph = graph_factory()
+    add_node: Callable[..., None] = cast(Callable[..., None], graph.add_node)
+    add_edge: Callable[..., None] = cast(Callable[..., None], graph.add_edge)
+    for node in nodes:
+        add_node(node.entity_id)
+    for edge in edges:
+        add_edge(edge.source_id, edge.target_id, weight=float(edge.weight))
+    return graph
+
+
+def _import_networkx() -> object:
+    try:
+        import networkx as nx_module
+    except ImportError as exc:  # pragma: no cover - exercised via missing extra
+        raise GnnConfigurationError(
+            "networkx is required for gnn analysis; install the 'analytics' extra."
+        ) from exc
+    return nx_module
+
+
+def _fallback_cluster_id(node: GraphNodeSignal) -> str:
     anchor = round(node.feature_values[0]) if node.feature_values else 0
     return f"cluster-{anchor}"
 

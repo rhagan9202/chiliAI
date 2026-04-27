@@ -298,3 +298,57 @@ def test_in_memory_graph_repository_transaction_rolls_back_changes() -> None:
 
     assert repository.count_entities("kb-1") == 0
     assert repository.count_relationships("kb-1") == 0
+
+def test_in_memory_repository_update_entity_properties_is_idempotent() -> None:
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities(
+        "kb-1",
+        [Entity(id="provider-1", type="claim", properties={"name": "Provider A"})],
+    )
+
+    first = repository.update_entity_properties(
+        "kb-1",
+        "provider-1",
+        {"risk_score": 0.7, "risk_level": "high"},
+    )
+    second = repository.update_entity_properties(
+        "kb-1",
+        "provider-1",
+        {"risk_score": 0.7, "risk_level": "high"},
+    )
+
+    assert first.properties["risk_score"] == 0.7
+    assert first.properties["risk_level"] == "high"
+    assert first.properties["name"] == "Provider A"
+    assert second.properties == first.properties
+
+
+def test_in_memory_repository_update_entity_properties_merges_with_existing() -> None:
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities(
+        "kb-1",
+        [Entity(id="provider-1", type="claim", properties={"name": "Provider A"})],
+    )
+
+    repository.update_entity_properties(
+        "kb-1",
+        "provider-1",
+        {"risk_score": 0.5},
+    )
+    updated = repository.update_entity_properties(
+        "kb-1",
+        "provider-1",
+        {"risk_level": "medium"},
+    )
+
+    assert updated.properties["name"] == "Provider A"
+    assert updated.properties["risk_score"] == 0.5
+    assert updated.properties["risk_level"] == "medium"
+
+
+def test_in_memory_repository_update_entity_properties_raises_when_missing() -> None:
+    repository = InMemoryGraphRepository()
+    with pytest.raises(KeyError):
+        repository.update_entity_properties(
+            "kb-1", "missing-entity", {"risk_score": 0.1}
+        )

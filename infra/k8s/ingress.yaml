@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: chili
+  labels:
+    app.kubernetes.io/name: chili
+    app.kubernetes.io/component: ingress
+  annotations:
+    # Works with both nginx and traefik ingress controllers; uncomment as appropriate.
+    # nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    # traefik.ingress.kubernetes.io/router.entrypoints: "websecure"
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    kubernetes.io/ingress.class: nginx
+spec:
+  rules:
+    - host: chili.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: chili-api
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: chili-app
+                port:
+                  number: 80
+  # tls:
+  #   - hosts:
+  #       - chili.example.com
+  #     secretName: chili-tls

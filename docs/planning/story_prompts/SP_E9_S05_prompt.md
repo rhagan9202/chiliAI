@@ -56,12 +56,37 @@ As an analyst, I want a Dashboard page displaying key metrics.
 - Do NOT use a charting library (recharts, chart.js, etc.) — not needed for this story
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] `npm run build` passes (TypeScript compiles)
-- [ ] `npm run lint` passes (ESLint clean)
-- [ ] Components render without errors
-- [ ] KPI cards render with loading skeletons
-- [ ] Recent activity timeline renders last 10 events
-- [ ] Dashboard is the default route (`/`)
-- [ ] Responsive layout works across breakpoints
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] `npm run build` passes (TypeScript compiles)
+- [x] `npm run lint` passes (ESLint clean)
+- [x] Components render without errors
+- [x] KPI cards render with loading skeletons
+- [x] Recent activity timeline renders last 10 events
+- [x] Dashboard is the default route (`/`)
+- [x] Responsive layout works across breakpoints
+
+## Implementation Note
+Completed on April 27, 2026. `Dashboard.tsx` now renders four KPI cards
+(Total Entities, Total Relationships, Open Alerts, Active Knowledge Bases)
+in a responsive 1/2/4-column CSS grid plus a "Recent Activity" timeline
+of the last 10 events. KPI values are fetched by `useDashboardMetrics`
+which aggregates `GET /knowledgebases` (entity/relationship/active counts)
+with `GET /alerts?status=open` (open count) since no dedicated dashboard
+summary endpoint exists yet. `useRecentActivity` merges KB-created and
+alert-opened events sorted by timestamp. Loading is shown via a new
+`Skeleton` component (not spinners) and errors render inline. Dynamic
+domain label uses `useDomainConfig()`. New `src/types/api.ts` and
+`src/types/dashboard.ts` define the API and view-model shapes. Tests
+under `components/dashboard/__tests__` and `hooks/__tests__` cover loaded,
+loading, error, and aggregation paths.
+
+## Validation Note
+From `chili_app/`:
+- `npx tsc --noEmit` passed (0 errors)
+- `npm run lint` passed (0 problems)
+- `npx vitest run --pool=threads` passed (52 of 53 — the single failure is
+  pre-existing in `pages/__tests__/InvestigationWorkbench.test.tsx`, owned
+  by the Investigation agent and unrelated to this story)
+- `npm run build` (`tsc -b && vite build`) passed and produced bundles.
+

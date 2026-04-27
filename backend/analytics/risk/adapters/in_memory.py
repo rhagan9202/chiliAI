@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from analytics.risk.models import RiskProfile
+from analytics.risk.models import RankedRiskEntry, RiskProfile
 
 __all__ = ["InMemoryRiskSignalSource"]
 
@@ -10,13 +10,29 @@ __all__ = ["InMemoryRiskSignalSource"]
 class InMemoryRiskSignalSource:
     """A seeded source of risk profiles keyed by knowledge base and entity."""
 
-    def __init__(self, profiles: list[RiskProfile] | None = None) -> None:
+    def __init__(
+        self,
+        profiles: list[RiskProfile] | None = None,
+        *,
+        ranked_entries: list[RankedRiskEntry] | None = None,
+        historical_scores: dict[tuple[str, str], float] | None = None,
+    ) -> None:
         self._profiles: dict[tuple[str, str], RiskProfile] = {}
+        self._ranked_entries: list[RankedRiskEntry] = list(ranked_entries or [])
+        self._historical_scores: dict[tuple[str, str], float] = dict(historical_scores or {})
         for profile in profiles or []:
             self.put_profile(profile)
 
     def put_profile(self, profile: RiskProfile) -> None:
         self._profiles[(profile.knowledge_base_id, profile.entity_id)] = profile
+
+    def put_ranked_entry(self, entry: RankedRiskEntry) -> None:
+        self._ranked_entries.append(entry)
+
+    def put_historical_score(
+        self, *, knowledge_base_id: str, entity_id: str, score: float
+    ) -> None:
+        self._historical_scores[(knowledge_base_id, entity_id)] = score
 
     def load_profile(self, *, knowledge_base_id: str, entity_id: str) -> RiskProfile:
         profile = self._profiles.get((knowledge_base_id, entity_id))
@@ -25,3 +41,27 @@ class InMemoryRiskSignalSource:
                 f"No risk profile registered for knowledge_base_id='{knowledge_base_id}' and entity_id='{entity_id}'."
             )
         return profile
+
+    def list_ranked_entries(
+        self,
+        *,
+        knowledge_base_id: str,
+        entity_type: str | None,
+        limit: int,
+    ) -> list[RankedRiskEntry]:
+        filtered = [
+            entry
+            for entry in self._ranked_entries
+            if entry.knowledge_base_id == knowledge_base_id
+            and (entity_type is None or entry.entity_type == entity_type)
+        ]
+        filtered.sort(key=lambda entry: entry.overall_score, reverse=True)
+        return filtered[:limit]
+
+    def load_historical_score(
+        self,
+        *,
+        knowledge_base_id: str,
+        entity_id: str,
+    ) -> float | None:
+        return self._historical_scores.get((knowledge_base_id, entity_id))

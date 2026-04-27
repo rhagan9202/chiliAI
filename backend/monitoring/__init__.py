@@ -2,16 +2,42 @@
 
 from __future__ import annotations
 
-from monitoring.adapters.in_memory import InMemoryObservationSource
+from monitoring.adapters.in_memory import InMemoryAlertRepository, InMemoryObservationSource
 from monitoring.adapters.protocols import ObservationSourceProtocol
-from monitoring.exceptions import MonitoringConfigurationError, MonitoringError, MonitoringSourceError
+from monitoring.exceptions import (
+    AlertAlreadyResolvedError,
+    AlertNotFoundError,
+    MonitoringConfigurationError,
+    MonitoringError,
+    MonitoringSourceError,
+)
 from monitoring.models import AlertCandidate, MonitoringBatch, MonitoringObservation
-from monitoring.protocols import MonitoringServiceProtocol
-from monitoring.service import MonitoringService, create_monitoring_service
-from monitoring.service_models import MonitoringEvaluationRequest, MonitoringEvaluationResponse
+from monitoring.protocols import AlertsServiceProtocol, MonitoringServiceProtocol
+from monitoring.service import (
+    AlertsService,
+    MonitoringService,
+    create_alerts_service,
+    create_monitoring_service,
+)
+from monitoring.service_models import (
+    AlertActionResponse,
+    AlertListRequest,
+    AlertListResponse,
+    MonitoringEvaluationRequest,
+    MonitoringEvaluationResponse,
+    ResolutionRequest,
+)
 
 __all__ = [
+    "AlertActionResponse",
+    "AlertAlreadyResolvedError",
     "AlertCandidate",
+    "AlertListRequest",
+    "AlertListResponse",
+    "AlertNotFoundError",
+    "AlertsService",
+    "AlertsServiceProtocol",
+    "InMemoryAlertRepository",
     "InMemoryObservationSource",
     "MonitoringBatch",
     "MonitoringConfigurationError",
@@ -23,5 +49,7 @@ __all__ = [
     "MonitoringServiceProtocol",
     "MonitoringSourceError",
     "ObservationSourceProtocol",
+    "ResolutionRequest",
+    "create_alerts_service",
     "create_monitoring_service",
 ]

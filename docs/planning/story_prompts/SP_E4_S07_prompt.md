@@ -47,9 +47,33 @@ As a platform operator, I want the worker process to expose a lightweight health
 - Do not add metrics, Prometheus endpoints, or additional routes beyond `/health`
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=agent tests/agent/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=agent tests/agent/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. New `agent/health.py` exposes `HealthState`
+(tracks `last_event_processed_at`, with `mark_event_processed` and a
+`status()` that returns `"degraded"` once
+`HealthSettings.degraded_after_seconds` (default 300s) is exceeded),
+`build_health_payload` (returns `{"status": ..., "last_event_processed_at":
+...}`), and `start_health_server` (a stdlib-only `asyncio.start_server`
+HTTP responder that hand-parses request lines, returns 200 JSON for `GET
+/health`, 404 for unknown paths, and 405 for non-GET). The coordinator
+constructs a `HealthState`, calls `start_health_server_safely` on startup
+(logging a WARNING and continuing if `OSError` fires), passes the state
+into `drain_ingestion_events` so each successful event marks the
+timestamp, and closes the server on shutdown. `HealthSettings` lives in
+`agent/models.py`. Tests in `tests/agent/test_health.py` exercise the
+stdlib server end-to-end (200 + JSON, 404, 405) and the degraded
+transition.
+
+## Validation Note
+From `backend/`: `pytest tests/agent tests/events tests/api --cov=agent
+--cov=events --cov=api --cov-report=term-missing` passed with 91 tests;
+agent coverage 87% (`agent/health.py` 90%). `ruff check agent events api
+tests/agent tests/events tests/api` passed. `pyright agent events api
+tests/agent tests/events tests/api` reported 0 errors.

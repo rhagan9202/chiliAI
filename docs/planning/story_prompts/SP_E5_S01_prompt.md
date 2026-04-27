@@ -51,9 +51,38 @@ As an analyst, I want to list alerts with filtering by severity, entity type, an
 - Do NOT create WebSocket endpoints — that is E5-S07
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=api tests/api/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=api tests/api/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. Added `AlertsServiceProtocol` as a sibling
+protocol in `monitoring/protocols.py` (does not disturb the existing
+`MonitoringServiceProtocol`). New service-boundary models live in
+`monitoring/service_models.py`: `AlertListRequest`, `AlertListResponse`,
+`ResolutionRequest`, `AlertActionResponse`. An `InMemoryAlertRepository`
+adapter and an `AlertsService` were added to back the router via
+`monitoring.service.create_alerts_service`. The new router lives at
+`backend/api/routers/alerts.py` with a self-contained
+`get_alerts_service()` DI factory at the top of the file (the integration
+agent will rewire this in E5-S14 — `api/dependencies.py` was deliberately
+not touched). `GET /alerts` accepts `severity`, `entity_type`, `status`,
+`limit`, and `offset` query params (the `status` query alias maps to
+`status_filter` to avoid shadowing FastAPI's `status` module) and returns
+an `AlertListResponse(items, total)`. Filters compose; pagination is
+applied after filtering for stable totals.
+
+## Validation Note
+From `backend/`:
+- `.venv/bin/pytest tests/api/test_alerts_router.py tests/monitoring -q`
+  → 38 passed.
+- `.venv/bin/pytest tests/monitoring tests/api/test_alerts_router.py
+  --cov=monitoring --cov=api/routers/alerts --cov-report=term-missing`
+  → monitoring 98%, `api/routers/alerts.py` 100%.
+- `.venv/bin/ruff check api/routers/alerts.py monitoring
+  tests/api/test_alerts_router.py tests/monitoring` → All checks passed.
+- `.venv/bin/pyright api/routers/alerts.py monitoring
+  tests/api/test_alerts_router.py tests/monitoring` → 0 errors.

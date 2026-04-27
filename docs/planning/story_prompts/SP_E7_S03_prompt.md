@@ -45,9 +45,20 @@ As a platform developer, I want the timeseries service to support sliding-window
 - Do NOT silently clamp invalid window sizes — raise `TimeseriesConfigurationError`
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=analytics/timeseries tests/analytics/timeseries/` >= 85% coverage
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=analytics/timeseries tests/analytics/timeseries/` >= 85% coverage
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `TimeseriesAnalysisRequest.window_size: int |
+None = None` was added; the service truncates the incoming series to the
+most recent `window_size` observations before any detection strategy runs.
+Zero or negative window sizes raise `TimeseriesConfigurationError`.
+
+## Validation Note
+From `backend/`: `.venv/bin/pytest tests/analytics/timeseries/` exercises
+windowed vs. full-history truncation and the validation error path; module
+coverage 94%.

@@ -10,6 +10,12 @@ from pydantic import BaseModel, Field, model_validator
 from shared.utils import utc_now
 
 
+def _default_chat_messages() -> list[ChatMessage]:
+    """Return a typed empty chat-message list for strict type checking."""
+
+    return []
+
+
 class MessageRole(str, Enum):
     """Supported roles for chat-style llm requests."""
 
@@ -38,6 +44,8 @@ class CompletionMetadata(BaseModel):
     model_name: str
     temperature: float = Field(ge=0.0, le=2.0)
     max_tokens: int = Field(gt=0)
+    prompt_tokens: int | None = Field(default=None, ge=0)
+    completion_tokens: int | None = Field(default=None, ge=0)
     created_at: datetime = Field(default_factory=utc_now)
 
 
@@ -46,7 +54,7 @@ class GenerationRequest(BaseModel):
 
     request_id: str
     knowledge_base_id: str | None = None
-    messages: list[ChatMessage] = Field(default_factory=list)
+    messages: list[ChatMessage] = Field(default_factory=_default_chat_messages)
     model_name: str
     temperature: float = Field(default=0.2, ge=0.0, le=2.0)
     max_tokens: int = Field(default=256, gt=0)

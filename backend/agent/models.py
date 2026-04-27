@@ -13,6 +13,33 @@ from shared.utils import utc_now
 MetadataValue = str | int | float | bool
 
 
+def _empty_workflow_steps() -> list[WorkflowStepState]:
+    return []
+
+
+class RetryPolicy(BaseModel):
+    """Configuration for coordinator retry-with-backoff behavior."""
+
+    max_retries: int = Field(default=3, ge=0)
+    base_delay_seconds: float = Field(default=1.0, ge=0.0)
+    backoff_multiplier: float = Field(default=2.0, ge=1.0)
+
+    def delay_for_attempt(self, attempt: int) -> float:
+        """Return the delay before the given retry attempt (1-indexed)."""
+
+        if attempt <= 0:
+            return 0.0
+        return self.base_delay_seconds * (self.backoff_multiplier ** (attempt - 1))
+
+
+class HealthSettings(BaseModel):
+    """Configuration for the worker health check HTTP endpoint."""
+
+    host: str = "0.0.0.0"
+    port: int = Field(default=8001, gt=0)
+    degraded_after_seconds: float = Field(default=300.0, gt=0.0)
+
+
 class WorkflowStepStatus(str, Enum):
     """Lifecycle states for a workflow step."""
 
@@ -45,7 +72,7 @@ class WorkflowRun(BaseModel):
     knowledge_base_id: str
     trigger_event_type: str
     status: WorkflowRunStatus = WorkflowRunStatus.RUNNING
-    steps: list[WorkflowStepState] = Field(default_factory=list)
+    steps: list[WorkflowStepState] = Field(default_factory=_empty_workflow_steps)
     created_at: datetime = Field(default_factory=utc_now)
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
 
@@ -60,7 +87,9 @@ class WorkflowRun(BaseModel):
 
 
 __all__ = [
+    "HealthSettings",
     "MetadataValue",
+    "RetryPolicy",
     "WorkflowRun",
     "WorkflowRunStatus",
     "WorkflowStepState",

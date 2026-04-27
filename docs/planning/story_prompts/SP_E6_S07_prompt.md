@@ -50,9 +50,37 @@ As an analyst, I want RAG responses to include structured citations linking answ
 - Do NOT break existing tests — extend them
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=rag tests/rag/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=rag tests/rag/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note (2026-04-26)
+
+`RagCitation` (located in `rag/service_models.py` alongside the rest of the
+public service-boundary models — not in `models.py` as the prompt suggested)
+gained three optional fields: `document_id: str | None`, `chunk_index: int |
+None`, `highlight: str | None`. Existing fields are unchanged.
+
+Citation construction was extracted from inline list comprehensions into
+two helpers in `rag/service.py`:
+
+- `_citation_for(item)` reads `RetrievedContextItem.metadata` and pulls
+  `document_id` (string), `chunk_index` (int, rejecting bool to avoid
+  `True/False` becoming `1/0`), and `highlight` (string), falling back to
+  the `text` metadata key for `highlight`. Missing or wrong-typed values
+  resolve to `None`.
+- `_build_citations(items)` orders citations by descending
+  `RetrievedContextItem.score` with insertion-order stable tie-breaking, and
+  is used by both `answer()` and the final `stream_answer()` chunk.
+
+## Validation Note (2026-04-26)
+
+```
+.venv/bin/pytest tests/rag tests/api/test_chat_router.py tests/config -q   # 130 passed
+.venv/bin/ruff check rag api/routers/chat.py config tests/rag tests/api/test_chat_router.py tests/config  # clean
+.venv/bin/pyright rag api/routers/chat.py config tests/rag tests/api/test_chat_router.py tests/config     # 0 errors
+.venv/bin/pytest tests/rag --cov=rag                                       # 95% line coverage
+```

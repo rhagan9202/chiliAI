@@ -51,9 +51,15 @@ As a platform developer, I want the worker coordinator to consume `graph.updated
 - Do NOT modify files outside `backend/agent/` and `backend/tests/agent/`
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=agent tests/agent/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=agent tests/agent/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Added `handle_risk_scored(event, *, monitoring_service, event_bus)` to `agent/coordinator.py`. The handler iterates each `RiskScoredReference`, builds a `MonitoringEvaluationRequest(knowledge_base_id=..., batch_id=request_id)`, and calls `monitoring_service.evaluate(...)`. `MonitoringService.evaluate` already publishes `AlertsCreatedEvent` directly when alerts > 0, so the handler does not republish. `MonitoringError` and unexpected exceptions are caught at the per-assessment level and logged at ERROR; the per-event dispatcher additionally absorbs unexpected exceptions in `handle_event` so monitoring failures cannot block the pipeline. `WorkerDependencies` gained a `monitoring_service: MonitoringService` field; `build_worker_dependencies()` instantiates it via `create_monitoring_service` using `MonitoringConfig.dedup_window_seconds`, `max_alerts_per_evaluation`, and `grouping_window_seconds`. `drain_ingestion_events` now subscribes to `risk.scored`, and `handle_event` routes `RiskScoredEvent` to the new handler when `monitoring_service` is provided. The story prompt explicitly noted to use `risk.scored` rather than a separate `analysis.complete` event — followed.
+
+## Validation Note
+Four new tests in `tests/agent/test_coordinator.py`: success path (`risk.scored` -> `MonitoringService.evaluate` -> `AlertsCreatedEvent` emitted via in-memory bus); MonitoringError path (no batch seeded, ERROR logged, processed=0, no exception); skip path when `monitoring_service` is None (handle_event returns 0); and unexpected-exception path (subclassed MonitoringService raises RuntimeError, handle_event absorbs and returns 0).

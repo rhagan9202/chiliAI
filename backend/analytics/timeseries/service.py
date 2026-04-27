@@ -12,9 +12,13 @@ from analytics.timeseries.exceptions import (
 )
 from analytics.timeseries.models import AnomalyPoint, TimeSeriesAnalysisResult, TimeSeriesObservation
 from analytics.timeseries.service_models import (
+    DetectionStrategy,
     TimeseriesAnalysisRequest,
     TimeseriesAnalysisResponse,
     TimeseriesAnomaly,
+    TimeseriesPoint,
+    TimeseriesQueryRequest,
+    TimeseriesResponse,
 )
 from events.protocols import EventBus
 from events.types import TimeseriesAnalyzedEvent, TimeseriesAnalyzedReference
@@ -24,18 +28,16 @@ from shared.utils import generate_id
 class TimeseriesService:
     """Coordinate historical-series loading, anomaly detection, and event publication."""
 
-    # TODO(production): Replace basic z-score anomaly detection with production
-    # algorithms: seasonal decomposition (STL), ARIMA/Prophet forecasting,
-    # isolation forests, or change-point detection. Add sliding window support
-    # for continuous monitoring. Add multi-metric correlation analysis.
-    # Current _detect_anomalies() uses a simple z-score threshold over a
-    # fixed baseline window — needs configurable detection strategies.
-
     def __init__(self, history_source: TimeSeriesHistorySourceProtocol, *, event_bus: EventBus) -> None:
         self._history_source = history_source
         self._event_bus = event_bus
 
     def analyze(self, request: TimeseriesAnalysisRequest) -> TimeseriesAnalysisResponse:
+        if request.window_size is not None and request.window_size <= 0:
+            raise TimeseriesConfigurationError(
+                "TimeseriesAnalysisRequest window_size must be a positive integer."
+            )
+
         try:
             series = self._history_source.load_series(
                 knowledge_base_id=request.knowledge_base_id,
@@ -47,25 +49,32 @@ class TimeseriesService:
         except Exception as exc:
             raise TimeseriesSourceError("Failed to load time-series history.") from exc
 
-        if len(series.observations) < request.min_history:
+        observations = list(series.observations)
+        if request.window_size is not None and len(observations) > request.window_size:
+            observations = observations[-request.window_size :]
+
+        if len(observations) < request.min_history:
             raise TimeseriesInsufficientHistoryError(
                 "Time series does not contain enough observations for analysis."
             )
+
+        anomalies = self._dispatch_detection(
+            strategy=request.detection_strategy,
+            observations=observations,
+            baseline_window=request.baseline_window,
+            z_threshold=request.z_threshold,
+            contamination=request.contamination,
+        )
 
         result = TimeSeriesAnalysisResult(
             request_id=generate_id(),
             knowledge_base_id=request.knowledge_base_id,
             entity_id=request.entity_id,
             metric_name=request.metric_name,
-            observation_count=len(series.observations),
-            anomaly_count=0,
-            anomalies=_detect_anomalies(
-                series.observations,
-                baseline_window=request.baseline_window,
-                z_threshold=request.z_threshold,
-            ),
+            observation_count=len(observations),
+            anomaly_count=len(anomalies),
+            anomalies=anomalies,
         )
-        result = result.model_copy(update={"anomaly_count": len(result.anomalies)})
 
         response = TimeseriesAnalysisResponse(
             request_id=result.request_id,
@@ -100,6 +109,61 @@ class TimeseriesService:
             )
         )
         return response
+
+
+    def query_metric(self, request: TimeseriesQueryRequest) -> TimeseriesResponse:
+        try:
+            observations = self._history_source.load_metric_range(
+                knowledge_base_id=request.knowledge_base_id,
+                metric_name=request.metric_name,
+                start=request.start,
+                end=request.end,
+            )
+        except ValueError as exc:
+            raise TimeseriesConfigurationError(str(exc)) from exc
+        except Exception as exc:
+            raise TimeseriesSourceError("Failed to load metric range.") from exc
+
+        points = [
+            TimeseriesPoint(observed_at=observation.observed_at, value=observation.value)
+            for observation in observations
+        ]
+        return TimeseriesResponse(
+            knowledge_base_id=request.knowledge_base_id,
+            metric_name=request.metric_name,
+            start=request.start,
+            end=request.end,
+            points=points,
+        )
+
+    def _dispatch_detection(
+        self,
+        *,
+        strategy: DetectionStrategy,
+        observations: list[TimeSeriesObservation],
+        baseline_window: int,
+        z_threshold: float,
+        contamination: float,
+    ) -> list[AnomalyPoint]:
+        if strategy == "z_score":
+            return _detect_anomalies(
+                observations,
+                baseline_window=baseline_window,
+                z_threshold=z_threshold,
+            )
+        if strategy == "stl_decomposition":
+            return _detect_anomalies_stl(
+                observations,
+                z_threshold=z_threshold,
+            )
+        if strategy == "isolation_forest":
+            return _detect_anomalies_isolation_forest(
+                observations,
+                contamination=contamination,
+            )
+        raise TimeseriesConfigurationError(
+            f"Unknown detection strategy: {strategy!r}."
+        )
 
 
 def create_timeseries_service(
@@ -137,6 +201,151 @@ def _detect_anomalies(
                 )
             )
     return anomalies
+
+
+def _detect_anomalies_stl(
+    observations: list[TimeSeriesObservation],
+    *,
+    z_threshold: float,
+) -> list[AnomalyPoint]:
+    try:
+        from statsmodels.tsa.seasonal import seasonal_decompose
+    except ImportError as exc:
+        raise TimeseriesConfigurationError(
+            "STL strategy requires the analytics extra (statsmodels)."
+        ) from exc
+
+    if len(observations) < 4:
+        raise TimeseriesInsufficientHistoryError(
+            "STL decomposition requires at least four observations."
+        )
+
+    values = [observation.value for observation in observations]
+    period = _infer_period(len(values))
+    try:
+        decomposition = seasonal_decompose(
+            values,
+            model="additive",
+            period=period,
+            extrapolate_trend="freq",
+        )
+    except ValueError as exc:
+        raise TimeseriesConfigurationError(
+            f"STL decomposition failed: {exc}"
+        ) from exc
+
+    residuals: list[float] = [float(value) for value in decomposition.resid]
+    trend: list[float] = [float(value) for value in decomposition.trend]
+    seasonal: list[float] = [float(value) for value in decomposition.seasonal]
+
+    finite_residuals = [value for value in residuals if _is_finite(value)]
+    if not finite_residuals:
+        return []
+
+    residual_mean = sum(finite_residuals) / len(finite_residuals)
+    residual_variance = sum(
+        (value - residual_mean) ** 2 for value in finite_residuals
+    ) / len(finite_residuals)
+    residual_std = sqrt(residual_variance)
+
+    anomalies: list[AnomalyPoint] = []
+    for index, observation in enumerate(observations):
+        residual = residuals[index]
+        if not _is_finite(residual):
+            continue
+        deviation = abs(residual - residual_mean)
+        if residual_std > 0.0:
+            z_score = deviation / residual_std
+        elif deviation > 0.0:
+            z_score = float("inf")
+        else:
+            z_score = 0.0
+        if z_score >= z_threshold:
+            expected_value = (
+                trend[index] + seasonal[index]
+                if _is_finite(trend[index]) and _is_finite(seasonal[index])
+                else observation.value - residual
+            )
+            anomalies.append(
+                AnomalyPoint(
+                    observed_at=observation.observed_at,
+                    observed_value=observation.value,
+                    expected_value=expected_value,
+                    deviation=abs(observation.value - expected_value),
+                    z_score=z_score,
+                )
+            )
+    return anomalies
+
+
+def _detect_anomalies_isolation_forest(
+    observations: list[TimeSeriesObservation],
+    *,
+    contamination: float,
+) -> list[AnomalyPoint]:
+    try:
+        from sklearn.ensemble import IsolationForest
+    except ImportError as exc:
+        raise TimeseriesConfigurationError(
+            "Isolation forest strategy requires the analytics extra (scikit-learn)."
+        ) from exc
+
+    values = [observation.value for observation in observations]
+    feature_matrix: list[list[float]] = [[value] for value in values]
+    estimator = IsolationForest(
+        contamination=contamination,
+        random_state=42,
+    )
+    estimator.fit(feature_matrix)
+    raw_predictions = estimator.predict(feature_matrix)
+    raw_scores = estimator.score_samples(feature_matrix)
+    predictions: list[int] = [int(label) for label in raw_predictions]
+    scores: list[float] = [float(score) for score in raw_scores]
+
+    expected_value = sum(values) / len(values) if values else 0.0
+    score_magnitudes = [abs(score) for score in scores]
+    score_mean = sum(score_magnitudes) / len(score_magnitudes) if score_magnitudes else 0.0
+    score_variance = (
+        sum((score - score_mean) ** 2 for score in score_magnitudes) / len(score_magnitudes)
+        if score_magnitudes
+        else 0.0
+    )
+    score_std = sqrt(score_variance)
+
+    anomalies: list[AnomalyPoint] = []
+    for index, observation in enumerate(observations):
+        if predictions[index] != -1:
+            continue
+        magnitude = abs(scores[index])
+        if score_std > 0.0:
+            z_score = abs(magnitude - score_mean) / score_std
+        elif magnitude > 0.0:
+            z_score = float("inf")
+        else:
+            z_score = 0.0
+        deviation = abs(observation.value - expected_value)
+        anomalies.append(
+            AnomalyPoint(
+                observed_at=observation.observed_at,
+                observed_value=observation.value,
+                expected_value=expected_value,
+                deviation=deviation,
+                z_score=z_score,
+            )
+        )
+    return anomalies
+
+
+def _infer_period(length: int) -> int:
+    if length >= 14:
+        return 7
+    if length >= 8:
+        return 4
+    return 2
+
+
+def _is_finite(value: float) -> bool:
+    return value == value and value not in (float("inf"), float("-inf"))
 
 
 def _mean(observations: list[TimeSeriesObservation]) -> float:

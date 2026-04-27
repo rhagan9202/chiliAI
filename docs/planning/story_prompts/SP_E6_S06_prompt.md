@@ -57,9 +57,47 @@ As a platform developer, I want `RagService` to support streaming answer generat
 - Do NOT stream the embedding or retrieval phases — only the generation phase streams
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=rag tests/rag/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=rag tests/rag/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note (2026-04-26)
+
+E5-S06 reconciliation: the previously stubbed `RagStreamChunk(token, done,
+sources)` (in `service_models.py`) and async `stream_answer(*,
+knowledge_base_id, question)` were replaced with the E6-S06 production
+shape:
+
+- `RagStreamChunk(chunk_text: str, is_final: bool, citations: list[RagCitation])`
+  remains in `service_models.py` (where `RagCitation` already lives, instead
+  of the prompt-suggested `models.py` — both are co-located in this module).
+- `AnswerGeneratorProtocol.stream_generate(request) -> Iterator[str]` added.
+- `RagServiceProtocol.stream_answer(request: RagQueryRequest) -> Iterator[RagStreamChunk]`
+  is now sync (the prompt's stated rationale was that
+  `LlmServiceProtocol.generate_stream` is sync — it is actually `AsyncIterator`,
+  but sync was kept anyway because the prompt explicitly required it and the
+  production bridge wraps a single-shot generation as one chunk for now).
+- `InMemoryAnswerGenerator.stream_generate` yields the full canned answer in
+  one chunk; `RagService.stream_answer` runs `_prepare_state` →
+  `_expand_graph_context` → `_build_generation_request` → `stream_generate`,
+  wraps each chunk as `is_final=False`, then emits a final
+  `is_final=True` chunk with full citations.
+- Chat router (`api/routers/chat.py`) was updated: SSE wire format is
+  unchanged (`data: {"token": "...", "done": false}\n\n`), but the router
+  now drives the sync iterator inside an `async def` SSE generator and maps
+  `chunk.chunk_text → token`, `chunk.is_final → done`,
+  `chunk.citations[*].record_id → sources` on the final chunk.
+- `InMemoryRagService` (the chat-router fixture stub) updated to match the
+  new sync-iterator + new chunk shape.
+
+## Validation Note (2026-04-26)
+
+```
+.venv/bin/pytest tests/rag tests/api/test_chat_router.py tests/config -q   # 130 passed
+.venv/bin/ruff check rag api/routers/chat.py config tests/rag tests/api/test_chat_router.py tests/config  # clean
+.venv/bin/pyright rag api/routers/chat.py config tests/rag tests/api/test_chat_router.py tests/config     # 0 errors
+.venv/bin/pytest -q                                                        # 692 passed, 3 skipped
+```

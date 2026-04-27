@@ -1,5 +1,7 @@
 # Story E3-S03: OpenAI Embeddings Adapter
 
+**Status:** Complete on April 25, 2026.
+
 ## Story
 As a platform developer, I want an embeddings adapter calling the OpenAI Embeddings API, so that operators can use cloud-hosted embedding models when local GPU is unavailable.
 
@@ -53,9 +55,20 @@ As a platform developer, I want an embeddings adapter calling the OpenAI Embeddi
 - Do not retry on non-rate-limit errors (e.g., 400, 401) — only retry 429
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=embeddings tests/embeddings/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=embeddings tests/embeddings/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+- Added `backend/embeddings/adapters/openai_adapter.py` with optional SDK loading, environment-driven API key lookup, conservative token-aware batching, response dimension validation, and 429-only exponential backoff retry.
+- Re-exported `OpenAIEmbedder` from the embeddings adapter and package surfaces.
+- Added an `openai` optional dependency extra in `backend/pyproject.toml` for reuse by later OpenAI-backed stories.
+- Added deterministic unit tests using a fully faked client boundary so the normal test suite does not require the `openai` package or any network access.
+
+## Validation Note
+- `cd /home/rdhagan92/chiliAI/backend && .venv/bin/python -m pytest tests/embeddings/ --cov=embeddings --cov-report=term-missing` ✅ — 23 passed, `embeddings` coverage 88%
+- `cd /home/rdhagan92/chiliAI/backend && .venv/bin/python -m ruff check embeddings tests/embeddings` ✅
+- `cd /home/rdhagan92/chiliAI/backend && .venv/bin/pyright embeddings tests/embeddings` ✅ — 0 errors, 0 warnings, 0 informations

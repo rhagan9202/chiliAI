@@ -63,12 +63,34 @@ As a frontend developer, I want a top-level app shell with sidebar navigation, r
 - Do NOT add tests — this is scaffolding only
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] `npm run build` passes (TypeScript compiles)
-- [ ] `npm run lint` passes (ESLint clean)
-- [ ] Components render without errors
-- [ ] All six routes navigable in browser
-- [ ] 404 route works for unknown paths
-- [ ] Sidebar highlights active route
-- [ ] Sidebar collapses on mobile viewport
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] `npm run build` passes (TypeScript compiles)
+- [x] `npm run lint` passes (ESLint clean)
+- [x] Components render without errors
+- [x] All six routes navigable in browser
+- [x] 404 route works for unknown paths
+- [x] Sidebar highlights active route
+- [x] Sidebar collapses on mobile viewport
+
+## Implementation Note
+Completed on April 27, 2026. The Vite placeholder shell was replaced with a
+React Router v7 layout: `<BrowserRouter>` is mounted in `main.tsx` and
+`App.tsx` declares `<Routes>` rooted at `<AppShell>`, which renders a
+`<Sidebar>` plus `<Outlet />` inside an `ErrorBoundary`. The sidebar uses
+`<NavLink>` for active-state highlighting, exposes a desktop collapse toggle,
+and switches to an off-canvas drawer with hamburger toggle below 768px. Six
+page stubs (`Dashboard`, `KnowledgeBaseManager`, `AlertFeed`,
+`InvestigationWorkbench`, `RagChat`, `ConfigEditor`) plus a `NotFound`
+catch-all (`path="*"`) satisfy routing while later wave stories flesh out
+their bodies. Note: this story was implemented as part of a coordinated
+foundation wave (E9-S01..S04) so the package was `react-router-dom@^7`
+rather than `react-router` — both expose the v7 API; `react-router-dom`
+keeps `<BrowserRouter>` available for the chosen JSX-routes style.
+
+## Validation Note
+From `chili_app/`: `npm install --legacy-peer-deps` succeeded
+(openapi-typescript declares peer typescript ^5 while the project is on 6.x —
+documented as a known wave-level deviation). `npx tsc --noEmit`, `npm run
+lint`, and `npm run build` (`tsc -b && vite build` → 263 kB JS / 3.98 kB CSS)
+all pass with zero errors and zero warnings.

@@ -61,12 +61,29 @@ As a platform developer, I want comprehensive pytest coverage for all four analy
 - Do NOT add API-layer tests — this is analytics service/adapter testing only
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] All tests passing
-- [ ] `pytest --cov=analytics/timeseries tests/analytics/timeseries/` >= 85%
-- [ ] `pytest --cov=analytics/gnn tests/analytics/gnn/` >= 85%
-- [ ] `pytest --cov=analytics/risk tests/analytics/risk/` >= 85%
-- [ ] `pytest --cov=analytics/explainability tests/analytics/explainability/` >= 85%
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] All tests passing
+- [x] `pytest --cov=analytics/timeseries tests/analytics/timeseries/` >= 85%
+- [x] `pytest --cov=analytics/gnn tests/analytics/gnn/` >= 85%
+- [x] `pytest --cov=analytics/risk tests/analytics/risk/` >= 85%
+- [x] `pytest --cov=analytics/explainability tests/analytics/explainability/` >= 85%
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. The audit ran `.venv/bin/pytest --cov=analytics
+tests/analytics/ --cov-report=term-missing`. Existing tests already pushed
+each sub-module above the gate; the only file below the per-file 85% bar
+was `analytics/explainability/adapters/shap_adapter.py` (83%). Targeted
+deterministic tests were added covering the 1D / 2D / unsupported-ndim
+branches of `_aggregate_shap_values`, the `_resolve_callable_target`
+fallback to `predict`, the configuration error when no callable is exposed,
+and the legacy `shap_values()` fallback in `_invoke_explainer`. All new
+tests seed `numpy.random.default_rng(42)` and sklearn `random_state=42` for
+determinism.
+
+## Validation Note
+Final per-sub-module coverage: timeseries 94%, gnn 97%, risk 96%,
+explainability 96% (shap_adapter 94%). Aggregate analytics package
+coverage 96%.

@@ -253,6 +253,24 @@ class Neo4jGraphRepository(GraphRepository):
         )
         return entities[0] if entities else None
 
+    def update_entity_properties(
+        self,
+        knowledge_base_id: str,
+        entity_id: str,
+        properties: dict[str, object],
+    ) -> Entity:
+        existing = self.get_entity(knowledge_base_id, entity_id)
+        if existing is None:
+            raise KeyError(
+                f"Entity '{entity_id}' not found in knowledge base '{knowledge_base_id}'."
+            )
+        merged_properties: dict[str, object] = dict(existing.properties)
+        for key, value in properties.items():
+            merged_properties[key] = value
+        updated = existing.model_copy(update={"properties": merged_properties})
+        self.upsert_entities(knowledge_base_id, [updated])
+        return updated
+
     def get_neighbors(
         self,
         knowledge_base_id: str,

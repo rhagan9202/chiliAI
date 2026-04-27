@@ -49,9 +49,15 @@ As a platform developer, I want the monitoring service to enforce a maximum aler
 - Do NOT modify files outside `backend/monitoring/`, `backend/config/schema.py`, and `backend/tests/monitoring/`
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=monitoring tests/monitoring/` >= 85% coverage for affected module
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=monitoring tests/monitoring/` >= 85% coverage for affected module
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Added `max_alerts_per_evaluation: int = 100` to `MonitoringConfig` (existing scaffold) instead of `AlertsConfig` because `MonitoringConfig` already owned dedup-related knobs. `MonitoringService` reads it from the constructor (default 100) and after dedup sorts surviving candidates by severity rank desc (`critical=4, high=3, medium=2, low=1`) and score desc, capping at the limit. `rate_limited_count: int = 0` is added to `MonitoringEvaluationResponse` and reflects the number of dropped candidates per evaluation.
+
+## Validation Note
+New tests verify: under cap (no rate limiting), at cap (exact match), over cap (rate_limited_count > 0 with the highest-severity candidate surviving the cap). Severity-ordered sort confirmed by asserting that `"high"` is among the surviving candidates when only the lowest-scoring mediums would otherwise win.

@@ -61,9 +61,29 @@ As a platform developer, I want the worker coordinator to consume `graph.updated
 - Do NOT hardcode service implementations — use protocol-typed dependencies
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] Tests written and passing
-- [ ] `pytest --cov=agent tests/agent/` >= 85% coverage for affected files
-- [ ] No lint errors (`ruff check`)
-- [ ] Type-safe (`pyright --strict` compatible)
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] Tests written and passing
+- [x] `pytest --cov=agent tests/agent/` >= 85% coverage for affected files
+- [x] No lint errors (`ruff check`)
+- [x] Type-safe (`pyright --strict` compatible)
+
+## Implementation Note
+Completed on April 26, 2026. `agent/coordinator.py` gained
+`handle_graph_updated_for_analytics()` which runs Flow B
+(GNN -> risk -> explainability -> `alerts.created`) for each upserted
+entity. `handle_event` now dispatches `GraphUpdatedEvent` to both Flow A
+(embeddings) and Flow B; analytics failures are caught per stage and surface
+as new `AnalysisFailedEvent`s without aborting Flow A. New event types
+`AnalysisFailedEvent` and the existing `AlertsCreatedEvent` were registered
+in `events/codec.py`. `WorkerDependencies` and `build_worker_dependencies()`
+now construct `GnnService`, `RiskService`, and `ExplainabilityService` with
+their default in-memory adapters via `build_graph_snapshot_source`,
+`build_risk_signal_source`, and `build_explainability_context_source`.
+
+## Validation Note
+From `backend/`: new tests in `tests/agent/test_coordinator.py` exercise
+(a) the full Flow A + Flow B dispatch with `alerts.created` published and
+analytics properties written back to the graph, (b) `analysis.failed` for
+missing risk profiles, and (c) Flow A continuing when GNN cannot load a
+snapshot. `.venv/bin/pytest tests/agent/` reports 53 passing.

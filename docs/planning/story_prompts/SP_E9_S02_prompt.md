@@ -52,12 +52,34 @@ As a frontend developer, I want the app to fetch domain configuration from API a
 - Do NOT create a full test suite — only the mock provider for downstream consumers
 
 ## Done Checklist
-- [ ] All acceptance criteria met
-- [ ] All target files created/modified
-- [ ] `npm run build` passes (TypeScript compiles)
-- [ ] `npm run lint` passes (ESLint clean)
-- [ ] Components render without errors
-- [ ] Loading spinner displays while config is fetching
-- [ ] Error boundary displays on fetch failure
-- [ ] `useDomainConfig()` returns typed config object after load
-- [ ] Mock provider works for test usage
+- [x] All acceptance criteria met
+- [x] All target files created/modified
+- [x] `npm run build` passes (TypeScript compiles)
+- [x] `npm run lint` passes (ESLint clean)
+- [x] Components render without errors
+- [x] Loading spinner displays while config is fetching
+- [x] Error boundary displays on fetch failure
+- [x] `useDomainConfig()` returns typed config object after load
+- [x] Mock provider works for test usage
+
+## Implementation Note
+Completed on April 27, 2026. `src/types/domainConfig.ts` mirrors the
+backend `DomainConfig` shape from `backend/config/schema.py` and
+`backend/shared/types.py` (entities, relationships, domain info,
+capabilities, ingestion + chunking, optional graph/vectorstore/llm/
+embeddings/storage/events/monitoring/rag sections, and alerts thresholds).
+`DomainConfigProvider` issues a single `apiRequest('/config/domain')` call
+on mount via the apiClient (no polling), shows `<LoadingSpinner>` while
+pending, and renders an inline error panel on failure. The context value
+plus its `useDomainConfigContext` hook live in
+`contexts/domainConfigContextValue.ts` (separate from the JSX provider) so
+the provider file plays nicely with the project's react-refresh ESLint
+rule. `useDomainConfig()` in `hooks/useDomainConfig.ts` returns the typed
+config. `MockDomainConfigProvider` in `src/test-utils/` accepts
+`Partial<DomainConfig>` overrides on top of a sensible default for tests.
+The route is `/config/domain` (per the backend router), not `/config`.
+
+## Validation Note
+From `chili_app/`: `npx tsc --noEmit` clean. `npm run lint` clean. `npm
+run build` succeeds. The provider is exercised at startup in `main.tsx`
+nested between `<BrowserRouter>` and `<App />`.
