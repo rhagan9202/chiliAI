@@ -10,6 +10,7 @@ import { useAppStore } from '../../stores/appStore'
 import { MockDomainConfigProvider } from '../../test-utils/MockDomainConfigProvider'
 import type {
   EntityDetailResponse,
+  EntitySearchResponse,
   NeighborhoodResponse,
 } from '../../types/api'
 
@@ -103,6 +104,28 @@ const entityResponse: EntityDetailResponse = {
   entity: neighborhoodResponse.entities[0],
 }
 
+const entitySearchResponse: EntitySearchResponse = {
+  items: [neighborhoodResponse.entities[1]],
+  total: 1,
+}
+
+const knowledgeBaseListResponse = {
+  items: [
+    {
+      id: 'kb-1',
+      name: 'Investigation KB',
+      description: 'fixture',
+      entity_count: 2,
+      relationship_count: 1,
+      document_count: 1,
+      status: 'ready',
+      created_at: FIXED_TIME,
+      updated_at: null,
+    },
+  ],
+  total: 1,
+}
+
 function makeWrapper(initialEntries: string[]): {
   Wrapper: (props: { children: ReactNode }) => React.ReactElement
 } {
@@ -175,6 +198,14 @@ describe('InvestigationWorkbench', () => {
           }),
         )
       }
+      if (url.endsWith('/knowledgebases')) {
+        return Promise.resolve(
+          new Response(JSON.stringify(knowledgeBaseListResponse), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        )
+      }
       return Promise.resolve(new Response('{}', { status: 200 }))
     })
     global.fetch = fetchMock as unknown as typeof fetch
@@ -215,6 +246,14 @@ describe('InvestigationWorkbench', () => {
           }),
         )
       }
+      if (url.endsWith('/knowledgebases')) {
+        return Promise.resolve(
+          new Response(JSON.stringify(knowledgeBaseListResponse), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        )
+      }
       return Promise.resolve(new Response('{}', { status: 200 }))
     })
     global.fetch = fetchMock as unknown as typeof fetch
@@ -232,6 +271,63 @@ describe('InvestigationWorkbench', () => {
       expect(screen.getByTestId('graph-node-e-2')).toBeInTheDocument()
     })
     await userEvent.click(screen.getByTestId('graph-node-e-2'))
+    expect(useAppStore.getState().selectedEntityId).toBe('e-2')
+  })
+
+  it('searches graph entities and selects a result for neighborhood loading', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL): Promise<Response> => {
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url.endsWith('/knowledgebases')) {
+        return Promise.resolve(
+          new Response(JSON.stringify(knowledgeBaseListResponse), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        )
+      }
+      if (url.includes('/investigation/search')) {
+        return Promise.resolve(
+          new Response(JSON.stringify(entitySearchResponse), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        )
+      }
+      if (url.includes('/neighborhood')) {
+        return Promise.resolve(
+          new Response(JSON.stringify(neighborhoodResponse), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        )
+      }
+      if (url.includes('/investigation/entities/')) {
+        return Promise.resolve(
+          new Response(JSON.stringify(entityResponse), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        )
+      }
+      return Promise.resolve(new Response('{}', { status: 200 }))
+    })
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const { Wrapper } = makeWrapper(['/investigation?kb_id=kb-1'])
+    render(
+      <Wrapper>
+        <InvestigationWorkbench />
+      </Wrapper>,
+    )
+
+    await userEvent.type(screen.getByLabelText('Entity search'), 'claim')
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Entity search results')).toBeInTheDocument()
+    })
+    await userEvent.click(screen.getByRole('button', { name: /claim/i }))
+
     expect(useAppStore.getState().selectedEntityId).toBe('e-2')
   })
 })

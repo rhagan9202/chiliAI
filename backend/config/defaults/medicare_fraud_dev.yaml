@@ -1,0 +1,141 @@
+domain:
+  name: medicare_fraud
+  display_name: "Medicare Fraud Detection"
+  description: "Fraud detection and investigator support for Medicare claims"
+
+entities:
+  - name: provider
+    display_label: "Provider"
+    icon: stethoscope
+    properties:
+      npi: { type: string, display: "NPI", required: true, pattern: "^[0-9]{10}$" }
+      specialty: { type: string, display: "Specialty" }
+      state: { type: string, display: "State" }
+
+  - name: beneficiary
+    display_label: "Beneficiary"
+    icon: person
+    properties:
+      hic_number: { type: string, display: "HIC Number", required: true }
+      age: { type: integer, display: "Age", min_value: 0, max_value: 120 }
+      chronic_conditions: { type: list, display: "Chronic Conditions" }
+
+  - name: claim
+    display_label: "Claim"
+    icon: document
+    properties:
+      claim_id: { type: string, display: "Claim ID", required: true }
+      amount: { type: decimal, display: "Billed Amount", required: true, min_value: 0 }
+      service_date: { type: date, display: "Date of Service", required: true }
+      procedure_codes: { type: list, display: "Procedure Codes" }
+
+  - name: facility
+    display_label: "Facility"
+    icon: building
+    properties:
+      facility_id: { type: string, display: "Facility ID", required: true }
+      name: { type: string, display: "Name" }
+      type: { type: string, display: "Facility Type" }
+
+relationships:
+  - name: submitted_by
+    display_label: "Submitted By"
+    source: claim
+    target: provider
+
+  - name: billed_for
+    display_label: "Billed For"
+    source: claim
+    target: beneficiary
+
+  - name: performed_at
+    display_label: "Performed At"
+    source: claim
+    target: facility
+
+  - name: referred_by
+    display_label: "Referred By"
+    source: provider
+    target: provider
+
+capabilities:
+  timeseries: true
+  gnn: true
+  risk_scoring: true
+  rag_chat: true
+  explainability: true
+
+ingestion:
+  chunking:
+    strategy: recursive
+    chunk_size: 1000
+    chunk_overlap: 200
+    min_chunk_size: 50
+  sources:
+    - type: file_upload
+      formats: [pdf, docx, txt, csv, json]
+    - type: api_push
+      format: json
+      endpoint: /ingest/claims
+
+graph:
+  backend: neo4j
+  uri: bolt://neo4j:7687
+  pool_size: 10
+  auth_env_var: null
+
+vectorstore:
+  backend: in_memory
+  uri: null
+  dimensions: 384
+  distance_metric: cosine
+
+llm:
+  provider: local
+  model: local-default
+  api_key_env_var: null
+  temperature: 0.7
+  max_tokens: 4096
+
+embeddings:
+  provider: local
+  model: local-default
+  dimensions: 384
+  batch_size: 32
+  api_key_env_var: null
+
+storage:
+  backend: local
+  endpoint_url: null
+  bucket: null
+  base_path: /app/data/objects
+  credentials_env_var: null
+
+events:
+  backend: redis
+  uri: redis://redis:6379
+  stream_prefix: chili
+  consumer_group: chili-workers
+
+monitoring:
+  evaluation_interval_seconds: 300
+  dedup_window_seconds: 3600
+  max_alerts_per_entity: 10
+  max_alerts_per_evaluation: 100
+  grouping_window_seconds: 300
+
+rag:
+  top_k: 5
+  expansion_depth: 2
+  reranking_enabled: false
+  system_prompt_template: "You are an expert assistant for {domain_name}. Use the provided context to answer questions about {entity_types}."
+
+alerts:
+  thresholds:
+    provider:
+      risk_score: 0.75
+      anomaly_sigma: 2.5
+    beneficiary:
+      risk_score: 0.80
+    claim:
+      amount_percentile: 99

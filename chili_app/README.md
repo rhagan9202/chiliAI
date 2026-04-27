@@ -6,7 +6,7 @@ React 19 + TypeScript + Vite 8 single-page application for the chiliAI analyst w
 
 ## Current State
 
-Vite + React 19 scaffold with template placeholder UI. `src/App.tsx` is still default content.
+Routed React 19 + TypeScript workbench prototype. `src/App.tsx` defines the application routes and wraps the main views in a shared app shell. The UI is functional for local prototype workflows, while some backend capabilities remain stubbed or read-only.
 
 ## Target Technology Stack
 
@@ -32,6 +32,25 @@ Vite + React 19 scaffold with template placeholder UI. `src/App.tsx` is still de
 | **Investigation Workbench** | Core analyst view — interactive graph explorer, entity detail, evidence packs, timeline |
 | **RAG Chat** | Conversational interface for querying knowledge base via LLM |
 | **Configuration** | Domain configuration editor |
+
+## Implemented Routes
+
+| Route | View |
+|------|------|
+| `/` | Dashboard with KPI cards and recent activity |
+| `/knowledgebases` | Knowledge base list and create modal |
+| `/knowledgebases/:kbId` | Knowledge base detail, document inventory, upload/delete UI |
+| `/alerts` | Alert feed with filters, bulk actions, and realtime status |
+| `/investigation` | Graph workbench shell with entity detail, evidence, and timeline panels |
+| `/chat` | RAG chat shell backed by the selected knowledge base |
+| `/config` | Read-only domain configuration editor |
+
+## Known Prototype Gaps
+
+- Configuration save is disabled until `PUT /config/domain` is implemented.
+- Investigation evidence endpoint and some graph/entity discovery flows are still incomplete.
+- RAG chat may use stubbed/local responses depending on backend configuration.
+- Production bundle size should be revisited with route-level code splitting as the UI grows.
 
 ## Development Commands
 

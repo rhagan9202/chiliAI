@@ -7,10 +7,11 @@ from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 
-from api._kb_store import InMemoryKnowledgeBaseRepository
+from api._kb_store import DocumentRecord, InMemoryKnowledgeBaseRepository
 from api.app import create_app
 from api.dependencies import (
     get_event_bus,
+    get_graph_service,
     get_ingestion_service,
     get_knowledge_base_repository,
     get_object_store,
@@ -25,7 +26,19 @@ from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
 from ingestion.service import IngestionService
+from graph.models import GraphMetrics
+from shared.types import KnowledgeBase
+from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore
+
+
+class _MetricsOnlyGraphService:
+    def __init__(self, metrics: GraphMetrics) -> None:
+        self._metrics = metrics
+
+    def compute_metrics(self, knowledge_base_id: str) -> GraphMetrics:
+        del knowledge_base_id
+        return self._metrics
 
 
 @pytest.fixture()
@@ -36,6 +49,9 @@ def harness() -> Iterator[
     event_bus = InMemoryEventBus()
     object_store = InMemoryObjectStore()
     repository = InMemoryKnowledgeBaseRepository()
+    graph_service = _MetricsOnlyGraphService(
+        GraphMetrics(entity_count=0, relationship_count=0, avg_degree=0.0)
+    )
     ingestion_service = IngestionService(
         DocumentParsingOrchestrator(
             create_default_registry(),
@@ -48,6 +64,7 @@ def harness() -> Iterator[
     app.dependency_overrides[get_event_bus] = lambda: event_bus
     app.dependency_overrides[get_object_store] = lambda: object_store
     app.dependency_overrides[get_knowledge_base_repository] = lambda: repository
+    app.dependency_overrides[get_graph_service] = lambda: graph_service
     app.dependency_overrides[get_ingestion_service] = lambda: ingestion_service
 
     with TestClient(app) as client:
@@ -165,6 +182,102 @@ def test_get_knowledge_base_returns_record(
     assert response.json()["id"] == kb_id
 
 
+def test_get_knowledge_base_hydrates_ready_status_from_graph_metrics() -> None:
+    app = create_app()
+    repository = InMemoryKnowledgeBaseRepository()
+    object_store = InMemoryObjectStore()
+    repository.create(
+        KnowledgeBase(
+            id="kb-ready",
+            name="Ready KB",
+            description="",
+            status="active",
+            created_at=utc_now(),
+        )
+    )
+    repository.add_document(
+        DocumentRecord(
+            id="doc-1",
+            knowledge_base_id="kb-ready",
+            filename="claims.json",
+            content_type="application/json",
+            size_bytes=2,
+            status="pending",
+            storage_key="knowledgebases/kb-ready/documents/doc-1/source.json",
+        )
+    )
+    graph_service = _MetricsOnlyGraphService(
+        GraphMetrics(entity_count=4, relationship_count=4, avg_degree=2.0)
+    )
+    app.dependency_overrides[get_knowledge_base_repository] = lambda: repository
+    app.dependency_overrides[get_graph_service] = lambda: graph_service
+    app.dependency_overrides[get_object_store] = lambda: object_store
+
+    with TestClient(app) as client:
+        detail = client.get("/knowledgebases/kb-ready")
+        documents = client.get("/knowledgebases/kb-ready/documents")
+
+    assert detail.status_code == 200
+    detail_payload = detail.json()
+    assert detail_payload["status"] == "ready"
+    assert detail_payload["entity_count"] == 4
+    assert detail_payload["relationship_count"] == 4
+
+    assert documents.status_code == 200
+    document_payload = documents.json()
+    assert document_payload["items"][0]["status"] == "ready"
+
+
+def test_get_knowledge_base_marks_zero_entity_graph_update_ready() -> None:
+    app = create_app()
+    repository = InMemoryKnowledgeBaseRepository()
+    object_store = InMemoryObjectStore()
+    repository.create(
+        KnowledgeBase(
+            id="kb-empty-graph",
+            name="Empty Graph KB",
+            description="",
+            status="active",
+            created_at=utc_now(),
+        )
+    )
+    repository.add_document(
+        DocumentRecord(
+            id="doc-1",
+            knowledge_base_id="kb-empty-graph",
+            filename="resume.docx",
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            size_bytes=2,
+            status="pending",
+            storage_key="knowledgebases/kb-empty-graph/documents/doc-1/source.docx",
+        )
+    )
+    object_store.put_bytes(
+        "knowledgebases/kb-empty-graph/graph_updates/extract-1.json",
+        b"{}",
+        media_type="application/json",
+    )
+    graph_service = _MetricsOnlyGraphService(
+        GraphMetrics(entity_count=0, relationship_count=0, avg_degree=0.0)
+    )
+    app.dependency_overrides[get_knowledge_base_repository] = lambda: repository
+    app.dependency_overrides[get_graph_service] = lambda: graph_service
+    app.dependency_overrides[get_object_store] = lambda: object_store
+
+    with TestClient(app) as client:
+        detail = client.get("/knowledgebases/kb-empty-graph")
+        documents = client.get("/knowledgebases/kb-empty-graph/documents")
+
+    assert detail.status_code == 200
+    detail_payload = detail.json()
+    assert detail_payload["status"] == "ready"
+    assert detail_payload["entity_count"] == 0
+    assert detail_payload["relationship_count"] == 0
+
+    assert documents.status_code == 200
+    assert documents.json()["items"][0]["status"] == "ready"
+
+
 def test_delete_knowledge_base_removes_artifacts_and_publishes_event(
     harness: tuple[
         TestClient,
@@ -262,6 +375,9 @@ def test_register_documents_returns_202_and_publishes_event(
     ]
     assert upload_events
     assert upload_events[0].event_type == "documents.uploaded"
+    detail = client.get(f"/knowledgebases/{kb_id}")
+    assert detail.status_code == 200
+    assert detail.json()["document_count"] == 1
 
 
 def test_list_documents_returns_404_for_missing_kb(
@@ -351,6 +467,9 @@ def test_delete_document_removes_artifacts(
     )
 
     assert response.status_code == 204
+    detail = client.get(f"/knowledgebases/{kb_id}")
+    assert detail.status_code == 200
+    assert detail.json()["document_count"] == 0
     assert (
         object_store.list_keys(
             f"knowledgebases/{kb_id}/documents/{document_id}/"

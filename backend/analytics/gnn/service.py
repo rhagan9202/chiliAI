@@ -31,8 +31,6 @@ from events.types import GnnAnalyzedEvent, GnnAnalyzedReference
 from shared.utils import generate_id
 
 if TYPE_CHECKING:
-    import networkx as nx
-    from numpy import floating
     from numpy.typing import NDArray
 
 
@@ -222,15 +220,18 @@ def _detect_communities(
 ) -> list[GnnCommunity]:
     nx_module = _import_networkx()
     graph = _build_networkx_graph(nx_module, nodes, edges)
-    louvain: Callable[..., list[set[str]]] = cast(
-        Callable[..., list[set[str]]], nx_module.community.louvain_communities
+    community_module = getattr(nx_module, "community")
+    louvain = cast(
+        Callable[..., list[set[str]]],
+        getattr(community_module, "louvain_communities"),
     )
     partitions = louvain(graph, seed=42)
-    density_fn: Callable[..., float] = cast(Callable[..., float], nx_module.density)
+    density_fn = cast(Callable[..., float], getattr(nx_module, "density"))
     communities: list[GnnCommunity] = []
     for index, partition in enumerate(sorted(partitions, key=lambda members: sorted(members))):
         members = sorted(partition)
-        subgraph_obj = cast("nx.Graph", graph.subgraph(members))
+        subgraph = cast(Callable[[list[str]], object], getattr(graph, "subgraph"))
+        subgraph_obj = subgraph(members)
         density = float(density_fn(subgraph_obj))
         communities.append(
             GnnCommunity(
@@ -275,8 +276,9 @@ def _compute_embeddings(
     if node_count == 0:
         return {}
 
-    to_numpy: Callable[..., "NDArray[floating[object]]"] = cast(
-        Callable[..., "NDArray[floating[object]]"], nx_module.to_numpy_array
+    to_numpy = cast(
+        Callable[..., object],
+        getattr(nx_module, "to_numpy_array"),
     )
     adjacency_raw = to_numpy(graph, nodelist=ordered_ids, weight="weight", dtype=float)
     adjacency: NDArray[np.float64] = np.asarray(adjacency_raw, dtype=np.float64)
@@ -324,13 +326,14 @@ def _build_networkx_graph(
     nx_module: object,
     nodes: list[GraphNodeSignal],
     edges: list[GraphEdgeSignal],
-) -> "nx.Graph":
-    graph_factory: Callable[[], "nx.Graph"] = cast(
-        Callable[[], "nx.Graph"], getattr(nx_module, "Graph")
+) -> object:
+    graph_factory = cast(
+        Callable[[], object],
+        getattr(nx_module, "Graph"),
     )
     graph = graph_factory()
-    add_node: Callable[..., None] = cast(Callable[..., None], graph.add_node)
-    add_edge: Callable[..., None] = cast(Callable[..., None], graph.add_edge)
+    add_node = cast(Callable[..., None], getattr(graph, "add_node"))
+    add_edge = cast(Callable[..., None], getattr(graph, "add_edge"))
     for node in nodes:
         add_node(node.entity_id)
     for edge in edges:

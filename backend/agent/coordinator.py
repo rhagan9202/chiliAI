@@ -854,6 +854,7 @@ def handle_graph_updated(
 ) -> int:
     """Generate and persist embeddings for entities upserted into the graph."""
     references: list[EmbeddingsCompleteDocumentReference] = []
+    ready_references: list[KnowledgeBaseReadyReference] = []
     for document in event.documents:
         if document.graph_update_storage_key is None:
             raise ValueError(
@@ -878,6 +879,14 @@ def handle_graph_updated(
         )
 
         if not entities:
+            ready_references.append(
+                KnowledgeBaseReadyReference(
+                    knowledge_base_id=document.knowledge_base_id,
+                    entity_count=document.upserted_entity_count,
+                    relationship_count=document.upserted_relationship_count,
+                    vector_count=0,
+                )
+            )
             continue
 
         response = embeddings_service.embed(
@@ -939,6 +948,13 @@ def handle_graph_updated(
             EmbeddingsCompleteEvent(
                 correlation_id=event.correlation_id,
                 documents=references,
+            )
+        )
+    if ready_references:
+        event_bus.publish(
+            KnowledgeBaseReadyEvent(
+                correlation_id=event.correlation_id,
+                knowledge_bases=ready_references,
             )
         )
     return len(references)

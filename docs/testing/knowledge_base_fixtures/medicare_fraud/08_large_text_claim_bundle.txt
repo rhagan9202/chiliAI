@@ -1,0 +1,48 @@
+Large text claim bundle fixture
+
+Bundle section 1
+npi: "4445556667"
+specialty: Oncology
+state: FL
+hic_number: HIC-LARGE-001
+age: 77
+chronic_conditions: ["cancer"]
+claim_id: CLAIM-LARGE-001
+amount: 15420.10
+service_date: 2026-02-10
+procedure_codes: ["96413"]
+facility_id: FAC-LARGE-001
+name: Gulf Coast Infusion Center
+type: outpatient infusion center
+
+Bundle section 2
+npi: "5556667778"
+specialty: Laboratory
+state: FL
+hic_number: HIC-LARGE-002
+age: 67
+chronic_conditions: ["kidney disease"]
+claim_id: CLAIM-LARGE-002
+amount: 875.45
+service_date: 2026-02-11
+procedure_codes: ["80053"]
+facility_id: FAC-LARGE-002
+name: Gulf Diagnostic Laboratory
+type: independent laboratory
+
+Bundle section 3
+npi: "6667778889"
+specialty: Physical Therapy
+state: FL
+hic_number: HIC-LARGE-003
+age: 71
+chronic_conditions: ["arthritis"]
+claim_id: CLAIM-LARGE-003
+amount: 2299.99
+service_date: 2026-02-12
+procedure_codes: ["97110"]
+facility_id: FAC-LARGE-003
+name: Gulf Rehab Partners
+type: rehabilitation clinic
+
+This fixture contains repeated domain sections and should exercise chunking behavior. Depending on chunk size, the baseline extractor may create one or more entities per chunk and may not deduplicate repeated entity types across sections.

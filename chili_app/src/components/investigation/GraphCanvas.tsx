@@ -72,7 +72,14 @@ export function GraphCanvas({
     if (!node) return undefined
     const update = (): void => {
       const rect = node.getBoundingClientRect()
-      setSize({ width: rect.width, height: rect.height })
+      const width = Math.max(0, Math.floor(rect.width))
+      const height = Math.max(0, Math.floor(rect.height))
+      setSize((previous) => {
+        if (previous.width === width && previous.height === height) {
+          return previous
+        }
+        return { width, height }
+      })
     }
     update()
     if (typeof ResizeObserver === 'undefined') {

@@ -6,7 +6,7 @@ Python 3.12 backend for the chiliAI platform — a domain-reconfigurable Graph R
 
 ## Current State
 
-Working FastAPI application factory with domain configuration system. The full module structure below is the target — most analytics and pipeline modules are not yet implemented.
+Working FastAPI gateway and pipeline-worker prototype with domain configuration, event-driven orchestration, ingestion, graph/vector/embedding/LLM/RAG service boundaries, analytics modules, monitoring, storage adapters, auth/RBAC scaffolding, and extensive pytest coverage. Some production adapters and persistence paths are still incomplete, but the full module structure below now exists in the repository.
 
 ### What's functional
 
@@ -15,6 +15,13 @@ Working FastAPI application factory with domain configuration system. The full m
 - **`api/app.py`** — FastAPI app factory with `/health` endpoint, CORS middleware, and config router.
 - **`api/routers/config.py`** — `GET /config/domain` returns the active domain configuration as JSON.
 - **`api/dependencies.py`** — Dependency injection wiring. `get_domain_config()` loads config once and caches.
+- **`api/routers/`** — Knowledge base, alert, investigation, chat, analytics, config, and WebSocket routers.
+- **`events/`** — In-memory and Redis Streams event bus implementations plus typed event envelopes.
+- **`ingestion/`** — Parser orchestration, document chunking, extraction, validation, and registration flows.
+- **`graph/`, `vectorstore/`, `embeddings/`, `llm/`, `rag/`** — Service/protocol boundaries with in-memory adapters and selected production-facing adapters.
+- **`analytics/` and `monitoring/`** — Heuristic timeseries, GNN, risk, explainability, alert, and monitoring services.
+- **`storage/`** — In-memory, local filesystem, and S3-compatible object-store adapters.
+- **`api/middleware/`** — Metrics, auth, and RBAC middleware scaffolding.
 - **`agent/coordinator.py`** — Worker entry point (`python -m agent.coordinator`) that starts an async loop.
 - **`main.py`** — Uvicorn launcher for local development.
 - **`Dockerfile`** — Multi-stage build producing a production-ready image.
@@ -68,11 +75,11 @@ python -m agent.coordinator
 # Tests
 pytest --cov
 
-# Type checking
+# Type checking (currently scoped in pyproject.toml while strict coverage expands)
 pyright
 ```
 
-> These commands target the architecture described in `docs/architecture.md`. Some are not functional until the corresponding modules are implemented.
+> These commands target the architecture described in `docs/architecture.md`. The codebase is under active hardening; keep Ruff, Pyright, and pytest clean for touched packages.
 
 ## Quality Requirements
 

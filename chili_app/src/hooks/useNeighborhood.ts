@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
 
 import { apiRequest } from '../lib/apiClient'
@@ -37,5 +37,6 @@ export function useNeighborhood(
       }
     },
     enabled: Boolean(entityId) && Boolean(kbId),
+    placeholderData: keepPreviousData,
   })
 }

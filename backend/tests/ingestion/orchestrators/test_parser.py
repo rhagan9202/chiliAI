@@ -8,7 +8,7 @@ import pytest
 from ingestion.models import DocumentFormat, IngestionStatus, SourceDocument, SourceType
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.orchestrators.protocols import DocumentParseFailure
-from ingestion.parsers.exceptions import RemoteFetchError, UnsupportedFormatError
+from ingestion.parsers.exceptions import RemoteFetchError
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
 

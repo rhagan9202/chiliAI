@@ -226,7 +226,7 @@ def test_neo4j_repository_reads_searches_counts_and_deletes(
     repository.delete_entity("kb-1", "entity-2")
     repository.delete_relationship("kb-1", "relationship-2")
 
-    assert "WHERE any(" in driver.queries[1][0]
+    assert "entity.properties_json" in driver.queries[1][0]
     assert "DELETE relationship" in driver.queries[-1][0]
 
 

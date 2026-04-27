@@ -692,6 +692,73 @@ def test_handle_graph_updated_publishes_embeddings_complete_event() -> None:
     assert stored_embeddings.metadata["graph_update_storage_key"] == graph_update_storage_key
 
 
+def test_handle_graph_updated_publishes_kb_ready_for_zero_entities() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    embeddings_service = _FakeEmbeddingsService()
+    graph_update_storage_key = "knowledgebases/kb-empty/graph_updates/extract-1.json"
+    validation_storage_key = "knowledgebases/kb-empty/validations/extract-1.json"
+    object_store.put_bytes(
+        graph_update_storage_key,
+        GraphUpsertResult(
+            knowledge_base_id="kb-empty",
+            source_document_id="doc-1",
+            parsed_document_id="parsed-1",
+            extraction_result_id="extract-1",
+            validation_report_id="validate-1",
+            upserted_entity_ids=[],
+            upserted_relationship_ids=[],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    object_store.put_bytes(
+        validation_storage_key,
+        ValidationReport(
+            id="validate-1",
+            extraction_result_id="extract-1",
+            source_document_id="doc-1",
+            valid_entities=[],
+            valid_relationships=[],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    processed = handle_graph_updated(
+        GraphUpdatedEvent(
+            correlation_id="corr-empty-graph",
+            documents=[
+                GraphUpdatedDocumentReference(
+                    knowledge_base_id="kb-empty",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    extraction_result_id="extract-1",
+                    validation_report_id="validate-1",
+                    upserted_entity_count=0,
+                    upserted_relationship_count=0,
+                    validation_storage_key=validation_storage_key,
+                    graph_update_storage_key=graph_update_storage_key,
+                )
+            ],
+        ),
+        embeddings_service=embeddings_service,
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    assert processed == 0
+    assert embeddings_service.requests == []
+    ready_events = [
+        event for event in event_bus.published_events
+        if isinstance(event, KnowledgeBaseReadyEvent)
+    ]
+    assert len(ready_events) == 1
+    ready_reference = ready_events[0].knowledge_bases[0]
+    assert ready_reference.knowledge_base_id == "kb-empty"
+    assert ready_reference.entity_count == 0
+    assert ready_reference.relationship_count == 0
+    assert ready_reference.vector_count == 0
+
+
 def test_handle_event_dispatches_graph_updated_event() -> None:
     event_bus = InMemoryEventBus()
     object_store = InMemoryObjectStore()

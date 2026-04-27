@@ -127,6 +127,17 @@ describe('useWebSocket', () => {
     handle.unmount()
   })
 
+  it('builds default URLs from the configured API origin', () => {
+    const onMessage = vi.fn<(event: unknown) => void>()
+    const handle = renderHookSync('/ws/alerts', onMessage, {
+      socketFactory: makeFactory(),
+    })
+
+    expect(FakeSocket.instances).toHaveLength(1)
+    expect(FakeSocket.instances[0].url).toBe('ws://localhost:8000/ws/alerts')
+    handle.unmount()
+  })
+
   it('drops keep-alive ping frames without invoking the callback', () => {
     const onMessage = vi.fn<(event: unknown) => void>()
     const handle = renderHookSync('/ws/alerts', onMessage, {

@@ -25,6 +25,7 @@ from llm.service import LlmService
 from monitoring.service import MonitoringService
 from shared.exceptions import ConfigurationError
 from storage.adapters.in_memory import InMemoryObjectStore
+from storage.adapters.local_fs_adapter import LocalFsObjectStore
 from vectorstore.service import VectorService
 
 DEFAULTS_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "defaults"
@@ -119,6 +120,26 @@ def test_event_bus_uses_explicit_config_when_section_present(
     assert isinstance(dependencies.get_event_bus(), RedisStreamsEventBus)
 
 
+def test_explicit_local_storage_uses_shared_filesystem_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={
+            "storage": ObjectStoreConfig(
+                backend="local",
+                base_path=str(tmp_path / "objects"),
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+
+    object_store = dependencies.get_object_store()
+
+    assert isinstance(object_store, LocalFsObjectStore)
+
+
 @pytest.mark.parametrize(
     ("factory_name", "config_update", "message_fragment"),
     [
@@ -129,8 +150,8 @@ def test_event_bus_uses_explicit_config_when_section_present(
         ),
         (
             "get_graph_repository",
-            {"graph": GraphDbConfig(backend="neo4j")},
-            "Unsupported graph backend 'neo4j'. Available backends: in_memory.",
+            {"graph": GraphDbConfig(backend="memgraph")},
+            "Unsupported graph backend 'memgraph'. Available backends: in_memory, neo4j.",
         ),
         (
             "get_vector_store",

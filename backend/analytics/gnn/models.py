@@ -12,7 +12,7 @@ class GraphNodeSignal(BaseModel):
     """A graph node with numeric features for lightweight scoring."""
 
     entity_id: str
-    feature_values: list[float] = Field(default_factory=list)
+    feature_values: list[float] = Field(default_factory=list[float])
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -34,8 +34,8 @@ class GraphSnapshot(BaseModel):
     """A graph snapshot loaded for gnn-style analysis."""
 
     knowledge_base_id: str
-    nodes: list[GraphNodeSignal] = Field(default_factory=list)
-    edges: list[GraphEdgeSignal] = Field(default_factory=list)
+    nodes: list[GraphNodeSignal] = Field(default_factory=list[GraphNodeSignal])
+    edges: list[GraphEdgeSignal] = Field(default_factory=list[GraphEdgeSignal])
 
     @model_validator(mode="after")
     def _validate_nodes(self) -> GraphSnapshot:
@@ -75,8 +75,8 @@ class GnnAnalysisResult(BaseModel):
     knowledge_base_id: str
     node_count: int = Field(ge=0)
     edge_count: int = Field(ge=0)
-    scored_nodes: list[ScoredNode] = Field(default_factory=list)
-    predicted_links: list[PredictedLink] = Field(default_factory=list)
+    scored_nodes: list[ScoredNode] = Field(default_factory=list[ScoredNode])
+    predicted_links: list[PredictedLink] = Field(default_factory=list[PredictedLink])
     communities: list[GnnCommunity] = Field(default_factory=list[GnnCommunity])
     node_embeddings: dict[str, list[float]] = Field(default_factory=dict[str, list[float]])
 

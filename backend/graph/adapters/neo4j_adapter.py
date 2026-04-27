@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Generator, Iterable, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from datetime import datetime
@@ -138,8 +139,8 @@ class Neo4jGraphRepository(GraphRepository):
             {
                 "entity_id": entity.id,
                 "type": entity.type,
-                "properties": entity.properties,
-                "metadata": entity.metadata,
+                "properties_json": _dump_json_property(entity.properties),
+                "metadata_json": _dump_json_property(entity.metadata),
                 "created_at": entity.created_at.isoformat(),
                 "updated_at": entity.updated_at.isoformat() if entity.updated_at else None,
                 "version": entity.version,
@@ -151,8 +152,8 @@ class Neo4jGraphRepository(GraphRepository):
         MERGE (entity:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: row.entity_id}})
         ON CREATE SET entity.created_at = row.created_at
         SET entity.type = row.type,
-            entity.properties = row.properties,
-            entity.metadata = row.metadata,
+            entity.properties_json = row.properties_json,
+            entity.metadata_json = row.metadata_json,
             entity.updated_at = row.updated_at,
             entity.version = row.version
         RETURN entity
@@ -182,7 +183,7 @@ class Neo4jGraphRepository(GraphRepository):
                 "type": relationship.type,
                 "source_id": relationship.source_id,
                 "target_id": relationship.target_id,
-                "properties": relationship.properties,
+                "properties_json": _dump_json_property(relationship.properties),
                 "created_at": relationship.created_at.isoformat(),
                 "updated_at": relationship.updated_at.isoformat()
                 if relationship.updated_at
@@ -202,7 +203,7 @@ class Neo4jGraphRepository(GraphRepository):
         }}]->(target)
         ON CREATE SET relationship.created_at = row.created_at
         SET relationship.type = row.type,
-            relationship.properties = row.properties,
+            relationship.properties_json = row.properties_json,
             relationship.updated_at = row.updated_at,
             relationship.version = row.version,
             relationship.weight = row.weight
@@ -388,11 +389,7 @@ class Neo4jGraphRepository(GraphRepository):
 
         cypher = f"""
         MATCH (entity:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id}})
-        WHERE any(
-            key IN keys(entity.properties)
-            WHERE entity.properties[key] IS STRING
-              AND toLower(entity.properties[key]) CONTAINS $normalized_query
-        )
+                WHERE toLower(coalesce(entity.properties_json, "")) CONTAINS $normalized_query
         RETURN entity
         ORDER BY entity.entity_id
         LIMIT $limit
@@ -531,8 +528,8 @@ class Neo4jGraphRepository(GraphRepository):
         return Entity(
             id=cast(str, container["entity_id"]),
             type=cast(str, container["type"]),
-            properties=cast(dict[str, object], container.get("properties", {})),
-            metadata=cast(dict[str, object], container.get("metadata", {})),
+            properties=_load_json_mapping(container, "properties"),
+            metadata=_load_json_mapping(container, "metadata"),
             created_at=cast(datetime, container["created_at"]),
             updated_at=cast(datetime | None, container.get("updated_at")),
             version=cast(int, container.get("version", 1)),
@@ -551,7 +548,7 @@ class Neo4jGraphRepository(GraphRepository):
             type=cast(str, container["type"]),
             source_id=source_id,
             target_id=target_id,
-            properties=cast(dict[str, object], container.get("properties", {})),
+            properties=_load_json_mapping(container, "properties"),
             created_at=cast(datetime, container["created_at"]),
             updated_at=cast(datetime | None, container.get("updated_at")),
             version=cast(int, container.get("version", 1)),
@@ -565,3 +562,28 @@ class Neo4jGraphRepository(GraphRepository):
         if direction == "in":
             return f"(root)<-[:{_RELATIONSHIP_LABEL}*1..{depth}]-(neighbor:{_ENTITY_LABEL})"
         return f"(root)-[:{_RELATIONSHIP_LABEL}*1..{depth}]-(neighbor:{_ENTITY_LABEL})"
+
+
+def _dump_json_property(value: dict[str, object]) -> str:
+    """Serialize nested entity data into a Neo4j-safe scalar property."""
+
+    return json.dumps(value, default=str, ensure_ascii=False, sort_keys=True)
+
+
+def _load_json_mapping(
+    container: Neo4jPropertyContainerProtocol,
+    property_name: str,
+) -> dict[str, object]:
+    """Load JSON-backed mappings while tolerating legacy fake/test records."""
+
+    legacy_value = container.get(property_name, None)
+    if isinstance(legacy_value, dict):
+        return cast(dict[str, object], legacy_value)
+
+    json_value = container.get(f"{property_name}_json", None)
+    if not isinstance(json_value, str) or json_value.strip() == "":
+        return {}
+    parsed = json.loads(json_value)
+    if not isinstance(parsed, dict):
+        return {}
+    return cast(dict[str, object], parsed)

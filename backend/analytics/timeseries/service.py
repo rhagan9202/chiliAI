@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from math import sqrt
+from typing import Protocol, SupportsFloat, SupportsInt, cast
 
 from analytics.timeseries.adapters.protocols import TimeSeriesHistorySourceProtocol
 from analytics.timeseries.exceptions import (
@@ -23,6 +25,33 @@ from analytics.timeseries.service_models import (
 from events.protocols import EventBus
 from events.types import TimeseriesAnalyzedEvent, TimeseriesAnalyzedReference
 from shared.utils import generate_id
+
+
+class _DecompositionResult(Protocol):
+    """Typed subset returned by statsmodels seasonal decomposition."""
+
+    resid: Sequence[object]
+    trend: Sequence[object]
+    seasonal: Sequence[object]
+
+
+class _IsolationForestEstimator(Protocol):
+    """Typed subset of sklearn's IsolationForest used by this service."""
+
+    def fit(self, X: list[list[float]]) -> object:
+        """Fit the estimator to the feature matrix."""
+
+        ...
+
+    def predict(self, X: list[list[float]]) -> Sequence[object]:
+        """Return labels where -1 denotes an anomaly."""
+
+        ...
+
+    def score_samples(self, X: list[list[float]]) -> Sequence[object]:
+        """Return anomaly score samples for the feature matrix."""
+
+        ...
 
 
 class TimeseriesService:
@@ -209,7 +238,10 @@ def _detect_anomalies_stl(
     z_threshold: float,
 ) -> list[AnomalyPoint]:
     try:
-        from statsmodels.tsa.seasonal import seasonal_decompose
+        statsmodels_seasonal = __import__(
+            "statsmodels.tsa.seasonal",
+            fromlist=["seasonal_decompose"],
+        )
     except ImportError as exc:
         raise TimeseriesConfigurationError(
             "STL strategy requires the analytics extra (statsmodels)."
@@ -222,6 +254,10 @@ def _detect_anomalies_stl(
 
     values = [observation.value for observation in observations]
     period = _infer_period(len(values))
+    seasonal_decompose = cast(
+        Callable[..., _DecompositionResult],
+        getattr(statsmodels_seasonal, "seasonal_decompose"),
+    )
     try:
         decomposition = seasonal_decompose(
             values,
@@ -234,9 +270,9 @@ def _detect_anomalies_stl(
             f"STL decomposition failed: {exc}"
         ) from exc
 
-    residuals: list[float] = [float(value) for value in decomposition.resid]
-    trend: list[float] = [float(value) for value in decomposition.trend]
-    seasonal: list[float] = [float(value) for value in decomposition.seasonal]
+    residuals = [_coerce_float(value) for value in decomposition.resid]
+    trend = [_coerce_float(value) for value in decomposition.trend]
+    seasonal = [_coerce_float(value) for value in decomposition.seasonal]
 
     finite_residuals = [value for value in residuals if _is_finite(value)]
     if not finite_residuals:
@@ -284,7 +320,10 @@ def _detect_anomalies_isolation_forest(
     contamination: float,
 ) -> list[AnomalyPoint]:
     try:
-        from sklearn.ensemble import IsolationForest
+        sklearn_ensemble = __import__(
+            "sklearn.ensemble",
+            fromlist=["IsolationForest"],
+        )
     except ImportError as exc:
         raise TimeseriesConfigurationError(
             "Isolation forest strategy requires the analytics extra (scikit-learn)."
@@ -292,15 +331,19 @@ def _detect_anomalies_isolation_forest(
 
     values = [observation.value for observation in observations]
     feature_matrix: list[list[float]] = [[value] for value in values]
-    estimator = IsolationForest(
+    isolation_forest = cast(
+        Callable[..., _IsolationForestEstimator],
+        getattr(sklearn_ensemble, "IsolationForest"),
+    )
+    estimator = isolation_forest(
         contamination=contamination,
         random_state=42,
     )
     estimator.fit(feature_matrix)
     raw_predictions = estimator.predict(feature_matrix)
     raw_scores = estimator.score_samples(feature_matrix)
-    predictions: list[int] = [int(label) for label in raw_predictions]
-    scores: list[float] = [float(score) for score in raw_scores]
+    predictions = [_coerce_int(label) for label in raw_predictions]
+    scores = [_coerce_float(score) for score in raw_scores]
 
     expected_value = sum(values) / len(values) if values else 0.0
     score_magnitudes = [abs(score) for score in scores]
@@ -346,6 +389,28 @@ def _infer_period(length: int) -> int:
 
 def _is_finite(value: float) -> bool:
     return value == value and value not in (float("inf"), float("-inf"))
+
+
+def _coerce_float(value: object) -> float:
+    """Coerce third-party numeric values into plain floats."""
+
+    if isinstance(value, (float, int)):
+        return float(value)
+    if hasattr(value, "__float__"):
+        return float(cast(SupportsFloat, value))
+    raise TypeError("Expected a numeric value convertible to float.")
+
+
+def _coerce_int(value: object) -> int:
+    """Coerce third-party integer labels into plain ints."""
+
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if hasattr(value, "__int__"):
+        return int(cast(SupportsInt, value))
+    raise TypeError("Expected a numeric value convertible to int.")
 
 
 def _mean(observations: list[TimeSeriesObservation]) -> float:

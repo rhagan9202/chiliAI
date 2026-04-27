@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from time import perf_counter
 
-from fastapi import APIRouter, FastAPI, Request, Response
+from fastapi import APIRouter, FastAPI, Response
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     REGISTRY,

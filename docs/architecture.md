@@ -1,6 +1,6 @@
 # chiliAI — High-Level Architecture & Design
 
-> **Status**: Target architecture. The repository is currently an early-stage scaffold. This document describes the intended system design — not what exists today. Current state is called out explicitly where relevant.
+> **Status**: Target architecture plus implementation status notes. The repository is now an active prototype with substantial backend and frontend implementation. This document describes the intended system design and calls out current-state gaps where relevant.
 
 ---
 
@@ -281,8 +281,8 @@ backend/
 │   └── alerting.py             # Threshold evaluation, alert generation
 ├── shared/                     # Lightweight shared contracts library
 │   ├── __init__.py
-│   ├── types.py                # Domain types: Entity, Relationship, Claim, Provider,
-│   │                           #   Beneficiary, Alert, EvidencePack, KnowledgeBase
+│   ├── types.py                # Generic platform types: Entity, Relationship,
+│   │                           #   Alert, EvidencePack, KnowledgeBase
 │   ├── protocols.py            # Cross-cutting protocol definitions
 │   └── utils.py                # Small, dependency-light utilities
 ├── config/                     # Domain configuration
@@ -584,7 +584,7 @@ Each entity and relationship in the graph carries provenance metadata linking it
 | Concern | Technology | Notes |
 |---------|-----------|-------|
 | Framework | React 19 | Functional components, hooks |
-| Language | TypeScript 6 (strict mode) | `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch` |
+| Language | TypeScript 5.9.x (strict mode) | `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`; pinned to TS 5 while OpenAPI tooling requires `^5.x` |
 | Build | Vite 8 | Dev server with HMR, production build |
 | Routing | React Router v7 | File-system or config-based routes |
 | Server state | TanStack Query (React Query) | Caching, invalidation, optimistic updates |
@@ -594,7 +594,7 @@ Each entity and relationship in the graph carries provenance metadata linking it
 | Graph visualization | Cytoscape.js, Sigma.js, or React Flow | Evaluate during implementation — see open questions |
 | Styling | TBD (CSS Modules, Tailwind, or component library) | Decision deferred |
 
-> **Current state**: `chili_app/` is a Vite + React 19 scaffold with template placeholder UI. Everything below is target architecture.
+> **Current state**: `chili_app/` is a routed React 19 workbench prototype with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration views. Several workflows still use in-memory/stubbed backend behavior, and parts of the section below remain target architecture.
 
 ### 8.2 Page / view structure
 
@@ -997,7 +997,7 @@ Adapter selection is driven by environment configuration, not code changes.
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
 | **Frontend framework** | React 19 | UI components, state management |
-| **Frontend language** | TypeScript 6 (strict) | Type-safe frontend code |
+| **Frontend language** | TypeScript 5.9.x (strict) | Type-safe frontend code; held on TS 5 for OpenAPI tooling compatibility |
 | **Frontend build** | Vite 8 | Dev server, production bundling |
 | **Frontend routing** | React Router v7 | Client-side navigation |
 | **Server state (FE)** | TanStack Query | API data fetching, caching, invalidation |
@@ -1052,9 +1052,9 @@ Adapter selection is driven by environment configuration, not code changes.
 
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
-| `backend/` | Minimal scaffold (`main.py` hello world, `pyproject.toml` with no dependencies) | Add FastAPI, project structure, `shared/` types, first adapter protocol |
-| `chili_app/` | Vite + React template placeholder | Replace template with app shell (routing, layout, config loading) |
-| `docs/` | This architecture document | Add ADRs as decisions are made |
-| `infra/` | Empty directory | Add Docker Compose for local dev, Dockerfiles |
-| Testing | None | Add pytest config, first backend unit tests |
+| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion, graph/vector/embedding/LLM/RAG services, analytics modules, monitoring, storage adapters, auth/RBAC middleware, and in-memory plus selected production-facing adapters | Make Ruff/Pyright gates continuously clean, finish production adapter wiring, harden persistence/retry behavior |
+| `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, Investigation Workbench, RAG Chat, and Configuration Editor | Complete realtime/dev WebSocket wiring, entity discovery, evidence endpoint, config save endpoint, and production UX polish |
+| `docs/` | Architecture, planning, security checklist, status/audit reports | Keep current-state matrices synchronized with implementation |
+| `infra/` | Docker Compose, Dockerfiles, and deployment scaffolding | Expand Kubernetes/Helm production hardening and secrets guidance |
+| Testing | Extensive backend pytest suite and frontend Vitest suite | Add CI enforcement for lint/type/test/build and adapter integration profiles |
 | CI/CD | None | Add GitHub Actions for lint + type-check + test |

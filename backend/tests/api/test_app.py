@@ -9,7 +9,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app import create_app
-from api.dependencies import get_domain_config
+from api.dependencies import (
+    get_domain_config,
+    get_graph_service as get_application_graph_service,
+    get_object_store,
+)
 from api.routers.investigation import get_graph_service as get_investigation_graph_service
 from config.loader import load_config
 from config.schema import DomainConfig
@@ -32,6 +36,7 @@ def domain_config() -> DomainConfig:
 def client(domain_config: DomainConfig) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_domain_config] = lambda: domain_config
+    app.dependency_overrides[get_object_store] = lambda: InMemoryObjectStore()
 
     graph_service: GraphServiceProtocol = cast(
         GraphServiceProtocol,
@@ -41,6 +46,7 @@ def client(domain_config: DomainConfig) -> TestClient:
             event_bus=InMemoryEventBus(),
         ),
     )
+    app.dependency_overrides[get_application_graph_service] = lambda: graph_service
     app.dependency_overrides[get_investigation_graph_service] = lambda: graph_service
 
     return TestClient(app)

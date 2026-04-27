@@ -121,6 +121,7 @@ class InMemoryKnowledgeBaseRepository:
             )
         kb_documents[document.id] = document
         self._document_order[document.knowledge_base_id].append(document.id)
+        self._sync_document_count(document.knowledge_base_id)
         return document
 
     def get_document(
@@ -158,4 +159,16 @@ class InMemoryKnowledgeBaseRepository:
         order = self._document_order.get(knowledge_base_id)
         if order is not None and document_id in order:
             order.remove(document_id)
+        self._sync_document_count(knowledge_base_id)
         return True
+
+    def _sync_document_count(self, knowledge_base_id: str) -> None:
+        """Keep KB summary metadata aligned with registered documents."""
+
+        knowledge_base = self._knowledge_bases.get(knowledge_base_id)
+        if knowledge_base is None:
+            return
+        document_count = len(self._document_order.get(knowledge_base_id, []))
+        self._knowledge_bases[knowledge_base_id] = knowledge_base.model_copy(
+            update={"document_count": document_count, "updated_at": utc_now()}
+        )

@@ -49,7 +49,9 @@ class TimeseriesAnalysisResponse(BaseModel):
     metric_name: str
     observation_count: int = Field(ge=0)
     anomaly_count: int = Field(ge=0)
-    anomalies: list[TimeseriesAnomaly] = Field(default_factory=list)
+    anomalies: list[TimeseriesAnomaly] = Field(
+        default_factory=list[TimeseriesAnomaly]
+    )
 
 
 class TimeseriesQueryRequest(BaseModel):

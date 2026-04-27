@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from typing import NoReturn, cast
 
@@ -9,7 +10,6 @@ from fastapi import Depends
 
 from config.loader import load_config
 from config.schema import (
-    AuthConfig,
     DomainConfig,
     EmbeddingsConfig,
     EventBusConfig,
@@ -17,7 +17,6 @@ from config.schema import (
     LlmConfig,
     MonitoringConfig,
     ObjectStoreConfig,
-    ValidationConfig,
     VectorStoreConfig,
 )
 from embeddings.adapters.in_memory import InMemoryEmbedder
@@ -44,6 +43,7 @@ from monitoring.protocols import MonitoringServiceProtocol
 from monitoring.service import create_monitoring_service
 from shared.exceptions import ConfigurationError
 from storage.adapters.in_memory import InMemoryObjectStore
+from storage.adapters.local_fs_adapter import LocalFsObjectStore
 from storage.protocols import ObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 from vectorstore.adapters.protocols import VectorStoreProtocol
@@ -51,7 +51,6 @@ from vectorstore.protocols import VectorServiceProtocol
 from vectorstore.service import create_vector_service
 
 __all__ = [
-    "get_auth_config",
     "get_embedder",
     "get_embeddings_service",
     "get_domain_config",
@@ -70,7 +69,6 @@ __all__ = [
     "get_parser_orchestrator",
     "get_parser_registry",
     "get_remote_fetcher",
-    "get_validation_config",
     "get_vector_store",
     "get_vectorstore_service",
 ]
@@ -135,6 +133,12 @@ def _event_bus_section_is_explicit(config: DomainConfig) -> bool:
     return "events" in config.model_fields_set
 
 
+def _config_section_is_non_default(value: object, default: object) -> bool:
+    """Return whether a post-validated config section differs from defaults."""
+
+    return value != default
+
+
 def _resolve_event_bus_settings(config: DomainConfig) -> EventBusSettings:
     env_settings = get_event_bus_settings()
     if not _event_bus_section_is_explicit(config):
@@ -166,9 +170,12 @@ def get_event_bus() -> EventBus:
 @lru_cache(maxsize=1)
 def get_object_store() -> ObjectStore:
     """Return the object store implementation for raw document content."""
-    storage_config = get_domain_config().storage or ObjectStoreConfig()
+    config = get_domain_config()
+    storage_config = config.storage or ObjectStoreConfig()
     backend = storage_config.backend
     if backend == "local":
+        if _config_section_is_non_default(storage_config, ObjectStoreConfig()):
+            return LocalFsObjectStore(storage_config)
         return InMemoryObjectStore()
     _raise_unsupported_backend("storage", backend, ("local",))
 
@@ -180,7 +187,33 @@ def get_graph_repository() -> GraphRepository:
     backend = graph_config.backend
     if backend == "in_memory":
         return InMemoryGraphRepository()
-    _raise_unsupported_backend("graph", backend, ("in_memory",))
+    if backend == "neo4j":
+        try:
+            from graph.adapters.neo4j_adapter import Neo4jGraphRepository
+        except ImportError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        try:
+            return Neo4jGraphRepository(
+                graph_config,
+                auth=_resolve_graph_auth(graph_config),
+            )
+        except (ImportError, ValueError) as exc:
+            raise ConfigurationError(str(exc)) from exc
+    _raise_unsupported_backend("graph", backend, ("in_memory", "neo4j"))
+
+
+def _resolve_graph_auth(config: GraphDbConfig) -> tuple[str, str] | None:
+    """Resolve optional graph credentials from the configured environment variable."""
+
+    if config.auth_env_var is None:
+        return None
+    raw_value = os.environ.get(config.auth_env_var)
+    if raw_value is None or raw_value.strip() == "":
+        return None
+    if ":" in raw_value:
+        username, password = raw_value.split(":", 1)
+        return username, password
+    return "neo4j", raw_value
 
 
 @lru_cache(maxsize=1)
