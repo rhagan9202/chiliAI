@@ -77,26 +77,26 @@ const programs = {
 };
 
 const feed = [
-  {id:1,name:'Advanced Pain Specialists',npi:'1234567890',type:'Billing + Trend',risk:94,conf:89,amt:'$2.1M',flag:'UPCODING · HCPCS CONSOLIDATION',days:2,city:'Miami, FL',spec:'Pain Management'},
-  {id:2,name:'Sunrise Medical Group',npi:'9876543210',type:'Network',risk:91,conf:86,amt:'$1.8M',flag:'REFERRAL RING DETECTED',days:3,city:'Houston, TX',spec:'Primary Care'},
-  {id:3,name:'Dr. James Kellerman',npi:'1122334455',type:'Billing',risk:89,conf:92,amt:'$847K',flag:'E&M UPCODING · TOP 2% PEERS',days:1,city:'Chicago, IL',spec:'Internal Medicine'},
-  {id:4,name:'Gulf Coast DME Supply',npi:'5544332211',type:'Billing',risk:87,conf:84,amt:'$1.2M',flag:'PHANTOM BILLING INDICATORS',days:5,city:'New Orleans, LA',spec:'DME Supplier'},
-  {id:5,name:'Premier Diagnostics LLC',npi:'6677889900',type:'Network + Billing',risk:83,conf:81,amt:'$980K',flag:'SELF-REFERRAL · OVER-ORDERING',days:4,city:'Phoenix, AZ',spec:'Diagnostics'},
-  {id:6,name:'Dr. Maria Santos',npi:'0099887766',type:'Trend',risk:79,conf:78,amt:'$634K',flag:'SPECIALTY SHIFT ANOMALY',days:7,city:'Los Angeles, CA',spec:'Family Medicine'},
-  {id:7,name:'Coastal Rehab Center',npi:'1357924680',type:'Network',risk:74,conf:76,amt:'$1.4M',flag:'KICKBACK INDICATORS',days:6,city:'Tampa, FL',spec:'Rehabilitation'},
-  {id:8,name:'Dr. Robert Chen',npi:'2468013579',type:'Billing',risk:71,conf:83,amt:'$512K',flag:'MODIFIER ABUSE · 59 MODIFIER',days:8,city:'Seattle, WA',spec:'Surgery'},
+  {id:1,name:'Advanced Pain Specialists',npi:'1234567890',type:'Billing + Trend',risk:94,conf:89,amt:'$2.1M',flag:'UPCODING · HCPCS CONSOLIDATION',days:2,city:'Miami, FL',spec:'Pain Management',status:'Active'},
+  {id:2,name:'Sunrise Medical Group',npi:'9876543210',type:'Network',risk:91,conf:86,amt:'$1.8M',flag:'REFERRAL RING DETECTED',days:3,city:'Houston, TX',spec:'Primary Care',status:'Active'},
+  {id:3,name:'Dr. James Kellerman',npi:'1122334455',type:'Billing',risk:89,conf:92,amt:'$847K',flag:'E&M UPCODING · TOP 2% PEERS',days:1,city:'Chicago, IL',spec:'Internal Medicine',status:'Active'},
+  {id:4,name:'Gulf Coast DME Supply',npi:'5544332211',type:'Billing',risk:87,conf:84,amt:'$1.2M',flag:'PHANTOM BILLING INDICATORS',days:5,city:'New Orleans, LA',spec:'DME Supplier',status:'Active'},
+  {id:5,name:'Premier Diagnostics LLC',npi:'6677889900',type:'Network + Billing',risk:83,conf:81,amt:'$980K',flag:'SELF-REFERRAL · OVER-ORDERING',days:4,city:'Phoenix, AZ',spec:'Diagnostics',status:'Active'},
+  {id:6,name:'Dr. Maria Santos',npi:'0099887766',type:'Trend',risk:79,conf:78,amt:'$634K',flag:'SPECIALTY SHIFT ANOMALY',days:7,city:'Los Angeles, CA',spec:'Family Medicine',status:'Cleared'},
+  {id:7,name:'Coastal Rehab Center',npi:'1357924680',type:'Network',risk:74,conf:76,amt:'$1.4M',flag:'KICKBACK INDICATORS',days:6,city:'Tampa, FL',spec:'Rehabilitation',status:'Active'},
+  {id:8,name:'Dr. Robert Chen',npi:'2468013579',type:'Billing',risk:71,conf:83,amt:'$512K',flag:'MODIFIER ABUSE · 59 MODIFIER',days:8,city:'Seattle, WA',spec:'Surgery',status:'Active'},
 ];
 
 const hcpcs = [
-  {m:"Mar'23",codes:47,top3:38,bill:42},{m:"Apr'23",codes:44,top3:41,bill:45},
-  {m:"May'23",codes:41,top3:45,bill:49},{m:"Jun'23",codes:38,top3:49,bill:54},
-  {m:"Jul'23",codes:33,top3:54,bill:61},{m:"Aug'23",codes:29,top3:60,bill:71},
-  {m:"Sep'23",codes:24,top3:67,bill:84},{m:"Oct'23",codes:19,top3:74,bill:98},
-  {m:"Nov'23",codes:15,top3:81,bill:115},{m:"Dec'23",codes:12,top3:86,bill:132},
-  {m:"Jan'24",codes:9,top3:91,bill:158},{m:"Feb'24",codes:7,top3:94,bill:174},
-  {m:"Mar'24",codes:6,top3:96,bill:189},{m:"Apr'24",codes:6,top3:97,bill:201},
-  {m:"May'24",codes:6,top3:97,bill:210},{m:"Jun'24",codes:6,top3:98,bill:218},
-  {m:"Jul'24",codes:6,top3:98,bill:221},{m:"Aug'24",codes:6,top3:98,bill:228},
+  {m:"Mar'23",codes:47,top3:38,bill:42,atRisk:4,owner:'old'},{m:"Apr'23",codes:46,top3:39,bill:44,atRisk:5,owner:'old'},
+  {m:"May'23",codes:44,top3:40,bill:46,atRisk:5,owner:'old'},{m:"Jun'23",codes:45,top3:41,bill:48,atRisk:6,owner:'old'},
+  {m:"Jul'23",codes:41,top3:45,bill:52,atRisk:26,owner:'new'},{m:"Aug'23",codes:35,top3:52,bill:64,atRisk:52,owner:'new'},
+  {m:"Sep'23",codes:28,top3:61,bill:82,atRisk:75,owner:'new'},{m:"Oct'23",codes:22,top3:69,bill:98,atRisk:97,owner:'new'},
+  {m:"Nov'23",codes:17,top3:77,bill:118,atRisk:117,owner:'new'},{m:"Dec'23",codes:13,top3:84,bill:135,atRisk:134,owner:'new'},
+  {m:"Jan'24",codes:10,top3:89,bill:156,atRisk:155,owner:'new'},{m:"Feb'24",codes:8,top3:93,bill:172,atRisk:171,owner:'new'},
+  {m:"Mar'24",codes:7,top3:95,bill:187,atRisk:186,owner:'new'},{m:"Apr'24",codes:6,top3:97,bill:199,atRisk:198,owner:'new'},
+  {m:"May'24",codes:6,top3:97,bill:208,atRisk:207,owner:'new'},{m:"Jun'24",codes:6,top3:98,bill:216,atRisk:215,owner:'new'},
+  {m:"Jul'24",codes:6,top3:98,bill:220,atRisk:219,owner:'new'},{m:"Aug'24",codes:6,top3:98,bill:228,atRisk:227,owner:'new'},
 ];
 
 const peers = [
@@ -114,12 +114,12 @@ const emDist = [
   { code:'99215', prov:78, p90:25, med:18 },
 ];
 const emTrend = [
-  {m:"Mar'23",prov:31,peer:19},{m:"Apr'23",prov:34,peer:19},{m:"May'23",prov:37,peer:18},
-  {m:"Jun'23",prov:41,peer:19},{m:"Jul'23",prov:45,peer:20},{m:"Aug'23",prov:51,peer:19},
-  {m:"Sep'23",prov:58,peer:18},{m:"Oct'23",prov:63,peer:19},{m:"Nov'23",prov:67,peer:20},
-  {m:"Dec'23",prov:70,peer:19},{m:"Jan'24",prov:72,peer:18},{m:"Feb'24",prov:74,peer:19},
-  {m:"Mar'24",prov:75,peer:18},{m:"Apr'24",prov:76,peer:19},{m:"May'24",prov:77,peer:19},
-  {m:"Jun'24",prov:77,peer:18},{m:"Jul'24",prov:78,peer:19},{m:"Aug'24",prov:78,peer:18},
+  {m:"Mar'23",prov:19,peer:19,owner:'old'},{m:"Apr'23",prov:20,peer:19,owner:'old'},{m:"May'23",prov:18,peer:18,owner:'old'},
+  {m:"Jun'23",prov:21,peer:19,owner:'old'},{m:"Jul'23",prov:25,peer:20,owner:'new'},{m:"Aug'23",prov:34,peer:19,owner:'new'},
+  {m:"Sep'23",prov:44,peer:18,owner:'new'},{m:"Oct'23",prov:53,peer:19,owner:'new'},{m:"Nov'23",prov:60,peer:20,owner:'new'},
+  {m:"Dec'23",prov:66,peer:19,owner:'new'},{m:"Jan'24",prov:70,peer:18,owner:'new'},{m:"Feb'24",prov:73,peer:19,owner:'new'},
+  {m:"Mar'24",prov:75,peer:18,owner:'new'},{m:"Apr'24",prov:76,peer:19,owner:'new'},{m:"May'24",prov:77,peer:19,owner:'new'},
+  {m:"Jun'24",prov:77,peer:18,owner:'new'},{m:"Jul'24",prov:78,peer:19,owner:'new'},{m:"Aug'24",prov:78,peer:18,owner:'new'},
 ];
 
 // Network co-billing data
@@ -145,11 +145,13 @@ const netTable = [
 ];
 
 const evLog = [
-  {date:'Aug 28, 2024',type:'AI Detection',icon:'bot',text:'Automated model flagged HCPCS consolidation pattern — 47 → 6 unique codes over 18 months with 98% billing concentration.',sev:'high'},
-  {date:'Aug 29, 2024',type:'Peer Analysis',icon:'chart',text:'99215 utilization at 78% vs. peer median 18%. Provider ranks in top 1.3% nationally. Statistically improbable without systematic miscoding.',sev:'high'},
+  {date:'Jul 15, 2023',type:'Ownership Change',icon:'building',text:'Provider ownership transferred to Pain Management Holdings LLC. CMS-855 enrollment updated. New management structure effective immediately.',sev:'info'},
+  {date:'Aug 12, 2023',type:'Pattern Alert',icon:'alert',text:'Automated monitoring detected 18% month-over-month drop in HCPCS code diversity (45 → 37 codes) — first significant deviation from 16-month baseline.',sev:'med'},
+  {date:'Aug 28, 2024',type:'AI Detection',icon:'bot',text:'Automated model flagged HCPCS consolidation pattern — 47 → 6 unique codes over 18 months with 98% billing concentration. Pattern change initiated immediately post-ownership transfer.',sev:'high'},
+  {date:'Aug 29, 2024',type:'Peer Analysis',icon:'chart',text:'99215 utilization at 78% vs. peer median 18%. Provider ranks in top 1.3% nationally. Rate was normal (19-21%) pre-ownership change, then spiked 311% over 12 months.',sev:'high'},
   {date:'Sep 2, 2024',type:'Network Scan',icon:'network',text:'Co-billing relationship identified with Sunrise Medical Group (NPI: 9876543210). Shared patient overlap: 34%.',sev:'med'},
-  {date:'Sep 3, 2024',type:'Claims Pull',icon:'file',text:'847 claims reviewed for FY2024. Estimated overbilling vs. peer-adjusted expected: $1.4M.',sev:'high'},
-  {date:'Sep 4, 2024',type:'Analyst Review',icon:'user',text:'Assigned to Analyst J. Morrison. Priority: HIGH. Recommended for site visit and records request.',sev:'info'},
+  {date:'Sep 3, 2024',type:'Claims Pull',icon:'file',text:'847 claims reviewed for FY2024. Estimated overbilling vs. peer-adjusted expected: $2.1M.',sev:'high'},
+  {date:'Sep 4, 2024',type:'Analyst Review',icon:'user',text:'Assigned to Analyst J. Morrison. Priority: HIGH. Recommended for site visit, records request, and ownership structure review.',sev:'info'},
 ];
 
 // ── POLICY KNOWLEDGE GRAPH DATA ───────────────────────────────────────────────
@@ -187,7 +189,7 @@ const pkgSignals = [
     ],
     determination: 'LIKELY VIOLATION',
     determinationConf: 91,
-    reasoning: '47-to-6 code reduction directly contradicts the clinical diversity expected in CMS IOM §30.6.1. The 98% billing concentration in high-reimbursement codes with simultaneous 442% billing growth is not attributable to legitimate specialty focus — peer cohort of 847 providers shows no comparable pattern. OIG FY2024 Work Plan explicitly identifies this pattern.',
+    reasoning: 'The 45-to-6 code reduction occurred within 12 months of ownership transfer (July 15, 2023), during which provider exhibited stable baseline behavior (44-47 codes, 38-41% concentration). This temporal correlation directly contradicts clinical evolution and instead suggests systematic operational changes under new management. The 98% billing concentration in high-reimbursement codes contradicts CMS IOM §30.6.1. OIG FY2024 Work Plan explicitly identifies post-acquisition billing pattern shifts as a priority enforcement area.',
     actions: [
       { type: 'IMMEDIATE', label: 'Prepayment Edit', desc: 'Place provider on prepayment review for codes 99215 and 64483 pending investigation.', priority: 'high' },
       { type: 'INVESTIGATION', label: 'Records Request', desc: 'Issue ADR for 50 randomly sampled 99215 claims to validate medical necessity documentation.', priority: 'high' },
@@ -239,7 +241,7 @@ const pkgSignals = [
   {
     id: 'sig3',
     signal: 'Network Co-billing',
-    icon: Share2, color: C.purple,
+    icon: Share2, color: C.amber,
     anomalyScore: 0.83,
     policies: [
       {
@@ -319,20 +321,20 @@ const policyTrends = [
 ];
 
 const cases = [
-  {id:'MC-2024-0891',prov:'Advanced Pain Specialists',npi:'1234567890',type:'Billing + Trend',risk:94,status:'Under Review',analyst:'J. Morrison',amt:'$1.4M',date:'Sep 4'},
-  {id:'MC-2024-0887',prov:'Sunrise Medical Group',npi:'9876543210',type:'Network',risk:91,status:'Escalated',analyst:'T. Williams',amt:'$1.2M',date:'Sep 2'},
-  {id:'MC-2024-0872',prov:'Dr. James Kellerman',npi:'1122334455',type:'Billing',risk:89,status:'Pending',analyst:'Unassigned',amt:'$547K',date:'Sep 1'},
-  {id:'MC-2024-0854',prov:'Gulf Coast DME Supply',npi:'5544332211',type:'Billing',risk:87,status:'Under Review',analyst:'M. Johnson',amt:'$890K',date:'Aug 28'},
-  {id:'MC-2024-0831',prov:'Premier Diagnostics LLC',npi:'6677889900',type:'Network',risk:83,status:'Closed · Confirmed',analyst:'J. Morrison',amt:'$720K',date:'Aug 15'},
+  {id:'MC-2024-0891',prov:'Advanced Pain Specialists',npi:'1234567890',type:'Billing + Trend',risk:94,status:'Under Review',analyst:'J. Morrison',amt:'$2.1M',date:'Sep 4'},
+  {id:'MC-2024-0887',prov:'Sunrise Medical Group',npi:'9876543210',type:'Network',risk:91,status:'Escalated',analyst:'T. Williams',amt:'$1.8M',date:'Sep 2'},
+  {id:'MC-2024-0872',prov:'Dr. James Kellerman',npi:'1122334455',type:'Billing',risk:89,status:'Pending',analyst:'Unassigned',amt:'$847K',date:'Sep 1'},
+  {id:'MC-2024-0854',prov:'Gulf Coast DME Supply',npi:'5544332211',type:'Billing',risk:87,status:'Under Review',analyst:'M. Johnson',amt:'$1.2M',date:'Aug 28'},
+  {id:'MC-2024-0831',prov:'Premier Diagnostics LLC',npi:'6677889900',type:'Network + Billing',risk:83,status:'Closed · Confirmed',analyst:'J. Morrison',amt:'$980K',date:'Aug 15'},
   {id:'MC-2024-0819',prov:'Dr. Maria Santos',npi:'0099887766',type:'Trend',risk:79,status:'Closed · Cleared',analyst:'R. Davis',amt:'—',date:'Aug 10'},
-  {id:'MC-2024-0802',prov:'Coastal Rehab Center',npi:'1357924680',type:'Network',risk:74,status:'Pending',analyst:'Unassigned',amt:'$1.1M',date:'Aug 22'},
+  {id:'MC-2024-0802',prov:'Coastal Rehab Center',npi:'1357924680',type:'Network',risk:74,status:'Pending',analyst:'Unassigned',amt:'$1.4M',date:'Aug 22'},
   {id:'MC-2024-0791',prov:'Dr. Robert Chen',npi:'2468013579',type:'Billing',risk:71,status:'Under Review',analyst:'T. Williams',amt:'$380K',date:'Aug 20'},
 ];
 
 const canned = {
   codes: "The top 6 HCPCS codes driving 98% of billing are:\n\n• 99215 — Complex office visit (61% of claims)\n• 99214 — Moderate office visit (14%)\n• 64483 — Lumbar nerve block (11%)\n• 62323 — Epidural injection (7%)\n• 72148 — Lumbar MRI (4%)\n• 20610 — Joint injection (3%)\n\nNormal pain management practices bill 30–50+ unique codes. This consolidation to 6 codes is a strong indicator of systematic cherry-picking.",
   compare: "Compared to 847 similar pain management providers in Florida:\n\n• 99215 rate: 78% vs. peer median 21%\n• New patient ratio: 52% vs. 19% median\n• Avg units/claim: 3.8 vs. 1.6 median\n• Monthly billing growth: +442% over 18 months vs. +12% peer average\n\nThis provider ranks in the top 1.3% nationally on 99215 utilization.",
-  next: "Recommended investigative steps:\n\n1. Records Request — Pull 50 random patient charts for 99215 claims to validate medical necessity\n2. Site Visit — Physical inspection of facility and patient volume\n3. Beneficiary Interviews — Contact 10–15 patients to verify services\n4. Prepayment Review — Place provider on prepayment edit pending investigation\n\nEstimated timeline: 6–8 weeks. Estimated recovery if confirmed: $1.4M.",
+  next: "Recommended investigative steps:\n\n1. Records Request — Pull 50 random patient charts for 99215 claims to validate medical necessity\n2. Site Visit — Physical inspection of facility and patient volume\n3. Beneficiary Interviews — Contact 10–15 patients to verify services\n4. Prepayment Review — Place provider on prepayment edit pending investigation\n\nEstimated timeline: 6–8 weeks. Estimated recovery if confirmed: $2.1M.",
   default: "I can help you analyze specific billing codes, compare this provider to their peers, outline recommended investigative steps, or draft a case summary for your supervisor. What would you like to explore?",
 };
 
@@ -547,11 +549,13 @@ function AnomalyFeed({ onSelect, feedback = {}, onFeedback = () => {} }) {
       {rows.map((r, i) => {
         const fb = getLatestFeedback(r.npi);
         const fbColor = fb ? (fb.verdict === 'confirmed' ? C.red : fb.verdict === 'legitimate' ? C.green : fb.verdict === 'watch' ? C.cyan : C.amber) : null;
+        const isCleared = r.status === 'Cleared';
         return (
           <div key={r.id} className="fu" style={{
             background:C.s2, border:`1px solid ${expanded===r.id ? C.b2 : (fb ? fbColor+'40' : C.b0)}`,
             borderRadius:10, overflow:'hidden',
             animationDelay:`${i*0.04}s`,
+            opacity: isCleared ? 0.5 : 1,
           }}>
           <div onClick={() => setExpanded(expanded===r.id ? null : r.id)} style={{
             display:'grid', gridTemplateColumns:'2.2fr 1fr 110px 110px 80px 160px',
@@ -560,7 +564,13 @@ function AnomalyFeed({ onSelect, feedback = {}, onFeedback = () => {} }) {
             <div>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                 <div style={{ fontSize:14, fontWeight:500, color:C.text }}>{r.name}</div>
-                {fb && (
+                {isCleared && (
+                  <div style={{ padding:'2px 7px', borderRadius:4, background:`${C.green}15`, border:`1px solid ${C.green}30`, fontSize:9, color:C.green, ...mono, display:'flex', alignItems:'center', gap:4 }}>
+                    <CheckCircle size={9}/>
+                    CLEARED
+                  </div>
+                )}
+                {fb && !isCleared && (
                   <div style={{ padding:'2px 7px', borderRadius:4, background:`${fbColor}15`, border:`1px solid ${fbColor}30`, fontSize:9, color:fbColor, ...mono, display:'flex', alignItems:'center', gap:4 }}>
                     {fb.verdict === 'confirmed' ? <AlertCircle size={9}/> : fb.verdict === 'legitimate' ? <CheckCircle size={9}/> : <Clock size={9}/>}
                     {fb.verdict === 'confirmed' ? 'CONFIRMED' : fb.verdict === 'legitimate' ? 'LEGITIMATE' : fb.verdict === 'watch' ? 'ON WATCH' : 'REVIEW'}
@@ -580,33 +590,59 @@ function AnomalyFeed({ onSelect, feedback = {}, onFeedback = () => {} }) {
             <div style={{ fontSize:12, color:C.dim }}>{r.type}</div>
             <RiskBadge score={r.risk} />
             <ConfBar val={r.conf} />
-            <div style={{ ...oxan, fontSize:13, fontWeight:700, color:C.amber }}>{r.amt}</div>
+            <div style={{ ...oxan, fontSize:13, fontWeight:700, color:isCleared ? C.dim : C.amber }}>{isCleared ? '—' : r.amt}</div>
             <div style={{ display:'flex', gap:7 }}>
-              <button onClick={e=>{e.stopPropagation(); onSelect(r);}} style={{
-                padding:'5px 11px', borderRadius:6, border:`1px solid ${C.cyan}50`,
-                background:`${C.cyan}10`, color:C.cyan, fontSize:11, cursor:'pointer',
-              }}>Review</button>
+              {isCleared ? (
+                <button disabled style={{
+                  padding:'5px 11px', borderRadius:6, border:`1px solid ${C.b0}`,
+                  background:C.s3, color:C.muted, fontSize:11, cursor:'not-allowed',
+                }}>Closed</button>
+              ) : (
+                <button onClick={e=>{e.stopPropagation(); onSelect(r);}} style={{
+                  padding:'5px 11px', borderRadius:6, border:`1px solid ${C.cyan}50`,
+                  background:`${C.cyan}10`, color:C.cyan, fontSize:11, cursor:'pointer',
+                }}>Review</button>
+              )}
             </div>
           </div>
           {expanded === r.id && (
             <div style={{ borderTop:`1px solid ${C.b0}`, padding:16, background:C.s3 }}>
-              <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
-                <div style={{ padding:6, borderRadius:6, background:`${C.cyan}15`, flexShrink:0 }}>
-                  <Bot size={14} color={C.cyan} />
-                </div>
-                <div>
-                  <div style={{ ...mono, fontSize:10, color:C.cyan, letterSpacing:'0.06em', marginBottom:7 }}>
-                    AI ANALYSIS · INLINE REASON CODE
+              {isCleared ? (
+                <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+                  <div style={{ padding:6, borderRadius:6, background:`${C.green}15`, flexShrink:0 }}>
+                    <CheckCircle size={14} color={C.green} />
                   </div>
-                  <div style={{ fontSize:13, color:C.dim, lineHeight:1.7 }}>
-                    This provider shows statistically significant deviation from peer cohort.
-                    Primary signal: <span style={{ color:C.text, fontWeight:500 }}>{r.flag.toLowerCase()}</span> — detected with{' '}
-                    <span style={{ color:C.cyan }}>{r.conf}% confidence</span> using ensemble anomaly detection across 12-month claims history.
-                    Flagged {r.days} day{r.days>1?'s':''} ago.{' '}
-                    <span style={{ color:C.amber }}>Recommended: Priority investigation + records request.</span>
+                  <div>
+                    <div style={{ ...mono, fontSize:10, color:C.green, letterSpacing:'0.06em', marginBottom:7 }}>
+                      CASE CLOSED · NO FURTHER ACTION REQUIRED
+                    </div>
+                    <div style={{ fontSize:13, color:C.dim, lineHeight:1.7 }}>
+                      This case has been reviewed and <span style={{ color:C.green, fontWeight:500 }}>cleared</span> by investigator.
+                      Initial anomaly flags were determined to have legitimate clinical explanations.{' '}
+                      <span style={{ color:C.text }}>Status: Closed · Cleared</span> — No recovery action or escalation needed.
+                      Case file available for audit reference in Case Management.
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+                  <div style={{ padding:6, borderRadius:6, background:`${C.cyan}15`, flexShrink:0 }}>
+                    <Bot size={14} color={C.cyan} />
+                  </div>
+                  <div>
+                    <div style={{ ...mono, fontSize:10, color:C.cyan, letterSpacing:'0.06em', marginBottom:7 }}>
+                      AI ANALYSIS · INLINE REASON CODE
+                    </div>
+                    <div style={{ fontSize:13, color:C.dim, lineHeight:1.7 }}>
+                      This provider shows statistically significant deviation from peer cohort.
+                      Primary signal: <span style={{ color:C.text, fontWeight:500 }}>{r.flag.toLowerCase()}</span> — detected with{' '}
+                      <span style={{ color:C.cyan }}>{r.conf}% confidence</span> using ensemble anomaly detection across 12-month claims history.
+                      Flagged {r.days} day{r.days>1?'s':''} ago.{' '}
+                      <span style={{ color:C.amber }}>Recommended: Priority investigation + records request.</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           </div>
@@ -887,9 +923,9 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
 
   const reasons = [
     { icon:TrendingUp, label:'HCPCS Consolidation', color:C.red,
-      desc:`Unique procedure codes fell from 47 → 6 over 18 months. Top 3 codes now represent 98% of all billing. Pattern is consistent with systematic code selection to maximize reimbursement.`, section:'hcpcs_consolidation' },
+      desc:`Unique procedure codes fell from 45 → 6 following July 2023 ownership transfer. Prior 16-month baseline showed stable diversity (44-47 codes). Top 3 codes now represent 98% of billing, up from 41% at transfer. Pattern change timing correlates with ownership change.`, section:'hcpcs_consolidation' },
     { icon:AlertTriangle, label:'E&M Upcoding', color:C.amber,
-      desc:`99215 (highest-complexity visit) accounts for 78% of E&M claims vs. peer median of 18%. Provider ranks in the top 1.3% nationally — statistically improbable without systematic miscoding.`, section:'em_upcoding' },
+      desc:`99215 rate was normal (19-21%) pre-ownership change, then spiked 311% to 78% over 12 months. Current rate is 4.3× peer median. Both signals exhibit synchronized timing with ownership transfer on July 15, 2023, suggesting coordinated operational changes.`, section:'em_upcoding' },
     { icon:Share2, label:'Network Co-billing', color:C.amber,
       desc:`34% of patients share treatment history with Sunrise Medical Group (also flagged, NPI 9876543210). Mutual referral density is 4.2× expected for independent practices.`, section:'network_cobilling' },
   ];
@@ -984,7 +1020,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                 </div>
                 <div>
                   <div style={{ ...oxan, fontWeight:700, fontSize:13, color:C.text }}>Signal 1 · HCPCS Code Consolidation</div>
-                  <div style={{ fontSize:11, color:C.dim, marginTop:1 }}>Billing collapsed from 47 unique codes to 6 codes — 98% concentration on just 3 high-paying codes</div>
+                  <div style={{ fontSize:11, color:C.dim, marginTop:1 }}>Billing collapsed from 45 unique codes to 6 codes — 98% concentration on just 3 high-paying codes. Drastic shift correlates directly with July 2023 ownership transfer to Pain Management Holdings LLC.</div>
                 </div>
               </div>
               <Chip label="HIGH SEVERITY" color={C.red}/>
@@ -992,7 +1028,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
             <div style={{ padding:20, display:'flex', gap:16 }}>
               {/* Left: Dual-axis chart (2/3 width) */}
               <div style={{ flex:2, display:'flex', flexDirection:'column' }}>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:12, ...mono }}>CODE DIVERSITY COLLAPSE & CONCENTRATION RISE · 18-MONTH TREND</div>
+                <div style={{ fontSize:11, color:C.muted, marginBottom:12, ...mono }}>CODE DIVERSITY COLLAPSE & CONCENTRATION RISE · 18-MONTH TREND · OWNERSHIP CHANGE JUL 15, 2023</div>
                 <ResponsiveContainer width="100%" height={200}>
                   <AreaChart data={hcpcs} margin={{ top:5, right:40, bottom:5, left:-20 }}>
                     <defs>
@@ -1012,6 +1048,10 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                     <Tooltip {...tipStyle} formatter={(v, name)=>[name === 'Unique Codes' ? `${v} codes` : `${v}%`, name]}/>
                     <Area yAxisId="left" type="monotone" dataKey="codes" stroke={C.red} strokeWidth={2.5} fill="url(#gCodes)" name="Unique Codes"/>
                     <Area yAxisId="right" type="monotone" dataKey="top3" stroke={C.amber} strokeWidth={1.5} fill="url(#gConc)" name="Top 3 Concentration" strokeDasharray="4 3"/>
+                    {/* Ownership change marker */}
+                    <line x1="23%" y1="0" x2="23%" y2="100%" stroke={C.cyan} strokeWidth={2} strokeDasharray="6 4" opacity={0.6}/>
+                    <text x="24%" y="15" fill={C.cyan} fontSize={9} fontFamily="IBM Plex Mono" fontWeight={600}>OWNERSHIP CHANGE</text>
+                    <text x="24%" y="28" fill={C.dim} fontSize={8} fontFamily="IBM Plex Mono">Jul 15, 2023</text>
                   </AreaChart>
                 </ResponsiveContainer>
                 <div style={{ display:'flex', gap:14, marginTop:8 }}>
@@ -1029,8 +1069,8 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                 {/* Key metrics */}
                 <div style={{ display:'flex', flexDirection:'row', gap:10 }}>
                   {[
-                    {v:'47 → 6', l:'Code diversity collapse', c:C.red, sub:'87% reduction in 18 months'},
-                    {v:'98%', l:'Top 3 concentration', c:C.amber, sub:'up from 38% baseline'},
+                    {v:'45 → 6', l:'Code diversity collapse', c:C.red, sub:'87% drop post-ownership'},
+                    {v:'98%', l:'Top 3 concentration', c:C.amber, sub:'up from 41% at transfer'},
                   ].map((s,i)=>(
                     <div key={i} style={{ background:C.s3, border:`1px solid ${C.b0}`, borderRadius:8, padding:'12px 14px', flex:1 }}>
                       <div style={{ ...oxan, fontSize:20, fontWeight:800, color:s.c, lineHeight:1 }}>{s.v}</div>
@@ -1079,7 +1119,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                 </div>
                 <div>
                   <div style={{ ...oxan, fontWeight:700, fontSize:13, color:C.text }}>Signal 2 · E&M Level Upcoding</div>
-                  <div style={{ fontSize:11, color:C.dim, marginTop:1 }}>99215 (highest complexity) used 4× above peer median — statistically improbable without systematic miscoding</div>
+                  <div style={{ fontSize:11, color:C.dim, marginTop:1 }}>99215 (highest complexity) used 4× above peer median — statistically improbable without systematic miscoding. Provider maintained normal 19-21% rate until ownership transfer, then spiked 311% over 12 months.</div>
                 </div>
               </div>
               <Chip label="HIGH SEVERITY" color={C.amber}/>
@@ -1109,7 +1149,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
               </div>
               {/* 99215 rate trend */}
               <div style={{ flex:1 }}>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:12, ...mono }}>99215 UTILIZATION RATE OVER TIME · PROVIDER vs. PEER MEDIAN %</div>
+                <div style={{ fontSize:11, color:C.muted, marginBottom:12, ...mono }}>99215 UTILIZATION RATE OVER TIME · OWNERSHIP CHANGE JUL 15, 2023</div>
                 <ResponsiveContainer width="100%" height={200}>
                   <AreaChart data={emTrend} margin={{ top:5, right:10, bottom:5, left:-20 }}>
                     <defs>
@@ -1128,10 +1168,14 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                     <Tooltip {...tipStyle} formatter={(v)=>[`${v}%`]}/>
                     <Area type="monotone" dataKey="prov" stroke={C.red} strokeWidth={2.5} fill="url(#gProv)" name="This Provider"/>
                     <Area type="monotone" dataKey="peer" stroke={C.cyan} strokeWidth={1.5} fill="url(#gPeer)" name="Peer Median" strokeDasharray="4 3"/>
+                    {/* Ownership change marker */}
+                    <line x1="23%" y1="0" x2="23%" y2="100%" stroke={C.cyan} strokeWidth={2} strokeDasharray="6 4" opacity={0.6}/>
+                    <text x="24%" y="15" fill={C.cyan} fontSize={9} fontFamily="IBM Plex Mono" fontWeight={600}>OWNERSHIP CHANGE</text>
+                    <text x="24%" y="28" fill={C.dim} fontSize={8} fontFamily="IBM Plex Mono">Jul 15, 2023</text>
                   </AreaChart>
                 </ResponsiveContainer>
                 <div style={{ display:'flex', gap:14, marginTop:8 }}>
-                  {[{c:C.red,l:'This Provider (31% → 78%)'},{c:C.cyan,l:'Peer Median (stable ~19%)'}].map((x,i)=>(
+                  {[{c:C.red,l:'This Provider (19% → 78%)'},{c:C.cyan,l:'Peer Median (stable ~19%)'}].map((x,i)=>(
                     <div key={i} style={{ display:'flex', alignItems:'center', gap:6, fontSize:10, color:C.dim }}>
                       <div style={{ width:14, height:2, background:x.c }}/>{x.l}
                     </div>
@@ -1143,7 +1187,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                 {[
                   {v:'78%', l:'Provider 99215 rate', c:C.red, sub:'vs 18% peer median'},
                   {v:'Top 1.3%', l:'Nationally for 99215', c:C.red, sub:'among 847 peers (FL)'},
-                  {v:'+147%', l:'Rate rise over 18mo', c:C.amber, sub:'31% → 78%'},
+                  {v:'+311%', l:'Rate rise post-transfer', c:C.amber, sub:'19% → 78% in 12mo'},
                   {v:'$1.1M', l:'Est. E&M overbilling', c:C.amber, sub:'vs. peer-adjusted expected'},
                 ].map((s,i)=>(
                   <div key={i} style={{ background:C.s3, border:`1px solid ${C.b0}`, borderRadius:8, padding:'10px 12px' }}>
@@ -1160,19 +1204,32 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
             </div>
           </div>
 
+          {/* ── CROSS-SIGNAL AI INSIGHT: SYNCHRONIZED TIMING ─────────────── */}
+          <div style={{ padding:'14px 18px', background:`${C.purple}08`, border:`1px solid ${C.purple}22`, borderRadius:10, display:'flex', gap:12, alignItems:'flex-start' }}>
+            <div style={{ padding:8, borderRadius:8, background:`${C.purple}15`, flexShrink:0 }}>
+              <Lightbulb size={16} color={C.purple}/>
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ ...oxan, fontSize:12, fontWeight:700, color:C.purple, marginBottom:5 }}>AI PATTERN CORRELATION INSIGHT</div>
+              <div style={{ fontSize:12, color:C.dim, lineHeight:1.7 }}>
+                Both <b style={{ color:C.text }}>Signal 1 (HCPCS consolidation)</b> and <b style={{ color:C.text }}>Signal 2 (E&M upcoding)</b> exhibit synchronized timing — pattern changes initiated within <b style={{ color:C.purple }}>30 days of ownership transfer</b> on July 15, 2023. The provider maintained a stable 16-month baseline under original ownership (Mar 2022 - Jun 2023) with normal code diversity and E&M distribution. This temporal correlation suggests <b style={{ color:C.purple }}>systematic operational changes under new management</b> rather than gradual clinical evolution, strengthening the inference of coordinated billing optimization strategy post-acquisition.
+              </div>
+            </div>
+          </div>
+
           {/* ── SIGNAL 3: NETWORK CO-BILLING ───────────────────────────────── */}
           <div style={{ background:C.s2, border:`1px solid ${C.b0}`, borderRadius:12, overflow:'hidden' }}>
-            <div style={{ padding:'14px 20px', background:`${C.purple}08`, borderBottom:`1px solid ${C.b0}`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div style={{ padding:'14px 20px', background:`${C.amber}08`, borderBottom:`1px solid ${C.b0}`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                <div style={{ width:24, height:24, borderRadius:6, background:`${C.purple}20`, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  <Share2 size={13} color={C.purple}/>
+                <div style={{ width:24, height:24, borderRadius:6, background:`${C.amber}20`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <Share2 size={13} color={C.amber}/>
                 </div>
                 <div>
                   <div style={{ ...oxan, fontWeight:700, fontSize:13, color:C.text }}>Signal 3 · Suspicious Network Co-billing</div>
                   <div style={{ fontSize:11, color:C.dim, marginTop:1 }}>4 connected providers — all independently flagged — with anomalous shared-patient overlap rates</div>
                 </div>
               </div>
-              <Chip label="MEDIUM SEVERITY" color={C.purple}/>
+              <Chip label="MEDIUM SEVERITY" color={C.amber}/>
             </div>
             <div style={{ padding:20, display:'flex', gap:16 }}>
               {/* SVG Network Diagram */}
@@ -1461,7 +1518,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
           <div style={{ display:'flex', flexDirection:'column' }}>
             {evLog.map((ev, i) => {
               const iconColor = ev.sev==='high' ? C.red : ev.sev==='med' ? C.amber : C.cyan;
-              const Icon = ev.icon==='bot' ? Bot : ev.icon==='chart' ? TrendingUp : ev.icon==='network' ? Share2 : ev.icon==='file' ? FileText : User;
+              const Icon = ev.icon==='bot' ? Bot : ev.icon==='chart' ? TrendingUp : ev.icon==='network' ? Share2 : ev.icon==='file' ? FileText : ev.icon==='building' ? Building : ev.icon==='alert' ? AlertCircle : User;
               return (
                 <div key={i} style={{ display:'flex', gap:16, paddingBottom: i<evLog.length-1 ? 22 : 0 }}>
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center' }}>
@@ -1491,22 +1548,37 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
       {tab === 'timeline' && (
         <div style={{ background:C.s2, border:`1px solid ${C.b0}`, borderRadius:12, padding:22 }} className="fu">
           <div style={{ ...oxan, fontWeight:700, fontSize:14, color:C.text, marginBottom:4 }}>Monthly Billing Timeline</div>
-          <div style={{ fontSize:11, color:C.dim, marginBottom:18 }}>Estimated monthly Medicare billing ($K) · showing 442% growth over 18 months</div>
+          <div style={{ fontSize:11, color:C.dim, marginBottom:18 }}>Total billing vs. at-risk billing ($K) · Total at-risk amount: <span style={{ color:C.red, fontWeight:600 }}>$2.1M</span> over 18 months</div>
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={hcpcs} margin={{ top:5, right:20, bottom:5, left:-10 }}>
               <defs>
                 <linearGradient id="gBill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={C.amber} stopOpacity={0.4}/>
+                  <stop offset="5%" stopColor={C.amber} stopOpacity={0.3}/>
                   <stop offset="95%" stopColor={C.amber} stopOpacity={0.02}/>
+                </linearGradient>
+                <linearGradient id="gAtRisk" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={C.red} stopOpacity={0.4}/>
+                  <stop offset="95%" stopColor={C.red} stopOpacity={0.02}/>
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={C.b0} />
               <XAxis dataKey="m" tick={{ fill:C.muted, fontSize:9, fontFamily:'IBM Plex Mono' }} axisLine={false} tickLine={false} interval={2} />
               <YAxis tick={{ fill:C.muted, fontSize:9, fontFamily:'IBM Plex Mono' }} axisLine={false} tickLine={false} tickFormatter={v=>`$${v}K`} />
-              <Tooltip {...tipStyle} formatter={(v)=>[`$${v}K`,'Monthly Billing']} />
-              <Area type="monotone" dataKey="bill" stroke={C.amber} strokeWidth={2.5} fill="url(#gBill)" name="Billing ($K)" />
+              <Tooltip {...tipStyle} formatter={(v,name)=>[`$${v}K`,name]} />
+              <Area type="monotone" dataKey="bill" stroke={C.amber} strokeWidth={2} fill="url(#gBill)" name="Total Billing" opacity={0.7}/>
+              <Area type="monotone" dataKey="atRisk" stroke={C.red} strokeWidth={2.5} fill="url(#gAtRisk)" name="At-Risk Billing" />
             </AreaChart>
           </ResponsiveContainer>
+          <div style={{ display:'flex', gap:18, marginTop:12, justifyContent:'center' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:C.dim }}>
+              <div style={{ width:16, height:3, background:C.amber, borderRadius:2 }}/>
+              <span>Total Billing ($2,315K)</span>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:C.dim }}>
+              <div style={{ width:16, height:3, background:C.red, borderRadius:2 }}/>
+              <span>At-Risk Billing ($2,099K)</span>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1726,6 +1798,10 @@ function CaseMgmt({ feedback = {}, onFeedback = () => {} }) {
   
   // Helper to determine suggested action based on feedback
   const getSuggestedAction = (caseItem) => {
+    // Handle closed cases first
+    if (caseItem.status === 'Closed · Cleared') {
+      return { action: '—', color: C.muted, icon: null };
+    }
     const fb = getLatestFeedback(caseItem.npi);
     if (!fb) return { action: 'Review Needed', color: C.amber, icon: Clock };
     if (fb.verdict === 'confirmed') return { action: 'Escalate', color: C.red, icon: ArrowUp };
@@ -1831,7 +1907,9 @@ function CaseMgmt({ feedback = {}, onFeedback = () => {} }) {
             </div>
             <span style={{ fontSize:12, color: c.analyst==='Unassigned' ? C.amber : C.dim }}>{c.analyst}</span>
             <div>
-              {fb ? (
+              {c.status === 'Closed · Cleared' ? (
+                <span style={{ fontSize:12, color:C.muted, ...mono }}>—</span>
+              ) : fb ? (
                 <div style={{ 
                   padding:'5px 10px', borderRadius:5, fontSize:10, ...mono,
                   background:`${suggestedAction.color}15`, border:`1px solid ${suggestedAction.color}40`,
@@ -1855,7 +1933,7 @@ function AIPanel({ onClose }) {
   const [input, setInput] = useState('');
   const [msgs, setMsgs] = useState([{
     role:'assistant',
-    text:"I've analyzed Advanced Pain Specialists (NPI: 1234567890) and identified 3 high-confidence anomaly signals:\n\n1. HCPCS Consolidation — Billed 47 unique procedure codes in Mar 2023. By Aug 2024, just 6 codes account for 98% of billing. Consistent with systematic code cherry-picking to maximize reimbursement.\n\n2. E&M Upcoding — 99215 (highest-complexity visit) is 78% of all E&M claims vs. peer median of 18%. This provider ranks in the top 1.3% nationally — statistically improbable without systematic miscoding.\n\n3. Network Co-billing — 34% of patients share treatment history with Sunrise Medical Group (also flagged). Mutual referral density is 4.2× expected for unrelated practices.\n\nEstimated overpayment risk: $1.4M (FY2024)",
+    text:"I've analyzed Advanced Pain Specialists (NPI: 1234567890) and identified 3 high-confidence anomaly signals:\n\n1. HCPCS Consolidation — Billed 47 unique procedure codes in Mar 2023. By Aug 2024, just 6 codes account for 98% of billing. Consistent with systematic code cherry-picking to maximize reimbursement.\n\n2. E&M Upcoding — 99215 (highest-complexity visit) is 78% of all E&M claims vs. peer median of 18%. This provider ranks in the top 1.3% nationally — statistically improbable without systematic miscoding.\n\n3. Network Co-billing — 34% of patients share treatment history with Sunrise Medical Group (also flagged). Mutual referral density is 4.2× expected for unrelated practices.\n\nEstimated overpayment risk: $2.1M (FY2024)",
   }]);
 
   const send = () => {
