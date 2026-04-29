@@ -1050,11 +1050,15 @@ Adapter selection is driven by environment configuration, not code changes.
 
 ### 14.3 Current state vs. target
 
+> **Last updated**: April 2026. See [`docs/project_status_report.md`](project_status_report.md) for the full implementation status, gap-closure plan, and risk register.
+
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
-| `backend/` | Minimal scaffold (`main.py` hello world, `pyproject.toml` with no dependencies) | Add FastAPI, project structure, `shared/` types, first adapter protocol |
-| `chili_app/` | Vite + React template placeholder | Replace template with app shell (routing, layout, config loading) |
-| `docs/` | This architecture document | Add ADRs as decisions are made |
-| `infra/` | Empty directory | Add Docker Compose for local dev, Dockerfiles |
-| Testing | None | Add pytest config, first backend unit tests |
-| CI/CD | None | Add GitHub Actions for lint + type-check + test |
+| `backend/` | ~38% implemented. Full 16-module package structure in place with protocols, service skeletons, models, and in-memory adapters for all modules. `shared/`, `config/`, `events/`, `ingestion/`, `graph/`, `vectorstore/` are functional with test coverage ≥85%. Neo4j and Qdrant production adapters complete. | Production LLM and embeddings adapters; RAG pipeline implementation; monitoring service; analytics modules (timeseries, GNN, risk, explainability) |
+| `api/` | FastAPI app factory, CORS middleware, `/health` stub, 2 of 8 routers (`config`, `knowledgebases`) registered. Dependency injection layer wired for config-driven adapter selection across all subsystems. | 6 remaining routers (alerts, investigation, rag, ws, analytics, evidence); auth/RBAC middleware; real subsystem health checks |
+| `agent/coordinator.py` | Async Redis Streams consumer loop. Pipeline handles 7 event types covering upload → parse → chunk → extract → validate → graph. Embeddings and analytics handlers not yet wired. | Wire embeddings step; wire analytics pipeline; per-event error isolation; dead-letter queue; SIGTERM graceful shutdown |
+| `chili_app/` | Vite + React 19 scaffold. `App.tsx` is template placeholder content. No routing or pages implemented. | App shell with React Router v7, layout component, config fetching from `GET /config/domain`; 6 target pages |
+| `docs/` | Architecture doc, onboarding guide, project status report, full backlog (135 stories across E1–E21). | ADRs as architectural decisions are made |
+| `infra/` | `docker-compose.dev.yaml` and `docker-compose.yaml` functional with all services (Redis, Neo4j, Qdrant, MinIO). Makefile with dev/prod/test/clean targets. Dockerfiles for both containers. | Kubernetes manifests / Helm chart; IaC (Terraform or Pulumi) |
+| Testing | 8 of 17 backend packages at ≥85% coverage. `llm/`, `rag/`, `monitoring/`, and all `analytics/` sub-modules have test stubs only. | Bring all remaining packages to ≥85% coverage as implementations land |
+| CI/CD | None | GitHub Actions workflow: lint (`ruff`) + type-check (`pyright`) + test (`pytest --cov`) + frontend build on every PR |

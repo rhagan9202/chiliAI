@@ -1,6 +1,6 @@
 # chiliAI — Project Status Report
 
-> **Date**: April 17, 2026  
+> **Date**: April 29, 2026 *(originally compiled April 17, 2026; updated to reflect commits through April 29)*  
 > **Compiled by**: Project Manager (synthesized from Code Quality Agent + Requirements Agent reviews)  
 > **Team**: 4–5 engineers  
 > **Release scope**: All capabilities — no phasing; single final release target
@@ -9,7 +9,9 @@
 
 ## Executive Summary
 
-chiliAI is an **architecturally sound early-stage scaffold** at approximately **30% overall implementation**. The foundational patterns — hexagonal architecture, protocol-first design, domain reconfigurability, event-driven pipelines — are well-executed and consistent with `docs/architecture.md`. However, significant capability gaps remain across 11 of 16 backend modules, the entire frontend, and all cross-cutting concerns (observability, security, CI/CD).
+chiliAI is an **architecturally sound early-stage scaffold** at approximately **38% overall implementation** (up from 30% at initial audit). The foundational patterns — hexagonal architecture, protocol-first design, domain reconfigurability, event-driven pipelines — are well-executed and consistent with `docs/architecture.md`. Key progress since initial audit: Neo4j graph adapter and Qdrant vector store adapter are complete; test stubs added for LLM, RAG, and monitoring modules.
+
+The backlog has grown: a full TODO scan in April 2026 identified 33 additional production gaps across 11 new epics (E11–E21), bringing the total backlog to **135 stories**. These new stories cover config hot-reload, LLM/embeddings protocol extensions, agent lifecycle methods, shared type hardening, event codec improvements, and analytics adapter completions. All 135 stories are tracked as GitHub Issues in `Fed-Incubator/Crushing-Fraud-XAI`.
 
 ### Verdict
 
@@ -17,7 +19,7 @@ chiliAI is an **architecturally sound early-stage scaffold** at approximately **
 |-----------|--------|
 | **Architectural Integrity** | STRONG — protocols, adapters, boundaries respected |
 | **Code Quality** | GOOD — types consistent, no contract slippage, clean boundaries |
-| **Implementation Completeness** | LOW (~30%) — most modules are scaffolds or stubs |
+| **Implementation Completeness** | LOW (~38%) — foundation, graph, and vector store complete; analytics, RAG, and frontend are stubs |
 | **Production Readiness** | NOT READY — no production adapters, no auth, no observability |
 | **Test Coverage** | INCONSISTENT — 5 modules at 0%; 6 modules at 80%+ |
 
@@ -44,8 +46,8 @@ Every external system has a proper protocol:
 
 | System | Protocol | Production Adapter | Status |
 |--------|----------|--------------------|--------|
-| Graph DB | `GraphRepository` | Optional Neo4j adapter plus in-memory scaffolding | ⚠️ Optional dependency; integration requires configured Neo4j |
-| Vector Store | `VectorStoreProtocol` | **MISSING** (in-memory only) | BLOCKED |
+| Graph DB | `GraphRepository` | Neo4j adapter ✅ (`graph/adapters/neo4j_adapter.py`) + in-memory | READY (Neo4j) |
+| Vector Store | `VectorStoreProtocol` | Qdrant adapter ✅ (`vectorstore/adapters/qdrant_adapter.py`) + in-memory | READY (Qdrant) |
 | Object Storage | `ObjectStore` | **MISSING** (in-memory only) | BLOCKED |
 | LLM | `LlmClientProtocol` | **MISSING** (echo stub only) | BLOCKED |
 | Embeddings | `EmbedderProtocol` | **MISSING** (MD5 stub only) | BLOCKED |
@@ -93,13 +95,13 @@ No shadow type definitions. UTC timestamp generation is consolidated through `sh
 | **ingestion/** | 85% | ✅ | **93%** | LLM-powered extraction deferred; no async I/O |
 | **agent/** | 70% | ✅ | **88%** | Embeddings handler missing; no dead-letter; no durable state |
 | **api/** | 40% | ✅ | ~80% | 6 of 8 routers missing; no auth middleware; no file validation |
-| **graph/** | 35% | ✅ | **96%** | In-memory read/query methods implemented; no production adapters yet |
-| **vectorstore/** | 30% | ✅ | ~85% | No production adapters; no metadata filtering |
+| **graph/** | 60% | ✅ | **96%** | Neo4j adapter complete; `get_subgraph` and production query surface still partial |
+| **vectorstore/** | 55% | ✅ | ~90% | Qdrant adapter complete; no metadata filtering; no pgvector/Weaviate |
 | **embeddings/** | 20% | ✅ | ~80% | No production adapters; no configurable dimension/model |
 | **storage/** | 30% | ⚠️ | ~70% | No S3/MinIO/local adapters; no streaming upload |
-| **llm/** | 20% | ❌ | **0%** | No production adapters; 0 tests; no OpenAI/Anthropic/Ollama |
-| **rag/** | 10% | ❌ | **0%** | Pipeline is pseudo-code; 0 tests; no error handling |
-| **monitoring/** | 5% | ❌ | **0%** | Consumer + alert generation not implemented |
+| **llm/** | 20% | ⚠️ | ~15% | No production adapters; test stubs added; no OpenAI/Anthropic/Ollama |
+| **rag/** | 10% | ⚠️ | ~15% | Pipeline is pseudo-code; test stubs added; no error handling |
+| **monitoring/** | 5% | ⚠️ | ~15% | Consumer + alert generation not implemented; test stubs added |
 | **analytics/timeseries** | 0% | ❌ | **0%** | Empty module |
 | **analytics/gnn** | 0% | ❌ | **0%** | Empty module |
 | **analytics/risk** | 0% | ❌ | **0%** | Empty module |
@@ -166,16 +168,16 @@ All post-graph stages missing: analytics pipeline empty, monitoring service stub
 
 | # | Issue | Files Affected | Blocks | Effort |
 |---|-------|----------------|--------|--------|
-| 1 | **Production adapter implementations still incomplete** — DI selection exists, but several subsystems still only expose in-memory adapters | `embeddings/adapters/*`, `llm/adapters/*`, `storage/adapters/*` | All production deployments; remaining real adapters | M (2-3 days) |
+| 1 | **Production adapter implementations still incomplete** — DI selection exists, but embeddings, LLM, and object storage still only expose in-memory/stub adapters | `embeddings/adapters/*`, `llm/adapters/*`, `storage/adapters/*` | RAG pipeline, entity extraction, persistent document storage | M (2-3 days each) |
 | 2 | **Embeddings not wired in coordinator** — pipeline stops after graph.updated | `agent/coordinator.py` | RAG chat, vector search, entire retrieval path | S (1 day) |
 
 ### Tier 2 — Capability Gaps (blocks specific features)
 
 | # | Issue | Files Affected | Blocks | Effort |
 |---|-------|----------------|--------|--------|
-| 5 | **Production embeddings adapter (OpenAI or sentence-transformers)** | `embeddings/adapters/openai.py` or `sentence_transformers.py` (new) | Real embedding generation | M (2-3 days) |
-| 7 | **Production LLM adapter (OpenAI/Anthropic)** | `llm/adapters/openai.py` (new) | RAG answers, entity extraction | M (2-3 days) |
-| 8 | **Production storage adapter (S3/MinIO)** | `storage/adapters/s3.py` (new) | Persistent document storage | M (2-3 days) |
+| 3 | **Production embeddings adapter (OpenAI or sentence-transformers)** | `embeddings/adapters/openai.py` or `sentence_transformers.py` (new) | Real embedding generation | M (2-3 days) |
+| 4 | **Production LLM adapter (OpenAI/Anthropic)** | `llm/adapters/openai.py` (new) | RAG answers, entity extraction | M (2-3 days) |
+| 5 | **Production storage adapter (S3/MinIO)** | `storage/adapters/s3.py` (new) | Persistent document storage | M (2-3 days) |
 | 9 | **RAG pipeline implementation + tests** | `rag/service.py`, `rag/adapters/`, new tests | RAG chat endpoint | L (4-5 days) |
 | 10 | **6 missing API routers** | `api/routers/alerts.py`, `investigation.py`, `rag.py`, `ws.py`, `analytics.py`, `evidence.py` (all new) | Frontend API communication | L (4-5 days) |
 | 11 | **Analytics: timeseries anomaly detection** | `analytics/timeseries/detector.py`, `models.py` (new) | Anomaly detection alerts | L (6+ days) |
@@ -344,8 +346,8 @@ Week  1  2  3  4  5  6  7  8  9  10  11  12
 
 ### New Files Required
 
-- `graph/adapters/neo4j_adapter.py` — Neo4j graph adapter
-- `vectorstore/adapters/qdrant_adapter.py` — Qdrant vector adapter
+- `graph/adapters/neo4j_adapter.py` — Neo4j graph adapter **✅ Complete**
+- `vectorstore/adapters/qdrant_adapter.py` — Qdrant vector adapter **✅ Complete**
 - `embeddings/adapters/sentence_transformers.py` — sentence-transformers adapter
 - `embeddings/adapters/openai.py` — OpenAI embeddings adapter
 - `llm/adapters/openai.py` — OpenAI LLM adapter
@@ -394,9 +396,9 @@ Week  1  2  3  4  5  6  7  8  9  10  11  12
 | vectorstore/ | ~85% | ≥85% | ✅ Met |
 | embeddings/ | ~80% | ≥85% | 5% gap |
 | storage/ | ~70% | ≥85% | 15% gap |
-| llm/ | 0% | ≥85% | 85% gap |
-| rag/ | 0% | ≥85% | 85% gap |
-| monitoring/ | 0% | ≥85% | 85% gap |
+| llm/ | ~15% | ≥85% | ~70% gap (test stubs added) |
+| rag/ | ~15% | ≥85% | ~70% gap (test stubs added) |
+| monitoring/ | ~15% | ≥85% | ~70% gap (test stubs added) |
 | analytics/timeseries | 0% | ≥85% | 85% gap |
 | analytics/gnn | 0% | ≥85% | 85% gap |
 | analytics/risk | 0% | ≥85% | 85% gap |

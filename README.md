@@ -94,7 +94,7 @@ python -m agent.coordinator                         # Pipeline worker
 pytest --cov                                        # Run tests with coverage
 ```
 
-> **Current state**: Both frontend and backend are early-stage scaffolds. See [`docs/architecture.md` §14.3](docs/architecture.md#143-current-state-vs-target) for current state vs. target.
+> **Current state**: Backend is ~38% implemented — full 16-module structure, protocols, and adapters in place; Neo4j and Qdrant adapters complete; pipeline covers upload→ingest→graph. Frontend is a Vite + React scaffold. See [`docs/project_status_report.md`](docs/project_status_report.md) and [`docs/architecture.md` §14.3](docs/architecture.md#143-current-state-vs-target) for full status.
 
 ## Key Architectural Decisions
 
@@ -110,6 +110,6 @@ pytest --cov                                        # Run tests with coverage
 
 | Document | Purpose |
 |----------|---------|
-| [`docs/architecture.md`](docs/architecture.md) | Full high-level architecture and design (source of truth) |
-| [`backend/README.md`](backend/README.md) | Backend setup, module overview, development commands |
+| [`docs/architecture.md`](docs/architecture.md) | Full high-level architecture and design (source of truth) || [`docs/onboarding.md`](docs/onboarding.md) | **New developer onboarding guide** — environment setup, conventions, how-to examples for adding modules, routes, adapters, and frontend components |
+| [`docs/project_status_report.md`](docs/project_status_report.md) | Current implementation status, gap-closure plan, and risk register || [`backend/README.md`](backend/README.md) | Backend setup, module overview, development commands |
 | [`chili_app/README.md`](chili_app/README.md) | Frontend setup, page structure, development commands |

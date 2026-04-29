@@ -9,6 +9,8 @@
 
 ## Backlog Summary
 
+> **Last updated**: April 29, 2026. Epics E11–E21 added from full TODO scan (33 stories, GitHub Issues #126–#158).
+
 | Epic | Title | Stories | P0 | P1 | P2 | P3 |
 |------|-------|---------|----|----|----|----|
 | E1 | Foundation & Shared Infrastructure | 10 | 3 | 4 | 3 | 0 |
@@ -21,7 +23,18 @@
 | E8 | Monitoring & Alerting | 8 | 0 | 4 | 3 | 0 |
 | E9 | Frontend Application | 13 | 2 | 8 | 2 | 0 |
 | E10 | Quality, Security & Operations | 15 | 3 | 9 | 2 | 0 |
-| **Total** | | **102** | **18** | **49** | **26** | **3** |
+| E11 | Config System Hardening | 5 | 0 | 3 | 2 | 0 |
+| E12 | Ingestion Hardening | 3 | 0 | 2 | 1 | 0 |
+| E13 | LLM Adapter Protocol Extensions | 2 | 0 | 2 | 0 | 0 |
+| E14 | Embeddings Service & Protocol Extensions | 2 | 0 | 2 | 0 | 0 |
+| E15 | RAG Service Hardening | 3 | 0 | 2 | 1 | 0 |
+| E16 | Agent Lifecycle & Idempotency | 4 | 0 | 3 | 1 | 0 |
+| E17 | Shared Type & Protocol Hardening | 4 | 2 | 2 | 0 | 0 |
+| E18 | VectorStore Protocol & Service Completions | 2 | 0 | 2 | 0 | 0 |
+| E19 | Event Bus Reliability | 2 | 0 | 2 | 0 | 0 |
+| E20 | Analytics Adapter Protocol Completions | 4 | 0 | 4 | 0 | 0 |
+| E21 | Graph & Alerting Config Completions | 2 | 0 | 1 | 1 | 0 |
+| **Total** | | **135** | **20** | **74** | **34** | **3** |
 
 ### Priority Definitions
 

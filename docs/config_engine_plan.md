@@ -1,7 +1,10 @@
 # Plan: Domain Configuration System
 
+> **Implementation status**: ✅ **Complete** (all phases delivered, April 2026). All deliverables below are implemented in `backend/shared/`, `backend/config/`, and `backend/api/routers/config.py`. Subsequent config extensions (hot-reload, env-var overlay, alerting schema additions) are tracked in epics E11 and E21 in [`docs/planning/backlog.md`](planning/backlog.md).
+
 ## TL;DR
 Implement the full domain configuration system (architecture §9) consisting of four deliverables: (1) the `shared/` module with generic platform types, config-definition types, protocols, and utilities — with **zero hardcoded domain-specific types**; (2) the `config/` module with Pydantic schema, YAML/JSON loader, and validation; (3) example domain configs (`medicare_fraud.yaml`, `food_supply_chain.yaml`); and (4) a proper `api/routers/config.py` endpoint wired into the app factory. All domain entity types (provider, claim, beneficiary, etc.) exist only in the config YAML and flow through the system as generic `Entity` instances whose `type` field and `properties` dict are validated against config at system boundaries.
+
 
 ---
 
