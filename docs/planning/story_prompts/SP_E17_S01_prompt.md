@@ -32,7 +32,7 @@ As a platform developer, I want `Alert.severity` to use a `SeverityLevel` enum (
 - Do not add domain-specific severity tiers beyond the four standard levels
 
 ## What NOT To Do
-- Do not add `severity_levels` to `DomainConfig` here — that is a future `AlertingConfig` extension
+- Do not add `severity_levels` to `DomainConfig` here — that is a future `AlertsConfig` extension
 - Do not change the `Alert.status` field; only `severity` changes in this story
 - Do not update frontend TypeScript types — that is a follow-on story (E9 series)
 

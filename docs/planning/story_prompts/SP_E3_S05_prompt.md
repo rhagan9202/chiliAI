@@ -29,7 +29,7 @@ As a platform developer, I want an LLM adapter calling the Anthropic Messages AP
 - `backend/llm/exceptions.py` — module-specific exceptions
 - `backend/llm/adapters/in_memory.py` — reference implementation of the LLM protocol
 - `backend/llm/adapters/openai_adapter.py` — sibling adapter for structural reference (if E3-S04 is complete)
-- `backend/config/schema.py` — `LlmConfig` (api_key_env_var, model_name, etc.)
+- `backend/config/schema.py` — `LlmConfig` (`api_key_env_var`, `model`, etc.)
 - `backend/shared/types.py` — shared domain types
 - `backend/pyproject.toml` — existing dependency structure and optional extras
 

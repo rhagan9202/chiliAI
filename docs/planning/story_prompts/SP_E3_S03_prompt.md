@@ -28,7 +28,7 @@ As a platform developer, I want an embeddings adapter calling the OpenAI Embeddi
 - `backend/embeddings/service_models.py` — service request/response models
 - `backend/embeddings/exceptions.py` — module-specific exceptions
 - `backend/embeddings/adapters/in_memory.py` — reference implementation of the embeddings protocol
-- `backend/config/schema.py` — `EmbeddingsConfig` (api_key_env_var, model_name, batch_size, etc.)
+- `backend/config/schema.py` — `EmbeddingsConfig` (`api_key_env_var`, `model`, `batch_size`, etc.)
 - `backend/shared/types.py` — shared domain types
 - `backend/pyproject.toml` — existing dependency structure and optional extras
 

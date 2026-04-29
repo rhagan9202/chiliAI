@@ -28,7 +28,7 @@ As a platform developer, I want an LLM adapter calling the OpenAI Chat Completio
 - `backend/llm/service_models.py` — service request/response models
 - `backend/llm/exceptions.py` — module-specific exceptions
 - `backend/llm/adapters/in_memory.py` — reference implementation of the LLM protocol
-- `backend/config/schema.py` — `LlmConfig` (api_key_env_var, model_name, etc.)
+- `backend/config/schema.py` — `LlmConfig` (`api_key_env_var`, `model`, etc.)
 - `backend/shared/types.py` — shared domain types
 - `backend/pyproject.toml` — existing dependency structure and optional extras
 

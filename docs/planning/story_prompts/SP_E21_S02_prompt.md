@@ -1,10 +1,10 @@
-# Story E21-S02: AlertingConfig schema extension — dedup window, max alerts, severity levels
+# Story E21-S02: AlertsConfig schema extension — dedup window, max alerts, severity levels
 
 ## Story
-As a platform developer, I want `AlertingConfig` in `config/schema.py` to include `dedup_window_seconds`, `max_alerts_per_entity`, and `severity_levels` so these production alerting parameters are configurable per domain deployment rather than hardcoded.
+As a platform developer, I want `AlertsConfig` in `config/schema.py` to include `dedup_window_seconds`, `max_alerts_per_entity`, and `severity_levels` so these production alerting parameters are configurable per domain deployment rather than hardcoded.
 
 ## Acceptance Criteria
-1. `config/schema.py` extends `AlertingConfig` with:
+1. `config/schema.py` extends `AlertsConfig` with:
    - `dedup_window_seconds: int = 300` — time window for alert deduplication (5 minutes default)
    - `max_alerts_per_entity: int = 10` — maximum active alerts per entity before suppression
    - `severity_levels: list[str] = ["low", "medium", "high", "critical"]` — ordered list of valid severity tiers for the domain (lowest to highest)
@@ -18,14 +18,14 @@ As a platform developer, I want `AlertingConfig` in `config/schema.py` to includ
 | P1       | S    | E8-S02       |
 
 ## Target Files
-- `backend/config/schema.py` — extend `AlertingConfig` with new fields and validators
-- `backend/tests/config/test_schema.py` — add `AlertingConfig` extension tests
+- `backend/config/schema.py` — extend `AlertsConfig` with new fields and validators
+- `backend/tests/config/test_schema.py` — add `AlertsConfig` extension tests
 
 ## Reference Files to Read First
-- `backend/config/schema.py` — current `AlertingConfig` and `DomainConfig`
+- `backend/config/schema.py` — current `AlertsConfig`, `MonitoringConfig`, and `DomainConfig`
 - `backend/config/defaults/` — default YAML config files (update defaults as needed)
 - `backend/tests/config/test_schema.py` — existing config schema tests
-- `backend/monitoring/service.py` — how the monitoring service currently uses `AlertingConfig`
+- `backend/monitoring/service.py` — how the monitoring service currently uses alert configuration
 
 ## Architectural Constraints
 - Python 3.12, compatible with `pyright --strict`
@@ -36,7 +36,7 @@ As a platform developer, I want `AlertingConfig` in `config/schema.py` to includ
 ## What NOT To Do
 - Do not implement the deduplication or suppression logic here — those are E8-S02 and E8-S03
 - Do not add escalation policies or suppression rule models here — future story
-- Do not change existing `AlertingConfig` fields (`threshold`, `rule`)
+- Do not change existing `AlertsConfig` fields (`thresholds`)
 
 ## Done Checklist
 - [ ] All acceptance criteria met
