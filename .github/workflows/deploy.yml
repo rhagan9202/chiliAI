@@ -18,6 +18,8 @@ concurrency:
 jobs:
   build:
     runs-on: aks-fed-incubator-runners-ss
+    environment: lower-dev
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
