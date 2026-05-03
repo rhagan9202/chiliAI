@@ -46,9 +46,9 @@ Every external system has a proper protocol:
 |--------|----------|--------------------|--------|
 | Graph DB | `GraphRepository` | Optional Neo4j adapter plus in-memory scaffolding | ⚠️ Optional dependency; integration requires configured Neo4j |
 | Vector Store | `VectorStoreProtocol` | Optional Qdrant adapter plus in-memory scaffolding | ⚠️ Optional dependency; integration requires configured Qdrant |
-| Object Storage | `ObjectStore` | Local filesystem adapter, optional S3/MinIO adapter, plus in-memory scaffolding | ⚠️ Runtime DI/coordinator wiring for concrete provider selection remains future work |
-| LLM | `LlmClientProtocol` | Optional OpenAI and Anthropic adapters plus in-memory scaffolding | ⚠️ DI/coordinator wiring and RAG integration remain future work |
-| Embeddings | `EmbedderProtocol` | Optional sentence-transformers adapter plus in-memory scaffolding | ⚠️ Optional dependency; DI/coordinator wiring still pending |
+| Object Storage | `ObjectStore` | Local filesystem adapter, optional S3/MinIO adapter, plus in-memory scaffolding | READY - config-driven API and coordinator selection wired; optional dependencies/env still required for S3-compatible stores |
+| LLM | `LlmClientProtocol` | Optional OpenAI and Anthropic adapters plus in-memory scaffolding | READY - config-driven API and coordinator selection wired; provider credentials still required |
+| Embeddings | `EmbedderProtocol` | Optional OpenAI and sentence-transformers adapters plus in-memory scaffolding | READY - config-driven API and coordinator selection wired; optional dependencies/env still required |
 | Event Bus | `EventBus` | Redis Streams ✅ + InMemory ✅ | READY |
 
 Business logic never imports vendor SDKs directly. DI wiring injects only via protocol types.
@@ -60,12 +60,12 @@ Business logic never imports vendor SDKs directly. DI wiring injects only via pr
 | Missing API routers | ~~6 of 8 target routers not created (`alerts`, `investigation`, `rag`, `ws`, `analytics`, `evidence`)~~ Resolved 2026-04-26 in E5: routers/alerts, /investigation, /chat, /ws, /analytics, /knowledgebases (extended) all registered in `api/app.py`. Only `evidence_packs` router remains. | ~~Frontend cannot communicate with backend for critical paths~~ Frontend can now talk to all major backend resources. |
 | Graph service query surface partial | Read/query methods now exist for entity lookup, neighborhood traversal, search, and metrics, but `get_subgraph` and production-backed query adapters are still missing | Investigation and RAG can proceed on in-memory scaffolding only |
 | Agent coordinator incomplete | `steps.py` missing; multi-step state machine not fully wired | Event-driven orchestration loop incomplete |
-| Production adapter matrix incomplete | Domain configuration sections exist and several concrete adapters are implemented, but API DI/provider selection is only wired for the currently supported in-memory/local paths | Production deployment still depends on runtime wiring and remaining concrete vendor adapters |
+| Production adapter matrix incomplete | Resolved for initial adapter selection: API DI and worker coordinator now select in-memory/local, Neo4j, Qdrant, S3/MinIO, OpenAI, Anthropic, and sentence-transformers adapters from config | Production deployment still depends on installed optional dependencies, credentials, and live service configuration |
 | Analytics modules empty | All 4 sub-modules (`timeseries/`, `gnn/`, `risk/`, `explainability/`) contain only `__init__.py` | Flow B (Active Monitoring) cannot progress past graph/vector updates |
 
 ### 1.5 Vendor Lock-in — PASS
 
-Zero direct vendor SDK imports in business logic. Redis-specific code isolated to `events/adapters/redis_streams.py`. Config sections and adapter interfaces are in place, but OpenAI, Anthropic, embeddings, and storage provider selection still need runtime DI/coordinator wiring.
+Zero direct vendor SDK imports in business logic. Redis-specific code isolated to `events/adapters/redis_streams.py`. Config sections and adapter interfaces are in place, and API/worker composition roots now select OpenAI, Anthropic, embeddings, vectorstore, graph, and storage adapters at runtime.
 
 ### 1.6 Consistency & Duplication — PASS
 
@@ -237,7 +237,7 @@ observability traces.
 | Task | Owner | Duration | Dependencies | Deliverable |
 |------|-------|----------|-------------|-------------|
 | 1.1 Graph query API (get_entity, query_neighborhood, search) | E1 | Complete | None | graph/service.py read methods + in-memory adapter + tests |
-| 1.2 Config schema and initial adapter selection | E3 | Partial | None | config/schema.py subsystem sections exist; API DI currently supports only local/in-memory provider paths |
+| 1.2 Config schema and initial adapter selection | E3 | Complete | None | config/schema.py subsystem sections plus config-driven API/worker selection for graph, vectorstore, storage, embeddings, and LLM adapters |
 | 1.3 Embeddings wiring in coordinator | E2 | Complete | None | `agent/coordinator.py` handles `graph.updated` and emits `embeddings.complete` |
 | 1.4 Shared type completion + utility consolidation | E2 | Complete | None | shared/types.py audit fields, shared/utils.py `utc_now()` |
 | 1.5 CI/CD pipeline (GitHub Actions) | E3 | 2 days | None | Lint + typecheck + test + build on every PR |

@@ -140,14 +140,150 @@ def test_explicit_local_storage_uses_shared_filesystem_adapter(
     assert isinstance(object_store, LocalFsObjectStore)
 
 
+def test_qdrant_vectorstore_config_selects_qdrant_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    import vectorstore.adapters.qdrant_adapter as qdrant_adapter
+
+    class FakeQdrantVectorStore:
+        def __init__(self, config: VectorStoreConfig) -> None:
+            self.config = config
+
+    monkeypatch.setattr(qdrant_adapter, "QdrantVectorStore", FakeQdrantVectorStore)
+    config = base_config.model_copy(
+        update={
+            "vectorstore": VectorStoreConfig(
+                backend="qdrant",
+                uri="http://qdrant:6333",
+                dimensions=384,
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+
+    vector_store = dependencies.get_vector_store()
+
+    assert isinstance(vector_store, FakeQdrantVectorStore)
+    assert vector_store.config.backend == "qdrant"
+
+
+@pytest.mark.parametrize("backend", ["s3", "minio"])
+def test_s3_compatible_storage_config_selects_s3_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+    backend: str,
+) -> None:
+    import storage.adapters.s3_adapter as s3_adapter
+
+    class FakeS3ObjectStore:
+        def __init__(self, config: ObjectStoreConfig) -> None:
+            self.config = config
+
+    monkeypatch.setattr(s3_adapter, "S3ObjectStore", FakeS3ObjectStore)
+    config = base_config.model_copy(
+        update={
+            "storage": ObjectStoreConfig(
+                backend=backend,  # type: ignore[arg-type]
+                bucket="chili-objects",
+                base_path="tenants/default",
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+
+    object_store = dependencies.get_object_store()
+
+    assert isinstance(object_store, FakeS3ObjectStore)
+    assert object_store.config.backend == backend
+
+
+@pytest.mark.parametrize("provider", ["openai", "sentence_transformers"])
+def test_embeddings_config_selects_configured_provider_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+    provider: str,
+) -> None:
+    import embeddings.adapters.openai_adapter as openai_adapter
+    import embeddings.adapters.sentence_transformers_adapter as sentence_adapter
+
+    class FakeOpenAIEmbedder:
+        def __init__(self, config: EmbeddingsConfig) -> None:
+            self.config = config
+
+    class FakeSentenceTransformersEmbedder:
+        def __init__(self, config: EmbeddingsConfig) -> None:
+            self.config = config
+
+    monkeypatch.setattr(openai_adapter, "OpenAIEmbedder", FakeOpenAIEmbedder)
+    monkeypatch.setattr(
+        sentence_adapter,
+        "SentenceTransformersEmbedder",
+        FakeSentenceTransformersEmbedder,
+    )
+    config = base_config.model_copy(
+        update={
+            "embeddings": EmbeddingsConfig(
+                provider=provider,  # type: ignore[arg-type]
+                model="configured-model",
+                dimensions=384,
+                api_key_env_var="OPENAI_API_KEY" if provider == "openai" else None,
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+
+    embedder = dependencies.get_embedder()
+
+    expected_type = (
+        FakeOpenAIEmbedder
+        if provider == "openai"
+        else FakeSentenceTransformersEmbedder
+    )
+    assert isinstance(embedder, expected_type)
+    assert embedder.config.provider == provider
+
+
+@pytest.mark.parametrize("provider", ["openai", "anthropic"])
+def test_llm_config_selects_configured_provider_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+    provider: str,
+) -> None:
+    import llm.adapters.anthropic_adapter as anthropic_adapter
+    import llm.adapters.openai_adapter as openai_adapter
+
+    class FakeOpenAILlmClient:
+        def __init__(self, config: LlmConfig) -> None:
+            self.config = config
+
+    class FakeAnthropicLlmClient:
+        def __init__(self, config: LlmConfig) -> None:
+            self.config = config
+
+    monkeypatch.setattr(openai_adapter, "OpenAILlmClient", FakeOpenAILlmClient)
+    monkeypatch.setattr(anthropic_adapter, "AnthropicLlmClient", FakeAnthropicLlmClient)
+    config = base_config.model_copy(
+        update={
+            "llm": LlmConfig(
+                provider=provider,  # type: ignore[arg-type]
+                model="configured-model",
+                api_key_env_var="LLM_API_KEY",
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+
+    llm_client = dependencies.get_llm_client()
+
+    expected_type = FakeOpenAILlmClient if provider == "openai" else FakeAnthropicLlmClient
+    assert isinstance(llm_client, expected_type)
+    assert llm_client.config.provider == provider
+
+
 @pytest.mark.parametrize(
     ("factory_name", "config_update", "message_fragment"),
     [
-        (
-            "get_object_store",
-            {"storage": ObjectStoreConfig(backend="s3")},
-            "Unsupported storage backend 's3'. Available backends: local.",
-        ),
         (
             "get_graph_repository",
             {"graph": GraphDbConfig(backend="memgraph")},
@@ -155,18 +291,8 @@ def test_explicit_local_storage_uses_shared_filesystem_adapter(
         ),
         (
             "get_vector_store",
-            {"vectorstore": VectorStoreConfig(backend="qdrant", dimensions=384)},
-            "Unsupported vectorstore backend 'qdrant'. Available backends: in_memory.",
-        ),
-        (
-            "get_embedder",
-            {"embeddings": EmbeddingsConfig(provider="openai")},
-            "Unsupported embeddings backend 'openai'. Available backends: local, sentence_transformers.",
-        ),
-        (
-            "get_llm_client",
-            {"llm": LlmConfig(provider="openai")},
-            "Unsupported llm backend 'openai'. Available backends: local.",
+            {"vectorstore": VectorStoreConfig(backend="pgvector", dimensions=384)},
+            "Unsupported vectorstore backend 'pgvector'. Available backends: in_memory, qdrant.",
         ),
     ],
 )

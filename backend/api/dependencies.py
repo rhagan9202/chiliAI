@@ -177,7 +177,16 @@ def get_object_store() -> ObjectStore:
         if _config_section_is_non_default(storage_config, ObjectStoreConfig()):
             return LocalFsObjectStore(storage_config)
         return InMemoryObjectStore()
-    _raise_unsupported_backend("storage", backend, ("local",))
+    if backend in {"s3", "minio"}:
+        try:
+            from storage.adapters.s3_adapter import S3ObjectStore
+        except ImportError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        try:
+            return S3ObjectStore(storage_config)
+        except (ImportError, ValueError) as exc:
+            raise ConfigurationError(str(exc)) from exc
+    _raise_unsupported_backend("storage", backend, ("local", "s3", "minio"))
 
 
 @lru_cache(maxsize=1)
@@ -233,7 +242,16 @@ def get_vector_store() -> VectorStoreProtocol:
     backend = vectorstore_config.backend
     if backend == "in_memory":
         return InMemoryVectorStore()
-    _raise_unsupported_backend("vectorstore", backend, ("in_memory",))
+    if backend == "qdrant":
+        try:
+            from vectorstore.adapters.qdrant_adapter import QdrantVectorStore
+        except ImportError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        try:
+            return QdrantVectorStore(vectorstore_config)
+        except (ImportError, ValueError) as exc:
+            raise ConfigurationError(str(exc)) from exc
+    _raise_unsupported_backend("vectorstore", backend, ("in_memory", "qdrant"))
 
 
 @lru_cache(maxsize=1)
@@ -245,11 +263,39 @@ def get_vectorstore_service() -> VectorServiceProtocol:
 @lru_cache(maxsize=1)
 def get_embedder() -> EmbedderProtocol:
     """Return the embeddings adapter implementation selected by config."""
-    embeddings_config = get_domain_config().embeddings or EmbeddingsConfig()
+    config = get_domain_config()
+    embeddings_config = config.embeddings or EmbeddingsConfig()
     provider = embeddings_config.provider
-    if provider in {"local", "sentence_transformers"}:
+    if embeddings_config == EmbeddingsConfig():
         return InMemoryEmbedder(provider=provider)
-    _raise_unsupported_backend("embeddings", provider, ("local", "sentence_transformers"))
+    if provider == "local":
+        return InMemoryEmbedder(provider=provider)
+    if provider == "sentence_transformers":
+        try:
+            from embeddings.adapters.sentence_transformers_adapter import (
+                SentenceTransformersEmbedder,
+            )
+        except ImportError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        try:
+            return SentenceTransformersEmbedder(embeddings_config)
+        except (ImportError, ValueError) as exc:
+            raise ConfigurationError(str(exc)) from exc
+    if provider == "openai":
+        try:
+            from embeddings.adapters.openai_adapter import OpenAIEmbedder
+            from embeddings.exceptions import EmbeddingConfigurationError
+        except ImportError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        try:
+            return OpenAIEmbedder(embeddings_config)
+        except (ImportError, ValueError, EmbeddingConfigurationError) as exc:
+            raise ConfigurationError(str(exc)) from exc
+    _raise_unsupported_backend(
+        "embeddings",
+        provider,
+        ("local", "sentence_transformers", "openai"),
+    )
 
 
 @lru_cache(maxsize=1)
@@ -265,7 +311,27 @@ def get_llm_client() -> LlmClientProtocol:
     provider = llm_config.provider
     if provider == "local":
         return InMemoryLlmClient(provider=provider)
-    _raise_unsupported_backend("llm", provider, ("local",))
+    if provider == "openai":
+        try:
+            from llm.adapters.openai_adapter import OpenAILlmClient
+            from llm.exceptions import LlmConfigurationError
+        except ImportError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        try:
+            return OpenAILlmClient(llm_config)
+        except (ImportError, ValueError, LlmConfigurationError) as exc:
+            raise ConfigurationError(str(exc)) from exc
+    if provider == "anthropic":
+        try:
+            from llm.adapters.anthropic_adapter import AnthropicLlmClient
+            from llm.exceptions import LlmConfigurationError
+        except ImportError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        try:
+            return AnthropicLlmClient(llm_config)
+        except (ImportError, ValueError, LlmConfigurationError) as exc:
+            raise ConfigurationError(str(exc)) from exc
+    _raise_unsupported_backend("llm", provider, ("local", "openai", "anthropic"))
 
 
 @lru_cache(maxsize=1)
