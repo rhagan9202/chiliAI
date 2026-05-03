@@ -18,9 +18,9 @@ Routed React 19 + TypeScript workbench prototype. `src/App.tsx` defines the appl
 | Routing | React Router v7 |
 | Server state | TanStack Query (React Query) |
 | Client state | Zustand |
-| API client | Generated from FastAPI OpenAPI spec |
+| API client | Typed fetch wrapper (`src/lib/apiClient.ts`) with TanStack Query hooks |
 | Real-time | WebSocket (alerts, pipeline status) |
-| Graph visualization | Cytoscape.js / Sigma.js / React Flow (evaluate) |
+| Graph visualization | `react-force-graph-2d` |
 
 ## Target Page Structure
 
@@ -48,7 +48,7 @@ Routed React 19 + TypeScript workbench prototype. `src/App.tsx` defines the appl
 ## Known Prototype Gaps
 
 - Configuration save is disabled until `PUT /config/domain` is implemented.
-- Investigation evidence endpoint and some graph/entity discovery flows are still incomplete.
+- Persisted evidence-pack endpoint and some graph/entity discovery flows are still incomplete.
 - RAG chat may use stubbed/local responses depending on backend configuration.
 - Production bundle size should be revisited with route-level code splitting as the UI grows.
 

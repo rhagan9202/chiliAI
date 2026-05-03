@@ -31,7 +31,7 @@ As a frontend developer, I want a top-level app shell with sidebar navigation, r
 - `chili_app/src/pages/NotFound.tsx` — 404 catch-all page
 
 ## Reference Files to Read First
-- `chili_app/src/App.tsx` — current Vite placeholder to replace
+- `chili_app/src/App.tsx` — historical pre-implementation Vite placeholder context
 - `chili_app/src/main.tsx` — current entry point
 - `chili_app/src/App.css` — current styles to replace
 - `chili_app/package.json` — current dependencies
@@ -90,7 +90,7 @@ keeps `<BrowserRouter>` available for the chosen JSX-routes style.
 
 ## Validation Note
 From `chili_app/`: `npm install --legacy-peer-deps` succeeded
-(openapi-typescript declares peer typescript ^5 while the project is on 6.x —
-documented as a known wave-level deviation). `npx tsc --noEmit`, `npm run
+(the project later settled on TypeScript `~5.9.3` for `openapi-typescript`
+compatibility). `npx tsc --noEmit`, `npm run
 lint`, and `npm run build` (`tsc -b && vite build` → 263 kB JS / 3.98 kB CSS)
 all pass with zero errors and zero warnings.

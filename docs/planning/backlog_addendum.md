@@ -5,6 +5,8 @@
 > **Authors**: Audit Agent (user-perspective gap analysis) + Lead Developer (story decomposition)
 > **Format**: User stories with acceptance criteria, priority, size, and dependency tracking — matching the conventions of `backlog.md`.
 
+> **Status note**: This addendum remains useful as a backlog source, but its audit findings are not all current. Production-facing adapters, CI/CD, Kubernetes/Helm manifests, and several frontend/backend surfaces have since landed. Use [`../project_status_report.md`](../project_status_report.md) for live status.
+
 This addendum captures gaps discovered during the April 27, 2026 audit. Epics 1–10 in `backlog.md` remain authoritative for the in-flight work; this document adds Epics 11–15 covering features that the audit identified as missing from the delivered system but required by the architecture or by a real-world analyst user.
 
 ---
@@ -24,7 +26,7 @@ Priority and size definitions are unchanged from `backlog.md`.
 
 ### Audit findings driving these epics
 
-The audit confirmed substantial progress against Epics 1–10 (~80 % shipped per `MEMORY.md` notes) but identified five clusters of user-facing or production-blocking gaps:
+The April 27 audit confirmed substantial progress against Epics 1–10 (~80 % shipped per `MEMORY.md` notes) and identified five clusters of user-facing or production-blocking gaps. Some items in this list have since moved from missing to partial or complete in the current status report:
 
 1. **Auth, RBAC, multi-tenancy are scaffolded but disabled** — `backend/api/middleware/auth.py` and `rbac.py` exist; no router enforces them; no login UI; no tenant scoping in adapters.
 2. **Investigation Workbench is incomplete on the highest-value panels** — Evidence Pack endpoint missing (`chili_app/src/components/investigation/EvidencePanel.tsx:41-46` shows a placeholder), timeline shows only entity metadata, config save button is permanently disabled, cascading delete is designed but not implemented.

@@ -41,7 +41,7 @@ The starting exemplar domain is **Medicare fraud detection**, but the platform i
 
 ### Current state
 
-The codebase is an **early-stage scaffold** with module boundaries, protocol interfaces, and service skeletons in place. Concrete adapter implementations and full business logic are being built out epic by epic, tracked as GitHub Issues in [`Fed-Incubator/Crushing-Fraud-XAI`](https://github.com/Fed-Incubator/Crushing-Fraud-XAI). Most `TODO(production)` annotations mark the next concrete work needed in each module.
+The codebase is an **active local-development prototype** with substantial backend and frontend implementation. The backend includes the FastAPI gateway, worker/coordinator, Redis event pipeline, ingestion, graph/vector/embedding/LLM/RAG services, analytics, monitoring, storage adapters, auth/RBAC middleware, CI, and Kubernetes/Helm manifests. The frontend is a routed analyst workbench with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration views. Most `TODO(production)` annotations now mark hardening or deeper production features rather than blank-module scaffolding.
 
 ---
 
@@ -54,7 +54,7 @@ chiliAI/
 ├── docs/               Architecture, design docs, ADRs, story prompts
 │   └── planning/
 │       └── story_prompts/   SP_E{n}_S{n}_prompt.md — backlog story definitions
-├── infra/              Docker Compose configs, future Kubernetes / IaC
+├── infra/              Docker Compose configs, Kubernetes manifests, Helm chart
 ├── Makefile            Top-level dev commands (make dev, make test, etc.)
 ├── docker-compose.dev.yaml   Development stack (hot-reload mounts)
 ├── docker-compose.yaml       Production stack (built images, nginx)
@@ -222,7 +222,7 @@ The key environment variables consumed by the backend:
 | `MINIO_ENDPOINT` | `minio:9000` | MinIO host:port |
 | `MINIO_ACCESS_KEY` | `minioadmin` | MinIO access key |
 | `MINIO_SECRET_KEY` | `minioadmin` | MinIO secret key |
-| `ALLOWED_ORIGINS` | *(hardcoded in dev)* | CORS origin list (story #129) |
+| `ALLOWED_ORIGINS` | localhost origins in dev | Comma-separated CORS origin list |
 
 ---
 
@@ -633,32 +633,30 @@ def create_app() -> FastAPI:
 
 ## 10. Frontend — Adding a New Page
 
-The frontend currently lives at `chili_app/src/` and is a scaffold. As pages are built out, follow this structure from [`docs/architecture.md §8`](architecture.md#8-frontend-architecture):
+The frontend lives at `chili_app/src/` and already has the main workbench pages, layout, stores, hooks, and components. For new pages, follow the current flat page-file pattern from [`docs/architecture.md §8`](architecture.md#8-frontend-architecture):
 
 ```
 chili_app/src/
   pages/
-    Dashboard/
-    KnowledgeBaseManager/
-    AlertFeed/
-    Investigation/
-    RagChat/
-    Configuration/
+    Dashboard.tsx
+    KnowledgeBaseManager.tsx
+    AlertFeed.tsx
+    InvestigationWorkbench.tsx
+    RagChat.tsx
+    ConfigEditor.tsx
 ```
 
 ### 10.1 Create the page component
 
 ```bash
-mkdir -p chili_app/src/pages/MyPage
-touch chili_app/src/pages/MyPage/index.tsx
-touch chili_app/src/pages/MyPage/MyPage.tsx
+touch chili_app/src/pages/MyPage.tsx
 ```
 
 `MyPage.tsx`:
 
 ```tsx
-// chili_app/src/pages/MyPage/MyPage.tsx
-import { useMyData } from '../../api/hooks/useMyData'
+// chili_app/src/pages/MyPage.tsx
+import { useMyData } from '../hooks/useMyData'
 
 export function MyPage() {
   const { data, isLoading, error } = useMyData()
@@ -675,19 +673,15 @@ export function MyPage() {
 }
 ```
 
-`index.tsx` (barrel export):
-
-```tsx
-export { MyPage } from './MyPage'
-```
-
 ### 10.2 Add the TanStack Query hook
 
-API data fetching goes in `chili_app/src/api/hooks/`:
+API data fetching goes in `chili_app/src/hooks/` and should use the shared `apiRequest` helper from `chili_app/src/lib/apiClient.ts`:
 
 ```ts
-// chili_app/src/api/hooks/useMyData.ts
+// chili_app/src/hooks/useMyData.ts
 import { useQuery } from '@tanstack/react-query'
+
+import { apiRequest } from '../lib/apiClient'
 
 interface MyData {
   id: string
@@ -695,9 +689,7 @@ interface MyData {
 }
 
 async function fetchMyData(): Promise<MyData[]> {
-  const res = await fetch('/api/my-endpoint')
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.json() as Promise<MyData[]>
+  return apiRequest<MyData[]>('/my-endpoint')
 }
 
 export function useMyData() {
@@ -732,11 +724,10 @@ Components that are used in more than one page go in `chili_app/src/components/`
 
 | Directory | Purpose |
 |-----------|---------|
-| `components/graph/` | Graph explorer canvas, node detail, layout controls |
-| `components/evidence/` | Evidence panel, score card |
-| `components/timeline/` | Time-series chart |
+| `components/investigation/` | Graph canvas, entity detail, evidence, timeline |
 | `components/alerts/` | Alert list item, alert badge, alert detail |
 | `components/chat/` | RAG chat message list and input |
+| `components/knowledgebase/` | KB tables, detail view, upload widgets |
 | `components/common/` | Shared primitives — layout, loading spinner, error boundary |
 
 ### 11.2 Component template
@@ -765,14 +756,14 @@ export function StatusBadge({ status, label }: StatusBadgeProps) {
 
 ### 11.3 Domain-aware components
 
-Many components need to render labels driven by the domain configuration rather than hardcoded strings. Read the domain config through the Zustand `configStore`:
+Many components need to render labels driven by the domain configuration rather than hardcoded strings. Read the domain config through `useDomainConfig()`:
 
 ```ts
-import { useConfigStore } from '../../stores/configStore'
+import { useDomainConfig } from '../../hooks/useDomainConfig'
 
 export function EntityTypeBadge({ entityType }: { entityType: string }) {
-  const entityDefs = useConfigStore((s) => s.domainConfig?.entities ?? [])
-  const def = entityDefs.find((e) => e.name === entityType)
+  const { config } = useDomainConfig()
+  const def = config.entities.find((e) => e.name === entityType)
   return <span>{def?.display_label ?? entityType}</span>
 }
 ```
@@ -858,7 +849,12 @@ If you are adding a new module with complex logic, aim for 90%+ on the first pas
 
 ### 12.5 Frontend tests
 
-> The frontend test suite is not yet established. When setting it up, use Vitest (Vite-native) with React Testing Library. Mock API calls — do not make real HTTP calls in component tests.
+The frontend test suite uses Vitest with React Testing Library. Add tests under `src/**/__tests__/` for stores, hooks, pages, and reusable components. Mock API calls — do not make real HTTP calls in component tests.
+
+```bash
+cd chili_app
+npm run test:run
+```
 
 ---
 

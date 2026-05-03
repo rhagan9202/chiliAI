@@ -1,5 +1,7 @@
 # Story Prompt Audit — 2026-04-29
 
+> **Historical snapshot**: This audit captures story-prompt status as of April 29, 2026. Many stories listed here as unstarted have since landed. Use [`../project_status_report.md`](../project_status_report.md) for current implementation status and treat this file as audit history.
+
 ## Scope
 
 Audited all 135 files in `docs/planning/story_prompts/` against the current repository state, backlog status, visible TODOs, and checklist state.
@@ -90,17 +92,17 @@ All missed completion gates are concentrated in unstarted stories. The recurring
 - Lint gate not run for the story scope.
 - Type-safety gate not run for the story scope.
 
-Additional high-impact missed steps:
+Additional high-impact missed steps at the time of this audit:
 
-- E3 production adapters remain mostly unstarted, blocking production embeddings, LLM, and object storage paths.
-- E4 pipeline continuation after graph updates remains unstarted, blocking embeddings, vector indexing, and final KB-ready lifecycle completion.
-- E5 API router expansion remains unstarted, leaving most frontend-facing contracts absent.
-- E6 RAG production flow remains unstarted because embeddings, vector retrieval, graph expansion, and LLM generation adapters are not wired.
-- E7 analytics suite remains unstarted, including timeseries, GNN, risk scoring, explainability, and analytics coordinator integration.
-- E8 monitoring and alerting behavior remains unstarted beyond foundational shared/config models.
-- E9 frontend application remains unstarted; the React app is still scaffold-level.
-- E10 operational hardening remains unstarted, including CI, auth, RBAC, logging, metrics, Kubernetes, E2E, tracing, and dependency scanning.
-- E11 through E21 hardening stories remain unstarted, even where scaffolding or TODO comments exist.
+- E3 production adapters were mostly unstarted, blocking production embeddings, LLM, and object storage paths.
+- E4 pipeline continuation after graph updates was unstarted, blocking embeddings, vector indexing, and final KB-ready lifecycle completion.
+- E5 API router expansion was unstarted, leaving most frontend-facing contracts absent.
+- E6 RAG production flow was unstarted because embeddings, vector retrieval, graph expansion, and LLM generation adapters were not wired.
+- E7 analytics suite was unstarted, including timeseries, GNN, risk scoring, explainability, and analytics coordinator integration.
+- E8 monitoring and alerting behavior was unstarted beyond foundational shared/config models.
+- E9 frontend application was unstarted; the React app was still scaffold-level.
+- E10 operational hardening was unstarted, including CI, auth, RBAC, logging, metrics, Kubernetes, E2E, tracing, and dependency scanning.
+- E11 through E21 hardening stories were unstarted, even where scaffolding or TODO comments existed.
 
 ## Unstarted Stories
 

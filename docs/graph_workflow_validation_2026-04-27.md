@@ -1,5 +1,7 @@
 # Knowledge Graph Workflow Validation — 2026-04-27
 
+> **Historical snapshot**: This validation records the local workflow observed on April 27, 2026. The ingestion, graph, embeddings, vector indexing, and KB-ready pipeline has since been expanded. Use [`project_status_report.md`](project_status_report.md) and current test results for live status.
+
 ## Scope
 
 Validated whether the current local development UI workflow actually creates a knowledge graph, persists it across the API/worker boundary, and makes it queryable through the Investigation route.

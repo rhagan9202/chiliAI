@@ -1,8 +1,10 @@
 # chiliAI Codebase, Workflow, UX, and Performance Audit — 2026-04-27
 
+> **Historical snapshot**: This audit records repository state observed on April 27, 2026. Several findings called out below have since been resolved, including the README/architecture drift, baseline CI/CD, Kubernetes/Helm manifests, production-facing adapter selection, and frontend scaffold status. Use [`docs/project_status_report.md`](project_status_report.md) for current status.
+
 ## Executive summary
 
-chiliAI is substantially beyond the “early-stage scaffold” language still present in several documentation files. The backend now includes a broad FastAPI gateway, event-driven worker, in-memory and production-facing adapters, analytics services, RAG/LLM/embedding/vector/graph boundaries, authentication/RBAC scaffolding, monitoring services, and a large test suite. The frontend now includes a routed analyst workbench with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration Editor views.
+At the time of this audit, chiliAI was substantially beyond the “early-stage scaffold” language then present in several documentation files. The backend included a broad FastAPI gateway, event-driven worker, in-memory and production-facing adapters, analytics services, RAG/LLM/embedding/vector/graph boundaries, authentication/RBAC scaffolding, monitoring services, and a large test suite. The frontend included a routed analyst workbench with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration Editor views.
 
 The system is currently usable as a local development prototype and the Docker development stack is healthy. The most important audit finding is not architectural absence; it is readiness mismatch: documentation, static type/lint quality gates, production adapter selection, workflow state synchronization, and some UX affordances lag behind the implementation.
 
@@ -417,25 +419,23 @@ Recommendations:
 5. **Audit logging is not yet implemented**
    - Analyst actions like alert acknowledgments, config edits, graph queries, and chat prompts should eventually be audit logged.
 
-## Documentation drift
+## Documentation drift at audit time
 
 ### Stale or inaccurate statements
 
-- `README.md` says both frontend and backend are early-stage scaffolds.
-- `docs/architecture.md` §8 says frontend language is TypeScript 6, but `chili_app/package.json` now uses TypeScript `~5.9.3` for OpenAPI tool compatibility.
-- `docs/architecture.md` §14.3 says backend is a minimal `main.py` scaffold with no dependencies and frontend is a Vite placeholder.
-- `backend/README.md` says most analytics/pipeline modules are not implemented, but many modules and tests exist.
-- `chili_app/README.md` says `src/App.tsx` is default template placeholder, but it is now a routed application shell.
+- At audit time, `README.md` said both frontend and backend were early-stage scaffolds.
+- At audit time, `docs/architecture.md` §8 overstated the frontend TypeScript target, while `chili_app/package.json` used TypeScript `~5.9.3` for OpenAPI tool compatibility.
+- At audit time, `docs/architecture.md` §14.3 described a minimal `main.py` backend scaffold and Vite placeholder frontend.
+- At audit time, `backend/README.md` understated implemented analytics, pipeline, and adapter modules.
+- At audit time, `chili_app/README.md` described `src/App.tsx` as a default template placeholder instead of a routed application shell.
 
 ### Recommendation
 
-Update docs in this order:
+Resolved or superseded by current docs:
 
-1. `README.md`: current-state summary and verified quick start.
-2. `backend/README.md`: actual implemented modules, validation status, adapter support matrix.
-3. `chili_app/README.md`: actual routes, UX status, test commands, known placeholders.
-4. `docs/architecture.md`: separate target architecture from implementation status; update TS version to 5.9.x unless/until `openapi-typescript` supports TS 6.
-5. Add a status matrix for each module: `prototype`, `in-memory only`, `production adapter present`, `wired in DI`, `tested`, `type-checked`.
+1. `README.md`, `backend/README.md`, and `chili_app/README.md` now describe the active prototype and implemented routes/modules.
+2. `docs/architecture.md` now separates target architecture from current implementation status.
+3. `docs/project_status_report.md` now carries the live module/status matrix.
 
 ## Prioritized action plan
 

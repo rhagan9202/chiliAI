@@ -4,6 +4,8 @@
 > **Scope**: 77 remaining stories across E4–E10 (E1, E2, E3, E4-S01 already complete)
 > **Strategy**: Wave-based execution. Parallel subagents for file-independent stories within each wave. Validate (pytest + pyright + ruff) and commit at every wave boundary before advancing.
 
+> **Historical plan**: This was the original execution plan for E4-E10. Most wave content has since been implemented or superseded. Use [`../project_status_report.md`](../project_status_report.md) for live status before assigning new work from this plan.
+
 ## Operating Principles
 
 1. **Dependency-respecting waves.** Cross-wave deps must clear before the next wave starts. Within a wave, run parallel agents only when their target files do not overlap.
@@ -30,7 +32,7 @@ Closes the Tier-1 production blocker (config-driven wiring) and finishes Flow A.
 
 ### Wave 2 — API Routers (E5)
 
-6 missing routers + register them.
+At creation time this wave covered 6 missing routers plus app-factory registration. Those routers now exist in current builds, with evidence-pack retrieval and deeper production hardening tracked separately.
 
 | Order | Stories | Agent | Notes |
 |-------|---------|-------|-------|

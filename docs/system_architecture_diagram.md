@@ -23,7 +23,7 @@ flowchart LR
 
         subgraph api["chili-api container<br/>FastAPI gateway"]
             cors["CORS + metrics + tracing middleware<br/>Prometheus metrics, OpenTelemetry hooks"]
-            auth["Auth / RBAC middleware<br/>JWT-ready scaffolding"]
+            auth["Auth / RBAC middleware<br/>JWT validation paths"]
             routers["REST routers<br/>/config, /knowledgebases,<br/>/alerts, /investigation,<br/>/chat, /analytics"]
             wshub["WebSocket hub<br/>/ws/alerts, /ws/pipeline"]
             di["Dependency injection composition root<br/>Config-cached services and adapters"]

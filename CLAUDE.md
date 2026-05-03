@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 chiliAI is a **domain-reconfigurable Graph RAG analytics platform**. A single YAML/JSON configuration retargets the same code to different domains (Medicare fraud, food supply chain, etc.). The starting exemplar is Medicare fraud detection.
 
-Monorepo layout: `backend/` (Python 3.12 / FastAPI), `chili_app/` (React 19 + TS + Vite 8), `docs/`, `infra/`. Both halves are scaffolds in early stages — much of the target architecture is not yet implemented.
+Monorepo layout: `backend/` (Python 3.12 / FastAPI), `chili_app/` (React 19 + TS + Vite 8), `docs/`, `infra/`. The repo is an active local-development prototype: backend modules, worker orchestration, frontend workbench routes, CI, and baseline deployment manifests exist, while production hardening remains in progress.
 
 ## Common Commands
 
@@ -84,7 +84,7 @@ Modules typically expose: `protocols.py` (abstract contract), `models.py` (inter
 
 `api/` (FastAPI gateway, no business logic) · `ingestion/` (PDF/DOCX/HTML/JSON/TXT parsing, chunking, entity extraction) · `graph/` (graph DB protocol + adapters) · `vectorstore/` (vector store protocol + adapters) · `embeddings/` (embedder protocol + adapters) · `rag/` (query → embed → search → graph expand → LLM) · `llm/` (LLM client protocol + adapters) · `analytics/{timeseries,gnn,risk,explainability}/` · `agent/` (workflow coordinator) · `monitoring/` (claim stream consumer, alert generation) · `shared/` · `config/` · `events/` (Redis Streams) · `storage/` (object storage adapters).
 
-Implementation status varies — assume modules are scaffold-only unless verified by reading the code. The current functional surface is documented in `backend/README.md` § Current State.
+Implementation status varies by module. Verify behavior by reading the code and tests, and use `backend/README.md` § Current State plus `docs/project_status_report.md` for the current functional surface.
 
 ## Container Topology
 

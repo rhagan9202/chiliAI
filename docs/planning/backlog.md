@@ -5,6 +5,8 @@
 > **Authors**: Requirements Engineer Agent + Software Design Expert Agent
 > **Format**: User stories with acceptance criteria, priority, size, and dependency tracking
 
+> **Status note**: This file is a story/spec backlog, not the live implementation report. Some acceptance criteria describe work that has since shipped. Use [`../project_status_report.md`](../project_status_report.md) for current completion status.
+
 ---
 
 ## Backlog Summary
