@@ -1052,11 +1052,13 @@ Adapter selection is driven by environment configuration, not code changes.
 
 ### 14.3 Current state vs. target
 
+> **Last updated**: April 2026. See [`docs/project_status_report.md`](project_status_report.md) for the full implementation status, gap-closure plan, and risk register.
+
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
 | `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion, graph/vector/embedding/LLM/RAG services, analytics modules, monitoring, storage adapters, auth/RBAC middleware, and in-memory plus selected production-facing adapters | Make Ruff/Pyright gates continuously clean, finish production adapter wiring, harden persistence/retry behavior |
 | `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, Investigation Workbench, RAG Chat, and Configuration Editor | Complete realtime/dev WebSocket wiring, entity discovery, evidence endpoint, config save endpoint, and production UX polish |
-| `docs/` | Architecture, planning, security checklist, status/audit reports | Keep current-state matrices synchronized with implementation |
-| `infra/` | Docker Compose, Dockerfiles, and deployment scaffolding | Expand Kubernetes/Helm production hardening and secrets guidance |
+| `docs/` | Architecture, onboarding guide, planning, security checklist, status/audit reports, and full backlog/story prompts | Keep current-state matrices synchronized with implementation |
+| `infra/` | Docker Compose, Dockerfiles, Makefile targets, and deployment scaffolding | Expand Kubernetes/Helm production hardening and secrets guidance |
 | Testing | Extensive backend pytest suite and frontend Vitest suite | Add CI enforcement for lint/type/test/build and adapter integration profiles |
 | CI/CD | None | Add GitHub Actions for lint + type-check + test |
