@@ -116,5 +116,6 @@ pytest --cov                                        # Run tests with coverage
 | Document | Purpose |
 |----------|---------|
 | [`docs/architecture.md`](docs/architecture.md) | Full high-level architecture and design (source of truth) |
+| [`docs/system_architecture_diagram.md`](docs/system_architecture_diagram.md) | Detailed Mermaid system diagram, request flows, and deployment mapping |
 | [`backend/README.md`](backend/README.md) | Backend setup, module overview, development commands |
 | [`chili_app/README.md`](chili_app/README.md) | Frontend setup, page structure, development commands |

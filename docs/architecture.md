@@ -1,6 +1,8 @@
 # chiliAI — High-Level Architecture & Design
 
 > **Status**: Target architecture plus implementation status notes. The repository is now an active prototype with substantial backend and frontend implementation. This document describes the intended system design and calls out current-state gaps where relevant.
+>
+> **Detailed diagram**: See [`system_architecture_diagram.md`](system_architecture_diagram.md) for a Mermaid view of the runtime containers, services, adapters, request flows, and deployment mapping.
 
 ---
 
