@@ -66,7 +66,7 @@ def _build_app() -> FastAPI:
         body = await file.read()
         if len(body) > max_bytes:
             raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 detail="File too large.",
             )
         cleaned = sanitize_filename(file.filename or "upload")
@@ -78,7 +78,7 @@ def _build_app() -> FastAPI:
             cleaned = validate_query_length(q, max_query)
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=str(exc),
             ) from exc
         return {"q": cleaned}

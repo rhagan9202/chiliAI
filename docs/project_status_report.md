@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-chiliAI is an **architecturally sound platform** at approximately **80% overall implementation**. The foundational patterns — hexagonal architecture, protocol-first design, domain reconfigurability, event-driven pipelines — are well-executed and consistent with `docs/architecture.md`. Backend modules are largely complete (RAG, monitoring, all four analytics sub-modules, optional production adapters for Neo4j/Qdrant/OpenAI/Anthropic/sentence-transformers/S3), and the frontend application is now feature-complete across all 13 E9 stories. Remaining gaps are primarily cross-cutting (auth/RBAC hardening, observability rollout, CI/CD, K8s/IaC) plus a handful of optional adapter wirings.
+chiliAI is an **architecturally sound platform** at approximately **80% overall implementation**. The foundational patterns — hexagonal architecture, protocol-first design, domain reconfigurability, event-driven pipelines — are well-executed and consistent with `docs/architecture.md`. Backend modules are largely complete (RAG, monitoring, all four analytics sub-modules, optional production adapters for Neo4j/Qdrant/OpenAI/Anthropic/sentence-transformers/S3), and the frontend application is now feature-complete across all 13 E9 stories. Remaining gaps are primarily cross-cutting (auth/RBAC hardening, observability rollout, K8s/IaC) plus a handful of optional adapter wirings.
 
 ### Verdict
 
@@ -17,9 +17,9 @@ chiliAI is an **architecturally sound platform** at approximately **80% overall 
 |-----------|--------|
 | **Architectural Integrity** | STRONG — protocols, adapters, boundaries respected |
 | **Code Quality** | GOOD — types consistent, no contract slippage, clean boundaries |
-| **Implementation Completeness** | HIGH (~80%) — backend pipelines + frontend application complete; remaining gaps are cross-cutting (auth, observability, CI/CD, K8s) |
-| **Production Readiness** | PARTIAL — production adapters present (Neo4j, Qdrant, OpenAI, Anthropic, sentence-transformers, S3); auth scaffolded but not enforced; observability and CI/CD still pending |
-| **Test Coverage** | STRONG — backend 822 tests / ~93% total coverage; frontend 53 vitest tests across stores, hooks, pages, and components |
+| **Implementation Completeness** | HIGH (~80%) — backend pipelines + frontend application complete; remaining gaps are cross-cutting (auth, observability, K8s) |
+| **Production Readiness** | PARTIAL — production adapters present (Neo4j, Qdrant, OpenAI, Anthropic, sentence-transformers, S3); auth scaffolded but not enforced; observability still pending |
+| **Test Coverage** | STRONG — backend pytest suite / ~93% total coverage; frontend 55 vitest tests across stores, hooks, pages, and components |
 
 ---
 
@@ -88,14 +88,14 @@ No shadow type definitions. UTC timestamp generation is consolidated through `sh
 | Module | Implementation | Tests | Coverage | Key Gap |
 |--------|---------------|-------|----------|---------|
 | **shared/** | 95% | ✅ | **97%** | Core audit fields are in place; remaining gaps are alert severity enum and KB metadata TODOs |
-| **config/** | 97% | ✅ | ~98% | Config sections are defined; DI/runtime wiring still needs E1-S07 |
+| **config/** | 97% | ✅ | ~98% | Config sections are defined; API/worker adapter selection is wired; migration/versioning remains future work |
 | **events/** | 90% | ✅ | **96%** | DLQ in protocol/in-memory/Redis; no XPENDING/XCLAIM fault tolerance |
 | **ingestion/** | 85% | ✅ | **93%** | LLM-powered extraction deferred; no async I/O |
 | **agent/** | 95% | ✅ | **87%** | Pipeline now reaches `kb.ready`: vector indexing, kb.ready, retry/backoff, DLQ routing, SIGTERM/SIGINT graceful shutdown, and stdlib `/health` endpoint all wired; durable retry state still in-process |
-| **api/** | 80% | ✅ | **97%** | 7 of 8 target routers wired (config, knowledgebases, alerts, investigation, chat, analytics, ws); evidence-packs router still pending; no auth middleware; no file validation |
+| **api/** | 80% | ✅ | **97%** | 7 of 8 target routers wired (config, knowledgebases, alerts, investigation, chat, analytics, ws); evidence-packs router still pending; no auth middleware |
 | **graph/** | 55% | ✅ | **90%** | In-memory and optional Neo4j adapters implemented; upserts use per-batch transaction semantics; live Neo4j integration requires configured test database |
 | **vectorstore/** | 45% | ✅ | ~85% | In-memory and optional Qdrant adapters implemented; advanced metadata filtering remains future work |
-| **embeddings/** | 55% | ✅ | **88%** | Optional sentence-transformers and OpenAI adapters implemented; DI/coordinator wiring remains future work |
+| **embeddings/** | 55% | ✅ | **88%** | Optional sentence-transformers and OpenAI adapters implemented; API/worker selection wired; live providers require optional deps/env |
 | **storage/** | 50% | ✅ | **92%** for current storage tests | In-memory, local filesystem, and optional S3/MinIO adapters implemented; DI/coordinator provider selection and streaming upload remain future work |
 | **llm/** | 45% | ✅ | **92%** | Optional OpenAI and Anthropic adapters implemented; DI/coordinator wiring and RAG integration remain future work |
 | **rag/** | ~95% | ✅ | **~95%** | E6-S01..S08 complete: embed → retrieve → graph-expand → generate pipeline with citations, streaming, and domain-configurable system prompts; 88 tests covering all bridge adapters and error paths |
@@ -119,7 +119,7 @@ No shadow type definitions. UTC timestamp generation is consolidated through `sh
 | Investigation side panels | ✅ Done | EntityDetail, EvidencePanel (expandable), TimelinePanel; collapsible split layout (E9-S11) |
 | WebSocket (real-time) | ✅ Done | `useWebSocket` hook with exponential-backoff reconnect (max 5 retries), keep-alive ping filter, typed event union (`WsAlertCreated`, `WsPipelineProgress`); `ConnectionStatus` indicator wired into Alert Feed (E9-S12) |
 | Domain-driven dynamic UI | ✅ Done | `DomainConfigContext` fetches `/config/domain` at app boot; entity labels/icons/feature gates rendered from config (E9-S02) |
-| Test coverage | ✅ 53 vitest tests passing | Stores, hooks (`useWebSocket`, `useDashboardMetrics`), pages (RagChat, ConfigEditor, InvestigationWorkbench), and core components (GraphCanvas, EntityDetail, Evidence, AlertTable, KbTable, KpiCard, DropZone, CreateKbForm) |
+| Test coverage | ✅ 55 vitest tests passing | Stores, hooks (`useWebSocket`, `useDashboardMetrics`), pages (RagChat, ConfigEditor, InvestigationWorkbench), and core components (GraphCanvas, EntityDetail, Evidence, AlertTable, KbTable, KpiCard, DropZone, CreateKbForm) |
 
 ### Infrastructure
 
@@ -130,7 +130,7 @@ No shadow type definitions. UTC timestamp generation is consolidated through `sh
 | docker-compose.yaml (prod) | ✅ Configured (4 workers, env_file) |
 | Makefile (dev, test, clean, prod) | ✅ Ready |
 | K8s manifests | ❌ 0% (`infra/` empty) |
-| CI/CD (GitHub Actions) | ❌ 0% |
+| CI/CD (GitHub Actions) | ✅ Ready (`.github/workflows/ci.yml`) |
 | Secrets management | ❌ Env vars only |
 | TLS/HTTPS | ❌ Not configured |
 
@@ -209,8 +209,8 @@ observability traces.
 | 16 | **Test coverage for 5 zero-coverage modules** (rag, llm, analytics/*, monitoring) | L (5+ days) |
 | 17 | **Observability** (structlog, Prometheus metrics, OpenTelemetry tracing) | M (2-3 days) |
 | 18 | **Auth/RBAC middleware** (JWT/OIDC, role enforcement) | M (2-3 days) |
-| 19 | **CI/CD pipeline** (GitHub Actions: lint + typecheck + test + build) | S (1-2 days) |
-| 20 | **Input validation hardening** (file size limits, content-type whitelist, filename sanitization) | S (1 day) |
+| ~~19~~ | ~~**CI/CD pipeline** (GitHub Actions: lint + typecheck + test + build)~~ — **Resolved**: `.github/workflows/ci.yml` runs backend lint/typecheck/tests and frontend lint/typecheck/tests/build on PRs. | — |
+| ~~20~~ | ~~**Input validation hardening** (file size limits, content-type whitelist, filename sanitization)~~ — **Resolved**: KB document upload route enforces configured file size and MIME limits and sanitizes filenames. | — |
 | 21 | **Utility consolidation** (`_utc_now()` duplication across 4+ files → `shared/utils.py`) | Complete |
 | 22 | **Shared type follow-up** (severity enum, remaining KB metadata, future alert lifecycle polish) | S (0.5 days) |
 | 23 | **K8s manifests + IaC** (deployments, services, configmaps, Helm/Terraform) | L (5+ days) |
@@ -240,12 +240,12 @@ observability traces.
 | 1.2 Config schema and initial adapter selection | E3 | Complete | None | config/schema.py subsystem sections plus config-driven API/worker selection for graph, vectorstore, storage, embeddings, and LLM adapters |
 | 1.3 Embeddings wiring in coordinator | E2 | Complete | None | `agent/coordinator.py` handles `graph.updated` and emits `embeddings.complete` |
 | 1.4 Shared type completion + utility consolidation | E2 | Complete | None | shared/types.py audit fields, shared/utils.py `utc_now()` |
-| 1.5 CI/CD pipeline (GitHub Actions) | E3 | 2 days | None | Lint + typecheck + test + build on every PR |
-| 1.6 Input validation hardening | E2 | 1 day | None | File size limits, content-type whitelist in routers |
-| 1.7 Frontend app shell + routing | E4 | 3 days | None | React Router, layout, config fetching |
+| 1.5 CI/CD pipeline (GitHub Actions) | E3 | Complete | None | `.github/workflows/ci.yml` runs lint + typecheck + test + frontend build on every PR |
+| 1.6 Input validation hardening | E2 | Complete | None | KB document upload enforces configured file size limits, content-type whitelist, and filename sanitization |
+| 1.7 Frontend app shell + routing | E4 | Complete | None | React Router, `AppShell`, and `DomainConfigProvider` config fetching |
 | 1.8 Neo4j graph adapter | E1 | Complete | 1.1 | graph/adapters/neo4j_adapter.py + integration tests |
 | 1.9 Production vector adapter (Qdrant) | E3 | Complete | 1.2 | vectorstore/adapters/qdrant_adapter.py + tests |
-| 1.10 Production LLM wiring | E2 | 3 days | 1.2 | `api/dependencies.py` and `agent/coordinator.py` provider selection |
+| 1.10 Production LLM wiring | E2 | Complete | 1.2 | `api/dependencies.py` and `agent/coordinator.py` select OpenAI/Anthropic providers from config |
 
 **Exit criteria**: Graph read/write functional with Neo4j. Config selects adapters. Pipeline runs upload → graph → embeddings → vectors. CI green.
 
@@ -318,7 +318,7 @@ observability traces.
 | **Event pipeline reliability** (no dead-letter queue, no retry) | MEDIUM | HIGH | Implement dead-letter + XCLAIM in Phase 2; accept risk in Phase 1 |
 | **Frontend scope creep** (Investigation Workbench is complex composite) | HIGH | MEDIUM | Strict scope: graph + entity detail + evidence panel only; defer timeline to follow-up |
 | **Config schema migration** (no versioning, breaking changes) | LOW | MEDIUM | Add `version` field to DomainConfig now; document breaking changes |
-| **Test coverage enforcement not automated** | HIGH | MEDIUM | CI/CD in Phase 1 (task 1.5) with coverage gates |
+| **Test coverage enforcement not automated** | LOW | MEDIUM | Resolved for baseline CI through `.github/workflows/ci.yml`; keep coverage gates calibrated as modules mature |
 
 ---
 

@@ -10,11 +10,13 @@ from pydantic import BaseModel, Field
 from api._kb_store import DocumentRecord, KnowledgeBaseRepository
 from api.dependencies import (
     get_event_bus,
+    get_domain_config,
     get_graph_service,
     get_ingestion_service,
     get_knowledge_base_repository,
     get_object_store,
 )
+from config.schema import DomainConfig
 from events.protocols import EventBus
 from events.types import KnowledgeBaseCreatedEvent, KnowledgeBaseDeletedEvent
 from graph.models import GraphMetrics
@@ -23,6 +25,7 @@ from ingestion.protocols import IngestionServiceProtocol
 from ingestion.service_models import DocumentReceipt, DocumentSubmission
 from shared.types import KnowledgeBase
 from shared.utils import generate_id, utc_now
+from shared.validation import sanitize_filename, validate_content_type
 from storage.protocols import ObjectStore
 
 __all__ = [
@@ -255,27 +258,41 @@ async def register_knowledge_base_documents(
     files: list[UploadFile] = File(...),
     ingestion_service: IngestionServiceProtocol = Depends(get_ingestion_service),
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
+    config: DomainConfig = Depends(get_domain_config),
 ) -> DocumentRegistrationResponse:
     """Register uploaded documents and enqueue ingestion work."""
-    # TODO(production): Add input validation and security hardening:
-    # - Validate knowledge_base_id format (alphanumeric + dashes)
-    # - Enforce max file size (e.g. 100MB) and max file count per request
-    # - Whitelist content types (reject unexpected MIME types)
-    # - Add filename sanitization (prevent path traversal)
-    # - Add async timeout on upload.read() for large files
+    validation = config.validation
+    max_bytes = validation.max_file_size_mb * 1024 * 1024
+    allowed_content_types = set(validation.allowed_content_types)
     submissions: list[DocumentSubmission] = []
     raw_metadata: list[tuple[str, str | None, int]] = []
     for upload in files:
+        if not validate_content_type(upload.content_type, allowed_content_types):
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=f"Content type '{upload.content_type}' not allowed.",
+            )
+
         content = await upload.read()
+        if len(content) > max_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=(
+                    f"File '{upload.filename or 'upload'}' exceeds the "
+                    f"configured {validation.max_file_size_mb} MB limit."
+                ),
+            )
+
+        filename = sanitize_filename(upload.filename or "document")
         submissions.append(
             DocumentSubmission(
-                filename=upload.filename,
+                filename=filename,
                 content=content,
                 content_type=upload.content_type,
             )
         )
         raw_metadata.append(
-            (upload.filename or "document", upload.content_type, len(content))
+            (filename, upload.content_type, len(content))
         )
 
     receipts = ingestion_service.register_documents(knowledge_base_id, submissions)

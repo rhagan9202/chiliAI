@@ -11,10 +11,20 @@ from api._kb_store import DocumentRecord, InMemoryKnowledgeBaseRepository
 from api.app import create_app
 from api.dependencies import (
     get_event_bus,
+    get_domain_config,
     get_graph_service,
     get_ingestion_service,
     get_knowledge_base_repository,
     get_object_store,
+)
+from config.schema import (
+    AlertsConfig,
+    AuthConfig,
+    CapabilitiesConfig,
+    DomainConfig,
+    DomainInfo,
+    IngestionConfig,
+    ValidationConfig,
 )
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import (
@@ -30,6 +40,22 @@ from graph.models import GraphMetrics
 from shared.types import KnowledgeBase
 from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore
+
+
+def _build_config() -> DomainConfig:
+    return DomainConfig(
+        domain=DomainInfo(name="test", display_name="Test", description="Test"),
+        entities=[],
+        relationships=[],
+        capabilities=CapabilitiesConfig(),
+        ingestion=IngestionConfig(sources=[]),
+        auth=AuthConfig(enabled=False),
+        validation=ValidationConfig(
+            max_file_size_mb=1,
+            allowed_content_types=["text/plain", "application/json"],
+        ),
+        alerts=AlertsConfig(thresholds={}),
+    )
 
 
 class _MetricsOnlyGraphService:
@@ -62,6 +88,7 @@ def harness() -> Iterator[
     )
 
     app.dependency_overrides[get_event_bus] = lambda: event_bus
+    app.dependency_overrides[get_domain_config] = _build_config
     app.dependency_overrides[get_object_store] = lambda: object_store
     app.dependency_overrides[get_knowledge_base_repository] = lambda: repository
     app.dependency_overrides[get_graph_service] = lambda: graph_service
@@ -378,6 +405,75 @@ def test_register_documents_returns_202_and_publishes_event(
     detail = client.get(f"/knowledgebases/{kb_id}")
     assert detail.status_code == 200
     assert detail.json()["document_count"] == 1
+
+
+def test_register_documents_rejects_disallowed_content_type(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, _, _ = harness
+    created = client.post(
+        "/knowledgebases", json={"name": "DocKb", "description": ""}
+    )
+    kb_id = created.json()["id"]
+
+    response = client.post(
+        f"/knowledgebases/{kb_id}/documents",
+        files=[("files", ("payload.bin", b"abc", "application/octet-stream"))],
+    )
+
+    assert response.status_code == 415
+
+
+def test_register_documents_rejects_oversized_file(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, _, _ = harness
+    created = client.post(
+        "/knowledgebases", json={"name": "DocKb", "description": ""}
+    )
+    kb_id = created.json()["id"]
+
+    response = client.post(
+        f"/knowledgebases/{kb_id}/documents",
+        files=[("files", ("large.txt", b"x" * (2 * 1024 * 1024), "text/plain"))],
+    )
+
+    assert response.status_code == 413
+
+
+def test_register_documents_sanitizes_filenames(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, _, repository = harness
+    created = client.post(
+        "/knowledgebases", json={"name": "DocKb", "description": ""}
+    )
+    kb_id = created.json()["id"]
+
+    response = client.post(
+        f"/knowledgebases/{kb_id}/documents",
+        files=[("files", ("../../etc/passwd", b"hello", "text/plain"))],
+    )
+
+    assert response.status_code == 202
+    documents, total = repository.list_documents(kb_id, limit=10, offset=0)
+    assert total == 1
+    assert documents[0].filename == "passwd"
 
 
 def test_list_documents_returns_404_for_missing_kb(
