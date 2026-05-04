@@ -85,8 +85,8 @@ graph:
   auth_env_var: null
 
 vectorstore:
-  backend: in_memory
-  uri: null
+  backend: qdrant
+  uri: http://qdrant:6333
   dimensions: 384
   distance_metric: cosine
 

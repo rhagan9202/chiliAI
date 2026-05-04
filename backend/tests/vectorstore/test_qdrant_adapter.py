@@ -108,7 +108,30 @@ def test_qdrant_vector_store_creates_collection_and_upserts_records() -> None:
     assert client.upserts[0][0] == "chili_kb-1"
     payload = client.upserts[0][1][0].payload
     assert payload is not None
+    assert str(client.upserts[0][1][0].id) != records[0].id
+    assert payload["record_id"] == records[0].id
     assert payload["metadata"] == {"source": "policy"}
+
+
+def test_qdrant_vector_store_accepts_composite_record_ids() -> None:
+    client = _FakeQdrantClient()
+    store = QdrantVectorStore(
+        VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=2),
+        client=cast(QdrantClientProtocol, client),
+    )
+    record = VectorRecord(
+        id="kb-1:entity-1",
+        knowledge_base_id="kb-1",
+        content_id="entity-1",
+        embedding=[1.0, 0.0],
+    )
+
+    store.upsert_records("kb-1", [record])
+
+    point = client.upserts[0][1][0]
+    assert point.id != record.id
+    assert point.payload is not None
+    assert point.payload["record_id"] == "kb-1:entity-1"
 
 
 def test_qdrant_vector_store_search_translates_filters_and_returns_matches() -> None:
@@ -121,6 +144,7 @@ def test_qdrant_vector_store_search_translates_filters_and_returns_matches() -> 
                 version=1,
                 score=0.98,
                 payload={
+                    "record_id": "kb-1:content-1",
                     "content_id": "content-1",
                     "content": "Alpha",
                     "metadata": {"source": "policy", "rank": 1},
@@ -144,6 +168,7 @@ def test_qdrant_vector_store_search_translates_filters_and_returns_matches() -> 
     )
 
     assert [match.content_id for match in matches] == ["content-1"]
+    assert [match.record_id for match in matches] == ["kb-1:content-1"]
     query_filter = client.queries[0][2]
     assert query_filter is not None
     conditions = cast(list[qdrant_models.FieldCondition], query_filter.must or [])
@@ -172,16 +197,16 @@ def test_qdrant_vector_store_delete_records_targets_collection_ids() -> None:
     deleted_count = store.delete_records(
         "kb-1",
         [
-            "11111111-1111-1111-1111-111111111111",
-            "22222222-2222-2222-2222-222222222222",
+            "kb-1:entity-1",
+            "kb-1:entity-2",
         ],
     )
 
     assert deleted_count == 2
     assert client.deletes[0][0] == "chili_kb-1"
     assert client.deletes[0][1].points == [
-        "11111111-1111-1111-1111-111111111111",
-        "22222222-2222-2222-2222-222222222222",
+        "aa874bcd-be3a-5c5d-90d5-3bf5a7ae1b54",
+        "4759df70-72b3-5b1a-b95d-4335d2e14254",
     ]
 
 

@@ -29,7 +29,9 @@ services:
     environment:
       - CHILI_CONFIG_PATH=/app/config/defaults/medicare_fraud_dev.yaml
       - CHILI_EVENT_BUS_BACKEND=redis
+      - CHILI_EVENT_BLOCK_MS=100
       - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://chili:chili@postgres:5432/chili
       - NEO4J_URI=bolt://neo4j:7687
       - QDRANT_URL=http://qdrant:6333
       - MINIO_ENDPOINT=minio:9000
@@ -38,7 +40,11 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
       neo4j:
+        condition: service_healthy
+      qdrant:
         condition: service_healthy
     networks:
       - chili-net
@@ -53,7 +59,9 @@ services:
     environment:
       - CHILI_CONFIG_PATH=/app/config/defaults/medicare_fraud_dev.yaml
       - CHILI_EVENT_BUS_BACKEND=redis
+      - CHILI_EVENT_BLOCK_MS=100
       - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://chili:chili@postgres:5432/chili
       - NEO4J_URI=bolt://neo4j:7687
       - QDRANT_URL=http://qdrant:6333
       - MINIO_ENDPOINT=minio:9000
@@ -62,7 +70,11 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
       neo4j:
+        condition: service_healthy
+      qdrant:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
@@ -83,6 +95,24 @@ services:
       - redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - chili-net
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=chili
+      - POSTGRES_USER=chili
+      - POSTGRES_PASSWORD=chili
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chili -d chili"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -144,6 +174,7 @@ services:
 volumes:
   chili-object-data:
   redis-data:
+  postgres-data:
   neo4j-data:
   qdrant-data:
   minio-data:

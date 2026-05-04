@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Protocol, cast
+from uuid import NAMESPACE_URL, uuid5
 
 from config.schema import VectorStoreConfig
 from vectorstore.adapters.protocols import VectorStoreProtocol
@@ -167,7 +168,9 @@ class QdrantVectorStore(VectorStoreProtocol):
 
             self._client.delete(
                 collection_name=collection_name,
-                points_selector=_require_qdrant_models().PointIdsList(points=list(record_ids)),
+                points_selector=_require_qdrant_models().PointIdsList(
+                    points=[_point_id_for(record_id) for record_id in record_ids]
+                ),
                 wait=True,
             )
         except Exception as exc:
@@ -202,9 +205,10 @@ class QdrantVectorStore(VectorStoreProtocol):
 
     def _point_for(self, record: VectorRecord) -> PointStruct:
         return _require_qdrant_models().PointStruct(
-            id=record.id,
+            id=_point_id_for(record.id),
             vector=list(record.embedding),
             payload={
+                "record_id": record.id,
                 "content_id": record.content_id,
                 "content": record.content,
                 "metadata": dict(record.metadata),
@@ -233,7 +237,7 @@ class QdrantVectorStore(VectorStoreProtocol):
         raw_metadata = payload.get("metadata", {})
 
         return VectorMatch(
-            record_id=str(point.id),
+            record_id=cast(str, payload.get("record_id", str(point.id))),
             content_id=cast(str, payload["content_id"]),
             score=float(point.score),
             content=cast(str | None, payload.get("content")),
@@ -243,6 +247,10 @@ class QdrantVectorStore(VectorStoreProtocol):
     @staticmethod
     def _collection_name(knowledge_base_id: str) -> str:
         return f"chili_{knowledge_base_id}"
+
+
+def _point_id_for(record_id: str) -> str:
+    return str(uuid5(NAMESPACE_URL, record_id))
 
 
 def _distance_for(distance_metric: str) -> Distance:

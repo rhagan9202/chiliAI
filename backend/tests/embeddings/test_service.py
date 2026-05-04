@@ -23,7 +23,7 @@ def test_embeddings_service_generates_vectors_and_publishes_event() -> None:
     )
 
     assert response.model_name == "in-memory-embedder"
-    assert response.dimensions == 4
+    assert response.dimensions == 384
     assert len(response.items) == 1
     assert isinstance(event_bus.published_events[-1], EmbeddingsGeneratedEvent)
 

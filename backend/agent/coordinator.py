@@ -288,7 +288,7 @@ _VECTOR_STORE_REGISTRY: dict[str, _VectorStoreFactory] = {
 
 
 def _build_in_memory_embedder(config: EmbeddingsConfig) -> EmbedderProtocol:
-    return InMemoryEmbedder(provider=config.provider)
+    return InMemoryEmbedder(provider=config.provider, dimensions=config.dimensions)
 
 
 def _build_openai_embedder(config: EmbeddingsConfig) -> EmbedderProtocol:
@@ -1925,7 +1925,10 @@ async def run_worker(
             )
             if processed:
                 logger.info("Processed %s ingestion document(s)", processed)
-            if deps.event_settings.backend != "redis":
+                await asyncio.sleep(0)
+            elif deps.event_settings.backend == "redis":
+                await asyncio.sleep(0.05)
+            else:
                 await asyncio.sleep(1)
                 logger.debug("Worker heartbeat")
     except asyncio.CancelledError:
