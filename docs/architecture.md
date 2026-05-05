@@ -1045,13 +1045,13 @@ Adapter selection is driven by environment configuration, not code changes.
 
 ### 14.3 Current state vs. target
 
-> **Last updated**: April 2026. See [`docs/project_status_report.md`](project_status_report.md) for the full implementation status, gap-closure plan, and risk register.
+> **Last updated**: April 2026. For implementation status, verify the current code and tests first. Historical status reports and planning docs live under [`docs/archive/`](archive/); use [`todos_and_stubs_audit_2026-05-05.md`](todos_and_stubs_audit_2026-05-05.md) for the current TODO/stub inventory.
 
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
 | `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion, graph/vector/embedding/LLM/RAG services, analytics modules, monitoring, storage adapters, auth/RBAC middleware, and in-memory plus selected production-facing adapters | Enforce auth/RBAC route-wide, add production-mode adapter guardrails, and harden persistence/retry behavior |
 | `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, Investigation Workbench, RAG Chat, Configuration Editor, and WebSocket hook | Complete persisted evidence-pack surface, config save endpoint integration, and production UX/performance polish |
-| `docs/` | Architecture, onboarding guide, planning, security checklist, status/audit reports, and full backlog/story prompts | Keep current-state matrices synchronized with implementation |
+| `docs/` | Architecture, onboarding guide, security checklist, current TODO/stub audit, and archived historical planning/status material | Keep active docs synchronized with implementation and archive stale snapshots |
 | `infra/` | Docker Compose, flat Kubernetes manifests, and Helm chart | Add cloud-provider Terraform/Pulumi and production hardening as needed |
 | Testing | Extensive backend pytest suite and frontend Vitest suite | Keep CI coverage gates calibrated and add live adapter profiles where services are available |
 | CI/CD | GitHub Actions baseline exists | Add deployment/promotion workflows after release environments are defined |

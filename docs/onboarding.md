@@ -51,9 +51,9 @@ The codebase is an **active local-development prototype** with substantial backe
 chiliAI/
 ├── backend/            Python 3.12 — FastAPI API gateway, pipeline workers, analytics
 ├── chili_app/          React 19 + TypeScript + Vite 8 — analyst workbench SPA
-├── docs/               Architecture, design docs, ADRs, story prompts
-│   └── planning/
-│       └── story_prompts/   SP_E{n}_S{n}_prompt.md — backlog story definitions
+├── docs/               Architecture, design docs, active audits, and archived planning material
+│   └── archive/
+│       └── planning/   Historical backlog/story prompts, retained for reference only
 ├── infra/              Docker Compose configs, Kubernetes manifests, Helm chart
 ├── Makefile            Top-level dev commands (make dev, make test, etc.)
 ├── docker-compose.dev.yaml   Development stack (hot-reload mounts)
@@ -355,8 +355,8 @@ npm run build
 - **No console.log / print in production code.** Use `structlog` (backend) and proper React error boundaries / Sentry (frontend) instead.
 - **Secrets never in source.** No API keys, passwords, or credentials in code or committed config. Use environment variables.
 - **Update docs when you change architecture.** If you add a command, change environment variable names, or make a new architectural decision, update `docs/architecture.md` and relevant READMEs in the same PR.
-- **ADRs** — significant decisions (new dependency, changed module boundaries, new event type) warrant an Architecture Decision Record in `docs/planning/`.
-- **Story prompts** — before starting a significant feature, check `docs/planning/story_prompts/` for the corresponding SP file. Follow its acceptance criteria and "What NOT To Do" sections.
+- **Design docs** — significant decisions (new dependency, changed module boundaries, new event type) should be documented in `docs/architecture.md`, the relevant README, or a new dated design note under `docs/`.
+- **Archived planning** — historical story prompts and backlog files live under `docs/archive/planning/`. Treat them as reference material, not live acceptance criteria.
 
 ---
 
@@ -1012,11 +1012,11 @@ Before opening a PR:
 # Check existing issues
 gh issue list --repo Fed-Incubator/Crushing-Fraud-XAI
 
-# Create an issue from a story prompt
+# Create an issue from an archived story prompt, if it is still relevant
 gh issue create \
   --repo Fed-Incubator/Crushing-Fraud-XAI \
   --title "Story E14-S02: EmbeddingsService — graph-metric hybrid embedding flow" \
-  --body-file docs/planning/story_prompts/SP_E14_S02_prompt.md
+  --body-file docs/archive/planning/story_prompts/SP_E14_S02_prompt.md
 
 # Link a PR to an issue (in PR body)
 Closes #137

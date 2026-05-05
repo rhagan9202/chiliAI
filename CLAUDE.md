@@ -84,7 +84,7 @@ Modules typically expose: `protocols.py` (abstract contract), `models.py` (inter
 
 `api/` (FastAPI gateway, no business logic) · `ingestion/` (PDF/DOCX/HTML/JSON/TXT parsing, chunking, entity extraction) · `graph/` (graph DB protocol + adapters) · `vectorstore/` (vector store protocol + adapters) · `embeddings/` (embedder protocol + adapters) · `rag/` (query → embed → search → graph expand → LLM) · `llm/` (LLM client protocol + adapters) · `analytics/{timeseries,gnn,risk,explainability}/` · `agent/` (workflow coordinator) · `monitoring/` (claim stream consumer, alert generation) · `shared/` · `config/` · `events/` (Redis Streams) · `storage/` (object storage adapters).
 
-Implementation status varies by module. Verify behavior by reading the code and tests, and use `backend/README.md` § Current State plus `docs/project_status_report.md` for the current functional surface.
+Implementation status varies by module. Verify behavior by reading the code and tests, and use `backend/README.md` § Current State plus `docs/todos_and_stubs_audit_2026-05-05.md` for the current TODO/stub inventory.
 
 ## Container Topology
 
@@ -99,4 +99,4 @@ Infra services in dev compose: Redis 7, Neo4j 5, Qdrant, MinIO. Redis Streams is
 
 - **Planning tasks** — document assumptions and open questions; do not fabricate implementation details to fill gaps.
 - **Implementation tasks** — when introducing a new command, dependency, or architectural decision, update the relevant README (`backend/README.md`, `chili_app/README.md`) and, if it affects design, `docs/architecture.md`.
-- Story prompts and backlog live in `docs/planning/`.
+- Historical story prompts and backlog files are archived under `docs/archive/planning/`; do not treat them as live implementation status.

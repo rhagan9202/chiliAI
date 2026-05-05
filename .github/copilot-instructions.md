@@ -9,7 +9,7 @@
 - Prefer changes that clarify architecture and preserve future modularity over quick, tightly coupled implementations.
 
 ## Current Architecture
-- `backend/` is a Python 3.12 FastAPI and worker prototype with service/protocol modules, routers, adapters, and tests. See `backend/README.md` and `docs/project_status_report.md` for the live implementation surface.
+- `backend/` is a Python 3.12 FastAPI and worker prototype with service/protocol modules, routers, adapters, and tests. See `backend/README.md` for the live implementation surface and `docs/todos_and_stubs_audit_2026-05-05.md` for the current TODO/stub inventory.
 - The backend structure is 16 modules: `api/`, `ingestion/`, `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/`, `analytics/` (timeseries, gnn, risk, explainability), `agent/`, `monitoring/`, `shared/`, `config/`, `events/`, `storage/`. See `docs/architecture.md` §5 for the full package tree and responsibility matrix.
 - `chili_app/` is a routed React 19 + TypeScript analyst workbench, not the Vite placeholder. Implemented routes include Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration.
 - The frontend still has prototype gaps around persisted evidence packs, config save, and production UX/performance hardening. See `chili_app/README.md` for current route status.
