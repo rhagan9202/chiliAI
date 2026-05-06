@@ -65,14 +65,14 @@ const programs = {
     cats: [{n:'Billing Pattern',v:21.3,c:1204},{n:'Network Anomaly',v:16.1,c:847},{n:'Trend Shift',v:9.8,c:623},{n:'Beneficiary Abuse',v:5.5,c:567}],
   },
   medicaid: {
-    label: 'Medicaid FFS', color: C.purple,
-    kpis: { flagged:'2,108', savings:'$31.4M', resolved:'1,203', confidence:'85%' },
+    label: 'Medicaid Dental/Vision', color: C.purple,
+    kpis: { flagged:'1,847', savings:'$28.6M', resolved:'1,042', confidence:'84%' },
     trend: [
-      {m:'Sep',a:120,s:2.1},{m:'Oct',a:148,s:2.5},{m:'Nov',a:137,s:2.3},{m:'Dec',a:162,s:2.8},
-      {m:'Jan',a:198,s:3.4},{m:'Feb',a:221,s:3.9},{m:'Mar',a:208,s:3.6},{m:'Apr',a:239,s:4.1},
-      {m:'May',a:261,s:4.7},{m:'Jun',a:283,s:5.0},{m:'Jul',a:265,s:4.6},{m:'Aug',a:302,s:5.4},
+      {m:'Sep',a:110,s:1.8},{m:'Oct',a:138,s:2.2},{m:'Nov',a:152,s:2.5},{m:'Dec',a:171,s:2.9},
+      {m:'Jan',a:195,s:3.3},{m:'Feb',a:218,s:3.7},{m:'Mar',a:234,s:4.0},{m:'Apr',a:256,s:4.4},
+      {m:'May',a:278,s:4.8},{m:'Jun',a:295,s:5.1},{m:'Jul',a:312,s:5.4},{m:'Aug',a:338,s:5.9},
     ],
-    cats: [{n:'Billing Pattern',v:12.8,c:782},{n:'Network Anomaly',v:9.4,c:534},{n:'Trend Shift',v:5.7,c:389},{n:'Beneficiary Abuse',v:3.5,c:403}],
+    cats: [{n:'Dental Upcoding',v:11.2,c:634},{n:'Clinic Ring / Shared Attr',v:7.8,c:412},{n:'Unbundling / Repeats',v:5.4,c:387},{n:'Ineligible Provider',v:4.2,c:414}],
   },
 };
 
@@ -338,6 +338,245 @@ const canned = {
   default: "I can help you analyze specific billing codes, compare this provider to their peers, outline recommended investigative steps, or draft a case summary for your supervisor. What would you like to explore?",
 };
 
+// ── MEDICAID-SPECIFIC DATA ────────────────────────────────────────────────────
+const medicaidFeed = [
+  {id:101,name:'Bright Smiles Dental Group',npi:'3344556677',type:'Billing + Ring',risk:96,conf:91,amt:'$3.4M',flag:'CDT UPCODING · CROWN OVERTREATMENT',days:1,city:'Orlando, FL',spec:'Pediatric Dentistry',status:'Active'},
+  {id:102,name:'Sunshine Dental Partners',npi:'4455667788',type:'Billing + Trend',risk:93,conf:88,amt:'$2.7M',flag:'SERVICES NOT RENDERED · PHANTOM BILLING',days:2,city:'Atlanta, GA',spec:'General Dentistry',status:'Active'},
+  {id:103,name:'ClearView Vision Center',npi:'5566778899',type:'Network',risk:90,conf:85,amt:'$1.9M',flag:'SELF-REFERRAL · IN-HOUSE OPTICAL LAB',days:3,city:'Dallas, TX',spec:'Optometry',status:'Active'},
+  {id:104,name:'Dr. Angela Martinez, DDS',npi:'6677889911',type:'Billing',risk:88,conf:90,amt:'$1.1M',flag:'UNBUNDLING · PROSTHODONTIC PROCEDURES',days:2,city:'Phoenix, AZ',spec:'Prosthodontics',status:'Active'},
+  {id:105,name:'Premier Hearing Solutions',npi:'7788990022',type:'Billing + Trend',risk:85,conf:82,amt:'$890K',flag:'NON-QUALIFYING DEVICES · OTC HEARING AIDS',days:5,city:'Houston, TX',spec:'Audiology',status:'Active'},
+  {id:106,name:'Family Dental Care LLC',npi:'8899001133',type:'Ring',risk:82,conf:79,amt:'$1.5M',flag:'SHARED ATTRIBUTE RING · MULTI-CLINIC',days:4,city:'Chicago, IL',spec:'General Dentistry',status:'Active'},
+  {id:107,name:'Dr. Kevin Park, OD',npi:'9900112244',type:'Trend',risk:78,conf:77,amt:'$620K',flag:'SCOPE OF PRACTICE VIOLATION',days:7,city:'Los Angeles, CA',spec:'Optometry',status:'Cleared'},
+  {id:108,name:'Smile Factory Dental',npi:'1011121314',type:'Billing',risk:74,conf:81,amt:'$980K',flag:'UNCERTIFIED TECHNICIAN BILLING · X-RAYS',days:6,city:'Miami, FL',spec:'Pediatric Dentistry',status:'Active'},
+];
+
+const cdtCodes = [
+  {m:"Mar'23",codes:28,top3:32,bill:35,atRisk:3,owner:'old'},{m:"Apr'23",codes:27,top3:33,bill:37,atRisk:4,owner:'old'},
+  {m:"May'23",codes:26,top3:35,bill:39,atRisk:4,owner:'old'},{m:"Jun'23",codes:27,top3:34,bill:38,atRisk:5,owner:'old'},
+  {m:"Jul'23",codes:22,top3:42,bill:48,atRisk:22,owner:'new'},{m:"Aug'23",codes:16,top3:55,bill:68,atRisk:48,owner:'new'},
+  {m:"Sep'23",codes:12,top3:67,bill:86,atRisk:72,owner:'new'},{m:"Oct'23",codes:9,top3:76,bill:104,atRisk:92,owner:'new'},
+  {m:"Nov'23",codes:7,top3:83,bill:122,atRisk:114,owner:'new'},{m:"Dec'23",codes:6,top3:88,bill:138,atRisk:131,owner:'new'},
+  {m:"Jan'24",codes:5,top3:92,bill:156,atRisk:150,owner:'new'},{m:"Feb'24",codes:5,top3:94,bill:168,atRisk:162,owner:'new'},
+  {m:"Mar'24",codes:5,top3:95,bill:179,atRisk:174,owner:'new'},{m:"Apr'24",codes:5,top3:96,bill:188,atRisk:183,owner:'new'},
+  {m:"May'24",codes:5,top3:96,bill:194,atRisk:189,owner:'new'},{m:"Jun'24",codes:5,top3:97,bill:201,atRisk:196,owner:'new'},
+  {m:"Jul'24",codes:5,top3:97,bill:207,atRisk:202,owner:'new'},{m:"Aug'24",codes:5,top3:97,bill:214,atRisk:209,owner:'new'},
+];
+
+const cdtDist = [
+  { code:'D2140', prov:2,  p90:22, med:35 },
+  { code:'D2150', prov:3,  p90:18, med:25 },
+  { code:'D2740', prov:42, p90:15, med:8  },
+  { code:'D2750', prov:38, p90:12, med:6  },
+  { code:'D3330', prov:15, p90:8,  med:4  },
+];
+
+const cdtTrend = [
+  {m:"Mar'23",prov:12,peer:13,owner:'old'},{m:"Apr'23",prov:13,peer:13,owner:'old'},{m:"May'23",prov:12,peer:12,owner:'old'},
+  {m:"Jun'23",prov:14,peer:13,owner:'old'},{m:"Jul'23",prov:18,peer:13,owner:'new'},{m:"Aug'23",prov:28,peer:12,owner:'new'},
+  {m:"Sep'23",prov:38,peer:13,owner:'new'},{m:"Oct'23",prov:48,peer:12,owner:'new'},{m:"Nov'23",prov:56,peer:13,owner:'new'},
+  {m:"Dec'23",prov:63,peer:12,owner:'new'},{m:"Jan'24",prov:68,peer:13,owner:'new'},{m:"Feb'24",prov:71,peer:12,owner:'new'},
+  {m:"Mar'24",prov:73,peer:13,owner:'new'},{m:"Apr'24",prov:76,peer:12,owner:'new'},{m:"May'24",prov:77,peer:13,owner:'new'},
+  {m:"Jun'24",prov:78,peer:12,owner:'new'},{m:"Jul'24",prov:79,peer:13,owner:'new'},{m:"Aug'24",prov:80,peer:12,owner:'new'},
+];
+
+const medicaidNetNodes = [
+  { id:'bright', label:'Bright Smiles\nDental Group', x:210, y:135, r:40, color:'#ff4040', risk:96, status:'SUBJECT' },
+  { id:'sundn',  label:'Sunshine Dental\nPartners',   x:345, y:55,  r:24, color:'#ff4040', risk:93, status:'FLAGGED' },
+  { id:'labco',  label:'ProSmile Dental\nLab LLC',    x:360, y:200, r:20, color:'#f59e0b', risk:80, status:'FLAGGED' },
+  { id:'family', label:'Family Dental\nCare LLC',     x:75,  y:200, r:18, color:'#f59e0b', risk:82, status:'FLAGGED' },
+  { id:'ortho',  label:'Ortho Plus\nSpecialists',     x:68,  y:65,  r:22, color:'#f59e0b', risk:76, status:'FLAGGED' },
+];
+const medicaidNetEdges = [
+  { from:'bright', to:'sundn',  overlap:41, vol:312, w:4.0 },
+  { from:'bright', to:'labco',  overlap:28, vol:245, w:3.2 },
+  { from:'bright', to:'family', overlap:22, vol:187, w:2.5 },
+  { from:'bright', to:'ortho',  overlap:15, vol:128, w:1.8 },
+  { from:'sundn',  to:'labco',  overlap:19, vol:156, w:2.1 },
+];
+const medicaidNetTable = [
+  { name:'Sunshine Dental Partners', npi:'4455667788', spec:'General Dentistry', overlap:41, vol:312, risk:93, status:'FLAGGED' },
+  { name:'ProSmile Dental Lab LLC',  npi:'LABCO-001',  spec:'Dental Laboratory', overlap:28, vol:245, risk:80, status:'FLAGGED' },
+  { name:'Family Dental Care LLC',   npi:'8899001133', spec:'General Dentistry', overlap:22, vol:187, risk:82, status:'FLAGGED' },
+  { name:'Ortho Plus Specialists',   npi:'ORTHO-001',  spec:'Orthodontics',      overlap:15, vol:128, risk:76, status:'FLAGGED' },
+];
+
+const medicaidEvLog = [
+  {date:'Jul 8, 2023',type:'Ownership Change',icon:'building',text:'Dental practice acquired by Bright Smiles Holdings Corp, a multi-state corporate dental chain. New operational protocols and production targets implemented across all providers.',sev:'info'},
+  {date:'Aug 22, 2023',type:'Pattern Alert',icon:'alert',text:'Automated monitoring detected 21% month-over-month increase in crown procedure billing (D2740) — first significant deviation from 14-month baseline. Filling codes (D2140–D2161) declining simultaneously.',sev:'med'},
+  {date:'Sep 3, 2024',type:'AI Detection',icon:'bot',text:'Model flagged CDT consolidation pattern — 28 → 5 unique codes over 14 months with 97% concentration in restorative crowns and root canals. Pattern initiated immediately post-acquisition. Crown rate 80% vs. 14% peer median.',sev:'high'},
+  {date:'Sep 4, 2024',type:'Ring Detection',icon:'network',text:'Shared-attribute ring identified: Bright Smiles, Sunshine Dental Partners, Family Dental Care share address fragments, phone numbers, and banking info. In-house lab (ProSmile) previously terminated from GA Medicaid enrollment.',sev:'high'},
+  {date:'Sep 5, 2024',type:'Credentialing Alert',icon:'alert',text:'3 of 5 rendering staff IDs on radiology claims (D0220/D0230) lack state dental radiography certification. Annual volume of non-certifiable claims: ~$180K.',sev:'med'},
+  {date:'Sep 6, 2024',type:'Claims Pull',icon:'file',text:'1,247 crown claims reviewed for FY2024. Crown-to-patient ratio: 4.2 crowns per pediatric patient vs. 0.8 peer median. Estimated overbilling vs. peer-adjusted expected: $3.4M.',sev:'high'},
+  {date:'Sep 7, 2024',type:'Analyst Review',icon:'user',text:'Assigned to Analyst J. Morrison. Priority: HIGH. Recommended for chart audit, radiograph review, State MFCU referral, and corporate ownership structure investigation.',sev:'info'},
+];
+
+const medicaidPkgSignals = [
+  {
+    id: 'msig1',
+    signal: 'CDT Code Consolidation + Crown Overtreatment',
+    icon: TrendingUp, color: C.red,
+    anomalyScore: 0.96,
+    policies: [
+      {
+        id: 'MP1',
+        source: 'OIG Report OEI-02-14-00250',
+        title: 'Questionable Billing for Medicaid Pediatric Dental Services',
+        relevance: 96,
+        snippet: 'OIG audits found the same billing errors repeated across dental providers — billing for crowns and root canals at rates far exceeding clinical norms. Corporate dental chains showed systematic overtreatment patterns, particularly for pediatric patients, including billing for steel crowns and root canals that were medically unnecessary.',
+        ruleType: 'OIG Finding',
+      },
+      {
+        id: 'MP2',
+        source: 'State Medicaid Manual §4390',
+        title: 'Dental Services Medical Necessity and Coverage Limitations',
+        relevance: 91,
+        snippet: 'Dental services must be medically necessary. States must have utilization management controls to prevent overuse of restorative services including crowns when less costly alternatives such as fillings would be clinically appropriate. Claims for services that are not medically necessary are not eligible for reimbursement.',
+        ruleType: 'Coverage Policy',
+      },
+      {
+        id: 'MP3',
+        source: '42 CFR §455.23 — Provider Billing Fraud',
+        title: 'Medicaid Provider Billing Requirements and Fraud Prohibitions',
+        relevance: 85,
+        snippet: 'Claims submitted to Medicaid must accurately represent services provided. Systematic billing for high-cost restorative procedures when simpler services were clinically indicated and delivered constitutes fraudulent billing subject to state recovery action and federal enforcement referral.',
+        ruleType: 'Federal Regulation',
+      },
+    ],
+    determination: 'LIKELY VIOLATION',
+    determinationConf: 93,
+    reasoning: 'CDT code consolidation from 28 to 5 unique codes occurred within 8 months of corporate dental chain acquisition on Jul 8, 2023. Crown procedures (D2740, D2750) now represent 80% of billing vs. 14% peer median for pediatric dental practices. This is directly consistent with OIG OEI-02-14-00250 findings where corporate dental chains drove systematic overtreatment for crowns and root canals. The temporal correlation with acquisition — provider maintained a stable 14-month baseline pre-acquisition — indicates an operational mandate from new ownership rather than clinical evolution.',
+    actions: [
+      { type: 'IMMEDIATE', label: 'Prior Auth Enforcement', desc: 'Require prior authorization for all D2740/D2750 crown procedure claims from this provider pending investigation.', priority: 'high' },
+      { type: 'INVESTIGATION', label: 'Chart Audit — Crown Claims', desc: 'Request radiographs and clinical notes for 50 randomly sampled crown claims. Verify decay severity justifies restorative vs. preventive care under state Medicaid coverage policy.', priority: 'high' },
+      { type: 'COMPLIANCE', label: 'State MFCU Referral', desc: 'Refer to State Medicaid Fraud Control Unit given pattern duration, dollar threshold, and corporate chain involvement. Initiate corporate practice of dentistry review.', priority: 'high' },
+    ],
+    policyGap: 'Most states lack a quantitative crown-to-filling ratio threshold that would trigger automatic prepayment review. OIG findings remain advisory without binding enforcement rules on procedure mix ratios, creating a systematic detection gap for corporate dental chain overtreatment patterns.',
+  },
+  {
+    id: 'msig2',
+    signal: 'Shared-Attribute Provider Ring (In-House Lab Self-Referral)',
+    icon: Share2, color: C.amber,
+    anomalyScore: 0.88,
+    policies: [
+      {
+        id: 'MP4',
+        source: '42 CFR §438.608(b)',
+        title: 'MCP Provider Enrollment and Network Integrity Requirements',
+        relevance: 92,
+        snippet: 'MCPs must verify provider enrollment status and ensure all network providers meet state enrollment requirements. Providers sharing addresses, banking, or contact information with terminated or excluded entities must be flagged for additional screening and enrollment verification before claims payment.',
+        ruleType: 'Federal Regulation',
+      },
+      {
+        id: 'MP5',
+        source: 'Social Security Act §1902(a)(39)',
+        title: 'Terminated Provider Exclusion from Medicaid Programs',
+        relevance: 86,
+        snippet: 'States must terminate from Medicaid participation any provider who has been terminated for cause in Medicare or another state Medicaid program. Network relationships with terminated providers through shared operational infrastructure — including in-house laboratories, dispensaries, and management companies — constitute potential program integrity violations.',
+        ruleType: 'Federal Statute',
+      },
+    ],
+    determination: 'POSSIBLE VIOLATION — FURTHER REVIEW REQUIRED',
+    determinationConf: 72,
+    reasoning: 'Four linked dental entities share address fragments, phone numbers, and banking information consistent with a nominally separate organization operating as a single enterprise. One linked entity (ProSmile Dental Lab LLC) was previously terminated from enrollment in Georgia Medicaid. The in-house lab relationship creates self-referral risk for prosthetic devices including dentures, crowns, and bridges per Medicaid oversight requirements. Determination confidence is 72% pending financial relationship and ownership disclosure review.',
+    actions: [
+      { type: 'INVESTIGATION', label: 'Ownership Disclosure Review', desc: 'Request 5% ownership/control disclosure for all linked entities. Cross-reference with OIG LEIE, DEX, SSA DMF, and state termination databases.', priority: 'high' },
+      { type: 'INVESTIGATION', label: 'In-House Lab Compliance Audit', desc: 'Verify ProSmile Dental Lab enrollment status. Confirm prosthetic devices meet state quality standards and are custom-fitted per Medicaid coverage requirements.', priority: 'med' },
+      { type: 'COMPLIANCE', label: 'MCO Network Directory Audit', desc: 'Direct MCO to verify enrollment status of all ring-linked providers against state and federal exclusion lists within 30 days.', priority: 'med' },
+    ],
+    policyGap: 'No federal standard defines "shared operational infrastructure" as a threshold for ring-detection screening. States vary widely on how they interpret shared-attribute linkages between dental providers and associated labs, creating inconsistent enforcement of in-house lab self-referral prohibitions.',
+  },
+  {
+    id: 'msig3',
+    signal: 'Uncertified Technician Billing (Dental Radiography)',
+    icon: AlertTriangle, color: C.amber,
+    anomalyScore: 0.81,
+    policies: [
+      {
+        id: 'MP6',
+        source: 'State Dental Practice Act — Radiograph Administration',
+        title: 'Scope of Practice — Dental Radiography Certification Requirements',
+        relevance: 94,
+        snippet: 'Dental radiographs must be administered by certified dental radiographers or dental hygienists under direct supervision of a licensed dentist. Claims billing Medicaid for x-rays administered by dental assistants who are not appropriately certified to perform radiographic services are not eligible for reimbursement.',
+        ruleType: 'State Regulation',
+      },
+      {
+        id: 'MP7',
+        source: 'OIG Dental Provider Enforcement Actions (2019–2023, compiled)',
+        title: 'Improper Billing by Uncertified Personnel — Enforcement Pattern',
+        relevance: 87,
+        snippet: 'Past OIG investigations identified dental clinics billing Medicaid for radiographic services (x-rays) performed by dental assistants who were not appropriately certified to administer radiographs, rendering such claims ineligible for reimbursement. Multiple OIG reviews found this error pattern repeated across dental providers in multiple states.',
+        ruleType: 'OIG Finding',
+      },
+    ],
+    determination: 'LIKELY VIOLATION',
+    determinationConf: 79,
+    reasoning: 'Provider bills high volume of D0220/D0230 (periapical/panoramic radiographs) but rendering provider IDs on these claims map to staff without state radiography certification on record. Cross-reference of state dental board certification database shows 3 of 5 rendering technicians lack required certification. State practice act explicitly prohibits Medicaid reimbursement for radiographs administered by uncertified staff, making these claims ineligible regardless of other clinical documentation.',
+    actions: [
+      { type: 'IMMEDIATE', label: 'Payment Suspension for Uncertified Claims', desc: 'Suspend payment for all D0220/D0230 claims where rendering provider ID maps to staff without confirmed certification, pending verification.', priority: 'high' },
+      { type: 'INVESTIGATION', label: 'Certification Cross-Reference', desc: 'Cross-reference all rendering provider IDs submitting radiology claims against state dental board certified radiographer list. Identify full scope of ineligible claims.', priority: 'high' },
+      { type: 'COMPLIANCE', label: 'Corrective Action Plan', desc: 'Require provider to submit corrective action plan documenting that all staff administering radiographs hold required state certification before payment resumes.', priority: 'med' },
+    ],
+    policyGap: 'Automated claims adjudication systems do not routinely cross-check rendering technician certification status against state dental board databases at the time of claim submission. This violation is only detectable through reactive audits, leaving a systematic gap in pre-payment controls.',
+  },
+];
+
+const medicaidCases = [
+  {id:'MCD-2024-0412',prov:'Bright Smiles Dental Group',npi:'3344556677',type:'Billing + Ring',risk:96,status:'Under Review',analyst:'J. Morrison',amt:'$3.4M',date:'Sep 4'},
+  {id:'MCD-2024-0408',prov:'Sunshine Dental Partners',npi:'4455667788',type:'Billing + Trend',risk:93,status:'Escalated',analyst:'T. Williams',amt:'$2.7M',date:'Sep 2'},
+  {id:'MCD-2024-0395',prov:'ClearView Vision Center',npi:'5566778899',type:'Network',risk:90,status:'Pending',analyst:'Unassigned',amt:'$1.9M',date:'Sep 1'},
+  {id:'MCD-2024-0381',prov:'Dr. Angela Martinez, DDS',npi:'6677889911',type:'Billing',risk:88,status:'Under Review',analyst:'M. Johnson',amt:'$1.1M',date:'Aug 28'},
+  {id:'MCD-2024-0367',prov:'Premier Hearing Solutions',npi:'7788990022',type:'Billing + Trend',risk:85,status:'Under Review',analyst:'R. Davis',amt:'$890K',date:'Aug 22'},
+  {id:'MCD-2024-0354',prov:'Family Dental Care LLC',npi:'8899001133',type:'Ring',risk:82,status:'Closed · Confirmed',analyst:'J. Morrison',amt:'$1.5M',date:'Aug 15'},
+  {id:'MCD-2024-0341',prov:'Dr. Kevin Park, OD',npi:'9900112244',type:'Trend',risk:78,status:'Closed · Cleared',analyst:'T. Williams',amt:'—',date:'Aug 10'},
+  {id:'MCD-2024-0328',prov:'Smile Factory Dental',npi:'1011121314',type:'Billing',risk:74,status:'Pending',analyst:'Unassigned',amt:'$980K',date:'Aug 20'},
+];
+
+const medicaidPolicyGaps = [
+  {
+    id: 'MG1', severity: 'CRITICAL', title: 'No Crown-to-Filling Ratio Threshold for Automatic Review',
+    scope: 'Dental Services — Restorative Coding', affectedProviders: 634, estimatedExposure: '$87M',
+    source: 'State Medicaid Manual §4390 / OIG OEI-02-14-00250',
+    description: 'No state or federal policy establishes a quantitative crown-to-filling billing ratio that triggers mandatory prepayment review. Corporate dental chains can systematically bill D2740/D2750 crowns in place of D2140/D2150 fillings without automated detection, persisting until a reactive audit is initiated.',
+    recommendation: 'Establish a maximum 40% crown-procedure ratio for pediatric dental providers. Trigger prepayment review automatically when exceeded for 3 or more consecutive months.',
+    programImpact: 'medicaid',
+    casesExposing: 22,
+  },
+  {
+    id: 'MG2', severity: 'HIGH', title: 'No Automated Rendering Technician Certification Cross-Check',
+    scope: 'Provider Credentialing — Dental Radiography', affectedProviders: 414, estimatedExposure: '$31M',
+    source: 'State Practice Acts / OIG Dental Enforcement (2019–2023)',
+    description: 'Claims processing systems do not validate rendering technician IDs on dental radiology claims against state dental board certification databases at adjudication. Billing for radiographs by uncertified staff is undetectable until a reactive audit identifies the pattern.',
+    recommendation: 'Implement automated monthly cross-reference between rendering provider IDs on D0220/D0230 claims and state certified radiographer lists. Reject or pend claims where rendering staff certification cannot be confirmed.',
+    programImpact: 'medicaid',
+    casesExposing: 11,
+  },
+  {
+    id: 'MG3', severity: 'HIGH', title: 'Insufficient MCO Network Provider Enrollment Verification Frequency',
+    scope: 'Managed Care — Provider Enrollment Integrity', affectedProviders: 387, estimatedExposure: '$50M',
+    source: '42 CFR §438.608(b) / OIG OEI-03-19-00070',
+    description: 'MCOs do not consistently verify their network provider directories against state and federal exclusion lists. OIG found nearly 11% of terminated providers remained active in Medicaid networks associated with $50.3M in payments. No required minimum frequency or automated mechanism exists for ongoing reconciliation.',
+    recommendation: 'Require monthly automated reconciliation of MCO provider directories against LEIE, DEX, SSA DMF, and state termination databases. Enforce a 30-day remediation SLA with financial penalties for non-compliance.',
+    programImpact: 'medicaid',
+    casesExposing: 19,
+  },
+  {
+    id: 'MG4', severity: 'MEDIUM', title: 'Medicaid NCCI Edit Lag vs. Medicare',
+    scope: 'Claims Processing — NCCI Edits',  affectedProviders: 612, estimatedExposure: '$43M',
+    source: 'CMS NCCI Policy Manual / State Medicaid Guidance',
+    description: 'Medicaid NCCI edit tables are updated quarterly vs. Medicare\'s monthly cadence, creating a 60–90 day window where new abusive coding patterns can propagate in Medicaid before edits catch up.',
+    recommendation: 'Align Medicaid NCCI edit update frequency with Medicare. Implement a rapid-response edit pathway for patterns identified in Medicare fraud cases.',
+    programImpact: 'medicaid',
+    casesExposing: 19,
+  },
+];
+
+const medicaidCanned = {
+  codes: "The top 5 CDT codes driving 97% of billing are:\n\n• D2740 — Porcelain/ceramic crown (42% of claims)\n• D2750 — Crown, high noble metal (38%)\n• D3330 — Root canal, molar (15%)\n• D0220 — Periapical radiograph (4%)\n• D0230 — Panoramic radiograph (1%)\n\nTypical pediatric dental practices bill 25–30+ unique CDT codes. This consolidation to 5 codes — overwhelmingly crowns — is directly consistent with OIG findings on corporate dental chain overtreatment patterns.",
+  compare: "Compared to 412 similar pediatric dental providers in Florida:\n\n• Crown rate (D2740+D2750): 80% vs. peer median 14%\n• Root canal rate (D3330): 15% vs. peer median 4%\n• Filling rate (D2140-D2161): 2% vs. peer median 38%\n• Avg procedures per patient visit: 4.2 vs. 1.8 median\n• Monthly billing growth: +380% over 14 months vs. +8% peer average\n\nThis provider ranks in the top 0.8% statewide for crown utilization in pediatric patients.",
+  next: "Recommended investigative steps:\n\n1. Chart Audit — Pull 50 random patient charts with crown claims. Verify radiographs show decay severity justifying crown vs. filling per state Medicaid coverage policy.\n2. State MFCU Referral — Dollar threshold exceeded; refer to Medicaid Fraud Control Unit for corporate practice of dentistry review.\n3. Beneficiary Interviews — Contact 15 beneficiary families to verify services were rendered.\n4. Prior Auth Lock — Require prior authorization for all D2740/D2750 claims from this provider pending investigation outcome.\n5. Lab Compliance — Verify ProSmile Dental Lab enrollment status and prosthetic device quality standards per Medicaid requirements.\n\nEstimated timeline: 8–10 weeks. Estimated recovery if confirmed: $3.4M.",
+  default: "I can help you analyze specific CDT billing codes, compare this dental provider to their peer cohort, outline recommended investigative steps, identify ring-linked entities, or draft a case summary for your SIU. What would you like to explore?",
+};
+
 // ── SUBCOMPONENTS ──────────────────────────────────────────────────────────────
 const mono = { fontFamily: "'IBM Plex Mono', monospace" };
 const oxan = { fontFamily: "'Oxanium', sans-serif" };
@@ -402,8 +641,306 @@ function KPICard({ icon: Icon, label, value, sub, color, trend }) {
 
 const tipStyle = { contentStyle:{ background:C.s3, border:`1px solid ${C.b2}`, borderRadius:8, fontSize:11 }, labelStyle:{ color:C.text } };
 
+// ── MEDICAID EXECUTIVE DASHBOARD DATA ────────────────────────────────────────
+const cmipPriorities = [
+  { label:'Dental / DVH',        active:12,   color:C.red    },
+  { label:'Nursing Facilities',  active:4,    color:C.amber  },
+  { label:'MCO Capitation',      active:2,    color:C.purple },
+  { label:'Provider Enrollment', active:8,    color:C.amber  },
+  { label:'Data Analytics',      active:null, status:'Monitoring', color:C.cyan },
+];
+
+const stateScorecard = [
+  { state:'FL', permError:'8.4%', permUp:true,  mfcuRef:12, capOpen:true,  capDays:47, aiExposure:'$6.1M', status:'CAP OPEN'            },
+  { state:'GA', permError:'6.2%', permUp:false, mfcuRef:8,  capOpen:false, capDays:0,  aiExposure:'$4.8M', status:'AT RISK'             },
+  { state:'TX', permError:'5.1%', permUp:false, mfcuRef:15, capOpen:false, capDays:0,  aiExposure:'$3.9M', status:'COMPLIANT'           },
+  { state:'AZ', permError:'9.7%', permUp:true,  mfcuRef:4,  capOpen:true,  capDays:91, aiExposure:'$2.2M', status:'ESCALATION PENDING'  },
+  { state:'IL', permError:'4.8%', permUp:false, mfcuRef:11, capOpen:false, capDays:0,  aiExposure:'$1.8M', status:'COMPLIANT'           },
+  { state:'OH', permError:'7.3%', permUp:false, mfcuRef:6,  capOpen:false, capDays:0,  aiExposure:'$2.6M', status:'AT RISK'             },
+];
+
+const medicaidServiceLines = [
+  { line:'Dental (Pediatric)',   aiExposure:11.2, stateRpt:2.1, trend:'up',   gap:'CRITICAL' },
+  { line:'Vision / DMEPOS',     aiExposure:7.8,  stateRpt:3.4, trend:'flat', gap:'HIGH'     },
+  { line:'Nursing Facilities',  aiExposure:5.1,  stateRpt:5.0, trend:'down', gap:'LOW'      },
+  { line:'MCO Improper Cap.',   aiExposure:4.5,  stateRpt:0.2, trend:'up',   gap:'CRITICAL' },
+  { line:'Provider Enrollment', aiExposure:3.2,  stateRpt:0.8, trend:'up',   gap:'HIGH'     },
+];
+
+const medicaidTrend = [
+  {m:'Sep',a:110,s:1.8,stateRpt:0.3},{m:'Oct',a:138,s:2.2,stateRpt:0.4},
+  {m:'Nov',a:152,s:2.5,stateRpt:0.5},{m:'Dec',a:171,s:2.9,stateRpt:0.5},
+  {m:'Jan',a:195,s:3.3,stateRpt:0.6},{m:'Feb',a:218,s:3.7,stateRpt:0.7},
+  {m:'Mar',a:234,s:4.0,stateRpt:0.7},{m:'Apr',a:256,s:4.4,stateRpt:0.8},
+  {m:'May',a:278,s:4.8,stateRpt:0.9},{m:'Jun',a:295,s:5.1,stateRpt:0.9},
+  {m:'Jul',a:312,s:5.4,stateRpt:1.0},{m:'Aug',a:338,s:5.9,stateRpt:1.1},
+];
+
+const stateGapData = [
+  { state:'FL', ai:6.1, rpt:0.9 },
+  { state:'GA', ai:4.8, rpt:0.7 },
+  { state:'TX', ai:3.9, rpt:1.2 },
+  { state:'AZ', ai:2.2, rpt:0.2 },
+  { state:'IL', ai:1.8, rpt:0.8 },
+  { state:'OH', ai:2.6, rpt:0.3 },
+];
+
+// ── MEDICAID EXECUTIVE DASHBOARD ──────────────────────────────────────────────
+function MedicaidDashboard() {
+  const statusColor = (s) => s === 'COMPLIANT' ? C.green : s === 'AT RISK' ? C.amber : C.red;
+  const gapColor    = (g) => g === 'CRITICAL' ? C.red : g === 'HIGH' ? C.amber : C.green;
+  const trendIcon   = (t) => t === 'up' ? '↑' : t === 'down' ? '↓' : '→';
+
+  return (
+    <div style={{ padding:24, display:'flex', flexDirection:'column', gap:20 }}>
+
+      {/* ── CMIP Priority Alignment Strip ─────────────────────────────────── */}
+      <div style={{ background:C.s2, border:`1px solid ${C.b0}`, borderRadius:12, padding:'13px 22px' }} className="fu">
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10 }}>
+          <div style={{ fontSize:10, color:C.muted, ...mono, letterSpacing:'0.08em' }}>
+            CMS COMPREHENSIVE MEDICAID INTEGRITY PLAN · FY2024–2028 PRIORITY COVERAGE
+          </div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            {cmipPriorities.map((p, i) => (
+              <div key={i} style={{
+                display:'flex', alignItems:'center', gap:7,
+                padding:'5px 12px', borderRadius:20,
+                border:`1px solid ${p.color}40`, background:`${p.color}10`,
+              }}>
+                <div style={{
+                  width:6, height:6, borderRadius:'50%', background:p.color,
+                  boxShadow:`0 0 6px ${p.color}`,
+                  animation: p.active ? 'pkgPulse 2s ease-in-out infinite' : 'none',
+                }} />
+                <span style={{ fontSize:11, color:p.color, fontWeight:600 }}>{p.label}</span>
+                <span style={{ ...mono, fontSize:10, color:C.dim }}>
+                  {p.active != null ? `${p.active} active` : p.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── KPI Row ────────────────────────────────────────────────────────── */}
+      <div style={{ display:'flex', gap:14 }} className="fu">
+        <KPICard icon={User}          label="Beneficiaries at Risk"      value="94,200" sub="Enrolled with flagged providers · this quarter"        color={C.red}    trend="+9% QoQ"  />
+        <KPICard icon={DollarSign}    label="Improper Payment Exposure"   value="$28.6M" sub="Est. per GAO PERM methodology"                         color={C.green}  trend="+18% QoQ" />
+        <KPICard icon={Globe}         label="States Engaged"              value="18"     sub="Active findings / TA guidance issued"                  color={C.purple} trend="+3 QoQ"   />
+        <KPICard icon={ClipboardList} label="CMIP Priority Coverage"      value="4 of 5" sub="FY2024–28 integrity priorities w/ active signals"      color={C.amber}  />
+      </div>
+
+      {/* ── Trend Chart + Service Line Heatmap ────────────────────────────── */}
+      <div style={{ display:'flex', gap:14 }}>
+        {/* Exposure Trend */}
+        <div style={{ flex:2, background:C.s2, border:`1px solid ${C.b0}`, borderRadius:12, padding:22 }} className="fu">
+          <div style={{ marginBottom:18 }}>
+            <div style={{ ...oxan, fontWeight:700, fontSize:14, color:C.text }}>Medicaid Program Exposure Trend</div>
+            <div style={{ fontSize:11, color:C.dim, marginTop:3 }}>AI-detected exposure vs. state-reported findings ($M) · Sep 2023 – Aug 2024</div>
+          </div>
+          <ResponsiveContainer width="100%" height={190}>
+            <AreaChart data={medicaidTrend} margin={{ top:5, right:10, bottom:0, left:-18 }}>
+              <defs>
+                <linearGradient id="gME" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={C.green}  stopOpacity={0.35}/>
+                  <stop offset="95%" stopColor={C.green} stopOpacity={0.02}/>
+                </linearGradient>
+                <linearGradient id="gMR" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={C.amber}  stopOpacity={0.30}/>
+                  <stop offset="95%" stopColor={C.amber} stopOpacity={0.02}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.b0} />
+              <XAxis dataKey="m" tick={{ fill:C.muted, fontSize:10, fontFamily:'IBM Plex Mono' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill:C.muted, fontSize:10, fontFamily:'IBM Plex Mono' }} axisLine={false} tickLine={false} />
+              <Tooltip {...tipStyle} />
+              <Area type="monotone" dataKey="s"        stroke={C.green} strokeWidth={2} fill="url(#gME)" name="AI Exposure ($M)"       />
+              <Area type="monotone" dataKey="stateRpt" stroke={C.amber} strokeWidth={2} strokeDasharray="5 3" fill="url(#gMR)" name="State-Reported ($M)" />
+            </AreaChart>
+          </ResponsiveContainer>
+          <div style={{ display:'flex', gap:20, marginTop:10 }}>
+            {[{c:C.green,l:'AI-Detected Exposure'},{c:C.amber,l:'State-Reported Findings',dash:true}].map((lg,i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:6, fontSize:10, color:C.dim }}>
+                <div style={{ width:20, height:2, background:lg.c, borderRadius:1, opacity:0.9,
+                  borderTop: lg.dash ? `2px dashed ${lg.c}` : 'none', borderBottom:'none', borderLeft:'none', borderRight:'none' }} />
+                {lg.l}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Service Line Heatmap */}
+        <div style={{ flex:1, background:C.s2, border:`1px solid ${C.b0}`, borderRadius:12, padding:22 }} className="fu">
+          <div style={{ ...oxan, fontWeight:700, fontSize:14, color:C.text, marginBottom:4 }}>Service Line Risk</div>
+          <div style={{ fontSize:11, color:C.dim, marginBottom:16 }}>AI exposure vs. state-reported ($M)</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 52px 52px 68px', gap:6, paddingBottom:9, borderBottom:`1px solid ${C.b0}` }}>
+              {['Service','AI $M','State $M','Gap'].map((h, i) => (
+                <div key={i} style={{ fontSize:9, color:C.muted, ...mono, textAlign: i > 0 ? 'right' : 'left' }}>{h}</div>
+              ))}
+            </div>
+            {medicaidServiceLines.map((sl, i) => (
+              <div key={i} style={{
+                display:'grid', gridTemplateColumns:'1fr 52px 52px 68px', gap:6,
+                padding:'10px 0', borderBottom:`1px solid ${C.b0}20`, alignItems:'center',
+              }}>
+                <div style={{ fontSize:11, color:C.text }}>
+                  {sl.line}
+                  <span style={{ marginLeft:5, fontSize:10, color: sl.trend==='up' ? C.red : sl.trend==='down' ? C.green : C.dim }}>
+                    {trendIcon(sl.trend)}
+                  </span>
+                </div>
+                <div style={{ ...mono, fontSize:11, color:C.green, textAlign:'right' }}>{sl.aiExposure}</div>
+                <div style={{ ...mono, fontSize:11, color:C.amber, textAlign:'right' }}>{sl.stateRpt}</div>
+                <div style={{ textAlign:'right' }}>
+                  <span style={{
+                    padding:'2px 7px', borderRadius:4, fontSize:9, ...mono,
+                    color:gapColor(sl.gap), background:`${gapColor(sl.gap)}15`,
+                    border:`1px solid ${gapColor(sl.gap)}30`,
+                  }}>{sl.gap}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── State Performance Scorecard ────────────────────────────────────── */}
+      <div style={{ background:C.s2, border:`1px solid ${C.b0}`, borderRadius:12, padding:22 }} className="fu">
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+          <div>
+            <div style={{ ...oxan, fontWeight:700, fontSize:14, color:C.text }}>State Performance Scorecard</div>
+            <div style={{ fontSize:11, color:C.dim, marginTop:3 }}>
+              State first-line-of-defense accountability · 6 highest-exposure states monitored
+            </div>
+          </div>
+          <div style={{ fontSize:9, color:C.muted, ...mono, letterSpacing:'0.06em' }}>SORTED BY AI-FLAGGED EXPOSURE ↓</div>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'56px 130px 130px 150px 120px 1fr', gap:10,
+          paddingBottom:10, borderBottom:`1px solid ${C.b0}`, marginBottom:4 }}>
+          {['STATE','PERM ERROR RATE','MFCU REFERRALS','CAP STATUS','AI EXPOSURE','OVERSIGHT STATUS'].map((h, i) => (
+            <div key={i} style={{ fontSize:9, color:C.muted, ...mono, letterSpacing:'0.05em' }}>{h}</div>
+          ))}
+        </div>
+        {stateScorecard.map((s, i) => {
+          const sc = statusColor(s.status);
+          return (
+            <div key={i} style={{
+              display:'grid', gridTemplateColumns:'56px 130px 130px 150px 120px 1fr', gap:10,
+              padding:'10px 0', borderBottom:`1px solid ${C.b0}15`, alignItems:'center',
+            }}>
+              <div style={{ ...oxan, fontSize:16, fontWeight:700, color:C.text }}>{s.state}</div>
+              <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                <span style={{ ...mono, fontSize:12, color: s.permUp ? C.red : C.green }}>{s.permError}</span>
+                <span style={{ fontSize:11, color: s.permUp ? C.red : C.green }}>{s.permUp ? '↑' : '↓'}</span>
+              </div>
+              <div style={{ ...mono, fontSize:12, color:C.text }}>{s.mfcuRef} referrals</div>
+              <div>
+                {s.capOpen
+                  ? <span style={{ fontSize:10, color:C.red, ...mono }}>OPEN · {s.capDays}d outstanding</span>
+                  : <span style={{ fontSize:10, color:C.green, ...mono }}>None active</span>
+                }
+              </div>
+              <div style={{ ...mono, fontSize:13, color:C.purple, fontWeight:600 }}>{s.aiExposure}</div>
+              <div>
+                <span style={{
+                  padding:'3px 10px', borderRadius:4, fontSize:10, ...mono, fontWeight:600,
+                  color:sc, background:`${sc}15`, border:`1px solid ${sc}40`,
+                  animation: s.status === 'ESCALATION PENDING' ? 'pkgPulse 2s ease-in-out infinite' : 'none',
+                }}>{s.status}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Accountability Gap + MCO Network Integrity ─────────────────────── */}
+      <div style={{ display:'flex', gap:14 }}>
+
+        {/* Accountability Gap */}
+        <div style={{ flex:1, background:C.s2, border:`1px solid ${C.b0}`, borderRadius:12, padding:22 }} className="fu">
+          <div style={{ ...oxan, fontWeight:700, fontSize:14, color:C.text, marginBottom:4 }}>Federal–State Accountability Gap</div>
+          <div style={{ fontSize:11, color:C.dim, marginBottom:18 }}>
+            CMS AI-detected vs. state self-reported exposure · same reporting period
+          </div>
+          {/* Summary callout */}
+          <div style={{ background:C.s3, border:`1px solid ${C.b1}`, borderRadius:10, padding:'14px 18px', marginBottom:18 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+              <span style={{ fontSize:11, color:C.dim }}>AI-Identified Exposure</span>
+              <span style={{ ...mono, fontSize:13, fontWeight:600, color:C.green }}>$28.6M</span>
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:10 }}>
+              <span style={{ fontSize:11, color:C.dim }}>State-Reported (same period)</span>
+              <span style={{ ...mono, fontSize:13, fontWeight:600, color:C.amber }}>$4.1M</span>
+            </div>
+            <div style={{ height:1, background:C.b1, marginBottom:10 }} />
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <span style={{ fontSize:12, fontWeight:600, color:C.text }}>Accountability Gap</span>
+              <span style={{ ...mono, fontSize:16, fontWeight:700, color:C.red }}>$24.5M</span>
+            </div>
+            <div style={{ fontSize:10, color:C.amber, marginTop:8 }}>
+              ⚠ 5 states recommended for targeted federal review
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={155}>
+            <BarChart data={stateGapData} margin={{ top:5, right:10, bottom:0, left:-18 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.b0} />
+              <XAxis dataKey="state" tick={{ fill:C.muted, fontSize:10, fontFamily:'IBM Plex Mono' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill:C.muted, fontSize:10, fontFamily:'IBM Plex Mono' }} axisLine={false} tickLine={false} />
+              <Tooltip {...tipStyle} />
+              <Bar dataKey="ai"  fill={C.purple} radius={[3,3,0,0]} name="AI-Detected ($M)"    opacity={0.85} />
+              <Bar dataKey="rpt" fill={C.amber}  radius={[3,3,0,0]} name="State-Reported ($M)" opacity={0.85} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* MCO Network Integrity */}
+        <div style={{ flex:1, background:C.s2, border:`1px solid ${C.b0}`, borderRadius:12, padding:22 }} className="fu">
+          <div style={{ ...oxan, fontWeight:700, fontSize:14, color:C.text, marginBottom:4 }}>MCO Network Integrity</div>
+          <div style={{ fontSize:11, color:C.dim, marginBottom:18 }}>
+            Managed care plan oversight metrics · 42 CFR §438.608(b) compliance
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            {[
+              { label:'Terminated Provider Re-entry Rate', value:'11%',      threshold:'> 5% alert threshold',  status:'ABOVE THRESHOLD', color:C.red,   pct:55  },
+              { label:'Network Dir. Reconciliation Lag',   value:'43 days',  threshold:'> 30d alert threshold',  status:'HIGH',            color:C.amber, pct:48  },
+              { label:'Capitation vs. Enrollment Accuracy',value:'94.2%',    threshold:'≥ 95% compliance target',status:'BELOW TARGET',    color:C.amber, pct:94  },
+            ].map((m, i) => (
+              <div key={i} style={{ background:C.s3, borderRadius:10, padding:'14px 16px' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
+                  <div style={{ fontSize:12, color:C.text, flex:1, paddingRight:10, lineHeight:1.4 }}>{m.label}</div>
+                  <div style={{ textAlign:'right', flexShrink:0 }}>
+                    <div style={{ ...mono, fontSize:17, fontWeight:700, color:m.color, lineHeight:1 }}>{m.value}</div>
+                    <span style={{
+                      display:'inline-block', marginTop:4,
+                      padding:'2px 8px', borderRadius:3, fontSize:9, ...mono,
+                      color:m.color, background:`${m.color}15`, border:`1px solid ${m.color}30`,
+                    }}>{m.status}</span>
+                  </div>
+                </div>
+                <div style={{ fontSize:10, color:C.muted, marginBottom:6 }}>{m.threshold}</div>
+                <div style={{ height:3, background:C.b0, borderRadius:2, overflow:'hidden' }}>
+                  <div style={{ width:`${m.pct}%`, height:'100%', background:m.color, borderRadius:2, opacity:0.8 }} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop:14, padding:'10px 14px', background:`${C.amber}08`, border:`1px solid ${C.amber}20`, borderRadius:8 }}>
+            <div style={{ fontSize:10, color:C.amber, lineHeight:1.5 }}>
+              Source: OIG OEI-03-19-00070 — 11% terminated provider re-entry rate linked to $50.3M in improper payments. No federal minimum reconciliation frequency currently mandated.
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
 // ── DASHBOARD ──────────────────────────────────────────────────────────────────
 function Dashboard({ prog }) {
+  if (prog === 'medicaid') return <MedicaidDashboard />;
+
   const pd = programs[prog];
   const ac = pd.color;
   const analysts = [
@@ -502,10 +1039,11 @@ function Dashboard({ prog }) {
 }
 
 // ── ANOMALY FEED ──────────────────────────────────────────────────────────────
-function AnomalyFeed({ onSelect, feedback = {}, onFeedback = () => {} }) {
+function AnomalyFeed({ prog = 'medicare', onSelect, feedback = {}, onFeedback = () => {} }) {
   const [expanded, setExpanded] = useState(null);
   const [filter, setFilter] = useState('All');
   const types = ['All','Billing','Network','Trend'];
+  const activeFeed = prog === 'medicaid' ? medicaidFeed : feed;
   
   // Helper to get latest feedback for provider
   const getLatestFeedback = (npi) => {
@@ -513,14 +1051,14 @@ function AnomalyFeed({ onSelect, feedback = {}, onFeedback = () => {} }) {
     return feedback[npi].overall[0];
   };
   
-  let rows = filter === 'All' ? feed : feed.filter(r => r.type.includes(filter));
+  let rows = filter === 'All' ? activeFeed : activeFeed.filter(r => r.type.includes(filter));
 
   return (
     <div style={{ padding:24, display:'flex', flexDirection:'column', gap:16 }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <div>
           <div style={{ ...oxan, fontSize:18, fontWeight:700, color:C.text }}>Anomaly Detection Feed</div>
-          <div style={{ fontSize:12, color:C.dim, marginTop:3 }}>{rows.length} of {feed.length} alerts · sorted by risk score</div>
+          <div style={{ fontSize:12, color:C.dim, marginTop:3 }}>{rows.length} of {activeFeed.length} alerts · sorted by risk score</div>
         </div>
         <div style={{ display:'flex', gap:10 }}>
           <div style={{ display:'flex', gap:5, alignItems:'center' }}>
@@ -656,8 +1194,17 @@ function AnomalyFeed({ onSelect, feedback = {}, onFeedback = () => {} }) {
 function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) {
   const [tab, setTab] = useState('signals');
   const ac = programs[prog].color;
-  const p = provider || feed[0];
+  const p = provider || (prog === 'medicaid' ? medicaidFeed[0] : feed[0]);
   const providerId = p.npi;
+  const isMedicaid = prog === 'medicaid';
+  const activeHcpcs = isMedicaid ? cdtCodes : hcpcs;
+  const activeEmDist = isMedicaid ? cdtDist : emDist;
+  const activeEmTrend = isMedicaid ? cdtTrend : emTrend;
+  const activeNetNodes = isMedicaid ? medicaidNetNodes : netNodes;
+  const activeNetEdges = isMedicaid ? medicaidNetEdges : netEdges;
+  const activeNetTable = isMedicaid ? medicaidNetTable : netTable;
+  const activePkgSignals = isMedicaid ? medicaidPkgSignals : pkgSignals;
+  const activeEvLog = isMedicaid ? medicaidEvLog : evLog;
   const verdictOptions = [
     { value: 'confirmed', label: 'Confirmed Issue', color: C.red, desc: 'AI flags are accurate — this pattern warrants escalation or formal investigation' },
     { value: 'legitimate', label: 'Legitimate Case', color: C.green, desc: 'Flagged patterns have valid explanations — case can be closed with documentation' },
@@ -921,7 +1468,14 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
     );
   }
 
-  const reasons = [
+  const reasons = isMedicaid ? [
+    { icon:TrendingUp, label:'CDT Code Consolidation + Crown Overtreatment', color:C.red,
+      desc:`Unique CDT procedure codes fell from 28 → 5 following Jul 2023 corporate acquisition. Prior 14-month baseline showed stable diversity (26–28 codes). Crown procedures (D2740, D2750) now represent 80% of billing vs. 14% peer median for pediatric dental. Pattern change timing correlates directly with acquisition.`, section:'hcpcs_consolidation' },
+    { icon:AlertTriangle, label:'High-Cost Code Upcoding vs. Peers', color:C.amber,
+      desc:`Crown rate was normal (12-14%) pre-acquisition, then spiked to 80% over 14 months. Current rate is 5.7× peer median. Both code consolidation and crown upcoding exhibit synchronized timing with ownership change on Jul 8, 2023, suggesting coordinated operational changes under new management.`, section:'em_upcoding' },
+    { icon:Share2, label:'Shared-Attribute Ring / In-House Lab Self-Referral', color:C.amber,
+      desc:`4 linked dental entities share address fragments, phone numbers, banking info. In-house lab (ProSmile Dental Lab) was previously terminated from GA Medicaid. Patient overlap across linked clinics: 41% with Sunshine Dental Partners. Creates self-referral risk for prosthetic devices (crowns, dentures, bridges).`, section:'network_cobilling' },
+  ] : [
     { icon:TrendingUp, label:'HCPCS Consolidation', color:C.red,
       desc:`Unique procedure codes fell from 45 → 6 following July 2023 ownership transfer. Prior 16-month baseline showed stable diversity (44-47 codes). Top 3 codes now represent 98% of billing, up from 41% at transfer. Pattern change timing correlates with ownership change.`, section:'hcpcs_consolidation' },
     { icon:AlertTriangle, label:'E&M Upcoding', color:C.amber,
@@ -969,7 +1523,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
           </div>
           <div style={{ flex:1 }}>
             <div style={{ ...mono, fontSize:10, color:C.cyan, letterSpacing:'0.07em', marginBottom:12 }}>
-              AI ANALYSIS · 3 ANOMALY SIGNALS DETECTED
+              AI ANALYSIS · {reasons.length} ANOMALY SIGNALS DETECTED
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:13 }}>
               {reasons.map((r, i) => (
@@ -1028,9 +1582,9 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
             <div style={{ padding:20, display:'flex', gap:16 }}>
               {/* Left: Dual-axis chart (2/3 width) */}
               <div style={{ flex:2, display:'flex', flexDirection:'column' }}>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:12, ...mono }}>CODE DIVERSITY COLLAPSE & CONCENTRATION RISE · 18-MONTH TREND · OWNERSHIP CHANGE JUL 15, 2023</div>
+                <div style={{ fontSize:11, color:C.muted, marginBottom:12, ...mono }}>{isMedicaid ? 'CDT CODE DIVERSITY COLLAPSE & CONCENTRATION RISE · 18-MONTH TREND · ACQUISITION JUL 8, 2023' : 'CODE DIVERSITY COLLAPSE & CONCENTRATION RISE · 18-MONTH TREND · OWNERSHIP CHANGE JUL 15, 2023'}</div>
                 <ResponsiveContainer width="100%" height={200}>
-                  <AreaChart data={hcpcs} margin={{ top:5, right:40, bottom:5, left:-20 }}>
+                  <AreaChart data={activeHcpcs} margin={{ top:5, right:40, bottom:5, left:-20 }}>
                     <defs>
                       <linearGradient id="gCodes" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor={C.red} stopOpacity={0.4}/>
@@ -1056,10 +1610,10 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                 </ResponsiveContainer>
                 <div style={{ display:'flex', gap:14, marginTop:8 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:10, color:C.dim }}>
-                    <div style={{ width:14, height:2, background:C.red }}/> Unique HCPCS Codes (47 → 6)
+                    <div style={{ width:14, height:2, background:C.red }}/> {isMedicaid ? 'Unique CDT Codes (28 → 5)' : 'Unique HCPCS Codes (47 → 6)'}
                   </div>
                   <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:10, color:C.dim }}>
-                    <div style={{ width:14, height:2, background:C.amber }}/> Top 3 Code Concentration (38% → 98%)
+                    <div style={{ width:14, height:2, background:C.amber }}/> Top 3 Code Concentration ({isMedicaid ? '32% → 97%' : '38% → 98%'})
                   </div>
                 </div>
               </div>
@@ -1069,8 +1623,8 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                 {/* Key metrics */}
                 <div style={{ display:'flex', flexDirection:'row', gap:10 }}>
                   {[
-                    {v:'45 → 6', l:'Code diversity collapse', c:C.red, sub:'87% drop post-ownership'},
-                    {v:'98%', l:'Top 3 concentration', c:C.amber, sub:'up from 41% at transfer'},
+                    {v: isMedicaid ? '28 → 5' : '45 → 6', l:'Code diversity collapse', c:C.red, sub: isMedicaid ? '82% drop post-acquisition' : '87% drop post-ownership'},
+                    {v: isMedicaid ? '97%' : '98%', l:'Top 3 concentration', c:C.amber, sub: isMedicaid ? 'up from 32% at acquisition' : 'up from 41% at transfer'},
                   ].map((s,i)=>(
                     <div key={i} style={{ background:C.s3, border:`1px solid ${C.b0}`, borderRadius:8, padding:'12px 14px', flex:1 }}>
                       <div style={{ ...oxan, fontSize:20, fontWeight:800, color:s.c, lineHeight:1 }}>{s.v}</div>
@@ -1082,17 +1636,23 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
 
                 {/* Top 6 codes table */}
                 <div style={{ flex:1, background:C.s3, border:`1px solid ${C.b0}`, borderRadius:8, padding:'12px 14px', display:'flex', flexDirection:'column' }}>
-                  <div style={{ fontSize:10, color:C.muted, marginBottom:10, ...mono }}>TOP 6 CODES · CURRENT MIX</div>
+                  <div style={{ fontSize:10, color:C.muted, marginBottom:10, ...mono }}>{isMedicaid ? 'TOP 5 CDT CODES · CURRENT MIX' : 'TOP 6 CODES · CURRENT MIX'}</div>
                   <div style={{ display:'flex', flexDirection:'column', gap:6, flex:1 }}>
-                    {[
+                    {(isMedicaid ? [
+                      {code:'D2740', name:'Porcelain/ceramic crown', pct:42},
+                      {code:'D2750', name:'Crown, high noble metal', pct:38},
+                      {code:'D3330', name:'Root canal, molar', pct:15},
+                      {code:'D0220', name:'Periapical radiograph', pct:4},
+                      {code:'D0230', name:'Panoramic radiograph', pct:1},
+                    ] : [
                       {code:'99215', name:'Office visit, level 5', pct:42},
                       {code:'99214', name:'Office visit, level 4', pct:35},
                       {code:'99213', name:'Office visit, level 3', pct:21},
                       {code:'96372', name:'Therapeutic injection', pct:1.2},
                       {code:'36415', name:'Venipuncture', pct:0.5},
                       {code:'85025', name:'CBC', pct:0.3},
-                    ].map((row,i)=>(
-                      <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', paddingBottom:5, borderBottom: i < 5 ? `1px solid ${C.b0}` : 'none' }}>
+                    ]).map((row,i, arr)=>(
+                      <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', paddingBottom:5, borderBottom: i < arr.length-1 ? `1px solid ${C.b0}` : 'none' }}>
                         <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
                           <span style={{ ...mono, fontSize:11, fontWeight:700, color:C.text }}>{row.code}</span>
                           <span style={{ fontSize:9, color:C.dim, lineHeight:1.2 }}>{row.name}</span>
@@ -1106,7 +1666,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
             </div>
             {/* Component-level feedback for Signal 1 */}
             <div style={{ padding:'0 20px 16px 20px' }}>
-              <ComponentFeedback section="hcpcs_consolidation" label="HCPCS Code Consolidation Signal" />
+              <ComponentFeedback section="hcpcs_consolidation" label={isMedicaid ? 'CDT Code Consolidation Signal' : 'HCPCS Code Consolidation Signal'} />
             </div>
           </div>
 
@@ -1118,8 +1678,8 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                   <AlertTriangle size={13} color={C.amber}/>
                 </div>
                 <div>
-                  <div style={{ ...oxan, fontWeight:700, fontSize:13, color:C.text }}>Signal 2 · E&M Level Upcoding</div>
-                  <div style={{ fontSize:11, color:C.dim, marginTop:1 }}>99215 (highest complexity) used 4× above peer median — statistically improbable without systematic miscoding. Provider maintained normal 19-21% rate until ownership transfer, then spiked 311% over 12 months.</div>
+                  <div style={{ ...oxan, fontWeight:700, fontSize:13, color:C.text }}>{isMedicaid ? 'Signal 2 · High-Cost Code Upcoding vs. Peers' : 'Signal 2 · E&M Level Upcoding'}</div>
+                  <div style={{ fontSize:11, color:C.dim, marginTop:1 }}>{isMedicaid ? 'Crown procedures (D2740/D2750) used at 5.7× peer median — clinically improbable in pediatric dental without systematic overtreatment. Rate was normal (12-14%) pre-acquisition, then spiked to 80% over 14 months.' : '99215 (highest complexity) used 4× above peer median — statistically improbable without systematic miscoding. Provider maintained normal 19-21% rate until ownership transfer, then spiked 311% over 12 months.'}</div>
                 </div>
               </div>
               <Chip label="HIGH SEVERITY" color={C.amber}/>
@@ -1127,9 +1687,9 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
             <div style={{ padding:20, display:'flex', gap:16 }}>
               {/* E&M distribution grouped bar */}
               <div style={{ flex:1 }}>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:12, ...mono }}>E&M CODE MIX — THIS PROVIDER vs. PEERS · % OF ALL E&M CLAIMS</div>
+                <div style={{ fontSize:11, color:C.muted, marginBottom:12, ...mono }}>{isMedicaid ? 'CDT CODE MIX — THIS PROVIDER vs. PEERS · % OF ALL RESTORATIVE CLAIMS' : 'E&M CODE MIX — THIS PROVIDER vs. PEERS · % OF ALL E&M CLAIMS'}</div>
                 <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={emDist} margin={{ top:5, right:10, bottom:5, left:-20 }}>
+                  <BarChart data={activeEmDist} margin={{ top:5, right:10, bottom:5, left:-20 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={C.b0} />
                     <XAxis dataKey="code" tick={{ fill:C.dim, fontSize:10, fontFamily:'IBM Plex Mono' }} axisLine={false} tickLine={false}/>
                     <YAxis tick={{ fill:C.muted, fontSize:9, fontFamily:'IBM Plex Mono' }} axisLine={false} tickLine={false} tickFormatter={v=>`${v}%`}/>
@@ -1149,9 +1709,9 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
               </div>
               {/* 99215 rate trend */}
               <div style={{ flex:1 }}>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:12, ...mono }}>99215 UTILIZATION RATE OVER TIME · OWNERSHIP CHANGE JUL 15, 2023</div>
+                <div style={{ fontSize:11, color:C.muted, marginBottom:12, ...mono }}>{isMedicaid ? 'CROWN RATE (D2740+D2750) OVER TIME · ACQUISITION JUL 8, 2023' : '99215 UTILIZATION RATE OVER TIME · OWNERSHIP CHANGE JUL 15, 2023'}</div>
                 <ResponsiveContainer width="100%" height={200}>
-                  <AreaChart data={emTrend} margin={{ top:5, right:10, bottom:5, left:-20 }}>
+                  <AreaChart data={activeEmTrend} margin={{ top:5, right:10, bottom:5, left:-20 }}>
                     <defs>
                       <linearGradient id="gProv" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor={C.red} stopOpacity={0.4}/>
@@ -1175,7 +1735,10 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                   </AreaChart>
                 </ResponsiveContainer>
                 <div style={{ display:'flex', gap:14, marginTop:8 }}>
-                  {[{c:C.red,l:'This Provider (19% → 78%)'},{c:C.cyan,l:'Peer Median (stable ~19%)'}].map((x,i)=>(
+                  {[
+                    {c:C.red,l: isMedicaid ? 'This Provider (13% → 80%)' : 'This Provider (19% → 78%)'},
+                    {c:C.cyan,l: isMedicaid ? 'Peer Median (stable ~13%)' : 'Peer Median (stable ~19%)'},
+                  ].map((x,i)=>(
                     <div key={i} style={{ display:'flex', alignItems:'center', gap:6, fontSize:10, color:C.dim }}>
                       <div style={{ width:14, height:2, background:x.c }}/>{x.l}
                     </div>
@@ -1184,12 +1747,17 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
               </div>
               {/* Stats panel */}
               <div style={{ width:160, display:'flex', flexDirection:'column', gap:9 }}>
-                {[
+                {(isMedicaid ? [
+                  {v:'80%', l:'Provider crown rate', c:C.red, sub:'vs 14% peer median'},
+                  {v:'Top 0.8%', l:'Statewide crown utilization', c:C.red, sub:'among 412 peers (FL)'},
+                  {v:'+466%', l:'Rate rise post-acquisition', c:C.amber, sub:'13% → 80% in 14mo'},
+                  {v:'$3.4M', l:'Est. crown overbilling', c:C.amber, sub:'vs. peer-adjusted expected'},
+                ] : [
                   {v:'78%', l:'Provider 99215 rate', c:C.red, sub:'vs 18% peer median'},
                   {v:'Top 1.3%', l:'Nationally for 99215', c:C.red, sub:'among 847 peers (FL)'},
                   {v:'+311%', l:'Rate rise post-transfer', c:C.amber, sub:'19% → 78% in 12mo'},
                   {v:'$1.1M', l:'Est. E&M overbilling', c:C.amber, sub:'vs. peer-adjusted expected'},
-                ].map((s,i)=>(
+                ]).map((s,i)=>(
                   <div key={i} style={{ background:C.s3, border:`1px solid ${C.b0}`, borderRadius:8, padding:'10px 12px' }}>
                     <div style={{ ...oxan, fontSize:18, fontWeight:800, color:s.c, lineHeight:1 }}>{s.v}</div>
                     <div style={{ fontSize:10, color:C.dim, marginTop:4, lineHeight:1.4 }}>{s.l}</div>
@@ -1200,7 +1768,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
             </div>
             {/* Component-level feedback for Signal 2 */}
             <div style={{ padding:'0 20px 16px 20px' }}>
-              <ComponentFeedback section="em_upcoding" label="E&M Upcoding Signal" />
+              <ComponentFeedback section="em_upcoding" label={isMedicaid ? 'High-Cost Code Upcoding Signal' : 'E&M Upcoding Signal'} />
             </div>
           </div>
 
@@ -1212,7 +1780,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
             <div style={{ flex:1 }}>
               <div style={{ ...oxan, fontSize:12, fontWeight:700, color:C.purple, marginBottom:5 }}>AI PATTERN CORRELATION INSIGHT</div>
               <div style={{ fontSize:12, color:C.dim, lineHeight:1.7 }}>
-                Both <b style={{ color:C.text }}>Signal 1 (HCPCS consolidation)</b> and <b style={{ color:C.text }}>Signal 2 (E&M upcoding)</b> exhibit synchronized timing — pattern changes initiated within <b style={{ color:C.purple }}>30 days of ownership transfer</b> on July 15, 2023. The provider maintained a stable 16-month baseline under original ownership (Mar 2022 - Jun 2023) with normal code diversity and E&M distribution. This temporal correlation suggests <b style={{ color:C.purple }}>systematic operational changes under new management</b> rather than gradual clinical evolution, strengthening the inference of coordinated billing optimization strategy post-acquisition.
+                Both <b style={{ color:C.text }}>{isMedicaid ? 'Signal 1 (CDT consolidation)' : 'Signal 1 (HCPCS consolidation)'}</b> and <b style={{ color:C.text }}>{isMedicaid ? 'Signal 2 (crown upcoding)' : 'Signal 2 (E&M upcoding)'}</b> exhibit synchronized timing — pattern changes initiated within <b style={{ color:C.purple }}>{isMedicaid ? '30 days of corporate acquisition' : '30 days of ownership transfer'}</b> on {isMedicaid ? 'July 8, 2023' : 'July 15, 2023'}. The provider maintained a stable {isMedicaid ? '14' : '16'}-month baseline under original ownership with normal code diversity and {isMedicaid ? 'restorative' : 'E&M'} distribution. This temporal correlation suggests <b style={{ color:C.purple }}>systematic operational changes under new management</b> rather than gradual clinical evolution, strengthening the inference of {isMedicaid ? 'a coordinated overtreatment mandate from corporate ownership post-acquisition.' : 'a coordinated billing optimization strategy post-acquisition.'}
               </div>
             </div>
           </div>
@@ -1225,8 +1793,8 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                   <Share2 size={13} color={C.amber}/>
                 </div>
                 <div>
-                  <div style={{ ...oxan, fontWeight:700, fontSize:13, color:C.text }}>Signal 3 · Suspicious Network Co-billing</div>
-                  <div style={{ fontSize:11, color:C.dim, marginTop:1 }}>4 connected providers — all independently flagged — with anomalous shared-patient overlap rates</div>
+                  <div style={{ ...oxan, fontWeight:700, fontSize:13, color:C.text }}>{isMedicaid ? 'Signal 3 · Shared-Attribute Ring / In-House Lab Self-Referral' : 'Signal 3 · Suspicious Network Co-billing'}</div>
+                  <div style={{ fontSize:11, color:C.dim, marginTop:1 }}>{isMedicaid ? '4 linked dental entities — shared addresses, phone numbers, and banking — with in-house lab previously terminated from GA Medicaid' : '4 connected providers — all independently flagged — with anomalous shared-patient overlap rates'}</div>
                 </div>
               </div>
               <Chip label="MEDIUM SEVERITY" color={C.amber}/>
@@ -1234,7 +1802,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
             <div style={{ padding:20, display:'flex', gap:16 }}>
               {/* SVG Network Diagram */}
               <div style={{ flex:1 }}>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:12, ...mono }}>PROVIDER CO-BILLING NETWORK · EDGE WIDTH = SHARED PATIENT OVERLAP %</div>
+                <div style={{ fontSize:11, color:C.muted, marginBottom:12, ...mono }}>{isMedicaid ? 'DENTAL PROVIDER RING · SHARED ATTRIBUTES & PATIENT OVERLAP · EDGE WIDTH = SHARED PATIENT OVERLAP %' : 'PROVIDER CO-BILLING NETWORK · EDGE WIDTH = SHARED PATIENT OVERLAP %'}</div>
                 <div style={{ background:C.s3, border:`1px solid ${C.b0}`, borderRadius:10, overflow:'hidden', position:'relative' }}>
                   <svg viewBox="0 0 435 275" width="100%" style={{ display:'block' }}>
                     {/* Grid background lines */}
@@ -1245,15 +1813,16 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                       <line key={`hg${y}`} x1={0} y1={y} x2={435} y2={y} stroke={C.b0} strokeWidth={0.5} opacity={0.5}/>
                     ))}
                     {/* Edges */}
-                    {netEdges.map((e,i)=>{
-                      const f = netNodes.find(n=>n.id===e.from);
-                      const t = netNodes.find(n=>n.id===e.to);
+                    {activeNetEdges.map((e,i)=>{
+                      const f = activeNetNodes.find(n=>n.id===e.from);
+                      const t = activeNetNodes.find(n=>n.id===e.to);
+                      const subjectId = isMedicaid ? 'bright' : 'aps';
                       const mx = (f.x+t.x)/2, my = (f.y+t.y)/2;
                       return (
                         <g key={i}>
                           <line x1={f.x} y1={f.y} x2={t.x} y2={t.y}
-                            stroke={e.from==='aps'||e.to==='aps' ? C.purple : C.muted}
-                            strokeWidth={e.w} opacity={0.45} strokeDasharray={e.from!=='aps'&&e.to!=='aps'?'4 3':undefined}/>
+                            stroke={e.from===subjectId||e.to===subjectId ? C.purple : C.muted}
+                            strokeWidth={e.w} opacity={0.45} strokeDasharray={e.from!==subjectId&&e.to!==subjectId?'4 3':undefined}/>
                           <rect x={mx-14} y={my-8} width={28} height={15} rx={3}
                             fill={C.s1} stroke={C.b1} strokeWidth={0.8}/>
                           <text x={mx} y={my+4} textAnchor="middle"
@@ -1262,8 +1831,9 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                       );
                     })}
                     {/* Nodes */}
-                    {netNodes.map((n,i)=>{
-                      const isSubject = n.id==='aps';
+                    {activeNetNodes.map((n,i)=>{
+                      const subjectId = isMedicaid ? 'bright' : 'aps';
+                      const isSubject = n.id===subjectId;
                       const lines = n.label.split('\n');
                       return (
                         <g key={i}>
@@ -1303,14 +1873,14 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
               </div>
               {/* Co-billing table */}
               <div style={{ flex:1, display:'flex', flexDirection:'column', gap:10 }}>
-                <div style={{ fontSize:11, color:C.muted, marginBottom:0, ...mono }}>CONNECTED FLAGGED PROVIDERS · SHARED PATIENT ANALYSIS</div>
+                <div style={{ fontSize:11, color:C.muted, marginBottom:0, ...mono }}>{isMedicaid ? 'RING-LINKED DENTAL ENTITIES · SHARED ATTRIBUTE & PATIENT ANALYSIS' : 'CONNECTED FLAGGED PROVIDERS · SHARED PATIENT ANALYSIS'}</div>
                 <div style={{ background:C.s3, border:`1px solid ${C.b0}`, borderRadius:10, overflow:'hidden', flex:1 }}>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 60px 55px 60px 80px',
                     padding:'8px 12px', borderBottom:`1px solid ${C.b0}`,
                     ...mono, fontSize:9, color:C.muted, letterSpacing:'0.06em', background:C.s1 }}>
                     <span>PROVIDER</span><span>OVERLAP</span><span>VOL</span><span>RISK</span><span>STATUS</span>
                   </div>
-                  {netTable.map((r,i)=>(
+                  {activeNetTable.map((r,i)=>(
                     <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 60px 55px 60px 80px',
                       padding:'11px 12px', borderBottom: i<netTable.length-1 ? `1px solid ${C.b0}` : 'none',
                       alignItems:'center' }}>
@@ -1337,16 +1907,19 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                 <div style={{ padding:'11px 14px', background:`${C.purple}08`, border:`1px solid ${C.purple}22`, borderRadius:8, display:'flex', gap:9 }}>
                   <Bot size={13} color={C.purple} style={{ flexShrink:0, marginTop:2 }}/>
                   <div style={{ fontSize:11, color:C.dim, lineHeight:1.65 }}>
-                    All 4 connected providers are independently flagged. Combined shared-patient volume of{' '}
-                    <span style={{ color:C.text, fontWeight:500 }}>636 beneficiaries</span>. Referral density is{' '}
-                    <span style={{ color:C.purple, fontWeight:500 }}>4.2× expected</span> for unaffiliated practices — consistent with a coordinated billing arrangement.
+                    All {activeNetTable.length} connected {isMedicaid ? 'dental entities are flagged or have prior enforcement history' : 'providers are independently flagged'}. Combined shared-patient volume of{' '}
+                    <span style={{ color:C.text, fontWeight:500 }}>{isMedicaid ? '882' : '636'} beneficiaries</span>.{' '}
+                    {isMedicaid
+                      ? <><span style={{ color:C.purple, fontWeight:500 }}>ProSmile Dental Lab</span> was previously terminated from GA Medicaid enrollment — SSA §1902(a)(39) applies. In-house lab relationship creates self-referral risk for prosthetic devices.</>
+                      : <>Referral density is <span style={{ color:C.purple, fontWeight:500 }}>4.2× expected</span> for unaffiliated practices — consistent with a coordinated billing arrangement.</>
+                    }
                   </div>
                 </div>
               </div>
             </div>
             {/* Component-level feedback for Signal 3 */}
             <div style={{ padding:'0 20px 16px 20px' }}>
-              <ComponentFeedback section="network_cobilling" label="Network Co-billing Signal" />
+              <ComponentFeedback section="network_cobilling" label={isMedicaid ? 'Provider Ring / Self-Referral Signal' : 'Network Co-billing Signal'} />
             </div>
           </div>
 
@@ -1367,7 +1940,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                 <span style={{ padding:'2px 8px', borderRadius:4, background:`${C.green}18`, border:`1px solid ${C.green}40`, fontSize:9, color:C.green, ...mono }}>BETA</span>
               </div>
               <div style={{ fontSize:12, color:C.dim, lineHeight:1.6 }}>
-                3 anomaly signals queried against CMS policy corpus · <span style={{ color:C.text }}>8 policy sections retrieved</span> · Grounding complete.
+                {activePkgSignals.length} anomaly signals queried against {isMedicaid ? 'Medicaid policy corpus (42 CFR, SSA, OIG, state Medicaid manuals)' : 'CMS policy corpus'} · <span style={{ color:C.text }}>{activePkgSignals.reduce((acc, s) => acc + s.policies.length, 0)} policy sections retrieved</span> · Grounding complete.
                 Each signal below shows retrieved policy citations, AI-grounded violation determination, and recommended compliance actions.
               </div>
             </div>
@@ -1379,7 +1952,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
           </div>
 
           {/* Per-signal policy cards */}
-          {pkgSignals.map((sig, si) => {
+          {activePkgSignals.map((sig, si) => {
             const detColor = sig.determination.startsWith('LIKELY') ? C.red : sig.determination.startsWith('POSSIBLE') ? C.amber : C.green;
             return (
               <div key={sig.id} style={{ background:C.s2, border:`1px solid ${C.b0}`, borderRadius:12, overflow:'hidden' }}>
@@ -1516,7 +2089,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
         <div style={{ background:C.s2, border:`1px solid ${C.b0}`, borderRadius:12, padding:24 }} className="fu">
           <div style={{ ...oxan, fontWeight:700, fontSize:14, color:C.text, marginBottom:20 }}>Evidence & Audit Log</div>
           <div style={{ display:'flex', flexDirection:'column' }}>
-            {evLog.map((ev, i) => {
+            {activeEvLog.map((ev, i) => {
               const iconColor = ev.sev==='high' ? C.red : ev.sev==='med' ? C.amber : C.cyan;
               const Icon = ev.icon==='bot' ? Bot : ev.icon==='chart' ? TrendingUp : ev.icon==='network' ? Share2 : ev.icon==='file' ? FileText : ev.icon==='building' ? Building : ev.icon==='alert' ? AlertCircle : User;
               return (
@@ -1529,7 +2102,7 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
                     }}>
                       <Icon size={14} color={iconColor} />
                     </div>
-                    {i < evLog.length-1 && <div style={{ width:1, flex:1, background:C.b1, marginTop:4 }} />}
+                    {i < activeEvLog.length-1 && <div style={{ width:1, flex:1, background:C.b1, marginTop:4 }} />}
                   </div>
                   <div style={{ flex:1, paddingTop:4, paddingBottom: i<evLog.length-1 ? 0 : 0 }}>
                     <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
@@ -1548,9 +2121,9 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
       {tab === 'timeline' && (
         <div style={{ background:C.s2, border:`1px solid ${C.b0}`, borderRadius:12, padding:22 }} className="fu">
           <div style={{ ...oxan, fontWeight:700, fontSize:14, color:C.text, marginBottom:4 }}>Monthly Billing Timeline</div>
-          <div style={{ fontSize:11, color:C.dim, marginBottom:18 }}>Total billing vs. at-risk billing ($K) · Total at-risk amount: <span style={{ color:C.red, fontWeight:600 }}>$2.1M</span> over 18 months</div>
+          <div style={{ fontSize:11, color:C.dim, marginBottom:18 }}>Total billing vs. at-risk billing ($K) · Total at-risk amount: <span style={{ color:C.red, fontWeight:600 }}>{isMedicaid ? '$3.4M' : '$2.1M'}</span> over 18 months</div>
           <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={hcpcs} margin={{ top:5, right:20, bottom:5, left:-10 }}>
+            <AreaChart data={activeHcpcs} margin={{ top:5, right:20, bottom:5, left:-10 }}>
               <defs>
                 <linearGradient id="gBill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={C.amber} stopOpacity={0.3}/>
@@ -1569,14 +2142,14 @@ function ProviderDive({ provider, prog, feedback = {}, onFeedback = () => {} }) 
               <Area type="monotone" dataKey="atRisk" stroke={C.red} strokeWidth={2.5} fill="url(#gAtRisk)" name="At-Risk Billing" />
             </AreaChart>
           </ResponsiveContainer>
-          <div style={{ display:'flex', gap:18, marginTop:12, justifyContent:'center' }}>
+            <div style={{ display:'flex', gap:18, marginTop:12, justifyContent:'center' }}>
             <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:C.dim }}>
               <div style={{ width:16, height:3, background:C.amber, borderRadius:2 }}/>
-              <span>Total Billing ($2,315K)</span>
+              <span>Total Billing ({isMedicaid ? '$2,375K' : '$2,315K'})</span>
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:C.dim }}>
               <div style={{ width:16, height:3, background:C.red, borderRadius:2 }}/>
-              <span>At-Risk Billing ($2,099K)</span>
+              <span>At-Risk Billing ({isMedicaid ? '$3,402K' : '$2,099K'})</span>
             </div>
           </div>
         </div>
@@ -1596,8 +2169,9 @@ function PolicyIntel({ prog }) {
   const progColor = p => p==='medicare' ? C.cyan : p==='medicaid' ? C.purple : C.dim;
   const progLabel = p => p==='medicare' ? 'Medicare' : p==='medicaid' ? 'Medicaid' : 'Both Programs';
 
-  const totExposure = '$323M';
-  const filteredGaps = policyGaps.filter(g => prog==='medicare' ? g.programImpact!=='medicaid' : prog==='medicaid' ? g.programImpact!=='medicare' : true);
+  const totExposure = prog === 'medicaid' ? '$211M' : '$323M';
+  const allGaps = prog === 'medicaid' ? medicaidPolicyGaps : policyGaps;
+  const filteredGaps = allGaps.filter(g => prog==='medicare' ? g.programImpact!=='medicaid' : prog==='medicaid' ? g.programImpact!=='medicare' : true);
 
   return (
     <div style={{ padding:24, display:'flex', flexDirection:'column', gap:18 }}>
@@ -1621,11 +2195,11 @@ function PolicyIntel({ prog }) {
       {/* KPIs */}
       <div style={{ display:'flex', gap:13 }} className="fu">
         {[
-          { icon:AlertCircle, label:'Policy Gaps Identified', value:'14', sub:'Across CMS, CFR, SSA, OIG corpus', color:C.red },
+          { icon:AlertCircle, label:'Policy Gaps Identified', value: String(filteredGaps.length), sub:'Across CMS, CFR, SSA, OIG corpus', color:C.red },
           { icon:DollarSign, label:'Total Estimated Exposure', value:totExposure, sub:'Attributable to policy gaps', color:C.amber },
-          { icon:TriangleAlert, label:'Cases Exposing Gaps', value:'91', sub:'Q4 2024 YTD', color:C.amber },
-          { icon:Lightbulb, label:'Policy Change Recs', value:'14', sub:'Actionable recommendations', color:C.green },
-          { icon:Globe, label:'Programs Impacted', value:'Both', sub:'Medicare FFS & Medicaid FFS', color:C.purple },
+          { icon:TriangleAlert, label:'Cases Exposing Gaps', value: prog === 'medicaid' ? '71' : '91', sub:'Q4 2024 YTD', color:C.amber },
+          { icon:Lightbulb, label:'Policy Change Recs', value: String(filteredGaps.length), sub:'Actionable recommendations', color:C.green },
+          { icon:Globe, label:'Programs Impacted', value: prog === 'medicaid' ? 'Medicaid' : 'Both', sub: prog === 'medicaid' ? 'State Medicaid FFS & Managed Care' : 'Medicare FFS & Medicaid FFS', color:C.purple },
         ].map((k,i) => (
           <div key={i} style={{ flex:1, background:C.s2, border:`1px solid ${C.b0}`, borderRadius:11, padding:'16px 18px', position:'relative', overflow:'hidden' }}>
             <div style={{ position:'absolute', top:0, left:0, right:0, height:2, background:`linear-gradient(90deg, transparent, ${k.color}70, transparent)` }}/>
@@ -1688,12 +2262,17 @@ function PolicyIntel({ prog }) {
             {[40,80,120].map(y=><line key={y} x1="40" y1={y} x2="310" y2={y} stroke={C.b0} strokeWidth={0.5} strokeDasharray="4 4"/>)}
             {[100,170,240].map(x=><line key={x} x1={x} y1="10" x2={x} y2="160" stroke={C.b0} strokeWidth={0.5} strokeDasharray="4 4"/>)}
             {/* Bubbles */}
-            {[
+            {(prog === 'medicaid' ? [
+              {x:155,y:55,r:18,c:C.red,  l:'MG1',label:'Crown Ratio Threshold'},
+              {x:215,y:80,r:14,c:C.amber,l:'MG2',label:'Technician Cert Check'},
+              {x:175,y:110,r:16,c:C.amber,l:'MG3',label:'MCO Enrollment Verify'},
+              {x:235,y:125,r:11,c:C.cyan, l:'MG4',label:'NCCI Edit Lag'},
+            ] : [
               {x:170,y:55,r:18,c:C.red,  l:'G1',label:'Code Concentration'},
               {x:235,y:75,r:15,c:C.amber,l:'G2',label:'Outlier Threshold'},
               {x:135,y:95,r:13,c:C.amber,l:'G3',label:'AKS Threshold'},
               {x:175,y:120,r:11,c:C.cyan, l:'G4',label:'NCCI Edit Lag'},
-            ].map((b,i)=>(
+            ]).map((b,i)=>(
               <g key={i}>
                 <circle cx={b.x} cy={b.y} r={b.r} fill={`${b.c}20`} stroke={b.c} strokeWidth={1.5}/>
                 <text x={b.x} y={b.y+4} textAnchor="middle" fill={b.c} fontSize={8} fontFamily="IBM Plex Mono" fontWeight={600}>{b.l}</text>
@@ -1783,9 +2362,13 @@ function PolicyIntel({ prog }) {
 }
 
 // ── CASE MANAGEMENT ───────────────────────────────────────────────────────────
-function CaseMgmt({ feedback = {}, onFeedback = () => {} }) {
+function CaseMgmt({ prog = 'medicare', feedback = {}, onFeedback = () => {} }) {
+  const activeCases = prog === 'medicaid' ? medicaidCases : cases;
   const sc = { 'Under Review':C.cyan, 'Escalated':C.red, 'Pending':C.amber, 'Closed · Confirmed':C.green, 'Closed · Cleared':C.muted };
-  const summary = [
+  const summary = prog === 'medicaid' ? [
+    {l:'Pending',n:2,c:C.amber},{l:'Under Review',n:3,c:C.cyan},
+    {l:'Escalated',n:1,c:C.red},{l:'Confirmed',n:1,c:C.green},{l:'Cleared',n:1,c:C.muted},
+  ] : [
     {l:'Pending',n:2,c:C.amber},{l:'Under Review',n:3,c:C.cyan},
     {l:'Escalated',n:1,c:C.red},{l:'Confirmed',n:1,c:C.green},{l:'Cleared',n:1,c:C.muted},
   ];
@@ -1815,7 +2398,7 @@ function CaseMgmt({ feedback = {}, onFeedback = () => {} }) {
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <div>
           <div style={{ ...oxan, fontSize:18, fontWeight:700, color:C.text }}>Case Management</div>
-          <div style={{ fontSize:12, color:C.dim, marginTop:3 }}>8 active cases · 1 escalated · $6.2M under review</div>
+          <div style={{ fontSize:12, color:C.dim, marginTop:3 }}>{activeCases.length} active cases · 1 escalated · {prog === 'medicaid' ? '$11.5M' : '$6.2M'} under review</div>
         </div>
         <div style={{ display:'flex', gap:8 }}>
           <button style={{ padding:'7px 13px', borderRadius:7, border:`1px solid ${C.b1}`, background:'transparent', color:C.dim, fontSize:12, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
@@ -1869,7 +2452,7 @@ function CaseMgmt({ feedback = {}, onFeedback = () => {} }) {
           <div style={{ borderLeft:`2px solid ${C.cyan}40` }}></div>
           <span style={{ paddingLeft:12 }}>STATUS</span><span>ANALYST</span><span>INVESTIGATOR ACTION</span>
         </div>
-        {cases.map((c, i) => {
+        {activeCases.map((c, i) => {
           const fb = getLatestFeedback(c.npi);
           const suggestedAction = getSuggestedAction(c);
           const ActionIcon = suggestedAction.icon;
@@ -1878,7 +2461,7 @@ function CaseMgmt({ feedback = {}, onFeedback = () => {} }) {
           <div key={c.id} style={{
             display:'grid', gridTemplateColumns:'110px 240px 2px 1fr 1fr 1fr 2px 1fr 1fr 1fr',
             padding:'13px 18px', alignItems:'center',
-            borderBottom: i < cases.length-1 ? `1px solid ${C.b0}` : 'none',
+            borderBottom: i < activeCases.length-1 ? `1px solid ${C.b0}` : 'none',
             transition:'background 0.15s', cursor:'pointer',
           }}
             onMouseEnter={e=>e.currentTarget.style.background=C.s3}
@@ -1929,12 +2512,16 @@ function CaseMgmt({ feedback = {}, onFeedback = () => {} }) {
 }
 
 // ── AI PANEL ──────────────────────────────────────────────────────────────────
-function AIPanel({ onClose }) {
+function AIPanel({ prog = 'medicare', onClose }) {
+  const isMedicaid = prog === 'medicaid';
+  const activeCanned = isMedicaid ? medicaidCanned : canned;
+  const initialSubject = isMedicaid ? 'Bright Smiles Dental Group (NPI: 3344556677)' : 'Advanced Pain Specialists (NPI: 1234567890)';
+  const initialMessage = isMedicaid
+    ? "I've analyzed Bright Smiles Dental Group (NPI: 3344556677) and identified 3 high-confidence anomaly signals:\n\n1. CDT Code Consolidation — Billed 28 unique CDT codes in Mar 2023. By Aug 2024, just 5 codes account for 97% of billing, overwhelmingly crowns (D2740/D2750). Consistent with systematic overtreatment following corporate acquisition. Crown rate is 80% vs. 14% peer median.\n\n2. High-Cost Code Upcoding — Crown and root canal procedures are 5.7× above peer median — clinically implausible for a pediatric dental practice without systematic overtreatment. Pattern initiated within 30 days of acquisition on Jul 8, 2023.\n\n3. Shared-Attribute Provider Ring — 4 linked dental entities share addresses, phone numbers, and banking information. In-house dental lab (ProSmile) was previously terminated from GA Medicaid enrollment, creating self-referral risk for prosthetic devices.\n\nEstimated overpayment risk: $3.4M (FY2024)"
+    : "I've analyzed Advanced Pain Specialists (NPI: 1234567890) and identified 3 high-confidence anomaly signals:\n\n1. HCPCS Consolidation — Billed 47 unique procedure codes in Mar 2023. By Aug 2024, just 6 codes account for 98% of billing. Consistent with systematic code cherry-picking to maximize reimbursement.\n\n2. E&M Upcoding — 99215 (highest-complexity visit) is 78% of all E&M claims vs. peer median of 18%. This provider ranks in the top 1.3% nationally — statistically improbable without systematic miscoding.\n\n3. Network Co-billing — 34% of patients share treatment history with Sunrise Medical Group (also flagged). Mutual referral density is 4.2× expected for unrelated practices.\n\nEstimated overpayment risk: $2.1M (FY2024)";
+
   const [input, setInput] = useState('');
-  const [msgs, setMsgs] = useState([{
-    role:'assistant',
-    text:"I've analyzed Advanced Pain Specialists (NPI: 1234567890) and identified 3 high-confidence anomaly signals:\n\n1. HCPCS Consolidation — Billed 47 unique procedure codes in Mar 2023. By Aug 2024, just 6 codes account for 98% of billing. Consistent with systematic code cherry-picking to maximize reimbursement.\n\n2. E&M Upcoding — 99215 (highest-complexity visit) is 78% of all E&M claims vs. peer median of 18%. This provider ranks in the top 1.3% nationally — statistically improbable without systematic miscoding.\n\n3. Network Co-billing — 34% of patients share treatment history with Sunrise Medical Group (also flagged). Mutual referral density is 4.2× expected for unrelated practices.\n\nEstimated overpayment risk: $2.1M (FY2024)",
-  }]);
+  const [msgs, setMsgs] = useState([{ role:'assistant', text: initialMessage }]);
 
   const send = () => {
     if (!input.trim()) return;
@@ -1942,10 +2529,12 @@ function AIPanel({ onClose }) {
     setMsgs(m => [...m, { role:'user', text:input }]);
     setInput('');
     const key = q.includes('code') ? 'codes' : q.includes('compar') || q.includes('peer') ? 'compare' : q.includes('next') || q.includes('recommend') || q.includes('step') ? 'next' : 'default';
-    setTimeout(() => setMsgs(m => [...m, { role:'assistant', text:canned[key] }]), 600);
+    setTimeout(() => setMsgs(m => [...m, { role:'assistant', text:activeCanned[key] }]), 600);
   };
 
-  const prompts = ['What codes are involved?','Compare to peers','Recommend next steps'];
+  const prompts = isMedicaid
+    ? ['What CDT codes are involved?','Compare to dental peers','Recommend next steps']
+    : ['What codes are involved?','Compare to peers','Recommend next steps'];
 
   return (
     <div className="sr" style={{
@@ -1959,7 +2548,7 @@ function AIPanel({ onClose }) {
           <div style={{ padding:8, borderRadius:8, background:`${C.cyan}15` }}><Bot size={17} color={C.cyan}/></div>
           <div>
             <div style={{ ...oxan, fontSize:14, fontWeight:700, color:C.text }}>AI Investigator</div>
-            <div style={{ ...mono, fontSize:10, color:C.cyan, marginTop:1 }}>● ACTIVE · Advanced Pain Specialists</div>
+            <div style={{ ...mono, fontSize:10, color:C.cyan, marginTop:1 }}>● ACTIVE · {isMedicaid ? 'Bright Smiles Dental Group' : 'Advanced Pain Specialists'}</div>
           </div>
         </div>
         <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:C.muted }}><X size={17}/></button>
@@ -2143,7 +2732,7 @@ export default function App() {
             </div>
             <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:10 }}>
               <div style={{ padding:'4px 10px', borderRadius:6, background:`${pd.color}12`, border:`1px solid ${pd.color}28`, ...mono, fontSize:10, color:pd.color }}>
-                {pd.label}
+                {prog === 'medicaid' ? 'Medicaid Program Integrity' : pd.label}
               </div>
               <button style={{ padding:8, borderRadius:7, background:C.s2, border:`1px solid ${C.b0}`, color:C.dim, cursor:'pointer', position:'relative' }}>
                 <Bell size={14}/>
@@ -2157,14 +2746,14 @@ export default function App() {
           {/* Content */}
           <div style={{ flex:1, overflowY:'auto' }}>
             {screen==='dashboard' && <Dashboard prog={prog}/>}
-            {screen==='feed'      && <AnomalyFeed onSelect={handleSelect} feedback={feedback} onFeedback={handleFeedback}/>}
+            {screen==='feed'      && <AnomalyFeed prog={prog} onSelect={handleSelect} feedback={feedback} onFeedback={handleFeedback}/>}
             {screen==='provider'  && <ProviderDive provider={selProv} prog={prog} feedback={feedback} onFeedback={handleFeedback}/>}
-            {screen==='cases'     && <CaseMgmt feedback={feedback} onFeedback={handleFeedback}/>}
+            {screen==='cases'     && <CaseMgmt prog={prog} feedback={feedback} onFeedback={handleFeedback}/>}
             {screen==='policy'    && <PolicyIntel prog={prog}/>}
           </div>
         </div>
 
-        {aiOpen && <AIPanel onClose={()=>setAiOpen(false)}/>}
+        {aiOpen && <AIPanel prog={prog} onClose={()=>setAiOpen(false)}/>}
       </div>
     </>
   );
