@@ -68,12 +68,18 @@ export async function apiRequest<T>(
     method: options.method ?? 'GET',
     headers,
     body,
+    credentials: 'include',
     signal: options.signal,
   })
 
   const parsed = await parseBody(response)
 
   if (!response.ok) {
+    if (response.status === 401 && !path.startsWith('/auth/')) {
+      if (typeof window !== 'undefined') {
+        window.location.assign('/login')
+      }
+    }
     const message =
       parsed && typeof parsed === 'object' && 'detail' in parsed
         ? String((parsed as { detail: unknown }).detail)
