@@ -176,7 +176,7 @@ def get_session_store() -> SessionStoreProtocol:
     requires REDIS_URL and returns RedisSessionStore.
     """
 
-    config = load_config()
+    config = get_domain_config()
     auth = config.auth
     if auth is None or not auth.enabled:
         return InMemorySessionStore()
@@ -184,7 +184,8 @@ def get_session_store() -> SessionStoreProtocol:
     redis_url = os.environ.get("REDIS_URL")
     if redis_url is None:
         raise ConfigurationError(
-            "AuthConfig.enabled=True requires REDIS_URL to be set."
+            "AuthConfig.enabled=True requires REDIS_URL to be set "
+            "(e.g. REDIS_URL=redis://redis:6379/0)."
         )
     return RedisSessionStore(redis_url=redis_url)
 
@@ -393,7 +394,7 @@ from api._kb_store import (  # noqa: E402  (intentional bottom-of-file import)
     InMemoryKnowledgeBaseRepository,
     KnowledgeBaseRepository,
 )
-from api.middleware.session_store import (  # noqa: E402
+from api.middleware.session_store import (  # noqa: E402  (intentional bottom-of-file import)
     InMemorySessionStore,
     RedisSessionStore,
     SessionStoreProtocol,

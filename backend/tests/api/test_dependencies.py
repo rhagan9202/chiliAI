@@ -336,22 +336,26 @@ def test_get_session_store_returns_redis_when_auth_enabled_and_redis_configured(
 
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
     config = base_config.model_copy(
-        update={
-            "auth": AuthConfig(
-                enabled=True,
-                issuer_url="https://idp.example.com",
-                audience="chili-api",
-                jwks_uri="https://idp.example.com/jwks",
-                client_id="chili-spa",
-                client_secret_env_var="OIDC_CLIENT_SECRET",
-                authorize_endpoint="https://idp.example.com/authorize",
-                token_endpoint="https://idp.example.com/token",
-                redirect_uri="https://app.example.com/auth/callback",
-            )
-        }
+        update={"auth": AuthConfig(enabled=True)}
     )
     _install_config(monkeypatch, config)
 
     store = dependencies.get_session_store()
 
     assert isinstance(store, RedisSessionStore)
+
+
+def test_get_session_store_raises_when_auth_enabled_and_redis_url_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    from config.schema import AuthConfig
+
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    config = base_config.model_copy(
+        update={"auth": AuthConfig(enabled=True)}
+    )
+    _install_config(monkeypatch, config)
+
+    with pytest.raises(ConfigurationError, match="REDIS_URL"):
+        dependencies.get_session_store()
