@@ -21,12 +21,15 @@ import httpx
 from fastapi import Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from api.dependencies import get_domain_config
+from api.dependencies import get_domain_config, get_session_store
+from api.middleware.exceptions import SessionNotFoundError
+from api.middleware.session_store import SessionRecord, SessionStoreProtocol
 from config.schema import AuthConfig, DomainConfig
 
 __all__ = [
     "JwksCache",
     "JwksFetcher",
+    "SESSION_COOKIE_NAME",
     "User",
     "build_anonymous_user",
     "decode_token",
@@ -86,6 +89,12 @@ class JwksCache:
 
 
 _JWKS_CACHE: JwksCache = JwksCache()
+
+SESSION_COOKIE_NAME = "chiliai_session"
+
+
+def _user_from_session(record: SessionRecord) -> User:
+    return User(user_id=record.user_id, roles=record.roles, email=record.email)
 
 
 def set_jwks_fetcher(
@@ -213,18 +222,37 @@ def _extract_bearer_token(request: Request) -> str | None:
 def get_current_user(
     request: Request,
     domain_config: DomainConfig = Depends(get_domain_config),
+    session_store: SessionStoreProtocol = Depends(get_session_store),
 ) -> User:
-    """FastAPI dependency that resolves the current ``User`` from the request."""
+    """Resolve the current ``User`` from the request.
+
+    Resolution order:
+      1. AuthConfig.enabled=False           -> anonymous viewer
+      2. Cookie chiliai_session present     -> SessionStore.get(sid) -> User
+      3. Authorization: Bearer present      -> existing JWT/JWKS path
+      4. Otherwise                          -> 401
+    """
 
     auth_config = _resolve_auth_config(domain_config)
     if not auth_config.enabled:
         return build_anonymous_user()
 
+    sid = request.cookies.get(SESSION_COOKIE_NAME)
+    if sid is not None:
+        try:
+            record = session_store.get(sid)
+        except SessionNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session is unknown or has expired.",
+            ) from exc
+        return _user_from_session(record)
+
     token = _extract_bearer_token(request)
     if token is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or malformed Authorization header.",
+            detail="Missing authentication: send chiliai_session cookie or Bearer token.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

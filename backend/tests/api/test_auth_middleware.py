@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pathlib
+import time
 from collections.abc import Callable, Iterator
 from typing import cast
 
@@ -16,13 +18,15 @@ from cryptography.hazmat.primitives import serialization  # noqa: E402
 from cryptography.hazmat.primitives.asymmetric import rsa  # noqa: E402
 from jose import jwk, jwt  # noqa: E402
 
-from api.dependencies import get_domain_config  # noqa: E402
+from api.dependencies import get_domain_config, get_session_store  # noqa: E402
 from api.middleware.auth import (  # noqa: E402
     User,
     build_anonymous_user,
     get_current_user,
     set_jwks_fetcher,
 )
+from api.middleware.session_store import InMemorySessionStore, SessionRecord  # noqa: E402
+from config.loader import load_config  # noqa: E402
 from config.schema import (  # noqa: E402
     AlertsConfig,
     AuthConfig,
@@ -31,6 +35,9 @@ from config.schema import (  # noqa: E402
     DomainInfo,
     IngestionConfig,
 )
+
+_DEFAULTS_DIR = pathlib.Path(__file__).parent.parent.parent / "config" / "defaults"
+_MEDICARE_YAML = _DEFAULTS_DIR / "medicare_fraud.yaml"
 
 
 @pytest.fixture(scope="module")
@@ -247,3 +254,107 @@ class TestAuthEnabled:
         client = TestClient(_build_app(_build_minimal_config(auth=partial_config)))
         response = client.get("/whoami", headers={"Authorization": "Bearer xyz"})
         assert response.status_code == 401
+
+
+def _build_app_with_session_store(
+    config: DomainConfig, store: InMemorySessionStore
+) -> FastAPI:
+    app = FastAPI()
+    app.dependency_overrides[get_domain_config] = lambda: config
+    app.dependency_overrides[get_session_store] = lambda: store
+
+    @app.get("/whoami")
+    def whoami(user: User = Depends(get_current_user)) -> dict[str, object]:
+        return {"user_id": user.user_id, "roles": user.roles}
+
+    return app
+
+
+def _build_auth_enabled_config() -> DomainConfig:
+    auth_cfg = AuthConfig(
+        enabled=True,
+        issuer_url="https://idp.example.com",
+        audience="chili-api",
+        jwks_uri="https://idp.example.com/jwks",
+        client_id="chili-spa",
+        client_secret_env_var="OIDC_CLIENT_SECRET",
+        authorize_endpoint="https://idp.example.com/authorize",
+        token_endpoint="https://idp.example.com/token",
+        redirect_uri="https://app.example.com/auth/callback",
+    )
+    base = load_config(_MEDICARE_YAML)
+    return base.model_copy(update={"auth": auth_cfg})
+
+
+class TestCookiePath:
+    def test_get_current_user_resolves_session_from_cookie(self) -> None:
+        """When auth is enabled and a valid session cookie is present, the user is returned."""
+        domain = _build_auth_enabled_config()
+        store = InMemorySessionStore()
+        store.save(
+            SessionRecord(
+                session_id="sid-cookie",
+                user_id="user-1",
+                roles=["analyst"],
+                email="user@example.com",
+                access_token="acc",
+                refresh_token="ref",
+                access_token_expires_at=time.time() + 3600,
+                id_token="id",
+                created_at=time.time(),
+                ttl_seconds=3600,
+            )
+        )
+
+        client = TestClient(_build_app_with_session_store(domain, store))
+        client.cookies.set("chiliai_session", "sid-cookie")
+        response = client.get("/whoami")
+
+        assert response.status_code == 200
+        assert response.json() == {"user_id": "user-1", "roles": ["analyst"]}
+
+    def test_get_current_user_returns_401_when_cookie_session_is_unknown(self) -> None:
+        """A cookie pointing at a missing session id results in 401."""
+        domain = _build_auth_enabled_config()
+        store = InMemorySessionStore()
+        # Store is empty — "sid-missing" does not exist.
+
+        client = TestClient(_build_app_with_session_store(domain, store))
+        client.cookies.set("chiliai_session", "sid-missing")
+        response = client.get("/whoami")
+
+        assert response.status_code == 401
+
+    def test_get_current_user_falls_back_to_bearer_when_no_cookie(
+        self, rsa_pem: str
+    ) -> None:
+        """With auth enabled, no cookie, valid Bearer token -> existing JWT path is used."""
+        auth_cfg = AuthConfig(
+            enabled=True,
+            issuer_url="https://issuer.example",
+            audience="chili",
+            jwks_uri="https://issuer.example/.well-known/jwks.json",
+            roles_claim="roles",
+        )
+        domain = _build_minimal_config(auth=auth_cfg)
+        store = InMemorySessionStore()
+
+        jwks = {"keys": [_public_jwk_from_pem(rsa_pem)]}
+        set_jwks_fetcher(lambda _uri: jwks)
+
+        token = _make_token(
+            rsa_pem,
+            issuer="https://issuer.example",
+            audience="chili",
+            claims_extra={"roles": ["analyst"], "email": "u@example.com"},
+        )
+
+        client = TestClient(_build_app_with_session_store(domain, store))
+        response = client.get(
+            "/whoami", headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["user_id"] == "user-123"
+        assert body["roles"] == ["analyst"]
