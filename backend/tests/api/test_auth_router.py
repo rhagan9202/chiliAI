@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from api.app import create_app
 from api.dependencies import get_domain_config, get_session_store
-from api.middleware.session_store import InMemorySessionStore, SessionRecord
+from api.middleware.session_store import InMemorySessionStore, SessionNotFoundError, SessionRecord
 from config.loader import load_config
 from config.schema import AuthConfig, DomainConfig
 
@@ -355,7 +355,6 @@ def test_logout_clears_cookie_and_session(app_with_auth: FastAPI) -> None:
     assert "chiliai_session=" in set_cookie
     assert ("Max-Age=0" in set_cookie) or ("max-age=0" in set_cookie)
     # Session must be gone
-    from api.middleware.session_store import SessionNotFoundError
     with pytest.raises(SessionNotFoundError):
         store.get("sid-out")
 

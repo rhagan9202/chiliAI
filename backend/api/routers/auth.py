@@ -189,9 +189,10 @@ def logout(
         try:
             record = session_store.get(sid)
             id_token = record.id_token
+            session_store.delete(sid)
         except SessionNotFoundError:
+            # Session already gone — proceed to clear the cookie regardless.
             pass
-        session_store.delete(sid)
 
     rp_url: str | None = None
     if auth_config is not None and auth_config.enabled:
