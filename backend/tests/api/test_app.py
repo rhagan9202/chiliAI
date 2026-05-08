@@ -14,6 +14,7 @@ from api.dependencies import (
     get_graph_service as get_application_graph_service,
     get_object_store,
 )
+from api.middleware.auth import build_anonymous_user, get_current_user
 from api.routers.investigation import get_graph_service as get_investigation_graph_service
 from config.loader import load_config
 from config.schema import DomainConfig
@@ -48,6 +49,9 @@ def client(domain_config: DomainConfig) -> TestClient:
     )
     app.dependency_overrides[get_application_graph_service] = lambda: graph_service
     app.dependency_overrides[get_investigation_graph_service] = lambda: graph_service
+    # WS routes now require viewer via require_role; override get_current_user so
+    # the anonymous viewer is resolved without needing the Request injection path.
+    app.dependency_overrides[get_current_user] = build_anonymous_user
 
     return TestClient(app)
 

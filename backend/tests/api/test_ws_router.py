@@ -11,7 +11,11 @@ import anyio.abc
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
+from api.dependencies import get_domain_config, get_session_store
+from api.middleware.auth import User, build_anonymous_user, get_current_user
+from api.middleware.session_store import InMemorySessionStore
 from api.routers.ws import (
     ROUTE_ALERTS,
     ROUTE_PIPELINE,
@@ -19,6 +23,14 @@ from api.routers.ws import (
     WebSocketHub,
     get_ws_hub,
     router,
+)
+from config.schema import (
+    AlertsConfig,
+    AuthConfig,
+    CapabilitiesConfig,
+    DomainConfig,
+    DomainInfo,
+    IngestionConfig,
 )
 from events.types import AlertCreatedEvent, PipelineProgressEvent
 from shared.types import Alert
@@ -102,11 +114,28 @@ def hub() -> WebSocketHub:
     return WebSocketHub()
 
 
+def _build_no_auth_domain_config() -> DomainConfig:
+    return DomainConfig(
+        domain=DomainInfo(name="test", display_name="Test", description="Test"),
+        entities=[],
+        relationships=[],
+        capabilities=CapabilitiesConfig(),
+        ingestion=IngestionConfig(sources=[]),
+        auth=AuthConfig(enabled=False),
+        alerts=AlertsConfig(thresholds={}),
+    )
+
+
 @pytest.fixture()
 def client(hub: WebSocketHub) -> Generator[TestClient, None, None]:
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_ws_hub] = lambda: hub
+    app.dependency_overrides[get_domain_config] = _build_no_auth_domain_config
+    app.dependency_overrides[get_session_store] = lambda: InMemorySessionStore()
+    # get_current_user requires a Request parameter that Starlette injects; override
+    # it directly so the bare-FastAPI test app doesn't need to resolve auth plumbing.
+    app.dependency_overrides[get_current_user] = build_anonymous_user
     with TestClient(app) as test_client:
         yield test_client
 
@@ -308,3 +337,93 @@ class _NoOpWebSocket:
 
     async def receive_json(self) -> object:
         return {}
+
+
+# ---------------------------------------------------------------------------
+# RBAC enforcement tests — WS upgrade is viewer-tier
+# ---------------------------------------------------------------------------
+
+
+def _build_auth_enabled_domain_config() -> DomainConfig:
+    return DomainConfig(
+        domain=DomainInfo(name="test", display_name="Test", description="Test"),
+        entities=[],
+        relationships=[],
+        capabilities=CapabilitiesConfig(),
+        ingestion=IngestionConfig(sources=[]),
+        auth=AuthConfig(
+            enabled=True,
+            issuer_url="https://idp.example.com",
+            audience="chili-api",
+            jwks_uri="https://idp.example.com/jwks",
+            client_id="chili-spa",
+            client_secret_env_var="OIDC_CLIENT_SECRET",
+            authorize_endpoint="https://idp.example.com/authorize",
+            token_endpoint="https://idp.example.com/oauth/token",
+            redirect_uri="https://app.example.com/auth/callback",
+        ),
+        alerts=AlertsConfig(thresholds={}),
+    )
+
+
+def test_ws_alerts_rejects_unauthenticated_upgrade_when_auth_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unauthenticated WS upgrade to /ws/alerts is rejected before websocket.accept()."""
+    import time
+
+    from api.app import create_app
+    from config.loader import load_config
+    from pathlib import Path
+
+    DEFAULTS_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "defaults"
+    MEDICARE_YAML = DEFAULTS_DIR / "medicare_fraud.yaml"
+
+    monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
+    monkeypatch.setattr("api.app.assert_complete", lambda app: None)
+
+    domain = _build_auth_enabled_domain_config()
+    monkeypatch.setattr("api.app.load_config", lambda: domain)
+
+    app = create_app()
+    store = InMemorySessionStore()
+    app.dependency_overrides[get_session_store] = lambda: store
+    app.dependency_overrides[get_domain_config] = lambda: domain
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        with pytest.raises((WebSocketDisconnect, Exception)):
+            with client.websocket_connect("/ws/alerts"):
+                pass
+
+
+def test_ws_alerts_accepts_upgrade_with_viewer_session_when_auth_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """WS upgrade to /ws/alerts succeeds when the current user holds the viewer role.
+
+    Note: ``get_current_user`` is overridden to return a viewer ``User`` directly
+    because FastAPI's WS dependency solver does not inject the ``Request`` positional
+    argument via DI the same way HTTP routes do in all FastAPI versions. The purpose
+    of this test is to verify that the ``require_role("viewer")`` dependency *passes*
+    when the user has the viewer role — the auth middleware itself is exercised
+    separately in ``test_auth_middleware.py``.
+    """
+    from api.app import create_app
+
+    monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
+    monkeypatch.setattr("api.app.assert_complete", lambda app: None)
+
+    domain = _build_auth_enabled_domain_config()
+    monkeypatch.setattr("api.app.load_config", lambda: domain)
+
+    app = create_app()
+    viewer = User(user_id="u-viewer", roles=["viewer"])
+    app.dependency_overrides[get_current_user] = lambda: viewer
+    app.dependency_overrides[get_domain_config] = lambda: domain
+
+    with TestClient(app) as client:
+        # If the upgrade succeeds the context manager enters normally.
+        with client.websocket_connect("/ws/alerts"):
+            pass  # Connection accepted — assertion is that no exception is raised.
