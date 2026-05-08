@@ -246,4 +246,38 @@ describe('useWebSocket', () => {
     handle.unmount()
     expect(socket.readyState).toBe(3)
   })
+
+  it('navigates to /login on close-1008 instead of reconnecting', () => {
+    const assignSpy = vi.fn<(url: string) => void>()
+    const originalLocation = window.location
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { ...originalLocation, assign: assignSpy },
+    })
+
+    const handle = renderHookSync<unknown>('/ws/alerts', () => {}, {
+      maxRetries: 3,
+      baseDelayMs: 100,
+      socketFactory: makeFactory(),
+      urlBuilder,
+    })
+
+    const socket = FakeSocket.instances[0]
+    act(() => {
+      socket.open()
+      socket.onclose?.(new CloseEvent('close', { code: 1008 }))
+    })
+
+    expect(assignSpy).toHaveBeenCalledWith('/login')
+    // Should not have transitioned to reconnecting
+    expect(handle.current.value.status).toBe('open')
+
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    })
+    handle.unmount()
+  })
 })

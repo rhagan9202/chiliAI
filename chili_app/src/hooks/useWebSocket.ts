@@ -129,11 +129,20 @@ export function useWebSocket<E>(
         onMessageRef.current(parsed as E)
       }
 
-      nextSocket.onclose = (): void => {
+      nextSocket.onclose = (event: CloseEvent): void => {
         if (cancelled) {
           return
         }
         socket = null
+        // 1008 = policy violation. The backend rejects unauthenticated upgrades
+        // before accepting; the browser surfaces this as close-1008. Send the
+        // user to /login instead of looping the exponential-backoff reconnect.
+        if (event.code === 1008) {
+          if (typeof window !== 'undefined') {
+            window.location.assign('/login')
+          }
+          return
+        }
         scheduleReconnect()
       }
 
