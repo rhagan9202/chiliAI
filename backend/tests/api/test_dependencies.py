@@ -68,6 +68,8 @@ def test_default_factories_return_in_memory_services(
     monkeypatch: pytest.MonkeyPatch,
     base_config: DomainConfig,
 ) -> None:
+    monkeypatch.delenv("CHILI_EVENT_BUS_BACKEND", raising=False)
+    monkeypatch.delenv("REDIS_URL", raising=False)
     _install_config(monkeypatch, base_config)
 
     assert isinstance(dependencies.get_object_store(), InMemoryObjectStore)
