@@ -3,7 +3,7 @@
 Owns the OIDC handshake and the session cookie. Tokens never reach
 JavaScript: every call from the SPA either sets or reads the
 HttpOnly ``chiliai_session`` cookie. Exposes /auth/login,
-/auth/callback, and /auth/me; logout/refresh land in subsequent tasks.
+/auth/callback, /auth/logout, and /auth/me.
 """
 
 from __future__ import annotations
@@ -12,17 +12,18 @@ import os
 import time
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 
 import api.middleware.auth as _auth_module
 from api.dependencies import get_domain_config, get_session_store
 from api.middleware.auth import SESSION_COOKIE_NAME, User, _coerce_roles, get_current_user
-from api.middleware.session_store import SessionRecord, SessionStoreProtocol
+from api.middleware.session_store import SessionNotFoundError, SessionRecord, SessionStoreProtocol
 from api.routers._oidc_client import (
     OidcClient,
     OidcConfigurationError,
     build_authorize_url,
+    build_end_session_url,
     generate_pkce_pair,
 )
 from config.schema import AuthConfig, DomainConfig
@@ -168,6 +169,50 @@ def callback(
         samesite="lax",
         domain=auth_config.cookie_domain,
         path="/",
+    )
+    return response
+
+
+@router.post("/logout")
+def logout(
+    request: Request,
+    domain_config: DomainConfig = Depends(get_domain_config),
+    session_store: SessionStoreProtocol = Depends(get_session_store),
+    post_logout_redirect_uri: str | None = None,
+) -> Response:
+    """Delete the server-side session, clear the cookie, and (optionally) bounce to IdP."""
+
+    auth_config = domain_config.auth
+    sid = request.cookies.get(SESSION_COOKIE_NAME)
+    id_token: str | None = None
+    if sid is not None:
+        try:
+            record = session_store.get(sid)
+            id_token = record.id_token
+        except SessionNotFoundError:
+            pass
+        session_store.delete(sid)
+
+    rp_url: str | None = None
+    if auth_config is not None and auth_config.enabled:
+        target = post_logout_redirect_uri or "/"
+        rp_url = build_end_session_url(
+            auth_config,
+            id_token=id_token,
+            post_logout_redirect_uri=target,
+        )
+
+    if rp_url is not None:
+        response: Response = RedirectResponse(
+            url=rp_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT
+        )
+    else:
+        response = Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        path="/",
+        domain=auth_config.cookie_domain if auth_config is not None else None,
     )
     return response
 

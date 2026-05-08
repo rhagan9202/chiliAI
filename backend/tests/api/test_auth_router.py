@@ -324,3 +324,82 @@ def test_callback_returns_400_when_id_token_validation_fails(
 
     assert response.status_code == 400
     assert "IdP returned an invalid token" in response.json()["detail"]
+
+
+def test_logout_clears_cookie_and_session(app_with_auth: FastAPI) -> None:
+    store = InMemorySessionStore()
+    store.save(
+        SessionRecord(
+            session_id="sid-out",
+            user_id="user-1",
+            roles=["analyst"],
+            email="u@e.com",
+            access_token="acc",
+            refresh_token="ref",
+            access_token_expires_at=time.time() + 3600,
+            id_token="id-tok-1",
+            created_at=time.time(),
+            ttl_seconds=3600,
+        )
+    )
+    domain = _domain_with_auth()
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        client.cookies.set("chiliai_session", "sid-out")
+        response = client.post("/auth/logout")
+
+    # Cookie must be expired in the response
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "chiliai_session=" in set_cookie
+    assert ("Max-Age=0" in set_cookie) or ("max-age=0" in set_cookie)
+    # Session must be gone
+    from api.middleware.session_store import SessionNotFoundError
+    with pytest.raises(SessionNotFoundError):
+        store.get("sid-out")
+
+
+def test_logout_redirects_to_idp_end_session_when_configured(app_with_auth: FastAPI) -> None:
+    store = InMemorySessionStore()
+    store.save(
+        SessionRecord(
+            session_id="sid-rp",
+            user_id="user-1",
+            roles=["analyst"],
+            email="u@e.com",
+            access_token="acc",
+            refresh_token="ref",
+            access_token_expires_at=time.time() + 3600,
+            id_token="id-tok-1",
+            created_at=time.time(),
+            ttl_seconds=3600,
+        )
+    )
+    domain = _domain_with_auth()  # has end_session_endpoint
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        client.cookies.set("chiliai_session", "sid-rp")
+        response = client.post(
+            "/auth/logout?post_logout_redirect_uri=https%3A%2F%2Fapp.example.com%2F"
+        )
+
+    assert response.status_code == 307
+    location = response.headers["location"]
+    assert location.startswith("https://idp.example.com/logout")
+    assert "id_token_hint=id-tok-1" in location
+
+
+def test_logout_no_session_cookie_is_idempotent(app_with_auth: FastAPI) -> None:
+    store = InMemorySessionStore()
+    domain = _domain_with_auth()
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.post("/auth/logout")
+
+    # No cookie sent → either 204 (no end_session) or 307 (RP-initiated). Both acceptable.
+    assert response.status_code in (204, 307)
