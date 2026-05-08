@@ -1,3 +1,4 @@
+import React from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -5,15 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthGuard } from '../AuthGuard'
 import { SessionProvider } from '../../contexts/SessionContext'
 
-function Protected(): JSX.Element {
+function Protected(): React.ReactElement {
   return <div data-testid="protected">protected content</div>
 }
 
-function LoginPage(): JSX.Element {
+function LoginPage(): React.ReactElement {
   return <div data-testid="login">login page</div>
 }
 
-function withRouter(initial: string, fetchImpl: typeof fetch): JSX.Element {
+function withRouter(initial: string, fetchImpl: typeof fetch): React.ReactElement {
   globalThis.fetch = fetchImpl
   return (
     <MemoryRouter initialEntries={[initial]}>

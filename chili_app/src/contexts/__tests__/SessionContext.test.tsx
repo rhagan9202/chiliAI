@@ -1,9 +1,10 @@
+import React from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SessionProvider, useSession } from '../SessionContext'
 
-function Probe(): JSX.Element {
+function Probe(): React.ReactElement {
   const session = useSession()
   return (
     <div>

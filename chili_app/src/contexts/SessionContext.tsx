@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { ApiError, apiRequest } from '../lib/apiClient'
@@ -19,7 +19,7 @@ export interface SessionState {
 
 const SessionContext = createContext<SessionState | undefined>(undefined)
 
-export function SessionProvider({ children }: { children: ReactNode }): JSX.Element {
+export function SessionProvider({ children }: { children: ReactNode }): React.ReactElement {
   const [status, setStatus] = useState<SessionStatus>('loading')
   const [user, setUser] = useState<SessionUser | null>(null)
 

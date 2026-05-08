@@ -37,9 +37,10 @@ describe('apiClient', () => {
 
     await apiRequest<{ ok: boolean }>('/anything')
 
-    expect(fetchMock).toHaveBeenCalled()
-    const init = fetchMock.mock.calls[0][1] as RequestInit
-    expect(init.credentials).toBe('include')
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ credentials: 'include' }),
+    )
   })
 
   it('redirects to /login when the API returns 401', async () => {
