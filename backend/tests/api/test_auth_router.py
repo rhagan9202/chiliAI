@@ -160,3 +160,105 @@ def test_login_returns_404_when_auth_disabled(app_with_auth: FastAPI) -> None:
         response = client.get("/auth/login")
 
     assert response.status_code == 404
+    assert response.json()["detail"] == "Auth is disabled."
+
+
+def _stub_jwks_decoder(claims: dict[str, object]):  # type: ignore[no-untyped-def]
+    """Build a fake decode_token replacement that returns the given claims."""
+
+    def _fake_decode(token, *, auth_config, jwks_cache):  # type: ignore[no-untyped-def]
+        del token, auth_config, jwks_cache
+        return claims
+
+    return _fake_decode
+
+
+def test_callback_exchanges_code_and_creates_session_cookie(
+    app_with_auth: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import httpx
+
+    from api.middleware import auth as auth_module
+    from api.routers import _oidc_client
+
+    store = InMemorySessionStore()
+    store.save_pkce_state(state="state-1", verifier="ver-1", ttl_seconds=300)
+
+    domain = _domain_with_auth()
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    def fake_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "acc-tok",
+                "refresh_token": "ref-tok",
+                "id_token": "id-tok",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            },
+        )
+
+    monkeypatch.setattr(
+        _oidc_client.OidcClient,
+        "_http",
+        lambda self: httpx.Client(transport=httpx.MockTransport(fake_handler), timeout=5.0),
+    )
+    monkeypatch.setattr(
+        auth_module,
+        "decode_token",
+        _stub_jwks_decoder({"sub": "user-cb", "roles": ["analyst"], "email": "cb@example.com"}),
+    )
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/callback?code=auth-code&state=state-1")
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/"
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "chiliai_session=" in set_cookie
+    assert "HttpOnly" in set_cookie
+    assert "Secure" in set_cookie
+    assert "samesite=lax" in set_cookie.lower()
+
+
+def test_callback_rejects_unknown_state(app_with_auth: FastAPI) -> None:
+    store = InMemorySessionStore()  # no PKCE state stored
+    domain = _domain_with_auth()
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/callback?code=c&state=unknown")
+
+    assert response.status_code == 400
+    assert "state" in response.json()["detail"].lower()
+
+
+def test_callback_propagates_idp_token_error(
+    app_with_auth: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import httpx
+
+    from api.routers import _oidc_client
+
+    store = InMemorySessionStore()
+    store.save_pkce_state(state="state-err", verifier="ver", ttl_seconds=300)
+    domain = _domain_with_auth()
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    def fake_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"error": "invalid_grant"})
+
+    monkeypatch.setattr(
+        _oidc_client.OidcClient,
+        "_http",
+        lambda self: httpx.Client(transport=httpx.MockTransport(fake_handler), timeout=5.0),
+    )
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/callback?code=bad&state=state-err")
+
+    assert response.status_code == 400
