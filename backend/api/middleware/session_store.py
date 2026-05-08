@@ -6,6 +6,8 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
+from api.middleware.exceptions import SessionNotFoundError as SessionNotFoundError
+
 
 __all__ = [
     "InMemorySessionStore",
@@ -13,10 +15,6 @@ __all__ = [
     "SessionRecord",
     "SessionStoreProtocol",
 ]
-
-
-class SessionNotFoundError(KeyError):
-    """Raised when a session id is not present in the store."""
 
 
 class SessionRecord(BaseModel):

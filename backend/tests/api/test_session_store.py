@@ -35,6 +35,7 @@ class TestInMemorySessionStore:
         record = _record()
         store.save(record)
         assert store.get("sid-1") == record
+        assert store.get("sid-1").access_token == "access-abc"
 
     def test_get_missing_session_raises(self) -> None:
         store = InMemorySessionStore()
@@ -58,6 +59,7 @@ class TestInMemorySessionStore:
         store.touch("sid-1", ttl_seconds=3600)
         record = store.get("sid-1")
         assert record.ttl_seconds == 3600
+        assert record.access_token == "access-abc"
 
     def test_touch_missing_session_raises(self) -> None:
         store = InMemorySessionStore()
@@ -82,7 +84,7 @@ class TestInMemorySessionStore:
         store.save(replacement)
         assert store.get("sid-1").access_token == "new-access"
 
-    def test_pkce_state_set_get_pop(self) -> None:
+    def test_pkce_state_pop_consumes_and_returns_none_on_repeat(self) -> None:
         store = InMemorySessionStore()
         store.save_pkce_state(state="state-1", verifier="ver-1", ttl_seconds=300)
         assert store.pop_pkce_state("state-1") == "ver-1"
@@ -92,3 +94,8 @@ class TestInMemorySessionStore:
     def test_pkce_state_unknown_returns_none(self) -> None:
         store = InMemorySessionStore()
         assert store.pop_pkce_state("never-issued") is None
+
+    def test_session_not_found_error_carries_session_id(self) -> None:
+        with pytest.raises(SessionNotFoundError) as excinfo:
+            InMemorySessionStore().get("sid-missing")
+        assert excinfo.value.session_id == "sid-missing"
