@@ -69,6 +69,7 @@ __all__ = [
     "get_parser_orchestrator",
     "get_parser_registry",
     "get_remote_fetcher",
+    "get_session_store",
     "get_vector_store",
     "get_vectorstore_service",
 ]
@@ -165,6 +166,27 @@ def get_event_bus() -> EventBus:
     config = get_domain_config()
     settings = _resolve_event_bus_settings(config)
     return create_event_bus(settings)
+
+
+@lru_cache(maxsize=1)
+def get_session_store() -> SessionStoreProtocol:
+    """Return the configured session store.
+
+    Uses InMemorySessionStore when AuthConfig.enabled is False, otherwise
+    requires REDIS_URL and returns RedisSessionStore.
+    """
+
+    config = load_config()
+    auth = config.auth
+    if auth is None or not auth.enabled:
+        return InMemorySessionStore()
+
+    redis_url = os.environ.get("REDIS_URL")
+    if redis_url is None:
+        raise ConfigurationError(
+            "AuthConfig.enabled=True requires REDIS_URL to be set."
+        )
+    return RedisSessionStore(redis_url=redis_url)
 
 
 @lru_cache(maxsize=1)
@@ -370,6 +392,11 @@ def get_ingestion_service() -> IngestionService:
 from api._kb_store import (  # noqa: E402  (intentional bottom-of-file import)
     InMemoryKnowledgeBaseRepository,
     KnowledgeBaseRepository,
+)
+from api.middleware.session_store import (  # noqa: E402
+    InMemorySessionStore,
+    RedisSessionStore,
+    SessionStoreProtocol,
 )
 
 

@@ -50,6 +50,7 @@ def clear_dependency_caches() -> None:
         dependencies.get_monitoring_source,
         dependencies.get_monitoring_service,
         dependencies.get_ingestion_service,
+        dependencies.get_session_store,
     ]
     for factory in cacheable_factories:
         factory.cache_clear()
@@ -311,3 +312,46 @@ def test_unsupported_backends_raise_configuration_error(
     factory = getattr(dependencies, factory_name)
     with pytest.raises(ConfigurationError, match=message_fragment):
         factory()
+
+
+def test_get_session_store_returns_in_memory_when_auth_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    from api.middleware.session_store import InMemorySessionStore
+
+    _install_config(monkeypatch, base_config)
+
+    store = dependencies.get_session_store()
+
+    assert isinstance(store, InMemorySessionStore)
+
+
+def test_get_session_store_returns_redis_when_auth_enabled_and_redis_configured(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    from api.middleware.session_store import RedisSessionStore
+    from config.schema import AuthConfig
+
+    monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
+    config = base_config.model_copy(
+        update={
+            "auth": AuthConfig(
+                enabled=True,
+                issuer_url="https://idp.example.com",
+                audience="chili-api",
+                jwks_uri="https://idp.example.com/jwks",
+                client_id="chili-spa",
+                client_secret_env_var="OIDC_CLIENT_SECRET",
+                authorize_endpoint="https://idp.example.com/authorize",
+                token_endpoint="https://idp.example.com/token",
+                redirect_uri="https://app.example.com/auth/callback",
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+
+    store = dependencies.get_session_store()
+
+    assert isinstance(store, RedisSessionStore)
