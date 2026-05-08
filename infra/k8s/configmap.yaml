@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chili-config
+  labels:
+    app.kubernetes.io/name: chili
+    app.kubernetes.io/component: config
+data:
+  CHILI_CONFIG_PATH: "/app/config/defaults/medicare_fraud.yaml"
+  REDIS_URL: "redis://chili-redis:6379"
+  NEO4J_URI: "bolt://neo4j:7687"
+  QDRANT_URL: "http://qdrant:6333"
+  MINIO_ENDPOINT: "minio:9000"
+  API_WORKERS: "4"
+  LOG_LEVEL: "INFO"
+  AUTH_ENABLED: "false"

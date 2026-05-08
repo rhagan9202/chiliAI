@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from analytics.explainability.models import ExplanationContext, ExplanationItem, ExplanationSubgraph
+from analytics.explainability.models import ExplanationContext, ExplanationSubgraph
 from shared.types import Alert
 
 

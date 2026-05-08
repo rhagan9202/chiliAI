@@ -9,10 +9,10 @@
 - Prefer changes that clarify architecture and preserve future modularity over quick, tightly coupled implementations.
 
 ## Current Architecture
-- `backend/` is a Python 3.12 scaffold. `main.py` is a minimal entry point and no service framework, API layer, or test suite is established yet.
-- The target backend structure is 16 modules: `api/`, `ingestion/`, `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/`, `analytics/` (timeseries, gnn, risk, explainability), `agent/`, `monitoring/`, `shared/`, `config/`, `events/`, `storage/`. See `docs/architecture.md` §5 for the full package tree and responsibility matrix.
-- `chili_app/` is a Vite + React 19 + TypeScript frontend scaffold. `src/App.tsx` is still template content and should be treated as placeholder UI.
-- The target frontend structure includes pages for Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration. See `docs/architecture.md` §8 for full details.
+- `backend/` is a Python 3.12 FastAPI and worker prototype with service/protocol modules, routers, adapters, and tests. See `backend/README.md` for the live implementation surface and `docs/todos_and_stubs_audit_2026-05-05.md` for the current TODO/stub inventory.
+- The backend structure is 16 modules: `api/`, `ingestion/`, `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/`, `analytics/` (timeseries, gnn, risk, explainability), `agent/`, `monitoring/`, `shared/`, `config/`, `events/`, `storage/`. See `docs/architecture.md` §5 for the full package tree and responsibility matrix.
+- `chili_app/` is a routed React 19 + TypeScript analyst workbench, not the Vite placeholder. Implemented routes include Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration.
+- The frontend still has prototype gaps around persisted evidence packs, config save, and production UX/performance hardening. See `chili_app/README.md` for current route status.
 - Keep frontend and backend concerns separate. Do not invent cross-layer contracts implicitly inside UI code.
 
 ## Container Architecture
@@ -29,7 +29,7 @@
   - Target API server: `uvicorn api.app:create_app --reload --port 8000`
   - Target worker: `python -m agent.coordinator`
   - Tests: `pytest --cov` (≥ 85% coverage required per backend package)
-- There is no established backend run command or automated test suite yet. If you add one, document it in the relevant README.
+- CI runs backend lint/typecheck/tests and frontend lint/typecheck/tests/build. Keep touched areas green and document new commands in the relevant README.
 
 ## Conventions
 - Preserve the monorepo split: frontend work in `chili_app/`, backend work in `backend/`, design docs in `docs/`, deployment config in `infra/`.

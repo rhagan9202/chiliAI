@@ -2,28 +2,32 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Literal
+from datetime import datetime
+from typing import cast
 
 from pydantic import BaseModel, Field
 
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+from shared.types import Alert
+from shared.utils import generate_id, utc_now
 
 
 class EventBase(BaseModel):
     """Base event envelope."""
 
     event_type: str
-    occurred_at: datetime = Field(default_factory=_utc_now)
-    # TODO(production): Add correlation_id: str = Field(default_factory=generate_id) for
-    # distributed tracing across pipeline stages. Add source: str | None for producer
-    # identification. Add schema_version: int = 1 for event envelope versioning.
+    correlation_id: str = Field(default_factory=generate_id)
+    occurred_at: datetime = Field(default_factory=utc_now)
+    source: str | None = None
+    schema_version: int = 1
 
 
 class KnowledgeBaseCreatedEvent(EventBase):
-    event_type: Literal["kb.create"] = "kb.create"
+    event_type: str = "kb.create"
+    knowledge_base_id: str
+
+
+class KnowledgeBaseDeletedEvent(EventBase):
+    event_type: str = "kb.delete"
     knowledge_base_id: str
 
 
@@ -39,7 +43,7 @@ class DocumentReference(BaseModel):
 
 
 class DocumentsUploadedEvent(EventBase):
-    event_type: Literal["documents.uploaded"] = "documents.uploaded"
+    event_type: str = "documents.uploaded"
     documents: list[DocumentReference]
 
 
@@ -55,7 +59,7 @@ class ParsedDocumentReference(BaseModel):
 
 
 class DocumentsParsedEvent(EventBase):
-    event_type: Literal["documents.parsed"] = "documents.parsed"
+    event_type: str = "documents.parsed"
     documents: list[ParsedDocumentReference]
 
 
@@ -71,7 +75,7 @@ class ChunkedDocumentReference(BaseModel):
 
 
 class DocumentsChunkedEvent(EventBase):
-    event_type: Literal["documents.chunked"] = "documents.chunked"
+    event_type: str = "documents.chunked"
     documents: list[ChunkedDocumentReference]
 
 
@@ -89,7 +93,7 @@ class ExtractedDocumentReference(BaseModel):
 
 
 class EntitiesExtractedEvent(EventBase):
-    event_type: Literal["entities.extracted"] = "entities.extracted"
+    event_type: str = "entities.extracted"
     documents: list[ExtractedDocumentReference]
 
 
@@ -111,7 +115,7 @@ class ValidatedDocumentReference(BaseModel):
 
 
 class EntitiesValidatedEvent(EventBase):
-    event_type: Literal["entities.validated"] = "entities.validated"
+    event_type: str = "entities.validated"
     documents: list[ValidatedDocumentReference]
 
 
@@ -128,8 +132,24 @@ class GraphUpdatedDocumentReference(BaseModel):
 
 
 class GraphUpdatedEvent(EventBase):
-    event_type: Literal["graph.updated"] = "graph.updated"
+    event_type: str = "graph.updated"
     documents: list[GraphUpdatedDocumentReference]
+
+
+class EmbeddingsCompleteDocumentReference(BaseModel):
+    knowledge_base_id: str
+    source_document_id: str
+    parsed_document_id: str
+    extraction_result_id: str
+    validation_report_id: str
+    entity_count: int = Field(ge=0)
+    graph_update_storage_key: str
+    embeddings_storage_key: str
+
+
+class EmbeddingsCompleteEvent(EventBase):
+    event_type: str = "embeddings.complete"
+    documents: list[EmbeddingsCompleteDocumentReference]
 
 
 class VectorIndexedReference(BaseModel):
@@ -139,9 +159,37 @@ class VectorIndexedReference(BaseModel):
     dimension: int = Field(gt=0)
 
 
+class VectorsIndexedDocumentReference(BaseModel):
+    knowledge_base_id: str
+    source_document_id: str
+    parsed_document_id: str
+    extraction_result_id: str
+    validation_report_id: str
+    vector_count: int = Field(ge=0)
+    embeddings_storage_key: str
+    record_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
 class VectorsIndexedEvent(EventBase):
-    event_type: Literal["vectors.indexed"] = "vectors.indexed"
-    records: list[VectorIndexedReference]
+    event_type: str = "vectors.indexed"
+    records: list[VectorIndexedReference] = Field(
+        default_factory=lambda: cast(list[VectorIndexedReference], [])
+    )
+    documents: list[VectorsIndexedDocumentReference] = Field(
+        default_factory=lambda: cast(list[VectorsIndexedDocumentReference], [])
+    )
+
+
+class KnowledgeBaseReadyReference(BaseModel):
+    knowledge_base_id: str
+    entity_count: int = Field(ge=0)
+    relationship_count: int = Field(ge=0)
+    vector_count: int = Field(ge=0)
+
+
+class KnowledgeBaseReadyEvent(EventBase):
+    event_type: str = "kb.ready"
+    knowledge_bases: list[KnowledgeBaseReadyReference]
 
 
 class LlmCompletionReference(BaseModel):
@@ -154,7 +202,7 @@ class LlmCompletionReference(BaseModel):
 
 
 class LlmCompletedEvent(EventBase):
-    event_type: Literal["llm.completed"] = "llm.completed"
+    event_type: str = "llm.completed"
     completions: list[LlmCompletionReference]
 
 
@@ -167,7 +215,7 @@ class EmbeddingGeneratedReference(BaseModel):
 
 
 class EmbeddingsGeneratedEvent(EventBase):
-    event_type: Literal["embeddings.generated"] = "embeddings.generated"
+    event_type: str = "embeddings.generated"
     batches: list[EmbeddingGeneratedReference]
 
 
@@ -182,7 +230,7 @@ class RagCompletionReference(BaseModel):
 
 
 class RagCompletedEvent(EventBase):
-    event_type: Literal["rag.completed"] = "rag.completed"
+    event_type: str = "rag.completed"
     replies: list[RagCompletionReference]
 
 
@@ -196,7 +244,7 @@ class TimeseriesAnalyzedReference(BaseModel):
 
 
 class TimeseriesAnalyzedEvent(EventBase):
-    event_type: Literal["timeseries.analyzed"] = "timeseries.analyzed"
+    event_type: str = "timeseries.analyzed"
     analyses: list[TimeseriesAnalyzedReference]
 
 
@@ -210,7 +258,7 @@ class GnnAnalyzedReference(BaseModel):
 
 
 class GnnAnalyzedEvent(EventBase):
-    event_type: Literal["gnn.analyzed"] = "gnn.analyzed"
+    event_type: str = "gnn.analyzed"
     analyses: list[GnnAnalyzedReference]
 
 
@@ -224,7 +272,7 @@ class RiskScoredReference(BaseModel):
 
 
 class RiskScoredEvent(EventBase):
-    event_type: Literal["risk.scored"] = "risk.scored"
+    event_type: str = "risk.scored"
     assessments: list[RiskScoredReference]
 
 
@@ -239,7 +287,7 @@ class ExplainabilityGeneratedReference(BaseModel):
 
 
 class ExplainabilityGeneratedEvent(EventBase):
-    event_type: Literal["explainability.generated"] = "explainability.generated"
+    event_type: str = "explainability.generated"
     evidence_packs: list[ExplainabilityGeneratedReference]
 
 
@@ -252,7 +300,7 @@ class AgentWorkflowStartedReference(BaseModel):
 
 
 class AgentWorkflowStartedEvent(EventBase):
-    event_type: Literal["agent.workflow.started"] = "agent.workflow.started"
+    event_type: str = "agent.workflow.started"
     workflows: list[AgentWorkflowStartedReference]
 
 
@@ -265,8 +313,35 @@ class AlertCreatedReference(BaseModel):
 
 
 class AlertsCreatedEvent(EventBase):
-    event_type: Literal["alerts.created"] = "alerts.created"
+    event_type: str = "alerts.created"
     alerts: list[AlertCreatedReference]
+
+
+class AlertCreatedEvent(EventBase):
+    """Single-alert event surfaced to real-time WebSocket subscribers."""
+
+    event_type: str = "alert.created"
+    alert: Alert
+
+
+class PipelineProgressEvent(EventBase):
+    """Pipeline stage progress event for a knowledge base ingestion run."""
+
+    event_type: str = "pipeline.progress"
+    knowledge_base_id: str
+    stage: str
+    progress: float = Field(ge=0.0, le=1.0)
+    message: str | None = None
+
+
+class AnalysisFailedEvent(EventBase):
+    """Emitted when an analytics pipeline stage fails for a single entity."""
+
+    event_type: str = "analysis.failed"
+    knowledge_base_id: str
+    entity_id: str
+    stage: str
+    error_message: str
 
 
 class DocumentFailureReference(BaseModel):
@@ -277,31 +352,34 @@ class DocumentFailureReference(BaseModel):
 
 
 class DocumentsFailedEvent(EventBase):
-    event_type: Literal["documents.failed"] = "documents.failed"
+    event_type: str = "documents.failed"
     documents: list[DocumentFailureReference]
 
 
 class ClaimsReceivedEvent(EventBase):
-    event_type: Literal["claims.received"] = "claims.received"
+    event_type: str = "claims.received"
     batch_id: str
     source: str | None = None
 
 
 class ClaimsIngestedEvent(EventBase):
-    event_type: Literal["claims.ingested"] = "claims.ingested"
+    event_type: str = "claims.ingested"
     batch_id: str
     record_count: int = Field(ge=0)
 
 
 AnyEvent = (
     KnowledgeBaseCreatedEvent
+    | KnowledgeBaseDeletedEvent
     | DocumentsUploadedEvent
     | DocumentsParsedEvent
     | DocumentsChunkedEvent
     | EntitiesExtractedEvent
     | EntitiesValidatedEvent
     | GraphUpdatedEvent
+    | EmbeddingsCompleteEvent
     | VectorsIndexedEvent
+    | KnowledgeBaseReadyEvent
     | LlmCompletedEvent
     | EmbeddingsGeneratedEvent
     | RagCompletedEvent
@@ -311,6 +389,9 @@ AnyEvent = (
     | ExplainabilityGeneratedEvent
     | AgentWorkflowStartedEvent
     | AlertsCreatedEvent
+    | AlertCreatedEvent
+    | PipelineProgressEvent
+    | AnalysisFailedEvent
     | DocumentsFailedEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent
@@ -320,8 +401,10 @@ AnyEvent = (
 __all__ = [
     "AgentWorkflowStartedEvent",
     "AgentWorkflowStartedReference",
+    "AlertCreatedEvent",
     "AlertCreatedReference",
     "AlertsCreatedEvent",
+    "AnalysisFailedEvent",
     "AnyEvent",
     "ChunkedDocumentReference",
     "ClaimsIngestedEvent",
@@ -332,6 +415,8 @@ __all__ = [
     "DocumentsFailedEvent",
     "DocumentsParsedEvent",
     "DocumentsUploadedEvent",
+    "EmbeddingsCompleteDocumentReference",
+    "EmbeddingsCompleteEvent",
     "EmbeddingGeneratedReference",
     "EmbeddingsGeneratedEvent",
     "EntitiesExtractedEvent",
@@ -345,9 +430,13 @@ __all__ = [
     "GraphUpdatedDocumentReference",
     "GraphUpdatedEvent",
     "KnowledgeBaseCreatedEvent",
+    "KnowledgeBaseDeletedEvent",
+    "KnowledgeBaseReadyEvent",
+    "KnowledgeBaseReadyReference",
     "LlmCompletedEvent",
     "LlmCompletionReference",
     "ParsedDocumentReference",
+    "PipelineProgressEvent",
     "RagCompletedEvent",
     "RagCompletionReference",
     "RiskScoredEvent",
@@ -356,5 +445,6 @@ __all__ = [
     "TimeseriesAnalyzedReference",
     "ValidatedDocumentReference",
     "VectorIndexedReference",
+    "VectorsIndexedDocumentReference",
     "VectorsIndexedEvent",
 ]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from events.adapters.redis_streams import RedisStreamsEventBus
+from events.protocols import DlqErrorInfo
 from events.types import DocumentReference, DocumentsUploadedEvent
 
 
@@ -56,7 +57,7 @@ def test_redis_streams_event_bus_publishes_consumes_and_acks() -> None:
     event_bus = RedisStreamsEventBus(
         redis_url="redis://unused",
         stream_name_resolver=lambda event_type: f"chili.{event_type}",
-        client=client,
+        client=client,  # pyright: ignore[reportArgumentType]
     )
     event = DocumentsUploadedEvent(
         documents=[
@@ -80,3 +81,31 @@ def test_redis_streams_event_bus_publishes_consumes_and_acks() -> None:
     assert len(deliveries) == 1
     assert deliveries[0].event == event
     assert client.acks == [("chili.documents.uploaded", "workers", ("1-0",))]
+
+
+def test_redis_streams_event_bus_publishes_to_dlq_stream() -> None:
+    client = FakeRedis()
+    event_bus = RedisStreamsEventBus(
+        redis_url="redis://unused",
+        stream_name_resolver=lambda event_type: f"chili.{event_type}",
+        client=client,  # pyright: ignore[reportArgumentType]
+    )
+    event = DocumentsUploadedEvent(
+        documents=[
+            DocumentReference(knowledge_base_id="kb-1", source_document_id="doc-1")
+        ]
+    )
+
+    message_id = event_bus.publish_to_dlq(
+        event,
+        DlqErrorInfo(error_message="boom", traceback="tb", retry_count=3),
+    )
+
+    assert message_id is not None
+    dlq_messages = client.streams["chili.documents.uploaded.dlq"]
+    assert len(dlq_messages) == 1
+    payload = dlq_messages[0][1]
+    assert payload["error_message"] == "boom"
+    assert payload["error_traceback"] == "tb"
+    assert payload["retry_count"] == "3"
+    assert "failed_at" in payload

@@ -1,0 +1,50 @@
+[
+  {
+    "fixture_id": "medicare-multi-claim-001",
+    "npi": "1234567890",
+    "specialty": "Cardiology",
+    "state": "TX",
+    "hic_number": "HIC-FIXTURE-101",
+    "age": 72,
+    "chronic_conditions": ["diabetes", "hypertension"],
+    "claim_id": "CLAIM-FIXTURE-101",
+    "amount": 1250.50,
+    "service_date": "2026-04-20",
+    "procedure_codes": ["99213", "93000"],
+    "facility_id": "FAC-FIXTURE-001",
+    "name": "Austin Fixture Clinic",
+    "type": "outpatient"
+  },
+  {
+    "fixture_id": "medicare-multi-claim-002",
+    "npi": "9876543210",
+    "specialty": "Durable Medical Equipment",
+    "state": "TX",
+    "hic_number": "HIC-FIXTURE-102",
+    "age": 68,
+    "chronic_conditions": ["copd"],
+    "claim_id": "CLAIM-FIXTURE-102",
+    "amount": 9875.00,
+    "service_date": "2026-04-21",
+    "procedure_codes": ["E1390", "E0431"],
+    "facility_id": "FAC-FIXTURE-002",
+    "name": "Lone Star Oxygen Supply",
+    "type": "supplier"
+  },
+  {
+    "fixture_id": "medicare-multi-claim-003",
+    "npi": "1234567890",
+    "specialty": "Cardiology",
+    "state": "TX",
+    "hic_number": "HIC-FIXTURE-103",
+    "age": 80,
+    "chronic_conditions": ["heart failure", "kidney disease"],
+    "claim_id": "CLAIM-FIXTURE-103",
+    "amount": 6500.25,
+    "service_date": "2026-04-22",
+    "procedure_codes": ["93458"],
+    "facility_id": "FAC-FIXTURE-003",
+    "name": "Central Texas Heart Center",
+    "type": "ambulatory surgical center"
+  }
+]

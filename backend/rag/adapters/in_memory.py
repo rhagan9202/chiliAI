@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from math import sqrt
 
+from rag.exceptions import RagConfigurationError
 from rag.models import (
     ContextRecord,
     GraphContext,
@@ -13,12 +15,20 @@ from rag.models import (
     RagGenerationResult,
     RetrievedContextItem,
 )
+from rag.service_models import (
+    RagAnswer,
+    RagCitation,
+    RagQueryRequest,
+    RagQueryResponse,
+    RagStreamChunk,
+)
 
 __all__ = [
     "InMemoryAnswerGenerator",
     "InMemoryContextRetriever",
     "InMemoryGraphContextExpander",
     "InMemoryQueryEmbedder",
+    "InMemoryRagService",
 ]
 
 
@@ -107,17 +117,91 @@ class InMemoryAnswerGenerator:
         self._model_name = model_name
 
     def generate(self, request: RagGenerationRequest) -> RagGenerationResult:
-        context_count = len(request.context_items)
-        graph_clause = ""
-        if request.graph_context is not None and request.graph_context.summary is not None:
-            graph_clause = f" Graph: {request.graph_context.summary}"
-        answer = f"Answer based on {context_count} context items: {request.question}.{graph_clause}".strip()
+        answer = _compose_answer(request)
         return RagGenerationResult(
             request_id=request.request_id,
             answer=answer,
             provider=self._provider,
             model_name=self._model_name,
         )
+
+    def stream_generate(self, request: RagGenerationRequest) -> Iterator[str]:
+        yield _compose_answer(request)
+
+
+class InMemoryRagService:
+    """A canned in-memory rag service backing the chat router scaffold.
+
+    Returns deterministic canned answers and validates known KB ids. Production
+    flow lives in :class:`rag.service.RagService`.
+    """
+
+    def __init__(
+        self,
+        *,
+        known_knowledge_base_ids: set[str] | None = None,
+        canned_answer: str = "Stubbed answer.",
+        canned_sources: list[str] | None = None,
+    ) -> None:
+        self._known_knowledge_base_ids = set(known_knowledge_base_ids or set())
+        self._canned_answer = canned_answer
+        self._canned_sources = list(canned_sources or [])
+
+    def answer(self, request: RagQueryRequest) -> RagQueryResponse:
+        self._require_known_kb(request.knowledge_base_id)
+        return RagQueryResponse(
+            request_id="stub-request",
+            knowledge_base_id=request.knowledge_base_id,
+            answer=self._canned_answer,
+            provider="in-memory",
+            model_name="in-memory-chat-stub",
+            citations=self._build_citations(),
+        )
+
+    def answer_question(
+        self,
+        *,
+        knowledge_base_id: str,
+        question: str,
+    ) -> RagAnswer:
+        del question
+        self._require_known_kb(knowledge_base_id)
+        return RagAnswer(
+            content=self._canned_answer,
+            sources=list(self._canned_sources),
+        )
+
+    def stream_answer(self, request: RagQueryRequest) -> Iterator[RagStreamChunk]:
+        self._require_known_kb(request.knowledge_base_id)
+        tokens = self._canned_answer.split(" ")
+        for index, token in enumerate(tokens):
+            suffix = " " if index < len(tokens) - 1 else ""
+            yield RagStreamChunk(chunk_text=f"{token}{suffix}", is_final=False)
+        yield RagStreamChunk(
+            chunk_text="",
+            is_final=True,
+            citations=self._build_citations(),
+        )
+
+    def _build_citations(self) -> list[RagCitation]:
+        return [
+            RagCitation(
+                record_id=source,
+                content_id=source,
+                score=0.0,
+                snippet=self._canned_answer,
+            )
+            for source in self._canned_sources
+        ]
+
+    def _require_known_kb(self, knowledge_base_id: str) -> None:
+        if (
+            self._known_knowledge_base_ids
+            and knowledge_base_id not in self._known_knowledge_base_ids
+        ):
+            raise RagConfigurationError(
+                f"Knowledge base '{knowledge_base_id}' is not registered."
+            )
 
 
 def _matches_filters(
@@ -128,6 +212,14 @@ def _matches_filters(
         if record.metadata.get(key) != value:
             return False
     return True
+
+
+def _compose_answer(request: RagGenerationRequest) -> str:
+    context_count = len(request.context_items)
+    graph_clause = ""
+    if request.graph_context is not None and request.graph_context.summary is not None:
+        graph_clause = f" Graph: {request.graph_context.summary}"
+    return f"Answer based on {context_count} context items: {request.question}.{graph_clause}".strip()
 
 
 def _embed_text(content: str) -> list[float]:

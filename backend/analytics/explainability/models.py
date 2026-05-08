@@ -47,8 +47,25 @@ class ExplanationContext(BaseModel):
         return self
 
 
+class NarrativeSection(BaseModel):
+    """A grouped narrative passage tied to specific evidence items."""
+
+    heading: str
+    body: str
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
+class ExplanationNarrative(BaseModel):
+    """Structured multi-section narrative produced from explanation items."""
+
+    summary: str
+    sections: list[NarrativeSection] = Field(default_factory=list)
+
+
 __all__ = [
     "ExplanationContext",
     "ExplanationItem",
+    "ExplanationNarrative",
     "ExplanationSubgraph",
+    "NarrativeSection",
 ]

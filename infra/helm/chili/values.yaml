@@ -1,0 +1,98 @@
+# Default values for the chili chart.
+# Override per environment via --values or --set on `helm install`.
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  api:
+    repository: ghcr.io/chiliai/chili-api
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  worker:
+    repository: ghcr.io/chiliai/chili-worker
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  app:
+    repository: ghcr.io/chiliai/chili-app
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+
+replicaCount:
+  api: 2
+  worker: 2
+  app: 2
+
+resources:
+  api:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+  worker:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+  app:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+
+# External service URIs. Defaults assume in-cluster Redis from the chart's StatefulSet.
+redis:
+  uri: "redis://chili-redis:6379"
+neo4j:
+  uri: ""
+qdrant:
+  uri: ""
+minio:
+  endpoint: ""
+
+# Authentication (E10-S03/S04). When disabled, the API skips token validation.
+auth:
+  enabled: false
+  issuerUrl: ""
+  audience: ""
+
+# Default config path inside the API/worker container.
+config:
+  path: "/app/config/defaults/medicare_fraud.yaml"
+  logLevel: "INFO"
+
+# Existing K8s Secret object that provides secret env vars.
+# Provision via:  kubectl create secret generic chili-secrets --from-literal=...
+secret:
+  name: "chili-secrets"
+
+# HPA settings.
+hpa:
+  api:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  worker:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+# Ingress + TLS (E10-S12).
+ingress:
+  enabled: true
+  className: "nginx"
+  host: "chili.example.com"
+  annotations: {}
+
+tls:
+  enabled: false
+  secretName: ""
+  hosts: []

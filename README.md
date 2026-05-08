@@ -38,7 +38,7 @@ chiliAI/
 ├── backend/        # Python 3.12 backend — FastAPI gateway, workers, analytics modules
 ├── chili_app/      # React 19 + TypeScript + Vite 8 frontend — analyst workbench SPA
 ├── docs/           # Architecture, design documents, ADRs
-├── infra/          # Deployment configuration (Docker Compose, Kubernetes, IaC)
+├── infra/          # Deployment configuration (Docker Compose, Kubernetes, Helm)
 └── .github/        # CI/CD workflows, Copilot instructions
 ```
 
@@ -51,9 +51,14 @@ chiliAI/
 cp .env.example .env          # create local config (gitignored)
 make dev                       # or: docker compose -f docker-compose.dev.yaml up --build
 
+# Optional live graph smoke after the dev stack is healthy
+bash scripts/smoke_graph_workflow.sh
+
 # Production — built images, nginx, no hot-reload
 make prod                      # or: docker compose up --build -d
 ```
+
+The development Compose stack wires API and worker through Redis Streams, shared local filesystem object storage, and Neo4j graph persistence via `backend/config/defaults/medicare_fraud_dev.yaml`. The smoke script creates a temporary KB, uploads a Medicare-domain JSON document, waits for the graph pipeline, validates Investigation search/detail/neighborhood APIs, and prints an Investigation route containing a real generated entity ID.
 
 | Service | Dev URL | Prod URL |
 |---------|---------|----------|
@@ -94,7 +99,7 @@ python -m agent.coordinator                         # Pipeline worker
 pytest --cov                                        # Run tests with coverage
 ```
 
-> **Current state**: Both frontend and backend are early-stage scaffolds. See [`docs/architecture.md` §14.3](docs/architecture.md#143-current-state-vs-target) for current state vs. target.
+> **Current state**: chiliAI is an active local-development prototype. The backend includes the FastAPI gateway, domain config, event bus, ingestion, graph, vector, embeddings, LLM, RAG, analytics, monitoring, storage, auth/RBAC middleware, config-driven adapter selection, CI, and worker orchestration with extensive tests. The frontend includes a routed analyst workbench shell with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration views. See [`docs/architecture.md` §14.3](docs/architecture.md#143-current-state-vs-target) for current state vs. target.
 
 ## Key Architectural Decisions
 
@@ -111,5 +116,8 @@ pytest --cov                                        # Run tests with coverage
 | Document | Purpose |
 |----------|---------|
 | [`docs/architecture.md`](docs/architecture.md) | Full high-level architecture and design (source of truth) |
+| [`docs/system_architecture_diagram.md`](docs/system_architecture_diagram.md) | Detailed Mermaid system diagram, request flows, and deployment mapping |
+| [`docs/onboarding.md`](docs/onboarding.md) | New developer onboarding guide, environment setup, conventions, and how-to examples |
+| [`docs/todos_and_stubs_audit_2026-05-05.md`](docs/todos_and_stubs_audit_2026-05-05.md) | Current TODO/stub inventory and user-facing gap list |
 | [`backend/README.md`](backend/README.md) | Backend setup, module overview, development commands |
 | [`chili_app/README.md`](chili_app/README.md) | Frontend setup, page structure, development commands |

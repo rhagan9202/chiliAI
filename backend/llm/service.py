@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 from events.protocols import EventBus
 from events.types import LlmCompletedEvent, LlmCompletionReference
 from llm.adapters.protocols import LlmClientProtocol
@@ -62,6 +64,19 @@ class LlmService:
             )
         )
         return response
+
+    def generate_stream(self, request: GenerateRequest) -> AsyncIterator[str]:
+        """Stream tokens for ``request``.
+
+        The default service does not yet support streaming; adapter-backed
+        services that opt in should override this. Raising
+        ``NotImplementedError`` mirrors :class:`LlmServiceProtocol`'s default.
+        """
+
+        del request
+        raise NotImplementedError(
+            "generate_stream is not implemented by the default LlmService."
+        )
 
 
 def create_llm_service(client: LlmClientProtocol, *, event_bus: EventBus) -> LlmService:

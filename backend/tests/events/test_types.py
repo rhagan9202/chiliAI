@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from uuid import UUID
 
 from events.types import (
     DocumentReference,
     DocumentsParsedEvent,
-    EventBase,
     KnowledgeBaseCreatedEvent,
     ParsedDocumentReference,
 )
@@ -18,6 +18,13 @@ class TestEventBase:
         event = KnowledgeBaseCreatedEvent(knowledge_base_id="kb-1")
         assert isinstance(event.occurred_at, datetime)
         assert event.occurred_at.tzinfo == timezone.utc
+
+    def test_envelope_defaults(self) -> None:
+        event = KnowledgeBaseCreatedEvent(knowledge_base_id="kb-1")
+
+        assert UUID(event.correlation_id).version == 4
+        assert event.source is None
+        assert event.schema_version == 1
 
     def test_event_type_literal(self) -> None:
         event = KnowledgeBaseCreatedEvent(knowledge_base_id="kb-1")
@@ -55,8 +62,16 @@ class TestDocumentsParsedEvent:
             parsed_document_id="pd-1",
             parser_name="csv",
         )
-        event = DocumentsParsedEvent(documents=[ref])
+        event = DocumentsParsedEvent(
+            correlation_id="corr-123",
+            source="chili-worker",
+            schema_version=2,
+            documents=[ref],
+        )
         data = event.model_dump()
         restored = DocumentsParsedEvent.model_validate(data)
         assert restored.event_type == event.event_type
         assert len(restored.documents) == len(event.documents)
+        assert restored.correlation_id == "corr-123"
+        assert restored.source == "chili-worker"
+        assert restored.schema_version == 2

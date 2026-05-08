@@ -1,0 +1,25 @@
+Medicare claims review note: Austin Fixture Clinic
+
+The investigator reviewed a claim bundle submitted by a cardiology provider.
+
+npi: "1234567890"
+specialty: Cardiology
+state: TX
+
+The billed_for beneficiary record included:
+hic_number: HIC-NOTE-001
+age: 72
+chronic_conditions: ["diabetes"]
+
+Claim summary:
+claim_id: CLAIM-NOTE-001
+amount: 1250.50
+service_date: 2026-04-26
+procedure_codes: ["99213"]
+
+Facility detail:
+facility_id: FAC-NOTE-001
+name: Austin Fixture Clinic
+type: outpatient
+
+Expected relationship context for smoke testing: the claim was submitted_by the provider, billed_for the beneficiary, and performed_at the facility.

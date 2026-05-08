@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from monitoring.models import MonitoringBatch
+from shared.types import Alert
 
-__all__ = ["InMemoryObservationSource"]
+__all__ = ["InMemoryAlertRepository", "InMemoryObservationSource"]
 
 
 class InMemoryObservationSource:
@@ -25,3 +26,24 @@ class InMemoryObservationSource:
                 f"No monitoring batch registered for knowledge_base_id='{knowledge_base_id}' and batch_id='{batch_id}'."
             )
         return batch
+
+
+class InMemoryAlertRepository:
+    """A simple in-memory store of alerts keyed by alert id.
+
+    Insertion order is preserved so list operations are deterministic.
+    """
+
+    def __init__(self, alerts: list[Alert] | None = None) -> None:
+        self._alerts: dict[str, Alert] = {}
+        for alert in alerts or []:
+            self.put(alert)
+
+    def put(self, alert: Alert) -> None:
+        self._alerts[alert.id] = alert
+
+    def get(self, alert_id: str) -> Alert | None:
+        return self._alerts.get(alert_id)
+
+    def all(self) -> list[Alert]:
+        return list(self._alerts.values())
