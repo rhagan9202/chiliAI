@@ -16,6 +16,7 @@ from api.dependencies import (
     get_knowledge_base_repository,
     get_object_store,
 )
+from api.middleware.rbac import require_role
 from config.schema import DomainConfig
 from events.protocols import EventBus
 from events.types import KnowledgeBaseCreatedEvent, KnowledgeBaseDeletedEvent
@@ -83,6 +84,7 @@ router = APIRouter(prefix="/knowledgebases", tags=["knowledge-bases"])
     "",
     status_code=status.HTTP_201_CREATED,
     response_model=KnowledgeBase,
+    dependencies=[Depends(require_role("analyst"))],
 )
 async def create_knowledge_base(
     payload: CreateKbRequest,
@@ -106,6 +108,7 @@ async def create_knowledge_base(
 @router.get(
     "",
     response_model=KbListResponse,
+    dependencies=[Depends(require_role("viewer"))],
 )
 async def list_knowledge_bases(
     limit: int = Query(default=50, ge=1, le=500),
@@ -128,6 +131,7 @@ async def list_knowledge_bases(
 @router.get(
     "/{knowledge_base_id}",
     response_model=KnowledgeBase,
+    dependencies=[Depends(require_role("viewer"))],
 )
 async def read_knowledge_base(
     knowledge_base_id: str,
@@ -148,6 +152,7 @@ async def read_knowledge_base(
 @router.delete(
     "/{knowledge_base_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role("admin"))],
 )
 async def delete_knowledge_base(
     knowledge_base_id: str,
@@ -175,6 +180,7 @@ async def delete_knowledge_base(
 @router.get(
     "/{knowledge_base_id}/documents",
     response_model=DocumentListResponse,
+    dependencies=[Depends(require_role("viewer"))],
 )
 async def list_knowledge_base_documents(
     knowledge_base_id: str,
@@ -217,6 +223,7 @@ async def list_knowledge_base_documents(
 @router.delete(
     "/{knowledge_base_id}/documents/{document_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role("analyst"))],
 )
 async def delete_knowledge_base_document(
     knowledge_base_id: str,
@@ -252,6 +259,7 @@ async def delete_knowledge_base_document(
     "/{knowledge_base_id}/documents",
     status_code=status.HTTP_202_ACCEPTED,
     response_model=DocumentRegistrationResponse,
+    dependencies=[Depends(require_role("analyst"))],
 )
 async def register_knowledge_base_documents(
     knowledge_base_id: str,

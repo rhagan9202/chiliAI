@@ -28,6 +28,7 @@ from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
 from analytics.risk.service import RiskService, create_risk_service
 from api.app import create_app
 from api.dependencies import (
+    get_domain_config,
     get_event_bus,
     get_graph_repository,
     get_graph_service,
@@ -35,6 +36,15 @@ from api.dependencies import (
     get_object_store,
     get_vector_store,
     get_vectorstore_service,
+)
+from config.schema import (
+    AlertsConfig,
+    AuthConfig,
+    CapabilitiesConfig,
+    DomainConfig,
+    DomainInfo,
+    IngestionConfig,
+    ValidationConfig,
 )
 from embeddings.adapters.in_memory import InMemoryEmbedder
 from embeddings.protocols import EmbeddingsServiceProtocol
@@ -64,6 +74,22 @@ from storage.adapters.in_memory import InMemoryObjectStore
 from storage.protocols import ObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 from vectorstore.adapters.protocols import VectorStoreProtocol
+
+
+def _build_config() -> DomainConfig:
+    return DomainConfig(
+        domain=DomainInfo(name="test", display_name="Test", description="Test"),
+        entities=[],
+        relationships=[],
+        capabilities=CapabilitiesConfig(),
+        ingestion=IngestionConfig(sources=[]),
+        auth=AuthConfig(enabled=False),
+        validation=ValidationConfig(
+            max_file_size_mb=10,
+            allowed_content_types=["text/plain", "application/json"],
+        ),
+        alerts=AlertsConfig(thresholds={}),
+    )
 
 
 _E2E_ENTITY_DEFINITIONS: list[EntityDefinition] = [
@@ -200,6 +226,7 @@ def harness() -> Iterator[E2EHarness]:
     )
 
     app = create_app()
+    app.dependency_overrides[get_domain_config] = _build_config
     app.dependency_overrides[get_event_bus] = lambda: event_bus
     app.dependency_overrides[get_object_store] = lambda: object_store
     app.dependency_overrides[get_graph_repository] = lambda: graph_repository

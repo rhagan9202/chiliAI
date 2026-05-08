@@ -239,6 +239,7 @@ def test_get_knowledge_base_hydrates_ready_status_from_graph_metrics() -> None:
     app.dependency_overrides[get_knowledge_base_repository] = lambda: repository
     app.dependency_overrides[get_graph_service] = lambda: graph_service
     app.dependency_overrides[get_object_store] = lambda: object_store
+    app.dependency_overrides[get_domain_config] = _build_config
 
     with TestClient(app) as client:
         detail = client.get("/knowledgebases/kb-ready")
@@ -290,6 +291,7 @@ def test_get_knowledge_base_marks_zero_entity_graph_update_ready() -> None:
     app.dependency_overrides[get_knowledge_base_repository] = lambda: repository
     app.dependency_overrides[get_graph_service] = lambda: graph_service
     app.dependency_overrides[get_object_store] = lambda: object_store
+    app.dependency_overrides[get_domain_config] = _build_config
 
     with TestClient(app) as client:
         detail = client.get("/knowledgebases/kb-empty-graph")
@@ -591,3 +593,218 @@ def test_delete_document_returns_404_for_missing_kb(
     response = client.delete("/knowledgebases/missing/documents/anything")
 
     assert response.status_code == 404
+
+
+def test_kb_get_requires_viewer_when_auth_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GET /knowledgebases requires viewer role."""
+    import time
+    from pathlib import Path
+
+    from api.app import create_app
+    from api.dependencies import get_domain_config, get_session_store
+    from api.middleware.session_store import InMemorySessionStore, SessionRecord
+    from config.loader import load_config
+    from config.schema import AuthConfig
+
+    DEFAULTS_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "defaults"
+    MEDICARE_YAML = DEFAULTS_DIR / "medicare_fraud.yaml"
+
+    monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
+    monkeypatch.setattr("api.app.assert_complete", lambda app: None)
+
+    auth_cfg = AuthConfig(
+        enabled=True,
+        issuer_url="https://idp.example.com",
+        audience="chili-api",
+        jwks_uri="https://idp.example.com/jwks",
+        client_id="chili-spa",
+        client_secret_env_var="OIDC_CLIENT_SECRET",
+        authorize_endpoint="https://idp.example.com/authorize",
+        token_endpoint="https://idp.example.com/oauth/token",
+        redirect_uri="https://app.example.com/auth/callback",
+    )
+    domain = load_config(MEDICARE_YAML).model_copy(update={"auth": auth_cfg})
+    monkeypatch.setattr("api.app.load_config", lambda: domain)
+
+    app = create_app()
+
+    store = InMemorySessionStore()
+    store.save(
+        SessionRecord(
+            session_id="sid-viewer",
+            user_id="u-viewer",
+            roles=["viewer"],
+            email=None,
+            access_token="a",
+            refresh_token="r",
+            access_token_expires_at=time.time() + 3600,
+            id_token="i",
+            created_at=time.time(),
+            ttl_seconds=3600,
+        )
+    )
+    app.dependency_overrides[get_session_store] = lambda: store
+    app.dependency_overrides[get_domain_config] = lambda: domain
+
+    with TestClient(app) as client:
+        # No cookie -> 401
+        assert client.get("/knowledgebases").status_code == 401
+        # Viewer cookie -> 200
+        client.cookies.set("chiliai_session", "sid-viewer")
+        assert client.get("/knowledgebases").status_code == 200
+
+
+def test_kb_create_requires_analyst_when_auth_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """POST /knowledgebases requires analyst (viewer gets 403, analyst succeeds)."""
+    import time
+    from pathlib import Path
+
+    from api.app import create_app
+    from api.dependencies import get_domain_config, get_session_store
+    from api.middleware.session_store import InMemorySessionStore, SessionRecord
+    from config.loader import load_config
+    from config.schema import AuthConfig
+
+    DEFAULTS_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "defaults"
+    MEDICARE_YAML = DEFAULTS_DIR / "medicare_fraud.yaml"
+
+    monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
+    monkeypatch.setattr("api.app.assert_complete", lambda app: None)
+
+    auth_cfg = AuthConfig(
+        enabled=True,
+        issuer_url="https://idp.example.com",
+        audience="chili-api",
+        jwks_uri="https://idp.example.com/jwks",
+        client_id="chili-spa",
+        client_secret_env_var="OIDC_CLIENT_SECRET",
+        authorize_endpoint="https://idp.example.com/authorize",
+        token_endpoint="https://idp.example.com/oauth/token",
+        redirect_uri="https://app.example.com/auth/callback",
+    )
+    domain = load_config(MEDICARE_YAML).model_copy(update={"auth": auth_cfg})
+    monkeypatch.setattr("api.app.load_config", lambda: domain)
+
+    app = create_app()
+
+    store = InMemorySessionStore()
+    store.save(
+        SessionRecord(
+            session_id="sid-viewer",
+            user_id="u-viewer",
+            roles=["viewer"],
+            email=None,
+            access_token="a",
+            refresh_token="r",
+            access_token_expires_at=time.time() + 3600,
+            id_token="i",
+            created_at=time.time(),
+            ttl_seconds=3600,
+        )
+    )
+    store.save(
+        SessionRecord(
+            session_id="sid-analyst",
+            user_id="u-analyst",
+            roles=["analyst"],
+            email=None,
+            access_token="a",
+            refresh_token="r",
+            access_token_expires_at=time.time() + 3600,
+            id_token="i",
+            created_at=time.time(),
+            ttl_seconds=3600,
+        )
+    )
+    app.dependency_overrides[get_session_store] = lambda: store
+    app.dependency_overrides[get_domain_config] = lambda: domain
+
+    with TestClient(app) as client:
+        # Viewer cookie -> 403
+        client.cookies.set("chiliai_session", "sid-viewer")
+        assert client.post("/knowledgebases", json={"name": "test"}).status_code == 403
+        # Analyst cookie -> 201
+        client.cookies.set("chiliai_session", "sid-analyst")
+        assert client.post("/knowledgebases", json={"name": "test"}).status_code == 201
+
+
+def test_kb_delete_requires_admin_when_auth_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """DELETE /knowledgebases/{id} requires admin (analyst gets 403, admin succeeds)."""
+    import time
+    from pathlib import Path
+
+    from api.app import create_app
+    from api.dependencies import get_domain_config, get_session_store
+    from api.middleware.session_store import InMemorySessionStore, SessionRecord
+    from config.loader import load_config
+    from config.schema import AuthConfig
+
+    DEFAULTS_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "defaults"
+    MEDICARE_YAML = DEFAULTS_DIR / "medicare_fraud.yaml"
+
+    monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
+    monkeypatch.setattr("api.app.assert_complete", lambda app: None)
+
+    auth_cfg = AuthConfig(
+        enabled=True,
+        issuer_url="https://idp.example.com",
+        audience="chili-api",
+        jwks_uri="https://idp.example.com/jwks",
+        client_id="chili-spa",
+        client_secret_env_var="OIDC_CLIENT_SECRET",
+        authorize_endpoint="https://idp.example.com/authorize",
+        token_endpoint="https://idp.example.com/oauth/token",
+        redirect_uri="https://app.example.com/auth/callback",
+    )
+    domain = load_config(MEDICARE_YAML).model_copy(update={"auth": auth_cfg})
+    monkeypatch.setattr("api.app.load_config", lambda: domain)
+
+    app = create_app()
+
+    store = InMemorySessionStore()
+    store.save(
+        SessionRecord(
+            session_id="sid-analyst",
+            user_id="u-analyst",
+            roles=["analyst"],
+            email=None,
+            access_token="a",
+            refresh_token="r",
+            access_token_expires_at=time.time() + 3600,
+            id_token="i",
+            created_at=time.time(),
+            ttl_seconds=3600,
+        )
+    )
+    store.save(
+        SessionRecord(
+            session_id="sid-admin",
+            user_id="u-admin",
+            roles=["admin"],
+            email=None,
+            access_token="a",
+            refresh_token="r",
+            access_token_expires_at=time.time() + 3600,
+            id_token="i",
+            created_at=time.time(),
+            ttl_seconds=3600,
+        )
+    )
+    app.dependency_overrides[get_session_store] = lambda: store
+    app.dependency_overrides[get_domain_config] = lambda: domain
+
+    with TestClient(app) as client:
+        # Use a non-existent KB id — the role check fires before the body,
+        # so: analyst -> 403, admin -> 404 (role passes, KB absent)
+        kb_id = "nonexistent-kb-id"
+
+        # Analyst cookie -> 403 (role denied before 404 lookup)
+        client.cookies.set("chiliai_session", "sid-analyst")
+        assert client.delete(f"/knowledgebases/{kb_id}").status_code == 403
+
+        # Admin cookie -> 404 (role passes; KB does not exist)
+        client.cookies.set("chiliai_session", "sid-admin")
+        assert client.delete(f"/knowledgebases/{kb_id}").status_code == 404
