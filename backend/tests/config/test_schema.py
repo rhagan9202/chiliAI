@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from config.schema import (
     AlertsConfig,
+    AuthConfig,
     CapabilitiesConfig,
     ChunkingConfig,
     DomainConfig,
@@ -481,47 +482,58 @@ class TestRagConfig:
 # ---------------------------------------------------------------------------
 
 
-def test_auth_config_extended_oidc_fields_default() -> None:
-    from config.schema import AuthConfig
+class TestAuthConfig:
+    def test_auth_config_extended_oidc_fields_default(self) -> None:
+        cfg = AuthConfig()
 
-    cfg = AuthConfig()
+        assert cfg.enabled is False
+        assert cfg.client_id is None
+        assert cfg.client_secret_env_var is None
+        assert cfg.authorize_endpoint is None
+        assert cfg.token_endpoint is None
+        assert cfg.end_session_endpoint is None
+        assert cfg.scopes == ["openid", "email", "profile"]
+        assert cfg.cookie_secure is True
+        assert cfg.cookie_domain is None
+        assert cfg.session_ttl_seconds == 3600
+        assert cfg.redirect_uri is None
 
-    assert cfg.enabled is False
-    assert cfg.client_id is None
-    assert cfg.client_secret_env_var is None
-    assert cfg.authorize_endpoint is None
-    assert cfg.token_endpoint is None
-    assert cfg.end_session_endpoint is None
-    assert cfg.scopes == ["openid", "email", "profile"]
-    assert cfg.cookie_secure is True
-    assert cfg.cookie_domain is None
-    assert cfg.session_ttl_seconds == 3600
-    assert cfg.redirect_uri is None
+    def test_auth_config_accepts_oidc_fields(self) -> None:
+        cfg = AuthConfig(
+            enabled=True,
+            issuer_url="https://idp.example.com",
+            audience="chili-api",
+            jwks_uri="https://idp.example.com/.well-known/jwks.json",
+            client_id="chili-spa",
+            client_secret_env_var="OIDC_CLIENT_SECRET",
+            authorize_endpoint="https://idp.example.com/authorize",
+            token_endpoint="https://idp.example.com/oauth/token",
+            end_session_endpoint="https://idp.example.com/logout",
+            scopes=["openid", "email", "profile", "offline_access"],
+            cookie_secure=True,
+            cookie_domain=".example.com",
+            session_ttl_seconds=1800,
+            redirect_uri="https://app.example.com/auth/callback",
+        )
 
+        assert cfg.enabled is True
+        assert cfg.issuer_url == "https://idp.example.com"
+        assert cfg.audience == "chili-api"
+        assert cfg.jwks_uri == "https://idp.example.com/.well-known/jwks.json"
+        assert cfg.client_id == "chili-spa"
+        assert cfg.client_secret_env_var == "OIDC_CLIENT_SECRET"
+        assert cfg.authorize_endpoint == "https://idp.example.com/authorize"
+        assert cfg.token_endpoint == "https://idp.example.com/oauth/token"
+        assert cfg.end_session_endpoint == "https://idp.example.com/logout"
+        assert cfg.scopes == ["openid", "email", "profile", "offline_access"]
+        assert cfg.cookie_secure is True
+        assert cfg.cookie_domain == ".example.com"
+        assert cfg.session_ttl_seconds == 1800
+        assert cfg.redirect_uri == "https://app.example.com/auth/callback"
 
-def test_auth_config_accepts_oidc_fields() -> None:
-    from config.schema import AuthConfig
-
-    cfg = AuthConfig(
-        enabled=True,
-        issuer_url="https://idp.example.com",
-        audience="chili-api",
-        jwks_uri="https://idp.example.com/.well-known/jwks.json",
-        client_id="chili-spa",
-        client_secret_env_var="OIDC_CLIENT_SECRET",
-        authorize_endpoint="https://idp.example.com/authorize",
-        token_endpoint="https://idp.example.com/oauth/token",
-        end_session_endpoint="https://idp.example.com/logout",
-        scopes=["openid", "email", "profile", "offline_access"],
-        cookie_secure=True,
-        cookie_domain=".example.com",
-        session_ttl_seconds=1800,
-        redirect_uri="https://app.example.com/auth/callback",
-    )
-
-    assert cfg.client_id == "chili-spa"
-    assert cfg.scopes == ["openid", "email", "profile", "offline_access"]
-    assert cfg.session_ttl_seconds == 1800
+    def test_session_ttl_seconds_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError):
+            AuthConfig(session_ttl_seconds=0)
 
 
 # ---------------------------------------------------------------------------
