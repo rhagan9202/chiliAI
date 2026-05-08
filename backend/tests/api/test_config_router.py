@@ -58,3 +58,62 @@ class TestConfigRouter:
         resp = client.get("/health")
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
+
+
+def test_config_get_requires_viewer_when_auth_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    from api.app import create_app
+    from api.dependencies import get_domain_config, get_session_store
+    from api.middleware.session_store import InMemorySessionStore, SessionRecord
+    from config.loader import load_config
+    from config.schema import AuthConfig
+
+    monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
+
+    auth_cfg = AuthConfig(
+        enabled=True,
+        issuer_url="https://idp.example.com",
+        audience="chili-api",
+        jwks_uri="https://idp.example.com/jwks",
+        client_id="chili-spa",
+        client_secret_env_var="OIDC_CLIENT_SECRET",
+        authorize_endpoint="https://idp.example.com/authorize",
+        token_endpoint="https://idp.example.com/oauth/token",
+        redirect_uri="https://app.example.com/auth/callback",
+    )
+    base = load_config(MEDICARE_YAML)
+    domain = base.model_copy(update={"auth": auth_cfg})
+
+    monkeypatch.setattr("api.app.assert_complete", lambda app: None)
+    monkeypatch.setattr("api.app.load_config", lambda: domain)
+
+    app = create_app()
+
+    store = InMemorySessionStore()
+    store.save(
+        SessionRecord(
+            session_id="sid-cfg",
+            user_id="u",
+            roles=["viewer"],
+            email=None,
+            access_token="a",
+            refresh_token="r",
+            access_token_expires_at=time.time() + 3600,
+            id_token="i",
+            created_at=time.time(),
+            ttl_seconds=3600,
+        )
+    )
+    app.dependency_overrides[get_session_store] = lambda: store
+    app.dependency_overrides[get_domain_config] = lambda: domain
+
+    with TestClient(app) as client:
+        # No cookie -> 401 (auth enabled rejects missing cookie)
+        no_cookie = client.get("/config/domain")
+        assert no_cookie.status_code == 401
+
+        client.cookies.set("chiliai_session", "sid-cfg")
+        with_cookie = client.get("/config/domain")
+        assert with_cookie.status_code == 200
