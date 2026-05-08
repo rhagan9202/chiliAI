@@ -30,9 +30,9 @@ No `FIXME`, `HACK`, `XXX`, or `TBD` markers were found outside excluded director
 
 | File:line | Area | Record |
 | --- | --- | --- |
-| `backend/agent/adapters/protocols.py:14` | Agent | Extend workflow run store with list, delete, and query methods. |
-| `backend/agent/protocols.py:14` | Agent | Add workflow lifecycle methods such as status lookup and cancellation. |
-| `backend/agent/service.py:17` | Agent | Add idempotency key to prevent duplicate workflow submissions. |
+| COMPLETE - `backend/agent/adapters/protocols.py:14` | Agent | Extend workflow run store with list, delete, and query methods. |
+| COMPLETE - `backend/agent/protocols.py:14` | Agent | Add workflow lifecycle methods such as status lookup and cancellation. |
+| COMPLETE - `backend/agent/service.py:17` | Agent | Add idempotency key to prevent duplicate workflow submissions. |
 | `backend/analytics/explainability/adapters/protocols.py:14` | Explainability | Extend context source with batch loading and richer context queries. |
 | `backend/analytics/explainability/service.py:30` | Explainability | Integrate SHAP/LIME for model-agnostic feature attribution. |
 | `backend/analytics/gnn/adapters/protocols.py:14` | GNN | Extend graph snapshot source with incremental/streaming graph loading. |

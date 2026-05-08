@@ -55,6 +55,12 @@ class WorkflowRunStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+TERMINAL_RUN_STATUSES: frozenset[WorkflowRunStatus] = frozenset(
+    {WorkflowRunStatus.COMPLETED, WorkflowRunStatus.FAILED}
+)
 
 
 class WorkflowStepState(BaseModel):
@@ -75,6 +81,7 @@ class WorkflowRun(BaseModel):
     steps: list[WorkflowStepState] = Field(default_factory=_empty_workflow_steps)
     created_at: datetime = Field(default_factory=utc_now)
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
+    idempotency_key: str | None = None
 
     @model_validator(mode="after")
     def _validate_steps(self) -> WorkflowRun:
@@ -86,12 +93,27 @@ class WorkflowRun(BaseModel):
         return self
 
 
+class WorkflowRunUpdate(BaseModel):
+    """Partial update applied to a persisted ``WorkflowRun``.
+
+    Non-``None`` fields replace the existing value wholesale; ``None`` leaves
+    the field unchanged. Callers wanting metadata-merge semantics should
+    read-modify-write.
+    """
+
+    status: WorkflowRunStatus | None = None
+    steps: list[WorkflowStepState] | None = None
+    metadata: dict[str, MetadataValue] | None = None
+
+
 __all__ = [
     "HealthSettings",
     "MetadataValue",
     "RetryPolicy",
     "WorkflowRun",
     "WorkflowRunStatus",
+    "WorkflowRunUpdate",
     "WorkflowStepState",
     "WorkflowStepStatus",
+    "TERMINAL_RUN_STATUSES",
 ]
