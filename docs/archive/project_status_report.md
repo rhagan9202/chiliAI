@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-chiliAI is an **architecturally sound platform** at approximately **85% overall implementation**. The foundational patterns — hexagonal architecture, protocol-first design, domain reconfigurability, event-driven pipelines — are well-executed and consistent with `docs/architecture.md`. Backend modules are largely complete (RAG, monitoring, all four analytics sub-modules, optional production adapters for Neo4j/Qdrant/OpenAI/Anthropic/sentence-transformers/S3), the frontend application is feature-complete across the E9 workbench stories, and baseline CI/CD plus Kubernetes/Helm manifests are present. Remaining gaps are primarily cross-cutting hardening: production auth/RBAC enforcement, observability rollout, tenant isolation, evidence-pack APIs, and operational polish.
+chiliAI is an **architecturally sound platform** at approximately **90% overall implementation** (was 85% on April 17). The foundational patterns — hexagonal architecture, protocol-first design, domain reconfigurability, event-driven pipelines — are well-executed and consistent with `docs/architecture.md`. Backend modules are largely complete (RAG, monitoring, all four analytics sub-modules, optional production adapters for Neo4j/Qdrant/OpenAI/Anthropic/sentence-transformers/S3), the frontend application is feature-complete across the E9 workbench stories, baseline CI/CD plus Kubernetes/Helm manifests are present, and **auth/RBAC enforcement landed on 2026-05-08** (BFF OIDC sign-in, role policies on every router, default-deny startup audit, production guardrail). Remaining gaps are cross-cutting hardening: observability rollout, tenant isolation / per-KB authorization, evidence-pack APIs, secrets management, TLS, and operational polish.
 
 ### Verdict
 
@@ -18,7 +18,7 @@ chiliAI is an **architecturally sound platform** at approximately **85% overall 
 | **Architectural Integrity** | STRONG — protocols, adapters, boundaries respected |
 | **Code Quality** | GOOD — types consistent, no contract slippage, clean boundaries |
 | **Implementation Completeness** | HIGH (~85%) — backend pipelines + frontend application + baseline CI/K8s complete; remaining gaps are production hardening and deeper investigation/evidence surfaces |
-| **Production Readiness** | PARTIAL — production adapters and deployment manifests present; auth/RBAC middleware exists but is not enforced across routes; observability and tenant isolation still pending |
+| **Production Readiness** | PARTIAL — production adapters, deployment manifests, and auth/RBAC enforcement all in place; observability rollout, secrets management, TLS, and tenant isolation still pending |
 | **Test Coverage** | STRONG — backend pytest suite / ~93% total coverage; frontend 55 vitest tests across stores, hooks, pages, and components |
 
 ---
@@ -92,7 +92,7 @@ No shadow type definitions. UTC timestamp generation is consolidated through `sh
 | **events/** | 90% | ✅ | **96%** | DLQ in protocol/in-memory/Redis; no XPENDING/XCLAIM fault tolerance |
 | **ingestion/** | 85% | ✅ | **93%** | LLM-powered extraction deferred; no async I/O |
 | **agent/** | 95% | ✅ | **87%** | Pipeline now reaches `kb.ready`: vector indexing, kb.ready, retry/backoff, DLQ routing, SIGTERM/SIGINT graceful shutdown, and stdlib `/health` endpoint all wired; durable retry state still in-process |
-| **api/** | 85% | ✅ | **97%** | 7 of 8 target routers wired (config, knowledgebases, alerts, investigation, chat, analytics, ws); evidence-packs router still pending; auth/RBAC middleware exists but is not enforced route-wide |
+| **api/** | 90% | ✅ | **97%** | 7 of 8 target routers wired (config, knowledgebases, alerts, investigation, chat, analytics, ws); evidence-packs router still pending; auth/RBAC enforcement live on every router (cookie-backed BFF, default-deny startup audit, production guardrail) |
 | **graph/** | 55% | ✅ | **90%** | In-memory and optional Neo4j adapters implemented; upserts use per-batch transaction semantics; live Neo4j integration requires configured test database |
 | **vectorstore/** | 45% | ✅ | ~85% | In-memory and optional Qdrant adapters implemented; advanced metadata filtering remains future work |
 | **embeddings/** | 55% | ✅ | **88%** | Optional sentence-transformers and OpenAI adapters implemented; API/worker selection wired; live providers require optional deps/env |
@@ -208,7 +208,7 @@ for every backend event type, and production observability traces/dashboards.
 |---|-------|--------|
 | ~~16~~ | ~~**Test coverage for 5 zero-coverage modules** (rag, llm, analytics/*, monitoring)~~ — **Resolved for the listed modules**; keep normal coverage maintenance in CI. | — |
 | 17 | **Observability** (structlog, Prometheus metrics, OpenTelemetry tracing) | M (2-3 days) |
-| 18 | **Auth/RBAC middleware** (JWT/OIDC, role enforcement) | M (2-3 days) |
+| ~~18~~ | ~~**Auth/RBAC middleware** (JWT/OIDC, role enforcement)~~ — **Resolved 2026-05-08**: BFF OIDC sign-in flow with cookie-backed Redis sessions, silent refresh, RP-initiated logout; 3-tier role hierarchy (viewer < analyst == service < admin); every router declares `Depends(require_role(...))`; default-deny startup audit walks `app.routes`; production guardrail refuses to start without complete `AuthConfig`. Per-KB / multi-tenant authorization remains a separate spec. | — |
 | ~~19~~ | ~~**CI/CD pipeline** (GitHub Actions: lint + typecheck + test + build)~~ — **Resolved**: `.github/workflows/ci.yml` runs backend lint/typecheck/tests and frontend lint/typecheck/tests/build on PRs. | — |
 | ~~20~~ | ~~**Input validation hardening** (file size limits, content-type whitelist, filename sanitization)~~ — **Resolved**: KB document upload route enforces configured file size and MIME limits and sanitizes filenames. | — |
 | 21 | **Utility consolidation** (`_utc_now()` duplication across 4+ files → `shared/utils.py`) | Complete |
@@ -283,7 +283,7 @@ for every backend event type, and production observability traces/dashboards.
 | 3.7 Frontend Dashboard page | E4 | Complete | 2.2 | System overview, recent alerts, KB summaries |
 | 3.8 WebSocket real-time push | E1 | Complete baseline | 2.2 | api/routers/ws.py + frontend WebSocket hook |
 | 3.9 Observability (structlog, Prometheus, OpenTelemetry) | E3 | 3 days | None | Structured logging, /metrics endpoint, trace propagation |
-| 3.10 Auth/RBAC middleware | E3 | 3 days | None | JWT validation, role enforcement, 3 roles |
+| 3.10 Auth/RBAC middleware | E3 | Complete (2026-05-08) | None | BFF OIDC sign-in, Redis sessions, role enforcement on every router, default-deny startup audit, production guardrail |
 
 **Exit criteria**: Flow B complete (claims → analytics → alerts → frontend). Investigation Workbench operational. Real-time alerts streaming. Observability in place.
 
