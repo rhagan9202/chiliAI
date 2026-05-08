@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.middleware.metrics import register_metrics
 from api.routers.alerts import router as alerts_router
 from api.routers.analytics import router as analytics_router
+from api.routers.auth import router as auth_router
 from api.routers.chat import router as chat_router
 from api.routers.config import router as config_router
 from api.routers.investigation import router as investigation_router
@@ -61,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(investigation_router)
     app.include_router(chat_router)
     app.include_router(analytics_router)
+    app.include_router(auth_router)
 
     # WebSocket router (registered after REST routers per E5-S14 conventions)
     app.include_router(ws_router)
