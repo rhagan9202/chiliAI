@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.app import create_app
@@ -39,8 +40,10 @@ def _domain_with_auth() -> DomainConfig:
 
 
 @pytest.fixture
-def app_with_auth(monkeypatch: pytest.MonkeyPatch):
+def app_with_auth(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
+    # REDIS_URL is required by get_session_store's factory branch when auth.enabled=True,
+    # but auth-enabled tests immediately override get_session_store via dependency_overrides.
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/15")
     return create_app()
 
