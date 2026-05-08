@@ -17,7 +17,7 @@ from fastapi.responses import RedirectResponse
 
 import api.middleware.auth as _auth_module
 from api.dependencies import get_domain_config, get_session_store
-from api.middleware.auth import SESSION_COOKIE_NAME, User, get_current_user
+from api.middleware.auth import SESSION_COOKIE_NAME, User, _coerce_roles, get_current_user
 from api.middleware.session_store import SessionRecord, SessionStoreProtocol
 from api.routers._oidc_client import (
     OidcClient,
@@ -25,7 +25,7 @@ from api.routers._oidc_client import (
     build_authorize_url,
     generate_pkce_pair,
 )
-from config.schema import DomainConfig
+from config.schema import AuthConfig, DomainConfig
 from shared.utils import generate_id
 
 __all__ = ["router"]
@@ -37,22 +37,19 @@ PKCE_STATE_TTL_SECONDS = 300
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _client_secret(auth_config: object) -> str:
+def _client_secret(auth_config: AuthConfig) -> str:
     """Read the client secret from the env var named in ``auth_config``."""
 
-    from config.schema import AuthConfig as _AuthConfig  # local to avoid circular
-
-    cfg: _AuthConfig = auth_config  # type: ignore[assignment]
-    if cfg.client_secret_env_var is None:
+    if auth_config.client_secret_env_var is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="AuthConfig.client_secret_env_var is required when auth is enabled.",
         )
-    secret = os.environ.get(cfg.client_secret_env_var)
+    secret = os.environ.get(auth_config.client_secret_env_var)
     if secret is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Env var '{cfg.client_secret_env_var}' is not set.",
+            detail=f"Env var '{auth_config.client_secret_env_var}' is not set.",
         )
     return secret
 
@@ -128,21 +125,22 @@ def callback(
     # Decode id_token (or access_token if id_token is absent) to extract user identity.
     # Call via the module reference so that monkeypatch substitution works in tests.
     token_to_decode = tokens.id_token or tokens.access_token
-    claims = _auth_module.decode_token(
-        token_to_decode,
-        auth_config=auth_config,
-        jwks_cache=_auth_module._JWKS_CACHE,  # noqa: SLF001
-    )
+    try:
+        claims = _auth_module.decode_token(
+            token_to_decode,
+            auth_config=auth_config,
+            jwks_cache=_auth_module._JWKS_CACHE,  # noqa: SLF001
+        )
+    except HTTPException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"IdP returned an invalid token: {exc.detail}",
+        ) from exc
     user_id = str(claims.get("sub") or "unknown")
     raw_email = claims.get("email")
     email = raw_email if isinstance(raw_email, str) else None
     raw_roles = claims.get(auth_config.roles_claim)
-    if isinstance(raw_roles, list):
-        roles = [str(item) for item in raw_roles]
-    elif isinstance(raw_roles, str):
-        roles = [raw_roles]
-    else:
-        roles = []
+    roles = _coerce_roles(raw_roles)
 
     sid = generate_id()
     now = time.time()

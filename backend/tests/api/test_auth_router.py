@@ -222,6 +222,21 @@ def test_callback_exchanges_code_and_creates_session_cookie(
     assert "Secure" in set_cookie
     assert "samesite=lax" in set_cookie.lower()
 
+    # Extract the session id from the cookie and verify the SessionRecord was saved.
+    import re
+    cookie_header = response.headers["set-cookie"]
+    match = re.search(r"chiliai_session=([^;]+)", cookie_header)
+    assert match is not None
+    sid = match.group(1)
+
+    saved = store.get(sid)
+    assert saved.user_id == "user-cb"
+    assert saved.roles == ["analyst"]
+    assert saved.email == "cb@example.com"
+    assert saved.access_token == "acc-tok"
+    assert saved.refresh_token == "ref-tok"
+    assert saved.id_token == "id-tok"
+
 
 def test_callback_rejects_unknown_state(app_with_auth: FastAPI) -> None:
     store = InMemorySessionStore()  # no PKCE state stored
@@ -262,3 +277,50 @@ def test_callback_propagates_idp_token_error(
         response = client.get("/auth/callback?code=bad&state=state-err")
 
     assert response.status_code == 400
+    assert "IdP token endpoint rejected" in response.json()["detail"]
+
+
+def test_callback_returns_400_when_id_token_validation_fails(
+    app_with_auth: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When decode_token raises 401 (bad signature/expired/etc.), callback returns 400."""
+    import httpx
+
+    from api.middleware import auth as auth_module
+    from api.routers import _oidc_client
+
+    store = InMemorySessionStore()
+    store.save_pkce_state(state="state-bad-tok", verifier="ver", ttl_seconds=300)
+    domain = _domain_with_auth()
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    def fake_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "acc",
+                "refresh_token": "ref",
+                "id_token": "id",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            },
+        )
+
+    monkeypatch.setattr(
+        _oidc_client.OidcClient,
+        "_http",
+        lambda self: httpx.Client(transport=httpx.MockTransport(fake_handler), timeout=5.0),
+    )
+
+    def _raise_401(token, *, auth_config, jwks_cache):  # type: ignore[no-untyped-def]
+        from fastapi import HTTPException, status
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="bad signature")
+
+    monkeypatch.setattr(auth_module, "decode_token", _raise_401)
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/callback?code=c&state=state-bad-tok")
+
+    assert response.status_code == 400
+    assert "IdP returned an invalid token" in response.json()["detail"]
