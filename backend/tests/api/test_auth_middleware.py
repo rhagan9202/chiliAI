@@ -25,7 +25,7 @@ from api.middleware.auth import (  # noqa: E402
     get_current_user,
     set_jwks_fetcher,
 )
-from api.middleware.session_store import InMemorySessionStore, SessionRecord  # noqa: E402
+from api.middleware.session_store import InMemorySessionStore, SessionRecord, SessionStoreProtocol  # noqa: E402
 from config.loader import load_config  # noqa: E402
 from config.schema import (  # noqa: E402
     AlertsConfig,
@@ -257,7 +257,7 @@ class TestAuthEnabled:
 
 
 def _build_app_with_session_store(
-    config: DomainConfig, store: InMemorySessionStore
+    config: DomainConfig, store: SessionStoreProtocol
 ) -> FastAPI:
     app = FastAPI()
     app.dependency_overrides[get_domain_config] = lambda: config
@@ -265,7 +265,7 @@ def _build_app_with_session_store(
 
     @app.get("/whoami")
     def whoami(user: User = Depends(get_current_user)) -> dict[str, object]:
-        return {"user_id": user.user_id, "roles": user.roles}
+        return {"user_id": user.user_id, "roles": user.roles, "email": user.email}
 
     return app
 
@@ -311,7 +311,11 @@ class TestCookiePath:
         response = client.get("/whoami")
 
         assert response.status_code == 200
-        assert response.json() == {"user_id": "user-1", "roles": ["analyst"]}
+        assert response.json() == {
+            "user_id": "user-1",
+            "roles": ["analyst"],
+            "email": "user@example.com",
+        }
 
     def test_get_current_user_returns_401_when_cookie_session_is_unknown(self) -> None:
         """A cookie pointing at a missing session id results in 401."""

@@ -1,13 +1,14 @@
-"""JWT/OIDC authentication middleware (E10-S06).
+"""Authentication middleware for the chiliAI API.
 
-Provides a FastAPI dependency that validates ``Authorization: Bearer <jwt>``
-headers against an OIDC provider's JWKS. When :class:`AuthConfig.enabled` is
-``False`` the dependency returns an anonymous user with the ``viewer`` role
-so existing endpoints continue to work in development and tests.
+Resolves the current user from one of three sources, in order: an
+HttpOnly ``chiliai_session`` cookie backed by ``SessionStoreProtocol``,
+an ``Authorization: Bearer <jwt>`` header validated against the
+OIDC issuer's JWKS, or — when ``AuthConfig.enabled`` is ``False`` —
+an anonymous viewer for dev and tests.
 
-The JWKS document is fetched once per ``jwks_cache_seconds`` window via the
-injected fetcher to keep the middleware test-friendly and free of real
-network dependencies during tests.
+The JWKS document is fetched once per ``jwks_cache_seconds`` window via
+the injected fetcher to keep the middleware test-friendly and free of
+real network dependencies during tests.
 """
 
 from __future__ import annotations
@@ -245,6 +246,7 @@ def get_current_user(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Session is unknown or has expired.",
+                headers={"WWW-Authenticate": "Bearer"},
             ) from exc
         return _user_from_session(record)
 
@@ -252,7 +254,7 @@ def get_current_user(
     if token is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing authentication: send chiliai_session cookie or Bearer token.",
+            detail=f"Missing authentication: send {SESSION_COOKIE_NAME} cookie or Bearer token.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
