@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from api.middleware.rbac import require_role
 from graph.protocols import GraphServiceProtocol
 from graph.service_models import (
     EntityDetailResponse,
@@ -27,6 +28,7 @@ router = APIRouter(prefix="/investigation", tags=["investigation"])
 @router.get(
     "/entities/{entity_id}",
     response_model=EntityDetailResponse,
+    dependencies=[Depends(require_role("viewer"))],
 )
 async def read_entity(
     entity_id: str,
@@ -46,6 +48,7 @@ async def read_entity(
 @router.get(
     "/entities/{entity_id}/neighborhood",
     response_model=NeighborhoodResponse,
+    dependencies=[Depends(require_role("viewer"))],
 )
 async def read_entity_neighborhood(
     entity_id: str,
@@ -70,6 +73,7 @@ async def read_entity_neighborhood(
 @router.get(
     "/search",
     response_model=EntitySearchResponse,
+    dependencies=[Depends(require_role("viewer"))],
 )
 async def search_entities(
     kb_id: str = Query(..., description="Knowledge base identifier."),
