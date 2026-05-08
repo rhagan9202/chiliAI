@@ -191,6 +191,22 @@ class AuthConfig(BaseModel):
     roles_claim: str = "roles"
     jwks_cache_seconds: int = Field(default=3600, gt=0)
 
+    # OIDC client (used by the BFF auth router)
+    client_id: str | None = None
+    client_secret_env_var: str | None = None
+    authorize_endpoint: str | None = None
+    token_endpoint: str | None = None
+    end_session_endpoint: str | None = None
+    scopes: list[str] = Field(
+        default_factory=lambda: ["openid", "email", "profile"]
+    )
+    redirect_uri: str | None = None
+
+    # Cookie / session
+    cookie_secure: bool = True
+    cookie_domain: str | None = None
+    session_ttl_seconds: int = Field(default=3600, gt=0)
+
 
 class ValidationConfig(BaseModel):
     """Inbound payload limits applied across the API gateway (E10-S10)."""
