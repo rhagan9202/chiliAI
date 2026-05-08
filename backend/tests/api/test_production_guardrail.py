@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 
 from config.loader import load_config
@@ -54,16 +52,16 @@ def test_create_app_succeeds_under_dev_with_auth_disabled(
     assert app is not None
 
 
-def test_create_app_invokes_policy_audit_when_auth_enabled(
+def test_create_app_passes_policy_registry_assert_when_auth_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When auth is enabled, the default-deny audit must run after router registration."""
-
+    """With auth enabled and every router protected, create_app succeeds."""
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
     monkeypatch.delenv("CHILI_ENV", raising=False)
 
     from api.app import create_app
+    from config.loader import load_config
     from config.schema import AuthConfig
 
     base = load_config()
@@ -84,13 +82,5 @@ def test_create_app_invokes_policy_audit_when_auth_enabled(
     )
     monkeypatch.setattr("api.app.load_config", lambda: enabled)
 
-    # Patch assert_complete to a no-op so the audit doesn't actually fire on
-    # currently-unprotected routes (Tasks 15-22 attach policies; until then,
-    # assert_complete would raise).
-    with patch("api.app.assert_complete") as mocked_assert:
-        app = create_app()
-        assert app is not None
-        mocked_assert.assert_called_once()
-        # The audit was called with the FastAPI app
-        called_app = mocked_assert.call_args[0][0]
-        assert called_app is app
+    app = create_app()
+    assert app is not None
