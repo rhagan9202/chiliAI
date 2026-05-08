@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
+from api.middleware.rbac import require_role
 from rag.adapters.in_memory import InMemoryRagService
 from rag.exceptions import RagConfigurationError
 from rag.protocols import RagServiceProtocol
@@ -59,6 +60,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 @router.post(
     "/conversations/{conversation_id}/messages",
     response_model=None,
+    dependencies=[Depends(require_role("viewer"))],
 )
 async def send_chat_message(
     conversation_id: str,
