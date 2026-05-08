@@ -99,3 +99,49 @@ class TestInMemorySessionStore:
         with pytest.raises(SessionNotFoundError) as excinfo:
             InMemorySessionStore().get("sid-missing")
         assert excinfo.value.session_id == "sid-missing"
+
+
+@pytest.mark.integration
+class TestRedisSessionStore:
+    """Integration tests for RedisSessionStore. Requires CHILI_TEST_REDIS_URL."""
+
+    @pytest.fixture
+    def redis_url(self) -> str:
+        import os
+
+        url = os.environ.get("CHILI_TEST_REDIS_URL")
+        if url is None:
+            pytest.skip("CHILI_TEST_REDIS_URL is not set; skipping integration test.")
+        return url
+
+    @pytest.fixture
+    def store(self, redis_url: str):
+        from api.middleware.session_store import RedisSessionStore
+
+        store = RedisSessionStore(redis_url=redis_url, key_prefix="chiliai-test-session:")
+        yield store
+        # Best-effort cleanup of test keys
+        store.flush_test_keys()
+
+    def test_save_get_round_trip(self, store) -> None:
+        record = _record(sid="redis-sid-1")
+        store.save(record)
+        loaded = store.get("redis-sid-1")
+        assert loaded.user_id == "user-42"
+        assert loaded.roles == ["analyst"]
+        assert loaded.access_token == "access-abc"
+
+    def test_get_missing_raises(self, store) -> None:
+        with pytest.raises(SessionNotFoundError):
+            store.get("redis-missing")
+
+    def test_delete_removes_session(self, store) -> None:
+        store.save(_record(sid="redis-sid-2"))
+        store.delete("redis-sid-2")
+        with pytest.raises(SessionNotFoundError):
+            store.get("redis-sid-2")
+
+    def test_pkce_state_round_trip(self, store) -> None:
+        store.save_pkce_state(state="redis-state", verifier="redis-ver", ttl_seconds=60)
+        assert store.pop_pkce_state("redis-state") == "redis-ver"
+        assert store.pop_pkce_state("redis-state") is None
