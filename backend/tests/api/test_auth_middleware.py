@@ -173,6 +173,167 @@ class TestAuthEnabled:
         assert body["roles"] == ["analyst"]
         assert body["email"] == "u@example.com"
 
+
+def test_get_current_user_refreshes_when_access_token_near_expiry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the access token is within 60s of expiry, the BFF triggers refresh."""
+    import time
+
+    import httpx
+    from fastapi import Depends, FastAPI
+    from fastapi.testclient import TestClient
+
+    from api.dependencies import get_domain_config, get_session_store
+    from api.middleware.auth import User, get_current_user
+    from api.middleware.session_store import InMemorySessionStore, SessionRecord
+    from api.routers import _oidc_client
+    from config.schema import AuthConfig, DomainConfig
+
+    store = InMemorySessionStore()
+    store.save(
+        SessionRecord(
+            session_id="sid-refresh",
+            user_id="user-1",
+            roles=["analyst"],
+            email="u@e.com",
+            access_token="old-acc",
+            refresh_token="ref-tok",
+            access_token_expires_at=time.time() + 30,  # within 60s leeway
+            id_token="id",
+            created_at=time.time(),
+            ttl_seconds=3600,
+        )
+    )
+
+    refresh_calls: list[str] = []
+
+    def fake_handler(request: httpx.Request) -> httpx.Response:
+        refresh_calls.append(request.content.decode())
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "new-acc",
+                "refresh_token": "new-ref",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            },
+        )
+
+    monkeypatch.setattr(
+        _oidc_client.OidcClient,
+        "_http",
+        lambda self: httpx.Client(transport=httpx.MockTransport(fake_handler), timeout=5.0),
+    )
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
+
+    auth_cfg = AuthConfig(
+        enabled=True,
+        issuer_url="https://idp.example.com",
+        audience="chili-api",
+        jwks_uri="https://idp.example.com/jwks",
+        client_id="chili-spa",
+        client_secret_env_var="OIDC_CLIENT_SECRET",
+        authorize_endpoint="https://idp.example.com/authorize",
+        token_endpoint="https://idp.example.com/oauth/token",
+        redirect_uri="https://app.example.com/auth/callback",
+    )
+    base = load_config(_MEDICARE_YAML)  # use the existing test-file constant
+    domain = base.model_copy(update={"auth": auth_cfg})
+
+    app = FastAPI()
+
+    @app.get("/whoami")
+    def whoami(user: User = Depends(get_current_user)) -> dict[str, object]:
+        return {"user_id": user.user_id}
+
+    app.dependency_overrides[get_domain_config] = lambda: domain
+    app.dependency_overrides[get_session_store] = lambda: store
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-refresh")
+        response = client.get("/whoami")
+
+    assert response.status_code == 200
+    assert len(refresh_calls) == 1
+    refreshed = store.get("sid-refresh")
+    assert refreshed.access_token == "new-acc"
+    assert refreshed.refresh_token == "new-ref"
+
+
+def test_get_current_user_returns_401_when_refresh_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If the IdP rejects the refresh token, the cookie path returns 401."""
+    import time
+
+    import httpx
+    from fastapi import Depends, FastAPI
+    from fastapi.testclient import TestClient
+
+    from api.dependencies import get_domain_config, get_session_store
+    from api.middleware.auth import User, get_current_user
+    from api.middleware.session_store import InMemorySessionStore, SessionRecord
+    from api.routers import _oidc_client
+    from config.schema import AuthConfig
+
+    store = InMemorySessionStore()
+    store.save(
+        SessionRecord(
+            session_id="sid-stale",
+            user_id="user-1",
+            roles=["analyst"],
+            email="u@e.com",
+            access_token="old-acc",
+            refresh_token="ref-bad",
+            access_token_expires_at=time.time() + 30,
+            id_token="id",
+            created_at=time.time(),
+            ttl_seconds=3600,
+        )
+    )
+
+    monkeypatch.setattr(
+        _oidc_client.OidcClient,
+        "_http",
+        lambda self: httpx.Client(
+            transport=httpx.MockTransport(
+                lambda req: httpx.Response(400, json={"error": "invalid_grant"})
+            ),
+            timeout=5.0,
+        ),
+    )
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
+
+    auth_cfg = AuthConfig(
+        enabled=True,
+        issuer_url="https://idp.example.com",
+        audience="chili-api",
+        jwks_uri="https://idp.example.com/jwks",
+        client_id="chili-spa",
+        client_secret_env_var="OIDC_CLIENT_SECRET",
+        authorize_endpoint="https://idp.example.com/authorize",
+        token_endpoint="https://idp.example.com/oauth/token",
+        redirect_uri="https://app.example.com/auth/callback",
+    )
+    base = load_config(_MEDICARE_YAML)
+    domain = base.model_copy(update={"auth": auth_cfg})
+
+    app = FastAPI()
+
+    @app.get("/whoami")
+    def whoami(user: User = Depends(get_current_user)) -> dict[str, object]:
+        return {"user_id": user.user_id}
+
+    app.dependency_overrides[get_domain_config] = lambda: domain
+    app.dependency_overrides[get_session_store] = lambda: store
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-stale")
+        response = client.get("/whoami")
+
+    assert response.status_code == 401
+
     def test_missing_authorization_header_returns_401(
         self, auth_config: AuthConfig, jwks_setter: Callable[[], None]
     ) -> None:

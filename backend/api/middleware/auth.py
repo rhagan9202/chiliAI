@@ -13,6 +13,7 @@ real network dependencies during tests.
 
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -92,6 +93,7 @@ class JwksCache:
 _JWKS_CACHE: JwksCache = JwksCache()
 
 SESSION_COOKIE_NAME = "chiliai_session"
+REFRESH_LEEWAY_SECONDS = 60
 
 
 def _user_from_session(record: SessionRecord) -> User:
@@ -220,6 +222,56 @@ def _extract_bearer_token(request: Request) -> str | None:
     return token or None
 
 
+def _maybe_refresh_session(
+    record: SessionRecord,
+    *,
+    auth_config: AuthConfig,
+    session_store: SessionStoreProtocol,
+) -> SessionRecord:
+    """If the access token is near expiry and a refresh token exists, refresh in-band.
+
+    Returns the (possibly updated) SessionRecord. Raises HTTPException(401) when
+    refresh fails so callers can surface session expiry to the SPA.
+    """
+
+    if record.refresh_token is None:
+        return record
+    if record.access_token_expires_at - time.time() > REFRESH_LEEWAY_SECONDS:
+        return record
+
+    secret_env = auth_config.client_secret_env_var
+    if secret_env is None:
+        return record
+    secret = os.environ.get(secret_env)
+    if secret is None:
+        return record
+
+    # Local import to avoid a circular dependency: api.routers imports from
+    # api.middleware.auth (via the auth router), so a top-level import would
+    # create a cycle.
+    from api.routers._oidc_client import OidcClient  # noqa: PLC0415
+
+    client = OidcClient(auth_config=auth_config, client_secret=secret)
+    try:
+        tokens = client.refresh(refresh_token=record.refresh_token)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session refresh failed; please sign in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+    updated = record.model_copy(
+        update={
+            "access_token": tokens.access_token,
+            "refresh_token": tokens.refresh_token or record.refresh_token,
+            "access_token_expires_at": time.time() + tokens.expires_in,
+        }
+    )
+    session_store.save(updated)
+    return updated
+
+
 def get_current_user(
     request: Request,
     domain_config: DomainConfig = Depends(get_domain_config),
@@ -248,6 +300,10 @@ def get_current_user(
                 detail="Session is unknown or has expired.",
                 headers={"WWW-Authenticate": "Bearer"},
             ) from exc
+        record = _maybe_refresh_session(
+            record, auth_config=auth_config, session_store=session_store
+        )
+        session_store.touch(sid, ttl_seconds=auth_config.session_ttl_seconds)
         return _user_from_session(record)
 
     token = _extract_bearer_token(request)
