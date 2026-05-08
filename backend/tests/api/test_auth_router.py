@@ -100,3 +100,63 @@ def test_me_returns_anonymous_when_auth_disabled(app_with_auth) -> None:
 
     assert response.status_code == 200
     assert response.json()["user_id"] == "anonymous"
+
+
+def test_login_redirects_to_authorize_endpoint_with_pkce_and_state(app_with_auth: FastAPI) -> None:
+    from urllib.parse import parse_qs, urlparse
+
+    store = InMemorySessionStore()
+    domain = _domain_with_auth()
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/login")
+
+    assert response.status_code == 307
+    location = response.headers["location"]
+    parsed = urlparse(location)
+    qs = parse_qs(parsed.query)
+    assert parsed.netloc == "idp.example.com"
+    assert qs["response_type"] == ["code"]
+    assert qs["code_challenge_method"] == ["S256"]
+    state = qs["state"][0]
+    # PKCE state must be persisted so the callback can recover the verifier
+    assert store.pop_pkce_state(state) is not None
+
+
+def test_login_returns_500_when_oidc_config_incomplete(app_with_auth: FastAPI) -> None:
+    base = load_config(MEDICARE_YAML)
+    incomplete = base.model_copy(
+        update={
+            "auth": AuthConfig(
+                enabled=True,
+                issuer_url="https://idp.example.com",
+                audience="chili-api",
+                jwks_uri="https://idp.example.com/jwks",
+                # NB: no authorize_endpoint, redirect_uri, or client_id
+            )
+        }
+    )
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: incomplete
+    app_with_auth.dependency_overrides[get_session_store] = lambda: InMemorySessionStore()
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/login")
+
+    assert response.status_code == 500
+    detail = response.json()["detail"]
+    # Whichever endpoint/field is checked first by _require should appear in the message
+    assert "authorize_endpoint" in detail or "redirect_uri" in detail or "client_id" in detail
+
+
+def test_login_returns_404_when_auth_disabled(app_with_auth: FastAPI) -> None:
+    base = load_config(MEDICARE_YAML)
+    domain = base.model_copy(update={"auth": AuthConfig()})  # enabled=False
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+    app_with_auth.dependency_overrides[get_session_store] = lambda: InMemorySessionStore()
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/login")
+
+    assert response.status_code == 404
