@@ -6,6 +6,7 @@ from functools import lru_cache
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from api.middleware.rbac import require_role
 from monitoring.adapters.in_memory import InMemoryAlertRepository
 from monitoring.exceptions import AlertAlreadyResolvedError, AlertNotFoundError
 from monitoring.protocols import AlertsServiceProtocol
@@ -35,7 +36,7 @@ def get_alerts_service() -> AlertsServiceProtocol:
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 
-@router.get("", response_model=AlertListResponse)
+@router.get("", response_model=AlertListResponse, dependencies=[Depends(require_role("viewer"))])
 async def list_alerts(
     severity: str | None = Query(default=None),
     entity_type: str | None = Query(default=None),
@@ -60,6 +61,7 @@ async def list_alerts(
     "/{alert_id}/acknowledge",
     response_model=AlertActionResponse,
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_role("analyst"))],
 )
 async def acknowledge_alert(
     alert_id: str,
@@ -80,6 +82,7 @@ async def acknowledge_alert(
     "/{alert_id}/resolve",
     response_model=AlertActionResponse,
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_role("analyst"))],
 )
 async def resolve_alert(
     alert_id: str,
