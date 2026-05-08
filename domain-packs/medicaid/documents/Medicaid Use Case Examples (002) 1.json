@@ -1,0 +1,116 @@
+[
+  {
+    "sid": "/medicaid",
+    "title": "Medicaid",
+    "level": 1,
+    "children": [
+      {
+        "sid": "/i-high-risk-benefitservices-supplies-and-equipment",
+        "title": "I. High Risk Benefit/Services, Supplies, And Equipment",
+        "level": 2,
+        "parent": "/medicaid",
+        "children": []
+      },
+      {
+        "sid": "/ii-medicaid-managed-care-beneficiary-eligibility-and-enrollment",
+        "title": "II. Medicaid Managed Care/ Beneficiary Eligibility and Enrollment",
+        "level": 2,
+        "parent": "/medicaid",
+        "children": []
+      },
+      {
+        "sid": "/iii-medicaid-managed-care--provider-screening-and-enrollment",
+        "title": "III. Medicaid Managed Care / Provider Screening and Enrollment",
+        "level": 2,
+        "parent": "/medicaid",
+        "children": [
+          {
+            "sid": "/1-beneficiary-eligibility-and-enrollment",
+            "title": "1) Beneficiary Eligibility and Enrollment",
+            "level": 3,
+            "parent": "/iii-medicaid-managed-care--provider-screening-and-enrollment",
+            "children": [
+              {
+                "sid": "/a-eligible-populations-and-eligibility-standards",
+                "title": "a) Eligible Populations and Eligibility Standards",
+                "level": 4,
+                "parent": "/1-beneficiary-eligibility-and-enrollment",
+                "children": []
+              },
+              {
+                "sid": "/b-eligibility-determination-administration",
+                "title": "b) Eligibility Determination Administration",
+                "level": 4,
+                "parent": "/1-beneficiary-eligibility-and-enrollment",
+                "children": []
+              },
+              {
+                "sid": "/c-presumptive-eligibility",
+                "title": "c) Presumptive Eligibility",
+                "level": 4,
+                "parent": "/1-beneficiary-eligibility-and-enrollment",
+                "children": []
+              },
+              {
+                "sid": "/d-coordination-of-eligibility-across-federal-insurance-programs",
+                "title": "d) Coordination of Eligibility across Federal Insurance Programs",
+                "level": 4,
+                "parent": "/1-beneficiary-eligibility-and-enrollment",
+                "children": []
+              }
+            ]
+          },
+          {
+            "sid": "/2-provider-supplier-facility-screening-and-enrollment",
+            "title": "2) Provider/ Supplier/ Facility Screening and Enrollment",
+            "level": 3,
+            "parent": "/iii-medicaid-managed-care--provider-screening-and-enrollment",
+            "children": []
+          },
+          {
+            "sid": "/3-state-general-fiscal-administration-and-federal-financial-participation",
+            "title": "3) State General/ Fiscal Administration and Federal Financial Participation",
+            "level": 3,
+            "parent": "/iii-medicaid-managed-care--provider-screening-and-enrollment",
+            "children": []
+          },
+          {
+            "sid": "/4-payment-methods-reimbursement-rate-setting-and-ffp-limitations",
+            "title": "4) Payment Methods, Reimbursement Rate Setting, and FFP Limitations",
+            "level": 3,
+            "parent": "/iii-medicaid-managed-care--provider-screening-and-enrollment",
+            "children": []
+          },
+          {
+            "sid": "/5-managed-care",
+            "title": "5) Managed Care",
+            "level": 3,
+            "parent": "/iii-medicaid-managed-care--provider-screening-and-enrollment",
+            "children": []
+          },
+          {
+            "sid": "/6-section-1115-research-and-demonstration-waivers",
+            "title": "6) Section 1115 Research and Demonstration Waivers",
+            "level": 3,
+            "parent": "/iii-medicaid-managed-care--provider-screening-and-enrollment",
+            "children": []
+          },
+          {
+            "sid": "/7-medicaid-program-integrity-surveillance-and-utilization-review-responsibilities",
+            "title": "7) Medicaid Program Integrity, Surveillance, and Utilization Review Responsibilities",
+            "level": 3,
+            "parent": "/iii-medicaid-managed-care--provider-screening-and-enrollment",
+            "children": []
+          },
+          {
+            "sid": "/8-high-risk-benefitservices-supplies-and-equipment",
+            "title": "8) High Risk Benefit/Services, Supplies, And Equipment",
+            "level": 3,
+            "parent": "/iii-medicaid-managed-care--provider-screening-and-enrollment",
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+]
