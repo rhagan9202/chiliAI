@@ -90,6 +90,12 @@ class TestRoleHierarchy:
         for role, level in ROLE_HIERARCHY.items():
             assert isinstance(level, int) and level >= 1, f"{role}: {level}"
 
+    def test_role_hierarchy_canonical_ordering(self) -> None:
+        """viewer < analyst == service < admin."""
+        assert ROLE_HIERARCHY["viewer"] < ROLE_HIERARCHY["analyst"]
+        assert ROLE_HIERARCHY["analyst"] == ROLE_HIERARCHY["service"]
+        assert ROLE_HIERARCHY["analyst"] < ROLE_HIERARCHY["admin"]
+
 
 class TestRequireRoleFactory:
     def test_unknown_role_raises_at_construction(self) -> None:
@@ -132,6 +138,10 @@ class TestRequireRoleFactory:
             response = client.get(path)
             assert response.status_code == 200, path
 
+    def test_require_role_dependency_carries_marker_attribute(self) -> None:
+        dep = require_role("service")
+        assert getattr(dep, "_chiliai_required_role", None) == "service"
+
 
 class TestServiceRole:
     def test_role_hierarchy_includes_service_at_level_2(self) -> None:
@@ -144,7 +154,3 @@ class TestServiceRole:
     def test_service_role_does_not_satisfy_admin_requirement(self) -> None:
         assert is_role_sufficient(["service"], "admin") is False
 
-    def test_require_role_dependency_carries_marker_attribute(self) -> None:
-        dep = require_role("analyst")
-
-        assert getattr(dep, "_chiliai_required_role", None) == "analyst"

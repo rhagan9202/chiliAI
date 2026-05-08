@@ -74,5 +74,5 @@ def require_role(role: str) -> Callable[..., User]:
             )
         return user
 
-    _dependency._chiliai_required_role = role  # type: ignore[attr-defined]
+    _dependency._chiliai_required_role = role  # pyright: ignore[reportFunctionMemberAccess]
     return _dependency
