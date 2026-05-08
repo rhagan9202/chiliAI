@@ -173,6 +173,88 @@ class TestAuthEnabled:
         assert body["roles"] == ["analyst"]
         assert body["email"] == "u@example.com"
 
+    def test_missing_authorization_header_returns_401(
+        self, auth_config: AuthConfig, jwks_setter: Callable[[], None]
+    ) -> None:
+        jwks_setter()
+        client = TestClient(_build_app(_build_minimal_config(auth=auth_config)))
+        response = client.get("/whoami")
+        assert response.status_code == 401
+
+    def test_malformed_authorization_header_returns_401(
+        self, auth_config: AuthConfig, jwks_setter: Callable[[], None]
+    ) -> None:
+        jwks_setter()
+        client = TestClient(_build_app(_build_minimal_config(auth=auth_config)))
+        response = client.get(
+            "/whoami", headers={"Authorization": "Token abcdef"}
+        )
+        assert response.status_code == 401
+
+    def test_expired_token_returns_401(
+        self,
+        rsa_pem: str,
+        auth_config: AuthConfig,
+        jwks_setter: Callable[[], None],
+    ) -> None:
+        jwks_setter()
+        token = _make_token(
+            rsa_pem,
+            issuer="https://issuer.example",
+            audience="chili",
+            expires_in=-10,
+        )
+        client = TestClient(_build_app(_build_minimal_config(auth=auth_config)))
+        response = client.get(
+            "/whoami", headers={"Authorization": f"Bearer {token}"}
+        )
+        assert response.status_code == 401
+
+    def test_invalid_signature_returns_401(
+        self,
+        rsa_pem: str,
+        auth_config: AuthConfig,
+        jwks_setter: Callable[[], None],
+    ) -> None:
+        jwks_setter()
+        token = _make_token(rsa_pem, issuer="https://issuer.example", audience="chili")
+        head, body, _sig = token.split(".")
+        bad_token = f"{head}.{body}.AAAAAAAAAA"
+        client = TestClient(_build_app(_build_minimal_config(auth=auth_config)))
+        response = client.get(
+            "/whoami", headers={"Authorization": f"Bearer {bad_token}"}
+        )
+        assert response.status_code == 401
+
+    def test_wrong_audience_returns_401(
+        self,
+        rsa_pem: str,
+        auth_config: AuthConfig,
+        jwks_setter: Callable[[], None],
+    ) -> None:
+        jwks_setter()
+        token = _make_token(
+            rsa_pem,
+            issuer="https://issuer.example",
+            audience="other-audience",
+        )
+        client = TestClient(_build_app(_build_minimal_config(auth=auth_config)))
+        response = client.get(
+            "/whoami", headers={"Authorization": f"Bearer {token}"}
+        )
+        assert response.status_code == 401
+
+    def test_missing_jwks_config_returns_401(self) -> None:
+        partial_config = AuthConfig(
+            enabled=True,
+            issuer_url=None,
+            audience=None,
+            jwks_uri=None,
+        )
+        client = TestClient(_build_app(_build_minimal_config(auth=partial_config)))
+        response = client.get("/whoami", headers={"Authorization": "Bearer xyz"})
+        assert response.status_code == 401
+
 
 def test_get_current_user_refreshes_when_access_token_near_expiry(
     monkeypatch: pytest.MonkeyPatch,
@@ -333,88 +415,6 @@ def test_get_current_user_returns_401_when_refresh_fails(
         response = client.get("/whoami")
 
     assert response.status_code == 401
-
-    def test_missing_authorization_header_returns_401(
-        self, auth_config: AuthConfig, jwks_setter: Callable[[], None]
-    ) -> None:
-        jwks_setter()
-        client = TestClient(_build_app(_build_minimal_config(auth=auth_config)))
-        response = client.get("/whoami")
-        assert response.status_code == 401
-
-    def test_malformed_authorization_header_returns_401(
-        self, auth_config: AuthConfig, jwks_setter: Callable[[], None]
-    ) -> None:
-        jwks_setter()
-        client = TestClient(_build_app(_build_minimal_config(auth=auth_config)))
-        response = client.get(
-            "/whoami", headers={"Authorization": "Token abcdef"}
-        )
-        assert response.status_code == 401
-
-    def test_expired_token_returns_401(
-        self,
-        rsa_pem: str,
-        auth_config: AuthConfig,
-        jwks_setter: Callable[[], None],
-    ) -> None:
-        jwks_setter()
-        token = _make_token(
-            rsa_pem,
-            issuer="https://issuer.example",
-            audience="chili",
-            expires_in=-10,
-        )
-        client = TestClient(_build_app(_build_minimal_config(auth=auth_config)))
-        response = client.get(
-            "/whoami", headers={"Authorization": f"Bearer {token}"}
-        )
-        assert response.status_code == 401
-
-    def test_invalid_signature_returns_401(
-        self,
-        rsa_pem: str,
-        auth_config: AuthConfig,
-        jwks_setter: Callable[[], None],
-    ) -> None:
-        jwks_setter()
-        token = _make_token(rsa_pem, issuer="https://issuer.example", audience="chili")
-        head, body, _sig = token.split(".")
-        bad_token = f"{head}.{body}.AAAAAAAAAA"
-        client = TestClient(_build_app(_build_minimal_config(auth=auth_config)))
-        response = client.get(
-            "/whoami", headers={"Authorization": f"Bearer {bad_token}"}
-        )
-        assert response.status_code == 401
-
-    def test_wrong_audience_returns_401(
-        self,
-        rsa_pem: str,
-        auth_config: AuthConfig,
-        jwks_setter: Callable[[], None],
-    ) -> None:
-        jwks_setter()
-        token = _make_token(
-            rsa_pem,
-            issuer="https://issuer.example",
-            audience="other-audience",
-        )
-        client = TestClient(_build_app(_build_minimal_config(auth=auth_config)))
-        response = client.get(
-            "/whoami", headers={"Authorization": f"Bearer {token}"}
-        )
-        assert response.status_code == 401
-
-    def test_missing_jwks_config_returns_401(self) -> None:
-        partial_config = AuthConfig(
-            enabled=True,
-            issuer_url=None,
-            audience=None,
-            jwks_uri=None,
-        )
-        client = TestClient(_build_app(_build_minimal_config(auth=partial_config)))
-        response = client.get("/whoami", headers={"Authorization": "Bearer xyz"})
-        assert response.status_code == 401
 
 
 def _build_app_with_session_store(
