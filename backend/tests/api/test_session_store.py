@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 
 import pytest
 
 from api.middleware.session_store import (
     InMemorySessionStore,
+    RedisSessionStore,
     SessionNotFoundError,
     SessionRecord,
 )
@@ -115,13 +117,13 @@ class TestRedisSessionStore:
         return url
 
     @pytest.fixture
-    def store(self, redis_url: str):
-        from api.middleware.session_store import RedisSessionStore
-
+    def store(self, redis_url: str) -> Iterator[RedisSessionStore]:
         store = RedisSessionStore(redis_url=redis_url, key_prefix="chiliai-test-session:")
         yield store
-        # Best-effort cleanup of test keys
-        store.flush_test_keys()
+        # Cleanup: drop all keys this test fixture created.
+        keys = list(store._client.scan_iter(match=f"{store._prefix}*"))
+        if keys:
+            store._client.delete(*keys)
 
     def test_save_get_round_trip(self, store) -> None:
         record = _record(sid="redis-sid-1")
@@ -141,7 +143,15 @@ class TestRedisSessionStore:
         with pytest.raises(SessionNotFoundError):
             store.get("redis-sid-2")
 
-    def test_pkce_state_round_trip(self, store) -> None:
+    def test_pkce_state_round_trip(self, store: RedisSessionStore) -> None:
         store.save_pkce_state(state="redis-state", verifier="redis-ver", ttl_seconds=60)
         assert store.pop_pkce_state("redis-state") == "redis-ver"
         assert store.pop_pkce_state("redis-state") is None
+
+    def test_touch_extends_ttl(self, store: RedisSessionStore) -> None:
+        record = _record(sid="redis-touch", ttl=60)
+        store.save(record)
+        store.touch("redis-touch", ttl_seconds=3600)
+        refreshed = store.get("redis-touch")
+        assert refreshed.ttl_seconds == 3600
+        assert refreshed.access_token == "access-abc"

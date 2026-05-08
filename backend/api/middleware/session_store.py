@@ -1,4 +1,4 @@
-"""Session storage protocol and in-memory adapter for the BFF auth flow."""
+"""Session storage protocol and in-memory + Redis adapters for the BFF auth flow."""
 
 from __future__ import annotations
 
@@ -125,6 +125,7 @@ class RedisSessionStore:
         raw = self._client.get(self._session_key(session_id))
         if raw is None:
             raise SessionNotFoundError(session_id)
+        # decode_responses=True guarantees str here.
         data = json.loads(cast(str, raw))
         return SessionRecord.model_validate(data)
 
@@ -140,17 +141,7 @@ class RedisSessionStore:
         self._client.set(self._pkce_key(state), verifier, ex=ttl_seconds)
 
     def pop_pkce_state(self, state: str) -> str | None:
-        key = self._pkce_key(state)
-        with self._client.pipeline() as pipe:
-            pipe.get(key)
-            pipe.delete(key)
-            value, _ = pipe.execute()
-        if value is None:
+        raw = self._client.getdel(self._pkce_key(state))
+        if raw is None:
             return None
-        return cast(str, value)
-
-    def flush_test_keys(self) -> None:
-        """Delete all keys under the configured prefix. Test helper only."""
-        pattern = f"{self._prefix}*"
-        for key in self._client.scan_iter(match=pattern):
-            self._client.delete(key)
+        return cast(str, raw)
