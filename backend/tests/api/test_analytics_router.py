@@ -232,3 +232,63 @@ def test_default_di_factories_return_runtime_checkable_protocols() -> None:
     assert isinstance(risk_service, RiskServiceProtocol)
     assert isinstance(timeseries_service, TimeseriesServiceProtocol)
     assert isinstance(gnn_service, GnnServiceProtocol)
+
+
+def test_analytics_risk_scores_requires_viewer_when_auth_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GET /analytics/risk-scores requires viewer role when auth is enabled."""
+    import time
+    from pathlib import Path
+
+    from api.app import create_app
+    from api.dependencies import get_domain_config, get_session_store
+    from api.middleware.session_store import InMemorySessionStore, SessionRecord
+    from config.loader import load_config
+    from config.schema import AuthConfig
+
+    DEFAULTS_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "defaults"
+    MEDICARE_YAML = DEFAULTS_DIR / "medicare_fraud.yaml"
+
+    monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
+    monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
+    monkeypatch.setattr("api.app.assert_complete", lambda app: None)
+
+    auth_cfg = AuthConfig(
+        enabled=True,
+        issuer_url="https://idp.example.com",
+        audience="chili-api",
+        jwks_uri="https://idp.example.com/jwks",
+        client_id="chili-spa",
+        client_secret_env_var="OIDC_CLIENT_SECRET",
+        authorize_endpoint="https://idp.example.com/authorize",
+        token_endpoint="https://idp.example.com/oauth/token",
+        redirect_uri="https://app.example.com/auth/callback",
+    )
+    domain = load_config(MEDICARE_YAML).model_copy(update={"auth": auth_cfg})
+    monkeypatch.setattr("api.app.load_config", lambda: domain)
+
+    app = create_app()
+
+    store = InMemorySessionStore()
+    store.save(
+        SessionRecord(
+            session_id="sid-viewer",
+            user_id="u-viewer",
+            roles=["viewer"],
+            email=None,
+            access_token="a",
+            refresh_token="r",
+            access_token_expires_at=time.time() + 3600,
+            id_token="i",
+            created_at=time.time(),
+            ttl_seconds=3600,
+        )
+    )
+    app.dependency_overrides[get_session_store] = lambda: store
+    app.dependency_overrides[get_domain_config] = lambda: domain
+
+    with TestClient(app) as client:
+        # No cookie -> 401
+        assert client.get("/analytics/risk-scores", params={"kb_id": "kb-demo"}).status_code == 401
+        # Viewer cookie -> 200
+        client.cookies.set("chiliai_session", "sid-viewer")
+        assert client.get("/analytics/risk-scores", params={"kb_id": "kb-demo"}).status_code == 200

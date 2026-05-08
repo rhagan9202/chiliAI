@@ -7,6 +7,7 @@ from functools import lru_cache
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from api.middleware.rbac import require_role
 from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
 from analytics.gnn.protocols import GnnServiceProtocol
 from analytics.gnn.service import create_gnn_service
@@ -111,7 +112,7 @@ def get_gnn_service() -> GnnServiceProtocol:
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
-@router.get("/risk-scores", response_model=RiskScoreListResponse)
+@router.get("/risk-scores", response_model=RiskScoreListResponse, dependencies=[Depends(require_role("viewer"))])
 def list_risk_scores(
     kb_id: str = Query(..., min_length=1),
     entity_type: str | None = Query(default=None),
@@ -127,7 +128,7 @@ def list_risk_scores(
     return risk_service.list_scores(request)
 
 
-@router.get("/timeseries", response_model=TimeseriesResponse)
+@router.get("/timeseries", response_model=TimeseriesResponse, dependencies=[Depends(require_role("viewer"))])
 def query_timeseries(
     kb_id: str = Query(..., min_length=1),
     metric: str = Query(..., min_length=1),
@@ -147,7 +148,7 @@ def query_timeseries(
     return timeseries_service.query_metric(request)
 
 
-@router.get("/gnn/clusters", response_model=GnnClusterResponse)
+@router.get("/gnn/clusters", response_model=GnnClusterResponse, dependencies=[Depends(require_role("viewer"))])
 def list_gnn_clusters(
     kb_id: str = Query(..., min_length=1),
     gnn_service: GnnServiceProtocol = Depends(get_gnn_service),
