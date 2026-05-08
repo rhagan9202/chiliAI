@@ -29,7 +29,7 @@ __all__ = [
 ]
 
 
-class OidcConfigurationError(RuntimeError):
+class OidcConfigurationError(Exception):
     """Raised when AuthConfig is missing required OIDC fields."""
 
 
@@ -96,7 +96,7 @@ def build_end_session_url(
     return f"{auth_config.end_session_endpoint}?{urlencode(params)}"
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class OidcClient:
     """OIDC token-endpoint client."""
 

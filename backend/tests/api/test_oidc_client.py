@@ -9,6 +9,7 @@ import pytest
 
 from api.routers._oidc_client import (
     OidcClient,
+    OidcConfigurationError,
     build_authorize_url,
     build_end_session_url,
     generate_pkce_pair,
@@ -34,13 +35,24 @@ def auth_config() -> AuthConfig:
 
 
 def test_generate_pkce_pair_produces_s256_challenge() -> None:
+    import base64
+    import hashlib
+
     verifier, challenge = generate_pkce_pair()
+
+    # RFC 7636: verifier is 43-128 chars, url-safe base64 with no padding
     assert 43 <= len(verifier) <= 128
-    assert challenge != verifier
-    # Verifier should be url-safe base64 (no padding, no '+' or '/')
     assert "=" not in verifier
     assert "+" not in verifier
     assert "/" not in verifier
+
+    # Challenge MUST equal BASE64URL(SHA256(ASCII(verifier))) per RFC 7636 §4.2
+    expected = (
+        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
+        .rstrip(b"=")
+        .decode()
+    )
+    assert challenge == expected
 
 
 def test_build_authorize_url_includes_required_query_params(auth_config: AuthConfig) -> None:
@@ -126,6 +138,8 @@ def test_oidc_client_refresh_token_grant(auth_config: AuthConfig) -> None:
         body_qs = parse_qs(request.content.decode())
         assert body_qs["grant_type"] == ["refresh_token"]
         assert body_qs["refresh_token"] == ["ref-old"]
+        assert body_qs["client_id"] == ["chili-spa"]
+        assert body_qs["client_secret"] == ["shh"]
         return httpx.Response(
             200,
             json={
@@ -156,9 +170,21 @@ def test_oidc_client_exchange_code_raises_on_idp_error(auth_config: AuthConfig) 
         client.exchange_code(code="bad", code_verifier="ver")
 
 
-def test_build_authorize_url_raises_when_endpoint_missing(auth_config: AuthConfig) -> None:
-    from api.routers._oidc_client import OidcConfigurationError
+def test_build_end_session_url_omits_id_token_hint_when_none(
+    auth_config: AuthConfig,
+) -> None:
+    url = build_end_session_url(
+        auth_config,
+        id_token=None,
+        post_logout_redirect_uri="https://app.example.com/",
+    )
+    assert url is not None
+    qs = parse_qs(urlparse(url).query)
+    assert "id_token_hint" not in qs
+    assert qs["post_logout_redirect_uri"] == ["https://app.example.com/"]
 
+
+def test_build_authorize_url_raises_when_endpoint_missing(auth_config: AuthConfig) -> None:
     cfg = auth_config.model_copy(update={"authorize_endpoint": None})
     with pytest.raises(OidcConfigurationError, match="authorize_endpoint"):
         build_authorize_url(cfg, state="s", code_challenge="c")
