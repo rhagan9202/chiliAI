@@ -27,6 +27,7 @@ __all__ = [
 ROLE_HIERARCHY: dict[str, int] = {
     "viewer": 1,
     "analyst": 2,
+    "service": 2,
     "admin": 3,
 }
 
@@ -73,4 +74,5 @@ def require_role(role: str) -> Callable[..., User]:
             )
         return user
 
+    _dependency._chiliai_required_role = role  # type: ignore[attr-defined]
     return _dependency

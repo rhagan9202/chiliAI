@@ -85,9 +85,10 @@ class TestRoleHierarchy:
     def test_unknown_required_role_returns_false(self) -> None:
         assert not is_role_sufficient(["admin"], "doesnotexist")
 
-    def test_role_hierarchy_levels_are_strictly_increasing(self) -> None:
-        levels = sorted(ROLE_HIERARCHY.values())
-        assert levels == sorted(set(levels))
+    def test_role_hierarchy_levels_are_positive_integers(self) -> None:
+        # Every level must be a positive integer; peer roles may share a level.
+        for role, level in ROLE_HIERARCHY.items():
+            assert isinstance(level, int) and level >= 1, f"{role}: {level}"
 
 
 class TestRequireRoleFactory:
@@ -130,3 +131,20 @@ class TestRequireRoleFactory:
         for path in ("/admin", "/analyst", "/viewer"):
             response = client.get(path)
             assert response.status_code == 200, path
+
+
+class TestServiceRole:
+    def test_role_hierarchy_includes_service_at_level_2(self) -> None:
+        assert ROLE_HIERARCHY["service"] == 2
+        assert ROLE_HIERARCHY["service"] == ROLE_HIERARCHY["analyst"]
+
+    def test_service_role_satisfies_analyst_requirement(self) -> None:
+        assert is_role_sufficient(["service"], "analyst") is True
+
+    def test_service_role_does_not_satisfy_admin_requirement(self) -> None:
+        assert is_role_sufficient(["service"], "admin") is False
+
+    def test_require_role_dependency_carries_marker_attribute(self) -> None:
+        dep = require_role("analyst")
+
+        assert getattr(dep, "_chiliai_required_role", None) == "analyst"
