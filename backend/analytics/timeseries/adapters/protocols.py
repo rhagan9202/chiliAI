@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from analytics.timeseries.models import TimeSeriesSeries
+from analytics.timeseries.models import TimeSeriesObservation, TimeSeriesSeries
 
 
 @runtime_checkable
@@ -23,6 +24,15 @@ class TimeSeriesHistorySourceProtocol(Protocol):
         entity_id: str,
         metric_name: str,
     ) -> TimeSeriesSeries: ...
+
+    def load_metric_range(
+        self,
+        *,
+        knowledge_base_id: str,
+        metric_name: str,
+        start: datetime,
+        end: datetime,
+    ) -> list[TimeSeriesObservation]: ...
 
 
 __all__ = [

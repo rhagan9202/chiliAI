@@ -1,0 +1,12 @@
+{
+  "fixture_id": "medicare-partial-missing-required-fields",
+  "description": "Intentionally incomplete: useful for validation tests where candidates are extracted but required fields may be missing.",
+  "specialty": "Cardiology",
+  "state": "TX",
+  "age": 72,
+  "chronic_conditions": ["diabetes"],
+  "amount": 1250.50,
+  "procedure_codes": ["99213"],
+  "name": "Incomplete Fixture Clinic",
+  "type": "outpatient"
+}

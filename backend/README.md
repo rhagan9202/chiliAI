@@ -6,16 +6,23 @@ Python 3.12 backend for the chiliAI platform — a domain-reconfigurable Graph R
 
 ## Current State
 
-Working FastAPI application factory with domain configuration system. The full module structure below is the target — most analytics and pipeline modules are not yet implemented.
+Working FastAPI gateway and pipeline-worker prototype with domain configuration, event-driven orchestration, ingestion, graph/vector/embedding/LLM/RAG service boundaries, analytics modules, monitoring, storage adapters, config-driven adapter selection, auth/RBAC middleware, and extensive pytest coverage. Initial production-facing adapters now exist for Neo4j, Qdrant, OpenAI, Anthropic, sentence-transformers, and S3-compatible storage; remaining production work is mainly route-wide auth/RBAC enforcement, tenant isolation, observability, durable workflow recovery, and live adapter deployment profiles.
 
 ### What's functional
 
 - **`shared/`** — Generic platform types (`Entity`, `Relationship`, `Alert`, `EvidencePack`, `KnowledgeBase`), config-definition types (`EntityDefinition`, `PropertyDefinition`, `PropertyType`, `RelationshipDefinition`), protocols (`Configurable`), and utilities. **No hardcoded domain-specific types** — all domain entities use `Entity(type, properties)` validated against config.
 - **`config/`** — Domain configuration schema (`DomainConfig` Pydantic model with cross-field validation), YAML/JSON loader, and two default configs (`medicare_fraud.yaml`, `food_supply_chain.yaml`).
-- **`api/app.py`** — FastAPI app factory with `/health` endpoint, CORS middleware, and config router.
+- **`api/app.py`** — FastAPI app factory with `/health`, CORS, metrics instrumentation, and all API routers.
 - **`api/routers/config.py`** — `GET /config/domain` returns the active domain configuration as JSON.
-- **`api/dependencies.py`** — Dependency injection wiring. `get_domain_config()` loads config once and caches.
-- **`agent/coordinator.py`** — Worker entry point (`python -m agent.coordinator`) that starts an async loop.
+- **`api/dependencies.py`** — Dependency injection wiring. `get_domain_config()` loads config once and caches; graph, vectorstore, storage, embedding, and LLM adapters are selected from config with lazy optional imports.
+- **`api/routers/`** — Knowledge base, alert, investigation, chat, analytics, config, and WebSocket routers.
+- **`events/`** — In-memory and Redis Streams event bus implementations plus typed event envelopes.
+- **`ingestion/`** — Parser orchestration, document chunking, extraction, validation, and registration flows.
+- **`graph/`, `vectorstore/`, `embeddings/`, `llm/`, `rag/`** — Service/protocol boundaries with in-memory adapters and selected production-facing adapters.
+- **`analytics/` and `monitoring/`** — Heuristic timeseries, GNN, risk, explainability, alert, and monitoring services.
+- **`storage/`** — In-memory, local filesystem, and S3-compatible object-store adapters.
+- **`api/middleware/`** — Metrics, auth, and RBAC middleware; route-wide production enforcement remains a hardening item.
+- **`agent/coordinator.py`** — Worker entry point (`python -m agent.coordinator`) for Redis-stream processing, Flow A/Flow B handlers, retry/DLQ routing, graceful shutdown, and a lightweight health endpoint.
 - **`main.py`** — Uvicorn launcher for local development.
 - **`Dockerfile`** — Multi-stage build producing a production-ready image.
 
@@ -25,11 +32,11 @@ Working FastAPI application factory with domain configuration system. The full m
 backend/
 ├── api/             # FastAPI gateway — routing, validation, DI wiring (no business logic)
 ├── ingestion/       # Document parsing (PDF, DOCX, HTML, JSON, TXT), chunking, entity extraction
-├── graph/           # Abstract graph repository protocol + adapters (Neo4j, Memgraph, Neptune)
-├── vectorstore/     # Abstract vector store protocol + adapters (pgvector, Qdrant, Weaviate)
+├── graph/           # Abstract graph repository protocol + adapters (in-memory, Neo4j)
+├── vectorstore/     # Abstract vector store protocol + adapters (in-memory, Qdrant)
 ├── embeddings/      # Abstract embedder protocol + adapters (OpenAI, sentence-transformers)
 ├── rag/             # RAG pipeline — query → embed → search → graph expand → LLM → answer
-├── llm/             # Abstract LLM client protocol + adapters (OpenAI, Anthropic, Ollama/vLLM)
+├── llm/             # Abstract LLM client protocol + adapters (in-memory, OpenAI, Anthropic)
 ├── analytics/
 │   ├── timeseries/  # Time-series anomaly detection
 │   ├── gnn/         # GNN link prediction, clustering
@@ -68,11 +75,11 @@ python -m agent.coordinator
 # Tests
 pytest --cov
 
-# Type checking
+# Type checking (currently scoped in pyproject.toml while strict coverage expands)
 pyright
 ```
 
-> These commands target the architecture described in `docs/architecture.md`. Some are not functional until the corresponding modules are implemented.
+> These commands target the architecture described in `docs/architecture.md`. The codebase is under active hardening; keep Ruff, Pyright, and pytest clean for touched packages.
 
 ## Quality Requirements
 

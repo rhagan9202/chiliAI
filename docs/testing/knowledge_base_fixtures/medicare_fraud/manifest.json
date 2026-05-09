@@ -1,0 +1,78 @@
+{
+  "domain": "medicare_fraud",
+  "description": "Development and regression fixtures for knowledge base ingestion, extraction, validation, graph creation, and zero-entity completion behavior.",
+  "fixtures": [
+    {
+      "file": "01_single_claim_complete.json",
+      "category": "positive_graph_smoke",
+      "upload_content_type": "application/json",
+      "expected_behavior": "Extracts provider, beneficiary, claim, and facility candidates from one record and creates relationships among them.",
+      "search_queries": ["CLAIM-FIXTURE-001", "Austin Fixture Clinic", "1234567890"],
+      "expected_min_entities": 4,
+      "expected_min_relationships": 3
+    },
+    {
+      "file": "02_multi_claim_referral_network.json",
+      "category": "positive_multi_record_graph",
+      "upload_content_type": "application/json",
+      "expected_behavior": "Extracts multiple claim-centered graph neighborhoods from JSON records.",
+      "search_queries": ["CLAIM-FIXTURE-101", "CLAIM-FIXTURE-102", "Lone Star Oxygen Supply"],
+      "expected_min_entities": 12,
+      "expected_min_relationships": 9
+    },
+    {
+      "file": "03_claims_batch.csv",
+      "category": "csv_partial_validation",
+      "upload_content_type": "text/csv",
+      "expected_behavior": "Exercises CSV parser records. Current baseline validation keeps CSV numeric values as strings, so providers/facilities validate while beneficiary age and claim amount are partial-validation cases.",
+      "search_queries": ["CLAIM-CSV-001", "Pacific Fixture Clinic", "3334445556"],
+      "expected_min_entities": 6,
+      "expected_min_relationships": 3
+    },
+    {
+      "file": "04_unstructured_claim_note.txt",
+      "category": "positive_unstructured_text",
+      "upload_content_type": "text/plain",
+      "expected_behavior": "Exercises baseline label matching against prose plus property-label lines.",
+      "search_queries": ["CLAIM-NOTE-001", "HIC-NOTE-001", "Austin Fixture Clinic"],
+      "expected_min_entities": 4,
+      "expected_min_relationships": 3
+    },
+    {
+      "file": "05_partial_missing_required_fields.json",
+      "category": "validation_negative_partial",
+      "upload_content_type": "application/json",
+      "expected_behavior": "Extracts partial candidates but should expose validation behavior for missing required configured fields.",
+      "search_queries": ["Incomplete Fixture Clinic"],
+      "expected_min_entities": 0,
+      "expected_min_relationships": 0
+    },
+    {
+      "file": "06_zero_entity_resume_like.txt",
+      "category": "zero_entity_completion",
+      "upload_content_type": "text/plain",
+      "expected_behavior": "Parses and completes ingestion with zero extracted domain entities; KB/document should reach ready with zero graph counts.",
+      "search_queries": ["Jordan Analyst"],
+      "expected_min_entities": 0,
+      "expected_min_relationships": 0
+    },
+    {
+      "file": "07_invalid_values_and_decoys.txt",
+      "category": "validation_negative_invalid_values",
+      "upload_content_type": "text/plain",
+      "expected_behavior": "Extracts labeled candidates with invalid values to exercise validation warnings/rejections.",
+      "search_queries": ["CLAIM-DECOY-001", "Decoy Facility"],
+      "expected_min_entities": 0,
+      "expected_min_relationships": 0
+    },
+    {
+      "file": "08_large_text_claim_bundle.txt",
+      "category": "chunking_stress",
+      "upload_content_type": "text/plain",
+      "expected_behavior": "Exercises recursive chunking and repeated label extraction over a larger text bundle.",
+      "search_queries": ["CLAIM-LARGE-001", "Gulf Diagnostic Laboratory", "6667778889"],
+      "expected_min_entities": 6,
+      "expected_min_relationships": 5
+    }
+  ]
+}

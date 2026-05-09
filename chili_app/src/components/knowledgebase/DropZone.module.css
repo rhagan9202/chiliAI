@@ -1,0 +1,63 @@
+.zone {
+  border: 2px dashed var(--border, #e5e4e7);
+  border-radius: 8px;
+  padding: 24px;
+  text-align: center;
+  background: var(--bg, #fff);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.zone:hover,
+.zone:focus-visible {
+  border-color: var(--accent, #aa3bff);
+}
+
+.zoneActive {
+  border-color: var(--accent, #aa3bff);
+  background: var(--accent-bg, rgba(170, 59, 255, 0.08));
+}
+
+.zoneDisabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.icon {
+  font-size: 24px;
+  color: var(--accent, #aa3bff);
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-h, #08060d);
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--text, #6b6375);
+}
+
+.hiddenInput {
+  display: none;
+}
+
+.progress {
+  margin-top: 12px;
+  height: 8px;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progressBar {
+  height: 100%;
+  background: var(--accent, #aa3bff);
+  transition: width 0.15s ease;
+}

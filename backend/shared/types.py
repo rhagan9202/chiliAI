@@ -13,9 +13,11 @@ from __future__ import annotations
 import enum
 from datetime import date, datetime
 import re
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+from shared.utils import utc_now
 
 
 # ---------------------------------------------------------------------------
@@ -80,9 +82,9 @@ class Entity(BaseModel):
     type: str
     properties: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
-    # TODO(production): Add created_at/updated_at timestamps for audit and
-    # change-detection during graph merges. Add version: int for optimistic
-    # concurrency control in graph upserts.
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime | None = None
+    version: int = 1
 
 
 class Relationship(BaseModel):
@@ -93,8 +95,10 @@ class Relationship(BaseModel):
     source_id: str
     target_id: str
     properties: dict[str, Any] = Field(default_factory=dict)
-    # TODO(production): Add created_at/updated_at timestamps. Add weight: float | None
-    # for weighted graph algorithms. Add version: int for concurrency control.
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime | None = None
+    version: int = 1
+    weight: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -115,11 +119,14 @@ class Alert(BaseModel):
     reasoning: str
     evidence_pack_id: str | None = None
     created_at: datetime
+    status: Literal[
+        "open", "acknowledged", "investigating", "resolved", "dismissed"
+    ] = "open"
+    updated_at: datetime | None = None
     acknowledged: bool = False
-    # TODO(production): Add full alert status lifecycle — e.g. status: AlertStatus
-    # enum ("open", "acknowledged", "investigating", "resolved", "dismissed").
-    # Add updated_at: datetime | None for tracking status changes.
-    # Add resolved_by: str | None and resolution_notes: str | None.
+    # TODO(production): `acknowledged` is deprecated in favor of `status`.
+    resolved_by: str | None = None
+    resolution_notes: str | None = None
 
 
 class EvidencePack(BaseModel):
@@ -131,10 +138,10 @@ class EvidencePack(BaseModel):
     subgraph_nodes: list[str]
     subgraph_edges: list[str]
     confidence: float
+    created_at: datetime = Field(default_factory=utc_now)
     scores: dict[str, float] = Field(default_factory=dict)
+    source_documents: list[str] = Field(default_factory=list)
     # TODO(production): Enrich EvidencePack with structured fields:
-    # - created_at: datetime for audit trail
-    # - source_documents: list[str] linking back to originating documents
     # - timeline_events: list[TimelineEntry] for temporal evidence ordering
     # - visual_layout: dict for pre-computed graph visualization coordinates
 
@@ -148,10 +155,10 @@ class KnowledgeBase(BaseModel):
     entity_count: int = 0
     relationship_count: int = 0
     document_count: int = 0
-    status: str = "active"
+    status: Literal["active", "building", "ready", "error", "archived"] = "active"
     created_at: datetime
-    # TODO(production): Add updated_at: datetime | None to track last modification.
-    # Add domain_config_version: str | None to pin which config version was active.
+    updated_at: datetime | None = None
+    # TODO(production): Add domain_config_version: str | None to pin which config version was active.
     # Add owner: str | None and tags: dict[str, str] for organization.
 
 
@@ -180,8 +187,9 @@ def validate_entity(
         )
         return errors
 
+    platform_owned_fields = {"created_at", "updated_at", "version"}
     defined_props = set(defn.properties.keys())
-    actual_props = set(entity.properties.keys())
+    actual_props = set(entity.properties.keys()) - platform_owned_fields
 
     for property_name, property_definition in defn.properties.items():
         if property_definition.required and property_name not in entity.properties:

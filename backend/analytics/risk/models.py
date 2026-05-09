@@ -53,7 +53,18 @@ class RiskAssessmentResult(BaseModel):
     factors: list[RiskFactor] = Field(default_factory=list)
 
 
+class RankedRiskEntry(BaseModel):
+    """A pre-aggregated ranking entry returned from a signal source."""
+
+    knowledge_base_id: str
+    entity_id: str
+    entity_type: str
+    overall_score: float = Field(ge=0.0, le=1.0)
+    risk_level: str
+
+
 __all__ = [
+    "RankedRiskEntry",
     "RiskAssessmentResult",
     "RiskFactor",
     "RiskProfile",

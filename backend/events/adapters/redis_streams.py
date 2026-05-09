@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from typing import cast
 
 from redis import Redis
 from redis.exceptions import ResponseError
 
 from events.codec import decode_event, encode_event
-from events.protocols import EventBus, EventDelivery
+from events.protocols import DlqErrorInfo, EventBus, EventDelivery
 from events.types import AnyEvent
 
 __all__ = ["RedisStreamsEventBus"]
+
+RedisValue = str | bytes
+RedisPayload = Mapping[str, str] | Mapping[bytes, bytes]
+RedisStreamMessage = tuple[RedisValue, RedisPayload]
+RedisStreamResponse = list[tuple[RedisValue, list[RedisStreamMessage]]]
 
 
 class RedisStreamsEventBus(EventBus):
@@ -24,14 +30,17 @@ class RedisStreamsEventBus(EventBus):
         stream_name_resolver: Callable[[str], str],
         client: Redis | None = None,
     ) -> None:
-        self._client = client or Redis.from_url(redis_url)
+        self._client = client or Redis.from_url(redis_url)  # pyright: ignore[reportUnknownMemberType]
         self._stream_name_resolver = stream_name_resolver
 
     def publish(self, event: AnyEvent) -> str | None:
         # TODO(production): Add connection error handling with retry and backoff.
         # Add MAXLEN/XTRIM to prevent unbounded stream growth.
         stream = self._stream_name_resolver(event.event_type)
-        message_id = self._client.xadd(stream, encode_event(event))
+        message_id = cast(
+            RedisValue,
+            self._client.xadd(stream, encode_event(event)),  # pyright: ignore[reportArgumentType]
+        )
         return _decode_redis_string(message_id)
 
     def ensure_consumer_group(
@@ -61,12 +70,15 @@ class RedisStreamsEventBus(EventBus):
             raise ValueError("Redis Streams consumption requires a consumer group and consumer name.")
 
         streams = {self._stream_name_resolver(event_type): ">" for event_type in event_types}
-        response = self._client.xreadgroup(
-            groupname=consumer_group,
-            consumername=consumer_name,
-            streams=streams,
-            count=limit,
-            block=block_ms,
+        response = cast(
+            RedisStreamResponse,
+            self._client.xreadgroup(
+                groupname=consumer_group,
+                consumername=consumer_name,
+                streams=streams,  # pyright: ignore[reportArgumentType]
+                count=limit,
+                block=block_ms,
+            ),
         )
 
         deliveries: list[EventDelivery] = []
@@ -96,6 +108,26 @@ class RedisStreamsEventBus(EventBus):
 
         for (stream, consumer_group), event_ids in by_stream.items():
             self._client.xack(stream, consumer_group, *event_ids)
+
+    def publish_to_dlq(
+        self,
+        event: AnyEvent,
+        error_info: DlqErrorInfo,
+    ) -> str | None:
+        """Publish a failed event into the dead-letter stream for the event type."""
+
+        stream = self._stream_name_resolver(event.event_type)
+        dlq_stream = f"{stream}.dlq"
+        payload: dict[str, str] = dict(encode_event(event))
+        payload["error_message"] = error_info.error_message
+        payload["error_traceback"] = error_info.traceback
+        payload["retry_count"] = str(error_info.retry_count)
+        payload["failed_at"] = error_info.failed_at.isoformat()
+        message_id = cast(
+            RedisValue,
+            self._client.xadd(dlq_stream, payload),  # pyright: ignore[reportArgumentType]
+        )
+        return _decode_redis_string(message_id)
 
 
 def _decode_redis_string(value: str | bytes) -> str:

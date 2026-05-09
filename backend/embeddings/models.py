@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
+from typing import cast
 
 from pydantic import BaseModel, Field, model_validator
 
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+from shared.utils import utc_now
 
 
 class EmbeddingItem(BaseModel):
@@ -30,7 +29,9 @@ class EmbeddingRequest(BaseModel):
     request_id: str
     knowledge_base_id: str | None = None
     model_name: str
-    items: list[EmbeddingItem] = Field(default_factory=list)
+    items: list[EmbeddingItem] = Field(
+        default_factory=lambda: cast(list[EmbeddingItem], [])
+    )
 
     @model_validator(mode="after")
     def _validate_items(self) -> EmbeddingRequest:
@@ -45,14 +46,16 @@ class EmbeddingMetadata(BaseModel):
     model_name: str
     dimensions: int = Field(gt=0)
     provider: str
-    created_at: datetime = Field(default_factory=_utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class EmbeddingResult(BaseModel):
     """Internal embedding batch result returned by an embedder adapter."""
 
     request_id: str
-    vectors: dict[str, list[float]] = Field(default_factory=dict)
+    vectors: dict[str, list[float]] = Field(
+        default_factory=lambda: cast(dict[str, list[float]], {})
+    )
     metadata: EmbeddingMetadata
 
     @model_validator(mode="after")

@@ -20,3 +20,10 @@ Thumbs.db
 # IDE
 .idea/
 *.sw?
+
+# Test artifacts
+.coverage
+htmlcov/
+
+# Browser automation cache
+.playwright-mcp/

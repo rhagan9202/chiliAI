@@ -10,8 +10,7 @@ __all__ = ["InMemoryObjectStore"]
 class InMemoryObjectStore:
     """A process-local object store keyed by object path."""
 
-    # TODO(production): Add delete(), exists(), list_keys() to match the extended
-    # ObjectStore protocol. Add thread-safety (threading.Lock) for concurrent access
+    # TODO(production): Add thread-safety (threading.Lock) for concurrent access
     # in multi-threaded test scenarios.
 
     def __init__(self) -> None:
@@ -46,3 +45,15 @@ class InMemoryObjectStore:
         if stored is None:
             raise KeyError(f"Stored object not found: {key}")
         return stored
+
+    def delete(self, key: str) -> None:
+        """Remove an object by key; missing keys are treated as a no-op."""
+        self._objects.pop(key, None)
+
+    def exists(self, key: str) -> bool:
+        """Return whether an object exists for the provided key."""
+        return key in self._objects
+
+    def list_keys(self, prefix: str) -> list[str]:
+        """Return all stored keys that start with the provided prefix."""
+        return sorted(key for key in self._objects if key.startswith(prefix))

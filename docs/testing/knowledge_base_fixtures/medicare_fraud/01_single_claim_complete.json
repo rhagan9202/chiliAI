@@ -1,0 +1,17 @@
+{
+  "fixture_id": "medicare-single-claim-complete",
+  "description": "One complete claim record intended to produce provider, beneficiary, claim, facility, and claim relationships.",
+  "npi": "1234567890",
+  "specialty": "Cardiology",
+  "state": "TX",
+  "hic_number": "HIC-FIXTURE-001",
+  "age": 72,
+  "chronic_conditions": ["diabetes", "hypertension"],
+  "claim_id": "CLAIM-FIXTURE-001",
+  "amount": 1250.50,
+  "service_date": "2026-04-26",
+  "procedure_codes": ["99213", "93000"],
+  "facility_id": "FAC-FIXTURE-001",
+  "name": "Austin Fixture Clinic",
+  "type": "outpatient"
+}

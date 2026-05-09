@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from pydantic import BaseModel, Field, model_validator
 
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+from shared.utils import utc_now
 
 
 class MonitoringObservation(BaseModel):
@@ -18,7 +16,7 @@ class MonitoringObservation(BaseModel):
     entity_type: str
     metric_name: str
     score: float = Field(ge=0.0, le=1.0)
-    observed_at: datetime = Field(default_factory=_utc_now)
+    observed_at: datetime = Field(default_factory=utc_now)
     rationale: str
     evidence_pack_id: str | None = None
 
@@ -28,7 +26,9 @@ class MonitoringBatch(BaseModel):
 
     knowledge_base_id: str
     batch_id: str
-    observations: list[MonitoringObservation] = Field(default_factory=list)
+    observations: list[MonitoringObservation] = Field(
+        default_factory=lambda: list[MonitoringObservation]()
+    )
 
     @model_validator(mode="after")
     def _validate_observations(self) -> MonitoringBatch:
@@ -46,7 +46,60 @@ class AlertCandidate(BaseModel):
     title: str
     reasoning: str
     score: float = Field(ge=0.0, le=1.0)
+    metric_name: str
     evidence_pack_id: str | None = None
 
 
-__all__ = ["AlertCandidate", "MonitoringBatch", "MonitoringObservation"]
+class SuppressionRule(BaseModel):
+    """A rule that suppresses observations matching given dimensions during a time range.
+
+    ``entity_type`` / ``metric_name`` accept ``None`` as a wildcard meaning
+    "match any value for that dimension". The rule applies when ``start_time``
+    <= "now" <= ``end_time``.
+    """
+
+    entity_type: str | None = None
+    metric_name: str | None = None
+    start_time: datetime
+    end_time: datetime
+    reason: str
+
+    @model_validator(mode="after")
+    def _validate_time_range(self) -> SuppressionRule:
+        if self.end_time <= self.start_time:
+            raise ValueError("SuppressionRule end_time must be after start_time.")
+        return self
+
+    def matches(
+        self,
+        *,
+        entity_type: str,
+        metric_name: str,
+        now: datetime,
+    ) -> bool:
+        """Return True when the rule applies to the supplied observation context."""
+
+        if self.entity_type is not None and self.entity_type != entity_type:
+            return False
+        if self.metric_name is not None and self.metric_name != metric_name:
+            return False
+        return self.start_time <= now <= self.end_time
+
+
+class AlertGroup(BaseModel):
+    """A correlation cluster of related alerts produced in the same evaluation."""
+
+    group_id: str
+    alert_ids: list[str]
+    entity_type: str
+    created_at: datetime
+    correlation_reason: str
+
+
+__all__ = [
+    "AlertCandidate",
+    "AlertGroup",
+    "MonitoringBatch",
+    "MonitoringObservation",
+    "SuppressionRule",
+]

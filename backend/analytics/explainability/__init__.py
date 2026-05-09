@@ -10,7 +10,13 @@ from analytics.explainability.exceptions import (
     ExplainabilityInsufficientEvidenceError,
     ExplainabilitySourceError,
 )
-from analytics.explainability.models import ExplanationContext, ExplanationItem, ExplanationSubgraph
+from analytics.explainability.models import (
+    ExplanationContext,
+    ExplanationItem,
+    ExplanationNarrative,
+    ExplanationSubgraph,
+    NarrativeSection,
+)
 from analytics.explainability.protocols import ExplainabilityServiceProtocol
 from analytics.explainability.service import ExplainabilityService, create_explainability_service
 from analytics.explainability.service_models import (
@@ -32,7 +38,9 @@ __all__ = [
     "ExplainabilityContextSourceProtocol",
     "ExplanationContext",
     "ExplanationItem",
+    "ExplanationNarrative",
     "ExplanationSubgraph",
     "InMemoryExplainabilityContextSource",
+    "NarrativeSection",
     "create_explainability_service",
 ]

@@ -12,6 +12,8 @@ from events.types import (
     DocumentReference,
     DocumentsChunkedEvent,
     DocumentsUploadedEvent,
+    KnowledgeBaseCreatedEvent,
+    KnowledgeBaseDeletedEvent,
     EmbeddingGeneratedReference,
     EmbeddingsGeneratedEvent,
     ExplainabilityGeneratedEvent,
@@ -343,6 +345,26 @@ def test_event_codec_round_trips_risk_scored_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "risk.scored"
+
+
+def test_event_codec_round_trips_knowledge_base_created_event() -> None:
+    event = KnowledgeBaseCreatedEvent(knowledge_base_id="kb-1")
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "kb.create"
+
+
+def test_event_codec_round_trips_knowledge_base_deleted_event() -> None:
+    event = KnowledgeBaseDeletedEvent(knowledge_base_id="kb-1")
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "kb.delete"
 
 
 def test_event_codec_round_trips_explainability_generated_event() -> None:

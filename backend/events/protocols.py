@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from events.types import AnyEvent
+from shared.utils import utc_now
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +18,25 @@ class EventDelivery:
     event_id: str | None = None
     stream: str | None = None
     consumer_group: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DlqErrorInfo:
+    """Structured failure context recorded alongside dead-lettered events."""
+
+    error_message: str
+    traceback: str
+    retry_count: int
+    failed_at: datetime = field(default_factory=utc_now)
+
+
+@dataclass(frozen=True, slots=True)
+class DlqEntry:
+    """Captured dead-letter record with the original event and error context."""
+
+    event: AnyEvent
+    error: DlqErrorInfo
+    stream: str | None = None
 
 
 @runtime_checkable
@@ -43,15 +64,16 @@ class EventBus(Protocol):
 
     def ack(self, deliveries: list[EventDelivery]) -> None: ...
 
-    # TODO(production): Add dead-letter support and consumer lifecycle methods:
-    # - dead_letter(delivery: EventDelivery, reason: str) -> None
-    # - pending(event_types, consumer_group) -> list[EventDelivery]  # XPENDING equivalent
-    # - claim(event_types, consumer_group, min_idle_ms) -> list[EventDelivery]  # XCLAIM
-    # Add async variants (AsyncEventBus) for non-blocking publish/consume.
-    # Add stream lifecycle: trim(event_type, max_len) and destroy_consumer_group().
+    def publish_to_dlq(
+        self,
+        event: AnyEvent,
+        error_info: DlqErrorInfo,
+    ) -> str | None: ...
 
 
 __all__ = [
+    "DlqEntry",
+    "DlqErrorInfo",
     "EventBus",
     "EventDelivery",
 ]

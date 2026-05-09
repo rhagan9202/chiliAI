@@ -1,0 +1,22 @@
+Noisy Medicare-like note for validation edge cases
+
+The source system exported a row with several suspicious or invalid values. This fixture is intended to extract candidates but exercise validation and warning paths.
+
+npi: ABC123
+specialty: Unknown Specialty
+state: TEXAS
+
+hic_number: HIC-DECOY-001
+age: 151
+chronic_conditions: ["unknown"]
+
+claim_id: CLAIM-DECOY-001
+amount: -42.00
+service_date: not-a-date
+procedure_codes: ["BADCODE"]
+
+facility_id: FAC-DECOY-001
+name: Decoy Facility
+type: imaginary department
+
+Decoy prose: NPI numbers and claim identifiers are mentioned in prose, but only labeled properties should drive extraction in the baseline pattern extractor.

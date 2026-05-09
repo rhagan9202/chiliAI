@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Protocol, runtime_checkable
 
 from rag.models import GraphContext, RagGenerationRequest, RagGenerationResult, RetrievedContextItem
@@ -51,12 +52,12 @@ class GraphContextExpanderProtocol(Protocol):
 class AnswerGeneratorProtocol(Protocol):
     """Generate a final answer from normalized rag context."""
 
-    # TODO(production): Add streaming interface:
-    # - stream_generate(request: RagGenerationRequest) -> Iterator[str]
-    # Add token budget awareness and citation formatting options.
-    # Implement production adapters: OpenAI, Anthropic, LangChain wrappers.
+    # TODO(production): Add token budget awareness and citation formatting
+    # options. Implement production adapters: OpenAI, Anthropic, LangChain.
 
     def generate(self, request: RagGenerationRequest) -> RagGenerationResult: ...
+
+    def stream_generate(self, request: RagGenerationRequest) -> Iterator[str]: ...
 
 
 __all__ = [

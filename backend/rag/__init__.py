@@ -7,6 +7,7 @@ from rag.adapters.in_memory import (
     InMemoryContextRetriever,
     InMemoryGraphContextExpander,
     InMemoryQueryEmbedder,
+    InMemoryRagService,
 )
 from rag.adapters.protocols import (
     AnswerGeneratorProtocol,
@@ -27,7 +28,13 @@ from rag.models import (
 )
 from rag.protocols import RagServiceProtocol
 from rag.service import RagService, create_rag_service
-from rag.service_models import RagCitation, RagQueryRequest, RagQueryResponse
+from rag.service_models import (
+    RagAnswer,
+    RagCitation,
+    RagQueryRequest,
+    RagQueryResponse,
+    RagStreamChunk,
+)
 
 __all__ = [
     "AnswerGeneratorProtocol",
@@ -41,7 +48,9 @@ __all__ = [
     "InMemoryContextRetriever",
     "InMemoryGraphContextExpander",
     "InMemoryQueryEmbedder",
+    "InMemoryRagService",
     "QueryEmbedderProtocol",
+    "RagAnswer",
     "RagCitation",
     "RagConfigurationError",
     "RagError",
@@ -53,6 +62,7 @@ __all__ = [
     "RagRetrievalError",
     "RagService",
     "RagServiceProtocol",
+    "RagStreamChunk",
     "RagWorkflowState",
     "RetrievedContextItem",
     "create_rag_service",

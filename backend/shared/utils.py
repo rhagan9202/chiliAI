@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import re
 import uuid
 
@@ -11,13 +12,17 @@ def generate_id() -> str:
     return str(uuid.uuid4())
 
 
+def utc_now() -> datetime:
+    """Return the current timezone-aware UTC timestamp."""
+    return datetime.now(timezone.utc)
+
+
 def normalize_text(text: str) -> str:
     """Lowercase, strip, and collapse internal whitespace."""
     return re.sub(r"\s+", " ", text.strip().lower())
 
 
 # TODO(production): Add utility functions required by multiple modules:
-# - utc_now() -> datetime: canonical UTC timestamp (deduplicate from events/types.py)
 # - json_serialize(obj) -> str: Pydantic-aware JSON serializer with datetime handling
 # - retry(max_attempts, backoff_factor, retryable_exceptions): decorator for transient
 #   failure retry with exponential backoff — needed by all service modules
@@ -27,4 +32,5 @@ def normalize_text(text: str) -> str:
 __all__ = [
     "generate_id",
     "normalize_text",
+    "utc_now",
 ]

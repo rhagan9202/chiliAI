@@ -22,6 +22,9 @@ from analytics.timeseries.service_models import (
     TimeseriesAnalysisRequest,
     TimeseriesAnalysisResponse,
     TimeseriesAnomaly,
+    TimeseriesPoint,
+    TimeseriesQueryRequest,
+    TimeseriesResponse,
 )
 
 __all__ = [
@@ -37,6 +40,9 @@ __all__ = [
     "TimeseriesConfigurationError",
     "TimeseriesError",
     "TimeseriesInsufficientHistoryError",
+    "TimeseriesPoint",
+    "TimeseriesQueryRequest",
+    "TimeseriesResponse",
     "TimeseriesService",
     "TimeseriesServiceProtocol",
     "TimeseriesSourceError",

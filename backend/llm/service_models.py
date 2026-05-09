@@ -10,6 +10,12 @@ from llm.models import MessageRole
 PromptVariableValue = str | int | float | bool
 
 
+def _default_chat_message_inputs() -> list[ChatMessageInput]:
+    """Return a typed empty chat-message list for strict type checking."""
+
+    return []
+
+
 class ChatMessageInput(BaseModel):
     """A chat message supplied by API or worker callers."""
 
@@ -44,7 +50,9 @@ class GenerateRequest(BaseModel):
     model_name: str = "in-memory-test-model"
     temperature: float = Field(default=0.2, ge=0.0, le=2.0)
     max_tokens: int = Field(default=256, gt=0)
-    messages: list[ChatMessageInput] = Field(default_factory=list)
+    messages: list[ChatMessageInput] = Field(
+        default_factory=_default_chat_message_inputs
+    )
     prompt_template: PromptTemplate | None = None
 
     @model_validator(mode="after")

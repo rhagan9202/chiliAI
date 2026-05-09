@@ -2,33 +2,88 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
-from typing import cast
+from typing import NoReturn, cast
 
 from fastapi import Depends
 
 from config.loader import load_config
-from config.schema import DomainConfig
+from config.schema import (
+    DomainConfig,
+    EmbeddingsConfig,
+    EventBusConfig,
+    GraphDbConfig,
+    LlmConfig,
+    MonitoringConfig,
+    ObjectStoreConfig,
+    VectorStoreConfig,
+)
+from embeddings.adapters.in_memory import InMemoryEmbedder
+from embeddings.adapters.protocols import EmbedderProtocol
+from embeddings.protocols import EmbeddingsServiceProtocol
+from embeddings.service import create_embeddings_service
 from events.protocols import EventBus
 from events.runtime import EventBusSettings, create_event_bus, load_event_bus_settings
+from graph.adapters.in_memory import InMemoryGraphRepository
+from graph.adapters.protocols import GraphRepository
+from graph.protocols import GraphServiceProtocol
+from graph.service import create_graph_service
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import ParserRegistry, create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
 from ingestion.service import IngestionService
+from llm.adapters.in_memory import InMemoryLlmClient
+from llm.adapters.protocols import LlmClientProtocol
+from llm.protocols import LlmServiceProtocol
+from llm.service import create_llm_service
+from monitoring.adapters.in_memory import InMemoryObservationSource
+from monitoring.adapters.protocols import ObservationSourceProtocol
+from monitoring.protocols import MonitoringServiceProtocol
+from monitoring.service import create_monitoring_service
+from shared.exceptions import ConfigurationError
 from storage.adapters.in_memory import InMemoryObjectStore
+from storage.adapters.local_fs_adapter import LocalFsObjectStore
 from storage.protocols import ObjectStore
+from vectorstore.adapters.in_memory import InMemoryVectorStore
+from vectorstore.adapters.protocols import VectorStoreProtocol
+from vectorstore.protocols import VectorServiceProtocol
+from vectorstore.service import create_vector_service
 
 __all__ = [
+    "get_embedder",
+    "get_embeddings_service",
     "get_domain_config",
     "get_domain_config_payload",
     "get_event_bus",
     "get_event_bus_settings",
+    "get_graph_repository",
+    "get_graph_service",
     "get_ingestion_service",
+    "get_knowledge_base_repository",
+    "get_llm_client",
+    "get_llm_service",
+    "get_monitoring_service",
+    "get_monitoring_source",
     "get_object_store",
     "get_parser_orchestrator",
     "get_parser_registry",
     "get_remote_fetcher",
+    "get_session_store",
+    "get_vector_store",
+    "get_vectorstore_service",
 ]
+
+
+def _raise_unsupported_backend(
+    subsystem: str,
+    backend: str,
+    available_backends: tuple[str, ...],
+) -> NoReturn:
+    available = ", ".join(available_backends)
+    raise ConfigurationError(
+        f"Unsupported {subsystem} backend '{backend}'. Available backends: {available}."
+    )
 
 
 @lru_cache(maxsize=1)
@@ -75,31 +130,278 @@ def get_event_bus_settings() -> EventBusSettings:
     return load_event_bus_settings()
 
 
+def _event_bus_section_is_explicit(config: DomainConfig) -> bool:
+    return "events" in config.model_fields_set
+
+
+def _config_section_is_non_default(value: object, default: object) -> bool:
+    """Return whether a post-validated config section differs from defaults."""
+
+    return value != default
+
+
+def _resolve_event_bus_settings(config: DomainConfig) -> EventBusSettings:
+    env_settings = get_event_bus_settings()
+    if not _event_bus_section_is_explicit(config):
+        return env_settings
+
+    event_config = config.events
+    if event_config is None or event_config == EventBusConfig():
+        return env_settings
+
+    return EventBusSettings(
+        backend="redis" if event_config.backend == "redis" else "in-memory",
+        redis_url=event_config.uri or env_settings.redis_url,
+        stream_prefix=event_config.stream_prefix,
+        consumer_group=event_config.consumer_group,
+        consumer_name_prefix=env_settings.consumer_name_prefix,
+        batch_size=env_settings.batch_size,
+        block_ms=env_settings.block_ms,
+    )
+
+
 @lru_cache(maxsize=1)
 def get_event_bus() -> EventBus:
     """Return the event bus implementation for API-triggered workflows."""
-    return create_event_bus(get_event_bus_settings())
+    config = get_domain_config()
+    settings = _resolve_event_bus_settings(config)
+    return create_event_bus(settings)
+
+
+@lru_cache(maxsize=1)
+def get_session_store() -> SessionStoreProtocol:
+    """Return the configured session store.
+
+    Uses InMemorySessionStore when AuthConfig.enabled is False, otherwise
+    requires REDIS_URL and returns RedisSessionStore.
+    """
+
+    config = get_domain_config()
+    auth = config.auth
+    if auth is None or not auth.enabled:
+        return InMemorySessionStore()
+
+    redis_url = os.environ.get("REDIS_URL")
+    if redis_url is None:
+        raise ConfigurationError(
+            "AuthConfig.enabled=True requires REDIS_URL to be set "
+            "(e.g. REDIS_URL=redis://redis:6379/0)."
+        )
+    return RedisSessionStore(redis_url=redis_url)
 
 
 @lru_cache(maxsize=1)
 def get_object_store() -> ObjectStore:
     """Return the object store implementation for raw document content."""
-    # TODO(production): Select object store adapter from config/env (S3, GCS, MinIO)
-    # instead of hardcoding InMemoryObjectStore. Add connection health verification.
-    return InMemoryObjectStore()
+    config = get_domain_config()
+    storage_config = config.storage or ObjectStoreConfig()
+    backend = storage_config.backend
+    if backend == "local":
+        if _config_section_is_non_default(storage_config, ObjectStoreConfig()):
+            return LocalFsObjectStore(storage_config)
+        return InMemoryObjectStore()
+    if backend in {"s3", "minio"}:
+        try:
+            from storage.adapters.s3_adapter import S3ObjectStore
+        except ImportError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        try:
+            return S3ObjectStore(storage_config)
+        except (ImportError, ValueError) as exc:
+            raise ConfigurationError(str(exc)) from exc
+    _raise_unsupported_backend("storage", backend, ("local", "s3", "minio"))
+
+
+@lru_cache(maxsize=1)
+def get_graph_repository() -> GraphRepository:
+    """Return the graph repository implementation selected by config."""
+    graph_config = get_domain_config().graph or GraphDbConfig()
+    backend = graph_config.backend
+    if backend == "in_memory":
+        return InMemoryGraphRepository()
+    if backend == "neo4j":
+        try:
+            from graph.adapters.neo4j_adapter import Neo4jGraphRepository
+        except ImportError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        try:
+            return Neo4jGraphRepository(
+                graph_config,
+                auth=_resolve_graph_auth(graph_config),
+            )
+        except (ImportError, ValueError) as exc:
+            raise ConfigurationError(str(exc)) from exc
+    _raise_unsupported_backend("graph", backend, ("in_memory", "neo4j"))
+
+
+def _resolve_graph_auth(config: GraphDbConfig) -> tuple[str, str] | None:
+    """Resolve optional graph credentials from the configured environment variable."""
+
+    if config.auth_env_var is None:
+        return None
+    raw_value = os.environ.get(config.auth_env_var)
+    if raw_value is None or raw_value.strip() == "":
+        return None
+    if ":" in raw_value:
+        username, password = raw_value.split(":", 1)
+        return username, password
+    return "neo4j", raw_value
+
+
+@lru_cache(maxsize=1)
+def get_graph_service() -> GraphServiceProtocol:
+    """Return the graph service assembled from configured dependencies."""
+    return create_graph_service(
+        get_graph_repository(),
+        object_store=get_object_store(),
+        event_bus=get_event_bus(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_vector_store() -> VectorStoreProtocol:
+    """Return the vector store adapter implementation selected by config."""
+    vectorstore_config = get_domain_config().vectorstore or VectorStoreConfig()
+    backend = vectorstore_config.backend
+    if backend == "in_memory":
+        return InMemoryVectorStore()
+    if backend == "qdrant":
+        try:
+            from vectorstore.adapters.qdrant_adapter import QdrantVectorStore
+        except ImportError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        try:
+            return QdrantVectorStore(vectorstore_config)
+        except (ImportError, ValueError) as exc:
+            raise ConfigurationError(str(exc)) from exc
+    _raise_unsupported_backend("vectorstore", backend, ("in_memory", "qdrant"))
+
+
+@lru_cache(maxsize=1)
+def get_vectorstore_service() -> VectorServiceProtocol:
+    """Return the vectorstore service assembled from configured dependencies."""
+    return create_vector_service(get_vector_store(), event_bus=get_event_bus())
+
+
+@lru_cache(maxsize=1)
+def get_embedder() -> EmbedderProtocol:
+    """Return the embeddings adapter implementation selected by config."""
+    config = get_domain_config()
+    embeddings_config = config.embeddings or EmbeddingsConfig()
+    provider = embeddings_config.provider
+    if embeddings_config == EmbeddingsConfig():
+        return InMemoryEmbedder(provider=provider)
+    if provider == "local":
+        return InMemoryEmbedder(provider=provider)
+    if provider == "sentence_transformers":
+        try:
+            from embeddings.adapters.sentence_transformers_adapter import (
+                SentenceTransformersEmbedder,
+            )
+        except ImportError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        try:
+            return SentenceTransformersEmbedder(embeddings_config)
+        except (ImportError, ValueError) as exc:
+            raise ConfigurationError(str(exc)) from exc
+    if provider == "openai":
+        try:
+            from embeddings.adapters.openai_adapter import OpenAIEmbedder
+            from embeddings.exceptions import EmbeddingConfigurationError
+        except ImportError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        try:
+            return OpenAIEmbedder(embeddings_config)
+        except (ImportError, ValueError, EmbeddingConfigurationError) as exc:
+            raise ConfigurationError(str(exc)) from exc
+    _raise_unsupported_backend(
+        "embeddings",
+        provider,
+        ("local", "sentence_transformers", "openai"),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_embeddings_service() -> EmbeddingsServiceProtocol:
+    """Return the embeddings service assembled from configured dependencies."""
+    return create_embeddings_service(get_embedder(), event_bus=get_event_bus())
+
+
+@lru_cache(maxsize=1)
+def get_llm_client() -> LlmClientProtocol:
+    """Return the llm client implementation selected by config."""
+    llm_config = get_domain_config().llm or LlmConfig()
+    provider = llm_config.provider
+    if provider == "local":
+        return InMemoryLlmClient(provider=provider)
+    if provider == "openai":
+        try:
+            from llm.adapters.openai_adapter import OpenAILlmClient
+            from llm.exceptions import LlmConfigurationError
+        except ImportError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        try:
+            return OpenAILlmClient(llm_config)
+        except (ImportError, ValueError, LlmConfigurationError) as exc:
+            raise ConfigurationError(str(exc)) from exc
+    if provider == "anthropic":
+        try:
+            from llm.adapters.anthropic_adapter import AnthropicLlmClient
+            from llm.exceptions import LlmConfigurationError
+        except ImportError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        try:
+            return AnthropicLlmClient(llm_config)
+        except (ImportError, ValueError, LlmConfigurationError) as exc:
+            raise ConfigurationError(str(exc)) from exc
+    _raise_unsupported_backend("llm", provider, ("local", "openai", "anthropic"))
+
+
+@lru_cache(maxsize=1)
+def get_llm_service() -> LlmServiceProtocol:
+    """Return the llm service assembled from configured dependencies."""
+    return create_llm_service(get_llm_client(), event_bus=get_event_bus())
+
+
+@lru_cache(maxsize=1)
+def get_monitoring_source() -> ObservationSourceProtocol:
+    """Return the monitoring observation source selected by config."""
+    _ = get_domain_config().monitoring or MonitoringConfig()
+    return InMemoryObservationSource()
+
+
+@lru_cache(maxsize=1)
+def get_monitoring_service() -> MonitoringServiceProtocol:
+    """Return the monitoring service assembled from configured dependencies."""
+    return create_monitoring_service(get_monitoring_source(), event_bus=get_event_bus())
 
 
 @lru_cache(maxsize=1)
 def get_ingestion_service() -> IngestionService:
     """Return the ingestion service used by API routes and tests."""
-    # TODO(production): Add dependency factories for all remaining services:
-    # get_graph_service, get_vectorstore_service, get_embeddings_service,
-    # get_llm_service, get_rag_service, get_agent_service, get_monitoring_service,
-    # get_risk_service, get_timeseries_service, get_gnn_service,
-    # get_explainability_service. Each should select adapters from config.
-    # Add cache invalidation mechanism (LRU_cache cannot be reloaded at runtime).
     return IngestionService(
         get_parser_orchestrator(),
         object_store=get_object_store(),
         event_bus=get_event_bus(),
     )
+
+
+# --- Knowledgebases router additions (E5-S11/S12/S13) -------------------------
+# Keep this block at the end of the module so parallel router agents can append
+# their own DI factories without merge conflicts.
+
+from api._kb_store import (  # noqa: E402  (intentional bottom-of-file import)
+    InMemoryKnowledgeBaseRepository,
+    KnowledgeBaseRepository,
+)
+from api.middleware.session_store import (  # noqa: E402  (intentional bottom-of-file import)
+    InMemorySessionStore,
+    RedisSessionStore,
+    SessionStoreProtocol,
+)
+
+
+@lru_cache(maxsize=1)
+def get_knowledge_base_repository() -> KnowledgeBaseRepository:
+    """Return the knowledge base metadata repository used by the KB router."""
+    return InMemoryKnowledgeBaseRepository()
