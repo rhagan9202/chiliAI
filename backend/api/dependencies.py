@@ -358,6 +358,7 @@ def get_domain_config_features_payload(
     return {
         "capabilities": config.capabilities.model_dump(),
         "default_entity_type": config.ui.default_entity_type if config.ui else None,
+        "default_role": next(iter(config.ui.roles.keys())) if config.ui and config.ui.roles else None,
         "enabled_pages": enabled_pages,
         "roles": config.ui.roles if config.ui else {},
     }

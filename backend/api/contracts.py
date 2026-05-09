@@ -124,6 +124,16 @@ class PolicyBriefResponse(BaseModel):
     created_at: datetime
 
 
+class RealtimeSnapshotResponse(BaseModel):
+    """Realtime workspace snapshot emitted over SSE."""
+
+    sequence: int = Field(ge=0)
+    emitted_at: datetime
+    active_alerts: int = Field(ge=0)
+    running_workflows: int = Field(ge=0)
+    knowledge_base_statuses: dict[str, str] = Field(default_factory=dict)
+
+
 class AlertDetailResponse(BaseModel):
     """Expanded alert record used by alert and investigation views."""
 
@@ -455,6 +465,7 @@ __all__ = [
     "PolicyGapListResponse",
     "PolicyGapSummaryResponse",
     "PolicyTrendPointResponse",
+    "RealtimeSnapshotResponse",
     "RiskFactorResponse",
     "RiskScoreResponse",
     "TimeseriesPointResponse",

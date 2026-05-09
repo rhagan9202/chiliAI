@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
 
 from api.app import create_app
@@ -193,3 +195,22 @@ def test_create_policy_brief_returns_generated_brief() -> None:
     assert payload["gap_id"] == "policy-gap-001"
     assert payload["audience"] == "Operations leadership"
     assert len(payload["recommendations"]) >= 1
+
+
+def test_workspace_event_stream_returns_snapshot() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/events/stream?max_events=1")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+
+    lines = response.text.splitlines()
+    event_line = lines[0]
+    data_line = lines[1]
+
+    assert event_line == "event: workspace-update"
+    assert data_line.startswith("data: ")
+    payload = json.loads(data_line.removeprefix("data: "))
+    assert payload["sequence"] == 0
+    assert payload["active_alerts"] >= 1

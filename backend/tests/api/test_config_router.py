@@ -64,6 +64,7 @@ class TestConfigRouter:
         assert data["capabilities"]["gnn"] is True
         assert "investigation" in data["enabled_pages"]
         assert data["default_entity_type"] == "provider"
+        assert data["default_role"] == "analyst"
 
     def test_get_domain_schema_returns_json_schema(self, client: TestClient) -> None:
         data = client.get("/config/domain/schema").json()

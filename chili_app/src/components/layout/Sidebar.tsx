@@ -12,7 +12,8 @@ import {
 import type { ComponentType } from 'react'
 import { NavLink } from 'react-router-dom'
 
-import type { DomainConfig } from '../../api/contracts'
+import { getAllowedPageIds } from '../../app/access'
+import type { DomainConfig, DomainFeatures } from '../../api/contracts'
 
 type NavItem = {
   id: string
@@ -35,9 +36,11 @@ const navItems: NavItem[] = [
 
 type SidebarProps = {
   domainConfig?: DomainConfig
+  domainFeatures?: DomainFeatures
+  selectedRole: string | null
 }
 
-export function Sidebar({ domainConfig }: SidebarProps) {
+export function Sidebar({ domainConfig, domainFeatures, selectedRole }: SidebarProps) {
   const navItemsById = new Map(navItems.map((item) => [item.id, item]))
   const configuredItems: NavItem[] = domainConfig?.ui?.navigation?.pages.reduce<NavItem[]>(
     (items, page) => {
@@ -60,7 +63,11 @@ export function Sidebar({ domainConfig }: SidebarProps) {
   ) ?? []
 
   const navigationItems = configuredItems.length > 0 ? configuredItems : navItems
+  const allowedPageIds = new Set(getAllowedPageIds(domainFeatures, selectedRole))
   const visibleItems = navigationItems.filter((item) => {
+    if (allowedPageIds.size > 0 && !allowedPageIds.has(item.id)) {
+      return false
+    }
     if (!item.capability || !domainConfig) {
       return true
     }

@@ -10,6 +10,7 @@ from api.routers.analytics import router as analytics_router
 from api.routers.cases import router as cases_router
 from api.routers.config import router as config_router
 from api.routers.evidence import router as evidence_router
+from api.routers.events import router as events_router
 from api.routers.graph import router as graph_router
 from api.routers.knowledgebases import router as knowledgebases_router
 from api.routers.policy import router as policy_router
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
 
     app.include_router(config_router)
     app.include_router(knowledgebases_router)
+    app.include_router(events_router)
     app.include_router(alerts_router)
     app.include_router(graph_router)
     app.include_router(evidence_router)

@@ -78,8 +78,17 @@ export type DomainNavigationPage = {
 export type DomainFeatures = {
   capabilities: DomainCapabilities
   default_entity_type: string | null
+  default_role: string | null
   enabled_pages: string[]
   roles: Record<string, DomainRoleConfig>
+}
+
+export type RealtimeSnapshotResponse = {
+  sequence: number
+  emitted_at: string
+  active_alerts: number
+  running_workflows: number
+  knowledge_base_statuses: Record<string, string>
 }
 
 export type DomainConfigSchema = {

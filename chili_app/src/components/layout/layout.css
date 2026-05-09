@@ -138,6 +138,24 @@
   border-radius: 10px;
 }
 
+.app-topbar__select-wrap {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 10px;
+  background: var(--c-s2);
+  border: 1px solid var(--c-b0);
+  border-radius: 10px;
+}
+
+.app-topbar__select {
+  color: var(--c-text);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  text-transform: capitalize;
+}
+
 .app-topbar__search-label {
   position: absolute;
   width: 1px;

@@ -56,6 +56,7 @@ from api.contracts import (
     PolicyGapListResponse,
     PolicyGapSummaryResponse,
     PolicyTrendPointResponse,
+    RealtimeSnapshotResponse,
     RiskFactorResponse,
     RiskScoreResponse,
     TimeseriesPointResponse,
@@ -366,6 +367,24 @@ class ApiState:
             recommendations=recommendations,
             policy_citations=list(gap.policy_citations),
             created_at=created_at,
+        )
+
+    def get_realtime_snapshot(self, sequence: int) -> RealtimeSnapshotResponse:
+        return RealtimeSnapshotResponse(
+            sequence=sequence,
+            emitted_at=self._now(),
+            active_alerts=sum(
+                1
+                for metadata in self._alert_metadata.values()
+                if metadata["status"] in {"open", "acknowledged", "investigating"}
+            ),
+            running_workflows=sum(
+                1 for workflow in self._workflow_runs if workflow.status in {"queued", "running"}
+            ),
+            knowledge_base_statuses={
+                knowledge_base.id: knowledge_base.status
+                for knowledge_base in self._knowledge_bases.values()
+            },
         )
 
     def list_knowledge_bases(self) -> KnowledgeBaseListResponse:
