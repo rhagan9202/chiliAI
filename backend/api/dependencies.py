@@ -23,9 +23,15 @@ from api.contracts import (
     ChatMessageCreateRequest,
     EvidencePackResponse,
     GraphEntityDetailResponse,
+    KnowledgeBaseCreateRequest,
+    KnowledgeBaseDetailResponse,
+    KnowledgeBaseDocumentListResponse,
+    KnowledgeBaseDocumentStatusResponse,
+    KnowledgeBaseListResponse,
     RiskScoreResponse,
     TimeseriesResponse,
     WorkflowRunListResponse,
+    WorkflowRunResponse,
 )
 from api.state import ApiState, create_api_state
 from config.loader import load_config
@@ -62,6 +68,14 @@ __all__ = [
     "get_event_bus_settings",
     "get_graph_entity_detail_payload",
     "get_ingestion_service",
+    "get_knowledge_base_create_payload",
+    "get_knowledge_base_delete_payload",
+    "get_knowledge_base_detail_payload",
+    "get_knowledge_base_document_delete_payload",
+    "get_knowledge_base_document_status_payload",
+    "get_knowledge_base_documents_payload",
+    "get_knowledge_base_list_payload",
+    "get_knowledge_base_rebuild_payload",
     "get_object_store",
     "get_parser_orchestrator",
     "get_parser_registry",
@@ -178,6 +192,73 @@ def get_chat_message_payload(
 ) -> ChatConversationResponse:
     """Append a message and return the updated conversation."""
     return state.add_message(conversation_id, payload)
+
+
+def get_knowledge_base_list_payload(
+    state: ApiState = Depends(get_api_state),
+) -> KnowledgeBaseListResponse:
+    """Return the knowledge base manager collection payload."""
+    return state.list_knowledge_bases()
+
+
+def get_knowledge_base_detail_payload(
+    knowledge_base_id: str = Path(..., description="Knowledge base identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> KnowledgeBaseDetailResponse:
+    """Return one knowledge base detail payload."""
+    return state.get_knowledge_base_detail(knowledge_base_id)
+
+
+def get_knowledge_base_create_payload(
+    payload: KnowledgeBaseCreateRequest,
+    state: ApiState = Depends(get_api_state),
+) -> KnowledgeBaseDetailResponse:
+    """Create and return a new knowledge base."""
+    return state.create_knowledge_base(payload)
+
+
+def get_knowledge_base_delete_payload(
+    knowledge_base_id: str = Path(..., description="Knowledge base identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> ApiEnvelope:
+    """Delete a knowledge base and return an acknowledgement envelope."""
+    state.delete_knowledge_base(knowledge_base_id)
+    return ApiEnvelope(status="accepted", message=f"Knowledge base '{knowledge_base_id}' queued for deletion.")
+
+
+def get_knowledge_base_documents_payload(
+    knowledge_base_id: str = Path(..., description="Knowledge base identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> KnowledgeBaseDocumentListResponse:
+    """Return the document inventory for one knowledge base."""
+    return state.list_knowledge_base_documents(knowledge_base_id)
+
+
+def get_knowledge_base_document_status_payload(
+    knowledge_base_id: str = Path(..., description="Knowledge base identifier."),
+    document_id: str = Path(..., description="Knowledge base document identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> KnowledgeBaseDocumentStatusResponse:
+    """Return one document's ingestion timeline."""
+    return state.get_knowledge_base_document_status(knowledge_base_id, document_id)
+
+
+def get_knowledge_base_document_delete_payload(
+    knowledge_base_id: str = Path(..., description="Knowledge base identifier."),
+    document_id: str = Path(..., description="Knowledge base document identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> ApiEnvelope:
+    """Delete a document and return an acknowledgement envelope."""
+    state.delete_knowledge_base_document(knowledge_base_id, document_id)
+    return ApiEnvelope(status="accepted", message=f"Document '{document_id}' removed from knowledge base '{knowledge_base_id}'.")
+
+
+def get_knowledge_base_rebuild_payload(
+    knowledge_base_id: str = Path(..., description="Knowledge base identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> WorkflowRunResponse:
+    """Queue a knowledge base rebuild and return the resulting workflow record."""
+    return state.rebuild_knowledge_base(knowledge_base_id)
 
 
 def get_workflow_runs_payload(state: ApiState = Depends(get_api_state)) -> WorkflowRunListResponse:

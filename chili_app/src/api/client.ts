@@ -38,3 +38,16 @@ export function apiPatch<TResponse, TBody>(path: string, body: TBody): Promise<T
     body: JSON.stringify(body),
   })
 }
+
+export function apiDelete<TResponse>(path: string): Promise<TResponse> {
+  return apiFetch<TResponse>(path, {
+    method: 'DELETE',
+  })
+}
+
+export function apiUpload<TResponse>(path: string, formData: FormData): Promise<TResponse> {
+  return apiFetch<TResponse>(path, {
+    method: 'POST',
+    body: formData,
+  })
+}

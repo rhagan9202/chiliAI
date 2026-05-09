@@ -260,6 +260,79 @@ export type ChatMessageCreateRequest = {
   filters?: Record<string, string | number | boolean>
 }
 
+export type KnowledgeBaseStatus = 'ready' | 'indexing' | 'rebuilding' | 'error'
+export type IngestionStatus = 'pending' | 'parsing' | 'parsed' | 'chunked' | 'extracted' | 'validated' | 'failed'
+export type TimelineStatus = 'pending' | 'running' | 'completed' | 'failed'
+
+export type KnowledgeBaseSummaryResponse = {
+  id: string
+  name: string
+  description: string
+  status: KnowledgeBaseStatus
+  document_count: number
+  entity_count: number
+  relationship_count: number
+  created_at: string
+  last_ingested_at: string | null
+}
+
+export type KnowledgeBaseListResponse = {
+  items: KnowledgeBaseSummaryResponse[]
+  page: PageInfo
+}
+
+export type KnowledgeBaseDetailResponse = {
+  knowledge_base: KnowledgeBaseSummaryResponse
+  recent_workflows: WorkflowRunResponse[]
+}
+
+export type KnowledgeBaseDocumentResponse = {
+  id: string
+  knowledge_base_id: string
+  filename: string
+  content_type: string | null
+  size_bytes: number | null
+  status: IngestionStatus
+  uploaded_at: string
+}
+
+export type KnowledgeBaseDocumentListResponse = {
+  items: KnowledgeBaseDocumentResponse[]
+  page: PageInfo
+}
+
+export type IngestionTimelineEntryResponse = {
+  stage: string
+  status: TimelineStatus
+  updated_at: string
+  message: string
+}
+
+export type KnowledgeBaseDocumentStatusResponse = {
+  document: KnowledgeBaseDocumentResponse
+  timeline: IngestionTimelineEntryResponse[]
+}
+
+export type KnowledgeBaseCreateRequest = {
+  name: string
+  description: string
+}
+
+export type DocumentReceiptResponse = {
+  knowledge_base_id: string
+  source_document_id: string
+  filename: string | null
+  status: IngestionStatus
+  storage_key: string | null
+  uri: string | null
+  document_format: string | null
+  created_at: string
+}
+
+export type DocumentRegistrationResponse = {
+  documents: DocumentReceiptResponse[]
+}
+
 export type WorkflowRunResponse = {
   id: string
   workflow_type: 'ingestion' | 'graph_build' | 'analytics' | 'monitoring'
