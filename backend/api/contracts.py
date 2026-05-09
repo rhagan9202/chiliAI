@@ -56,6 +56,74 @@ class PolicyCitation(BaseModel):
     source_document_id: str
 
 
+class PolicyTrendPointResponse(BaseModel):
+    """One point in a policy gap trend series."""
+
+    label: str
+    value: float = Field(ge=0.0)
+
+
+class PolicyGapSummaryResponse(BaseModel):
+    """Summary row for the policy intelligence gap queue."""
+
+    id: str
+    title: str
+    status: Literal["monitoring", "drafting", "recommended"]
+    severity: Literal["medium", "high", "critical"]
+    impacted_entities: int = Field(ge=0)
+    affected_case_count: int = Field(ge=0)
+    knowledge_base_id: str
+    updated_at: datetime
+
+
+class PolicyGapListResponse(BaseModel):
+    """Collection response for policy intelligence gaps."""
+
+    items: list[PolicyGapSummaryResponse] = Field(default_factory=list)
+    page: PageInfo
+
+
+class PolicyGapDetailResponse(BaseModel):
+    """Expanded policy gap detail payload."""
+
+    gap: PolicyGapSummaryResponse
+    summary: str
+    impact_statement: str
+    recommendation: str
+    policy_citations: list[PolicyCitation] = Field(default_factory=list)
+    trend: list[PolicyTrendPointResponse] = Field(default_factory=list)
+
+
+class PolicyGapCaseListResponse(BaseModel):
+    """Case list attached to one policy gap."""
+
+    gap_id: str
+    items: list["CaseSummaryResponse"] = Field(default_factory=list)
+    page: PageInfo
+
+
+class PolicyBriefCreateRequest(BaseModel):
+    """Payload for generating a policy brief from a gap."""
+
+    gap_id: str
+    audience: str
+    objective: str
+
+
+class PolicyBriefResponse(BaseModel):
+    """Generated policy brief returned to the policy intelligence UI."""
+
+    id: str
+    gap_id: str
+    title: str
+    audience: str
+    objective: str
+    narrative: str
+    recommendations: list[str] = Field(default_factory=list)
+    policy_citations: list[PolicyCitation] = Field(default_factory=list)
+    created_at: datetime
+
+
 class AlertDetailResponse(BaseModel):
     """Expanded alert record used by alert and investigation views."""
 
@@ -379,7 +447,14 @@ __all__ = [
     "KnowledgeBaseListResponse",
     "KnowledgeBaseSummaryResponse",
     "PageInfo",
+    "PolicyBriefCreateRequest",
+    "PolicyBriefResponse",
     "PolicyCitation",
+    "PolicyGapCaseListResponse",
+    "PolicyGapDetailResponse",
+    "PolicyGapListResponse",
+    "PolicyGapSummaryResponse",
+    "PolicyTrendPointResponse",
     "RiskFactorResponse",
     "RiskScoreResponse",
     "TimeseriesPointResponse",

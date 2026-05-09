@@ -108,6 +108,62 @@ export type PolicyCitation = {
   source_document_id: string
 }
 
+export type PolicyGapStatus = 'monitoring' | 'drafting' | 'recommended'
+
+export type PolicyTrendPointResponse = {
+  label: string
+  value: number
+}
+
+export type PolicyGapSummaryResponse = {
+  id: string
+  title: string
+  status: PolicyGapStatus
+  severity: 'medium' | 'high' | 'critical'
+  impacted_entities: number
+  affected_case_count: number
+  knowledge_base_id: string
+  updated_at: string
+}
+
+export type PolicyGapListResponse = {
+  items: PolicyGapSummaryResponse[]
+  page: PageInfo
+}
+
+export type PolicyGapDetailResponse = {
+  gap: PolicyGapSummaryResponse
+  summary: string
+  impact_statement: string
+  recommendation: string
+  policy_citations: PolicyCitation[]
+  trend: PolicyTrendPointResponse[]
+}
+
+export type PolicyGapCaseListResponse = {
+  gap_id: string
+  items: CaseSummaryResponse[]
+  page: PageInfo
+}
+
+export type PolicyBriefCreateRequest = {
+  gap_id: string
+  audience: string
+  objective: string
+}
+
+export type PolicyBriefResponse = {
+  id: string
+  gap_id: string
+  title: string
+  audience: string
+  objective: string
+  narrative: string
+  recommendations: string[]
+  policy_citations: PolicyCitation[]
+  created_at: string
+}
+
 export type AlertListItem = {
   id: string
   entity_id: string

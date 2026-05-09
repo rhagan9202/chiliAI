@@ -140,3 +140,56 @@ def test_get_timeseries_returns_chart_points() -> None:
     assert payload["entity_id"] == "provider-204"
     assert len(payload["points"]) >= 5
     assert any(point["is_anomaly"] for point in payload["points"])
+
+
+def test_get_policy_gaps_returns_queue() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/policy/gaps")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["page"]["total_items"] >= 1
+    assert payload["items"][0]["severity"] in {"critical", "high", "medium"}
+
+
+def test_get_policy_gap_detail_returns_citations_and_trend() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/policy/gaps/policy-gap-001")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["gap"]["id"] == "policy-gap-001"
+    assert len(payload["policy_citations"]) >= 1
+    assert len(payload["trend"]) >= 1
+
+
+def test_get_policy_gap_cases_returns_affected_cases() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/policy/gaps/policy-gap-001/cases")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["gap_id"] == "policy-gap-001"
+    assert payload["items"][0]["id"] == "case-1001"
+
+
+def test_create_policy_brief_returns_generated_brief() -> None:
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/policy/briefs",
+        json={
+            "gap_id": "policy-gap-001",
+            "audience": "Operations leadership",
+            "objective": "Summarize why a guidance update is needed.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["gap_id"] == "policy-gap-001"
+    assert payload["audience"] == "Operations leadership"
+    assert len(payload["recommendations"]) >= 1

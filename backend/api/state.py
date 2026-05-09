@@ -48,7 +48,14 @@ from api.contracts import (
     KnowledgeBaseListResponse,
     KnowledgeBaseSummaryResponse,
     PageInfo,
+    PolicyBriefCreateRequest,
+    PolicyBriefResponse,
     PolicyCitation,
+    PolicyGapCaseListResponse,
+    PolicyGapDetailResponse,
+    PolicyGapListResponse,
+    PolicyGapSummaryResponse,
+    PolicyTrendPointResponse,
     RiskFactorResponse,
     RiskScoreResponse,
     TimeseriesPointResponse,
@@ -134,6 +141,23 @@ class KnowledgeBaseDocumentRecord:
     timeline: list[DocumentTimelineEntryRecord] = field(default_factory=list)
 
 
+@dataclass(slots=True)
+class PolicyGapRecord:
+    id: str
+    title: str
+    status: str
+    severity: str
+    impacted_entities: int
+    affected_case_ids: list[str]
+    knowledge_base_id: str
+    updated_at: datetime
+    summary: str
+    impact_statement: str
+    recommendation: str
+    policy_citations: list[PolicyCitation] = field(default_factory=list)
+    trend: list[PolicyTrendPointResponse] = field(default_factory=list)
+
+
 class ApiState:
     """Own seeded services and mutable UI-facing state for local API reads and writes."""
 
@@ -196,6 +220,7 @@ class ApiState:
                 )
             ]
         }
+        self._policy_gaps = self._seed_policy_gaps()
         self._conversations = self._seed_conversations()
 
     def list_alerts(self) -> AlertListResponse:
@@ -292,6 +317,56 @@ class ApiState:
             self._feedback.setdefault(case_id, []).append(feedback)
             self._cases[case_id].updated_at = self._now()
         return self.get_case_detail(case_id)
+
+    def list_policy_gaps(self) -> PolicyGapListResponse:
+        items = [self._to_policy_gap_summary(record) for record in self._sorted_policy_gaps()]
+        return PolicyGapListResponse(
+            items=items,
+            page=PageInfo(page=1, page_size=len(items), total_items=len(items)),
+        )
+
+    def get_policy_gap_detail(self, gap_id: str) -> PolicyGapDetailResponse:
+        gap = self._policy_gaps[gap_id]
+        return PolicyGapDetailResponse(
+            gap=self._to_policy_gap_summary(gap),
+            summary=gap.summary,
+            impact_statement=gap.impact_statement,
+            recommendation=gap.recommendation,
+            policy_citations=list(gap.policy_citations),
+            trend=list(gap.trend),
+        )
+
+    def list_policy_gap_cases(self, gap_id: str) -> PolicyGapCaseListResponse:
+        gap = self._policy_gaps[gap_id]
+        items = [self._to_case_summary(self._cases[case_id]) for case_id in gap.affected_case_ids]
+        return PolicyGapCaseListResponse(
+            gap_id=gap_id,
+            items=items,
+            page=PageInfo(page=1, page_size=len(items), total_items=len(items)),
+        )
+
+    def create_policy_brief(self, request: PolicyBriefCreateRequest) -> PolicyBriefResponse:
+        gap = self._policy_gaps[request.gap_id]
+        created_at = self._now()
+        recommendations = [
+            gap.recommendation,
+            "Route the resulting guidance through triage support workflows rather than automated enforcement.",
+            "Prioritize provenance-linked evidence before closing affected supervisor cases.",
+        ]
+        return PolicyBriefResponse(
+            id=generate_id(),
+            gap_id=gap.id,
+            title=f"{gap.title} brief",
+            audience=request.audience,
+            objective=request.objective,
+            narrative=(
+                f"Audience: {request.audience}. Objective: {request.objective}. "
+                f"{gap.summary} {gap.impact_statement} Recommended next step: {gap.recommendation}"
+            ),
+            recommendations=recommendations,
+            policy_citations=list(gap.policy_citations),
+            created_at=created_at,
+        )
 
     def list_knowledge_bases(self) -> KnowledgeBaseListResponse:
         items = [self._to_knowledge_base_summary(record) for record in self._sorted_knowledge_bases()]
@@ -793,6 +868,71 @@ class ApiState:
             )
         }
 
+    def _seed_policy_gaps(self) -> dict[str, PolicyGapRecord]:
+        now = self._now()
+        return {
+            "policy-gap-001": PolicyGapRecord(
+                id="policy-gap-001",
+                title="Repeated injection exception language creates inconsistent triage evidence",
+                status="recommended",
+                severity="critical",
+                impacted_entities=14,
+                affected_case_ids=["case-1001"],
+                knowledge_base_id=self._knowledge_base_id,
+                updated_at=now - timedelta(minutes=42),
+                summary="Current coverage guidance leaves exception handling fragmented across utilization review notes, which reduces citation consistency for high-cost injection alerts.",
+                impact_statement="Supervisors reviewing critical provider alerts receive incomplete policy context and need manual cross-referencing before escalation.",
+                recommendation="Publish a concise exception matrix that links coverage criteria, allowable repeat windows, and required documentation artifacts.",
+                policy_citations=[
+                    PolicyCitation(
+                        citation_id="policy-brief-001",
+                        title="Injection coverage repeat-window criteria",
+                        excerpt="Repeated injections beyond the documented treatment window require escalated review and physician justification.",
+                        source_document_id="doc-policy-2026-04",
+                    ),
+                    PolicyCitation(
+                        citation_id="policy-brief-002",
+                        title="Manual review exception requirements",
+                        excerpt="Cases routed for manual review must include the specific exception path and supporting documentation class.",
+                        source_document_id="doc-policy-2026-05",
+                    ),
+                ],
+                trend=[
+                    PolicyTrendPointResponse(label="Jan", value=2),
+                    PolicyTrendPointResponse(label="Feb", value=3),
+                    PolicyTrendPointResponse(label="Mar", value=6),
+                    PolicyTrendPointResponse(label="Apr", value=9),
+                ],
+            ),
+            "policy-gap-002": PolicyGapRecord(
+                id="policy-gap-002",
+                title="Referral disclosure guidance does not clearly define narrow-network concentration thresholds",
+                status="drafting",
+                severity="high",
+                impacted_entities=8,
+                affected_case_ids=["case-1002"],
+                knowledge_base_id=self._knowledge_base_id,
+                updated_at=now - timedelta(hours=3, minutes=10),
+                summary="Referral concentration alerts are surfacing faster than the current policy language can explain acceptable network concentration versus suspicious steering.",
+                impact_statement="Analysts can identify the graph pattern, but policy escalation packets still require manual interpretation before a brief can be shared with operations leadership.",
+                recommendation="Draft a threshold reference for referral concentration and include examples of acceptable specialist routing versus suspicious loop formation.",
+                policy_citations=[
+                    PolicyCitation(
+                        citation_id="policy-brief-003",
+                        title="Referral disclosure requirements",
+                        excerpt="Disclosures must identify ownership, referral rationale, and any repeated downstream utilization concentrations.",
+                        source_document_id="doc-policy-2026-05",
+                    )
+                ],
+                trend=[
+                    PolicyTrendPointResponse(label="Jan", value=1),
+                    PolicyTrendPointResponse(label="Feb", value=2),
+                    PolicyTrendPointResponse(label="Mar", value=4),
+                    PolicyTrendPointResponse(label="Apr", value=5),
+                ],
+            ),
+        }
+
     def _seed_knowledge_base_documents(self) -> dict[str, dict[str, KnowledgeBaseDocumentRecord]]:
         now = self._now()
         return {
@@ -1013,6 +1153,18 @@ class ApiState:
             updated_at=record.updated_at,
         )
 
+    def _to_policy_gap_summary(self, record: PolicyGapRecord) -> PolicyGapSummaryResponse:
+        return PolicyGapSummaryResponse(
+            id=record.id,
+            title=record.title,
+            status=record.status,
+            severity=record.severity,
+            impacted_entities=record.impacted_entities,
+            affected_case_count=len(record.affected_case_ids),
+            knowledge_base_id=record.knowledge_base_id,
+            updated_at=record.updated_at,
+        )
+
     def _to_knowledge_base_summary(self, record: KnowledgeBaseRecord) -> KnowledgeBaseSummaryResponse:
         return KnowledgeBaseSummaryResponse(
             id=record.id,
@@ -1077,6 +1229,13 @@ class ApiState:
             self._knowledge_base_documents.get(knowledge_base_id, {}).values(),
             key=lambda document: document.uploaded_at,
             reverse=True,
+        )
+
+    def _sorted_policy_gaps(self) -> list[PolicyGapRecord]:
+        severity_rank = {"critical": 0, "high": 1, "medium": 2}
+        return sorted(
+            self._policy_gaps.values(),
+            key=lambda gap: (severity_rank.get(gap.severity, 3), -gap.updated_at.timestamp()),
         )
 
     def _build_registered_timeline(self, *, filename: str, created_at: datetime) -> list[DocumentTimelineEntryRecord]:

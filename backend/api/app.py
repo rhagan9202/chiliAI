@@ -12,6 +12,7 @@ from api.routers.config import router as config_router
 from api.routers.evidence import router as evidence_router
 from api.routers.graph import router as graph_router
 from api.routers.knowledgebases import router as knowledgebases_router
+from api.routers.policy import router as policy_router
 from api.routers.rag import router as rag_router
 from api.routers.workflows import router as workflows_router
 
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(rag_router)
     app.include_router(workflows_router)
     app.include_router(analytics_router)
+    app.include_router(policy_router)
 
     # TODO(production): Add missing routers required by the frontend:
     # - Extend routers with write operations once backing services exist:

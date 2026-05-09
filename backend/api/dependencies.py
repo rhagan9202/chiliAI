@@ -28,6 +28,11 @@ from api.contracts import (
     KnowledgeBaseDocumentListResponse,
     KnowledgeBaseDocumentStatusResponse,
     KnowledgeBaseListResponse,
+    PolicyBriefCreateRequest,
+    PolicyBriefResponse,
+    PolicyGapCaseListResponse,
+    PolicyGapDetailResponse,
+    PolicyGapListResponse,
     RiskScoreResponse,
     TimeseriesResponse,
     WorkflowRunListResponse,
@@ -79,6 +84,10 @@ __all__ = [
     "get_object_store",
     "get_parser_orchestrator",
     "get_parser_registry",
+    "get_policy_brief_payload",
+    "get_policy_gap_cases_payload",
+    "get_policy_gap_detail_payload",
+    "get_policy_gap_list_payload",
     "get_remote_fetcher",
     "get_risk_score_payload",
     "get_timeseries_payload",
@@ -259,6 +268,37 @@ def get_knowledge_base_rebuild_payload(
 ) -> WorkflowRunResponse:
     """Queue a knowledge base rebuild and return the resulting workflow record."""
     return state.rebuild_knowledge_base(knowledge_base_id)
+
+
+def get_policy_gap_list_payload(
+    state: ApiState = Depends(get_api_state),
+) -> PolicyGapListResponse:
+    """Return the policy intelligence gap queue."""
+    return state.list_policy_gaps()
+
+
+def get_policy_gap_detail_payload(
+    gap_id: str = Path(..., description="Policy gap identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> PolicyGapDetailResponse:
+    """Return one policy gap detail payload."""
+    return state.get_policy_gap_detail(gap_id)
+
+
+def get_policy_gap_cases_payload(
+    gap_id: str = Path(..., description="Policy gap identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> PolicyGapCaseListResponse:
+    """Return the affected cases for one policy gap."""
+    return state.list_policy_gap_cases(gap_id)
+
+
+def get_policy_brief_payload(
+    payload: PolicyBriefCreateRequest,
+    state: ApiState = Depends(get_api_state),
+) -> PolicyBriefResponse:
+    """Generate a policy brief for the supplied policy gap."""
+    return state.create_policy_brief(payload)
 
 
 def get_workflow_runs_payload(state: ApiState = Depends(get_api_state)) -> WorkflowRunListResponse:
