@@ -20,3 +20,12 @@ Thumbs.db
 # IDE
 .idea/
 *.sw?
+
+# Temporary files
+.tmp/
+*.tmp
+*.temp
+*.bak
+*.orig
+*~
+#*#

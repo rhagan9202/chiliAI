@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -20,6 +22,20 @@ from api.routers.workflows import router as workflows_router
 __all__ = ["create_app"]
 
 
+def _load_allowed_origins() -> list[str]:
+    """Return allowed CORS origins from env or local development defaults."""
+    raw_origins = os.environ.get("ALLOWED_ORIGINS")
+    if raw_origins is None:
+        return [
+            "http://localhost:5173",
+            "http://localhost:80",
+            "http://localhost",
+        ]
+
+    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    return origins or ["http://localhost:5173"]
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
@@ -30,13 +46,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        # TODO(production): Read allowed origins from config or ALLOWED_ORIGINS env var.
-        # Current origins are hardcoded for local dev only.
-        allow_origins=[
-            "http://localhost:5173",  # Vite dev server
-            "http://localhost:80",
-            "http://localhost",
-        ],
+        allow_origins=_load_allowed_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -62,12 +72,7 @@ def create_app() -> FastAPI:
     app.include_router(analytics_router)
     app.include_router(policy_router)
 
-    # TODO(production): Add missing routers required by the frontend:
-    # - Extend routers with write operations once backing services exist:
-    #   POST /cases, PATCH /cases/{id}, POST /cases/{id}/feedback,
-    #   POST /chat/conversations, POST /chat/conversations/{id}/messages,
-    #   GET /graph/entities/{id}/relationships, DELETE /workflows/{id}
-    # Add middleware: request logging/tracing, rate limiting, auth (JWT/OIDC),
+    # TODO(production): Add middleware: request logging/tracing, rate limiting, auth (JWT/OIDC),
     # global error handler, request correlation ID, API versioning (/v1/).
     # See docs/architecture.md §7 for API gateway requirements.
 

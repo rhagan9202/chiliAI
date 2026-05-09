@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,18 @@ def client(config: DomainConfig) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_domain_config] = lambda: config
     return TestClient(app)
+
+
+@pytest.fixture()
+def custom_origin_client(
+    config: DomainConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[TestClient]:
+    monkeypatch.setenv("ALLOWED_ORIGINS", "https://review.example, https://ops.example")
+    app = create_app()
+    app.dependency_overrides[get_domain_config] = lambda: config
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 class TestConfigRouter:
@@ -75,3 +88,23 @@ class TestConfigRouter:
         resp = client.get("/health")
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
+
+    def test_default_cors_allows_local_vite_origin(self, client: TestClient) -> None:
+        resp = client.get("/health", headers={"Origin": "http://localhost:5173"})
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+    def test_custom_cors_origins_respect_environment(self, custom_origin_client: TestClient) -> None:
+        allowed = custom_origin_client.get(
+            "/health",
+            headers={"Origin": "https://review.example"},
+        )
+        blocked = custom_origin_client.get(
+            "/health",
+            headers={"Origin": "http://localhost:5173"},
+        )
+
+        assert allowed.status_code == 200
+        assert allowed.headers["access-control-allow-origin"] == "https://review.example"
+        assert blocked.status_code == 200
+        assert "access-control-allow-origin" not in blocked.headers
