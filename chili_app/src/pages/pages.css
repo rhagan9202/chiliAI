@@ -81,6 +81,11 @@
   color: var(--c-text);
 }
 
+.metric-row--stacked {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
 .metric-row strong,
 .alert-row-card__title {
   color: var(--c-text);
@@ -115,16 +120,106 @@
   font-weight: 700;
 }
 
+.page-actions-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.page-button,
+.page-list-item {
+  min-height: 38px;
+  padding: 0 14px;
+  color: var(--c-text);
+  background: rgba(0, 212, 255, 0.08);
+  border: 1px solid rgba(0, 212, 255, 0.22);
+  border-radius: 10px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.page-button:hover,
+.page-list-item:hover,
+.page-list-item--active {
+  background: rgba(0, 212, 255, 0.14);
+  border-color: rgba(0, 212, 255, 0.4);
+}
+
+.page-button--secondary {
+  background: rgba(136, 153, 187, 0.08);
+  border-color: rgba(136, 153, 187, 0.22);
+}
+
+.page-copy-block {
+  margin: 0;
+  color: var(--c-dim);
+  line-height: 1.6;
+}
+
+.chart-shell {
+  min-width: 0;
+  height: 240px;
+}
+
+.investigation-layout,
+.case-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.page-list-item {
+  display: grid;
+  gap: 4px;
+  justify-items: flex-start;
+  text-align: left;
+}
+
+.page-textarea {
+  min-height: 110px;
+  width: 100%;
+  padding: 14px;
+  color: var(--c-text);
+  background: var(--c-s3);
+  border: 1px solid var(--c-b0);
+  border-radius: 10px;
+  resize: vertical;
+}
+
+.chat-thread {
+  display: grid;
+  gap: 12px;
+}
+
+.chat-bubble {
+  display: grid;
+  gap: 8px;
+  max-width: 760px;
+  padding: 14px;
+  background: var(--c-s3);
+  border: 1px solid var(--c-b0);
+  border-radius: 12px;
+}
+
+.chat-bubble--assistant {
+  justify-self: end;
+  background: rgba(0, 212, 255, 0.08);
+  border-color: rgba(0, 212, 255, 0.24);
+}
+
 @media (max-width: 1180px) {
   .dashboard-kpis,
-  .dashboard-panels {
+  .dashboard-panels,
+  .investigation-layout,
+  .case-layout {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 760px) {
   .dashboard-kpis,
-  .dashboard-panels {
+  .dashboard-panels,
+  .investigation-layout,
+  .case-layout {
     grid-template-columns: 1fr;
   }
 

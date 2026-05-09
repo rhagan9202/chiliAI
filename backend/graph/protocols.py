@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from graph.service_models import GraphBuildReceipt, GraphBuildTask
+from shared.types import Entity, Relationship
 
 
 @runtime_checkable
@@ -20,6 +21,14 @@ class GraphServiceProtocol(Protocol):
     # The service protocol is currently write-only; all frontend-facing views need reads.
 
     def upsert_task(self, task: GraphBuildTask) -> GraphBuildReceipt: ...
+
+    def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None: ...
+
+    def get_neighbors(
+        self,
+        knowledge_base_id: str,
+        entity_id: str,
+    ) -> tuple[list[Entity], list[Relationship]]: ...
 
 
 __all__ = [

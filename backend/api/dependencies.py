@@ -6,7 +6,28 @@ from functools import lru_cache
 from typing import cast
 
 from fastapi import Depends
+from fastapi import Path
 
+from api.contracts import (
+    AlertDetailResponse,
+    AlertListResponse,
+    AnalyticsOverviewResponse,
+    ApiEnvelope,
+    CaseCreateRequest,
+    CaseDetailResponse,
+    CaseFeedbackCreateRequest,
+    CaseListResponse,
+    CaseUpdateRequest,
+    ChatConversationCreateRequest,
+    ChatConversationResponse,
+    ChatMessageCreateRequest,
+    EvidencePackResponse,
+    GraphEntityDetailResponse,
+    RiskScoreResponse,
+    TimeseriesResponse,
+    WorkflowRunListResponse,
+)
+from api.state import ApiState, create_api_state
 from config.loader import load_config
 from config.schema import DomainConfig
 from events.protocols import EventBus
@@ -19,18 +40,172 @@ from storage.adapters.in_memory import InMemoryObjectStore
 from storage.protocols import ObjectStore
 
 __all__ = [
+    "get_api_state",
+    "get_alert_detail_payload",
+    "get_alert_list_payload",
+    "get_alert_mutation_payload",
+    "get_analytics_overview_payload",
+    "get_case_create_payload",
+    "get_case_detail_payload",
+    "get_case_feedback_payload",
+    "get_case_list_payload",
+    "get_case_update_payload",
+    "get_chat_conversation_create_payload",
+    "get_chat_conversation_payload",
+    "get_chat_message_payload",
     "get_domain_config",
     "get_domain_config_features_payload",
     "get_domain_config_payload",
     "get_domain_config_schema_payload",
+    "get_evidence_pack_payload",
     "get_event_bus",
     "get_event_bus_settings",
+    "get_graph_entity_detail_payload",
     "get_ingestion_service",
     "get_object_store",
     "get_parser_orchestrator",
     "get_parser_registry",
     "get_remote_fetcher",
+    "get_risk_score_payload",
+    "get_timeseries_payload",
+    "get_workflow_runs_payload",
 ]
+
+
+@lru_cache(maxsize=1)
+def get_api_state() -> ApiState:
+    """Return the seeded mutable API application state."""
+    return create_api_state()
+
+
+def get_alert_list_payload(state: ApiState = Depends(get_api_state)) -> AlertListResponse:
+    """Return the alert feed read model."""
+    return state.list_alerts()
+
+
+def get_alert_detail_payload(
+    alert_id: str = Path(..., description="Alert identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> AlertDetailResponse:
+    """Return one deterministic alert detail read model."""
+    return state.get_alert_detail(alert_id)
+
+
+def get_alert_mutation_payload(
+    alert_id: str = Path(..., description="Alert identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> ApiEnvelope:
+    """Return the scaffold acknowledgement response."""
+    updated = state.acknowledge_alert(alert_id)
+    return ApiEnvelope(status="accepted", message=f"Alert '{updated.id}' is now {updated.status}.")
+
+
+def get_graph_entity_detail_payload(
+    entity_id: str = Path(..., description="Entity identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> GraphEntityDetailResponse:
+    """Return one deterministic graph entity read model."""
+    return state.get_graph_entity_detail(entity_id)
+
+
+def get_evidence_pack_payload(
+    evidence_pack_id: str = Path(..., description="Evidence pack identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> EvidencePackResponse:
+    """Return one deterministic evidence pack read model."""
+    return state.get_evidence_pack(evidence_pack_id)
+
+
+def get_case_list_payload(state: ApiState = Depends(get_api_state)) -> CaseListResponse:
+    """Return a deterministic case queue read model."""
+    return state.list_cases()
+
+
+def get_case_detail_payload(
+    case_id: str = Path(..., description="Case identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> CaseDetailResponse:
+    """Return one deterministic case detail read model."""
+    return state.get_case_detail(case_id)
+
+
+def get_case_create_payload(
+    payload: CaseCreateRequest,
+    state: ApiState = Depends(get_api_state),
+) -> CaseDetailResponse:
+    """Create and return a persisted case."""
+    return state.create_case(payload)
+
+
+def get_case_update_payload(
+    payload: CaseUpdateRequest,
+    case_id: str = Path(..., description="Case identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> CaseDetailResponse:
+    """Update and return a persisted case."""
+    return state.update_case(case_id, payload)
+
+
+def get_case_feedback_payload(
+    payload: CaseFeedbackCreateRequest,
+    case_id: str = Path(..., description="Case identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> CaseDetailResponse:
+    """Append feedback and return the updated case detail."""
+    return state.add_feedback(case_id, payload)
+
+
+def get_chat_conversation_payload(
+    conversation_id: str = Path(..., description="Conversation identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> ChatConversationResponse:
+    """Return a deterministic chat conversation read model."""
+    return state.get_conversation(conversation_id)
+
+
+def get_chat_conversation_create_payload(
+    payload: ChatConversationCreateRequest,
+    state: ApiState = Depends(get_api_state),
+) -> ChatConversationResponse:
+    """Create and return a new conversation."""
+    return state.create_conversation(payload)
+
+
+def get_chat_message_payload(
+    payload: ChatMessageCreateRequest,
+    conversation_id: str = Path(..., description="Conversation identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> ChatConversationResponse:
+    """Append a message and return the updated conversation."""
+    return state.add_message(conversation_id, payload)
+
+
+def get_workflow_runs_payload(state: ApiState = Depends(get_api_state)) -> WorkflowRunListResponse:
+    """Return recent scaffold workflow runs."""
+    return state.list_workflows()
+
+
+def get_risk_score_payload(
+    entity_id: str = Path(..., description="Entity identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> RiskScoreResponse:
+    """Return a deterministic risk-score payload."""
+    return state.get_risk_score(entity_id)
+
+
+def get_timeseries_payload(
+    entity_id: str = Path(..., description="Entity identifier."),
+    state: ApiState = Depends(get_api_state),
+) -> TimeseriesResponse:
+    """Return a deterministic timeseries payload."""
+    return state.get_timeseries(entity_id)
+
+
+def get_analytics_overview_payload(
+    state: ApiState = Depends(get_api_state),
+) -> AnalyticsOverviewResponse:
+    """Return a deterministic analytics overview payload."""
+    return state.get_analytics_overview()
 
 
 @lru_cache(maxsize=1)

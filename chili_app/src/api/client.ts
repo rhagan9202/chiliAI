@@ -18,3 +18,23 @@ export async function apiFetch<TResponse>(
 
   return (await response.json()) as TResponse
 }
+
+export function apiPost<TResponse, TBody>(path: string, body: TBody): Promise<TResponse> {
+  return apiFetch<TResponse>(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+}
+
+export function apiPatch<TResponse, TBody>(path: string, body: TBody): Promise<TResponse> {
+  return apiFetch<TResponse>(path, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+}

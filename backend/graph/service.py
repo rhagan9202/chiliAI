@@ -8,6 +8,7 @@ from graph.adapters.protocols import GraphRepository
 from graph.exceptions import GraphPersistenceError
 from graph.models import GraphUpsertResult
 from graph.service_models import GraphBuildReceipt, GraphBuildTask
+from shared.types import Entity, Relationship
 from storage.protocols import ObjectStore
 
 
@@ -106,6 +107,30 @@ class GraphService:
             )
         )
         return receipt
+
+    def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None:
+        for entity in self._repository.get_entities(knowledge_base_id):
+            if entity.id == entity_id:
+                return entity
+        return None
+
+    def get_neighbors(
+        self,
+        knowledge_base_id: str,
+        entity_id: str,
+    ) -> tuple[list[Entity], list[Relationship]]:
+        entities_by_id = {entity.id: entity for entity in self._repository.get_entities(knowledge_base_id)}
+        relationships = [
+            relationship
+            for relationship in self._repository.get_relationships(knowledge_base_id)
+            if relationship.source_id == entity_id or relationship.target_id == entity_id
+        ]
+        neighbor_ids = {
+            relationship.source_id if relationship.source_id != entity_id else relationship.target_id
+            for relationship in relationships
+        }
+        neighbors = [entities_by_id[neighbor_id] for neighbor_id in neighbor_ids if neighbor_id in entities_by_id]
+        return neighbors, relationships
 
     @staticmethod
     def _build_graph_update_storage_key(

@@ -25,6 +25,7 @@
 }
 
 .chart-frame__canvas {
+  min-width: 0;
   height: 180px;
   margin-top: 16px;
 }

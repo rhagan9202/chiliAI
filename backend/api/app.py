@@ -5,8 +5,15 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.routers.alerts import router as alerts_router
+from api.routers.analytics import router as analytics_router
+from api.routers.cases import router as cases_router
 from api.routers.config import router as config_router
+from api.routers.evidence import router as evidence_router
+from api.routers.graph import router as graph_router
 from api.routers.knowledgebases import router as knowledgebases_router
+from api.routers.rag import router as rag_router
+from api.routers.workflows import router as workflows_router
 
 __all__ = ["create_app"]
 
@@ -43,14 +50,19 @@ def create_app() -> FastAPI:
 
     app.include_router(config_router)
     app.include_router(knowledgebases_router)
+    app.include_router(alerts_router)
+    app.include_router(graph_router)
+    app.include_router(evidence_router)
+    app.include_router(cases_router)
+    app.include_router(rag_router)
+    app.include_router(workflows_router)
+    app.include_router(analytics_router)
 
     # TODO(production): Add missing routers required by the frontend:
-    # - routers/workflows.py: POST/GET/DELETE /workflows for pipeline management
-    # - routers/alerts.py: GET /alerts, POST /alerts/{id}/acknowledge
-    # - routers/graph.py: GET /graph/entities, /graph/entities/{id}/relationships
-    # - routers/chat.py: POST /chat/conversations/{id}/messages (RAG chat)
-    # - routers/analytics.py: GET /analytics/timeseries, /risk-scores, /gnn-clusters
-    # - routers/evidence.py: GET /evidence-packs/{id}
+    # - Extend routers with write operations once backing services exist:
+    #   POST /cases, PATCH /cases/{id}, POST /cases/{id}/feedback,
+    #   POST /chat/conversations, POST /chat/conversations/{id}/messages,
+    #   GET /graph/entities/{id}/relationships, DELETE /workflows/{id}
     # Add middleware: request logging/tracing, rate limiting, auth (JWT/OIDC),
     # global error handler, request correlation ID, API versioning (/v1/).
     # See docs/architecture.md §7 for API gateway requirements.
