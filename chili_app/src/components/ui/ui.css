@@ -1,0 +1,250 @@
+.ui-card {
+  position: relative;
+  overflow: hidden;
+  background: var(--c-s2);
+  border: 1px solid var(--c-b0);
+  border-radius: 12px;
+  padding: 22px;
+}
+
+.ui-card--compact {
+  padding: 16px;
+}
+
+.ui-card--accented::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  content: '';
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--card-accent) 70%, transparent), transparent);
+}
+
+.ui-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  color: var(--chip-color);
+  background: var(--chip-background);
+  border: 1px solid var(--chip-border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.risk-badge__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+}
+
+.risk-badge__score,
+.risk-badge__label,
+.kpi-card__value,
+.section-header__title,
+.tabs__button {
+  font-family: var(--font-display);
+}
+
+.risk-badge__score {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.risk-badge__label {
+  color: var(--c-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.confidence-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.confidence-bar__track {
+  overflow: hidden;
+  flex: 1;
+  height: 3px;
+  background: var(--c-b0);
+  border-radius: 999px;
+}
+
+.confidence-bar__fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.confidence-bar__label,
+.section-header__eyebrow,
+.kpi-card__trend,
+.feedback-state__title,
+.filter-bar__button,
+.chart-frame__eyebrow {
+  font-family: var(--font-mono);
+}
+
+.confidence-bar__label {
+  min-width: 34px;
+  color: var(--c-dim);
+  font-size: 10px;
+}
+
+.kpi-card {
+  min-height: 170px;
+}
+
+.kpi-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kpi-card__icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 8px;
+}
+
+.kpi-card__trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--c-green);
+  font-size: 11px;
+}
+
+.kpi-card__value {
+  margin-top: 18px;
+  color: var(--c-text);
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.kpi-card__label {
+  margin-top: 8px;
+  color: var(--c-dim);
+  font-size: 13px;
+}
+
+.kpi-card__sublabel {
+  margin-top: 5px;
+  color: var(--c-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.section-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.section-header__eyebrow {
+  color: var(--c-cyan);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.section-header__title {
+  margin: 8px 0 0;
+  color: var(--c-text);
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.section-header__subtitle {
+  max-width: 680px;
+  margin: 8px 0 0;
+  color: var(--c-dim);
+  line-height: 1.6;
+}
+
+.tabs,
+.filter-bar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tabs__button,
+.filter-bar__button {
+  min-height: 32px;
+  padding: 0 11px;
+  color: var(--c-muted);
+  background: transparent;
+  border: 1px solid var(--c-b0);
+  border-radius: 999px;
+}
+
+.tabs__button--active,
+.filter-bar__button--active,
+.tabs__button:hover,
+.filter-bar__button:hover {
+  color: var(--c-text);
+  background: rgba(0, 212, 255, 0.08);
+  border-color: rgba(0, 212, 255, 0.24);
+}
+
+.feedback-state {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--c-b0);
+  border-radius: 10px;
+  color: var(--c-dim);
+  background: var(--c-s3);
+}
+
+.feedback-state--error {
+  border-color: rgba(255, 64, 64, 0.24);
+  background: rgba(255, 64, 64, 0.08);
+}
+
+.feedback-state__title {
+  color: var(--c-text);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.feedback-state--loading {
+  grid-auto-flow: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.feedback-state__spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(0, 212, 255, 0.24);
+  border-top-color: var(--c-cyan);
+  border-radius: 999px;
+  animation: ui-spin 0.9s linear infinite;
+}
+
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
