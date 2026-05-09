@@ -1,0 +1,86 @@
+.editorWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.editor {
+  flex: 1 1 auto;
+  min-height: 360px;
+  border: 1px solid var(--border, #e5e4e7);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.editor :global(.cm-editor) {
+  height: 100%;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.editor :global(.cm-scroller) {
+  font-family: inherit;
+}
+
+.errorBox {
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.06);
+  color: #b91c1c;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.button {
+  appearance: none;
+  border: 1px solid var(--border, #e5e4e7);
+  background: #fff;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  background: rgba(170, 59, 255, 0.05);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.primary {
+  border-color: var(--accent, #aa3bff);
+  background: var(--accent, #aa3bff);
+  color: #fff;
+}
+
+.primary:hover:not(:disabled) {
+  background: #8e26df;
+}
+
+.statusOk {
+  color: #15803d;
+  font-size: 13px;
+}
+
+.statusBusy {
+  color: var(--text, #6b6375);
+  font-size: 13px;
+}
+
+.deviationNote {
+  font-size: 12px;
+  color: var(--text, #6b6375);
+}

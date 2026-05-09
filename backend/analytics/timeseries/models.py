@@ -20,7 +20,9 @@ class TimeSeriesSeries(BaseModel):
     knowledge_base_id: str
     entity_id: str
     metric_name: str
-    observations: list[TimeSeriesObservation] = Field(default_factory=list)
+    observations: list[TimeSeriesObservation] = Field(
+        default_factory=list[TimeSeriesObservation]
+    )
 
     @model_validator(mode="after")
     def _validate_observations(self) -> TimeSeriesSeries:
@@ -51,7 +53,7 @@ class TimeSeriesAnalysisResult(BaseModel):
     metric_name: str
     observation_count: int = Field(ge=0)
     anomaly_count: int = Field(ge=0)
-    anomalies: list[AnomalyPoint] = Field(default_factory=list)
+    anomalies: list[AnomalyPoint] = Field(default_factory=list[AnomalyPoint])
 
 
 __all__ = [

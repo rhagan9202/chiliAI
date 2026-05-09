@@ -1,0 +1,40 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "chili.fullname" . }}
+  labels:
+    {{- include "chili.componentLabels" (dict "context" . "component" "ingress") | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "chili.fullname" . }}-api
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "chili.fullname" . }}-app
+                port:
+                  number: 80
+  {{- if .Values.tls.enabled }}
+  tls:
+    - hosts:
+        {{- range .Values.tls.hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .Values.tls.secretName | quote }}
+  {{- end }}
+{{- end }}

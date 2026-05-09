@@ -1,3 +1,7 @@
 {
-    "makefile.configureOnOpen": false
+    "python.analysis.extraPaths": [
+        "backend/monitoring"
+    ],
+    "makefile.configureOnOpen": false,
+    "github-enterprise.uri": "https://github.uskgc.com"
 }

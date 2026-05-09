@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chili.fullname" . }}-worker
+  labels:
+    {{- include "chili.componentLabels" (dict "context" . "component" "worker") | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount.worker }}
+  selector:
+    matchLabels:
+      {{- include "chili.selectorLabels" (dict "context" . "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "chili.selectorLabels" (dict "context" . "component" "worker") | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: worker
+          image: "{{ .Values.image.worker.repository }}:{{ .Values.image.worker.tag }}"
+          imagePullPolicy: {{ .Values.image.worker.pullPolicy }}
+          command: ["python", "-m", "agent.coordinator"]
+          ports:
+            - name: health
+              containerPort: 8001
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "chili.fullname" . }}-config
+            - secretRef:
+                name: {{ .Values.secret.name }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources.worker | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]

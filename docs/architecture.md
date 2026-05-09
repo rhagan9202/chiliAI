@@ -1,6 +1,8 @@
 # chiliAI — High-Level Architecture & Design
 
-> **Status**: Target architecture. The repository is currently an early-stage scaffold. This document describes the intended system design — not what exists today. Current state is called out explicitly where relevant.
+> **Status**: Target architecture plus implementation status notes. The repository is now an active prototype with substantial backend and frontend implementation. This document describes the intended system design and calls out current-state gaps where relevant.
+>
+> **Detailed diagram**: See [`system_architecture_diagram.md`](system_architecture_diagram.md) for a Mermaid view of the runtime containers, services, adapters, request flows, and deployment mapping.
 
 ---
 
@@ -200,7 +202,7 @@ The monorepo produces the following deployable containers:
 
 ```
 backend/
-├── main.py                     # Entry point (current scaffold)
+├── main.py                     # Local Uvicorn launcher
 ├── pyproject.toml              # Project metadata, dependencies
 ├── api/                        # FastAPI gateway layer
 │   ├── __init__.py
@@ -210,7 +212,8 @@ backend/
 │       ├── knowledgebases.py   # KB CRUD, document management
 │       ├── alerts.py           # Alert feed, acknowledgment
 │       ├── investigation.py    # Graph queries, entity detail
-│       ├── rag.py              # RAG chat endpoints
+│       ├── chat.py             # RAG chat endpoints
+│       ├── analytics.py        # Analytics endpoints
 │       ├── config.py           # Domain configuration endpoints
 │       └── ws.py               # WebSocket hub for real-time push
 ├── ingestion/                  # Document parsing & entity extraction
@@ -224,35 +227,34 @@ backend/
 │   ├── protocols.py            # Abstract GraphRepository protocol
 │   ├── models.py               # Graph-layer data models
 │   └── adapters/
-│       ├── neo4j.py
-│       ├── memgraph.py
-│       └── neptune.py
+│       ├── in_memory.py
+│       └── neo4j_adapter.py
 ├── vectorstore/                # Vector store access
 │   ├── __init__.py
 │   ├── protocols.py            # Abstract VectorStore protocol
 │   └── adapters/
-│       ├── pgvector.py
-│       ├── qdrant.py
-│       └── weaviate.py
+│       ├── in_memory.py
+│       └── qdrant_adapter.py
 ├── embeddings/                 # Embedding generation
 │   ├── __init__.py
 │   ├── protocols.py            # Abstract Embedder protocol
 │   └── adapters/
-│       ├── openai.py
-│       ├── sentence_transformers.py
-│       └── custom.py
+│       ├── in_memory.py
+│       ├── openai_adapter.py
+│       └── sentence_transformers_adapter.py
 ├── rag/                        # Retrieval-augmented generation pipeline
 │   ├── __init__.py
-│   ├── pipeline.py             # Query → embed → search → expand → assemble → LLM → answer
-│   └── context.py              # Context assembly and prompt construction
+│   ├── service.py              # Query → embed → search → expand → assemble → LLM → answer
+│   ├── service_models.py
+│   └── adapters/               # Bridges to embeddings, vectorstore, graph, and LLM services
 ├── llm/                        # LLM client abstraction
 │   ├── __init__.py
 │   ├── protocols.py            # Abstract LLMClient protocol
 │   ├── prompts.py              # Prompt templates and management
 │   └── adapters/
-│       ├── openai.py
-│       ├── anthropic.py
-│       └── ollama.py
+│       ├── in_memory.py
+│       ├── openai_adapter.py
+│       └── anthropic_adapter.py
 ├── analytics/                  # ML / AI capability modules
 │   ├── __init__.py
 │   ├── timeseries/             # Time-series anomaly detection
@@ -281,8 +283,8 @@ backend/
 │   └── alerting.py             # Threshold evaluation, alert generation
 ├── shared/                     # Lightweight shared contracts library
 │   ├── __init__.py
-│   ├── types.py                # Domain types: Entity, Relationship, Claim, Provider,
-│   │                           #   Beneficiary, Alert, EvidencePack, KnowledgeBase
+│   ├── types.py                # Generic platform types: Entity, Relationship,
+│   │                           #   Alert, EvidencePack, KnowledgeBase
 │   ├── protocols.py            # Cross-cutting protocol definitions
 │   └── utils.py                # Small, dependency-light utilities
 ├── config/                     # Domain configuration
@@ -584,17 +586,17 @@ Each entity and relationship in the graph carries provenance metadata linking it
 | Concern | Technology | Notes |
 |---------|-----------|-------|
 | Framework | React 19 | Functional components, hooks |
-| Language | TypeScript 6 (strict mode) | `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch` |
+| Language | TypeScript 5.9.x (strict mode) | `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`; pinned to TS 5 while OpenAPI tooling requires `^5.x` |
 | Build | Vite 8 | Dev server with HMR, production build |
 | Routing | React Router v7 | File-system or config-based routes |
 | Server state | TanStack Query (React Query) | Caching, invalidation, optimistic updates |
 | Client state | Zustand | Lightweight store for UI state (selected entity, panel visibility, etc.) |
-| API client | Generated from OpenAPI spec | FastAPI auto-generates OpenAPI; use `openapi-typescript-codegen` or similar |
+| API client | Typed fetch wrapper + TanStack Query hooks | `lib/apiClient.ts` provides typed envelopes; generated OpenAPI client remains optional future hardening |
 | Real-time | WebSocket (native or via library) | Alerts, pipeline status, KB readiness |
-| Graph visualization | Cytoscape.js, Sigma.js, or React Flow | Evaluate during implementation — see open questions |
-| Styling | TBD (CSS Modules, Tailwind, or component library) | Decision deferred |
+| Graph visualization | `react-force-graph-2d` | Canvas graph explorer in the Investigation Workbench |
+| Styling | CSS Modules + global app CSS | Component-scoped styles for complex UI surfaces |
 
-> **Current state**: `chili_app/` is a Vite + React 19 scaffold with template placeholder UI. Everything below is target architecture.
+> **Current state**: `chili_app/` is a routed React 19 workbench prototype with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration views. Several workflows still use in-memory/local backend behavior, and parts of the section below remain target architecture.
 
 ### 8.2 Page / view structure
 
@@ -602,37 +604,30 @@ Each entity and relationship in the graph carries provenance metadata linking it
 chili_app/src/
 ├── main.tsx                    # App entry point
 ├── App.tsx                     # Root layout, routing
-├── api/                        # Generated API client + TanStack Query hooks
-│   ├── client.ts               # Auto-generated typed API client
-│   ├── hooks/                  # useKnowledgeBases(), useAlerts(), etc.
-│   └── ws.ts                   # WebSocket connection manager
+├── lib/
+│   ├── apiClient.ts            # Typed fetch wrapper
+│   └── queryClient.ts          # TanStack Query client
 ├── stores/                     # Zustand stores
-│   ├── uiStore.ts              # Panel visibility, selected entity, filters
-│   └── configStore.ts          # Cached domain configuration
+│   ├── appStore.ts             # Sidebar, selected entity, active KB
+│   └── chatStore.ts            # Local chat/session state
 ├── pages/
-│   ├── Dashboard/              # System overview, recent alerts, KB summaries
-│   ├── KnowledgeBaseManager/   # List, create, delete KBs; document inventory
-│   ├── AlertFeed/              # Streaming alert list, severity filters, ack workflow
-│   ├── Investigation/          # Core analyst workbench (composite page)
-│   ├── RagChat/                # Conversational RAG interface
-│   └── Configuration/          # Domain config editor
+│   ├── Dashboard.tsx
+│   ├── KnowledgeBaseManager.tsx
+│   ├── AlertFeed.tsx
+│   ├── InvestigationWorkbench.tsx
+│   ├── RagChat.tsx
+│   └── ConfigEditor.tsx
 ├── components/
-│   ├── graph/                  # Graph explorer (force-directed/hierarchical layout)
-│   │   ├── GraphCanvas.tsx     # Main graph visualization component
-│   │   ├── NodeDetail.tsx      # Entity detail panel
-│   │   └── controls/           # Zoom, filter, layout toggle
-│   ├── evidence/               # Evidence pack display
-│   │   ├── EvidencePanel.tsx   # Reasoning, scores, highlighted subgraph
-│   │   └── ScoreCard.tsx       # Risk score visualization
-│   ├── timeline/               # Time-series panel
-│   │   └── TimelineChart.tsx   # Entity activity over time
+│   ├── investigation/          # Graph explorer, entity detail, evidence, timeline
 │   ├── alerts/                 # Alert list item, badge, detail
 │   ├── chat/                   # RAG chat message list, input
+│   ├── knowledgebase/          # KB tables, detail view, upload widgets
 │   └── common/                 # Shared UI primitives (layout, loading, error)
 └── hooks/                      # Shared custom hooks
     ├── useWebSocket.ts
     ├── useDomainConfig.ts
-    └── useGraphNavigation.ts
+    ├── useKnowledgeBases.ts
+    └── useNeighborhood.ts
 ```
 
 ### 8.3 Investigation Workbench
@@ -954,16 +949,16 @@ Adapter selection is driven by environment configuration, not code changes.
 
 ## 12. Security
 
-> **Current state**: Authentication and authorization are deferred. The system is designed to accommodate them without architectural changes.
+> **Current state**: Authentication and authorization middleware exists with JWT/RBAC validation paths and tests, but route-wide production enforcement and frontend login flows remain hardening work.
 
-### 12.1 Authentication (designed-for, not yet implemented)
+### 12.1 Authentication (partially implemented)
 
 - **Approach**: Pluggable FastAPI middleware
 - **Protocols**: JWT verification with support for OIDC/OAuth2 identity providers
 - **Configuration**: Auth enabled/disabled via environment variable. When disabled, all requests are treated as an anonymous admin user. When enabled, a valid JWT must be present.
 - **Token flow**: Frontend obtains tokens from the IdP; backend validates on every request.
 
-### 12.2 Authorization (designed-for)
+### 12.2 Authorization (partially implemented)
 
 | Role | Permissions |
 |------|------------|
@@ -997,12 +992,12 @@ Adapter selection is driven by environment configuration, not code changes.
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
 | **Frontend framework** | React 19 | UI components, state management |
-| **Frontend language** | TypeScript 6 (strict) | Type-safe frontend code |
+| **Frontend language** | TypeScript 5.9.x (strict) | Type-safe frontend code; held on TS 5 for OpenAPI tooling compatibility |
 | **Frontend build** | Vite 8 | Dev server, production bundling |
 | **Frontend routing** | React Router v7 | Client-side navigation |
 | **Server state (FE)** | TanStack Query | API data fetching, caching, invalidation |
 | **Client state (FE)** | Zustand | Lightweight UI state |
-| **Graph visualization** | Cytoscape.js / Sigma.js / React Flow | Interactive graph explorer (evaluate) |
+| **Graph visualization** | `react-force-graph-2d` | Interactive graph explorer in the current prototype |
 | **Backend language** | Python 3.12 | All backend services |
 | **API framework** | FastAPI | HTTP + WebSocket gateway |
 | **Type checking** | pyright (strict mode) | Static type analysis |
@@ -1016,7 +1011,7 @@ Adapter selection is driven by environment configuration, not code changes.
 | **Logging** | structlog | Structured JSON logging |
 | **Metrics** | Prometheus | Operational metrics |
 | **Tracing** | OpenTelemetry | Distributed tracing |
-| **Error tracking (FE)** | Sentry | Frontend error monitoring |
+| **Error tracking (FE)** | Sentry or equivalent | Frontend error monitoring (future production hardening) |
 | **Containerization** | Docker | Image packaging |
 | **Orchestration** | Kubernetes / Docker Compose | Production / dev deployment |
 | **Infra-as-code** | Terraform or Pulumi | Cloud infrastructure (deferred, `infra/` directory exists) |
@@ -1030,16 +1025,16 @@ Adapter selection is driven by environment configuration, not code changes.
 | Question | Context | Recommendation |
 |----------|---------|----------------|
 | **Agent framework** | The `agent/` module needs a coordination mechanism for multi-step pipelines. | Start with a custom async state machine with pluggable step handlers. Evaluate LangGraph adoption once pipeline complexity (branching, tool-use, human-in-the-loop) warrants a framework. |
-| **Graph visualization library** | The investigation workbench needs an interactive graph explorer. | Evaluate Cytoscape.js (mature, plugin ecosystem), Sigma.js (WebGL, large graphs), and React Flow (React-native, good DX). Prototype each with a representative subgraph before committing. |
+| **Graph visualization library** | The current Investigation Workbench uses `react-force-graph-2d`. | Keep it for the prototype; evaluate WebGL alternatives or route-level code splitting if representative large graphs expose performance limits. |
 | **Embedding model** | RAG quality depends heavily on embedding model choice. | Start with `sentence-transformers` (all-MiniLM-L6-v2 or similar) for fast iteration. Evaluate OpenAI embeddings for quality comparison. Consider domain-specific fine-tuning after the pipeline is functional. |
 | **Batch scheduling** | Some analytics (GNN training, full re-embedding) are compute-heavy batch jobs. | Start with Redis-triggered workers. Evaluate Celery, Airflow, or a simple cron-based approach if scheduling complexity grows. |
-| **Frontend styling** | No CSS strategy is chosen yet. | Evaluate Tailwind CSS (utility-first, fast iteration), CSS Modules (scoped, no runtime), or a component library (Radix UI, shadcn/ui). |
+| **Frontend styling** | CSS Modules plus global app CSS are in use. | Keep component CSS scoped; evaluate a component library only if repeated interaction patterns justify it. |
 
 ### 14.2 Future capabilities
 
 | Capability | Description | Priority |
 |------------|-------------|----------|
-| **CI/CD pipeline** | Automated lint, type-check, test, build, and deploy. GitHub Actions or equivalent. | High — implement early |
+| **CI/CD pipeline** | Baseline lint, type-check, test, build, and dependency audits run in GitHub Actions. | Add deploy/promotion jobs once environments are finalized. |
 | **Authentication & RBAC** | Pluggable auth middleware, role enforcement. See §12. | High — implement before any multi-user deployment |
 | **Multi-tenancy** | Tenant-isolated data, config, and KB namespaces. | Medium — after auth |
 | **Configuration UI wizard** | Browser-based domain configuration editor instead of manual YAML editing. | Medium |
@@ -1050,11 +1045,13 @@ Adapter selection is driven by environment configuration, not code changes.
 
 ### 14.3 Current state vs. target
 
+> **Last updated**: April 2026. For implementation status, verify the current code and tests first. Historical status reports and planning docs live under [`docs/archive/`](archive/); use [`todos_and_stubs_audit_2026-05-05.md`](todos_and_stubs_audit_2026-05-05.md) for the current TODO/stub inventory.
+
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
-| `backend/` | Minimal scaffold (`main.py` hello world, `pyproject.toml` with no dependencies) | Add FastAPI, project structure, `shared/` types, first adapter protocol |
-| `chili_app/` | Vite + React template placeholder | Replace template with app shell (routing, layout, config loading) |
-| `docs/` | This architecture document | Add ADRs as decisions are made |
-| `infra/` | Empty directory | Add Docker Compose for local dev, Dockerfiles |
-| Testing | None | Add pytest config, first backend unit tests |
-| CI/CD | None | Add GitHub Actions for lint + type-check + test |
+| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion, graph/vector/embedding/LLM/RAG services, analytics modules, monitoring, storage adapters, auth/RBAC middleware, and in-memory plus selected production-facing adapters | Enforce auth/RBAC route-wide, add production-mode adapter guardrails, and harden persistence/retry behavior |
+| `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, Investigation Workbench, RAG Chat, Configuration Editor, and WebSocket hook | Complete persisted evidence-pack surface, config save endpoint integration, and production UX/performance polish |
+| `docs/` | Architecture, onboarding guide, security checklist, current TODO/stub audit, and archived historical planning/status material | Keep active docs synchronized with implementation and archive stale snapshots |
+| `infra/` | Docker Compose, flat Kubernetes manifests, and Helm chart | Add cloud-provider Terraform/Pulumi and production hardening as needed |
+| Testing | Extensive backend pytest suite and frontend Vitest suite | Keep CI coverage gates calibrated and add live adapter profiles where services are available |
+| CI/CD | GitHub Actions baseline exists | Add deployment/promotion workflows after release environments are defined |

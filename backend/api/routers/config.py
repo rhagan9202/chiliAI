@@ -9,6 +9,7 @@ from api.dependencies import (
     get_domain_config_payload,
     get_domain_config_schema_payload,
 )
+from api.middleware.rbac import require_role
 
 __all__ = ["router"]
 
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/config", tags=["configuration"])
 # Add ETag / Last-Modified headers for caching. Add change audit logging.
 
 
-@router.get("/domain")
+@router.get("/domain", dependencies=[Depends(require_role("viewer"))])
 async def get_domain(
     config: dict[str, object] = Depends(get_domain_config_payload),
 ) -> dict[str, object]:

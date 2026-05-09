@@ -22,11 +22,15 @@ class ObjectStore(Protocol):
 
     def get_bytes(self, key: str) -> StoredObject: ...
 
+    def delete(self, key: str) -> None: ...
+
+    def exists(self, key: str) -> bool: ...
+
+    def list_keys(self, prefix: str) -> list[str]: ...
+
     # TODO(production): Extend ObjectStore protocol with operations required for
-    # knowledge base lifecycle management:
-    # - delete(key: str) -> None
-    # - exists(key: str) -> bool
-    # - list_keys(prefix: str, limit: int, cursor: str | None) -> ListResult
+    # large object and production lifecycle management:
+    # - paginated list_keys(prefix: str, limit: int, cursor: str | None) -> ListResult
     # - get_stream(key: str) -> Iterator[bytes] for large object streaming
     # - put_stream(key: str, chunks: Iterator[bytes], ...) -> StoredObjectWriteResult
     # - generate_presigned_url(key: str, expires_in: int) -> str (S3/GCS download links)

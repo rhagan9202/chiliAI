@@ -2,26 +2,33 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from typing import TypeVar
+
 from events.protocols import EventBus
 from events.types import GraphUpdatedDocumentReference, GraphUpdatedEvent
 from graph.adapters.protocols import GraphRepository
-from graph.exceptions import GraphPersistenceError
-from graph.models import GraphUpsertResult
-from graph.service_models import GraphBuildReceipt, GraphBuildTask
+from graph.exceptions import BatchUpsertError, GraphPersistenceError
+from graph.models import GraphMetrics, GraphUpsertResult, SubgraphResult
+from graph.service_models import (
+    EntitySearchQuery,
+    GraphBuildReceipt,
+    GraphBuildTask,
+    GraphMetricsResult,
+    NeighborhoodQuery,
+)
 from shared.types import Entity, Relationship
 from storage.protocols import ObjectStore
+
+ItemT = TypeVar("ItemT")
 
 
 class GraphService:
     """Persist validated runtime objects and publish graph update events."""
 
-    # TODO(production): This service is write-only. Add read/query methods to support
-    # the dashboard and investigation workbench (get_entity, query_neighborhood,
-    # search_entities, compute_metrics). Add batch chunking for large upserts
-    # (split entity/relationship lists to avoid oversized transactions). Add
-    # transaction semantics: entity + relationship upserts should be atomic — if
-    # relationships fail, roll back entity changes. Add idempotency (change
-    # detection / version tracking on upsert to avoid redundant writes).
+    # TODO(production): Add get_subgraph once repository adapters expose a filtered
+    # subgraph query surface. Add idempotency (change detection / version
+    # tracking on upsert to avoid redundant writes).
 
     def __init__(
         self,
@@ -29,21 +36,25 @@ class GraphService:
         *,
         object_store: ObjectStore,
         event_bus: EventBus,
+        batch_size: int = 500,
     ) -> None:
+        if batch_size <= 0:
+            raise ValueError("GraphService batch_size must be greater than 0.")
+
         self._repository = repository
         self._object_store = object_store
         self._event_bus = event_bus
+        self._batch_size = batch_size
 
     def upsert_task(self, task: GraphBuildTask) -> GraphBuildReceipt:
         try:
-            stored_entities = self._repository.upsert_entities(
-                task.knowledge_base_id,
-                task.entities,
+            stored_entities = self._upsert_entities(task)
+            stored_relationships = self._upsert_relationships(
+                task,
+                successful_entity_count=len(stored_entities),
             )
-            stored_relationships = self._repository.upsert_relationships(
-                task.knowledge_base_id,
-                task.relationships,
-            )
+        except BatchUpsertError:
+            raise
         except Exception as exc:
             raise GraphPersistenceError("Failed to upsert graph entities or relationships.") from exc
 
@@ -91,6 +102,7 @@ class GraphService:
         )
         self._event_bus.publish(
             GraphUpdatedEvent(
+                correlation_id=task.correlation_id,
                 documents=[
                     GraphUpdatedDocumentReference(
                         knowledge_base_id=receipt.knowledge_base_id,
@@ -108,29 +120,122 @@ class GraphService:
         )
         return receipt
 
-    def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None:
-        for entity in self._repository.get_entities(knowledge_base_id):
-            if entity.id == entity_id:
-                return entity
-        return None
+    def _upsert_entities(self, task: GraphBuildTask) -> list[Entity]:
+        stored_entities: list[Entity] = []
+        for entity_batch in self._chunk_items(task.entities):
+            try:
+                with self._repository.transaction(task.knowledge_base_id):
+                    stored_entities.extend(
+                        self._repository.upsert_entities(
+                            task.knowledge_base_id,
+                            entity_batch,
+                        )
+                    )
+            except Exception as exc:
+                raise BatchUpsertError(
+                    successful_entity_count=len(stored_entities),
+                    successful_relationship_count=0,
+                ) from exc
 
-    def get_neighbors(
+        return stored_entities
+
+    def _upsert_relationships(
+        self,
+        task: GraphBuildTask,
+        *,
+        successful_entity_count: int,
+    ) -> list[Relationship]:
+        stored_relationships: list[Relationship] = []
+        for relationship_batch in self._chunk_items(task.relationships):
+            try:
+                with self._repository.transaction(task.knowledge_base_id):
+                    stored_relationships.extend(
+                        self._repository.upsert_relationships(
+                            task.knowledge_base_id,
+                            relationship_batch,
+                        )
+                    )
+            except Exception as exc:
+                raise BatchUpsertError(
+                    successful_entity_count=successful_entity_count,
+                    successful_relationship_count=len(stored_relationships),
+                ) from exc
+
+        return stored_relationships
+
+    def _chunk_items(self, items: list[ItemT]) -> Iterator[list[ItemT]]:
+        for start in range(0, len(items), self._batch_size):
+            yield items[start : start + self._batch_size]
+
+    def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None:
+        return self._repository.get_entity(knowledge_base_id, entity_id)
+
+    def update_entity_properties(
         self,
         knowledge_base_id: str,
         entity_id: str,
-    ) -> tuple[list[Entity], list[Relationship]]:
-        entities_by_id = {entity.id: entity for entity in self._repository.get_entities(knowledge_base_id)}
-        relationships = [
-            relationship
-            for relationship in self._repository.get_relationships(knowledge_base_id)
-            if relationship.source_id == entity_id or relationship.target_id == entity_id
-        ]
-        neighbor_ids = {
-            relationship.source_id if relationship.source_id != entity_id else relationship.target_id
-            for relationship in relationships
-        }
-        neighbors = [entities_by_id[neighbor_id] for neighbor_id in neighbor_ids if neighbor_id in entities_by_id]
-        return neighbors, relationships
+        properties: dict[str, object],
+    ) -> Entity:
+        """Idempotently merge properties onto an existing entity record."""
+
+        return self._repository.update_entity_properties(
+            knowledge_base_id, entity_id, properties
+        )
+
+    def query_neighborhood(
+        self,
+        knowledge_base_id: str,
+        entity_id: str,
+        depth: int,
+    ) -> SubgraphResult:
+        query = NeighborhoodQuery(
+            knowledge_base_id=knowledge_base_id,
+            entity_id=entity_id,
+            depth=depth,
+        )
+        return self._repository.get_neighbors(
+            query.knowledge_base_id,
+            query.entity_id,
+            query.depth,
+            query.direction,
+        )
+
+    def search_entities(
+        self,
+        knowledge_base_id: str,
+        query: str,
+        limit: int,
+        offset: int,
+    ) -> list[Entity]:
+        search_query = EntitySearchQuery(
+            knowledge_base_id=knowledge_base_id,
+            query=query,
+            limit=limit,
+            offset=offset,
+        )
+        repository_results = self._repository.search_entities(
+            search_query.knowledge_base_id,
+            search_query.query,
+            search_query.limit + search_query.offset,
+        )
+        return repository_results[search_query.offset :]
+
+    def compute_metrics(self, knowledge_base_id: str) -> GraphMetrics:
+        entity_count = self._repository.count_entities(knowledge_base_id)
+        relationship_count = self._repository.count_relationships(knowledge_base_id)
+        avg_degree = 0.0
+        if entity_count > 0:
+            avg_degree = (2 * relationship_count) / entity_count
+
+        result = GraphMetricsResult(
+            knowledge_base_id=knowledge_base_id,
+            metrics=GraphMetrics(
+                entity_count=entity_count,
+                relationship_count=relationship_count,
+                avg_degree=avg_degree,
+            ),
+        )
+        return result.metrics
 
     @staticmethod
     def _build_graph_update_storage_key(
@@ -145,10 +250,16 @@ def create_graph_service(
     *,
     object_store: ObjectStore,
     event_bus: EventBus,
+    batch_size: int = 500,
 ) -> GraphService:
     """Create the default graph service."""
 
-    return GraphService(repository, object_store=object_store, event_bus=event_bus)
+    return GraphService(
+        repository,
+        object_store=object_store,
+        event_bus=event_bus,
+        batch_size=batch_size,
+    )
 
 
 __all__ = ["GraphService", "create_graph_service"]

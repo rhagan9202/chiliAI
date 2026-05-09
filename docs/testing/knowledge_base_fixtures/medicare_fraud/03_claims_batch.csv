@@ -1,0 +1,4 @@
+npi,specialty,state,hic_number,age,claim_id,amount,service_date,facility_id,name,type
+1112223334,Internal Medicine,CA,HIC-CSV-001,74,CLAIM-CSV-001,410.25,2026-03-01,FAC-CSV-001,Pacific Fixture Clinic,outpatient
+2223334445,Orthopedics,CA,HIC-CSV-002,69,CLAIM-CSV-002,3200.00,2026-03-02,FAC-CSV-002,Golden State Surgery Center,ambulatory surgical center
+3334445556,Home Health,CA,HIC-CSV-003,83,CLAIM-CSV-003,7800.75,2026-03-03,FAC-CSV-003,Bay Home Health Services,home health agency

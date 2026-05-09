@@ -2,37 +2,48 @@
 
 from __future__ import annotations
 
+from analytics.risk.adapters.linear_strategy import LinearScoringStrategy
 from analytics.risk.adapters.protocols import RiskSignalSourceProtocol
 from analytics.risk.exceptions import (
     RiskConfigurationError,
     RiskInsufficientSignalsError,
     RiskSourceError,
 )
-from analytics.risk.models import RiskAssessmentResult, RiskFactor, RiskSignal
+from analytics.risk.models import RiskAssessmentResult
+from analytics.risk.protocols import RiskScoringStrategyProtocol
 from analytics.risk.service_models import (
     RiskAssessmentRequest,
     RiskAssessmentResponse,
     RiskFactorScore,
+    RiskScore,
+    RiskScoreListRequest,
+    RiskScoreListResponse,
+    RiskTrend,
 )
 from events.protocols import EventBus
 from events.types import RiskScoredEvent, RiskScoredReference
 from shared.utils import generate_id
 
+DEFAULT_TREND_DELTA_THRESHOLD = 0.05
+
 
 class RiskService:
     """Coordinate signal loading, weighted scoring, and event publication."""
 
-    # TODO(production): Replace simple weighted-sum scoring with pluggable risk
-    # models (logistic regression, gradient boosting, ensemble). Add temporal risk
-    # trending (compare current score to historical baseline). Add risk explanation
-    # generation linking scores to specific evidence. Add batch assessment for
-    # evaluating all entities in a knowledge base. Add caching for repeated
-    # assessments of the same entity. Current _score_factors() is a basic linear
-    # weighting — needs ML-backed alternatives as configurable strategies.
-
-    def __init__(self, signal_source: RiskSignalSourceProtocol, *, event_bus: EventBus) -> None:
+    def __init__(
+        self,
+        signal_source: RiskSignalSourceProtocol,
+        *,
+        event_bus: EventBus,
+        scoring_strategy: RiskScoringStrategyProtocol | None = None,
+        delta_threshold: float = DEFAULT_TREND_DELTA_THRESHOLD,
+    ) -> None:
         self._signal_source = signal_source
         self._event_bus = event_bus
+        self._scoring_strategy: RiskScoringStrategyProtocol = (
+            scoring_strategy if scoring_strategy is not None else LinearScoringStrategy()
+        )
+        self._delta_threshold = delta_threshold
 
     def assess(self, request: RiskAssessmentRequest) -> RiskAssessmentResponse:
         try:
@@ -50,13 +61,24 @@ class RiskService:
                 "Risk profile requires at least two signals for assessment."
             )
 
-        factors = _score_factors(profile.signals)
+        factors = self._scoring_strategy.score(profile.signals)
         overall_score = min(1.0, sum(factor.contribution for factor in factors))
         risk_level = _risk_level(
             overall_score,
             medium_risk_threshold=request.medium_risk_threshold,
             high_risk_threshold=request.high_risk_threshold,
         )
+
+        previous_score = self._load_previous_score(
+            knowledge_base_id=request.knowledge_base_id,
+            entity_id=request.entity_id,
+        )
+        trend = _compute_trend(
+            current_score=overall_score,
+            previous_score=previous_score,
+            delta_threshold=self._delta_threshold,
+        )
+
         result = RiskAssessmentResult(
             request_id=generate_id(),
             knowledge_base_id=request.knowledge_base_id,
@@ -83,6 +105,8 @@ class RiskService:
                 )
                 for factor in result.factors
             ],
+            trend=trend,
+            previous_score=previous_score,
         )
         self._event_bus.publish(
             RiskScoredEvent(
@@ -100,29 +124,60 @@ class RiskService:
         )
         return response
 
+    def list_scores(self, request: RiskScoreListRequest) -> RiskScoreListResponse:
+        try:
+            entries = self._signal_source.list_ranked_entries(
+                knowledge_base_id=request.knowledge_base_id,
+                entity_type=request.entity_type,
+                limit=request.limit,
+            )
+        except ValueError as exc:
+            raise RiskConfigurationError(str(exc)) from exc
+        except Exception as exc:
+            raise RiskSourceError("Failed to load ranked risk scores.") from exc
+
+        items = [
+            RiskScore(
+                entity_id=entry.entity_id,
+                entity_type=entry.entity_type,
+                overall_score=entry.overall_score,
+                risk_level=entry.risk_level,
+            )
+            for entry in entries
+        ]
+        return RiskScoreListResponse(
+            knowledge_base_id=request.knowledge_base_id,
+            items=items,
+            total=len(items),
+        )
+
+    def _load_previous_score(
+        self, *, knowledge_base_id: str, entity_id: str
+    ) -> float | None:
+        try:
+            return self._signal_source.load_historical_score(
+                knowledge_base_id=knowledge_base_id,
+                entity_id=entity_id,
+            )
+        except Exception:
+            return None
+
 
 def create_risk_service(
     signal_source: RiskSignalSourceProtocol,
     *,
     event_bus: EventBus,
+    scoring_strategy: RiskScoringStrategyProtocol | None = None,
+    delta_threshold: float = DEFAULT_TREND_DELTA_THRESHOLD,
 ) -> RiskService:
     """Create the default risk service."""
 
-    return RiskService(signal_source, event_bus=event_bus)
-
-
-def _score_factors(signals: list[RiskSignal]) -> list[RiskFactor]:
-    total_weight = sum(signal.weight for signal in signals)
-    return [
-        RiskFactor(
-            factor_name=signal.signal_name,
-            raw_value=signal.value,
-            weight=signal.weight,
-            contribution=min(1.0, (signal.value * signal.weight) / total_weight),
-            rationale=signal.rationale,
-        )
-        for signal in signals
-    ]
+    return RiskService(
+        signal_source,
+        event_bus=event_bus,
+        scoring_strategy=scoring_strategy,
+        delta_threshold=delta_threshold,
+    )
 
 
 def _risk_level(
@@ -138,4 +193,20 @@ def _risk_level(
     return "low"
 
 
-__all__ = ["RiskService", "create_risk_service"]
+def _compute_trend(
+    *,
+    current_score: float,
+    previous_score: float | None,
+    delta_threshold: float,
+) -> RiskTrend | None:
+    if previous_score is None:
+        return None
+    delta = current_score - previous_score
+    if delta > delta_threshold:
+        return "increasing"
+    if -delta > delta_threshold:
+        return "decreasing"
+    return "stable"
+
+
+__all__ = ["DEFAULT_TREND_DELTA_THRESHOLD", "RiskService", "create_risk_service"]

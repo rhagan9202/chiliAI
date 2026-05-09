@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from typing import cast
 
 from events.types import (
     AgentWorkflowStartedEvent,
+    AlertCreatedEvent,
     AlertsCreatedEvent,
+    AnalysisFailedEvent,
     AnyEvent,
     ClaimsIngestedEvent,
     ClaimsReceivedEvent,
+    EmbeddingsCompleteEvent,
     EmbeddingsGeneratedEvent,
     ExplainabilityGeneratedEvent,
     EntitiesExtractedEvent,
@@ -23,7 +27,10 @@ from events.types import (
     DocumentsUploadedEvent,
     EventBase,
     KnowledgeBaseCreatedEvent,
+    KnowledgeBaseDeletedEvent,
+    KnowledgeBaseReadyEvent,
     LlmCompletedEvent,
+    PipelineProgressEvent,
     RagCompletedEvent,
     RiskScoredEvent,
     TimeseriesAnalyzedEvent,
@@ -37,15 +44,21 @@ EVENT_TYPE_REGISTRY: dict[str, type[EventBase]] = {
     # are registered automatically. Add schema_version field to serialized payloads
     # for backward-compatible deserialization across deployments.
     "agent.workflow.started": AgentWorkflowStartedEvent,
+    "alert.created": AlertCreatedEvent,
     "alerts.created": AlertsCreatedEvent,
+    "analysis.failed": AnalysisFailedEvent,
+    "pipeline.progress": PipelineProgressEvent,
     "kb.create": KnowledgeBaseCreatedEvent,
+    "kb.delete": KnowledgeBaseDeletedEvent,
     "documents.uploaded": DocumentsUploadedEvent,
     "documents.parsed": DocumentsParsedEvent,
     "documents.chunked": DocumentsChunkedEvent,
     "entities.extracted": EntitiesExtractedEvent,
     "entities.validated": EntitiesValidatedEvent,
     "graph.updated": GraphUpdatedEvent,
+    "embeddings.complete": EmbeddingsCompleteEvent,
     "vectors.indexed": VectorsIndexedEvent,
+    "kb.ready": KnowledgeBaseReadyEvent,
     "llm.completed": LlmCompletedEvent,
     "embeddings.generated": EmbeddingsGeneratedEvent,
     "rag.completed": RagCompletedEvent,
@@ -81,7 +94,7 @@ def decode_event(payload: Mapping[str, str] | Mapping[bytes, bytes]) -> AnyEvent
     event_model = EVENT_TYPE_REGISTRY.get(event_type)
     if event_model is None:
         raise ValueError(f"Unsupported event type: {event_type}")
-    return event_model.model_validate(json.loads(event_body))
+    return cast(AnyEvent, event_model.model_validate(json.loads(event_body)))
 
 
 def _decode_key(value: str | bytes) -> str:

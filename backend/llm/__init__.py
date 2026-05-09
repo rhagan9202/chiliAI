@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from llm.adapters.anthropic_adapter import AnthropicLlmClient
 from llm.adapters.in_memory import InMemoryLlmClient
+from llm.adapters.openai_adapter import OpenAILlmClient
 from llm.adapters.protocols import LlmClientProtocol
 from llm.exceptions import LlmConfigurationError, LlmError, LlmProviderError
 from llm.models import ChatMessage, CompletionMetadata, GenerationRequest, GenerationResult, MessageRole
@@ -16,6 +18,7 @@ from llm.service_models import (
 )
 
 __all__ = [
+    "AnthropicLlmClient",
     "ChatMessage",
     "ChatMessageInput",
     "CompletionMetadata",
@@ -31,6 +34,7 @@ __all__ = [
     "LlmService",
     "LlmServiceProtocol",
     "MessageRole",
+    "OpenAILlmClient",
     "PromptTemplate",
     "create_llm_service",
 ]

@@ -14,6 +14,7 @@ class WorkflowSubmissionRequest(BaseModel):
     trigger_event_type: str
     requested_steps: list[str] = Field(default_factory=list)
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
+    idempotency_key: str | None = None
 
     @model_validator(mode="after")
     def _validate_steps(self) -> WorkflowSubmissionRequest:

@@ -7,17 +7,13 @@ Validated runtime entities belong in ``shared.types``.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field, model_validator
 
 from shared.types import Entity, Relationship
-
-
-def _utc_now() -> datetime:
-    """Return the current UTC timestamp."""
-    return datetime.now(timezone.utc)
+from shared.utils import utc_now
 
 
 class SourceType(str, Enum):
@@ -65,7 +61,7 @@ class SourceDocument(BaseModel):
     checksum: str | None = None
     size_bytes: int | None = Field(default=None, ge=0)
     status: IngestionStatus = IngestionStatus.PENDING
-    uploaded_at: datetime = Field(default_factory=_utc_now)
+    uploaded_at: datetime = Field(default_factory=utc_now)
     processed_at: datetime | None = None
     error_detail: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
@@ -89,7 +85,7 @@ class ParsedDocument(BaseModel):
     records: list[StructuredRecord] = Field(default_factory=list)
     parser_name: str
     parser_version: str | None = None
-    parsed_at: datetime = Field(default_factory=_utc_now)
+    parsed_at: datetime = Field(default_factory=utc_now)
     parser_metadata: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -196,7 +192,7 @@ class ExtractionResult(BaseModel):
     candidate_relationships: list[CandidateRelationship] = Field(default_factory=list)
     worker_id: str | None = None
     warnings: list[str] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=_utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class ValidationReport(BaseModel):
@@ -209,7 +205,7 @@ class ValidationReport(BaseModel):
     valid_relationships: list[Relationship] = Field(default_factory=list)
     entity_errors: dict[str, list[str]] = Field(default_factory=dict)
     relationship_errors: dict[str, list[str]] = Field(default_factory=dict)
-    validated_at: datetime = Field(default_factory=_utc_now)
+    validated_at: datetime = Field(default_factory=utc_now)
 
 
 __all__ = [

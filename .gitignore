@@ -29,3 +29,10 @@ Thumbs.db
 *.orig
 *~
 #*#
+
+# Test artifacts
+.coverage
+htmlcov/
+
+# Browser automation cache
+.playwright-mcp/

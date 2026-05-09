@@ -1,0 +1,77 @@
+# Production overrides. Customize before deploying.
+# Provision the chili-secrets K8s Secret beforehand (see infra/README.md).
+
+replicaCount:
+  api: 4
+  worker: 4
+  app: 3
+
+image:
+  api:
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  worker:
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  app:
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+
+resources:
+  api:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+  worker:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+
+redis:
+  uri: "redis://prod-redis.internal:6379"
+neo4j:
+  uri: "bolt://prod-neo4j.internal:7687"
+qdrant:
+  uri: "http://prod-qdrant.internal:6333"
+minio:
+  endpoint: "minio.internal:9000"
+
+auth:
+  enabled: true
+  issuerUrl: "https://auth.example.com/"
+  audience: "chili-api"
+
+config:
+  logLevel: "INFO"
+
+ingress:
+  enabled: true
+  className: "nginx"
+  host: "chili.example.com"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+
+tls:
+  enabled: true
+  secretName: "chili-tls"
+  hosts:
+    - chili.example.com
+
+hpa:
+  api:
+    enabled: true
+    minReplicas: 4
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 65
+  worker:
+    enabled: true
+    minReplicas: 4
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 65

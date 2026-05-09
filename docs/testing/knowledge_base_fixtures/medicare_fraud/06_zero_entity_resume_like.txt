@@ -1,0 +1,9 @@
+Resume fixture for zero-entity completion testing
+
+Candidate: Jordan Analyst
+Position: Data platform engineer
+Skills: Python, TypeScript, Docker, graph analytics, Redis Streams, Neo4j, observability
+Experience: Built internal tooling for operational analytics and document processing.
+Education: Master of Science in Information Systems.
+
+This file intentionally avoids Medicare domain property labels from the configured claim, provider, beneficiary, and facility schemas. It should parse, chunk, and complete the ingestion pipeline with zero extracted graph entities.

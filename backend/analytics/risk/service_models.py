@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, model_validator
+
+RiskTrend = Literal["increasing", "stable", "decreasing"]
 
 
 class RiskAssessmentRequest(BaseModel):
@@ -40,10 +44,41 @@ class RiskAssessmentResponse(BaseModel):
     risk_level: str
     factor_count: int = Field(ge=0)
     factors: list[RiskFactorScore] = Field(default_factory=list)
+    trend: RiskTrend | None = None
+    previous_score: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class RiskScoreListRequest(BaseModel):
+    """A caller-supplied request for ranked risk scores."""
+
+    knowledge_base_id: str
+    entity_type: str | None = None
+    limit: int = Field(default=20, gt=0, le=500)
+
+
+class RiskScore(BaseModel):
+    """A single ranked risk score entry."""
+
+    entity_id: str
+    entity_type: str
+    overall_score: float = Field(ge=0.0, le=1.0)
+    risk_level: str
+
+
+class RiskScoreListResponse(BaseModel):
+    """A paginated, ranked list of risk scores."""
+
+    knowledge_base_id: str
+    items: list[RiskScore] = Field(default_factory=list[RiskScore])
+    total: int = Field(ge=0)
 
 
 __all__ = [
     "RiskAssessmentRequest",
     "RiskAssessmentResponse",
     "RiskFactorScore",
+    "RiskScore",
+    "RiskScoreListRequest",
+    "RiskScoreListResponse",
+    "RiskTrend",
 ]
