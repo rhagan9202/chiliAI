@@ -54,6 +54,22 @@ class TestConfigRouter:
         assert data["capabilities"]["timeseries"] is True
         assert data["capabilities"]["gnn"] is True
 
+    def test_response_contains_ui_config(self, client: TestClient) -> None:
+        data = client.get("/config/domain").json()
+        assert data["ui"]["default_entity_type"] == "provider"
+        assert data["ui"]["navigation"]["pages"][0]["id"] == "dashboard"
+
+    def test_get_features_returns_enabled_pages(self, client: TestClient) -> None:
+        data = client.get("/config/features").json()
+        assert data["capabilities"]["gnn"] is True
+        assert "investigation" in data["enabled_pages"]
+        assert data["default_entity_type"] == "provider"
+
+    def test_get_domain_schema_returns_json_schema(self, client: TestClient) -> None:
+        data = client.get("/config/domain/schema").json()
+        assert data["title"] == "DomainConfig"
+        assert "ui" in data["properties"]
+
     def test_health_still_works(self, client: TestClient) -> None:
         resp = client.get("/health")
         assert resp.status_code == 200

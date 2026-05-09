@@ -46,6 +46,12 @@ export type DomainConfig = {
   ui?: DomainUiConfig
 }
 
+export type DomainRoleConfig = {
+  landing_page: string
+  pages: string[]
+  permissions: string[]
+}
+
 export type DomainUiConfig = {
   default_entity_type?: string
   navigation?: {
@@ -59,6 +65,7 @@ export type DomainUiConfig = {
       chips?: string[]
     }
   >
+  roles?: Record<string, DomainRoleConfig>
 }
 
 export type DomainNavigationPage = {
@@ -66,4 +73,17 @@ export type DomainNavigationPage = {
   label: string
   route: string
   capability?: keyof DomainCapabilities | string
+}
+
+export type DomainFeatures = {
+  capabilities: DomainCapabilities
+  default_entity_type: string | null
+  enabled_pages: string[]
+  roles: Record<string, DomainRoleConfig>
+}
+
+export type DomainConfigSchema = {
+  title: string
+  properties: Record<string, unknown>
+  required?: string[]
 }

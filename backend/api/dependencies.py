@@ -20,7 +20,9 @@ from storage.protocols import ObjectStore
 
 __all__ = [
     "get_domain_config",
+    "get_domain_config_features_payload",
     "get_domain_config_payload",
+    "get_domain_config_schema_payload",
     "get_event_bus",
     "get_event_bus_settings",
     "get_ingestion_service",
@@ -46,6 +48,30 @@ def get_domain_config_payload(
 ) -> dict[str, object]:
     """Return the active domain configuration as a plain mapping."""
     return cast(dict[str, object], config.model_dump())
+
+
+def get_domain_config_features_payload(
+    config: DomainConfig = Depends(get_domain_config),
+) -> dict[str, object]:
+    """Return frontend-oriented feature flags derived from the domain config."""
+    enabled_pages = [
+        page.id
+        for page in (config.ui.navigation.pages if config.ui and config.ui.navigation else [])
+        if page.capability is None or bool(getattr(config.capabilities, page.capability, False))
+    ]
+    return {
+        "capabilities": config.capabilities.model_dump(),
+        "default_entity_type": config.ui.default_entity_type if config.ui else None,
+        "enabled_pages": enabled_pages,
+        "roles": config.ui.roles if config.ui else {},
+    }
+
+
+def get_domain_config_schema_payload(
+    config: DomainConfig = Depends(get_domain_config),
+) -> dict[str, object]:
+    """Return the JSON schema for the active domain configuration model."""
+    return cast(dict[str, object], config.__class__.model_json_schema())
 
 
 @lru_cache(maxsize=1)

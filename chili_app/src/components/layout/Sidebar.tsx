@@ -15,6 +15,7 @@ import { NavLink } from 'react-router-dom'
 import type { DomainConfig } from '../../api/contracts'
 
 type NavItem = {
+  id: string
   label: string
   to: string
   icon: ComponentType<{ size?: number }>
@@ -22,14 +23,14 @@ type NavItem = {
 }
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
-  { label: 'Alert Feed', to: '/alerts', icon: ClipboardList },
-  { label: 'Investigation', to: '/investigation', icon: GitBranch, capability: 'gnn' },
-  { label: 'Cases', to: '/cases', icon: BriefcaseBusiness },
-  { label: 'Knowledge Bases', to: '/knowledge-bases', icon: Database },
-  { label: 'Policy Intelligence', to: '/policy', icon: ShieldCheck, capability: 'rag_chat' },
-  { label: 'RAG Chat', to: '/rag-chat', icon: Bot, capability: 'rag_chat' },
-  { label: 'Configuration', to: '/configuration', icon: FileCog },
+  { id: 'dashboard', label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
+  { id: 'alerts', label: 'Alert Feed', to: '/alerts', icon: ClipboardList },
+  { id: 'investigation', label: 'Investigation', to: '/investigation', icon: GitBranch, capability: 'gnn' },
+  { id: 'cases', label: 'Cases', to: '/cases', icon: BriefcaseBusiness },
+  { id: 'knowledge_bases', label: 'Knowledge Bases', to: '/knowledge-bases', icon: Database },
+  { id: 'policy', label: 'Policy Intelligence', to: '/policy', icon: ShieldCheck, capability: 'explainability' },
+  { id: 'rag_chat', label: 'RAG Chat', to: '/rag-chat', icon: Bot, capability: 'rag_chat' },
+  { id: 'configuration', label: 'Configuration', to: '/configuration', icon: FileCog },
 ]
 
 type SidebarProps = {
@@ -37,7 +38,29 @@ type SidebarProps = {
 }
 
 export function Sidebar({ domainConfig }: SidebarProps) {
-  const visibleItems = navItems.filter((item) => {
+  const navItemsById = new Map(navItems.map((item) => [item.id, item]))
+  const configuredItems: NavItem[] = domainConfig?.ui?.navigation?.pages.reduce<NavItem[]>(
+    (items, page) => {
+      const fallback = navItemsById.get(page.id)
+      if (!fallback) {
+        return items
+      }
+
+      items.push({
+        ...fallback,
+        capability:
+          (page.capability as keyof DomainConfig['capabilities'] | undefined) ??
+          fallback.capability,
+        label: page.label,
+        to: page.route,
+      })
+      return items
+    },
+    [],
+  ) ?? []
+
+  const navigationItems = configuredItems.length > 0 ? configuredItems : navItems
+  const visibleItems = navigationItems.filter((item) => {
     if (!item.capability || !domainConfig) {
       return true
     }
