@@ -181,6 +181,44 @@ class AlertsConfig(BaseModel):
     # Add severity_levels: list[str] to make severity tiers configurable per domain.
 
 
+class UiNavigationPageConfig(BaseModel):
+    """A single frontend navigation page definition."""
+
+    id: str
+    label: str
+    route: str
+    capability: str | None = None
+
+
+class UiNavigationConfig(BaseModel):
+    """Frontend navigation structure."""
+
+    pages: list[UiNavigationPageConfig]
+
+
+class UiDisplayFieldsConfig(BaseModel):
+    """Config-driven entity display field mapping for frontend rendering."""
+
+    title: str
+    subtitle: str | None = None
+    chips: list[str] = Field(default_factory=list)
+
+
+class UiRoleConfig(BaseModel):
+    """Frontend role-driven navigation and permission hints."""
+
+    landing_page: str
+    pages: list[str] = Field(default_factory=list)
+    permissions: list[str] = Field(default_factory=list)
+
+
+class UiConfig(BaseModel):
+    """Optional frontend UI metadata surfaced through the domain config."""
+
+    default_entity_type: str | None = None
+    navigation: UiNavigationConfig | None = None
+    display_fields: dict[str, UiDisplayFieldsConfig] = Field(default_factory=dict)
+    roles: dict[str, UiRoleConfig] = Field(default_factory=dict)
 class AuthConfig(BaseModel):
     """JWT/OIDC authentication configuration (E10-S06)."""
 
@@ -255,6 +293,7 @@ class DomainConfig(BaseModel):
     auth: AuthConfig | None = None
     validation: ValidationConfig | None = None
     alerts: AlertsConfig
+    ui: UiConfig | None = None
 
     @model_validator(mode="after")
     def _validate_cross_references(self) -> DomainConfig:
@@ -350,6 +389,11 @@ __all__ = [
     "GraphDbConfig",
     "IngestionConfig",
     "IngestionSourceConfig",
+    "UiConfig",
+    "UiDisplayFieldsConfig",
+    "UiNavigationConfig",
+    "UiNavigationPageConfig",
+    "UiRoleConfig",
     "EmbeddingsConfig",
     "EventBusConfig",
     "LlmConfig",

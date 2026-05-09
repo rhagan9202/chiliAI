@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,18 @@ def client(config: DomainConfig) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_domain_config] = lambda: config
     return TestClient(app)
+
+
+@pytest.fixture()
+def custom_origin_client(
+    config: DomainConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[TestClient]:
+    monkeypatch.setenv("ALLOWED_ORIGINS", "https://review.example, https://ops.example")
+    app = create_app()
+    app.dependency_overrides[get_domain_config] = lambda: config
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 class TestConfigRouter:
@@ -54,10 +67,47 @@ class TestConfigRouter:
         assert data["capabilities"]["timeseries"] is True
         assert data["capabilities"]["gnn"] is True
 
+    def test_response_contains_ui_config(self, client: TestClient) -> None:
+        data = client.get("/config/domain").json()
+        assert data["ui"]["default_entity_type"] == "provider"
+        assert data["ui"]["navigation"]["pages"][0]["id"] == "dashboard"
+
+    def test_get_features_returns_enabled_pages(self, client: TestClient) -> None:
+        data = client.get("/config/features").json()
+        assert data["capabilities"]["gnn"] is True
+        assert "investigation" in data["enabled_pages"]
+        assert data["default_entity_type"] == "provider"
+        assert data["default_role"] == "analyst"
+
+    def test_get_domain_schema_returns_json_schema(self, client: TestClient) -> None:
+        data = client.get("/config/domain/schema").json()
+        assert data["title"] == "DomainConfig"
+        assert "ui" in data["properties"]
+
     def test_health_still_works(self, client: TestClient) -> None:
         resp = client.get("/health")
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
+
+    def test_default_cors_allows_local_vite_origin(self, client: TestClient) -> None:
+        resp = client.get("/health", headers={"Origin": "http://localhost:5173"})
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+    def test_custom_cors_origins_respect_environment(self, custom_origin_client: TestClient) -> None:
+        allowed = custom_origin_client.get(
+            "/health",
+            headers={"Origin": "https://review.example"},
+        )
+        blocked = custom_origin_client.get(
+            "/health",
+            headers={"Origin": "http://localhost:5173"},
+        )
+
+        assert allowed.status_code == 200
+        assert allowed.headers["access-control-allow-origin"] == "https://review.example"
+        assert blocked.status_code == 200
+        assert "access-control-allow-origin" not in blocked.headers
 
 
 def test_config_get_requires_viewer_when_auth_enabled(monkeypatch: pytest.MonkeyPatch) -> None:

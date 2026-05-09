@@ -17,6 +17,11 @@ from config.schema import (
     GraphDbConfig,
     IngestionConfig,
     IngestionSourceConfig,
+    UiConfig,
+    UiDisplayFieldsConfig,
+    UiNavigationConfig,
+    UiNavigationPageConfig,
+    UiRoleConfig,
     LlmConfig,
     MonitoringConfig,
     ObjectStoreConfig,
@@ -84,6 +89,28 @@ def _make_config(
         monitoring=monitoring,
         rag=rag,
         alerts=AlertsConfig(thresholds={}),
+        ui=UiConfig(
+            default_entity_type="alpha",
+            navigation=UiNavigationConfig(
+                pages=[
+                    UiNavigationPageConfig(
+                        id="dashboard",
+                        label="Dashboard",
+                        route="/dashboard",
+                    )
+                ]
+            ),
+            display_fields={
+                "alpha": UiDisplayFieldsConfig(title="id")
+            },
+            roles={
+                "analyst": UiRoleConfig(
+                    landing_page="dashboard",
+                    pages=["dashboard"],
+                    permissions=["alerts:read"],
+                )
+            },
+        ),
     )
 
 
@@ -255,6 +282,13 @@ class TestDomainConfigValid:
         ]
         cfg = _make_config(entities=ents, relationships=rels)
         assert cfg.relationships[0].source == "node"
+
+    def test_ui_config_roundtrip(self) -> None:
+        cfg = _make_config()
+        assert cfg.ui is not None
+        assert cfg.ui.default_entity_type == "alpha"
+        assert cfg.ui.navigation is not None
+        assert cfg.ui.navigation.pages[0].route == "/dashboard"
 
 
 # ---------------------------------------------------------------------------

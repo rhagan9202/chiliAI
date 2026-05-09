@@ -12,10 +12,17 @@ from api.middleware.policy_registry import assert_complete
 from api.routers.alerts import router as alerts_router
 from api.routers.analytics import router as analytics_router
 from api.routers.auth import router as auth_router
+from api.routers.cases import router as cases_router
 from api.routers.chat import router as chat_router
 from api.routers.config import router as config_router
+from api.routers.evidence import router as evidence_router
+from api.routers.events import router as events_router
+from api.routers.graph import router as graph_router
 from api.routers.investigation import router as investigation_router
 from api.routers.knowledgebases import router as knowledgebases_router
+from api.routers.policy import router as policy_router
+from api.routers.rag import router as rag_router
+from api.routers.workflows import router as workflows_router
 from api.routers.ws import router as ws_router
 from config.loader import load_config
 from config.schema import AuthConfig
@@ -51,6 +58,20 @@ def _enforce_production_guardrail(auth: AuthConfig | None) -> None:
         )
 
 
+def _load_allowed_origins() -> list[str]:
+    """Return allowed CORS origins from env or local development defaults."""
+    raw_origins = os.environ.get("ALLOWED_ORIGINS")
+    if raw_origins is None:
+        return [
+            "http://localhost:5173",
+            "http://localhost:80",
+            "http://localhost",
+        ]
+
+    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    return origins or ["http://localhost:5173"]
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
 
@@ -68,11 +89,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",
-            "http://localhost:80",
-            "http://localhost",
-        ],
+        allow_origins=_load_allowed_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -88,10 +105,17 @@ def create_app() -> FastAPI:
     # REST routers
     app.include_router(config_router)
     app.include_router(knowledgebases_router)
+    app.include_router(events_router)
     app.include_router(alerts_router)
+    app.include_router(graph_router)
+    app.include_router(evidence_router)
+    app.include_router(cases_router)
+    app.include_router(rag_router)
+    app.include_router(workflows_router)
+    app.include_router(analytics_router)
+    app.include_router(policy_router)
     app.include_router(investigation_router)
     app.include_router(chat_router)
-    app.include_router(analytics_router)
     app.include_router(auth_router)
     app.include_router(ws_router)
 

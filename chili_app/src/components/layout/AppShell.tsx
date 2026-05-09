@@ -1,34 +1,68 @@
-import { Outlet } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 
-import { useSession } from '../../contexts/SessionContext'
-import { useAppStore } from '../../stores/appStore'
-import { ErrorBoundary } from '../common/ErrorBoundary'
+import { useDomainConfig } from '../../api/config'
+import { useDomainFeatures } from '../../api/config'
+import { useRealtimeWorkspaceStream } from '../../api/realtime'
+import { getDefaultRole, getLandingRoute, isRouteAllowed } from '../../app/access'
+import { useUiStore } from '../../stores/uiStore'
+import { AiAssistantPanel } from './AiAssistantPanel'
 import { Sidebar } from './Sidebar'
+import { TopBar } from './TopBar'
+import './layout.css'
 
-export function AppShell(): React.ReactElement {
-  const sidebarOpen = useAppStore((state) => state.sidebarOpen)
-  const toggleSidebar = useAppStore((state) => state.toggleSidebar)
-  const { user, signOut } = useSession()
+export function AppShell() {
+  const domainConfigQuery = useDomainConfig()
+  const domainFeaturesQuery = useDomainFeatures()
+  const aiPanelOpen = useUiStore((state) => state.aiPanelOpen)
+  const selectedRole = useUiStore((state) => state.selectedRole)
+  const setSelectedRole = useUiStore((state) => state.setSelectedRole)
+  const location = useLocation()
+
+  useRealtimeWorkspaceStream()
+
+  useEffect(() => {
+    if (!domainFeaturesQuery.data) {
+      return
+    }
+
+    const defaultRole = getDefaultRole(domainFeaturesQuery.data)
+    if (!selectedRole || (selectedRole && !domainFeaturesQuery.data.roles[selectedRole])) {
+      setSelectedRole(defaultRole)
+    }
+  }, [domainFeaturesQuery.data, selectedRole, setSelectedRole])
+
+  const routeAllowed = isRouteAllowed(
+    domainConfigQuery.data,
+    domainFeaturesQuery.data,
+    selectedRole,
+    location.pathname,
+  )
+  const landingRoute = getLandingRoute(
+    domainConfigQuery.data,
+    domainFeaturesQuery.data,
+    selectedRole,
+  )
+
+  if (!domainConfigQuery.isLoading && !domainFeaturesQuery.isLoading && !routeAllowed) {
+    return <Navigate replace to={landingRoute} />
+  }
 
   return (
     <div className="app-shell">
-      <Sidebar open={sidebarOpen} onToggle={toggleSidebar} />
-      <main className="app-main">
-        <header className="app-header">
-          <div className="app-header-spacer" />
-          {user !== null && (
-            <div className="app-header-user">
-              <span className="app-header-email">{user.email ?? user.user_id}</span>
-              <button type="button" onClick={() => void signOut()}>
-                Sign out
-              </button>
-            </div>
-          )}
-        </header>
-        <ErrorBoundary>
+      <Sidebar domainConfig={domainConfigQuery.data} domainFeatures={domainFeaturesQuery.data} selectedRole={selectedRole} />
+      <div className="app-shell__workspace">
+        <TopBar
+          domainConfig={domainConfigQuery.data}
+          domainFeatures={domainFeaturesQuery.data}
+          loading={domainConfigQuery.isLoading}
+          unavailable={domainConfigQuery.isError}
+        />
+        <main className="app-shell__main" aria-label="chiliAI workspace">
           <Outlet />
-        </ErrorBoundary>
-      </main>
+        </main>
+      </div>
+      {aiPanelOpen ? <AiAssistantPanel /> : null}
     </div>
   )
 }

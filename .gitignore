@@ -21,6 +21,15 @@ Thumbs.db
 .idea/
 *.sw?
 
+# Temporary files
+.tmp/
+*.tmp
+*.temp
+*.bak
+*.orig
+*~
+#*#
+
 # Test artifacts
 .coverage
 htmlcov/

@@ -121,3 +121,4 @@ pytest --cov                                        # Run tests with coverage
 | [`docs/todos_and_stubs_audit_2026-05-05.md`](docs/todos_and_stubs_audit_2026-05-05.md) | Current TODO/stub inventory and user-facing gap list |
 | [`backend/README.md`](backend/README.md) | Backend setup, module overview, development commands |
 | [`chili_app/README.md`](chili_app/README.md) | Frontend setup, page structure, development commands |
+

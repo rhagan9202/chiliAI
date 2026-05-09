@@ -1,0 +1,39 @@
+.chart-frame {
+  min-width: 0;
+  min-height: 280px;
+}
+
+.chart-frame__eyebrow {
+  color: var(--c-muted);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.chart-frame__title {
+  margin-top: 6px;
+  color: var(--c-text);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.chart-frame__subtitle {
+  margin-top: 6px;
+  color: var(--c-dim);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.chart-frame__canvas {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  min-height: 180px;
+  height: 180px;
+  margin-top: 16px;
+}
+
+.chart-frame__footer {
+  margin-top: 14px;
+}

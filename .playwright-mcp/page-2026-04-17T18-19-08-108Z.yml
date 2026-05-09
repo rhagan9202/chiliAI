@@ -1,0 +1,741 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - link "Skip to content" [ref=e4] [cursor=pointer]:
+      - /url: "#start-of-content"
+    - banner [ref=e6]:
+      - heading "Navigation Menu" [level=2] [ref=e7]
+      - generic [ref=e8]:
+        - generic [ref=e9]:
+          - button "Open global navigation menu" [ref=e12] [cursor=pointer]:
+            - img
+          - link "Homepage Enterprise" [ref=e13] [cursor=pointer]:
+            - /url: https://github.uskgc.com/
+            - img [ref=e14]
+          - navigation "Page context" [ref=e18]:
+            - list [ref=e19]:
+              - listitem [ref=e20]:
+                - link "Fed-Incubator" [ref=e21] [cursor=pointer]:
+                  - /url: /Fed-Incubator
+                  - generic [ref=e22]: Fed-Incubator
+                - generic [ref=e23]:
+                  - generic [ref=e24]: /
+                  - img [ref=e25]
+              - listitem [ref=e27]:
+                - link "Crushing-Fraud-XAI" [ref=e28] [cursor=pointer]:
+                  - /url: /Fed-Incubator/Crushing-Fraud-XAI
+                  - generic [ref=e29]: Crushing-Fraud-XAI
+                  - img [ref=e30]
+        - generic [ref=e32]:
+          - search "Site" [ref=e37]:
+            - generic [ref=e38]:
+              - generic [ref=e39]:
+                - generic "Search or jump to…":
+                  - img
+                - combobox "Search or jump to…" [ref=e40]
+              - generic:
+                - text: Type
+                - generic: /
+                - text: to search
+          - generic [ref=e41]:
+            - button "Create something new" [ref=e44] [cursor=pointer]:
+              - generic [ref=e45]:
+                - generic:
+                  - img
+                - img [ref=e47]
+            - link "Your issues" [ref=e49] [cursor=pointer]:
+              - /url: /issues
+              - img
+            - link "Your pull requests" [ref=e50] [cursor=pointer]:
+              - /url: /pulls
+              - img
+          - link "You have unread notifications" [ref=e52] [cursor=pointer]:
+            - /url: /notifications
+            - img
+          - button "Open user navigation menu" [ref=e57] [cursor=pointer]
+      - navigation "Repository" [ref=e61]:
+        - list [ref=e62]:
+          - listitem [ref=e63]:
+            - link "Code" [ref=e64] [cursor=pointer]:
+              - /url: /Fed-Incubator/Crushing-Fraud-XAI
+              - img [ref=e65]
+              - generic [ref=e67]: Code
+          - listitem [ref=e68]:
+            - link "Issues 23" [ref=e69] [cursor=pointer]:
+              - /url: /Fed-Incubator/Crushing-Fraud-XAI/issues
+              - img [ref=e70]
+              - generic [ref=e73]: Issues
+              - generic "23" [ref=e74]
+          - listitem [ref=e75]:
+            - link "Pull requests" [ref=e76] [cursor=pointer]:
+              - /url: /Fed-Incubator/Crushing-Fraud-XAI/pulls
+              - img [ref=e77]
+              - generic [ref=e79]: Pull requests
+          - listitem [ref=e80]:
+            - link "Actions" [ref=e81] [cursor=pointer]:
+              - /url: /Fed-Incubator/Crushing-Fraud-XAI/actions
+              - img [ref=e82]
+              - generic [ref=e84]: Actions
+          - listitem [ref=e85]:
+            - link "Projects 1" [ref=e86] [cursor=pointer]:
+              - /url: /Fed-Incubator/Crushing-Fraud-XAI/projects
+              - img [ref=e87]
+              - generic [ref=e89]: Projects
+              - generic "1" [ref=e90]
+          - listitem [ref=e91]:
+            - link "Wiki" [ref=e92] [cursor=pointer]:
+              - /url: /Fed-Incubator/Crushing-Fraud-XAI/wiki
+              - img [ref=e93]
+              - generic [ref=e95]: Wiki
+          - listitem [ref=e96]:
+            - link "Security" [ref=e97] [cursor=pointer]:
+              - /url: /Fed-Incubator/Crushing-Fraud-XAI/security
+              - img [ref=e98]
+              - generic [ref=e100]: Security
+          - listitem [ref=e101]:
+            - link "Insights" [ref=e102] [cursor=pointer]:
+              - /url: /Fed-Incubator/Crushing-Fraud-XAI/pulse
+              - img [ref=e103]
+              - generic [ref=e105]: Insights
+          - listitem [ref=e106]:
+            - link "Settings" [ref=e107] [cursor=pointer]:
+              - /url: /Fed-Incubator/Crushing-Fraud-XAI/settings
+              - img [ref=e108]
+              - generic [ref=e110]: Settings
+  - main [ref=e114]:
+    - generic [ref=e116]:
+      - generic [ref=e118]:
+        - img "Owner avatar" [ref=e119]
+        - strong [ref=e120]:
+          - link "Crushing-Fraud-XAI" [ref=e121] [cursor=pointer]:
+            - /url: /Fed-Incubator/Crushing-Fraud-XAI
+        - generic [ref=e122]: Private
+      - generic [ref=e123]:
+        - list:
+          - listitem [ref=e124]:
+            - 'button "Watch: Participating in Fed-Incubator/Crushing-Fraud-XAI" [ref=e128] [cursor=pointer]':
+              - generic [ref=e129]:
+                - generic:
+                  - img
+                - generic [ref=e130]:
+                  - text: Watch
+                  - generic [ref=e131]: "0"
+              - generic:
+                - img
+          - listitem [ref=e132]:
+            - generic [ref=e133]:
+              - button "Fork 0" [disabled] [ref=e134]:
+                - img [ref=e135]
+                - text: Fork
+                - generic "0" [ref=e137]
+              - group [ref=e138]:
+                - button "See your forks of this repository" [ref=e139] [cursor=pointer]:
+                  - img [ref=e140]
+          - listitem [ref=e142]:
+            - generic [ref=e144]:
+              - button "Star this repository (0)" [ref=e146] [cursor=pointer]:
+                - img [ref=e147]
+                - text: Star
+                - generic "0 users starred this repository" [ref=e149]: "0"
+              - group [ref=e150]:
+                - button "Add this repository to a list" [ref=e151] [cursor=pointer]:
+                  - img [ref=e152]
+    - generic [ref=e157]:
+      - heading "Fed-Incubator/Crushing-Fraud-XAI" [level=1] [ref=e158]
+      - generic [ref=e161]:
+        - generic [ref=e165]:
+          - generic [ref=e166]:
+            - generic [ref=e167]:
+              - button "master branch" [ref=e169] [cursor=pointer]:
+                - generic [ref=e170]:
+                  - generic [ref=e172]:
+                    - img [ref=e174]
+                    - generic [ref=e177]: master
+                  - generic:
+                    - img
+              - generic [ref=e178]:
+                - link "Branches" [ref=e179] [cursor=pointer]:
+                  - /url: /Fed-Incubator/Crushing-Fraud-XAI/branches
+                  - generic [ref=e180]:
+                    - generic:
+                      - img
+                    - generic [ref=e181]: Branches
+                - link "Tags" [ref=e182] [cursor=pointer]:
+                  - /url: /Fed-Incubator/Crushing-Fraud-XAI/tags
+                  - generic [ref=e183]:
+                    - generic:
+                      - img
+                    - generic [ref=e184]: Tags
+            - generic [ref=e185]:
+              - generic [ref=e186]:
+                - generic [ref=e189]:
+                  - img [ref=e191]
+                  - combobox "Go to file" [ref=e193]
+                  - generic [ref=e196]: t
+                - generic [ref=e197]:
+                  - heading "Add file" [level=2] [ref=e198]
+                  - button "Add file" [ref=e199] [cursor=pointer]:
+                    - img [ref=e200]
+              - button "Code" [ref=e202] [cursor=pointer]:
+                - generic [ref=e203]:
+                  - generic:
+                    - img
+                  - generic [ref=e204]: Code
+                - generic:
+                  - img
+          - generic [ref=e205]:
+            - generic [ref=e206]:
+              - heading "Folders and files" [level=2] [ref=e207]
+              - table "Folders and files" [ref=e208]:
+                - rowgroup:
+                  - row "Name Last commit message Last commit date":
+                    - columnheader "Name"
+                    - columnheader "Last commit message":
+                      - generic "Last commit message"
+                    - columnheader "Last commit date":
+                      - generic "Last commit date"
+                - rowgroup [ref=e209]:
+                  - row "Latest commit History 12 Commits" [ref=e210]:
+                    - cell "Latest commit History 12 Commits" [ref=e211]:
+                      - generic [ref=e212]:
+                        - heading "Latest commit" [level=2] [ref=e213]
+                        - generic [ref=e216]:
+                          - heading "History" [level=2] [ref=e217]
+                          - link "12 Commits" [ref=e218] [cursor=pointer]:
+                            - /url: /Fed-Incubator/Crushing-Fraud-XAI/commits/master/
+                            - generic [ref=e219]:
+                              - generic:
+                                - img
+                              - generic [ref=e220]: 12 Commits
+                  - row ".github, (Directory)" [ref=e221]:
+                    - cell ".github, (Directory)" [ref=e222]:
+                      - generic [ref=e223]:
+                        - img [ref=e224]
+                        - link ".github, (Directory)" [ref=e229] [cursor=pointer]:
+                          - /url: /Fed-Incubator/Crushing-Fraud-XAI/tree/master/.github
+                          - text: .github
+                    - cell [ref=e230]
+                    - cell [ref=e232]
+                  - row "code-starters, (Directory)" [ref=e234]:
+                    - cell "code-starters, (Directory)" [ref=e235]:
+                      - generic [ref=e236]:
+                        - img [ref=e237]
+                        - link "code-starters, (Directory)" [ref=e242] [cursor=pointer]:
+                          - /url: /Fed-Incubator/Crushing-Fraud-XAI/tree/master/code-starters
+                          - text: code-starters
+                    - cell [ref=e243]
+                    - cell [ref=e245]
+                  - row "core, (Directory)" [ref=e247]:
+                    - cell "core, (Directory)" [ref=e248]:
+                      - generic [ref=e249]:
+                        - img [ref=e250]
+                        - link "core, (Directory)" [ref=e255] [cursor=pointer]:
+                          - /url: /Fed-Incubator/Crushing-Fraud-XAI/tree/master/core
+                          - text: core
+                    - cell [ref=e256]
+                    - cell [ref=e258]
+                  - row "domain-packs, (Directory)" [ref=e260]:
+                    - cell "domain-packs, (Directory)" [ref=e261]:
+                      - generic [ref=e262]:
+                        - img [ref=e263]
+                        - link "domain-packs, (Directory)" [ref=e268] [cursor=pointer]:
+                          - /url: /Fed-Incubator/Crushing-Fraud-XAI/tree/master/domain-packs
+                          - text: domain-packs
+                    - cell [ref=e269]
+                    - cell [ref=e271]
+                  - row "other files, (Directory)" [ref=e273]:
+                    - cell "other files, (Directory)" [ref=e274]:
+                      - generic [ref=e275]:
+                        - img [ref=e276]
+                        - link "other files, (Directory)" [ref=e281] [cursor=pointer]:
+                          - /url: /Fed-Incubator/Crushing-Fraud-XAI/tree/master/other%20files
+                          - text: other files
+                    - cell [ref=e282]
+                    - cell [ref=e284]
+                  - row "CHANGELOG.md, (File)" [ref=e286]:
+                    - cell "CHANGELOG.md, (File)" [ref=e287]:
+                      - generic [ref=e288]:
+                        - img [ref=e289]
+                        - link "CHANGELOG.md, (File)" [ref=e294] [cursor=pointer]:
+                          - /url: /Fed-Incubator/Crushing-Fraud-XAI/blob/master/CHANGELOG.md
+                          - text: CHANGELOG.md
+                    - cell [ref=e295]
+                    - cell [ref=e297]
+                  - row "README.md, (File)" [ref=e299]:
+                    - cell "README.md, (File)" [ref=e300]:
+                      - generic [ref=e301]:
+                        - img [ref=e302]
+                        - link "README.md, (File)" [ref=e307] [cursor=pointer]:
+                          - /url: /Fed-Incubator/Crushing-Fraud-XAI/blob/master/README.md
+                          - text: README.md
+                    - cell [ref=e308]
+                    - cell [ref=e310]
+                  - row "ROLES-GUIDE.md, (File)" [ref=e312]:
+                    - cell "ROLES-GUIDE.md, (File)" [ref=e313]:
+                      - generic [ref=e314]:
+                        - img [ref=e315]
+                        - link "ROLES-GUIDE.md, (File)" [ref=e320] [cursor=pointer]:
+                          - /url: /Fed-Incubator/Crushing-Fraud-XAI/blob/master/ROLES-GUIDE.md
+                          - text: ROLES-GUIDE.md
+                    - cell [ref=e321]
+                    - cell [ref=e323]
+                  - row "package-lock.json, (File)" [ref=e325]:
+                    - cell "package-lock.json, (File)" [ref=e326]:
+                      - generic [ref=e327]:
+                        - img [ref=e328]
+                        - link "package-lock.json, (File)" [ref=e333] [cursor=pointer]:
+                          - /url: /Fed-Incubator/Crushing-Fraud-XAI/blob/master/package-lock.json
+                          - text: package-lock.json
+                    - cell [ref=e334]
+                    - cell [ref=e336]
+            - generic [ref=e339]:
+              - generic [ref=e340]:
+                - heading "Repository files navigation" [level=2] [ref=e341]
+                - navigation "Repository files" [ref=e342]:
+                  - list [ref=e343]:
+                    - listitem [ref=e344]:
+                      - link "README" [ref=e345] [cursor=pointer]:
+                        - /url: "#"
+                        - img [ref=e347]
+                        - generic [ref=e349]: README
+                - button "Edit file" [ref=e350] [cursor=pointer]:
+                  - img [ref=e351]
+                - button "Outline" [ref=e353] [cursor=pointer]:
+                  - img [ref=e354]
+              - article [ref=e357]:
+                - generic [ref=e358]:
+                  - heading "Crushing Fraud XAI Accelerator (v0.1)" [level=1] [ref=e359]
+                  - 'link "Permalink: Crushing Fraud XAI Accelerator (v0.1)" [ref=e360] [cursor=pointer]':
+                    - /url: "#crushing-fraud-xai-accelerator-v01"
+                    - img [ref=e361]
+                - paragraph [ref=e363]:
+                  - text: A reusable, domain-pack-based accelerator for detecting anomalous patterns and potential fraud/waste/abuse schemes across healthcare claims, enrollment and entities, while keeping humans centric in the process (triage support; not automated enforcement).
+                  - text: "This repo is structured to be lifecycle-ready: Frame → Detect/Explain → Validate → Operate, with evaluation gates, monitoring, and a pause/discontinue mechanism."
+                - separator [ref=e364]
+                - generic [ref=e365]:
+                  - heading "Why this exists" [level=2] [ref=e366]
+                  - 'link "Permalink: Why this exists" [ref=e367] [cursor=pointer]':
+                    - /url: "#why-this-exists"
+                    - img [ref=e368]
+                - list [ref=e370]:
+                  - listitem [ref=e371]:
+                    - strong [ref=e372]: Enable Repeatable Productization
+                    - text: ": To shift from one-off AI pilots to repeatable, productized AI solutions across HHS"
+                  - listitem [ref=e373]:
+                    - strong [ref=e374]: Optimize for Cross-Domain Repeatability
+                    - text: ": To ensure consistency and efficiency by standardizing:"
+                    - list [ref=e375]:
+                      - listitem [ref=e376]: Potential "indicator" and what it must output (scores, reason codes, evidence bundle pointers)
+                      - listitem [ref=e377]: How humans validate and improve it (investigator review + structured feedback + evaluation gates).
+                      - listitem [ref=e378]: How it stays safe and stable (monitoring, drift checks, incident response, and governed change control).
+                  - listitem [ref=e379]:
+                    - strong [ref=e380]: Ensure Governance and Compliance
+                    - text: ": To provide procurement and governance-ready artifacts by default, aligning with federal AI governance expectations (e.g., risk classification, test/validation plans, post-deployment monitoring, data rights required in OMB M-25-21 and M-25-22), as well as agency-wide guidance (HHS AI strategy, CMS AI Playbook)"
+                  - listitem [ref=e381]:
+                    - strong [ref=e382]: Future-Ready Design
+                    - text: ": To be easily adaptable for future advancements, allowing components to translate into Agent Skills to automate certain or most steps over time"
+                - separator [ref=e383]
+                - generic [ref=e384]:
+                  - heading "What this repo contains" [level=2] [ref=e385]
+                  - 'link "Permalink: What this repo contains" [ref=e386] [cursor=pointer]':
+                    - /url: "#what-this-repo-contains"
+                    - img [ref=e387]
+                - generic [ref=e389]:
+                  - heading "Core Kit (reusable across domains)" [level=3] [ref=e390]
+                  - 'link "Permalink: Core Kit (reusable across domains)" [ref=e391] [cursor=pointer]':
+                    - /url: "#core-kit-reusable-across-domains"
+                    - img [ref=e392]
+                - paragraph [ref=e394]: Core Kit components are meant to be used together; templates are just the “forms” that record decisions made while using docs/eval/monitoring/UI.
+                - list [ref=e395]:
+                  - listitem [ref=e396]:
+                    - code [ref=e397]: core/docs/
+                    - text: (build/run + contracts + governance)
+                    - list [ref=e398]:
+                      - listitem [ref=e399]: Overview, roles/RACI, delivery playbook, indicator contract, explainability spec, evaluation harness guidance, monitoring/ops guidance, governance/change control, security/privacy, reference architectures, release/versioning.
+                  - listitem [ref=e400]:
+                    - code [ref=e401]: core/templates/
+                    - text: (C01–C09 “decision artifacts”)
+                    - list [ref=e402]:
+                      - listitem [ref=e403]: Use-case canvas, indicator builder, high-impact screening, model card, data provenance, eval plan/acceptance, go-live checklist, weekly ops review, change request.
+                  - listitem [ref=e404]:
+                    - code [ref=e405]: core/eval/
+                    - text: (evaluation assets)
+                    - list [ref=e406]:
+                      - listitem [ref=e407]: Test set format, scoring rubric, explanation quality rubric, evaluation report template.
+                  - listitem [ref=e408]:
+                    - code [ref=e409]: core/monitoring/
+                    - text: (operate safely)
+                    - list [ref=e410]:
+                      - listitem [ref=e411]: Telemetry contract, dashboards spec, drift checks, incident runbook, pause/discontinue policy.
+                  - listitem [ref=e412]:
+                    - code [ref=e413]: core/ui/
+                    - text: (human-in-the-loop workflow spec)
+                    - list [ref=e414]:
+                      - listitem [ref=e415]: Screen specs, fields dictionary, navigation flow, and (optional) API contract for integrations.
+                - generic [ref=e416]:
+                  - heading "Domain packs (use-case specific)" [level=3] [ref=e417]
+                  - 'link "Permalink: Domain packs (use-case specific)" [ref=e418] [cursor=pointer]':
+                    - /url: "#domain-packs-use-case-specific"
+                    - img [ref=e419]
+                - paragraph [ref=e421]:
+                  - text: Each folder under
+                  - code [ref=e422]: domain-packs/
+                  - text: "is a deployable module that defines:"
+                - list [ref=e423]:
+                  - listitem [ref=e424]:
+                    - code [ref=e425]: schema.md
+                    - text: ": Domain entity, relationship, and event model."
+                  - listitem [ref=e426]:
+                    - code [ref=e427]: feature_dictionary.md
+                    - text: ": Canonical feature families + windows + drift monitoring set."
+                  - listitem [ref=e428]:
+                    - code [ref=e429]: evidence_bundle_spec.md
+                    - text: ": What must be shown to investigators + completeness rules."
+                  - listitem [ref=e430]:
+                    - code [ref=e431]: indicators.md
+                    - text: ": Indicator library (reason codes, thresholds/logic, next steps)."
+                  - listitem [ref=e432]:
+                    - code [ref=e433]: eval_dataset_spec.md
+                    - text: ": Sampling + labeling instructions tailored to the domain."
+                  - listitem [ref=e434]:
+                    - code [ref=e435]: README.md
+                    - text: ": How to run this domain pack and what it’s for."
+                - paragraph [ref=e436]: "v0.1 domain packs:"
+                - list [ref=e437]:
+                  - listitem [ref=e438]:
+                    - code [ref=e439]: domain-packs/medicare_ffs_claims/
+                  - listitem [ref=e440]:
+                    - code [ref=e441]: domain-packs/marketplace_agent_broker_enrollment/
+                  - listitem [ref=e442]:
+                    - code [ref=e443]: domain-packs/medicaid_dental_vision_claims/
+                  - listitem [ref=e444]:
+                    - code [ref=e445]: domain-packs/dmepos_suppliers_risks/
+                - generic [ref=e446]:
+                  - heading "Code starters (implementation scaffolding)" [level=3] [ref=e447]
+                  - 'link "Permalink: Code starters (implementation scaffolding)" [ref=e448] [cursor=pointer]':
+                    - /url: "#code-starters-implementation-scaffolding"
+                    - img [ref=e449]
+                - paragraph [ref=e451]: Optional templates and skeletons to accelerate technical implementation. These are not prescriptive and can be adapted to your stack and cloud provider.
+                - list [ref=e452]:
+                  - listitem [ref=e453]:
+                    - code [ref=e454]: code-starters/notebooks/
+                    - text: (exploratory and prototyping)
+                    - list [ref=e455]:
+                      - listitem [ref=e456]: Feature building, indicator scoring, and explanation generation notebooks ready to customize per domain pack.
+                  - listitem [ref=e457]:
+                    - code [ref=e458]: code-starters/pipelines/
+                    - text: (production orchestration)
+                    - list [ref=e459]:
+                      - listitem [ref=e460]: Pipeline skeleton for scheduling and monitoring batch scoring jobs.
+                  - listitem [ref=e461]:
+                    - code [ref=e462]: code-starters/iac/
+                    - text: (infrastructure as code)
+                    - list [ref=e463]:
+                      - listitem [ref=e464]: Terraform skeleton for deploying compute, storage, and monitoring resources on cloud platforms.
+                - separator [ref=e465]
+                - generic [ref=e466]:
+                  - heading "How to use the components (end-to-end)" [level=2] [ref=e467]
+                  - 'link "Permalink: How to use the components (end-to-end)" [ref=e468] [cursor=pointer]':
+                    - /url: "#how-to-use-the-components-end-to-end"
+                    - img [ref=e469]
+                - generic [ref=e471]:
+                  - heading "1) Frame (SME + ops alignment)" [level=3] [ref=e472]
+                  - 'link "Permalink: 1) Frame (SME + ops alignment)" [ref=e473] [cursor=pointer]':
+                    - /url: "#1-frame-sme--ops-alignment"
+                    - img [ref=e474]
+                - paragraph [ref=e476]:
+                  - strong [ref=e477]: Use
+                  - text: ":"
+                - list [ref=e478]:
+                  - listitem [ref=e479]:
+                    - code [ref=e480]: core/docs/00_overview.md
+                    - text: +
+                    - code [ref=e481]: core/docs/01_roles-raci.md
+                    - text: to align responsibilities, scope, and guardrails.
+                  - listitem [ref=e482]:
+                    - code [ref=e483]: core/ui/fields_dictionary.md
+                    - text: +
+                    - code [ref=e484]: core/ui/screens_spec.md
+                    - text: to ensure the workflow captures evidence, feedback, approvals, and audit fields.
+                - paragraph [ref=e485]:
+                  - strong [ref=e486]: Record
+                  - text: ":"
+                - list [ref=e487]:
+                  - listitem [ref=e488]:
+                    - code [ref=e489]: core/templates/C01_use-case-canvas.md
+                    - text: (decision supported, downstream action, harms, guardrails, success criteria).
+                - paragraph [ref=e490]:
+                  - strong [ref=e491]: Output
+                  - text: ":"
+                - list [ref=e492]:
+                  - listitem [ref=e493]: A configured use-case instance (usecaseid/usecaseversion) pointing at one domain pack.
+                - generic [ref=e494]:
+                  - heading "2) Configure indicators (domain pack → indicator contract)" [level=3] [ref=e495]
+                  - 'link "Permalink: 2) Configure indicators (domain pack → indicator contract)" [ref=e496] [cursor=pointer]':
+                    - /url: "#2-configure-indicators-domain-pack--indicator-contract"
+                    - img [ref=e497]
+                - paragraph [ref=e499]:
+                  - strong [ref=e500]: Use
+                  - text: ":"
+                - list [ref=e501]:
+                  - listitem [ref=e502]:
+                    - code [ref=e503]: core/docs/03_indicator-contract.md
+                    - text: to implement every indicator with the same output fields (score, reason codes, evidence pointers, next steps, monitoring hooks).
+                  - listitem [ref=e504]:
+                    - code [ref=e505]: core/docs/04_explainability-spec.md
+                    - text: to ensure local/temporal/network explanations are evidence-linked and usable.
+                  - listitem [ref=e506]:
+                    - code [ref=e507]: domain-packs/<pack>/indicators.md
+                    - text: +
+                    - code [ref=e508]: domain-packs/<pack>/feature_dictionary.md
+                    - text: +
+                    - code [ref=e509]: domain-packs/<pack>/evidence_bundle_spec.md
+                    - text: to implement scoring + evidence assembly per indicator.
+                - paragraph [ref=e510]:
+                  - strong [ref=e511]: Record
+                  - text: ":"
+                - list [ref=e512]:
+                  - listitem [ref=e513]:
+                    - code [ref=e514]: core/templates/C02_indicator-builder.md
+                    - text: for each indicator promoted beyond "draft."
+                - paragraph [ref=e515]:
+                  - strong [ref=e516]: Output
+                  - text: ":"
+                - list [ref=e517]:
+                  - listitem [ref=e518]: A scoring job that produces (a) queues and (b) evidence bundles consistent with the contract.
+                - generic [ref=e519]:
+                  - heading "3) Validate (evaluation gates + investigator labeling)" [level=3] [ref=e520]
+                  - 'link "Permalink: 3) Validate (evaluation gates + investigator labeling)" [ref=e521] [cursor=pointer]':
+                    - /url: "#3-validate-evaluation-gates--investigator-labeling"
+                    - img [ref=e522]
+                - paragraph [ref=e524]:
+                  - strong [ref=e525]: Use
+                  - text: ":"
+                - list [ref=e526]:
+                  - listitem [ref=e527]:
+                    - code [ref=e528]: core/eval/
+                    - text: assets to build the test set, run evaluation, and standardize results (Precision@K proxy, explanation usefulness, evidence adequacy, stability).
+                  - listitem [ref=e529]:
+                    - code [ref=e530]: domain-packs/<pack>/eval_dataset_spec.md
+                    - text: for domain-specific sampling and labeling guidance.
+                - paragraph [ref=e531]:
+                  - strong [ref=e532]: Record
+                  - text: ":"
+                - list [ref=e533]:
+                  - listitem [ref=e534]:
+                    - code [ref=e535]: core/templates/C06_eval-plan-acceptance.md
+                    - text: (thresholds + acceptance gates) and
+                    - code [ref=e536]: core/templates/C04_model-card-xai.md
+                    - text: (limitations + intended use).
+                  - listitem [ref=e537]:
+                    - text: "If needed:"
+                    - code [ref=e538]: core/templates/C03_high-impact-ai-screen.md
+                    - text: (triage-only vs consequential scope + added controls).
+                - paragraph [ref=e539]:
+                  - strong [ref=e540]: Output
+                  - text: ":"
+                - list [ref=e541]:
+                  - listitem [ref=e542]: "A signed evaluation decision: approve/pilot/pause/revise, with an eval report and change requests for any modifications."
+                - generic [ref=e543]:
+                  - heading "4) Go-live (ops + safety readiness)" [level=3] [ref=e544]
+                  - 'link "Permalink: 4) Go-live (ops + safety readiness)" [ref=e545] [cursor=pointer]':
+                    - /url: "#4-go-live-ops--safety-readiness"
+                    - img [ref=e546]
+                - paragraph [ref=e548]:
+                  - strong [ref=e549]: Use
+                  - text: ":"
+                - list [ref=e550]:
+                  - listitem [ref=e551]:
+                    - code [ref=e552]: core/monitoring/telemetry_contract.md
+                    - text: +
+                    - code [ref=e553]: core/monitoring/dashboards_spec.md
+                    - text: to instrument throughput, quality, drift, evidence missingness, and governance activity.
+                  - listitem [ref=e554]:
+                    - code [ref=e555]: core/monitoring/drift_checks.md
+                    - text: +
+                    - code [ref=e556]: core/monitoring/incident_runbook.md
+                    - text: for response procedures when data shifts or quality drops.
+                  - listitem [ref=e557]:
+                    - code [ref=e558]: core/monitoring/pause_discontinue_policy.md
+                    - text: to stop indicators safely when performance is not appropriate.
+                - paragraph [ref=e559]:
+                  - strong [ref=e560]: Record
+                  - text: ":"
+                - list [ref=e561]:
+                  - listitem [ref=e562]:
+                    - code [ref=e563]: core/templates/C07_go-live-checklist.md
+                    - text: and schedule
+                    - code [ref=e564]: core/templates/C08_weekly-ops-review.md
+                    - text: .
+                - paragraph [ref=e565]:
+                  - strong [ref=e566]: Output
+                  - text: ":"
+                - list [ref=e567]:
+                  - listitem [ref=e568]: A production pilot with monitoring, weekly review cadence, and change control enforced.
+                - generic [ref=e569]:
+                  - heading "5) Operate (monitor → tune → govern)" [level=3] [ref=e570]
+                  - 'link "Permalink: 5) Operate (monitor → tune → govern)" [ref=e571] [cursor=pointer]':
+                    - /url: "#5-operate-monitor--tune--govern"
+                    - img [ref=e572]
+                - paragraph [ref=e574]:
+                  - strong [ref=e575]: Use
+                  - text: ":"
+                - list [ref=e576]:
+                  - listitem [ref=e577]: Dashboards + drift checks weekly; treat investigator feedback as the primary signal for precision proxy and explanation usefulness.
+                  - listitem [ref=e578]:
+                    - code [ref=e579]: core/templates/C09_change-request.md
+                    - text: for any change to thresholds, peer groups, evidence requirements, features, or models (with rollback plan + validation).
+                - paragraph [ref=e580]:
+                  - strong [ref=e581]: Output
+                  - text: ":"
+                - list [ref=e582]:
+                  - listitem [ref=e583]: A governed iteration loop that improves top-K usefulness without silently changing behavior.
+                - separator [ref=e584]
+                - generic [ref=e585]:
+                  - heading "Definition of Done (v0.1)" [level=2] [ref=e586]
+                  - 'link "Permalink: Definition of Done (v0.1)" [ref=e587] [cursor=pointer]':
+                    - /url: "#definition-of-done-v01"
+                    - img [ref=e588]
+                - paragraph [ref=e590]: "A use case is “live” only when:"
+                - list [ref=e591]:
+                  - listitem [ref=e592]:
+                    - text: Data provenance is documented and approved (
+                    - code [ref=e593]: core/templates/C05_data-provenance.md
+                    - text: ).
+                  - listitem [ref=e594]:
+                    - text: Each approved indicator has reason codes, evidence requirements, and next steps documented (
+                    - code [ref=e595]: core/templates/C02_indicator-builder.md
+                    - text: ) and implemented per the contract.
+                  - listitem [ref=e596]:
+                    - text: Evaluation gates are met and signed (
+                    - code [ref=e597]: core/templates/C06_eval-plan-acceptance.md
+                    - text: ) including explanation usefulness and evidence adequacy.
+                  - listitem [ref=e598]:
+                    - text: Monitoring dashboards and drift checks are running (
+                    - code [ref=e599]: core/monitoring/
+                    - text: ) and weekly ops review is scheduled (
+                    - code [ref=e600]: core/templates/C08_weekly-ops-review.md
+                    - text: ).
+                  - listitem [ref=e601]:
+                    - text: Change control + pause/discontinue path is usable (
+                    - code [ref=e602]: core/templates/C09_change-request.md
+                    - text: +
+                    - code [ref=e603]: core/monitoring/pause_discontinue_policy.md
+                    - text: ).
+                - separator [ref=e604]
+                - generic [ref=e605]:
+                  - heading "Quick start (10 business days)" [level=2] [ref=e606]
+                  - 'link "Permalink: Quick start (10 business days)" [ref=e607] [cursor=pointer]':
+                    - /url: "#quick-start-10-business-days"
+                    - img [ref=e608]
+                - paragraph [ref=e610]:
+                  - text: Follow
+                  - code [ref=e611]: core/docs/02_delivery-playbook.md
+                  - text: to run one domain pack end-to-end with 3–5 indicators first, then scale indicator coverage after feedback is flowing.
+                - separator [ref=e612]
+                - generic [ref=e613]:
+                  - heading "Data handling note" [level=2] [ref=e614]
+                  - 'link "Permalink: Data handling note" [ref=e615] [cursor=pointer]':
+                    - /url: "#data-handling-note"
+                    - img [ref=e616]
+                - paragraph [ref=e618]: This repo is intended for deployment in client-controlled environments. Do not commit PHI/PII or sensitive datasets; use synthetic or de-identified examples only.
+        - generic [ref=e620]:
+          - generic [ref=e622]:
+            - group:
+              - button "Edit repository metadata" [ref=e623] [cursor=pointer]:
+                - img "Edit repository metadata" [ref=e625]
+            - generic [ref=e627]:
+              - heading "About" [level=2] [ref=e628]
+              - generic [ref=e629]: No description, website, or topics provided.
+              - heading "Resources" [level=3] [ref=e630]
+              - link "Readme" [ref=e632] [cursor=pointer]:
+                - /url: "#readme-ov-file"
+                - img [ref=e633]
+                - text: Readme
+              - link "Activity" [ref=e636] [cursor=pointer]:
+                - /url: /Fed-Incubator/Crushing-Fraud-XAI/activity
+                - img [ref=e637]
+                - text: Activity
+              - link "Custom properties" [ref=e640] [cursor=pointer]:
+                - /url: /Fed-Incubator/Crushing-Fraud-XAI/custom-properties
+                - img [ref=e641]
+                - text: Custom properties
+              - heading "Stars" [level=3] [ref=e643]
+              - link "0 stars" [ref=e645] [cursor=pointer]:
+                - /url: /Fed-Incubator/Crushing-Fraud-XAI/stargazers
+                - img [ref=e646]
+                - strong [ref=e648]: "0"
+                - text: stars
+              - heading "Watchers" [level=3] [ref=e649]
+              - link "0 watching" [ref=e651] [cursor=pointer]:
+                - /url: /Fed-Incubator/Crushing-Fraud-XAI/watchers
+                - img [ref=e652]
+                - strong [ref=e654]: "0"
+                - text: watching
+              - heading "Forks" [level=3] [ref=e655]
+              - link "0 forks" [ref=e657] [cursor=pointer]:
+                - /url: /Fed-Incubator/Crushing-Fraud-XAI/forks
+                - img [ref=e658]
+                - strong [ref=e660]: "0"
+                - text: forks
+          - generic [ref=e662]:
+            - heading "Releases" [level=2] [ref=e663]:
+              - link "Releases" [ref=e664] [cursor=pointer]:
+                - /url: /Fed-Incubator/Crushing-Fraud-XAI/releases
+            - generic [ref=e665]: No releases published
+            - link "Create a new release" [ref=e667] [cursor=pointer]:
+              - /url: /Fed-Incubator/Crushing-Fraud-XAI/releases/new
+          - generic "Loading latest packages" [ref=e670]:
+            - heading "Packages" [level=2] [ref=e671]:
+              - link "Packages" [ref=e672] [cursor=pointer]:
+                - /url: /orgs/Fed-Incubator/packages?repo_name=Crushing-Fraud-XAI
+          - generic [ref=e683]:
+            - heading "Languages" [level=2] [ref=e684]
+            - list [ref=e691]:
+              - listitem [ref=e692]:
+                - link "JavaScript 90.9%" [ref=e693] [cursor=pointer]:
+                  - /url: /Fed-Incubator/Crushing-Fraud-XAI/search?l=javascript
+                  - img [ref=e694]
+                  - generic [ref=e696]: JavaScript
+                  - generic [ref=e697]: 90.9%
+              - listitem [ref=e698]:
+                - link "Python 7.6%" [ref=e699] [cursor=pointer]:
+                  - /url: /Fed-Incubator/Crushing-Fraud-XAI/search?l=python
+                  - img [ref=e700]
+                  - generic [ref=e702]: Python
+                  - generic [ref=e703]: 7.6%
+              - listitem [ref=e704]:
+                - link "Jupyter Notebook 1.3%" [ref=e705] [cursor=pointer]:
+                  - /url: /Fed-Incubator/Crushing-Fraud-XAI/search?l=jupyter-notebook
+                  - img [ref=e706]
+                  - generic [ref=e708]: Jupyter Notebook
+                  - generic [ref=e709]: 1.3%
+              - listitem [ref=e710]:
+                - link "HTML 0.2%" [ref=e711] [cursor=pointer]:
+                  - /url: /Fed-Incubator/Crushing-Fraud-XAI/search?l=html
+                  - img [ref=e712]
+                  - generic [ref=e714]: HTML
+                  - generic [ref=e715]: 0.2%
+  - contentinfo [ref=e716]:
+    - heading "Footer" [level=2] [ref=e717]
+    - generic [ref=e719]: GitHub Enterprise Server 3.17.10
+    - generic [ref=e720]: KPMG US
+    - generic [ref=e722]:
+      - link "KPMG US avatar" [ref=e723] [cursor=pointer]:
+        - /url: ""
+        - img "KPMG US avatar" [ref=e724]
+      - generic [ref=e725]: KPMG US
+    - generic [ref=e726]:
+      - generic [ref=e727]:
+        - link "Homepage" [ref=e728] [cursor=pointer]:
+          - /url: https://github.uskgc.com
+          - img [ref=e729]
+        - generic [ref=e731]: © 2026 GitHub, Inc.
+      - navigation "Footer" [ref=e732]:
+        - heading "Footer navigation" [level=3] [ref=e733]
+        - list "Footer navigation" [ref=e734]:
+          - listitem [ref=e735]:
+            - link "Help" [ref=e736] [cursor=pointer]:
+              - /url: https://docs.github.com/enterprise-server@3.17
+          - listitem [ref=e737]:
+            - link "Support" [ref=e738] [cursor=pointer]:
+              - /url: mailto:go-fmmanagedservices@kpmg.com

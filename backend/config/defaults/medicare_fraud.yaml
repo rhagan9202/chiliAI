@@ -137,3 +137,58 @@ alerts:
       risk_score: 0.80
     claim:
       amount_percentile: 99
+
+ui:
+  default_entity_type: provider
+  navigation:
+    pages:
+      - id: dashboard
+        label: Dashboard
+        route: /dashboard
+        capability: risk_scoring
+      - id: alerts
+        label: Alert Feed
+        route: /alerts
+      - id: investigation
+        label: Investigation Workbench
+        route: /investigation
+        capability: gnn
+      - id: cases
+        label: Case Management
+        route: /cases
+      - id: knowledge_bases
+        label: Knowledge Bases
+        route: /knowledge-bases
+      - id: policy
+        label: Policy Intelligence
+        route: /policy
+        capability: explainability
+      - id: rag_chat
+        label: RAG Chat
+        route: /rag-chat
+        capability: rag_chat
+      - id: configuration
+        label: Configuration
+        route: /configuration
+  display_fields:
+    provider:
+      title: npi
+      subtitle: specialty
+      chips: [state]
+    beneficiary:
+      title: hic_number
+      subtitle: age
+      chips: [chronic_conditions]
+    claim:
+      title: claim_id
+      subtitle: service_date
+      chips: [procedure_codes]
+  roles:
+    analyst:
+      landing_page: alerts
+      pages: [alerts, investigation, cases, rag_chat, knowledge_bases]
+      permissions: [alerts:read, cases:write, feedback:write]
+    supervisor:
+      landing_page: dashboard
+      pages: [dashboard, alerts, investigation, cases, policy, knowledge_bases, configuration]
+      permissions: [alerts:read, cases:assign, feedback:read]

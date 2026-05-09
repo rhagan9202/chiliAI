@@ -51,6 +51,13 @@ class TestLoadFromPath:
         assert cfg.capabilities.timeseries is True
         assert cfg.capabilities.gnn is True
 
+    def test_ui_config(self) -> None:
+        cfg = load_config(MEDICARE_YAML)
+        assert cfg.ui is not None
+        assert cfg.ui.default_entity_type == "provider"
+        assert cfg.ui.navigation is not None
+        assert any(page.id == "alerts" for page in cfg.ui.navigation.pages)
+
     def test_string_path(self) -> None:
         cfg = load_config(str(MEDICARE_YAML))
         assert cfg.domain.name == "medicare_fraud"
