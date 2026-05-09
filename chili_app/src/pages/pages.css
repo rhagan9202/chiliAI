@@ -1,0 +1,44 @@
+.page-placeholder {
+  position: relative;
+  min-height: 360px;
+  padding: 22px;
+  overflow: hidden;
+  background: var(--c-s2);
+  border: 1px solid var(--c-b0);
+  border-radius: 12px;
+}
+
+.page-placeholder__accent {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.65), transparent);
+}
+
+.page-placeholder__eyebrow {
+  color: var(--c-cyan);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.page-placeholder__title {
+  margin: 9px 0 10px;
+  color: var(--c-text);
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.page-placeholder__body {
+  max-width: 780px;
+  color: var(--c-dim);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.page-placeholder__body ul {
+  padding-left: 18px;
+}
