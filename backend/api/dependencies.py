@@ -6,8 +6,7 @@ import os
 from functools import lru_cache
 from typing import NoReturn, cast
 
-from fastapi import Depends
-from fastapi import Path
+from fastapi import Depends, Path, Request
 
 from api.contracts import (
     AlertDetailResponse,
@@ -151,10 +150,19 @@ def _raise_unsupported_backend(
     )
 
 
-@lru_cache(maxsize=1)
-def get_api_state() -> ApiState:
-    """Return the seeded mutable API application state."""
-    return create_api_state()
+def get_api_state(request: Request) -> ApiState:
+    """Return the per-app seeded mutable API state.
+
+    State is attached to ``app.state`` in :func:`api.app.create_app`, giving
+    each TestClient (and each production process) its own ``ApiState``
+    instance. Mutations made via one request do not leak into a fresh app
+    instance — important for test isolation.
+    """
+    state = getattr(request.app.state, "api_state", None)
+    if state is None:
+        state = create_api_state()
+        request.app.state.api_state = state
+    return state
 
 
 def get_alert_list_payload(state: ApiState = Depends(get_api_state)) -> AlertListResponse:
@@ -387,10 +395,12 @@ def get_analytics_overview_payload(
 
 @lru_cache(maxsize=1)
 def get_domain_config() -> DomainConfig:
-    """Load and cache the domain configuration (singleton).
+    """Load and cache the domain configuration (process-singleton).
 
-    The config is loaded once on first call and cached for the lifetime
-    of the process.  To reload, restart the server.
+    The cache is cleared at the start of :func:`api.app.create_app` so each
+    test that builds a fresh app picks up the current ``CHILI_CONFIG_PATH``
+    or ``api.app.load_config`` patch. Tests that need to inject a specific
+    config can also override via ``app.dependency_overrides``.
     """
     return load_config()
 

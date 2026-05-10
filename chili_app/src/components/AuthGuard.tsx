@@ -1,6 +1,6 @@
 import { Navigate } from 'react-router-dom'
 
-import { useSession } from '../contexts/SessionContext'
+import { useSession } from '../contexts/sessionContextValue'
 
 export function AuthGuard({ children }: { children: React.ReactNode }): React.ReactElement {
   const { status } = useSession()

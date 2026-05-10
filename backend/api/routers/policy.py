@@ -16,13 +16,18 @@ from api.dependencies import (
     get_policy_gap_detail_payload,
     get_policy_gap_list_payload,
 )
+from api.middleware.rbac import require_role
 
 __all__ = ["router"]
 
 router = APIRouter(prefix="/policy", tags=["policy"])
 
 
-@router.get("/gaps", response_model=PolicyGapListResponse)
+@router.get(
+    "/gaps",
+    response_model=PolicyGapListResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
 async def list_policy_gaps(
     gaps: PolicyGapListResponse = Depends(get_policy_gap_list_payload),
 ) -> PolicyGapListResponse:
@@ -30,7 +35,11 @@ async def list_policy_gaps(
     return gaps
 
 
-@router.get("/gaps/{gap_id}", response_model=PolicyGapDetailResponse)
+@router.get(
+    "/gaps/{gap_id}",
+    response_model=PolicyGapDetailResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
 async def get_policy_gap(
     gap: PolicyGapDetailResponse = Depends(get_policy_gap_detail_payload),
 ) -> PolicyGapDetailResponse:
@@ -38,7 +47,11 @@ async def get_policy_gap(
     return gap
 
 
-@router.get("/gaps/{gap_id}/cases", response_model=PolicyGapCaseListResponse)
+@router.get(
+    "/gaps/{gap_id}/cases",
+    response_model=PolicyGapCaseListResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
 async def list_policy_gap_cases(
     cases: PolicyGapCaseListResponse = Depends(get_policy_gap_cases_payload),
 ) -> PolicyGapCaseListResponse:
@@ -46,7 +59,11 @@ async def list_policy_gap_cases(
     return cases
 
 
-@router.post("/briefs", response_model=PolicyBriefResponse)
+@router.post(
+    "/briefs",
+    response_model=PolicyBriefResponse,
+    dependencies=[Depends(require_role("analyst"))],
+)
 async def create_policy_brief(
     brief: PolicyBriefResponse = Depends(get_policy_brief_payload),
 ) -> PolicyBriefResponse:

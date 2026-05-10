@@ -1,100 +1,60 @@
-"""Alerts API router — list, acknowledge, and resolve alerts."""
+"""Alerts API router — list, detail, and acknowledge over the api.contracts shape.
+
+Wires through ApiState (see ``api.dependencies``) so the router shares the
+seeded alert/evidence/case data the rest of the Phase 5 read models use. The
+``monitoring.service`` AlertsService remains as the per-domain alert lifecycle
+service for production wiring; it is not currently wired here.
+"""
 
 from __future__ import annotations
 
-from functools import lru_cache
+from fastapi import APIRouter, Depends, status
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-
-from api.middleware.rbac import require_role
-from monitoring.adapters.in_memory import InMemoryAlertRepository
-from monitoring.exceptions import AlertAlreadyResolvedError, AlertNotFoundError
-from monitoring.protocols import AlertsServiceProtocol
-from monitoring.service import create_alerts_service
-from monitoring.service_models import (
-    AlertActionResponse,
-    AlertListRequest,
-    AlertListResponse,
-    ResolutionRequest,
+from api.contracts import AlertDetailResponse, AlertListResponse, ApiEnvelope
+from api.dependencies import (
+    get_alert_detail_payload,
+    get_alert_list_payload,
+    get_alert_mutation_payload,
 )
+from api.middleware.rbac import require_role
 
-__all__ = ["get_alerts_service", "router"]
-
-
-@lru_cache(maxsize=1)
-def get_alerts_service() -> AlertsServiceProtocol:
-    """Return the default alerts service.
-
-    Wired against an in-memory alert repository — the integration agent will
-    swap this for the production wiring once `api/dependencies.py` is updated
-    in E5-S14. Tests override this factory via ``app.dependency_overrides``.
-    """
-
-    return create_alerts_service(InMemoryAlertRepository())
-
+__all__ = ["router"]
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 
-@router.get("", response_model=AlertListResponse, dependencies=[Depends(require_role("viewer"))])
+@router.get(
+    "",
+    response_model=AlertListResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
 async def list_alerts(
-    severity: str | None = Query(default=None),
-    entity_type: str | None = Query(default=None),
-    status_filter: str | None = Query(default=None, alias="status"),
-    limit: int = Query(default=50, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
-    alerts_service: AlertsServiceProtocol = Depends(get_alerts_service),
+    payload: AlertListResponse = Depends(get_alert_list_payload),
 ) -> AlertListResponse:
-    """List alerts filtered by severity, entity type, and status."""
+    """Return the alert feed in the api.contracts shape (items + page)."""
+    return payload
 
-    request = AlertListRequest(
-        severity=severity,
-        entity_type=entity_type,
-        status=status_filter,
-        limit=limit,
-        offset=offset,
-    )
-    return alerts_service.list_alerts(request)
+
+@router.get(
+    "/{alert_id}",
+    response_model=AlertDetailResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
+async def get_alert(
+    payload: AlertDetailResponse = Depends(get_alert_detail_payload),
+) -> AlertDetailResponse:
+    """Return one alert detail with related entities and policy citations."""
+    return payload
 
 
 @router.post(
     "/{alert_id}/acknowledge",
-    response_model=AlertActionResponse,
+    response_model=ApiEnvelope,
     status_code=status.HTTP_200_OK,
     dependencies=[Depends(require_role("analyst"))],
 )
 async def acknowledge_alert(
-    alert_id: str,
-    alerts_service: AlertsServiceProtocol = Depends(get_alerts_service),
-) -> AlertActionResponse:
-    """Acknowledge an alert and return the updated record."""
-
-    try:
-        alert = alerts_service.acknowledge_alert(alert_id)
-    except AlertNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except AlertAlreadyResolvedError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return AlertActionResponse(alert=alert)
-
-
-@router.post(
-    "/{alert_id}/resolve",
-    response_model=AlertActionResponse,
-    status_code=status.HTTP_200_OK,
-    dependencies=[Depends(require_role("analyst"))],
-)
-async def resolve_alert(
-    alert_id: str,
-    request: ResolutionRequest,
-    alerts_service: AlertsServiceProtocol = Depends(get_alerts_service),
-) -> AlertActionResponse:
-    """Resolve an alert with the supplied resolution metadata."""
-
-    try:
-        alert = alerts_service.resolve_alert(alert_id, request)
-    except AlertNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except AlertAlreadyResolvedError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return AlertActionResponse(alert=alert)
+    payload: ApiEnvelope = Depends(get_alert_mutation_payload),
+) -> ApiEnvelope:
+    """Acknowledge an alert; returns an ApiEnvelope status receipt."""
+    return payload

@@ -29,7 +29,7 @@ async def get_domain(
     return config
 
 
-@router.get("/features")
+@router.get("/features", dependencies=[Depends(require_role("viewer"))])
 async def get_features(
     features: dict[str, object] = Depends(get_domain_config_features_payload),
 ) -> dict[str, object]:
@@ -37,7 +37,7 @@ async def get_features(
     return features
 
 
-@router.get("/domain/schema")
+@router.get("/domain/schema", dependencies=[Depends(require_role("viewer"))])
 async def get_domain_schema(
     schema: dict[str, object] = Depends(get_domain_config_schema_payload),
 ) -> dict[str, object]:

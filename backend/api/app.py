@@ -9,11 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.middleware.metrics import register_metrics
 from api.middleware.policy_registry import assert_complete
+from api.state import create_api_state
 from api.routers.alerts import router as alerts_router
 from api.routers.analytics import router as analytics_router
 from api.routers.auth import router as auth_router
 from api.routers.cases import router as cases_router
-from api.routers.chat import router as chat_router
 from api.routers.config import router as config_router
 from api.routers.evidence import router as evidence_router
 from api.routers.events import router as events_router
@@ -78,6 +78,11 @@ def create_app() -> FastAPI:
     configure_logging()
     setup_tracing()
 
+    # Reset process-level config cache so each create_app() call (e.g. one
+    # per test) reloads from CHILI_CONFIG_PATH / monkeypatched load_config.
+    from api.dependencies import get_domain_config
+    get_domain_config.cache_clear()
+
     config = load_config()
     _enforce_production_guardrail(config.auth)
 
@@ -94,6 +99,10 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Per-app seeded state — see api.dependencies.get_api_state. Each
+    # create_app() call yields a fresh ApiState so tests are isolated.
+    app.state.api_state = create_api_state()
 
     register_metrics(app)
     instrument_fastapi_app(app)
@@ -115,7 +124,6 @@ def create_app() -> FastAPI:
     app.include_router(analytics_router)
     app.include_router(policy_router)
     app.include_router(investigation_router)
-    app.include_router(chat_router)
     app.include_router(auth_router)
     app.include_router(ws_router)
 

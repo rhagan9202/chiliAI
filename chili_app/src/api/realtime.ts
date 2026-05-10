@@ -12,7 +12,12 @@ export function useRealtimeWorkspaceStream() {
   const setLastRealtimeEventAt = useUiStore((state) => state.setLastRealtimeEventAt)
 
   useEffect(() => {
-    const eventSource = new EventSource(`${API_BASE_URL}/events/stream`)
+    // withCredentials sends the chiliai_session cookie cross-origin so the
+    // server-side require_role("viewer") guard on /events/stream can identify
+    // the user. Without this, EventSource omits cookies and the stream 401s.
+    const eventSource = new EventSource(`${API_BASE_URL}/events/stream`, {
+      withCredentials: true,
+    })
 
     const handleWorkspaceUpdate = (event: MessageEvent<string>) => {
       const payload = JSON.parse(event.data) as RealtimeSnapshotResponse

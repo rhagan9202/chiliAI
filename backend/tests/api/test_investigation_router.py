@@ -290,7 +290,7 @@ def test_investigation_entity_get_requires_viewer_when_auth_enabled(
 
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
-    monkeypatch.setattr("api.app.assert_complete", lambda app: None)
+    monkeypatch.setattr("api.app.assert_complete", lambda app: None)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
 
     auth_cfg = AuthConfig(
         enabled=True,
