@@ -79,6 +79,7 @@ function uploadDocument({
       `${API_BASE_URL}/knowledgebases/${kbId}/documents`,
       true,
     )
+    xhr.withCredentials = true
     xhr.responseType = 'json'
 
     xhr.upload.onprogress = (event) => {

@@ -6,7 +6,7 @@ Python 3.12 backend for the chiliAI platform — a domain-reconfigurable Graph R
 
 ## Current State
 
-Working FastAPI gateway and pipeline-worker prototype with domain configuration, event-driven orchestration, ingestion, graph/vector/embedding/LLM/RAG service boundaries, analytics modules, monitoring, storage adapters, config-driven adapter selection, auth/RBAC middleware, and extensive pytest coverage. Initial production-facing adapters now exist for Neo4j, Qdrant, OpenAI, Anthropic, sentence-transformers, and S3-compatible storage; remaining production work is mainly route-wide auth/RBAC enforcement, tenant isolation, observability, durable workflow recovery, and live adapter deployment profiles.
+Working FastAPI gateway and pipeline-worker prototype with domain configuration, event-driven orchestration, ingestion, graph/vector/embedding/LLM/RAG service boundaries, analytics modules, monitoring, storage adapters, config-driven adapter selection, auth/RBAC middleware, route-level policy enforcement, and extensive pytest coverage. Initial production-facing adapters now exist for Neo4j, Qdrant, OpenAI, Anthropic, sentence-transformers, and S3-compatible storage; remaining production work is mainly tenant/resource-level authorization, observability, durable workflow recovery, and live adapter deployment profiles.
 
 ### What's functional
 
@@ -21,7 +21,7 @@ Working FastAPI gateway and pipeline-worker prototype with domain configuration,
 - **`graph/`, `vectorstore/`, `embeddings/`, `llm/`, `rag/`** — Service/protocol boundaries with in-memory adapters and selected production-facing adapters.
 - **`analytics/` and `monitoring/`** — Heuristic timeseries, GNN, risk, explainability, alert, and monitoring services.
 - **`storage/`** — In-memory, local filesystem, and S3-compatible object-store adapters.
-- **`api/middleware/`** — Metrics, auth, and RBAC middleware; route-wide production enforcement remains a hardening item.
+- **`api/middleware/`** — Metrics, auth, and RBAC middleware with route-level policy enforcement and auth-enabled startup audit.
 - **`agent/coordinator.py`** — Worker entry point (`python -m agent.coordinator`) for Redis-stream processing, Flow A/Flow B handlers, retry/DLQ routing, graceful shutdown, and a lightweight health endpoint.
 - **`main.py`** — Uvicorn launcher for local development.
 - **`Dockerfile`** — Multi-stage build producing a production-ready image.

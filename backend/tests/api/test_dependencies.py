@@ -289,12 +289,12 @@ def test_llm_config_selects_configured_provider_adapter(
     [
         (
             "get_graph_repository",
-            {"graph": GraphDbConfig(backend="memgraph")},
+            {"graph": GraphDbConfig.model_construct(backend="memgraph")},
             "Unsupported graph backend 'memgraph'. Available backends: in_memory, neo4j.",
         ),
         (
             "get_vector_store",
-            {"vectorstore": VectorStoreConfig(backend="pgvector", dimensions=384)},
+            {"vectorstore": VectorStoreConfig.model_construct(backend="pgvector", dimensions=384)},
             "Unsupported vectorstore backend 'pgvector'. Available backends: in_memory, qdrant.",
         ),
     ],

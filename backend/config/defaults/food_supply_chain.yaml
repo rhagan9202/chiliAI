@@ -76,13 +76,13 @@ ingestion:
       endpoint: /ingest/shipments
 
 # graph:
-#   backend: in_memory  # use neo4j or memgraph for external graph databases
+#   backend: in_memory  # use neo4j for external graph databases
 #   uri: null
 #   pool_size: 10
 #   auth_env_var: GRAPH_DB_AUTH
 
 # vectorstore:
-#   backend: in_memory  # use qdrant or pgvector for external vector indexes
+#   backend: in_memory  # use qdrant for external vector indexes
 #   uri: null
 #   dimensions: 384
 #   distance_metric: cosine

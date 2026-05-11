@@ -269,6 +269,12 @@ async def register_knowledge_base_documents(
     config: DomainConfig = Depends(get_domain_config),
 ) -> DocumentRegistrationResponse:
     """Register uploaded documents and enqueue ingestion work."""
+    if repository.get(knowledge_base_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Knowledge base '{knowledge_base_id}' not found.",
+        )
+
     validation = config.validation
     max_bytes = validation.max_file_size_mb * 1024 * 1024
     allowed_content_types = set(validation.allowed_content_types)
@@ -305,21 +311,20 @@ async def register_knowledge_base_documents(
 
     receipts = ingestion_service.register_documents(knowledge_base_id, submissions)
 
-    if repository.get(knowledge_base_id) is not None:
-        for receipt, (filename, content_type, size_bytes) in zip(
-            receipts, raw_metadata, strict=True
-        ):
-            repository.add_document(
-                DocumentRecord(
-                    id=receipt.source_document_id,
-                    knowledge_base_id=knowledge_base_id,
-                    filename=filename,
-                    content_type=content_type,
-                    size_bytes=size_bytes,
-                    status=receipt.status.value,
-                    storage_key=receipt.storage_key,
-                )
+    for receipt, (filename, content_type, size_bytes) in zip(
+        receipts, raw_metadata, strict=True
+    ):
+        repository.add_document(
+            DocumentRecord(
+                id=receipt.source_document_id,
+                knowledge_base_id=knowledge_base_id,
+                filename=filename,
+                content_type=content_type,
+                size_bytes=size_bytes,
+                status=receipt.status.value,
+                storage_key=receipt.storage_key,
             )
+        )
 
     return DocumentRegistrationResponse(documents=receipts)
 

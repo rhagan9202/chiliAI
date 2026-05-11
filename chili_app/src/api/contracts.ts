@@ -325,9 +325,8 @@ export type ChatMessageCreateRequest = {
   filters?: Record<string, string | number | boolean>
 }
 
-export type KnowledgeBaseStatus = 'ready' | 'indexing' | 'rebuilding' | 'error'
-export type IngestionStatus = 'pending' | 'parsing' | 'parsed' | 'chunked' | 'extracted' | 'validated' | 'failed'
-export type TimelineStatus = 'pending' | 'running' | 'completed' | 'failed'
+export type KnowledgeBaseStatus = 'active' | 'building' | 'ready' | 'error' | 'archived'
+export type IngestionStatus = 'pending' | 'registered' | 'building' | 'ready' | 'failed' | 'error'
 
 export type KnowledgeBaseSummaryResponse = {
   id: string
@@ -338,17 +337,11 @@ export type KnowledgeBaseSummaryResponse = {
   entity_count: number
   relationship_count: number
   created_at: string
-  last_ingested_at: string | null
 }
 
 export type KnowledgeBaseListResponse = {
   items: KnowledgeBaseSummaryResponse[]
-  page: PageInfo
-}
-
-export type KnowledgeBaseDetailResponse = {
-  knowledge_base: KnowledgeBaseSummaryResponse
-  recent_workflows: WorkflowRunResponse[]
+  total: number
 }
 
 export type KnowledgeBaseDocumentResponse = {
@@ -358,24 +351,12 @@ export type KnowledgeBaseDocumentResponse = {
   content_type: string | null
   size_bytes: number | null
   status: IngestionStatus
-  uploaded_at: string
+  created_at: string
 }
 
 export type KnowledgeBaseDocumentListResponse = {
   items: KnowledgeBaseDocumentResponse[]
-  page: PageInfo
-}
-
-export type IngestionTimelineEntryResponse = {
-  stage: string
-  status: TimelineStatus
-  updated_at: string
-  message: string
-}
-
-export type KnowledgeBaseDocumentStatusResponse = {
-  document: KnowledgeBaseDocumentResponse
-  timeline: IngestionTimelineEntryResponse[]
+  total: number
 }
 
 export type KnowledgeBaseCreateRequest = {

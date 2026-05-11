@@ -35,7 +35,7 @@
 - Preserve the monorepo split: frontend work in `chili_app/`, backend work in `backend/`, design docs in `docs/`, deployment config in `infra/`.
 - Frontend TypeScript is strict: `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`. Keep builds and lint clean.
 - Follow existing frontend patterns: functional React components, hooks, and the current Vite/ESLint setup. Target libraries: TanStack Query for server state, Zustand for client state, React Router v7 for routing.
-- Backend code must be compatible with `pyright --strict` — full annotations, no untyped `Any`, explicit domain types.
+- Backend code must be compatible with `pyright --strict` — full annotations, no untyped `Any`, explicit domain types. The active Pyright scope is currently defined in `backend/pyproject.toml`.
 - Design around abstract interfaces (protocols, ABCs) and interchangeable adapters for all external systems: graph DB, vector store, LLM, object storage.
 - Domain configuration is a single YAML/JSON surface. The frontend reads it at startup via API to render dynamic labels and feature gates. See `docs/architecture.md` §9.
 

@@ -20,8 +20,8 @@ Rendered SVG output is available at `docs/rendered/system_architecture_diagram_r
 | API | `uvicorn api.app:create_app --reload` on `:8000` | `chili-api` Deployment + Service + optional HPA |
 | Worker | `python -m agent.coordinator` | `chili-worker` Deployment + Service + optional HPA |
 | Events | Redis Compose service | Redis StatefulSet or managed Redis |
-| Graph | Neo4j Compose service in dev config | External Neo4j, Memgraph, or Neptune |
-| Vector | In-memory by default; Qdrant container available | External Qdrant, pgvector, or Weaviate |
+| Graph | Neo4j Compose service in dev config | External Neo4j |
+| Vector | In-memory by default; Qdrant container available | External Qdrant |
 | Object storage | Local filesystem volume | S3, MinIO, or local filesystem volume |
 | Secrets | `.env` and environment variables | Kubernetes Secret referenced by workloads |
 

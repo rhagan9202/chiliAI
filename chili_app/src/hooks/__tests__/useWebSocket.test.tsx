@@ -127,14 +127,14 @@ describe('useWebSocket', () => {
     handle.unmount()
   })
 
-  it('builds default URLs from the configured API origin', () => {
+  it('builds default URLs from the same-origin websocket path', () => {
     const onMessage = vi.fn<(event: unknown) => void>()
     const handle = renderHookSync('/ws/alerts', onMessage, {
       socketFactory: makeFactory(),
     })
 
     expect(FakeSocket.instances).toHaveLength(1)
-    expect(FakeSocket.instances[0].url).toBe('ws://localhost:8000/ws/alerts')
+    expect(FakeSocket.instances[0].url).toBe('ws://localhost:3000/ws/alerts')
     handle.unmount()
   })
 

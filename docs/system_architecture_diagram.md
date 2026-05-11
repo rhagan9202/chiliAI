@@ -65,8 +65,8 @@ flowchart LR
     end
 
     subgraph stores["Pluggable external persistence and AI providers"]
-        graphdb["Graph database<br/>Current dev: Neo4j 5<br/>Target: Neo4j, Memgraph, Neptune"]
-        vectordb["Vector store<br/>Current dev: in-memory / Qdrant container available<br/>Target: Qdrant, pgvector, Weaviate"]
+        graphdb["Graph database<br/>Current dev: Neo4j 5<br/>Selectable: in-memory, Neo4j"]
+        vectordb["Vector store<br/>Current dev: in-memory / Qdrant container available<br/>Selectable: in-memory, Qdrant"]
         objectstore["Object store<br/>Current dev: local filesystem volume<br/>Target: S3, MinIO, local FS"]
         llmprovider["LLM provider<br/>Current default: local in-memory<br/>Target: OpenAI, Anthropic, Ollama / vLLM"]
         embedprovider["Embedding provider<br/>Current default: local in-memory<br/>Target: OpenAI, sentence-transformers"]
@@ -221,8 +221,8 @@ sequenceDiagram
 | API | `uvicorn api.app:create_app --reload` on `:8000` | `chili-api` Deployment + Service + optional HPA |
 | Worker | `python -m agent.coordinator` | `chili-worker` Deployment + Service + optional HPA |
 | Events | Redis Compose service | Redis StatefulSet or managed Redis |
-| Graph | Neo4j Compose service in dev config | External Neo4j, Memgraph, or Neptune |
-| Vector | In-memory by default; Qdrant container available | External Qdrant, pgvector, or Weaviate |
+| Graph | Neo4j Compose service in dev config | External Neo4j |
+| Vector | In-memory by default; Qdrant container available | External Qdrant |
 | Object storage | Local filesystem volume | S3, MinIO, or local filesystem volume |
 | Secrets | `.env` and environment variables | Kubernetes Secret referenced by workloads |
 

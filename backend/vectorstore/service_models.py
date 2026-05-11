@@ -80,7 +80,7 @@ class VectorSearchMatch(BaseModel):
 
     record_id: str
     content_id: str
-    score: float = Field(ge=-1.0, le=1.0)
+    score: float
     content: str | None = None
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
 

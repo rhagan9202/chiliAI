@@ -247,8 +247,8 @@ The API never does long-running computation. It validates input, publishes event
 backend/
   api/          FastAPI gateway — thin routing only, no business logic
   ingestion/    Document parsing, chunking, entity extraction
-  graph/        Knowledge graph CRUD (Neo4j / Memgraph / Neptune)
-  vectorstore/  Embedding storage and similarity search (Qdrant / pgvector / Weaviate)
+  graph/        Knowledge graph CRUD (in-memory / Neo4j; other adapters are roadmap)
+  vectorstore/  Embedding storage and similarity search (in-memory / Qdrant; other adapters are roadmap)
   embeddings/   Text and graph-metric embedding generation
   rag/          RAG pipeline: embed query → search → expand graph → assemble context → LLM
   llm/          LLM client abstraction (OpenAI / Anthropic / Ollama)
@@ -518,9 +518,9 @@ mymodule/
     vendor_b.py          ← real implementation B
 ```
 
-### 8.2 Example: Adding a new graph adapter
+### 8.2 Example: Adding a future graph adapter
 
-Suppose you are adding a Memgraph adapter to the existing `graph/` module.
+Suppose you are adding a Memgraph adapter to the existing `graph/` module. Memgraph is a roadmap backend, not a currently selectable `DomainConfig.graph.backend` value. A new adapter is complete only after its protocol implementation, tests, dependency extra, DI factory branch, and config literal are all updated together.
 
 1. **Implement the protocol** in `backend/graph/adapters/memgraph_adapter.py`:
 
@@ -564,7 +564,9 @@ _: GraphRepositoryProtocol = MemgraphGraphRepository.__new__(MemgraphGraphReposi
 memgraph = ["neo4j>=5,<6"]   # Memgraph uses the same driver
 ```
 
-4. **Write tests** using the in-memory adapter. Integration tests that require an actual Memgraph instance should be marked `@pytest.mark.integration` and excluded from the default test run.
+4. **Wire selection explicitly.** Update `backend/config/schema.py` to include the new literal and update the dependency factory to construct the adapter. Do not advertise a backend in config until that branch exists.
+
+5. **Write tests** using the in-memory adapter. Integration tests that require an actual Memgraph instance should be marked `@pytest.mark.integration` and excluded from the default test run.
 
 ---
 

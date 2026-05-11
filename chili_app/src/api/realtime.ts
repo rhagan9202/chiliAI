@@ -2,9 +2,8 @@ import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import type { RealtimeSnapshotResponse } from './contracts'
+import { API_BASE_URL } from '../lib/apiClient'
 import { useUiStore } from '../stores/uiStore'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
 export function useRealtimeWorkspaceStream() {
   const queryClient = useQueryClient()

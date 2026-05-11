@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError, apiRequest } from '../apiClient'
+import { API_BASE_URL, ApiError, apiRequest } from '../apiClient'
 
 describe('apiClient', () => {
   let originalFetch: typeof fetch
@@ -39,6 +39,24 @@ describe('apiClient', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.any(String),
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+
+  it('defaults API requests to the same-origin /api prefix', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    await apiRequest<{ ok: boolean }>('/anything')
+
+    expect(API_BASE_URL).toBe('/api')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/anything',
       expect.objectContaining({ credentials: 'include' }),
     )
   })

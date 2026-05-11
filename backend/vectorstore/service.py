@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 from events.protocols import EventBus
 from events.types import VectorIndexedReference, VectorsIndexedEvent
 from shared.utils import generate_id
@@ -48,6 +50,39 @@ class VectorService:
             raise VectorDimensionMismatchError(str(exc)) from exc
         except Exception as exc:
             raise VectorStoreError("Failed to index vector records.") from exc
+
+        expected_records = Counter(
+            (record.id, record.content_id, record.knowledge_base_id)
+            for record in records
+        )
+        actual_records = Counter(
+            (record.id, record.content_id, record.knowledge_base_id)
+            for record in stored_records
+        )
+        if actual_records != expected_records:
+            missing = sorted(
+                content_id
+                for (_record_id, content_id, _knowledge_base_id), count in (
+                    expected_records - actual_records
+                ).items()
+                for _ in range(count)
+            )
+            unexpected = sorted(
+                content_id
+                for (_record_id, content_id, _knowledge_base_id), count in (
+                    actual_records - expected_records
+                ).items()
+                for _ in range(count)
+            )
+            details: list[str] = []
+            if missing:
+                details.append(f"missing records for: {', '.join(missing)}")
+            if unexpected:
+                details.append(f"unexpected records for: {', '.join(unexpected)}")
+            raise VectorStoreError(
+                "Vector store returned incomplete batch results: "
+                + "; ".join(details)
+            )
 
         receipts = [
             VectorIndexReceipt(

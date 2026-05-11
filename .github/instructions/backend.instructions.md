@@ -11,7 +11,7 @@ applyTo: "backend/**/*.py"
 ## Language And Typing
 
 - Target Python 3.12. Use Python 3.12 syntax and standard library features when they improve clarity, but do not introduce dependencies that weaken portability without a concrete need.
-- Write backend code so it is compatible with `pyright --strict`. Fully annotate public APIs and non-trivial internal functions, avoid untyped `Any`, prefer explicit domain types, and structure code so strict checking can pass once configured.
+- Write backend code so it is compatible with `pyright --strict`. Fully annotate public APIs and non-trivial internal functions, avoid untyped `Any`, prefer explicit domain types, and structure code so strict checking can pass. The active Pyright scope is currently defined in `backend/pyproject.toml`.
 
 ## Module Structure
 
@@ -33,12 +33,12 @@ applyTo: "backend/**/*.py"
 
 - Prefer interface-first design. Depend on protocols, abstract base classes, or narrow contracts instead of concrete vendor or storage implementations.
 - Avoid vendor lock-in in storage, graph, vector store, LLM, embedding, and object storage integrations. Put external-system specifics behind adapters in the relevant module's `adapters/` sub-package.
-- Every adapter implements the abstract protocol defined in the parent module's `protocols.py`.
+- Service-level protocols live in the parent module's `protocols.py`; adapter-level ports live in the relevant `adapters/protocols.py`.
 
 ## Event-Driven Pipeline
 
 - Pipeline orchestration uses Redis Streams. The `events/` module provides an abstract `EventBus` protocol with a Redis Streams adapter.
-- Pipeline stages communicate through typed events (`documents.uploaded`, `entities.extracted`, `graph.updated`, `analysis.complete`, `alerts.created`, etc.).
+- Pipeline stages communicate through typed events (`documents.uploaded`, `entities.extracted`, `graph.updated`, `timeseries.analyzed`, `gnn.analyzed`, `risk.scored`, `explainability.generated`, `alerts.created`, etc.).
 - Workers consume events via Redis consumer groups, enabling horizontal scaling.
 
 ## Testing

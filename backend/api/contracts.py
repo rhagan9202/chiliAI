@@ -259,26 +259,18 @@ class KnowledgeBaseSummaryResponse(BaseModel):
     id: str
     name: str
     description: str
-    status: Literal["ready", "indexing", "rebuilding", "error"]
+    status: Literal["active", "building", "ready", "error", "archived"]
     document_count: int = Field(ge=0)
     entity_count: int = Field(ge=0)
     relationship_count: int = Field(ge=0)
     created_at: datetime
-    last_ingested_at: datetime | None = None
 
 
 class KnowledgeBaseListResponse(BaseModel):
     """Collection response for knowledge base summaries."""
 
     items: list[KnowledgeBaseSummaryResponse] = Field(default_factory=list)
-    page: PageInfo
-
-
-class KnowledgeBaseDetailResponse(BaseModel):
-    """Expanded knowledge base detail used by the manager page."""
-
-    knowledge_base: KnowledgeBaseSummaryResponse
-    recent_workflows: list["WorkflowRunResponse"] = Field(default_factory=list)
+    total: int = Field(ge=0)
 
 
 class KnowledgeBaseDocumentResponse(BaseModel):
@@ -289,31 +281,15 @@ class KnowledgeBaseDocumentResponse(BaseModel):
     filename: str
     content_type: str | None = None
     size_bytes: int | None = Field(default=None, ge=0)
-    status: Literal["pending", "parsing", "parsed", "chunked", "extracted", "validated", "failed"]
-    uploaded_at: datetime
+    status: Literal["pending", "registered", "building", "ready", "failed", "error"]
+    created_at: datetime
 
 
 class KnowledgeBaseDocumentListResponse(BaseModel):
     """Document inventory for one knowledge base."""
 
     items: list[KnowledgeBaseDocumentResponse] = Field(default_factory=list)
-    page: PageInfo
-
-
-class IngestionTimelineEntryResponse(BaseModel):
-    """One ingestion timeline event for a source document."""
-
-    stage: str
-    status: Literal["pending", "running", "completed", "failed"]
-    updated_at: datetime
-    message: str
-
-
-class KnowledgeBaseDocumentStatusResponse(BaseModel):
-    """Detailed document ingestion state for the timeline panel."""
-
-    document: KnowledgeBaseDocumentResponse
-    timeline: list[IngestionTimelineEntryResponse] = Field(default_factory=list)
+    total: int = Field(ge=0)
 
 
 class KnowledgeBaseCreateRequest(BaseModel):
@@ -448,12 +424,9 @@ __all__ = [
     "GraphEdgeResponse",
     "GraphEntityDetailResponse",
     "GraphNodeResponse",
-    "IngestionTimelineEntryResponse",
     "KnowledgeBaseCreateRequest",
-    "KnowledgeBaseDetailResponse",
     "KnowledgeBaseDocumentListResponse",
     "KnowledgeBaseDocumentResponse",
-    "KnowledgeBaseDocumentStatusResponse",
     "KnowledgeBaseListResponse",
     "KnowledgeBaseSummaryResponse",
     "PageInfo",

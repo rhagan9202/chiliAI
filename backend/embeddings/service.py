@@ -42,6 +42,21 @@ class EmbeddingsService:
         except Exception as exc:
             raise EmbeddingProviderError("Failed to generate embeddings.") from exc
 
+        expected_ids = {item.id for item in embedding_request.items}
+        actual_ids = set(result.vectors)
+        missing_ids = sorted(expected_ids - actual_ids)
+        extra_ids = sorted(actual_ids - expected_ids)
+        if missing_ids or extra_ids:
+            details: list[str] = []
+            if missing_ids:
+                details.append(f"missing vectors for: {', '.join(missing_ids)}")
+            if extra_ids:
+                details.append(f"unexpected vectors for: {', '.join(extra_ids)}")
+            raise EmbeddingProviderError(
+                "Embedding provider returned incomplete batch results: "
+                + "; ".join(details)
+            )
+
         response = EmbedResponse(
             request_id=result.request_id,
             model_name=result.metadata.model_name,

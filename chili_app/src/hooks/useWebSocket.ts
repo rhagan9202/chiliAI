@@ -6,7 +6,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-import { API_BASE_URL } from '../lib/apiClient'
 import type { ConnectionStatus } from '../types/wsEvents'
 
 export interface UseWebSocketOptions {
@@ -33,7 +32,14 @@ const DEFAULT_MAX_DELAY_MS = 30_000
 function resolveWebSocketBaseUrl(): string {
   const explicitBase = (import.meta.env.VITE_WS_BASE_URL as string | undefined)
     ?.trim()
-  const base = explicitBase && explicitBase.length > 0 ? explicitBase : API_BASE_URL
+  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)
+    ?.trim()
+  const base =
+    explicitBase && explicitBase.length > 0
+      ? explicitBase
+      : apiBase && apiBase.length > 0
+        ? apiBase
+        : window.location.origin
   const resolved = new URL(base, window.location.origin)
   if (resolved.protocol === 'https:') {
     resolved.protocol = 'wss:'

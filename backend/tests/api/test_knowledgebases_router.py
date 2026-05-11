@@ -409,6 +409,29 @@ def test_register_documents_returns_202_and_publishes_event(
     assert detail.json()["document_count"] == 1
 
 
+def test_register_documents_returns_404_for_missing_kb_without_side_effects(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, event_bus, object_store, _ = harness
+
+    response = client.post(
+        "/knowledgebases/missing/documents",
+        files=[("files", ("claims.json", b'{"claim_id": "42"}', "application/json"))],
+    )
+
+    assert response.status_code == 404
+    assert object_store.list_keys("knowledgebases/missing/") == []
+    assert not any(
+        isinstance(event, DocumentsUploadedEvent)
+        for event in event_bus.published_events
+    )
+
+
 def test_register_documents_rejects_disallowed_content_type(
     harness: tuple[
         TestClient,

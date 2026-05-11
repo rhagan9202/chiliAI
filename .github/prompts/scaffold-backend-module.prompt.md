@@ -1,5 +1,5 @@
 ---
-description: "Scaffold a new hexagonal backend service module with ports, adapters, models, protocols, service, tests, and TODO stubs"
+description: "Scaffold a new hexagonal backend service module with ports, adapters, models, protocols, service, and assertion-bearing tests"
 agent: "agent"
 argument-hint: "Module name (e.g. graph, vectorstore, embeddings, rag, llm)"
 ---
@@ -38,7 +38,7 @@ backend/{moduleName}/
 ├── __init__.py              # Public exports with explicit __all__
 ├── models.py                # Internal transport and workflow Pydantic models
 ├── service_models.py        # API-boundary request/response Pydantic models
-├── protocols.py             # Service-level Protocol (runtime_checkable)
+├── protocols.py             # Service-level Protocol (runtime_checkable), when needed
 ├── service.py               # Core service implementation (constructor injection)
 ├── exceptions.py            # Module-specific exception hierarchy
 ├── adapters/
@@ -99,9 +99,9 @@ backend/tests/{moduleName}/
 - Test service orchestration logic.
 - Test adapter protocol conformance.
 
-## TODO Stub Convention
+## Deferred Work Convention
 
-For any functionality that is recognized as needed but not yet implemented, use this exact pattern:
+Do not generate mergeable modules that consist only of `NotImplementedError` stubs. Scaffold the smallest working implementation that satisfies the service contract and includes assertion-bearing tests. If a placeholder is unavoidable for exploratory work, label it as non-mergeable and use this exact pattern:
 
 ```python
 # TODO: <concise description of what needs to be implemented or extended>
@@ -128,6 +128,7 @@ After scaffolding, verify:
 - [ ] Every `.py` file has `from __future__ import annotations`
 - [ ] All protocols use `@runtime_checkable`
 - [ ] Service constructor accepts all deps as protocol-typed params
+- [ ] Tests contain real assertions and the generated module has a minimal working path
 - [ ] `__init__.py` files have explicit `__all__` lists
 - [ ] No cross-feature-module imports (only `shared.*`, `events.*`, `storage.*`)
 - [ ] In-memory adapter exists and satisfies protocol

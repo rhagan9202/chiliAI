@@ -133,8 +133,8 @@ This section describes chiliAI's external actors and the systems it interacts wi
 |----------------|------|
 | **Analyst user** | Interacts with the platform through the browser-based workbench. Uploads documents, reviews alerts, explores the graph, queries via RAG chat. |
 | **Data sources** | Claims records, beneficiary information, provider data, medical records, policy documents. Formats include PDF, DOCX, HTML, JSON, TXT, CSV. Delivered via file upload, API push, or polled feed. |
-| **Graph database** | Stores knowledge graphs (policy graph, claims graph). Pluggable — Neo4j, Memgraph, or AWS Neptune behind an abstract adapter. |
-| **Vector store** | Stores embeddings for RAG retrieval and similarity search. Pluggable — pgvector, Qdrant, or Weaviate behind an abstract adapter. |
+| **Graph database** | Stores knowledge graphs (policy graph, claims graph). Current selectable backends are in-memory and Neo4j behind an abstract adapter. Memgraph and AWS Neptune remain roadmap adapters until their adapter/factory wiring exists. |
+| **Vector store** | Stores embeddings for RAG retrieval and similarity search. Current selectable backends are in-memory and Qdrant behind an abstract adapter. pgvector and Weaviate remain roadmap adapters until their adapter/factory wiring exists. |
 | **LLM provider** | Powers RAG conversational interface and entity extraction during ingestion. Vendor-agnostic — OpenAI, Anthropic, or self-hosted (Ollama, vLLM) behind an abstract adapter. |
 | **Object store** | Persists raw ingested files for audit and reprocessing. S3, MinIO, or local filesystem behind an abstract adapter. |
 | **Auth provider** | *(Future)* External identity provider (OIDC/OAuth2) for authentication. Designed-for but deferred. |
@@ -176,8 +176,8 @@ The monorepo produces the following deployable containers:
 | **Backend API** | Python 3.12, FastAPI | HTTP + WebSocket entry point for the frontend. Thin orchestration layer — routes requests to internal service modules, publishes events, pushes real-time updates. **No business logic in routers.** |
 | **Worker / Pipeline Runner** | Python 3.12, shares backend codebase | Long-running process(es) consuming events from Redis Streams. Executes ingestion, entity extraction, graph building, embedding, analytics pipelines, and alert generation. Scales via Redis consumer groups. |
 | **Redis** | Redis 7+ with Streams | Event-driven pipeline orchestration. Decouples API from worker. Also provides pub-sub for real-time UI push (alerts, pipeline status) relayed through API WebSockets. |
-| **Graph Database** | Neo4j / Memgraph / Neptune | Persists knowledge graphs. Accessed exclusively through the `graph` module's abstract repository protocol. |
-| **Vector Store** | pgvector / Qdrant / Weaviate | Persists embeddings. Accessed exclusively through the `vectorstore` module's abstract protocol. |
+| **Graph Database** | in-memory / Neo4j | Persists knowledge graphs. Accessed exclusively through the `graph` module's abstract repository protocol. |
+| **Vector Store** | in-memory / Qdrant | Persists embeddings. Accessed exclusively through the `vectorstore` module's abstract protocol. |
 | **Object Store** | S3 / MinIO / local FS | Persists raw uploaded files for audit trail and reprocessing. Accessed through an abstract storage protocol. |
 
 ### Communication patterns
@@ -188,7 +188,7 @@ The monorepo produces the following deployable containers:
 | chili_app ← Backend API | WSS (WebSocket) | Real-time alerts, pipeline status updates |
 | Backend API → Redis | Redis Streams XADD | Publish pipeline events (`documents.uploaded`, `claims.ingested`, etc.) |
 | Worker ← Redis | Redis Streams XREADGROUP | Consume pipeline events, execute processing steps |
-| Worker → Redis | Redis Streams XADD | Publish downstream events (`entities.extracted`, `analysis.complete`, etc.) |
+| Worker → Redis | Redis Streams XADD | Publish downstream events (`entities.extracted`, `risk.scored`, `alerts.created`, etc.) |
 | Backend API / Worker → Graph DB | Adapter-specific driver | Graph CRUD, queries, metrics |
 | Backend API / Worker → Vector Store | Adapter-specific client | Embedding storage, similarity search |
 | Worker → Object Store | Adapter-specific SDK | Raw file persistence |
@@ -374,7 +374,7 @@ Example: `POST /knowledgebases/{id}/documents` → API router calls `ingestion.p
 
 The agent module coordinates multi-step pipelines by publishing and subscribing to events. Individual service modules react to events independently — they do not know about each other.
 
-Example: Agent publishes `ingest.start` → Ingestion worker processes documents → publishes `entities.extracted` → Graph builder consumes and upserts → publishes `graph.updated` → Analytics consumes and processes → publishes `analysis.complete` → Alert service evaluates.
+Example: Agent publishes `ingest.start` → Ingestion worker processes documents → publishes `entities.extracted` → Graph builder consumes and upserts → publishes `graph.updated` → Analytics consumes and processes → publishes `risk.scored` / `explainability.generated` → Alert service evaluates and publishes `alerts.created`.
 
 **Path C — Shared contracts library**
 
@@ -398,7 +398,7 @@ Analyst                 API                 Redis              Workers
   │                      │  XADD             │                   │
   │                      │  kb.create        │                   │
   │                      │──────────────────▶│                   │
-  │  202 Accepted        │                   │                   │
+  │  201 Created         │                   │                   │
   │◀─────────────────────│                   │                   │
   │                      │                   │  XREADGROUP       │
   │                      │                   │  kb.create        │
@@ -411,7 +411,7 @@ Analyst                 API                 Redis              Workers
   │                      │  XADD             │                   │
   │                      │  docs.uploaded    │                   │
   │                      │──────────────────▶│                   │
-  │  202 Accepted        │                   │                   │
+  │  200 OK              │                   │                   │
   │◀─────────────────────│                   │                   │
   │                      │                   │                   │
   │                      │                   │  ┌──────────────┐ │
@@ -513,7 +513,7 @@ Data Source             API / Feed          Redis              Workers
   │                      │                   │         │         │
   │                      │                   │◀────────┘         │
   │                      │                   │  XADD             │
-  │                      │                   │  analysis.complete│
+  │                      │                   │  risk.scored      │
   │                      │                   │                   │
   │                      │                   │  ┌──────────────┐ │
   │                      │                   │  │ Results      │ │
@@ -561,13 +561,13 @@ Knowledge bases are the core organizational unit for ingested content and their 
 
 | Operation | Trigger | Pipeline steps | Notes |
 |-----------|---------|----------------|-------|
-| **Create KB** | `POST /knowledgebases` | Initialize graph namespace → ready for documents | Creates empty KB metadata, graph partition, and vector namespace |
+| **Create KB** | `POST /knowledgebases` | Create metadata → publish `kb.create` | Returns `201 Created`; graph/vector namespace initialization is async/planned |
 | **Add documents** | `POST /knowledgebases/{id}/documents` | Upload to object store → parse → chunk → extract entities → upsert graph → embed → index | Incremental — merges with existing graph |
 | **View KB summary** | `GET /knowledgebases/{id}` | Read metadata | Returns document count, entity/relationship counts, indexing status |
 | **List documents** | `GET /knowledgebases/{id}/documents` | Read metadata | Paginated list with ingestion status per document |
-| **Remove document** | `DELETE /knowledgebases/{id}/documents/{doc_id}` | Identify entities/relations from this doc → cascade remove from graph → remove embeddings → remove raw file | Must track provenance (which doc produced which entities) |
-| **Delete KB** | `DELETE /knowledgebases/{id}` | Drop graph namespace → drop vector namespace → delete raw files → delete metadata | Full teardown |
-| **Rebuild RAG index** | `POST /knowledgebases/{id}/rebuild` | Re-embed all content → replace vector index | Useful after embedding model change or config update |
+| **Remove document** | `DELETE /knowledgebases/{id}/documents/{doc_id}` | Delete document metadata and object-store payloads | Graph/vector provenance-backed cleanup is planned |
+| **Delete KB** | `DELETE /knowledgebases/{id}` | Delete object-store payloads and KB metadata → publish `kb.delete` | Graph/vector namespace teardown is planned |
+| **Rebuild RAG index** | Planned | Re-embed all content → replace vector index | No current public route |
 
 ### 7.2 Provenance tracking
 
@@ -898,15 +898,15 @@ services:
 | **chili-api** | Horizontal (FastAPI behind load balancer) | Stateless; scale based on request volume |
 | **chili-worker** | Horizontal (Redis consumer groups) | Each replica joins a consumer group; Redis distributes events. Scale based on pipeline throughput needs. |
 | **Redis** | Vertical or Redis Cluster | Streams throughput is typically sufficient with a single node; cluster for HA |
-| **Graph DB** | Per vendor scaling docs | Neo4j: read replicas. Neptune: read replicas. Memgraph: HA replication. |
-| **Vector Store** | Per vendor scaling docs | Qdrant: sharding. pgvector: PG replicas. Weaviate: cluster mode. |
+| **Graph DB** | Per vendor scaling docs | Current external backend: Neo4j read replicas. |
+| **Vector Store** | Per vendor scaling docs | Current external backend: Qdrant sharding. |
 
 ### 10.5 Hybrid deployment
 
 The same container images deploy identically to:
 
 - **Cloud**: AWS EKS, GCP GKE, Azure AKS — with managed Redis (ElastiCache), managed graph DB (Neptune), managed vector store, and S3 object storage.
-- **On-premises**: Docker Compose or self-managed Kubernetes — with self-hosted Redis, Neo4j/Memgraph, Qdrant/pgvector, and MinIO or local filesystem.
+- **On-premises**: Docker Compose or self-managed Kubernetes — with self-hosted Redis, Neo4j, Qdrant, and MinIO or local filesystem.
 
 Adapter selection is driven by environment configuration, not code changes.
 
@@ -949,22 +949,22 @@ Adapter selection is driven by environment configuration, not code changes.
 
 ## 12. Security
 
-> **Current state**: Authentication and authorization middleware exists with JWT/RBAC validation paths and tests, but route-wide production enforcement and frontend login flows remain hardening work.
+> **Current state**: Authentication and authorization middleware, `/auth/*` routes, cookie/Bearer token handling, frontend login/session flow, route-level `require_role`, and auth-enabled default-deny startup audit are implemented. Remaining hardening focuses on production IdP profiles, tenant isolation, and resource-level authorization.
 
-### 12.1 Authentication (partially implemented)
+### 12.1 Authentication
 
 - **Approach**: Pluggable FastAPI middleware
 - **Protocols**: JWT verification with support for OIDC/OAuth2 identity providers
-- **Configuration**: Auth enabled/disabled via environment variable. When disabled, all requests are treated as an anonymous admin user. When enabled, a valid JWT must be present.
-- **Token flow**: Frontend obtains tokens from the IdP; backend validates on every request.
+- **Configuration**: Auth enabled/disabled via domain config. When disabled, requests run as an anonymous `viewer`. When enabled, protected routes accept the `chiliai_session` cookie or a Bearer token.
+- **Token flow**: The frontend uses a BFF-style cookie session; Bearer tokens remain supported for API clients.
 
-### 12.2 Authorization (partially implemented)
+### 12.2 Authorization
 
 | Role | Permissions |
 |------|------------|
 | **admin** | Full access: configuration, KB management, user management, all analyst capabilities |
 | **analyst** | View dashboards, investigate alerts, explore graph, use RAG chat, manage own alerts. Cannot modify system config or delete KBs. |
-| **viewer** | Read-only access to dashboards and alert feed. Cannot interact with graph explorer or RAG chat. |
+| **viewer** | Read/exploration access to dashboards, alert feed, graph/investigation views, and RAG chat. Mutations are reserved for analyst/admin roles. |
 
 - **Enforcement**: Middleware + dependency injection at the API router level. Each router declares required roles.
 - **Check granularity**: Route-level (not field-level). Finer-grained permissions can be added later.
@@ -1003,8 +1003,8 @@ Adapter selection is driven by environment configuration, not code changes.
 | **Type checking** | pyright (strict mode) | Static type analysis |
 | **Testing** | pytest + coverage | Unit/integration tests, ≥85% coverage |
 | **Event streaming** | Redis 7+ Streams | Pipeline orchestration, decoupling |
-| **Graph database** | Neo4j / Memgraph / Neptune | Knowledge graph storage (pluggable) |
-| **Vector store** | pgvector / Qdrant / Weaviate | Embedding storage, similarity search (pluggable) |
+| **Graph database** | in-memory / Neo4j | Knowledge graph storage (pluggable through the graph repository protocol) |
+| **Vector store** | in-memory / Qdrant | Embedding storage, similarity search (pluggable through the vector store protocol) |
 | **LLM integration** | OpenAI / Anthropic / Ollama / vLLM | RAG answers, entity extraction (pluggable) |
 | **Embedding models** | OpenAI / sentence-transformers / custom | Text and graph-metric embeddings (pluggable) |
 | **Object storage** | S3 / MinIO / local FS | Raw document persistence (pluggable) |

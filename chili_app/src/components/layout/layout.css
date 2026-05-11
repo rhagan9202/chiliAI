@@ -5,6 +5,10 @@
   background: transparent;
 }
 
+.app-shell--ai-closed {
+  grid-template-columns: 248px minmax(0, 1fr);
+}
+
 .app-shell__workspace {
   min-width: 0;
   border-inline: 1px solid var(--c-b0);

@@ -1,6 +1,6 @@
 // Lightweight typed fetch wrapper. Base URL comes from VITE_API_BASE_URL.
 
-const DEFAULT_BASE_URL = 'http://localhost:8000'
+const DEFAULT_BASE_URL = '/api'
 
 export const API_BASE_URL: string =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? DEFAULT_BASE_URL

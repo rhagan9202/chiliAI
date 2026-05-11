@@ -233,6 +233,20 @@ def _build_in_memory_graph_repository(_: GraphDbConfig) -> GraphRepository:
     return InMemoryGraphRepository()
 
 
+def _resolve_graph_auth(config: GraphDbConfig) -> tuple[str, str] | None:
+    """Resolve optional Neo4j credentials from ``GraphDbConfig.auth_env_var``."""
+
+    if config.auth_env_var is None:
+        return None
+    raw_value = os.environ.get(config.auth_env_var)
+    if raw_value is None or raw_value.strip() == "":
+        return None
+    if ":" in raw_value:
+        username, password = raw_value.split(":", 1)
+        return username, password
+    return "neo4j", raw_value
+
+
 def _build_neo4j_graph_repository(config: GraphDbConfig) -> GraphRepository:
     try:
         from graph.adapters.neo4j_adapter import Neo4jGraphRepository
@@ -243,7 +257,7 @@ def _build_neo4j_graph_repository(config: GraphDbConfig) -> GraphRepository:
             message=str(exc),
         ) from exc
     try:
-        return Neo4jGraphRepository(config)
+        return Neo4jGraphRepository(config, auth=_resolve_graph_auth(config))
     except (ImportError, ValueError) as exc:
         raise ConfigurationError(
             subsystem="graph",

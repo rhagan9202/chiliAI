@@ -24,10 +24,9 @@ from api.contracts import (
     EvidencePackResponse,
     GraphEntityDetailResponse,
     KnowledgeBaseCreateRequest,
-    KnowledgeBaseDetailResponse,
     KnowledgeBaseDocumentListResponse,
-    KnowledgeBaseDocumentStatusResponse,
     KnowledgeBaseListResponse,
+    KnowledgeBaseSummaryResponse,
     PolicyBriefCreateRequest,
     PolicyBriefResponse,
     PolicyGapCaseListResponse,
@@ -110,10 +109,8 @@ __all__ = [
     "get_knowledge_base_delete_payload",
     "get_knowledge_base_detail_payload",
     "get_knowledge_base_document_delete_payload",
-    "get_knowledge_base_document_status_payload",
     "get_knowledge_base_documents_payload",
     "get_knowledge_base_list_payload",
-    "get_knowledge_base_rebuild_payload",
     "get_graph_repository",
     "get_graph_service",
     "get_ingestion_service",
@@ -277,7 +274,7 @@ def get_knowledge_base_list_payload(
 def get_knowledge_base_detail_payload(
     knowledge_base_id: str = Path(..., description="Knowledge base identifier."),
     state: ApiState = Depends(get_api_state),
-) -> KnowledgeBaseDetailResponse:
+) -> KnowledgeBaseSummaryResponse:
     """Return one knowledge base detail payload."""
     return state.get_knowledge_base_detail(knowledge_base_id)
 
@@ -285,7 +282,7 @@ def get_knowledge_base_detail_payload(
 def get_knowledge_base_create_payload(
     payload: KnowledgeBaseCreateRequest,
     state: ApiState = Depends(get_api_state),
-) -> KnowledgeBaseDetailResponse:
+) -> KnowledgeBaseSummaryResponse:
     """Create and return a new knowledge base."""
     return state.create_knowledge_base(payload)
 
@@ -305,15 +302,6 @@ def get_knowledge_base_documents_payload(
 ) -> KnowledgeBaseDocumentListResponse:
     """Return the document inventory for one knowledge base."""
     return state.list_knowledge_base_documents(knowledge_base_id)
-
-
-def get_knowledge_base_document_status_payload(
-    knowledge_base_id: str = Path(..., description="Knowledge base identifier."),
-    document_id: str = Path(..., description="Knowledge base document identifier."),
-    state: ApiState = Depends(get_api_state),
-) -> KnowledgeBaseDocumentStatusResponse:
-    """Return one document's ingestion timeline."""
-    return state.get_knowledge_base_document_status(knowledge_base_id, document_id)
 
 
 def get_knowledge_base_document_delete_payload(

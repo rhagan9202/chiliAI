@@ -1,5 +1,7 @@
 ## Plan: Human-in-the-Loop Feedback Integration
 
+> Historical prompt. Do not implement against `code-starters/ui/integrity-ai.jsx`; the active frontend is `chili_app/` and case feedback behavior is represented through current API/state/contracts. Rewrite this plan against `chili_app/` routes/components and `backend/api/routers/cases.py` before implementation.
+
 Add a feedback UI for investigators in the Provider Deep-Dive tab, and ensure feedback is reflected in both the Anomaly Feed and Case Management tabs, influencing workflow actions.
 
 ---
@@ -64,5 +66,4 @@ Add a feedback UI for investigators in the Provider Deep-Dive tab, and ensure fe
 ---
 
 Let me know if you want to refine any part of this plan or proceed to implementation.
-
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable, Generator
 from datetime import datetime, timezone
 from typing import Any, cast
@@ -14,8 +15,8 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from api.dependencies import get_domain_config, get_session_store
-from api.middleware.auth import User, build_anonymous_user, get_current_user
-from api.middleware.session_store import InMemorySessionStore
+from api.middleware.auth import build_anonymous_user, get_current_user
+from api.middleware.session_store import InMemorySessionStore, SessionRecord
 from api.routers.ws import (
     ROUTE_ALERTS,
     ROUTE_PIPELINE,
@@ -393,15 +394,7 @@ def test_ws_alerts_rejects_unauthenticated_upgrade_when_auth_enabled(
 def test_ws_alerts_accepts_upgrade_with_viewer_session_when_auth_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """WS upgrade to /ws/alerts succeeds when the current user holds the viewer role.
-
-    Note: ``get_current_user`` is overridden to return a viewer ``User`` directly
-    because FastAPI's WS dependency solver does not inject the ``Request`` positional
-    argument via DI the same way HTTP routes do in all FastAPI versions. The purpose
-    of this test is to verify that the ``require_role("viewer")`` dependency *passes*
-    when the user has the viewer role — the auth middleware itself is exercised
-    separately in ``test_auth_middleware.py``.
-    """
+    """WS upgrade to /ws/alerts succeeds with a real viewer session cookie."""
     from api.app import create_app
 
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
@@ -412,11 +405,27 @@ def test_ws_alerts_accepts_upgrade_with_viewer_session_when_auth_enabled(
     monkeypatch.setattr("api.app.load_config", lambda: domain)
 
     app = create_app()
-    viewer = User(user_id="u-viewer", roles=["viewer"])
-    app.dependency_overrides[get_current_user] = lambda: viewer
+    store = InMemorySessionStore()
+    now = time.time()
+    store.save(
+        SessionRecord(
+            session_id="sid-viewer",
+            user_id="u-viewer",
+            roles=["viewer"],
+            email="viewer@example.com",
+            access_token="access",
+            refresh_token="refresh",
+            access_token_expires_at=now + 3600,
+            id_token="id",
+            created_at=now,
+            ttl_seconds=3600,
+        )
+    )
+    app.dependency_overrides[get_session_store] = lambda: store
     app.dependency_overrides[get_domain_config] = lambda: domain
 
     with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-viewer")
         # If the upgrade succeeds the context manager enters normally.
         with client.websocket_connect("/ws/alerts"):
             pass  # Connection accepted — assertion is that no exception is raised.

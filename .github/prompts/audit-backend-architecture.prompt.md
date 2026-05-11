@@ -58,17 +58,17 @@ For all other uses:
 
 ### 4. Cross-Module Import Boundaries
 
-Feature modules (`ingestion/`, `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/`, `analytics/`, `monitoring/`) must **never** import directly from each other. Allowed cross-module import sources:
+Feature modules (`ingestion/`, `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/`, `analytics/`, `monitoring/`) should avoid ad hoc implementation imports from each other. Audit against the canonical three interaction paths: FastAPI gateway orchestration, agent/workflow orchestration via events, and lightweight shared contracts. Protocol-level dependencies documented in `docs/architecture.md` are allowed; concrete adapter wiring is allowed in composition roots.
 
 | Importing module | May import from |
 |---|---|
-| Any feature module | `shared.*`, `events.types`, `events.protocols`, `storage.protocols`, `storage.models` |
+| Any feature module | `shared.*`, event protocols/types, and documented protocol/service-model dependencies needed for its port |
 | `api/` routers | `api.dependencies`, feature module `protocols.py` and `service_models.py` only |
-| `api/dependencies.py` | Any module (it is the DI wiring layer) |
+| `api/dependencies.py` | Any module needed for DI wiring (composition root) |
 | `agent/coordinator.py` | Any module (it is the worker wiring layer) |
 | `config/` | `shared.types` only |
 
-- Flag: import that violates the table above
+- Flag: import that bypasses a documented protocol/composition boundary or couples a feature module to another module's concrete implementation
 - Severity: **error**
 
 ### 5. Service Constructor Injection

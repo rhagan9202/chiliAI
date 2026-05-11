@@ -72,14 +72,14 @@ export interface IngestionConfig {
 }
 
 export interface GraphDbConfig {
-  backend: 'neo4j' | 'memgraph' | 'in_memory'
+  backend: 'neo4j' | 'in_memory'
   uri?: string | null
   pool_size: number
   auth_env_var?: string | null
 }
 
 export interface VectorStoreConfig {
-  backend: 'qdrant' | 'pgvector' | 'in_memory'
+  backend: 'qdrant' | 'in_memory'
   uri?: string | null
   dimensions: number
   distance_metric: 'cosine' | 'dot' | 'euclidean'
@@ -102,7 +102,7 @@ export interface EmbeddingsConfig {
 }
 
 export interface ObjectStoreConfig {
-  backend: 's3' | 'gcs' | 'minio' | 'local'
+  backend: 's3' | 'minio' | 'local'
   endpoint_url?: string | null
   bucket?: string | null
   base_path?: string | null
