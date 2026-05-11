@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+
+import pytest
+
 from events.codec import decode_event, encode_event
 from events.types import (
     AgentWorkflowStartedEvent,
@@ -59,6 +63,27 @@ def test_event_codec_round_trips_documents_uploaded_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "documents.uploaded"
+
+
+def test_decode_event_rejects_transport_body_event_type_mismatch() -> None:
+    event = DocumentsUploadedEvent(
+        documents=[
+            DocumentReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-1",
+            )
+        ]
+    )
+    body = event.model_dump(mode="json")
+    body["event_type"] = "kb.create"
+
+    with pytest.raises(ValueError, match="does not match body event_type"):
+        decode_event(
+            {
+                "event_type": "documents.uploaded",
+                "event_body": json.dumps(body),
+            }
+        )
 
 
 def test_event_codec_round_trips_agent_workflow_started_event() -> None:

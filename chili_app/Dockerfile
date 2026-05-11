@@ -4,13 +4,7 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-# `npm ci` would be strictly reproducible, but the inherited lockfile has
-# malformed flags on optional platform-specific esbuild binaries (each is
-# tagged `extraneous` rather than `optional`, so npm ci tries to install
-# the aix-ppc64 binary on linux/x64 and fails with EBADPLATFORM). Fall back
-# to `npm install` so dev builds work; tightening to `npm ci` should land
-# alongside a regenerated lockfile in a follow-up.
-RUN npm install --no-audit --no-fund
+RUN npm ci --no-audit --no-fund
 
 COPY . .
 RUN npm run build

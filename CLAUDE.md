@@ -66,7 +66,7 @@ Backend modules may communicate **only** through:
 Forbidden: ad-hoc cross-module imports (e.g. `rag/` importing from `ingestion/` directly), hidden shared state, direct implementation coupling between modules.
 
 ### 2. External systems live behind protocols + adapters
-Every external system is accessed via an abstract `Protocol` in `<module>/protocols.py` with concrete implementations in `<module>/adapters/`. This applies to: graph DB (Neo4j/Memgraph/Neptune), vector store (pgvector/Qdrant/Weaviate), LLM (OpenAI/Anthropic/Ollama), embeddings (OpenAI/sentence-transformers), object storage (S3/MinIO/local FS), event bus (Redis Streams).
+Every external system is accessed via an abstract `Protocol` in `<module>/protocols.py` with concrete implementations in `<module>/adapters/`. Implemented selectable backends are: graph DB (in-memory, Neo4j), vector store (in-memory, Qdrant), LLM (local, OpenAI, Anthropic), embeddings (local, OpenAI, sentence-transformers), object storage (local FS, S3, MinIO), event bus (in-memory, Redis Streams). Roadmap adapters such as Memgraph, Neptune, pgvector, Weaviate, GCS, or Ollama/vLLM must not be added to `DomainConfig` literals until their adapter and factory wiring exist.
 
 Modules typically expose: `protocols.py` (abstract contract), `models.py` (internal domain models), `service_models.py` (external/API-facing models), `service.py` (orchestration), `adapters/` (concrete impls), `exceptions.py`. New external integrations follow this layout.
 

@@ -15,12 +15,19 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import cast
+from typing import Any, cast
 
 import httpx
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import (
+    Depends,
+    HTTPException,
+    Request,
+    WebSocket,
+    WebSocketException,
+    status,
+)
 from pydantic import BaseModel, Field
 
 from api.dependencies import get_domain_config, get_session_store
@@ -35,7 +42,9 @@ __all__ = [
     "User",
     "build_anonymous_user",
     "decode_token",
+    "get_jwks_cache",
     "get_current_user",
+    "get_current_websocket_user",
     "set_jwks_fetcher",
 ]
 
@@ -74,7 +83,9 @@ class JwksCache:
 
     fetcher: JwksFetcher = _default_jwks_fetcher
     ttl_seconds: int = 3600
-    _entries: dict[str, _CachedJwks] = field(default_factory=dict)
+    _entries: dict[str, _CachedJwks] = field(
+        default_factory=lambda: cast(dict[str, _CachedJwks], {})
+    )
     _clock: Callable[[], float] = field(default=time.monotonic)
 
     def get(self, uri: str) -> dict[str, object]:
@@ -90,7 +101,7 @@ class JwksCache:
         self._entries.clear()
 
 
-_JWKS_CACHE: JwksCache = JwksCache()
+_jwks_cache: JwksCache = JwksCache()
 
 SESSION_COOKIE_NAME = "chiliai_session"
 REFRESH_LEEWAY_SECONDS = 60
@@ -100,16 +111,20 @@ def _user_from_session(record: SessionRecord) -> User:
     return User(user_id=record.user_id, roles=record.roles, email=record.email)
 
 
-def set_jwks_fetcher(
-    fetcher: JwksFetcher, *, ttl_seconds: int | None = None
-) -> None:
+def set_jwks_fetcher(fetcher: JwksFetcher, *, ttl_seconds: int | None = None) -> None:
     """Replace the global JWKS fetcher (used by tests)."""
 
-    global _JWKS_CACHE
-    _JWKS_CACHE = JwksCache(
+    global _jwks_cache
+    _jwks_cache = JwksCache(
         fetcher=fetcher,
         ttl_seconds=ttl_seconds if ttl_seconds is not None else 3600,
     )
+
+
+def get_jwks_cache() -> JwksCache:
+    """Return the process-wide JWKS cache."""
+
+    return _jwks_cache
 
 
 def build_anonymous_user() -> User:
@@ -143,7 +158,11 @@ def decode_token(
             detail="JWT library is unavailable; install the [auth] extra.",
         ) from exc
 
-    if auth_config.jwks_uri is None or auth_config.audience is None or auth_config.issuer_url is None:
+    if (
+        auth_config.jwks_uri is None
+        or auth_config.audience is None
+        or auth_config.issuer_url is None
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Auth is enabled but issuer/audience/jwks_uri is not configured.",
@@ -158,12 +177,15 @@ def decode_token(
         ) from exc
 
     try:
-        claims = jwt.decode(
-            token,
-            cast(object, jwks),
-            algorithms=["RS256"],
-            audience=auth_config.audience,
-            issuer=auth_config.issuer_url,
+        claims = cast(
+            object,
+            jwt.decode(
+                token,
+                cast(Mapping[str, Any], jwks),
+                algorithms=["RS256"],
+                audience=auth_config.audience,
+                issuer=auth_config.issuer_url,
+            ),
         )
     except ExpiredSignatureError as exc:
         raise HTTPException(
@@ -211,8 +233,8 @@ def _resolve_auth_config(domain_config: DomainConfig) -> AuthConfig:
     return auth if auth is not None else AuthConfig()
 
 
-def _extract_bearer_token(request: Request) -> str | None:
-    header = request.headers.get("Authorization")
+def _extract_bearer_token_from_headers(headers: Mapping[str, str]) -> str | None:
+    header = headers.get("Authorization")
     if header is None:
         return None
     parts = header.split(maxsplit=1)
@@ -220,6 +242,10 @@ def _extract_bearer_token(request: Request) -> str | None:
         return None
     token = parts[1].strip()
     return token or None
+
+
+def _extract_bearer_token(request: Request) -> str | None:
+    return _extract_bearer_token_from_headers(request.headers)
 
 
 def _maybe_refresh_session(
@@ -272,6 +298,41 @@ def _maybe_refresh_session(
     return updated
 
 
+def _resolve_user_from_session_id(
+    sid: str,
+    *,
+    auth_config: AuthConfig,
+    session_store: SessionStoreProtocol,
+    websocket: bool = False,
+) -> User:
+    try:
+        record = session_store.get(sid)
+    except SessionNotFoundError as exc:
+        if websocket:
+            raise WebSocketException(
+                code=status.WS_1008_POLICY_VIOLATION,
+                reason="Session is unknown or has expired.",
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session is unknown or has expired.",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+    try:
+        record = _maybe_refresh_session(
+            record, auth_config=auth_config, session_store=session_store
+        )
+    except HTTPException as exc:
+        if websocket:
+            raise WebSocketException(
+                code=status.WS_1008_POLICY_VIOLATION,
+                reason=str(exc.detail),
+            ) from exc
+        raise
+    session_store.touch(sid, ttl_seconds=auth_config.session_ttl_seconds)
+    return _user_from_session(record)
+
+
 def get_current_user(
     request: Request,
     domain_config: DomainConfig = Depends(get_domain_config),
@@ -292,19 +353,11 @@ def get_current_user(
 
     sid = request.cookies.get(SESSION_COOKIE_NAME)
     if sid is not None:
-        try:
-            record = session_store.get(sid)
-        except SessionNotFoundError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session is unknown or has expired.",
-                headers={"WWW-Authenticate": "Bearer"},
-            ) from exc
-        record = _maybe_refresh_session(
-            record, auth_config=auth_config, session_store=session_store
+        return _resolve_user_from_session_id(
+            sid,
+            auth_config=auth_config,
+            session_store=session_store,
         )
-        session_store.touch(sid, ttl_seconds=auth_config.session_ttl_seconds)
-        return _user_from_session(record)
 
     token = _extract_bearer_token(request)
     if token is None:
@@ -314,5 +367,45 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    claims = decode_token(token, auth_config=auth_config, jwks_cache=_JWKS_CACHE)
+    claims = decode_token(token, auth_config=auth_config, jwks_cache=_jwks_cache)
+    return _extract_user(claims, roles_claim=auth_config.roles_claim)
+
+
+def get_current_websocket_user(
+    websocket: WebSocket,
+    domain_config: DomainConfig = Depends(get_domain_config),
+    session_store: SessionStoreProtocol = Depends(get_session_store),
+) -> User:
+    """Resolve the current ``User`` for WebSocket dependencies."""
+
+    auth_config = _resolve_auth_config(domain_config)
+    if not auth_config.enabled:
+        return build_anonymous_user()
+
+    sid = websocket.cookies.get(SESSION_COOKIE_NAME)
+    if sid is not None:
+        return _resolve_user_from_session_id(
+            sid,
+            auth_config=auth_config,
+            session_store=session_store,
+            websocket=True,
+        )
+
+    token = _extract_bearer_token_from_headers(websocket.headers)
+    if token is None:
+        raise WebSocketException(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason=(
+                f"Missing authentication: send {SESSION_COOKIE_NAME} cookie "
+                "or Bearer token."
+            ),
+        )
+
+    try:
+        claims = decode_token(token, auth_config=auth_config, jwks_cache=_jwks_cache)
+    except HTTPException as exc:
+        raise WebSocketException(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason=str(exc.detail),
+        ) from exc
     return _extract_user(claims, roles_claim=auth_config.roles_claim)

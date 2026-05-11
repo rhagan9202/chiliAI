@@ -389,16 +389,20 @@ class TestGraphDbConfig:
 
     def test_accepts_external_backend_configuration(self) -> None:
         config = GraphDbConfig(
-            backend="memgraph",
+            backend="neo4j",
             uri="bolt://graph.example:7687",
             pool_size=15,
-            auth_env_var="MEMGRAPH_AUTH",
+            auth_env_var="NEO4J_AUTH",
         )
 
-        assert config.backend == "memgraph"
+        assert config.backend == "neo4j"
         assert config.uri == "bolt://graph.example:7687"
         assert config.pool_size == 15
-        assert config.auth_env_var == "MEMGRAPH_AUTH"
+        assert config.auth_env_var == "NEO4J_AUTH"
+
+    def test_rejects_unimplemented_memgraph_backend(self) -> None:
+        with pytest.raises(ValidationError):
+            GraphDbConfig(backend="memgraph")  # type: ignore[arg-type]
 
 
 class TestVectorStoreConfig:
@@ -412,16 +416,20 @@ class TestVectorStoreConfig:
 
     def test_accepts_external_backend_configuration(self) -> None:
         config = VectorStoreConfig(
-            backend="pgvector",
-            uri="postgresql://vector.example/db",
+            backend="qdrant",
+            uri="http://qdrant.example:6333",
             dimensions=1024,
             distance_metric="euclidean",
         )
 
-        assert config.backend == "pgvector"
-        assert config.uri == "postgresql://vector.example/db"
+        assert config.backend == "qdrant"
+        assert config.uri == "http://qdrant.example:6333"
         assert config.dimensions == 1024
         assert config.distance_metric == "euclidean"
+
+    def test_rejects_unimplemented_pgvector_backend(self) -> None:
+        with pytest.raises(ValidationError):
+            VectorStoreConfig(backend="pgvector")  # type: ignore[arg-type]
 
     def test_dimensions_must_be_positive(self) -> None:
         with pytest.raises(ValidationError, match="dimensions"):
@@ -480,6 +488,10 @@ class TestObjectStoreConfig:
         assert config.bucket == "chili-docs"
         assert config.base_path == "knowledgebases"
         assert config.credentials_env_var == "MINIO_CREDENTIALS"
+
+    def test_rejects_unimplemented_gcs_backend(self) -> None:
+        with pytest.raises(ValidationError):
+            ObjectStoreConfig(backend="gcs")  # type: ignore[arg-type]
 
 
 class TestEventBusConfig:

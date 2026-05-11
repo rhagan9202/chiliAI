@@ -96,7 +96,7 @@ class IngestionConfig(BaseModel):
 class GraphDbConfig(BaseModel):
     """Configuration for selecting the graph database backend."""
 
-    backend: Literal["neo4j", "memgraph", "in_memory"] = "in_memory"
+    backend: Literal["neo4j", "in_memory"] = "in_memory"
     uri: str | None = None
     pool_size: int = 10
     auth_env_var: str | None = None
@@ -105,7 +105,7 @@ class GraphDbConfig(BaseModel):
 class VectorStoreConfig(BaseModel):
     """Configuration for selecting the vector store backend."""
 
-    backend: Literal["qdrant", "pgvector", "in_memory"] = "in_memory"
+    backend: Literal["qdrant", "in_memory"] = "in_memory"
     uri: str | None = None
     dimensions: int = Field(default=384, gt=0)
     distance_metric: Literal["cosine", "dot", "euclidean"] = "cosine"
@@ -137,7 +137,7 @@ class EmbeddingsConfig(BaseModel):
 class ObjectStoreConfig(BaseModel):
     """Configuration for selecting the object store backend."""
 
-    backend: Literal["s3", "gcs", "minio", "local"] = "local"
+    backend: Literal["s3", "minio", "local"] = "local"
     endpoint_url: str | None = None
     bucket: str | None = None
     base_path: str | None = None

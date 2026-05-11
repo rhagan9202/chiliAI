@@ -39,12 +39,9 @@ from api.contracts import (
     GraphEdgeResponse,
     GraphEntityDetailResponse,
     GraphNodeResponse,
-    IngestionTimelineEntryResponse,
     KnowledgeBaseCreateRequest,
-    KnowledgeBaseDetailResponse,
     KnowledgeBaseDocumentListResponse,
     KnowledgeBaseDocumentResponse,
-    KnowledgeBaseDocumentStatusResponse,
     KnowledgeBaseListResponse,
     KnowledgeBaseSummaryResponse,
     PageInfo,
@@ -392,22 +389,14 @@ class ApiState:
         items = [self._to_knowledge_base_summary(record) for record in self._sorted_knowledge_bases()]
         return KnowledgeBaseListResponse(
             items=items,
-            page=PageInfo(page=1, page_size=len(items), total_items=len(items)),
+            total=len(items),
         )
 
-    def get_knowledge_base_detail(self, knowledge_base_id: str) -> KnowledgeBaseDetailResponse:
+    def get_knowledge_base_detail(self, knowledge_base_id: str) -> KnowledgeBaseSummaryResponse:
         record = self._knowledge_bases[knowledge_base_id]
-        recent_workflows = [
-            workflow.model_copy(deep=True)
-            for workflow in self._workflow_runs
-            if workflow.knowledge_base_id == knowledge_base_id
-        ][:4]
-        return KnowledgeBaseDetailResponse(
-            knowledge_base=self._to_knowledge_base_summary(record),
-            recent_workflows=recent_workflows,
-        )
+        return self._to_knowledge_base_summary(record)
 
-    def create_knowledge_base(self, request: KnowledgeBaseCreateRequest) -> KnowledgeBaseDetailResponse:
+    def create_knowledge_base(self, request: KnowledgeBaseCreateRequest) -> KnowledgeBaseSummaryResponse:
         with self._lock:
             knowledge_base_id = generate_id()
             record = KnowledgeBaseRecord(
@@ -439,18 +428,7 @@ class ApiState:
         ]
         return KnowledgeBaseDocumentListResponse(
             items=documents,
-            page=PageInfo(page=1, page_size=len(documents), total_items=len(documents)),
-        )
-
-    def get_knowledge_base_document_status(
-        self,
-        knowledge_base_id: str,
-        document_id: str,
-    ) -> KnowledgeBaseDocumentStatusResponse:
-        document = self._knowledge_base_documents[knowledge_base_id][document_id]
-        return KnowledgeBaseDocumentStatusResponse(
-            document=self._to_knowledge_base_document(document),
-            timeline=[self._to_timeline_entry(entry) for entry in document.timeline],
+            total=len(documents),
         )
 
     def register_knowledge_base_documents(
@@ -1195,12 +1173,11 @@ class ApiState:
             id=record.id,
             name=record.name,
             description=record.description,
-            status=record.status,
+            status=_normalize_knowledge_base_status(record.status),
             document_count=record.document_count,
             entity_count=record.entity_count,
             relationship_count=record.relationship_count,
             created_at=record.created_at,
-            last_ingested_at=record.last_ingested_at,
         )
 
     def _to_knowledge_base_document(
@@ -1213,16 +1190,8 @@ class ApiState:
             filename=record.filename,
             content_type=record.content_type,
             size_bytes=record.size_bytes,
-            status=record.status,
-            uploaded_at=record.uploaded_at,
-        )
-
-    def _to_timeline_entry(self, record: DocumentTimelineEntryRecord) -> IngestionTimelineEntryResponse:
-        return IngestionTimelineEntryResponse(
-            stage=record.stage,
-            status=record.status,
-            updated_at=record.updated_at,
-            message=record.message,
+            status=_normalize_document_status(record.status),
+            created_at=record.uploaded_at,
         )
 
     def _safe_risk_score(self, entity_id: str) -> float:
@@ -1359,6 +1328,24 @@ def _normalize_risk_level(risk_level: str, overall_score: float) -> str:
     if risk_level in {"high", "medium", "low", "critical"}:
         return risk_level
     return "medium"
+
+
+def _normalize_knowledge_base_status(status: str) -> str:
+    if status in {"active", "ready", "error", "archived"}:
+        return status
+    if status in {"indexing", "rebuilding", "building"}:
+        return "building"
+    return "active"
+
+
+def _normalize_document_status(status: str) -> str:
+    if status in {"pending", "registered", "building", "ready", "failed", "error"}:
+        return status
+    if status in {"parsing", "parsed", "chunked", "extracted"}:
+        return "building"
+    if status == "validated":
+        return "ready"
+    return "pending"
 
 
 def _entity_summary(entity: Entity) -> str:

@@ -49,7 +49,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={aiPanelOpen ? 'app-shell' : 'app-shell app-shell--ai-closed'}>
       <Sidebar domainConfig={domainConfigQuery.data} domainFeatures={domainFeaturesQuery.data} selectedRole={selectedRole} />
       <div className="app-shell__workspace">
         <TopBar

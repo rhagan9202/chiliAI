@@ -35,7 +35,7 @@ read-only.
 | **Knowledge Base Manager** | List, create, delete KBs; document inventory, add/remove docs |
 | **Alert Feed** | Streaming alert list, severity filtering, acknowledgment workflow |
 | **Investigation Workbench** | Core analyst view — interactive graph explorer, entity detail, evidence packs, timeline |
-| **RAG Chat** | Conversational interface for querying knowledge base via LLM |
+| **RAG Chat** | Conversational interface for querying knowledge bases; current API path uses seeded/local RAG responses while service-backed vector/LLM wiring is pending |
 | **Configuration** | Domain configuration editor |
 
 ## Implemented Routes

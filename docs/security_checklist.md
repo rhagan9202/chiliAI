@@ -34,13 +34,16 @@ require a documented justification in this file.
 
 ### A01:2021 — Broken Access Control
 
-- **Authentication.** All HTTP routes require a valid bearer token; the JWT
-  middleware lives in `backend/api/middleware/auth.py` and is wired in
-  `api/app.py` (story **E10-S06**). `/health` is the only intentionally
-  unauthenticated route.
-- **RBAC.** Investigator vs. admin scope is enforced per-router via FastAPI
-  `Depends(require_scope(...))` (story **E10-S07**). Knowledge-base mutation
-  routes require `kb:write`; analytics routes require `analytics:read`.
+- **Authentication.** When auth is enabled, protected HTTP routes require a
+  `chiliai_session` cookie or Bearer token. Auth middleware lives in
+  `backend/api/middleware/auth.py`; `/auth/*`, docs/openapi, metrics, and
+  health endpoints are intentionally exempt. Auth-disabled development runs as
+  an anonymous `viewer`.
+- **RBAC.** Route policy is enforced per-router via FastAPI
+  `Depends(require_role(...))` using `viewer`, `analyst`, and `admin`.
+  Reads/exploration are generally `viewer`; mutations are generally
+  `analyst` or `admin`; configuration and destructive admin paths require
+  `admin`.
 - **Tenant isolation.** Every persisted artifact is keyed by
   `knowledge_base_id`. Graph queries filter on `knowledge_base_id` at the
   protocol boundary (`graph/protocols.py`). Cross-KB reads are rejected at the

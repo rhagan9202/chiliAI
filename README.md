@@ -10,7 +10,7 @@ A **domain-reconfigurable Graph RAG analytics platform**. Combines knowledge-gra
 
 - **Flexible, reconfigurable platform** — built around Graph RAG for analytics/exploration, ML, GNN, explainable AI, time-series analysis, and anomaly detection through loosely coupled, interchangeable capability modules in a Python 3.12 backend.
 - **Domain reconfigurability** — a single YAML/JSON configuration surface (or UI wizard) retargets the platform to different domains (entity names, relationships, display labels, enabled capabilities). Examples: Medicare fraud detection, food supply chain monitoring, financial crime.
-- **Vendor-agnostic** — graph database (Neo4j, Memgraph, Neptune), vector store (pgvector, Qdrant, Weaviate), LLM provider (OpenAI, Anthropic, Ollama/vLLM), and object storage (S3, MinIO, local FS) are all accessed through abstract interface contracts with concrete adapters.
+- **Vendor-agnostic boundaries** — external systems are accessed through abstract interface contracts. Currently selectable backends are graph (in-memory, Neo4j), vector store (in-memory, Qdrant), LLM (local, OpenAI, Anthropic), embeddings (local, OpenAI, sentence-transformers), and object storage (local FS, S3/MinIO-compatible). Memgraph, Neptune, pgvector, Weaviate, GCS, and Ollama/vLLM are roadmap adapters.
 
 ## Starting Exemplar: Medicare Fraud Detection
 
@@ -20,7 +20,7 @@ A **domain-reconfigurable Graph RAG analytics platform**. Combines knowledge-gra
 2. Extract entities, relationships, and metadata → build the policy knowledge graph
 3. Embed and index extracted text and graph metrics into a vector store for RAG retrieval
 
-The analyst can view a summary of ingested documents, add or remove documents, delete or create knowledge bases, and rebuild the RAG index.
+The analyst can view a summary of ingested documents, add or remove documents, and delete or create knowledge bases. RAG index rebuild controls are planned but not wired in the current API/UI.
 
 ### Phase 2 — Active monitoring (streaming + batch)
 
@@ -29,7 +29,7 @@ The analyst can view a summary of ingested documents, add or remove documents, d
 6. Run analytics pipeline — time-series anomaly detection, GNN link prediction and clustering, risk scoring. Results feed back into the knowledge graph (self-reinforcing loop) and forward to the analyst workbench.
 7. Surface alerts with evidence/explainability packs (reasoning, subgraph patterns, confidence scores)
 8. Analyst explores and queries the graph for investigation
-9. Analyst interacts with the knowledge base via LLM-powered conversational RAG
+9. Analyst interacts with the knowledge base via the RAG chat interface. The current API path uses seeded/local RAG responses; service-backed vector/LLM wiring for chat is pending.
 
 ## Repository Structure
 
@@ -121,4 +121,3 @@ pytest --cov                                        # Run tests with coverage
 | [`docs/todos_and_stubs_audit_2026-05-05.md`](docs/todos_and_stubs_audit_2026-05-05.md) | Current TODO/stub inventory and user-facing gap list |
 | [`backend/README.md`](backend/README.md) | Backend setup, module overview, development commands |
 | [`chili_app/README.md`](chili_app/README.md) | Frontend setup, page structure, development commands |
-

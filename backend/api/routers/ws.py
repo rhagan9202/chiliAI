@@ -18,7 +18,7 @@ from typing import Final, cast
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, ValidationError
 
-from api.middleware.rbac import require_role
+from api.middleware.rbac import require_ws_role
 from shared.utils import generate_id
 
 __all__ = [
@@ -204,7 +204,7 @@ async def _serve_websocket(
         await hub.disconnect(connection)
 
 
-@router.websocket("/alerts", dependencies=[Depends(require_role("viewer"))])
+@router.websocket("/alerts", dependencies=[Depends(require_ws_role("viewer"))])
 async def alerts_websocket(
     websocket: WebSocket,
     hub: WebSocketHub = Depends(get_ws_hub),
@@ -213,7 +213,7 @@ async def alerts_websocket(
     await _serve_websocket(websocket, hub, ROUTE_ALERTS, _alert_message_handler)
 
 
-@router.websocket("/pipeline", dependencies=[Depends(require_role("viewer"))])
+@router.websocket("/pipeline", dependencies=[Depends(require_ws_role("viewer"))])
 async def pipeline_websocket(
     websocket: WebSocket,
     hub: WebSocketHub = Depends(get_ws_hub),

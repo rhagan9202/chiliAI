@@ -3,6 +3,8 @@
 > Date: May 8, 2026  
 > Scope: Evaluate how the merged upstream prototype UI/UX assets can be brought into the chiliAI React frontend while preserving the new backend architecture boundaries.
 
+> Superseded implementation snapshot: this planning document predates the routed `chili_app/` workbench, expanded API routers, auth/session flow, active KB contract, and RAG message streaming shape. Use it as historical planning context only; verify current behavior against code/tests before implementing from it.
+
 ## Executive conclusion
 
 The upstream UI under `code-starters/ui/` is best treated as a high-fidelity prototype and visual/product reference, not as production application code. The current chiliAI frontend (`chili_app/`) should be rebuilt around the prototype’s UI/UX patterns using React 19 + TypeScript, typed API contracts, React Router, TanStack Query, and config-driven rendering.

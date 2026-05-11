@@ -5,10 +5,8 @@ import {
   useDeleteKnowledgeBase,
   useDeleteKnowledgeBaseDocument,
   useKnowledgeBase,
-  useKnowledgeBaseDocumentStatus,
   useKnowledgeBaseDocuments,
   useKnowledgeBases,
-  useRebuildKnowledgeBase,
   useUploadKnowledgeBaseDocuments,
 } from '../api/knowledgebases'
 import { Card } from '../components/ui/Card'
@@ -36,11 +34,9 @@ export function KnowledgeBaseManagerPage() {
   const activeDocumentId = documents.some((document) => document.id === selectedDocumentId)
     ? selectedDocumentId
     : documents[0]?.id ?? null
-  const documentStatusQuery = useKnowledgeBaseDocumentStatus(activeKnowledgeBaseId, activeDocumentId)
   const createKnowledgeBaseMutation = useCreateKnowledgeBase()
   const deleteKnowledgeBaseMutation = useDeleteKnowledgeBase()
   const uploadMutation = useUploadKnowledgeBaseDocuments(activeKnowledgeBaseId)
-  const rebuildMutation = useRebuildKnowledgeBase(activeKnowledgeBaseId)
   const deleteDocumentMutation = useDeleteKnowledgeBaseDocument(activeKnowledgeBaseId)
 
   if (knowledgeBasesQuery.isLoading) {
@@ -55,6 +51,47 @@ export function KnowledgeBaseManagerPage() {
     return <LoadingState label="Waiting for knowledge base inventory" />
   }
 
+  if (knowledgeBases.length === 0) {
+    return (
+      <section className="page-grid">
+        <SectionHeader
+          actions={<Chip label="0 knowledge bases" tone="info" />}
+          eyebrow="Ingestion control"
+          subtitle="Create a knowledge base before uploading documents or running graph ingestion."
+          title="Knowledge Base Manager"
+        />
+        <Card>
+          <EmptyState
+            description="Create a corpus for policy, claims, or reference documents to begin ingestion."
+            title="No knowledge bases yet"
+          />
+          <CreateKnowledgeBaseForm
+            description={knowledgeBaseDescription}
+            disabled={createKnowledgeBaseMutation.isPending}
+            name={knowledgeBaseName}
+            onDescriptionChange={setKnowledgeBaseDescription}
+            onNameChange={setKnowledgeBaseName}
+            onSubmit={() => {
+              createKnowledgeBaseMutation.mutate(
+                {
+                  name: knowledgeBaseName.trim(),
+                  description: knowledgeBaseDescription.trim(),
+                },
+                {
+                  onSuccess: (created) => {
+                    setSelectedKnowledgeBaseId(created.id)
+                    setKnowledgeBaseName('')
+                    setKnowledgeBaseDescription('')
+                  },
+                },
+              )
+            }}
+          />
+        </Card>
+      </section>
+    )
+  }
+
   if (knowledgeBaseDetailQuery.isLoading || documentsQuery.isLoading) {
     return <LoadingState label="Loading knowledge base detail" />
   }
@@ -67,19 +104,17 @@ export function KnowledgeBaseManagerPage() {
     return <LoadingState label="Waiting for knowledge base detail" />
   }
 
-  const knowledgeBase = knowledgeBaseDetailQuery.data.knowledge_base
+  const knowledgeBase = knowledgeBaseDetailQuery.data
 
-  const documentStatus = documentStatusQuery.data
   const isSubmittingCreate = createKnowledgeBaseMutation.isPending
   const isSubmittingUpload = uploadMutation.isPending
-  const isRebuilding = rebuildMutation.isPending
 
   return (
     <section className="page-grid">
       <SectionHeader
         actions={<Chip label={`${knowledgeBases.length} knowledge bases`} tone="info" />}
         eyebrow="Ingestion control"
-        subtitle="Phase 6 replaces the placeholder with live knowledge base metadata, document inventory, status timelines, upload registration, and rebuild controls."
+        subtitle="Manage live knowledge base metadata, document inventory, and upload registration against the backend API."
         title="Knowledge Base Manager"
       />
 
@@ -115,47 +150,28 @@ export function KnowledgeBaseManagerPage() {
               </button>
             ))}
 
-            <div className="knowledge-base-form">
-              <strong>Create knowledge base</strong>
-              <input
-                className="page-input"
-                onChange={(event) => setKnowledgeBaseName(event.target.value)}
-                placeholder="Name"
-                value={knowledgeBaseName}
-              />
-              <textarea
-                className="page-textarea"
-                onChange={(event) => setKnowledgeBaseDescription(event.target.value)}
-                placeholder="Describe the corpus, policy scope, or intended analyst workflow"
-                value={knowledgeBaseDescription}
-              />
-              <button
-                className="page-button"
-                disabled={
-                  isSubmittingCreate ||
-                  knowledgeBaseName.trim().length === 0 ||
-                  knowledgeBaseDescription.trim().length === 0
-                }
-                onClick={() => {
-                  createKnowledgeBaseMutation.mutate(
-                    {
-                      name: knowledgeBaseName.trim(),
-                      description: knowledgeBaseDescription.trim(),
+            <CreateKnowledgeBaseForm
+              description={knowledgeBaseDescription}
+              disabled={isSubmittingCreate}
+              name={knowledgeBaseName}
+              onDescriptionChange={setKnowledgeBaseDescription}
+              onNameChange={setKnowledgeBaseName}
+              onSubmit={() => {
+                createKnowledgeBaseMutation.mutate(
+                  {
+                    name: knowledgeBaseName.trim(),
+                    description: knowledgeBaseDescription.trim(),
+                  },
+                  {
+                    onSuccess: (created) => {
+                      setSelectedKnowledgeBaseId(created.id)
+                      setKnowledgeBaseName('')
+                      setKnowledgeBaseDescription('')
                     },
-                    {
-                      onSuccess: (created) => {
-                        setSelectedKnowledgeBaseId(created.knowledge_base.id)
-                        setKnowledgeBaseName('')
-                        setKnowledgeBaseDescription('')
-                      },
-                    },
-                  )
-                }}
-                type="button"
-              >
-                {isSubmittingCreate ? 'Creating…' : 'Create knowledge base'}
-              </button>
-            </div>
+                  },
+                )
+              }}
+            />
           </div>
         </Card>
 
@@ -168,14 +184,6 @@ export function KnowledgeBaseManagerPage() {
                   <p className="page-copy-block">{knowledgeBase.description}</p>
                 </div>
                 <div className="page-actions-inline">
-                  <button
-                    className="page-button"
-                    disabled={isRebuilding}
-                    onClick={() => rebuildMutation.mutate()}
-                    type="button"
-                  >
-                    {isRebuilding ? 'Queueing rebuild…' : 'Rebuild index'}
-                  </button>
                   <button
                     className="page-button page-button--secondary"
                     disabled={deleteKnowledgeBaseMutation.isPending}
@@ -209,21 +217,8 @@ export function KnowledgeBaseManagerPage() {
                 </div>
                 <div className="knowledge-base-stat">
                   <span className="metric-row__label">Last ingest</span>
-                  <strong>{formatTimestamp(knowledgeBase.last_ingested_at)}</strong>
+                  <strong>{formatTimestamp(knowledgeBase.created_at)}</strong>
                 </div>
-              </div>
-
-              <div className="knowledge-base-workflows">
-                <strong>Recent workflows</strong>
-                {knowledgeBaseDetailQuery.data.recent_workflows.map((workflow) => (
-                  <div className="metric-row" key={workflow.id}>
-                    <span>{workflow.workflow_type.replace('_', ' ')}</span>
-                    <div className="alert-row-card__meta">
-                      <Chip label={workflow.status} tone={toneForWorkflowStatus(workflow.status)} />
-                      <Chip label={workflow.current_step.replace(/_/g, ' ')} tone="default" />
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
           </Card>
@@ -286,7 +281,7 @@ export function KnowledgeBaseManagerPage() {
                       >
                         <strong>{document.filename}</strong>
                         <span className="metric-row__label">
-                          {formatFileSize(document.size_bytes)} • {formatTimestamp(document.uploaded_at)}
+                          {formatFileSize(document.size_bytes)} • {formatTimestamp(document.created_at)}
                         </span>
                         <div className="alert-row-card__meta">
                           <Chip label={document.status} tone={toneForDocumentStatus(document.status)} />
@@ -304,10 +299,10 @@ export function KnowledgeBaseManagerPage() {
           <Card>
             <div className="metric-stack">
               <div className="metric-row">
-                <strong>Ingestion status timeline</strong>
-                {documentStatus?.document ? (
+                <strong>Selected document</strong>
+                {activeDocumentId ? (
                   <div className="page-actions-inline">
-                    <Chip label={documentStatus.document.filename} tone="default" />
+                    <Chip label={documents.find((document) => document.id === activeDocumentId)?.filename ?? activeDocumentId} tone="default" />
                     <button
                       className="page-button page-button--secondary"
                       disabled={deleteDocumentMutation.isPending}
@@ -326,27 +321,14 @@ export function KnowledgeBaseManagerPage() {
                   </div>
                 ) : null}
               </div>
-
-              {documentStatusQuery.isLoading ? (
-                <LoadingState label="Loading document timeline" />
-              ) : documentStatusQuery.isError ? (
-                <ErrorState description="Document timeline could not be loaded from the API." />
-              ) : documentStatus ? (
-                <div className="knowledge-base-timeline">
-                  {documentStatus.timeline.map((entry) => (
-                    <div className="knowledge-base-timeline__item" key={`${entry.stage}-${entry.updated_at}`}>
-                      <div className="metric-row">
-                        <strong>{entry.stage.replace(/_/g, ' ')}</strong>
-                        <Chip label={entry.status} tone={toneForTimelineStatus(entry.status)} />
-                      </div>
-                      <span className="metric-row__label">{formatTimestamp(entry.updated_at)}</span>
-                      <p className="page-copy-block">{entry.message}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState description="Select a document to inspect the ingest stages and current parser/indexing state." title="No document selected" />
-              )}
+              <EmptyState
+                description={
+                  activeDocumentId
+                    ? 'Per-document timelines are not exposed by the current API. Use document status in the inventory until timeline projection is available.'
+                    : 'Select a document to inspect its current registration status.'
+                }
+                title={activeDocumentId ? 'Timeline unavailable' : 'No document selected'}
+              />
             </div>
           </Card>
         </div>
@@ -382,15 +364,17 @@ function formatFileSize(sizeBytes: number | null) {
   return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function toneForKnowledgeBaseStatus(status: 'ready' | 'indexing' | 'rebuilding' | 'error') {
+function toneForKnowledgeBaseStatus(status: 'active' | 'building' | 'ready' | 'error' | 'archived') {
   switch (status) {
     case 'ready':
       return 'success' as const
-    case 'indexing':
-    case 'rebuilding':
+    case 'active':
+    case 'building':
       return 'warning' as const
     case 'error':
       return 'danger' as const
+    case 'archived':
+      return 'default' as const
   }
 }
 
@@ -404,28 +388,46 @@ function toneForDocumentStatus(status: string) {
   return 'warning' as const
 }
 
-function toneForTimelineStatus(status: 'pending' | 'running' | 'completed' | 'failed') {
-  switch (status) {
-    case 'completed':
-      return 'success' as const
-    case 'failed':
-      return 'danger' as const
-    case 'running':
-      return 'info' as const
-    case 'pending':
-      return 'default' as const
-  }
+interface CreateKnowledgeBaseFormProps {
+  description: string
+  disabled: boolean
+  name: string
+  onDescriptionChange: (value: string) => void
+  onNameChange: (value: string) => void
+  onSubmit: () => void
 }
 
-function toneForWorkflowStatus(status: 'queued' | 'running' | 'completed' | 'failed') {
-  switch (status) {
-    case 'completed':
-      return 'success' as const
-    case 'failed':
-      return 'danger' as const
-    case 'running':
-      return 'info' as const
-    case 'queued':
-      return 'warning' as const
-  }
+function CreateKnowledgeBaseForm({
+  description,
+  disabled,
+  name,
+  onDescriptionChange,
+  onNameChange,
+  onSubmit,
+}: CreateKnowledgeBaseFormProps) {
+  return (
+    <div className="knowledge-base-form">
+      <strong>Create knowledge base</strong>
+      <input
+        className="page-input"
+        onChange={(event) => onNameChange(event.target.value)}
+        placeholder="Name"
+        value={name}
+      />
+      <textarea
+        className="page-textarea"
+        onChange={(event) => onDescriptionChange(event.target.value)}
+        placeholder="Describe the corpus, policy scope, or intended analyst workflow"
+        value={description}
+      />
+      <button
+        className="page-button"
+        disabled={disabled || name.trim().length === 0 || description.trim().length === 0}
+        onClick={onSubmit}
+        type="button"
+      >
+        {disabled ? 'Creating…' : 'Create knowledge base'}
+      </button>
+    </div>
+  )
 }

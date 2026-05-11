@@ -130,7 +130,7 @@ def callback(
         claims = _auth_module.decode_token(
             token_to_decode,
             auth_config=auth_config,
-            jwks_cache=_auth_module._JWKS_CACHE,  # noqa: SLF001
+            jwks_cache=_auth_module.get_jwks_cache(),
         )
     except HTTPException as exc:
         raise HTTPException(
