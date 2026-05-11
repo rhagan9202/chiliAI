@@ -370,18 +370,11 @@ def test_ws_alerts_rejects_unauthenticated_upgrade_when_auth_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Unauthenticated WS upgrade to /ws/alerts is rejected before websocket.accept()."""
-    import time
-
     from api.app import create_app
-    from config.loader import load_config
-    from pathlib import Path
-
-    DEFAULTS_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "defaults"
-    MEDICARE_YAML = DEFAULTS_DIR / "medicare_fraud.yaml"
 
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
-    monkeypatch.setattr("api.app.assert_complete", lambda app: None)
+    monkeypatch.setattr("api.app.assert_complete", lambda app: None)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
 
     domain = _build_auth_enabled_domain_config()
     monkeypatch.setattr("api.app.load_config", lambda: domain)
@@ -413,7 +406,7 @@ def test_ws_alerts_accepts_upgrade_with_viewer_session_when_auth_enabled(
 
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
-    monkeypatch.setattr("api.app.assert_complete", lambda app: None)
+    monkeypatch.setattr("api.app.assert_complete", lambda app: None)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
 
     domain = _build_auth_enabled_domain_config()
     monkeypatch.setattr("api.app.load_config", lambda: domain)

@@ -36,3 +36,6 @@ htmlcov/
 
 # Browser automation cache
 .playwright-mcp/
+
+# Editor configs
+.vscode/

@@ -1,23 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { ApiError, apiRequest } from '../lib/apiClient'
-
-export interface SessionUser {
-  user_id: string
-  roles: string[]
-  email: string | null
-}
-
-export type SessionStatus = 'loading' | 'authenticated' | 'unauthenticated'
-
-export interface SessionState {
-  status: SessionStatus
-  user: SessionUser | null
-  signOut: () => Promise<void>
-}
-
-const SessionContext = createContext<SessionState | undefined>(undefined)
+import { SessionContext, type SessionStatus, type SessionUser } from './sessionContextValue'
 
 export function SessionProvider({ children }: { children: ReactNode }): React.ReactElement {
   const [status, setStatus] = useState<SessionStatus>('loading')
@@ -33,12 +18,10 @@ export function SessionProvider({ children }: { children: ReactNode }): React.Re
       })
       .catch((error: unknown) => {
         if (cancelled) return
-        // Any failure (401, network, etc.) → unauthenticated
         setStatus('unauthenticated')
         setUser(null)
         if (error instanceof ApiError && error.status !== 401) {
           // Non-401 errors during boot are surprising; log them.
-          // eslint-disable-next-line no-console
           console.warn('SessionContext: /auth/me failed', error)
         }
       })
@@ -60,12 +43,4 @@ export function SessionProvider({ children }: { children: ReactNode }): React.Re
       {children}
     </SessionContext.Provider>
   )
-}
-
-export function useSession(): SessionState {
-  const ctx = useContext(SessionContext)
-  if (ctx === undefined) {
-    throw new Error('useSession must be used within a SessionProvider.')
-  }
-  return ctx
 }

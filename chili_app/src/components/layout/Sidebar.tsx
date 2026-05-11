@@ -1,6 +1,7 @@
 import {
   Bot,
   BriefcaseBusiness,
+  Circle,
   ClipboardList,
   Database,
   FileCog,
@@ -23,7 +24,21 @@ type NavItem = {
   capability?: keyof DomainConfig['capabilities']
 }
 
-const navItems: NavItem[] = [
+// Default icon registry by page id. Page ids not in this map fall back to a
+// generic icon so a new domain config can ship pages without a code change.
+const DEFAULT_ICONS: Record<string, ComponentType<{ size?: number }>> = {
+  dashboard: LayoutDashboard,
+  alerts: ClipboardList,
+  investigation: GitBranch,
+  cases: BriefcaseBusiness,
+  knowledge_bases: Database,
+  policy: ShieldCheck,
+  rag_chat: Bot,
+  configuration: FileCog,
+}
+
+// Default routes by page id, used only if domain config is unavailable.
+const DEFAULT_NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
   { id: 'alerts', label: 'Alert Feed', to: '/alerts', icon: ClipboardList },
   { id: 'investigation', label: 'Investigation', to: '/investigation', icon: GitBranch, capability: 'gnn' },
@@ -41,28 +56,16 @@ type SidebarProps = {
 }
 
 export function Sidebar({ domainConfig, domainFeatures, selectedRole }: SidebarProps) {
-  const navItemsById = new Map(navItems.map((item) => [item.id, item]))
-  const configuredItems: NavItem[] = domainConfig?.ui?.navigation?.pages.reduce<NavItem[]>(
-    (items, page) => {
-      const fallback = navItemsById.get(page.id)
-      if (!fallback) {
-        return items
-      }
+  const configuredItems: NavItem[] =
+    domainConfig?.ui?.navigation?.pages.map((page) => ({
+      id: page.id,
+      label: page.label,
+      to: page.route,
+      icon: DEFAULT_ICONS[page.id] ?? Circle,
+      capability: page.capability as keyof DomainConfig['capabilities'] | undefined,
+    })) ?? []
 
-      items.push({
-        ...fallback,
-        capability:
-          (page.capability as keyof DomainConfig['capabilities'] | undefined) ??
-          fallback.capability,
-        label: page.label,
-        to: page.route,
-      })
-      return items
-    },
-    [],
-  ) ?? []
-
-  const navigationItems = configuredItems.length > 0 ? configuredItems : navItems
+  const navigationItems = configuredItems.length > 0 ? configuredItems : DEFAULT_NAV
   const allowedPageIds = new Set(getAllowedPageIds(domainFeatures, selectedRole))
   const visibleItems = navigationItems.filter((item) => {
     if (allowedPageIds.size > 0 && !allowedPageIds.has(item.id)) {

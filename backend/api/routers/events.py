@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from api.state import ApiState
 from api.dependencies import get_api_state
+from api.middleware.rbac import require_role
 
 __all__ = ["router"]
 
@@ -34,7 +35,7 @@ async def _stream_workspace_updates(
         await asyncio.sleep(5)
 
 
-@router.get("/stream")
+@router.get("/stream", dependencies=[Depends(require_role("viewer"))])
 async def stream_workspace_updates(
     request: Request,
     max_events: int | None = Query(default=None, ge=1),

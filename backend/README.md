@@ -14,8 +14,8 @@ Working FastAPI gateway and pipeline-worker prototype with domain configuration,
 - **`config/`** — Domain configuration schema (`DomainConfig` Pydantic model with cross-field validation), YAML/JSON loader, and two default configs (`medicare_fraud.yaml`, `food_supply_chain.yaml`).
 - **`api/app.py`** — FastAPI app factory with `/health`, CORS, metrics instrumentation, and all API routers.
 - **`api/routers/config.py`** — `GET /config/domain` returns the active domain configuration as JSON.
-- **`api/dependencies.py`** — Dependency injection wiring. `get_domain_config()` loads config once and caches; graph, vectorstore, storage, embedding, and LLM adapters are selected from config with lazy optional imports.
-- **`api/routers/`** — Knowledge base, alert, investigation, chat, analytics, config, and WebSocket routers.
+- **`api/dependencies.py`** — Dependency injection wiring. `get_domain_config()` loads config once and process-caches (cleared at the top of `create_app()` for test isolation). `get_api_state()` reads from `request.app.state.api_state`, attached per-app in `create_app()`. Graph, vectorstore, storage, embedding, and LLM adapters are selected from config with lazy optional imports.
+- **`api/routers/`** — Knowledge base, alert, investigation, chat (rag), analytics, config, policy, cases, evidence, graph, workflows, events (SSE), auth, and WebSocket routers. Every Phase 5+ route carries `Depends(require_role(...))` (reads = viewer, writes = analyst); `policy_registry.assert_complete` runs on app startup when auth is enabled and refuses to boot if any route is unguarded.
 - **`events/`** — In-memory and Redis Streams event bus implementations plus typed event envelopes.
 - **`ingestion/`** — Parser orchestration, document chunking, extraction, validation, and registration flows.
 - **`graph/`, `vectorstore/`, `embeddings/`, `llm/`, `rag/`** — Service/protocol boundaries with in-memory adapters and selected production-facing adapters.
@@ -90,6 +90,17 @@ pyright
 ## Configuration
 
 The backend reads a domain configuration YAML/JSON file at startup (path set via `CHILI_CONFIG_PATH` environment variable). This configuration defines entity types, relationships, enabled capabilities, and alert thresholds. See [`docs/architecture.md` §9](../docs/architecture.md#9-domain-configuration-model).
+
+### Environment variables
+
+| Var | Default | Purpose |
+|-----|---------|---------|
+| `CHILI_CONFIG_PATH` | (required at runtime) | Path to the active domain config YAML/JSON. |
+| `CHILI_ENV` | unset | When set to `production`, `create_app()` enforces `auth.enabled=True` plus a complete `AuthConfig`. |
+| `ALLOWED_ORIGINS` | local dev defaults (`http://localhost:5173`, `:80`, `localhost`) | Comma-separated CORS allow-list for the frontend. Required when the SPA is deployed under a different origin. |
+| `OIDC_CLIENT_SECRET` | unset | OIDC client secret read by name from `auth.client_secret_env_var`. |
+| `REDIS_URL` | unset | Required for the Redis Streams event bus and the production session store when auth is enabled. |
+| `CHILI_EVENT_BUS_BACKEND` | `in_memory` | `in_memory` or `redis`. |
 
 ### Setting the config path
 

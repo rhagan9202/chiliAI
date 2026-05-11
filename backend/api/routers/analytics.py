@@ -22,6 +22,16 @@ from analytics.timeseries.models import TimeSeriesObservation
 from analytics.timeseries.protocols import TimeseriesServiceProtocol
 from analytics.timeseries.service import create_timeseries_service
 from analytics.timeseries.service_models import TimeseriesQueryRequest, TimeseriesResponse
+from api.contracts import (
+    AnalyticsOverviewResponse,
+    RiskScoreResponse,
+    TimeseriesResponse as ContractTimeseriesResponse,
+)
+from api.dependencies import (
+    get_analytics_overview_payload,
+    get_risk_score_payload,
+    get_timeseries_payload,
+)
 from events.adapters.in_memory import InMemoryEventBus
 
 __all__ = ["router"]
@@ -158,3 +168,39 @@ def list_gnn_clusters(
     Returns an empty list when the GNN capability is disabled in config.
     """
     return gnn_service.list_clusters(GnnClusterRequest(knowledge_base_id=kb_id))
+
+
+@router.get(
+    "/overview",
+    response_model=AnalyticsOverviewResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
+async def get_analytics_overview(
+    payload: AnalyticsOverviewResponse = Depends(get_analytics_overview_payload),
+) -> AnalyticsOverviewResponse:
+    """Return dashboard overview metrics for the analytics page."""
+    return payload
+
+
+@router.get(
+    "/risk-scores/{entity_id}",
+    response_model=RiskScoreResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
+async def get_risk_score(
+    payload: RiskScoreResponse = Depends(get_risk_score_payload),
+) -> RiskScoreResponse:
+    """Return the risk score breakdown for one entity."""
+    return payload
+
+
+@router.get(
+    "/timeseries/{entity_id}",
+    response_model=ContractTimeseriesResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
+async def get_entity_timeseries(
+    payload: ContractTimeseriesResponse = Depends(get_timeseries_payload),
+) -> ContractTimeseriesResponse:
+    """Return chartable time-series points for one entity."""
+    return payload

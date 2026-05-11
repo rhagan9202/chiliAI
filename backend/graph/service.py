@@ -200,6 +200,21 @@ class GraphService:
             query.direction,
         )
 
+    def get_neighbors(
+        self,
+        knowledge_base_id: str,
+        entity_id: str,
+        depth: int = 1,
+    ) -> tuple[list[Entity], list[Relationship]]:
+        """Return neighbors and relationships for ``entity_id``.
+
+        Convenience over :meth:`query_neighborhood` that excludes the
+        focal entity from the neighbor list and returns plain lists.
+        """
+        subgraph = self.query_neighborhood(knowledge_base_id, entity_id, depth)
+        neighbors = [entity for entity in subgraph.entities if entity.id != entity_id]
+        return neighbors, list(subgraph.relationships)
+
     def search_entities(
         self,
         knowledge_base_id: str,

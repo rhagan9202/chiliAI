@@ -1,6 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import type { PropsWithChildren } from 'react'
 import { useState } from 'react'
+
+import { SessionProvider } from '../contexts/SessionContext'
 
 export function AppProviders({ children }: PropsWithChildren) {
   const [queryClient] = useState(
@@ -16,5 +19,10 @@ export function AppProviders({ children }: PropsWithChildren) {
       }),
   )
 
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={queryClient}>
+      <SessionProvider>{children}</SessionProvider>
+      {import.meta.env.DEV ? <ReactQueryDevtools initialIsOpen={false} /> : null}
+    </QueryClientProvider>
+  )
 }

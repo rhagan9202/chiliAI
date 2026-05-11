@@ -78,6 +78,7 @@ from rag.adapters.in_memory import (
     InMemoryQueryEmbedder,
 )
 from rag.models import ContextRecord
+from rag.protocols import RagServiceProtocol
 from rag.service import create_rag_service
 from rag.service_models import RagQueryRequest
 from shared.types import Alert, Entity, Relationship
@@ -589,6 +590,11 @@ class ApiState:
             )
             self._conversations[conversation_id] = record
         return self.get_conversation(conversation_id)
+
+    @property
+    def rag_service(self) -> RagServiceProtocol:
+        """The RAG service backing chat conversations and streaming responses."""
+        return self._rag_service
 
     def get_conversation(self, conversation_id: str) -> ChatConversationResponse:
         record = self._conversations[conversation_id]
