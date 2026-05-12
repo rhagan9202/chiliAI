@@ -6,11 +6,35 @@ import time
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from api._kb_store import DocumentRecord, InMemoryKnowledgeBaseRepository
+from api.dependencies import (
+    get_graph_service,
+    get_knowledge_base_repository,
+    get_object_store,
+)
+from graph.models import GraphMetrics
+from shared.types import KnowledgeBase
+from shared.utils import utc_now
+from storage.adapters.in_memory import InMemoryObjectStore
 
 DEFAULTS_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "defaults"
 MEDICARE_YAML = DEFAULTS_DIR / "medicare_fraud.yaml"
+
+
+class _MetricsOnlyGraphService:
+    def __init__(self, metrics: GraphMetrics) -> None:
+        self._metrics = metrics
+
+    def compute_metrics(self, knowledge_base_id: str) -> GraphMetrics:
+        del knowledge_base_id
+        return self._metrics
+
+
+def _skip_policy_audit(app: FastAPI) -> None:
+    del app
 
 
 def test_events_stream_returns_snapshot_when_auth_disabled() -> None:
@@ -26,6 +50,46 @@ def test_events_stream_returns_snapshot_when_auth_disabled() -> None:
         assert "workspace-update" in body
 
 
+def test_events_stream_returns_live_knowledge_base_statuses() -> None:
+    """SSE KB statuses come from the live repository projection, not ApiState seeds."""
+    from api.app import create_app
+
+    app = create_app()
+    repository = InMemoryKnowledgeBaseRepository()
+    object_store = InMemoryObjectStore()
+    repository.create(
+        KnowledgeBase(
+            id="kb-live-sse",
+            name="Live SSE KB",
+            description="",
+            status="active",
+            created_at=utc_now(),
+        )
+    )
+    repository.add_document(
+        DocumentRecord(
+            id="doc-1",
+            knowledge_base_id="kb-live-sse",
+            filename="claims.json",
+            status="registered",
+        )
+    )
+    graph_service = _MetricsOnlyGraphService(
+        GraphMetrics(entity_count=2, relationship_count=1, avg_degree=1.0)
+    )
+    app.dependency_overrides[get_knowledge_base_repository] = lambda: repository
+    app.dependency_overrides[get_graph_service] = lambda: graph_service
+    app.dependency_overrides[get_object_store] = lambda: object_store
+
+    with TestClient(app) as client:
+        response = client.get("/events/stream", params={"max_events": 1})
+
+    body = response.content.decode()
+    assert response.status_code == 200
+    assert '"knowledge_base_statuses":{"kb-live-sse":"ready"}' in body
+    assert "kb-1" not in body
+
+
 def test_events_stream_rejects_anonymous_when_auth_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -38,7 +102,7 @@ def test_events_stream_rejects_anonymous_when_auth_enabled(
 
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
-    monkeypatch.setattr("api.app.assert_complete", lambda app: None)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr("api.app.assert_complete", _skip_policy_audit)
 
     auth_cfg = AuthConfig(
         enabled=True,
@@ -77,7 +141,7 @@ def test_events_stream_accepts_viewer_session_when_auth_enabled(
 
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
-    monkeypatch.setattr("api.app.assert_complete", lambda app: None)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr("api.app.assert_complete", _skip_policy_audit)
 
     auth_cfg = AuthConfig(
         enabled=True,

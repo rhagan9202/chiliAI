@@ -12,6 +12,13 @@ services:
       - ./chili_app/src:/app/src
       - ./chili_app/public:/app/public
       - ./chili_app/index.html:/app/index.html
+      - ./chili_app/vite.config.ts:/app/vite.config.ts
+    environment:
+      - VITE_API_PROXY_TARGET=http://api:8000
+      - VITE_WS_PROXY_TARGET=ws://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
     networks:
       - chili-net
 
@@ -28,6 +35,7 @@ services:
       - chili-object-data:/app/data
     environment:
       - CHILI_CONFIG_PATH=/app/config/defaults/medicare_fraud_dev.yaml
+      - CHILI_KB_REPOSITORY_BACKEND=object_store
       - CHILI_EVENT_BUS_BACKEND=redis
       - CHILI_EVENT_BLOCK_MS=100
       - REDIS_URL=redis://redis:6379

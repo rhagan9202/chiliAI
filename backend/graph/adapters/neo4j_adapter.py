@@ -415,6 +415,13 @@ class Neo4jGraphRepository(GraphRepository):
         """
         return self._query_count(query, knowledge_base_id=knowledge_base_id)
 
+    def delete_knowledge_base(self, knowledge_base_id: str) -> None:
+        query = f"""
+        MATCH (entity:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id}})
+        DETACH DELETE entity
+        """
+        self._execute_write(query, knowledge_base_id=knowledge_base_id)
+
     def delete_entity(self, knowledge_base_id: str, entity_id: str) -> None:
         query = f"""
         MATCH (entity:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: $entity_id}})

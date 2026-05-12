@@ -9,9 +9,11 @@ React 19 + TypeScript + Vite 8 single-page application for the chiliAI analyst w
 Routed React 19 + TypeScript workbench prototype. `src/App.tsx` mounts
 `<AppProviders>` (QueryClient + SessionProvider) and a `RouterProvider`
 defined in `src/app/router.tsx`. The Phase 5 page tree under
-`src/pages/*Page.tsx` is the live one. The UI is functional for local
-prototype workflows, while some backend capabilities remain stubbed or
-read-only.
+`src/pages/*Page.tsx` is the live one. Knowledge Base Manager uses the live
+backend KB repository, and Investigation Workbench uses KB-scoped live graph
+search/detail/neighborhood endpoints. Some Dashboard, alert, analytics, RAG,
+and evidence surfaces still include seeded/demo read models until their live
+projections are migrated.
 
 ## Target Technology Stack
 
@@ -24,7 +26,7 @@ read-only.
 | Server state | TanStack Query (React Query) |
 | Client state | Zustand |
 | API client | Typed fetch wrapper (`src/lib/apiClient.ts`) with TanStack Query hooks |
-| Real-time | WebSocket (alerts, pipeline status) |
+| Real-time | Server-Sent Events for workspace snapshots; WebSocket support remains available |
 | Graph visualization | `react-force-graph-2d` |
 
 ## Target Page Structure
@@ -34,7 +36,7 @@ read-only.
 | **Dashboard** | System overview, recent alerts, knowledge base summaries |
 | **Knowledge Base Manager** | List, create, delete KBs; document inventory, add/remove docs |
 | **Alert Feed** | Streaming alert list, severity filtering, acknowledgment workflow |
-| **Investigation Workbench** | Core analyst view — interactive graph explorer, entity detail, evidence packs, timeline |
+| **Investigation Workbench** | Core analyst view — active KB selection, live entity search/detail/neighborhood, evidence packs, timeline |
 | **RAG Chat** | Conversational interface for querying knowledge bases; current API path uses seeded/local RAG responses while service-backed vector/LLM wiring is pending |
 | **Configuration** | Domain configuration editor |
 
@@ -60,7 +62,8 @@ domain-configured page id that doesn't yet have a built component.
 ## Known Prototype Gaps
 
 - Configuration save is disabled until `PUT /config/domain` is implemented.
-- Persisted evidence-pack endpoint and some graph/entity discovery flows are still incomplete.
+- Persisted evidence-pack endpoint and some non-Investigation graph/entity discovery flows are still incomplete.
+- Dashboard, alerts, cases, and portions of analytics still rely on seeded/demo read models and should be migrated to live projections in follow-up work.
 - RAG chat may use stubbed/local responses depending on backend configuration.
 - Production bundle size should be revisited with route-level code splitting as the UI grows.
 
@@ -92,7 +95,7 @@ session cookie.
 
 ## Domain-Driven Dynamic UI
 
-The frontend reads domain configuration from `GET /config/domain` at startup. This drives entity labels, icons, relationship labels, enabled analytics panels, and alert thresholds — allowing the same codebase to serve Medicare fraud, food supply chain, or any configured domain without code changes. See [`docs/architecture.md` §9](../docs/architecture.md#9-domain-configuration-model).
+The frontend reads domain configuration from `GET /config/domain` at startup. This drives entity labels, icons, relationship labels, enabled analytics panels, and alert thresholds — allowing the same codebase to serve Medicare fraud, food supply chain, or any configured domain without code changes. Investigation display helpers in `src/utils/domainDisplay.ts` derive entity titles, subtitles, chips, and relationship labels from `DomainConfig.ui.display_fields`, `entities`, and `relationships`. See [`docs/architecture.md` §9](../docs/architecture.md#9-domain-configuration-model).
 
 ## TypeScript Configuration
 

@@ -44,6 +44,8 @@ class GraphServiceProtocol(Protocol):
 
     def compute_metrics(self, knowledge_base_id: str) -> GraphMetrics: ...
 
+    def delete_knowledge_base(self, knowledge_base_id: str) -> None: ...
+
 
 __all__ = [
     "GraphServiceProtocol",

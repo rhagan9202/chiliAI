@@ -7,6 +7,10 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 
+from api._kb_projection import (
+    document_status_for_knowledge_base,
+    project_knowledge_base,
+)
 from api._kb_store import DocumentRecord, KnowledgeBaseRepository
 from api.dependencies import (
     get_event_bus,
@@ -17,10 +21,9 @@ from api.dependencies import (
     get_object_store,
 )
 from api.middleware.rbac import require_role
-from config.schema import DomainConfig
+from config.schema import DomainConfig, ValidationConfig
 from events.protocols import EventBus
 from events.types import KnowledgeBaseCreatedEvent, KnowledgeBaseDeletedEvent
-from graph.models import GraphMetrics
 from graph.protocols import GraphServiceProtocol
 from ingestion.protocols import IngestionServiceProtocol
 from ingestion.service_models import DocumentReceipt, DocumentSubmission
@@ -121,7 +124,7 @@ async def list_knowledge_bases(
     items, total = repository.list(limit=limit, offset=offset)
     return KbListResponse(
         items=[
-            _hydrate_knowledge_base(item, graph_service, object_store)
+            project_knowledge_base(item, repository, graph_service, object_store)
             for item in items
         ],
         total=total,
@@ -146,7 +149,12 @@ async def read_knowledge_base(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Knowledge base '{knowledge_base_id}' not found.",
         )
-    return _hydrate_knowledge_base(knowledge_base, graph_service, object_store)
+    return project_knowledge_base(
+        knowledge_base,
+        repository,
+        graph_service,
+        object_store,
+    )
 
 
 @router.delete(
@@ -157,6 +165,7 @@ async def read_knowledge_base(
 async def delete_knowledge_base(
     knowledge_base_id: str,
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
+    graph_service: GraphServiceProtocol = Depends(get_graph_service),
     object_store: ObjectStore = Depends(get_object_store),
     event_bus: EventBus = Depends(get_event_bus),
 ) -> None:
@@ -171,6 +180,7 @@ async def delete_knowledge_base(
     for key in object_store.list_keys(prefix):
         object_store.delete(key)
 
+    graph_service.delete_knowledge_base(knowledge_base_id)
     repository.delete(knowledge_base_id)
     event_bus.publish(
         KnowledgeBaseDeletedEvent(knowledge_base_id=knowledge_base_id)
@@ -197,8 +207,9 @@ async def list_knowledge_base_documents(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Knowledge base '{knowledge_base_id}' not found.",
         )
-    hydrated_knowledge_base = _hydrate_knowledge_base(
+    hydrated_knowledge_base = project_knowledge_base(
         knowledge_base,
+        repository,
         graph_service,
         object_store,
     )
@@ -212,7 +223,11 @@ async def list_knowledge_base_documents(
             filename=record.filename,
             content_type=record.content_type,
             size_bytes=record.size_bytes,
-            status=_document_status_for_kb(record, hydrated_knowledge_base),
+            status=document_status_for_knowledge_base(
+                record,
+                hydrated_knowledge_base,
+                repository,
+            ),
             created_at=record.created_at,
         )
         for record in records
@@ -275,7 +290,7 @@ async def register_knowledge_base_documents(
             detail=f"Knowledge base '{knowledge_base_id}' not found.",
         )
 
-    validation = config.validation
+    validation = config.validation or ValidationConfig()
     max_bytes = validation.max_file_size_mb * 1024 * 1024
     allowed_content_types = set(validation.allowed_content_types)
     submissions: list[DocumentSubmission] = []
@@ -327,77 +342,3 @@ async def register_knowledge_base_documents(
         )
 
     return DocumentRegistrationResponse(documents=receipts)
-
-
-def _hydrate_knowledge_base(
-    knowledge_base: KnowledgeBase,
-    graph_service: GraphServiceProtocol,
-    object_store: ObjectStore,
-) -> KnowledgeBase:
-    """Overlay live graph metrics onto KB metadata returned to the UI.
-
-    The API owns lightweight KB/document metadata while the worker owns the
-    graph build. In the dev stack those processes communicate through Redis and
-    Neo4j, but the API does not yet consume ``kb.ready`` events. Until a durable
-    KB metadata projection exists, derive visible readiness from the shared graph
-    backend so the UI reflects completed worker output.
-    """
-
-    metrics = _safe_compute_graph_metrics(knowledge_base.id, graph_service)
-    status = knowledge_base.status
-    graph_build_complete = _has_completed_graph_update(knowledge_base, object_store)
-    if status in {"archived", "error"}:
-        pass
-    elif metrics.entity_count > 0 or metrics.relationship_count > 0 or graph_build_complete:
-        status = "ready"
-    elif knowledge_base.document_count > 0 and status == "active":
-        status = "building"
-    return knowledge_base.model_copy(
-        update={
-            "entity_count": metrics.entity_count,
-            "relationship_count": metrics.relationship_count,
-            "status": status,
-        }
-    )
-
-
-def _safe_compute_graph_metrics(
-    knowledge_base_id: str,
-    graph_service: GraphServiceProtocol,
-) -> GraphMetrics:
-    try:
-        return graph_service.compute_metrics(knowledge_base_id)
-    except Exception:  # noqa: BLE001 - metadata reads should survive graph outages
-        return GraphMetrics(entity_count=0, relationship_count=0, avg_degree=0.0)
-
-
-def _has_completed_graph_update(
-    knowledge_base: KnowledgeBase,
-    object_store: ObjectStore,
-) -> bool:
-    """Return true once every registered document reached graph update output."""
-
-    if knowledge_base.document_count <= 0:
-        return False
-    try:
-        graph_update_keys = object_store.list_keys(
-            f"knowledgebases/{knowledge_base.id}/graph_updates/"
-        )
-    except Exception:  # noqa: BLE001 - metadata reads should survive storage outages
-        return False
-    artifact_keys = [
-        key for key in graph_update_keys
-        if key.endswith(".json") and not key.endswith(".meta.json")
-    ]
-    return len(artifact_keys) >= knowledge_base.document_count
-
-
-def _document_status_for_kb(
-    record: DocumentRecord,
-    knowledge_base: KnowledgeBase,
-) -> str:
-    if knowledge_base.status == "ready" and record.status in {"pending", "registered"}:
-        return "ready"
-    if knowledge_base.status == "building" and record.status in {"pending", "registered"}:
-        return "building"
-    return record.status

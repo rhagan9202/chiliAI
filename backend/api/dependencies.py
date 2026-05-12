@@ -715,6 +715,7 @@ def get_ingestion_service() -> IngestionService:
 from api._kb_store import (  # noqa: E402  (intentional bottom-of-file import)
     InMemoryKnowledgeBaseRepository,
     KnowledgeBaseRepository,
+    ObjectStoreKnowledgeBaseRepository,
 )
 from api.middleware.session_store import (  # noqa: E402  (intentional bottom-of-file import)
     InMemorySessionStore,
@@ -726,4 +727,13 @@ from api.middleware.session_store import (  # noqa: E402  (intentional bottom-of
 @lru_cache(maxsize=1)
 def get_knowledge_base_repository() -> KnowledgeBaseRepository:
     """Return the knowledge base metadata repository used by the KB router."""
-    return InMemoryKnowledgeBaseRepository()
+    backend = os.environ.get("CHILI_KB_REPOSITORY_BACKEND", "in_memory").strip().lower()
+    if backend in {"in_memory", "memory"}:
+        return InMemoryKnowledgeBaseRepository()
+    if backend in {"object_store", "object-store", "objectstore"}:
+        return ObjectStoreKnowledgeBaseRepository(get_object_store())
+    _raise_unsupported_backend(
+        "knowledge base repository",
+        backend,
+        ("in_memory", "object_store"),
+    )

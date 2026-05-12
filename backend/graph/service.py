@@ -252,6 +252,11 @@ class GraphService:
         )
         return result.metrics
 
+    def delete_knowledge_base(self, knowledge_base_id: str) -> None:
+        """Remove all graph objects scoped to a knowledge base."""
+
+        self._repository.delete_knowledge_base(knowledge_base_id)
+
     @staticmethod
     def _build_graph_update_storage_key(
         knowledge_base_id: str,

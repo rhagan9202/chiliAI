@@ -5,9 +5,14 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api._kb_store import DocumentRecord, InMemoryKnowledgeBaseRepository
+from api._kb_store import (
+    DocumentRecord,
+    InMemoryKnowledgeBaseRepository,
+    ObjectStoreKnowledgeBaseRepository,
+)
 from api.app import create_app
 from api.dependencies import (
     get_event_bus,
@@ -61,10 +66,18 @@ def _build_config() -> DomainConfig:
 class _MetricsOnlyGraphService:
     def __init__(self, metrics: GraphMetrics) -> None:
         self._metrics = metrics
+        self.deleted_knowledge_base_ids: list[str] = []
 
     def compute_metrics(self, knowledge_base_id: str) -> GraphMetrics:
         del knowledge_base_id
         return self._metrics
+
+    def delete_knowledge_base(self, knowledge_base_id: str) -> None:
+        self.deleted_knowledge_base_ids.append(knowledge_base_id)
+
+
+def _skip_policy_audit(app: FastAPI) -> None:
+    del app
 
 
 @pytest.fixture()
@@ -173,6 +186,80 @@ def test_list_knowledge_bases_paginates_results(
     assert len(second_payload["items"]) == 1
 
 
+def test_object_store_repository_persists_kb_metadata_across_instances() -> None:
+    object_store = InMemoryObjectStore()
+    first_repository = ObjectStoreKnowledgeBaseRepository(object_store)
+    created_at = utc_now()
+
+    first_repository.create(
+        KnowledgeBase(
+            id="kb-persisted",
+            name="Persistent KB",
+            description="Survives API reloads",
+            created_at=created_at,
+        )
+    )
+    first_repository.add_document(
+        DocumentRecord(
+            id="doc-1",
+            knowledge_base_id="kb-persisted",
+            filename="claims.json",
+            content_type="application/json",
+            size_bytes=2,
+            status="registered",
+            storage_key="knowledgebases/kb-persisted/documents/doc-1/source.json",
+        )
+    )
+
+    second_repository = ObjectStoreKnowledgeBaseRepository(object_store)
+
+    persisted = second_repository.get("kb-persisted")
+    assert persisted is not None
+    assert persisted.name == "Persistent KB"
+    assert persisted.document_count == 1
+
+    items, total = second_repository.list(limit=10, offset=0)
+    assert total == 1
+    assert [item.id for item in items] == ["kb-persisted"]
+
+    documents, document_total = second_repository.list_documents(
+        "kb-persisted",
+        limit=10,
+        offset=0,
+    )
+    assert document_total == 1
+    assert documents[0].filename == "claims.json"
+
+
+def test_object_store_repository_persists_deletions_across_instances() -> None:
+    object_store = InMemoryObjectStore()
+    first_repository = ObjectStoreKnowledgeBaseRepository(object_store)
+    first_repository.create(
+        KnowledgeBase(
+            id="kb-delete",
+            name="Delete KB",
+            description="",
+            created_at=utc_now(),
+        )
+    )
+    first_repository.add_document(
+        DocumentRecord(
+            id="doc-1",
+            knowledge_base_id="kb-delete",
+            filename="claims.json",
+        )
+    )
+
+    assert first_repository.delete_document("kb-delete", "doc-1") is True
+    assert first_repository.delete("kb-delete") is True
+
+    second_repository = ObjectStoreKnowledgeBaseRepository(object_store)
+    assert second_repository.get("kb-delete") is None
+    items, total = second_repository.list(limit=10, offset=0)
+    assert items == []
+    assert total == 0
+
+
 def test_get_knowledge_base_returns_404_when_missing(
     harness: tuple[
         TestClient,
@@ -250,10 +337,18 @@ def test_get_knowledge_base_hydrates_ready_status_from_graph_metrics() -> None:
     assert detail_payload["status"] == "ready"
     assert detail_payload["entity_count"] == 4
     assert detail_payload["relationship_count"] == 4
+    persisted = repository.get("kb-ready")
+    assert persisted is not None
+    assert persisted.status == "ready"
+    assert persisted.entity_count == 4
+    assert persisted.relationship_count == 4
 
     assert documents.status_code == 200
     document_payload = documents.json()
     assert document_payload["items"][0]["status"] == "ready"
+    persisted_document = repository.get_document("kb-ready", "doc-1")
+    assert persisted_document is not None
+    assert persisted_document.status == "ready"
 
 
 def test_get_knowledge_base_marks_zero_entity_graph_update_ready() -> None:
@@ -634,7 +729,7 @@ def test_kb_get_requires_viewer_when_auth_enabled(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
-    monkeypatch.setattr("api.app.assert_complete", lambda app: None)
+    monkeypatch.setattr("api.app.assert_complete", _skip_policy_audit)
 
     auth_cfg = AuthConfig(
         enabled=True,
@@ -694,7 +789,7 @@ def test_kb_create_requires_analyst_when_auth_enabled(monkeypatch: pytest.Monkey
 
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
-    monkeypatch.setattr("api.app.assert_complete", lambda app: None)
+    monkeypatch.setattr("api.app.assert_complete", _skip_policy_audit)
 
     auth_cfg = AuthConfig(
         enabled=True,
@@ -769,7 +864,7 @@ def test_kb_delete_requires_admin_when_auth_enabled(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
-    monkeypatch.setattr("api.app.assert_complete", lambda app: None)
+    monkeypatch.setattr("api.app.assert_complete", _skip_policy_audit)
 
     auth_cfg = AuthConfig(
         enabled=True,

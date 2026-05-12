@@ -136,7 +136,7 @@ This section describes chiliAI's external actors and the systems it interacts wi
 | **Graph database** | Stores knowledge graphs (policy graph, claims graph). Current selectable backends are in-memory and Neo4j behind an abstract adapter. Memgraph and AWS Neptune remain roadmap adapters until their adapter/factory wiring exists. |
 | **Vector store** | Stores embeddings for RAG retrieval and similarity search. Current selectable backends are in-memory and Qdrant behind an abstract adapter. pgvector and Weaviate remain roadmap adapters until their adapter/factory wiring exists. |
 | **LLM provider** | Powers RAG conversational interface and entity extraction during ingestion. Vendor-agnostic — OpenAI, Anthropic, or self-hosted (Ollama, vLLM) behind an abstract adapter. |
-| **Object store** | Persists raw ingested files for audit and reprocessing. S3, MinIO, or local filesystem behind an abstract adapter. |
+| **Object store** | Persists raw ingested files for audit and reprocessing. The dev stack can also use the object store as a single-writer durable KB metadata projection. S3, MinIO, or local filesystem sit behind an abstract adapter. |
 | **Auth provider** | *(Future)* External identity provider (OIDC/OAuth2) for authentication. Designed-for but deferred. |
 
 ---
@@ -185,7 +185,7 @@ The monorepo produces the following deployable containers:
 | From → To | Protocol | Purpose |
 |-----------|----------|---------|
 | chili_app → Backend API | HTTPS (REST) | CRUD operations, queries, file uploads |
-| chili_app ← Backend API | WSS (WebSocket) | Real-time alerts, pipeline status updates |
+| chili_app ← Backend API | SSE / WSS | Real-time workspace snapshots over SSE; WebSocket support remains available for push-style interactions |
 | Backend API → Redis | Redis Streams XADD | Publish pipeline events (`documents.uploaded`, `claims.ingested`, etc.) |
 | Worker ← Redis | Redis Streams XREADGROUP | Consume pipeline events, execute processing steps |
 | Worker → Redis | Redis Streams XADD | Publish downstream events (`entities.extracted`, `risk.scored`, `alerts.created`, etc.) |
@@ -563,13 +563,24 @@ Knowledge bases are the core organizational unit for ingested content and their 
 |-----------|---------|----------------|-------|
 | **Create KB** | `POST /knowledgebases` | Create metadata → publish `kb.create` | Returns `201 Created`; graph/vector namespace initialization is async/planned |
 | **Add documents** | `POST /knowledgebases/{id}/documents` | Upload to object store → parse → chunk → extract entities → upsert graph → embed → index | Incremental — merges with existing graph |
-| **View KB summary** | `GET /knowledgebases/{id}` | Read metadata | Returns document count, entity/relationship counts, indexing status |
-| **List documents** | `GET /knowledgebases/{id}/documents` | Read metadata | Paginated list with ingestion status per document |
+| **View KB summary** | `GET /knowledgebases/{id}` | Read persisted metadata → merge live graph/object-store signals → persist projected status/counts | Returns document count, entity/relationship counts, and indexing status from the live KB projection |
+| **List documents** | `GET /knowledgebases/{id}/documents` | Read persisted document metadata → derive status from KB projection | Paginated list with persisted/derived ingestion status per document |
 | **Remove document** | `DELETE /knowledgebases/{id}/documents/{doc_id}` | Delete document metadata and object-store payloads | Graph/vector provenance-backed cleanup is planned |
-| **Delete KB** | `DELETE /knowledgebases/{id}` | Delete object-store payloads and KB metadata → publish `kb.delete` | Graph/vector namespace teardown is planned |
+| **Delete KB** | `DELETE /knowledgebases/{id}` | Delete object-store payloads → clear graph namespace through `GraphServiceProtocol` → delete KB metadata → publish `kb.delete` | Vector namespace teardown remains planned |
 | **Rebuild RAG index** | Planned | Re-embed all content → replace vector index | No current public route |
 
-### 7.2 Provenance tracking
+### 7.2 Metadata projection and lifecycle boundaries
+
+The API owns the lightweight KB/document metadata projection through the `KnowledgeBaseRepository` protocol. Current repository adapters are:
+
+- `in_memory` — isolated process-local metadata for unit tests and simple local runs.
+- `object_store` — dev-stack durability that serializes KB/document metadata through the configured `ObjectStore` so API reloads do not lose inventory state. This is intentionally a single-writer development adapter, not a high-concurrency production metadata database.
+
+Graph entities, relationships, and metrics remain owned by the `graph` module. KB list/detail/document reads call projection helpers that merge persisted KB metadata with live graph metrics and graph-build artifacts, then write changed status/count fields back through the repository. SSE workspace snapshots use the same projection path for `knowledge_base_statuses`, avoiding seeded demo state for live KB status.
+
+Deleting a KB removes its object-store payloads and invokes graph namespace cleanup through `GraphServiceProtocol.delete_knowledge_base()`. API code does not import concrete graph adapters; in-memory and Neo4j cleanup behavior is provided behind the graph repository protocol. Document-level graph/vector cleanup remains future work until provenance-backed delete semantics are implemented.
+
+### 7.3 Provenance tracking
 
 Each entity and relationship in the graph carries provenance metadata linking it back to the source document(s) and extraction step. This enables:
 
@@ -592,11 +603,11 @@ Each entity and relationship in the graph carries provenance metadata linking it
 | Server state | TanStack Query (React Query) | Caching, invalidation, optimistic updates |
 | Client state | Zustand | Lightweight store for UI state (selected entity, panel visibility, etc.) |
 | API client | Typed fetch wrapper + TanStack Query hooks | `lib/apiClient.ts` provides typed envelopes; generated OpenAPI client remains optional future hardening |
-| Real-time | WebSocket (native or via library) | Alerts, pipeline status, KB readiness |
+| Real-time | Server-Sent Events + WebSocket support | Workspace snapshots over SSE; WebSocket support remains available for push-style interactions |
 | Graph visualization | `react-force-graph-2d` | Canvas graph explorer in the Investigation Workbench |
 | Styling | CSS Modules + global app CSS | Component-scoped styles for complex UI surfaces |
 
-> **Current state**: `chili_app/` is a routed React 19 workbench prototype with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration views. Several workflows still use in-memory/local backend behavior, and parts of the section below remain target architecture.
+> **Current state**: `chili_app/` is a routed React 19 workbench prototype with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration views. Knowledge Base Manager uses the live KB repository, and Investigation Workbench uses KB-scoped live `/investigation/*` graph APIs. Dashboard, alerts, cases, and some analytics/evidence surfaces still include seeded/demo read models until their live projections are migrated.
 
 ### 8.2 Page / view structure
 
@@ -632,7 +643,7 @@ chili_app/src/
 
 ### 8.3 Investigation Workbench
 
-The investigation workbench is the primary analyst view. It is a composite page with multiple coordinated panels:
+The investigation workbench is the primary analyst view. It is a composite page with multiple coordinated panels. In the current prototype, the workbench selects an active knowledge base, searches entities through `/investigation/search?kb_id=...`, and loads entity detail plus neighborhood data through KB-scoped investigation endpoints. Entity titles, subtitles, chips, and relationship labels derive from the active domain config's entity/relationship definitions and `ui.display_fields` metadata instead of hardcoded Medicare-specific labels.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -669,9 +680,10 @@ The investigation workbench is the primary analyst view. It is a composite page 
 ### 8.4 API communication
 
 - The FastAPI backend auto-generates an OpenAPI specification.
-- A TypeScript API client is generated from this spec at build time, ensuring type safety across the stack.
+- The current frontend uses typed fetch helpers plus TanStack Query hooks. Generated OpenAPI clients remain an optional hardening path via the existing codegen command.
 - TanStack Query wraps all API calls, providing caching, background refetching, and optimistic updates.
-- WebSocket messages follow a typed envelope: `{ type: string, payload: T }` where the type discriminates the payload shape.
+- The realtime workspace stream uses `GET /events/stream` as Server-Sent Events. Snapshots include seeded/demo alert/workflow counts plus live KB statuses from the repository-backed KB projection.
+- WebSocket support remains available for push-style interactions and follows typed message envelopes where applicable.
 
 ### 8.5 Domain-driven dynamic UI
 
@@ -845,6 +857,7 @@ services:
     ports: ["8000:8000"]
     environment:
       - CHILI_CONFIG_PATH=/config/medicare_fraud.yaml
+      - CHILI_KB_REPOSITORY_BACKEND=object_store
       - REDIS_URL=redis://redis:6379
     depends_on: [redis]
   worker:
@@ -1049,8 +1062,8 @@ Adapter selection is driven by environment configuration, not code changes.
 
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
-| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion, graph/vector/embedding/LLM/RAG services, analytics modules, monitoring, storage adapters, auth/RBAC middleware, and in-memory plus selected production-facing adapters | Enforce auth/RBAC route-wide, add production-mode adapter guardrails, and harden persistence/retry behavior |
-| `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, Investigation Workbench, RAG Chat, Configuration Editor, and WebSocket hook | Complete persisted evidence-pack surface, config save endpoint integration, and production UX/performance polish |
+| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion, graph/vector/embedding/LLM/RAG services, analytics modules, monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, SSE workspace snapshots, and in-memory plus selected production-facing adapters | Add a production-grade KB metadata adapter/migration path, complete vector/document provenance cleanup, add production-mode adapter guardrails, and harden workflow recovery |
+| `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, live KB-scoped Investigation Workbench, RAG Chat, Configuration Editor, and realtime SSE hook | Complete persisted evidence-pack surface, config save endpoint integration, migrate remaining seeded read models to live projections, and production UX/performance polish |
 | `docs/` | Architecture, onboarding guide, security checklist, current TODO/stub audit, and archived historical planning/status material | Keep active docs synchronized with implementation and archive stale snapshots |
 | `infra/` | Docker Compose, flat Kubernetes manifests, and Helm chart | Add cloud-provider Terraform/Pulumi and production hardening as needed |
 | Testing | Extensive backend pytest suite and frontend Vitest suite | Keep CI coverage gates calibrated and add live adapter profiles where services are available |

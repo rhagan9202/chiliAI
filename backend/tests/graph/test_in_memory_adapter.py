@@ -250,6 +250,44 @@ def test_delete_entity_is_idempotent() -> None:
     assert repository.count_relationships("kb-1") == 0
 
 
+def test_delete_knowledge_base_clears_only_target_namespace() -> None:
+    repository = InMemoryGraphRepository()
+    for knowledge_base_id in ["kb-1", "kb-2"]:
+        repository.upsert_entities(
+            knowledge_base_id,
+            [
+                Entity(id="entity-1", type="claim", properties={}),
+                Entity(id="entity-2", type="provider", properties={}),
+            ],
+        )
+        repository.upsert_relationships(
+            knowledge_base_id,
+            [
+                Relationship(
+                    id="relationship-1",
+                    type="submitted_by",
+                    source_id="entity-1",
+                    target_id="entity-2",
+                )
+            ],
+        )
+        assert repository.get_neighbors(
+            knowledge_base_id,
+            "entity-1",
+            depth=1,
+            direction="out",
+        ).relationships
+
+    repository.delete_knowledge_base("kb-1")
+    repository.delete_knowledge_base("kb-1")
+
+    assert repository.count_entities("kb-1") == 0
+    assert repository.count_relationships("kb-1") == 0
+    assert repository.get_neighbors("kb-1", "entity-1", depth=1, direction="out").entities == []
+    assert repository.count_entities("kb-2") == 2
+    assert repository.count_relationships("kb-2") == 1
+
+
 def test_in_memory_graph_repository_transaction_commits_changes() -> None:
     repository = InMemoryGraphRepository()
 

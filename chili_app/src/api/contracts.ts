@@ -228,6 +228,43 @@ export type GraphEntityDetailResponse = {
   related_alert_ids: string[]
 }
 
+export type RuntimeEntity = {
+  id: string
+  type: string
+  properties: Record<string, unknown>
+  metadata: Record<string, unknown>
+  created_at: string
+  updated_at: string | null
+  version: number
+}
+
+export type RuntimeRelationship = {
+  id: string
+  type: string
+  source_id: string
+  target_id: string
+  properties: Record<string, unknown>
+  created_at: string
+  updated_at: string | null
+  version: number
+  weight: number | null
+}
+
+export type InvestigationEntityDetailResponse = {
+  entity: RuntimeEntity
+}
+
+export type InvestigationNeighborhoodResponse = {
+  center_entity_id: string
+  entities: RuntimeEntity[]
+  relationships: RuntimeRelationship[]
+}
+
+export type InvestigationEntitySearchResponse = {
+  items: RuntimeEntity[]
+  total: number
+}
+
 export type EvidenceItemResponse = {
   source_id: string
   source_type: string

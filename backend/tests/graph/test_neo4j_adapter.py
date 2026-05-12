@@ -217,16 +217,19 @@ def test_neo4j_repository_reads_searches_counts_and_deletes(
         [{"count": 2}],
         [],
         [],
+        [],
     ]
 
     assert repository.get_entity("kb-1", "entity-1") is not None
     assert repository.search_entities("kb-1", "alice", limit=10)[0].id == "entity-2"
     assert repository.count_entities("kb-1") == 3
     assert repository.count_relationships("kb-1") == 2
+    repository.delete_knowledge_base("kb-1")
     repository.delete_entity("kb-1", "entity-2")
     repository.delete_relationship("kb-1", "relationship-2")
 
     assert "entity.properties_json" in driver.queries[1][0]
+    assert "DETACH DELETE entity" in driver.queries[-3][0]
     assert "DELETE relationship" in driver.queries[-1][0]
 
 
@@ -450,8 +453,7 @@ def neo4j_repository() -> Generator[tuple[Neo4jGraphRepository, str], None, None
 
     yield repository, knowledge_base_id
 
-    for entity in repository.get_entities(knowledge_base_id):
-        repository.delete_entity(knowledge_base_id, entity.id)
+    repository.delete_knowledge_base(knowledge_base_id)
     repository.close()
 
 
@@ -545,6 +547,10 @@ def test_neo4j_repository_round_trip_crud(
 
     assert repository.get_entity(knowledge_base_id, "entity-2") is None
     assert repository.count_entities(knowledge_base_id) == 2
+    assert repository.count_relationships(knowledge_base_id) == 0
+
+    repository.delete_knowledge_base(knowledge_base_id)
+    assert repository.count_entities(knowledge_base_id) == 0
     assert repository.count_relationships(knowledge_base_id) == 0
 
 

@@ -19,7 +19,7 @@ class InMemoryGraphRepository(GraphRepository):
 
     # TODO(production): Add referential integrity checks (relationships must
     # reference existing entity IDs). Add property merge logic on upsert
-    # (currently blindly overwrites). Add clear(kb_id) for knowledge base teardown.
+    # (currently blindly overwrites).
 
     def __init__(self) -> None:
         self._entities: dict[str, dict[str, Entity]] = {}
@@ -182,6 +182,13 @@ class InMemoryGraphRepository(GraphRepository):
 
     def count_relationships(self, knowledge_base_id: str) -> int:
         return len(self._relationships.get(knowledge_base_id, {}))
+
+    def delete_knowledge_base(self, knowledge_base_id: str) -> None:
+        self._entities.pop(knowledge_base_id, None)
+        self._relationships.pop(knowledge_base_id, None)
+        self._outbound_relationships.pop(knowledge_base_id, None)
+        self._inbound_relationships.pop(knowledge_base_id, None)
+        self._adjacency_is_stale.discard(knowledge_base_id)
 
     def delete_entity(self, knowledge_base_id: str, entity_id: str) -> None:
         entity_bucket = self._entities.get(knowledge_base_id, {})

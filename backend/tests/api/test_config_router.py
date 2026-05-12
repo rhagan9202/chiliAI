@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.app import create_app
@@ -15,6 +16,11 @@ from config.schema import DomainConfig
 
 DEFAULTS_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "defaults"
 MEDICARE_YAML = DEFAULTS_DIR / "medicare_fraud.yaml"
+MEDICARE_DEV_YAML = DEFAULTS_DIR / "medicare_fraud_dev.yaml"
+
+
+def _skip_policy_audit(app: FastAPI) -> None:
+    del app
 
 
 @pytest.fixture()
@@ -79,6 +85,20 @@ class TestConfigRouter:
         assert data["default_entity_type"] == "provider"
         assert data["default_role"] == "analyst"
 
+    def test_dev_config_returns_ui_features(self) -> None:
+        app = create_app()
+        config = load_config(MEDICARE_DEV_YAML)
+        app.dependency_overrides[get_domain_config] = lambda: config
+
+        with TestClient(app) as dev_client:
+            data = dev_client.get("/config/features").json()
+
+        assert data["default_entity_type"] == "provider"
+        assert data["default_role"] == "analyst"
+        assert "knowledge_bases" in data["enabled_pages"]
+        assert "rag_chat" in data["enabled_pages"]
+        assert set(data["roles"]) == {"analyst", "supervisor"}
+
     def test_get_domain_schema_returns_json_schema(self, client: TestClient) -> None:
         data = client.get("/config/domain/schema").json()
         assert data["title"] == "DomainConfig"
@@ -136,7 +156,7 @@ def test_config_get_requires_viewer_when_auth_enabled(monkeypatch: pytest.Monkey
     base = load_config(MEDICARE_YAML)
     domain = base.model_copy(update={"auth": auth_cfg})
 
-    monkeypatch.setattr("api.app.assert_complete", lambda app: None)
+    monkeypatch.setattr("api.app.assert_complete", _skip_policy_audit)
     monkeypatch.setattr("api.app.load_config", lambda: domain)
 
     app = create_app()
