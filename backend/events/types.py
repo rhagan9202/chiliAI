@@ -14,7 +14,6 @@ from shared.utils import generate_id, utc_now
 class EventBase(BaseModel):
     """Base event envelope."""
 
-    event_type: str
     correlation_id: str = Field(default_factory=generate_id)
     occurred_at: datetime = Field(default_factory=utc_now)
     source: str | None = None

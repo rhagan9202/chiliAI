@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from time import perf_counter
 
-from fastapi import APIRouter, FastAPI, Response
+from fastapi import APIRouter, Depends, FastAPI, Response
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     REGISTRY,
@@ -14,6 +14,8 @@ from prometheus_client import (
     Histogram,
     generate_latest,
 )
+
+from api.middleware.rbac import require_role
 
 __all__ = [
     "MetricsMiddleware",
@@ -94,7 +96,7 @@ def build_metrics_router(
     target_registry = registry if registry is not None else REGISTRY
     router = APIRouter(tags=["observability"])
 
-    @router.get("/metrics")
+    @router.get("/metrics", dependencies=[Depends(require_role("service"))])
     async def metrics_endpoint() -> Response:  # pyright: ignore[reportUnusedFunction]
         payload = generate_latest(target_registry)
         return Response(content=payload, media_type=CONTENT_TYPE_LATEST)

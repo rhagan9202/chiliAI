@@ -60,7 +60,7 @@ async def create_conversation(
 @router.post(
     "/conversations/{conversation_id}/messages",
     response_model=None,
-    dependencies=[Depends(require_role("viewer"))],
+    dependencies=[Depends(require_role("analyst"))],
 )
 async def add_message(
     conversation_id: str,

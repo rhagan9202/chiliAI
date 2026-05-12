@@ -97,13 +97,14 @@ def decode_event(payload: Mapping[str, str] | Mapping[bytes, bytes]) -> AnyEvent
     body = json.loads(event_body)
     if not isinstance(body, dict):
         raise ValueError("Event body must be a JSON object.")
-    body_event_type = body.get("event_type")
+    body_mapping = cast(dict[str, object], body)
+    body_event_type = body_mapping.get("event_type")
     if body_event_type != event_type:
         raise ValueError(
             f"Transport event_type '{event_type}' does not match body event_type "
             f"'{body_event_type}'."
         )
-    return cast(AnyEvent, event_model.model_validate(body))
+    return cast(AnyEvent, event_model.model_validate(body_mapping))
 
 
 def _decode_key(value: str | bytes) -> str:

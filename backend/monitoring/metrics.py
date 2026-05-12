@@ -7,7 +7,7 @@ unified payload for HTTP and pipeline data.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from time import perf_counter
 
@@ -41,7 +41,7 @@ active_alerts_total: Gauge = Gauge(
 
 
 @contextmanager
-def observe_pipeline_stage(stage: str) -> Iterator[None]:
+def observe_pipeline_stage(stage: str) -> Generator[None, None, None]:
     """Time a pipeline stage and record errors if the block raises."""
 
     start = perf_counter()

@@ -8,10 +8,53 @@ router took over from the old chat.py.
 from __future__ import annotations
 
 import json
+import time
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.app import create_app
+from api.dependencies import get_domain_config, get_session_store
+from api.middleware.session_store import InMemorySessionStore, SessionRecord
+from config.loader import load_config
+from config.schema import AuthConfig, DomainConfig
+
+
+def _domain_with_auth() -> DomainConfig:
+    return load_config().model_copy(update={"auth": AuthConfig(enabled=True)})
+
+
+def _save_session(
+    store: InMemorySessionStore,
+    *,
+    session_id: str,
+    roles: list[str],
+) -> None:
+    now = time.time()
+    store.save(
+        SessionRecord(
+            session_id=session_id,
+            user_id=session_id,
+            roles=roles,
+            email=f"{session_id}@example.com",
+            access_token="access-token",
+            refresh_token="refresh-token",
+            access_token_expires_at=now + 3600,
+            id_token="id-token",
+            created_at=now,
+            ttl_seconds=3600,
+        )
+    )
+
+
+def _app_with_auth_sessions() -> tuple[FastAPI, InMemorySessionStore]:
+    app = create_app()
+    store = InMemorySessionStore()
+    _save_session(store, session_id="sid-viewer", roles=["viewer"])
+    _save_session(store, session_id="sid-analyst", roles=["analyst"])
+    app.dependency_overrides[get_domain_config] = _domain_with_auth
+    app.dependency_overrides[get_session_store] = lambda: store
+    return app, store
 
 
 def _new_conversation_id(client: TestClient) -> str:
@@ -51,6 +94,61 @@ def test_send_message_404_for_unknown_conversation() -> None:
     )
 
     assert response.status_code == 404
+
+
+def test_viewer_cannot_create_or_add_chat_messages_when_auth_enabled() -> None:
+    app, _store = _app_with_auth_sessions()
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-viewer")
+        create_response = client.post(
+            "/chat/conversations",
+            json={"knowledge_base_id": "kb-1", "title": "Viewer write"},
+        )
+        message_response = client.post(
+            "/chat/conversations/conv-1/messages",
+            json={"content": "Can I mutate this thread?"},
+        )
+
+    assert create_response.status_code == 403
+    assert message_response.status_code == 403
+
+
+def test_analyst_can_add_chat_message_when_auth_enabled() -> None:
+    app, _store = _app_with_auth_sessions()
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-analyst")
+        created = client.post(
+            "/chat/conversations",
+            json={"knowledge_base_id": "kb-1", "title": "Analyst write"},
+        )
+        conversation_id = created.json()["id"]
+        updated = client.post(
+            f"/chat/conversations/{conversation_id}/messages",
+            json={"content": "Why is this claim risky?"},
+        )
+
+    assert created.status_code == 200
+    assert updated.status_code == 200
+
+
+def test_viewer_can_read_chat_conversation_when_auth_enabled() -> None:
+    app, _store = _app_with_auth_sessions()
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-analyst")
+        created = client.post(
+            "/chat/conversations",
+            json={"knowledge_base_id": "kb-1", "title": "Readable thread"},
+        )
+        conversation_id = created.json()["id"]
+
+        client.cookies.set("chiliai_session", "sid-viewer")
+        read_response = client.get(f"/chat/conversations/{conversation_id}")
+
+    assert read_response.status_code == 200
+    assert read_response.json()["id"] == conversation_id
 
 
 def test_stream_message_returns_sse_with_done_sentinel() -> None:

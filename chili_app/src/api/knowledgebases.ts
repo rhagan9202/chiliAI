@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiDelete, apiFetch, apiPost, apiUpload } from './client'
 import type {
-  ApiEnvelope,
   DocumentRegistrationResponse,
   KnowledgeBaseCreateRequest,
   KnowledgeBaseDocumentListResponse,
@@ -36,8 +35,8 @@ export function createKnowledgeBase(
   return apiPost<KnowledgeBaseSummaryResponse, KnowledgeBaseCreateRequest>('/knowledgebases', payload)
 }
 
-export function deleteKnowledgeBase(knowledgeBaseId: string): Promise<ApiEnvelope> {
-  return apiDelete<ApiEnvelope>(`/knowledgebases/${knowledgeBaseId}`)
+export function deleteKnowledgeBase(knowledgeBaseId: string): Promise<void> {
+  return apiDelete<void>(`/knowledgebases/${knowledgeBaseId}`)
 }
 
 export function getKnowledgeBaseDocuments(
@@ -49,8 +48,8 @@ export function getKnowledgeBaseDocuments(
 export function deleteKnowledgeBaseDocument(
   knowledgeBaseId: string,
   documentId: string,
-): Promise<ApiEnvelope> {
-  return apiDelete<ApiEnvelope>(`/knowledgebases/${knowledgeBaseId}/documents/${documentId}`)
+): Promise<void> {
+  return apiDelete<void>(`/knowledgebases/${knowledgeBaseId}/documents/${documentId}`)
 }
 
 export function uploadKnowledgeBaseDocuments(

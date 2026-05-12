@@ -12,7 +12,6 @@ __all__ = ["PolicyMissingError", "assert_complete"]
 SKIP_PREFIXES = (
     "/auth/",
     "/health",
-    "/metrics",
     "/docs",
     "/openapi.json",
     "/redoc",

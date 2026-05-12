@@ -70,7 +70,7 @@ Ad hoc cross-module imports, hidden shared state, and direct implementation coup
 pip install -e ".[dev]"
 
 # API server
-uvicorn api.app:create_app --reload --port 8000
+CHILI_ENV=local uvicorn api.app:create_app --reload --port 8000
 
 # Pipeline worker
 python -m agent.coordinator
@@ -99,7 +99,7 @@ The backend reads a domain configuration YAML/JSON file at startup (path set via
 | Var | Default | Purpose |
 |-----|---------|---------|
 | `CHILI_CONFIG_PATH` | (required at runtime) | Path to the active domain config YAML/JSON. |
-| `CHILI_ENV` | unset | When set to `production`, `create_app()` enforces `auth.enabled=True` plus a complete `AuthConfig`. |
+| `CHILI_ENV` | (required) | Runtime mode: `local`, `dev`, `staging`, or `production`. Startup fails on unset/unknown values. `staging` and `production` require `auth.enabled=True` plus a complete `AuthConfig`; `local` and `dev` permit auth-disabled development. |
 | `ALLOWED_ORIGINS` | local dev defaults (`http://localhost:5173`, `:80`, `localhost`) | Comma-separated CORS allow-list for the frontend. Required when the SPA is deployed under a different origin. |
 | `CHILI_KB_REPOSITORY_BACKEND` | `in_memory` | Knowledge base metadata repository. Use `object_store` in the dev stack to persist KB/document metadata through API reloads via the configured object store. |
 | `CHILI_ALERT_REPOSITORY_BACKEND` | `in_memory` | Alert projection repository. Use `object_store` in the dev stack to persist alert read projections and SSE active-alert counts through API reloads via the configured object store. |

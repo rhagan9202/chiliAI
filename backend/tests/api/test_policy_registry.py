@@ -17,11 +17,11 @@ def test_assert_complete_passes_when_every_route_has_role_dependency() -> None:
     router = APIRouter()
 
     @router.get("/widgets", dependencies=[Depends(require_role("viewer"))])
-    def list_widgets() -> dict[str, str]:
+    def list_widgets() -> dict[str, str]:  # pyright: ignore[reportUnusedFunction]
         return {}
 
     @router.post("/widgets", dependencies=[Depends(require_role("analyst"))])
-    def create_widget() -> dict[str, str]:
+    def create_widget() -> dict[str, str]:  # pyright: ignore[reportUnusedFunction]
         return {}
 
     app.include_router(router)
@@ -33,7 +33,7 @@ def test_assert_complete_raises_when_route_missing_role() -> None:
     app = FastAPI()
 
     @app.get("/unprotected")
-    def unprotected() -> dict[str, str]:
+    def unprotected() -> dict[str, str]:  # pyright: ignore[reportUnusedFunction]
         return {}
 
     with pytest.raises(PolicyMissingError) as excinfo:
@@ -42,23 +42,30 @@ def test_assert_complete_raises_when_route_missing_role() -> None:
     assert "/unprotected" in str(excinfo.value)
 
 
-def test_assert_complete_skips_auth_health_metrics_and_docs_routes() -> None:
+def test_assert_complete_skips_auth_health_and_docs_routes() -> None:
     app = FastAPI()
 
     @app.get("/health")
-    def health() -> dict[str, str]:
+    def health() -> dict[str, str]:  # pyright: ignore[reportUnusedFunction]
         return {}
 
     @app.get("/auth/me")
-    def me() -> dict[str, str]:
-        return {}
-
-    @app.get("/metrics")
-    def metrics() -> dict[str, str]:
+    def me() -> dict[str, str]:  # pyright: ignore[reportUnusedFunction]
         return {}
 
     # /docs and /openapi.json are FastAPI built-ins; they exist in app.routes.
     assert_complete(app)  # no raise
+
+
+def test_assert_complete_requires_metrics_policy() -> None:
+    app = FastAPI()
+
+    @app.get("/metrics")
+    def metrics() -> dict[str, str]:  # pyright: ignore[reportUnusedFunction]
+        return {}
+
+    with pytest.raises(PolicyMissingError, match="/metrics"):
+        assert_complete(app)
 
 
 def test_assert_complete_finds_role_dependency_through_nested_dependencies() -> None:
@@ -71,7 +78,7 @@ def test_assert_complete_finds_role_dependency_through_nested_dependencies() -> 
         return user
 
     @app.get("/composite", dependencies=[Depends(composite)])
-    def composite_route() -> dict[str, str]:
+    def composite_route() -> dict[str, str]:  # pyright: ignore[reportUnusedFunction]
         return {}
 
     assert_complete(app)
@@ -81,11 +88,11 @@ def test_assert_complete_lists_all_missing_routes() -> None:
     app = FastAPI()
 
     @app.get("/un1")
-    def un1() -> dict[str, str]:
+    def un1() -> dict[str, str]:  # pyright: ignore[reportUnusedFunction]
         return {}
 
     @app.get("/un2")
-    def un2() -> dict[str, str]:
+    def un2() -> dict[str, str]:  # pyright: ignore[reportUnusedFunction]
         return {}
 
     with pytest.raises(PolicyMissingError) as excinfo:

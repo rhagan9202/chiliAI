@@ -33,13 +33,38 @@ __all__ = ["create_app"]
 
 logger = get_logger("chili.api")
 
+_ALLOWED_ENVIRONMENTS = frozenset({"local", "dev", "staging", "production"})
+_AUTH_REQUIRED_ENVIRONMENTS = frozenset({"staging", "production"})
+
+
+def _load_chili_environment() -> str:
+    """Return the validated runtime environment name."""
+
+    raw_environment = os.environ.get("CHILI_ENV")
+    if raw_environment is None or raw_environment.strip() == "":
+        allowed = ", ".join(sorted(_ALLOWED_ENVIRONMENTS))
+        raise RuntimeError(
+            "CHILI_ENV must be set to one of "
+            f"{allowed}; use CHILI_ENV=local for local development."
+        )
+
+    environment = raw_environment.strip().lower()
+    if environment not in _ALLOWED_ENVIRONMENTS:
+        allowed = ", ".join(sorted(_ALLOWED_ENVIRONMENTS))
+        raise RuntimeError(
+            f"Unknown CHILI_ENV '{raw_environment}'. Expected one of {allowed}."
+        )
+    return environment
+
 
 def _enforce_production_guardrail(auth: AuthConfig | None) -> None:
-    if os.environ.get("CHILI_ENV") != "production":
+    environment = _load_chili_environment()
+    if environment not in _AUTH_REQUIRED_ENVIRONMENTS:
         return
     if auth is None or not auth.enabled:
         raise RuntimeError(
-            "AuthConfig.enabled must be True under CHILI_ENV=production."
+            "AuthConfig.enabled must be True under "
+            f"CHILI_ENV={environment}."
         )
     required = (
         ("issuer_url", auth.issuer_url),
@@ -54,7 +79,8 @@ def _enforce_production_guardrail(auth: AuthConfig | None) -> None:
     missing = [name for name, value in required if value is None]
     if missing:
         raise RuntimeError(
-            f"AuthConfig is missing required fields under CHILI_ENV=production: {missing}"
+            "AuthConfig is missing required fields under "
+            f"CHILI_ENV={environment}: {missing}"
         )
 
 
@@ -127,10 +153,10 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(ws_router)
 
-    # Default-deny audit. Only runs when auth is enabled — auth-disabled dev
-    # path retains the existing anonymous-viewer fallback semantics.
-    if config.auth is not None and config.auth.enabled:
-        assert_complete(app)
+    # Default-deny audit validates route annotations independent of runtime auth
+    # mode. Individual require_role dependencies still short-circuit when auth is
+    # disabled for local/dev operation.
+    assert_complete(app)
 
     logger.info("api_app_initialized", version=app.version)
     return app

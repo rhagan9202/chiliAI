@@ -1,6 +1,6 @@
 # chiliAI Security Audit Checklist
 
-> Owner: Platform Security · Last reviewed: 2026-04-27 · Cadence: **quarterly**
+> Owner: Platform Security · Last reviewed: 2026-05-12 · Cadence: **quarterly**
 > (Jan / Apr / Jul / Oct), plus ad-hoc when a new external integration lands.
 
 This checklist maps OWASP Top 10 (2021) categories to specific chiliAI
@@ -36,14 +36,20 @@ require a documented justification in this file.
 
 - **Authentication.** When auth is enabled, protected HTTP routes require a
   `chiliai_session` cookie or Bearer token. Auth middleware lives in
-  `backend/api/middleware/auth.py`; `/auth/*`, docs/openapi, metrics, and
-  health endpoints are intentionally exempt. Auth-disabled development runs as
-  an anonymous `viewer`.
+  `backend/api/middleware/auth.py`; `/auth/*`, docs/openapi, and health
+  endpoints are intentionally exempt from the default-deny route audit.
+  Auth-disabled local/dev runs as an anonymous `viewer`.
 - **RBAC.** Route policy is enforced per-router via FastAPI
-  `Depends(require_role(...))` using `viewer`, `analyst`, and `admin`.
+  `Depends(require_role(...))` using `viewer`, `analyst`, `service`, and `admin`.
   Reads/exploration are generally `viewer`; mutations are generally
   `analyst` or `admin`; configuration and destructive admin paths require
-  `admin`.
+  `admin`; service-to-service observability uses `service`.
+- **Startup guardrails.** `CHILI_ENV` must be explicitly set to `local`, `dev`,
+  `staging`, or `production`. Startup fails closed on unset/unknown values, and
+  `staging`/`production` require complete auth configuration.
+- **Default-deny audit.** `api.middleware.policy_registry.assert_complete()`
+  runs at app creation even when auth is disabled, ensuring development routes
+  still carry explicit role annotations.
 - **Tenant isolation.** Every persisted artifact is keyed by
   `knowledge_base_id`. Graph queries filter on `knowledge_base_id` at the
   protocol boundary (`graph/protocols.py`). Cross-KB reads are rejected at the
@@ -142,7 +148,24 @@ require a documented justification in this file.
   the platform log aggregator. Failure paths log at WARNING/ERROR with the
   event type and correlation ID.
 - **Metrics.** `prometheus-client` exposes pipeline counters and histograms;
-  alerting on the DLQ rate is the primary integrity signal.
+  alerting on the DLQ rate is the primary integrity signal. The `/metrics`
+  endpoint is no longer public by default: it is annotated with
+  `require_role("service")` and therefore requires a service-or-higher session
+  whenever auth is enabled.
+
+### Cookie CSRF posture — tracked finding
+
+- The BFF auth flow stores tokens server-side and sends only the opaque
+  `chiliai_session` cookie to the browser. The cookie is `HttpOnly`, defaults
+  to `Secure`, and uses `SameSite=Lax` in `backend/api/routers/auth.py`.
+- The SPA intentionally sends `credentials: 'include'` from
+  `chili_app/src/lib/apiClient.ts` so the BFF cookie accompanies API calls.
+- No synchronizer-token or double-submit CSRF middleware exists yet. This is
+  acceptable for local/dev and should remain tracked for any deployment that
+  relies on cookie auth across same-site subdomains or embeds the app in other
+  origins.
+- Follow-up recommendation: add a CSRF token endpoint plus unsafe-method
+  validation when production cookie-auth deployment topology is finalized.
 
 ### A10:2021 — Server-Side Request Forgery (SSRF)
 

@@ -24,6 +24,28 @@ def test_create_app_refuses_when_production_and_auth_disabled(
         create_app()
 
 
+def test_create_app_refuses_when_environment_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHILI_ENV", raising=False)
+    _set_dev_redis(monkeypatch)
+    from api.app import create_app
+
+    with pytest.raises(RuntimeError, match="CHILI_ENV must be set"):
+        create_app()
+
+
+def test_create_app_refuses_when_environment_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CHILI_ENV", "prodution")
+    _set_dev_redis(monkeypatch)
+    from api.app import create_app
+
+    with pytest.raises(RuntimeError, match="Unknown CHILI_ENV"):
+        create_app()
+
+
 def test_create_app_refuses_when_production_and_oidc_fields_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -41,15 +63,37 @@ def test_create_app_refuses_when_production_and_oidc_fields_missing(
         create_app()
 
 
-def test_create_app_succeeds_under_dev_with_auth_disabled(
+def test_create_app_succeeds_under_local_with_auth_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("CHILI_ENV", raising=False)
+    monkeypatch.setenv("CHILI_ENV", "local")
     _set_dev_redis(monkeypatch)
     from api.app import create_app
 
     app = create_app()
     assert app is not None
+
+
+def test_create_app_succeeds_under_dev_with_auth_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CHILI_ENV", "dev")
+    _set_dev_redis(monkeypatch)
+    from api.app import create_app
+
+    app = create_app()
+    assert app is not None
+
+
+def test_create_app_refuses_when_staging_and_auth_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CHILI_ENV", "staging")
+    _set_dev_redis(monkeypatch)
+    from api.app import create_app
+
+    with pytest.raises(RuntimeError, match="AuthConfig.enabled must be True"):
+        create_app()
 
 
 def test_create_app_passes_policy_registry_assert_when_auth_enabled(
@@ -58,7 +102,7 @@ def test_create_app_passes_policy_registry_assert_when_auth_enabled(
     """With auth enabled and every router protected, create_app succeeds."""
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
-    monkeypatch.delenv("CHILI_ENV", raising=False)
+    monkeypatch.setenv("CHILI_ENV", "local")
 
     from api.app import create_app
     from config.loader import load_config

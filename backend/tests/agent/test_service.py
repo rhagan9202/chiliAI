@@ -16,6 +16,7 @@ from agent.exceptions import (
 from agent.models import (
     WorkflowRun,
     WorkflowRunStatus,
+    WorkflowRunUpdate,
     WorkflowStepState,
 )
 from agent.service import AgentService, create_agent_service
@@ -28,6 +29,29 @@ class _FailingEventBus(InMemoryEventBus):
     def publish(self, event: AnyEvent) -> str | None:
         del event
         raise RuntimeError("publish unavailable")
+
+
+class _SnapshottingWorkflowRunStore(InMemoryWorkflowRunStore):
+    """Workflow store that captures persisted snapshots after writes."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.saved_runs: list[WorkflowRun] = []
+        self.updated_runs: list[WorkflowRun] = []
+
+    def save_run(self, run: WorkflowRun) -> WorkflowRun:
+        saved = super().save_run(run)
+        self.saved_runs.append(saved.model_copy(deep=True))
+        return saved
+
+    def update_run(
+        self,
+        workflow_id: str,
+        update: WorkflowRunUpdate,
+    ) -> WorkflowRun:
+        updated = super().update_run(workflow_id, update)
+        self.updated_runs.append(updated.model_copy(deep=True))
+        return updated
 
 
 def _service(runs: list[WorkflowRun] | None = None) -> tuple[AgentService, InMemoryWorkflowRunStore, InMemoryEventBus]:
@@ -78,6 +102,23 @@ def test_agent_service_starts_workflow_persists_run_and_publishes_event() -> Non
     started_event = event_bus.published_events[-1]
     assert isinstance(started_event, AgentWorkflowStartedEvent)
     assert started_event.correlation_id == stored_run.metadata["correlation_id"]
+
+
+def test_agent_service_persists_queued_state_before_running() -> None:
+    run_store = _SnapshottingWorkflowRunStore()
+    service = create_agent_service(run_store, event_bus=InMemoryEventBus())
+
+    response = service.start_workflow(
+        WorkflowSubmissionRequest(
+            knowledge_base_id="kb-1",
+            trigger_event_type="documents.uploaded",
+            requested_steps=["parse"],
+        )
+    )
+
+    assert run_store.saved_runs[0].status is WorkflowRunStatus.QUEUED
+    assert run_store.updated_runs[-1].status is WorkflowRunStatus.RUNNING
+    assert run_store.get_run(response.workflow_id).status is WorkflowRunStatus.RUNNING
 
 
 def test_agent_service_records_failed_run_when_publish_fails() -> None:
