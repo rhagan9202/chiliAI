@@ -19,17 +19,18 @@ from analytics.timeseries.models import (
 from analytics.timeseries.protocols import TimeseriesServiceProtocol
 from analytics.timeseries.service import TimeseriesService, create_timeseries_service
 from analytics.timeseries.service_models import (
+    MetricTimeseriesResponse,
     TimeseriesAnalysisRequest,
     TimeseriesAnalysisResponse,
     TimeseriesAnomaly,
     TimeseriesPoint,
     TimeseriesQueryRequest,
-    TimeseriesResponse,
 )
 
 __all__ = [
     "AnomalyPoint",
     "InMemoryTimeSeriesHistorySource",
+    "MetricTimeseriesResponse",
     "TimeSeriesAnalysisResult",
     "TimeSeriesHistorySourceProtocol",
     "TimeSeriesObservation",
@@ -42,7 +43,6 @@ __all__ = [
     "TimeseriesInsufficientHistoryError",
     "TimeseriesPoint",
     "TimeseriesQueryRequest",
-    "TimeseriesResponse",
     "TimeseriesService",
     "TimeseriesServiceProtocol",
     "TimeseriesSourceError",

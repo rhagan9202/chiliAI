@@ -21,11 +21,11 @@ from analytics.timeseries.adapters.in_memory import InMemoryTimeSeriesHistorySou
 from analytics.timeseries.models import TimeSeriesObservation
 from analytics.timeseries.protocols import TimeseriesServiceProtocol
 from analytics.timeseries.service import create_timeseries_service
-from analytics.timeseries.service_models import TimeseriesQueryRequest, TimeseriesResponse
+from analytics.timeseries.service_models import MetricTimeseriesResponse, TimeseriesQueryRequest
 from api.contracts import (
     AnalyticsOverviewResponse,
+    EntityTimeseriesResponse,
     RiskScoreResponse,
-    TimeseriesResponse as ContractTimeseriesResponse,
 )
 from api.dependencies import (
     get_analytics_overview_payload,
@@ -138,14 +138,14 @@ def list_risk_scores(
     return risk_service.list_scores(request)
 
 
-@router.get("/timeseries", response_model=TimeseriesResponse, dependencies=[Depends(require_role("viewer"))])
+@router.get("/timeseries", response_model=MetricTimeseriesResponse, dependencies=[Depends(require_role("viewer"))])
 def query_timeseries(
     kb_id: str = Query(..., min_length=1),
     metric: str = Query(..., min_length=1),
     start: datetime = Query(...),
     end: datetime = Query(...),
     timeseries_service: TimeseriesServiceProtocol = Depends(get_timeseries_service),
-) -> TimeseriesResponse:
+) -> MetricTimeseriesResponse:
     """Return data points for one metric over a bounded time range."""
     if end <= start:
         raise HTTPException(status_code=422, detail="end must be after start")
@@ -196,11 +196,11 @@ async def get_risk_score(
 
 @router.get(
     "/timeseries/{entity_id}",
-    response_model=ContractTimeseriesResponse,
+    response_model=EntityTimeseriesResponse,
     dependencies=[Depends(require_role("viewer"))],
 )
 async def get_entity_timeseries(
-    payload: ContractTimeseriesResponse = Depends(get_timeseries_payload),
-) -> ContractTimeseriesResponse:
+    payload: EntityTimeseriesResponse = Depends(get_timeseries_payload),
+) -> EntityTimeseriesResponse:
     """Return chartable time-series points for one entity."""
     return payload

@@ -248,9 +248,14 @@ def test_analytics_risk_scores_requires_viewer_when_auth_enabled(monkeypatch: py
     DEFAULTS_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "defaults"
     MEDICARE_YAML = DEFAULTS_DIR / "medicare_fraud.yaml"
 
+    def _skip_complete_check(app: FastAPI) -> None:
+        """Bypass route completeness checks for this focused auth test."""
+
+        del app
+
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
-    monkeypatch.setattr("api.app.assert_complete", lambda app: None)
+    monkeypatch.setattr("api.app.assert_complete", _skip_complete_check)
 
     auth_cfg = AuthConfig(
         enabled=True,

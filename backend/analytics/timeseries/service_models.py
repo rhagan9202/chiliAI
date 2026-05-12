@@ -76,7 +76,7 @@ class TimeseriesPoint(BaseModel):
     value: float
 
 
-class TimeseriesResponse(BaseModel):
+class MetricTimeseriesResponse(BaseModel):
     """A range-bounded list of timeseries data points."""
 
     knowledge_base_id: str
@@ -88,10 +88,10 @@ class TimeseriesResponse(BaseModel):
 
 __all__ = [
     "DetectionStrategy",
+    "MetricTimeseriesResponse",
     "TimeseriesAnalysisRequest",
     "TimeseriesAnalysisResponse",
     "TimeseriesAnomaly",
     "TimeseriesPoint",
     "TimeseriesQueryRequest",
-    "TimeseriesResponse",
 ]

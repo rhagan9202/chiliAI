@@ -15,12 +15,12 @@ from analytics.timeseries.exceptions import (
 from analytics.timeseries.models import AnomalyPoint, TimeSeriesAnalysisResult, TimeSeriesObservation
 from analytics.timeseries.service_models import (
     DetectionStrategy,
+    MetricTimeseriesResponse,
     TimeseriesAnalysisRequest,
     TimeseriesAnalysisResponse,
     TimeseriesAnomaly,
     TimeseriesPoint,
     TimeseriesQueryRequest,
-    TimeseriesResponse,
 )
 from events.protocols import EventBus
 from events.types import TimeseriesAnalyzedEvent, TimeseriesAnalyzedReference
@@ -140,7 +140,7 @@ class TimeseriesService:
         return response
 
 
-    def query_metric(self, request: TimeseriesQueryRequest) -> TimeseriesResponse:
+    def query_metric(self, request: TimeseriesQueryRequest) -> MetricTimeseriesResponse:
         try:
             observations = self._history_source.load_metric_range(
                 knowledge_base_id=request.knowledge_base_id,
@@ -157,7 +157,7 @@ class TimeseriesService:
             TimeseriesPoint(observed_at=observation.observed_at, value=observation.value)
             for observation in observations
         ]
-        return TimeseriesResponse(
+        return MetricTimeseriesResponse(
             knowledge_base_id=request.knowledge_base_id,
             metric_name=request.metric_name,
             start=request.start,

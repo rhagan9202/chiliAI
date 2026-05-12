@@ -10,7 +10,6 @@ from fastapi import Depends, Path, Request
 
 from api.contracts import (
     AnalyticsOverviewResponse,
-    ApiEnvelope,
     CaseCreateRequest,
     CaseDetailResponse,
     CaseFeedbackCreateRequest,
@@ -19,20 +18,15 @@ from api.contracts import (
     ChatConversationCreateRequest,
     ChatConversationResponse,
     ChatMessageCreateRequest,
+    EntityTimeseriesResponse,
     EvidencePackResponse,
     GraphEntityDetailResponse,
-    KnowledgeBaseCreateRequest,
-    KnowledgeBaseDocumentListResponse,
-    KnowledgeBaseListResponse,
-    KnowledgeBaseSummaryResponse,
     PolicyBriefCreateRequest,
     PolicyBriefResponse,
     PolicyGapCaseListResponse,
     PolicyGapDetailResponse,
     PolicyGapListResponse,
     RiskScoreResponse,
-    TimeseriesResponse,
-    WorkflowRunResponse,
 )
 from api.state import ApiState, create_api_state
 from config.loader import load_config
@@ -54,6 +48,7 @@ from events.protocols import EventBus
 from events.runtime import EventBusSettings, create_event_bus, load_event_bus_settings
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.adapters.protocols import GraphRepository
+from graph.auth import resolve_graph_auth
 from graph.protocols import GraphServiceProtocol
 from graph.service import create_graph_service
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
@@ -101,12 +96,6 @@ __all__ = [
     "get_event_bus_settings",
     "get_graph_entity_detail_payload",
     "get_ingestion_service",
-    "get_knowledge_base_create_payload",
-    "get_knowledge_base_delete_payload",
-    "get_knowledge_base_detail_payload",
-    "get_knowledge_base_document_delete_payload",
-    "get_knowledge_base_documents_payload",
-    "get_knowledge_base_list_payload",
     "get_graph_repository",
     "get_graph_service",
     "get_ingestion_service",
@@ -238,64 +227,6 @@ def get_chat_message_payload(
     return state.add_message(conversation_id, payload)
 
 
-def get_knowledge_base_list_payload(
-    state: ApiState = Depends(get_api_state),
-) -> KnowledgeBaseListResponse:
-    """Return the knowledge base manager collection payload."""
-    return state.list_knowledge_bases()
-
-
-def get_knowledge_base_detail_payload(
-    knowledge_base_id: str = Path(..., description="Knowledge base identifier."),
-    state: ApiState = Depends(get_api_state),
-) -> KnowledgeBaseSummaryResponse:
-    """Return one knowledge base detail payload."""
-    return state.get_knowledge_base_detail(knowledge_base_id)
-
-
-def get_knowledge_base_create_payload(
-    payload: KnowledgeBaseCreateRequest,
-    state: ApiState = Depends(get_api_state),
-) -> KnowledgeBaseSummaryResponse:
-    """Create and return a new knowledge base."""
-    return state.create_knowledge_base(payload)
-
-
-def get_knowledge_base_delete_payload(
-    knowledge_base_id: str = Path(..., description="Knowledge base identifier."),
-    state: ApiState = Depends(get_api_state),
-) -> ApiEnvelope:
-    """Delete a knowledge base and return an acknowledgement envelope."""
-    state.delete_knowledge_base(knowledge_base_id)
-    return ApiEnvelope(status="accepted", message=f"Knowledge base '{knowledge_base_id}' queued for deletion.")
-
-
-def get_knowledge_base_documents_payload(
-    knowledge_base_id: str = Path(..., description="Knowledge base identifier."),
-    state: ApiState = Depends(get_api_state),
-) -> KnowledgeBaseDocumentListResponse:
-    """Return the document inventory for one knowledge base."""
-    return state.list_knowledge_base_documents(knowledge_base_id)
-
-
-def get_knowledge_base_document_delete_payload(
-    knowledge_base_id: str = Path(..., description="Knowledge base identifier."),
-    document_id: str = Path(..., description="Knowledge base document identifier."),
-    state: ApiState = Depends(get_api_state),
-) -> ApiEnvelope:
-    """Delete a document and return an acknowledgement envelope."""
-    state.delete_knowledge_base_document(knowledge_base_id, document_id)
-    return ApiEnvelope(status="accepted", message=f"Document '{document_id}' removed from knowledge base '{knowledge_base_id}'.")
-
-
-def get_knowledge_base_rebuild_payload(
-    knowledge_base_id: str = Path(..., description="Knowledge base identifier."),
-    state: ApiState = Depends(get_api_state),
-) -> WorkflowRunResponse:
-    """Queue a knowledge base rebuild and return the resulting workflow record."""
-    return state.rebuild_knowledge_base(knowledge_base_id)
-
-
 def get_policy_gap_list_payload(
     state: ApiState = Depends(get_api_state),
 ) -> PolicyGapListResponse:
@@ -338,7 +269,7 @@ def get_risk_score_payload(
 def get_timeseries_payload(
     entity_id: str = Path(..., description="Entity identifier."),
     state: ApiState = Depends(get_api_state),
-) -> TimeseriesResponse:
+) -> EntityTimeseriesResponse:
     """Return a deterministic timeseries payload."""
     return state.get_timeseries(entity_id)
 
@@ -518,25 +449,11 @@ def get_graph_repository() -> GraphRepository:
         try:
             return Neo4jGraphRepository(
                 graph_config,
-                auth=_resolve_graph_auth(graph_config),
+                auth=resolve_graph_auth(graph_config),
             )
         except (ImportError, ValueError) as exc:
             raise ConfigurationError(str(exc)) from exc
     _raise_unsupported_backend("graph", backend, ("in_memory", "neo4j"))
-
-
-def _resolve_graph_auth(config: GraphDbConfig) -> tuple[str, str] | None:
-    """Resolve optional graph credentials from the configured environment variable."""
-
-    if config.auth_env_var is None:
-        return None
-    raw_value = os.environ.get(config.auth_env_var)
-    if raw_value is None or raw_value.strip() == "":
-        return None
-    if ":" in raw_value:
-        username, password = raw_value.split(":", 1)
-        return username, password
-    return "neo4j", raw_value
 
 
 @lru_cache(maxsize=1)
@@ -681,11 +598,6 @@ def get_ingestion_service() -> IngestionService:
         object_store=get_object_store(),
         event_bus=get_event_bus(),
     )
-
-
-# --- Knowledgebases router additions (E5-S11/S12/S13) -------------------------
-# Keep this block at the end of the module so parallel router agents can append
-# their own DI factories without merge conflicts.
 
 from api._alert_store import (  # noqa: E402  (intentional bottom-of-file import)
     AlertProjectionRepository,

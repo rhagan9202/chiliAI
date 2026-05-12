@@ -37,16 +37,13 @@ from api.contracts import (
     ChatConversationResponse,
     ChatMessageCreateRequest,
     ChatMessageResponse,
+    EntityTimeseriesPointResponse,
+    EntityTimeseriesResponse,
     EvidenceItemResponse,
     EvidencePackResponse,
     GraphEdgeResponse,
     GraphEntityDetailResponse,
     GraphNodeResponse,
-    KnowledgeBaseCreateRequest,
-    KnowledgeBaseDocumentListResponse,
-    KnowledgeBaseDocumentResponse,
-    KnowledgeBaseListResponse,
-    KnowledgeBaseSummaryResponse,
     PageInfo,
     PolicyBriefCreateRequest,
     PolicyBriefResponse,
@@ -56,17 +53,13 @@ from api.contracts import (
     PolicyGapListResponse,
     PolicyGapSummaryResponse,
     PolicyTrendPointResponse,
-    RealtimeSnapshotResponse,
     RiskFactorResponse,
     RiskScoreResponse,
-    TimeseriesPointResponse,
-    TimeseriesResponse,
     WorkflowRunListResponse,
     WorkflowRunResponse,
 )
 from events.adapters.in_memory import InMemoryEventBus
 from graph import InMemoryGraphRepository, create_graph_service
-from ingestion.service_models import DocumentReceipt, DocumentSubmission
 from monitoring.adapters.in_memory import InMemoryObservationSource
 from monitoring.models import MonitoringBatch, MonitoringObservation
 from monitoring.service import create_monitoring_service
@@ -83,6 +76,7 @@ from rag.service import create_rag_service
 from rag.service_models import RagQueryRequest
 from shared.types import Alert, Entity, EntityDefinition, Relationship
 from shared.utils import generate_id
+from shared.alerts import normalize_severity
 from storage.adapters.in_memory import InMemoryObjectStore
 
 __all__ = ["ApiState", "create_api_state"]
@@ -108,39 +102,6 @@ class ConversationRecord:
     title: str
     knowledge_base_id: str
     messages: list[ChatMessageResponse] = field(default_factory=lambda: cast(list[ChatMessageResponse], []))
-
-
-@dataclass(slots=True)
-class KnowledgeBaseRecord:
-    id: str
-    name: str
-    description: str
-    status: str
-    entity_count: int
-    relationship_count: int
-    document_count: int
-    created_at: datetime
-    last_ingested_at: datetime | None = None
-
-
-@dataclass(slots=True)
-class DocumentTimelineEntryRecord:
-    stage: str
-    status: str
-    updated_at: datetime
-    message: str
-
-
-@dataclass(slots=True)
-class KnowledgeBaseDocumentRecord:
-    id: str
-    knowledge_base_id: str
-    filename: str
-    content_type: str | None
-    size_bytes: int | None
-    status: str
-    uploaded_at: datetime
-    timeline: list[DocumentTimelineEntryRecord] = field(default_factory=lambda: cast(list[DocumentTimelineEntryRecord], []))
 
 
 @dataclass(slots=True)
@@ -183,8 +144,6 @@ class ApiState:
             event_bus=self._event_bus,
         )
         self._seed_graph()
-        self._knowledge_base_documents = self._seed_knowledge_base_documents()
-        self._knowledge_bases = self._seed_knowledge_bases()
 
         self._monitoring_service = create_monitoring_service(
             InMemoryObservationSource(batches=[self._build_monitoring_batch()]),
@@ -383,134 +342,6 @@ class ApiState:
             created_at=created_at,
         )
 
-    def get_realtime_snapshot(self, sequence: int) -> RealtimeSnapshotResponse:
-        return RealtimeSnapshotResponse(
-            sequence=sequence,
-            emitted_at=self._now(),
-            active_alerts=sum(
-                1
-                for metadata in self._alert_metadata.values()
-                if metadata["status"] in {"open", "acknowledged", "investigating"}
-            ),
-            running_workflows=sum(
-                1 for workflow in self._workflow_runs if workflow.status in {"queued", "running"}
-            ),
-            knowledge_base_statuses={
-                knowledge_base.id: knowledge_base.status
-                for knowledge_base in self._knowledge_bases.values()
-            },
-        )
-
-    def list_knowledge_bases(self) -> KnowledgeBaseListResponse:
-        items = [self._to_knowledge_base_summary(record) for record in self._sorted_knowledge_bases()]
-        return KnowledgeBaseListResponse(
-            items=items,
-            total=len(items),
-        )
-
-    def get_knowledge_base_detail(self, knowledge_base_id: str) -> KnowledgeBaseSummaryResponse:
-        record = self._knowledge_bases[knowledge_base_id]
-        return self._to_knowledge_base_summary(record)
-
-    def create_knowledge_base(self, request: KnowledgeBaseCreateRequest) -> KnowledgeBaseSummaryResponse:
-        with self._lock:
-            knowledge_base_id = generate_id()
-            record = KnowledgeBaseRecord(
-                id=knowledge_base_id,
-                name=request.name,
-                description=request.description,
-                status="ready",
-                entity_count=0,
-                relationship_count=0,
-                document_count=0,
-                created_at=self._now(),
-            )
-            self._knowledge_bases[knowledge_base_id] = record
-            self._knowledge_base_documents[knowledge_base_id] = {}
-        return self.get_knowledge_base_detail(knowledge_base_id)
-
-    def delete_knowledge_base(self, knowledge_base_id: str) -> None:
-        with self._lock:
-            del self._knowledge_bases[knowledge_base_id]
-            self._knowledge_base_documents.pop(knowledge_base_id, None)
-            self._workflow_runs = [
-                workflow for workflow in self._workflow_runs if workflow.knowledge_base_id != knowledge_base_id
-            ]
-
-    def list_knowledge_base_documents(self, knowledge_base_id: str) -> KnowledgeBaseDocumentListResponse:
-        documents = [
-            self._to_knowledge_base_document(document)
-            for document in self._sorted_knowledge_base_documents(knowledge_base_id)
-        ]
-        return KnowledgeBaseDocumentListResponse(
-            items=documents,
-            total=len(documents),
-        )
-
-    def register_knowledge_base_documents(
-        self,
-        knowledge_base_id: str,
-        receipts: list[DocumentReceipt],
-        submissions: list[DocumentSubmission],
-    ) -> None:
-        with self._lock:
-            knowledge_base = self._knowledge_bases[knowledge_base_id]
-            knowledge_base.status = "indexing"
-            uploaded_at = self._now()
-            for receipt, submission in zip(receipts, submissions, strict=False):
-                filename = receipt.filename or receipt.source_document_id
-                document = KnowledgeBaseDocumentRecord(
-                    id=receipt.source_document_id,
-                    knowledge_base_id=knowledge_base_id,
-                    filename=filename,
-                    content_type=submission.content_type,
-                    size_bytes=len(submission.content) if submission.content is not None else None,
-                    status="pending",
-                    uploaded_at=receipt.created_at,
-                    timeline=self._build_registered_timeline(filename=filename, created_at=receipt.created_at),
-                )
-                self._knowledge_base_documents.setdefault(knowledge_base_id, {})[document.id] = document
-                uploaded_at = max(uploaded_at, receipt.created_at)
-            knowledge_base.document_count = len(self._knowledge_base_documents.get(knowledge_base_id, {}))
-            knowledge_base.last_ingested_at = uploaded_at
-            self._workflow_runs.insert(
-                0,
-                WorkflowRunResponse(
-                    id=generate_id(),
-                    workflow_type="ingestion",
-                    status="queued",
-                    knowledge_base_id=knowledge_base_id,
-                    started_at=uploaded_at,
-                    updated_at=uploaded_at,
-                    current_step="document_registration",
-                ),
-            )
-
-    def delete_knowledge_base_document(self, knowledge_base_id: str, document_id: str) -> None:
-        with self._lock:
-            documents = self._knowledge_base_documents[knowledge_base_id]
-            del documents[document_id]
-            knowledge_base = self._knowledge_bases[knowledge_base_id]
-            knowledge_base.document_count = len(documents)
-            knowledge_base.status = "ready" if documents else "ready"
-
-    def rebuild_knowledge_base(self, knowledge_base_id: str) -> WorkflowRunResponse:
-        now = self._now()
-        with self._lock:
-            knowledge_base = self._knowledge_bases[knowledge_base_id]
-            knowledge_base.status = "rebuilding"
-            workflow = WorkflowRunResponse(
-                id=generate_id(),
-                workflow_type="graph_build",
-                status="queued",
-                knowledge_base_id=knowledge_base_id,
-                started_at=now,
-                updated_at=now,
-                current_step="rebuild_requested",
-            )
-            self._workflow_runs.insert(0, workflow)
-        return workflow.model_copy(deep=True)
-
     def list_workflows(self) -> WorkflowRunListResponse:
         return WorkflowRunListResponse(
             items=[workflow.model_copy(deep=True) for workflow in self._workflow_runs]
@@ -543,7 +374,7 @@ class ApiState:
             ],
         )
 
-    def get_timeseries(self, entity_id: str) -> TimeseriesResponse:
+    def get_timeseries(self, entity_id: str) -> EntityTimeseriesResponse:
         series = self._timeseries_source.load_series(
             knowledge_base_id=self._knowledge_base_id,
             entity_id=entity_id,
@@ -560,11 +391,11 @@ class ApiState:
             )
         )
         anomaly_timestamps = {anomaly.observed_at for anomaly in analysis.anomalies}
-        return TimeseriesResponse(
+        return EntityTimeseriesResponse(
             entity_id=entity_id,
             metric_name=series.metric_name,
             points=[
-                TimeseriesPointResponse(
+                EntityTimeseriesPointResponse(
                     timestamp=observation.observed_at,
                     value=observation.value,
                     label=observation.observed_at.strftime("%b %d"),
@@ -956,95 +787,6 @@ class ApiState:
             ),
         }
 
-    def _seed_knowledge_base_documents(self) -> dict[str, dict[str, KnowledgeBaseDocumentRecord]]:
-        now = self._now()
-        return {
-            self._knowledge_base_id: {
-                "doc-policy-2026-04": KnowledgeBaseDocumentRecord(
-                    id="doc-policy-2026-04",
-                    knowledge_base_id=self._knowledge_base_id,
-                    filename="medicare-injection-coverage.pdf",
-                    content_type="application/pdf",
-                    size_bytes=482_112,
-                    status="validated",
-                    uploaded_at=now - timedelta(days=2, hours=1),
-                    timeline=self._build_completed_timeline(
-                        filename="medicare-injection-coverage.pdf",
-                        created_at=now - timedelta(days=2, hours=1),
-                    ),
-                ),
-                "doc-policy-2026-05": KnowledgeBaseDocumentRecord(
-                    id="doc-policy-2026-05",
-                    knowledge_base_id=self._knowledge_base_id,
-                    filename="peer-benchmark-guidance.docx",
-                    content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    size_bytes=167_004,
-                    status="validated",
-                    uploaded_at=now - timedelta(days=1, hours=6),
-                    timeline=self._build_completed_timeline(
-                        filename="peer-benchmark-guidance.docx",
-                        created_at=now - timedelta(days=1, hours=6),
-                    ),
-                ),
-                "doc-status-2026-05": KnowledgeBaseDocumentRecord(
-                    id="doc-status-2026-05",
-                    knowledge_base_id=self._knowledge_base_id,
-                    filename="review-window-anomalies.csv",
-                    content_type="text/csv",
-                    size_bytes=24_871,
-                    status="parsing",
-                    uploaded_at=now - timedelta(hours=3, minutes=20),
-                    timeline=self._build_in_progress_timeline(
-                        filename="review-window-anomalies.csv",
-                        created_at=now - timedelta(hours=3, minutes=20),
-                    ),
-                ),
-            },
-            "kb-2": {
-                "doc-dental-001": KnowledgeBaseDocumentRecord(
-                    id="doc-dental-001",
-                    knowledge_base_id="kb-2",
-                    filename="dental-provider-network.pdf",
-                    content_type="application/pdf",
-                    size_bytes=301_442,
-                    status="validated",
-                    uploaded_at=now - timedelta(days=4),
-                    timeline=self._build_completed_timeline(
-                        filename="dental-provider-network.pdf",
-                        created_at=now - timedelta(days=4),
-                    ),
-                )
-            },
-        }
-
-    def _seed_knowledge_bases(self) -> dict[str, KnowledgeBaseRecord]:
-        primary_documents = self._knowledge_base_documents[self._knowledge_base_id]
-        secondary_documents = self._knowledge_base_documents["kb-2"]
-        return {
-            self._knowledge_base_id: KnowledgeBaseRecord(
-                id=self._knowledge_base_id,
-                name=f"{self._domain_config.domain.display_name} Knowledge Base",
-                description=f"Primary {self._domain_config.domain.display_name} knowledge base for triage, graph analytics, and RAG retrieval.",
-                status="indexing",
-                entity_count=len(self._graph_repository.get_entities(self._knowledge_base_id)),
-                relationship_count=len(self._graph_repository.get_relationships(self._knowledge_base_id)),
-                document_count=len(primary_documents),
-                created_at=self._now() - timedelta(days=14),
-                last_ingested_at=max(document.uploaded_at for document in primary_documents.values()),
-            ),
-            "kb-2": KnowledgeBaseRecord(
-                id="kb-2",
-                name="Medicaid Dental Signals",
-                description="Secondary domain pack used to validate cross-program ingestion and document readiness.",
-                status="ready",
-                entity_count=16,
-                relationship_count=28,
-                document_count=len(secondary_documents),
-                created_at=self._now() - timedelta(days=21),
-                last_ingested_at=max(document.uploaded_at for document in secondary_documents.values()),
-            ),
-        }
-
     def _seed_workflows(self) -> list[WorkflowRunResponse]:
         now = self._now()
         return [
@@ -1107,7 +849,7 @@ class ApiState:
             entity_id=alert.entity_id,
             entity_type=alert.entity_type,
             entity_label=str(metadata["entity_label"]),
-            severity=_normalize_severity(alert.severity, cast(float, metadata["confidence"])),
+            severity=normalize_severity(alert.severity, cast(float, metadata["confidence"])),
             status=cast(Literal["open", "acknowledged", "investigating", "resolved", "dismissed"], metadata["status"]),
             title=alert.title,
             reasoning=alert.reasoning,
@@ -1188,32 +930,6 @@ class ApiState:
             updated_at=record.updated_at,
         )
 
-    def _to_knowledge_base_summary(self, record: KnowledgeBaseRecord) -> KnowledgeBaseSummaryResponse:
-        return KnowledgeBaseSummaryResponse(
-            id=record.id,
-            name=record.name,
-            description=record.description,
-            status=_normalize_knowledge_base_status(record.status),
-            document_count=record.document_count,
-            entity_count=record.entity_count,
-            relationship_count=record.relationship_count,
-            created_at=record.created_at,
-        )
-
-    def _to_knowledge_base_document(
-        self,
-        record: KnowledgeBaseDocumentRecord,
-    ) -> KnowledgeBaseDocumentResponse:
-        return KnowledgeBaseDocumentResponse(
-            id=record.id,
-            knowledge_base_id=record.knowledge_base_id,
-            filename=record.filename,
-            content_type=record.content_type,
-            size_bytes=record.size_bytes,
-            status=_normalize_document_status(record.status),
-            created_at=record.uploaded_at,
-        )
-
     def _safe_risk_score(self, entity_id: str) -> float:
         try:
             return self._risk_service.assess(
@@ -1228,101 +944,12 @@ class ApiState:
     def _sorted_cases(self) -> list[CaseRecord]:
         return sorted(self._cases.values(), key=lambda case: case.updated_at, reverse=True)
 
-    def _sorted_knowledge_bases(self) -> list[KnowledgeBaseRecord]:
-        return sorted(
-            self._knowledge_bases.values(),
-            key=lambda knowledge_base: knowledge_base.last_ingested_at or knowledge_base.created_at,
-            reverse=True,
-        )
-
-    def _sorted_knowledge_base_documents(
-        self,
-        knowledge_base_id: str,
-    ) -> list[KnowledgeBaseDocumentRecord]:
-        return sorted(
-            self._knowledge_base_documents.get(knowledge_base_id, {}).values(),
-            key=lambda document: document.uploaded_at,
-            reverse=True,
-        )
-
     def _sorted_policy_gaps(self) -> list[PolicyGapRecord]:
         severity_rank = {"critical": 0, "high": 1, "medium": 2}
         return sorted(
             self._policy_gaps.values(),
             key=lambda gap: (severity_rank.get(gap.severity, 3), -gap.updated_at.timestamp()),
         )
-
-    def _build_registered_timeline(self, *, filename: str, created_at: datetime) -> list[DocumentTimelineEntryRecord]:
-        return [
-            DocumentTimelineEntryRecord(
-                stage="registered",
-                status="completed",
-                updated_at=created_at,
-                message=f"{filename} registered and queued for ingestion.",
-            ),
-            DocumentTimelineEntryRecord(
-                stage="parser_dispatch",
-                status="pending",
-                updated_at=created_at + timedelta(minutes=1),
-                message="Waiting for parser worker assignment.",
-            ),
-            DocumentTimelineEntryRecord(
-                stage="graph_and_index",
-                status="pending",
-                updated_at=created_at + timedelta(minutes=2),
-                message="Graph extraction and vector indexing will start after parsing completes.",
-            ),
-        ]
-
-    def _build_completed_timeline(self, *, filename: str, created_at: datetime) -> list[DocumentTimelineEntryRecord]:
-        return [
-            DocumentTimelineEntryRecord(
-                stage="registered",
-                status="completed",
-                updated_at=created_at,
-                message=f"{filename} registered for ingestion.",
-            ),
-            DocumentTimelineEntryRecord(
-                stage="parsed",
-                status="completed",
-                updated_at=created_at + timedelta(minutes=6),
-                message="Structured text extraction completed.",
-            ),
-            DocumentTimelineEntryRecord(
-                stage="extracted",
-                status="completed",
-                updated_at=created_at + timedelta(minutes=12),
-                message="Entity and relationship extraction completed.",
-            ),
-            DocumentTimelineEntryRecord(
-                stage="indexed",
-                status="completed",
-                updated_at=created_at + timedelta(minutes=18),
-                message="Vector index and graph provenance updated.",
-            ),
-        ]
-
-    def _build_in_progress_timeline(self, *, filename: str, created_at: datetime) -> list[DocumentTimelineEntryRecord]:
-        return [
-            DocumentTimelineEntryRecord(
-                stage="registered",
-                status="completed",
-                updated_at=created_at,
-                message=f"{filename} registered for ingestion.",
-            ),
-            DocumentTimelineEntryRecord(
-                stage="parsed",
-                status="running",
-                updated_at=created_at + timedelta(minutes=8),
-                message="Parser is normalizing tabular anomalies into a typed intermediate form.",
-            ),
-            DocumentTimelineEntryRecord(
-                stage="extracted",
-                status="pending",
-                updated_at=created_at + timedelta(minutes=11),
-                message="Entity extraction will start after parsing is complete.",
-            ),
-        ]
 
     @staticmethod
     def _now() -> datetime:
@@ -1356,37 +983,11 @@ def create_api_state(domain_config: DomainConfig | None = None) -> ApiState:
     return ApiState(domain_config)
 
 
-def _normalize_severity(severity: str, confidence: float) -> Literal["low", "medium", "high", "critical"]:
-    if severity == "high" and confidence >= 0.9:
-        return "critical"
-    if severity in {"high", "medium", "low", "critical"}:
-        return cast(Literal["low", "medium", "high", "critical"], severity)
-    return "medium"
-
-
 def _normalize_risk_level(risk_level: str, overall_score: float) -> Literal["low", "medium", "high", "critical"]:
     if overall_score >= 0.9:
         return "critical"
     if risk_level in {"high", "medium", "low", "critical"}:
         return cast(Literal["low", "medium", "high", "critical"], risk_level)
     return "medium"
-
-
-def _normalize_knowledge_base_status(status: str) -> Literal["active", "building", "ready", "error", "archived"]:
-    if status in {"active", "ready", "error", "archived"}:
-        return cast(Literal["active", "building", "ready", "error", "archived"], status)
-    if status in {"indexing", "rebuilding", "building"}:
-        return "building"
-    return "active"
-
-
-def _normalize_document_status(status: str) -> Literal["pending", "registered", "building", "ready", "failed", "error"]:
-    if status in {"pending", "registered", "building", "ready", "failed", "error"}:
-        return cast(Literal["pending", "registered", "building", "ready", "failed", "error"], status)
-    if status in {"parsing", "parsed", "chunked", "extracted"}:
-        return "building"
-    if status == "validated":
-        return "ready"
-    return "pending"
 
 

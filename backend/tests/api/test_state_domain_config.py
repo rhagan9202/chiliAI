@@ -20,15 +20,13 @@ DEFAULTS_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "defau
         DEFAULTS_DIR / "food_supply_chain.yaml",
     ],
 )
-def test_seeded_state_uses_domain_config_for_graph_and_kb_labels(
+def test_seeded_state_uses_domain_config_for_graph_labels(
     config_path: Path,
 ) -> None:
     config: DomainConfig = load_config(config_path)
     state = create_api_state(config)
 
-    knowledge_bases = state.list_knowledge_bases()
     graph_detail = state.get_graph_entity_detail("provider-204")
 
-    assert knowledge_bases.items[0].name == f"{config.domain.display_name} Knowledge Base"
     assert graph_detail.entity.type == config.entities[0].name
     assert config.entities[0].display_label in graph_detail.entity.summary

@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from analytics.timeseries.service_models import (
+    MetricTimeseriesResponse,
     TimeseriesAnalysisRequest,
     TimeseriesAnalysisResponse,
     TimeseriesQueryRequest,
-    TimeseriesResponse,
 )
 
 
@@ -18,7 +18,7 @@ class TimeseriesServiceProtocol(Protocol):
 
     def analyze(self, request: TimeseriesAnalysisRequest) -> TimeseriesAnalysisResponse: ...
 
-    def query_metric(self, request: TimeseriesQueryRequest) -> TimeseriesResponse: ...
+    def query_metric(self, request: TimeseriesQueryRequest) -> MetricTimeseriesResponse: ...
 
 
 __all__ = [

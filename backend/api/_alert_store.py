@@ -10,7 +10,7 @@ behind ``AlertProjectionRepository`` later without changing router contracts.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Protocol, cast, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
@@ -21,6 +21,7 @@ from api.contracts import (
     PageInfo,
     PolicyCitation,
 )
+from shared.alerts import normalize_severity
 from shared.types import Alert
 from shared.utils import utc_now
 from storage.protocols import ObjectStore
@@ -37,7 +38,6 @@ __all__ = [
     "project_alert_feed",
 ]
 
-AlertSeverity = Literal["low", "medium", "high", "critical"]
 ACTIVE_ALERT_STATUSES = {"open", "acknowledged", "investigating"}
 
 
@@ -278,7 +278,7 @@ def _to_alert_item(record: AlertProjectionRecord) -> AlertListItem:
         entity_id=alert.entity_id,
         entity_type=alert.entity_type,
         entity_label=record.entity_label or alert.entity_id,
-        severity=_normalize_severity(alert.severity, record.confidence),
+        severity=normalize_severity(alert.severity, record.confidence),
         status=alert.status,
         title=alert.title,
         reasoning=alert.reasoning,
@@ -287,16 +287,3 @@ def _to_alert_item(record: AlertProjectionRecord) -> AlertListItem:
         created_at=alert.created_at,
         tags=list(record.tags),
     )
-
-
-def _normalize_severity(raw_severity: str, confidence: float) -> AlertSeverity:
-    severity = raw_severity.lower()
-    if severity in {"low", "medium", "high", "critical"}:
-        return cast(AlertSeverity, severity)
-    if confidence >= 0.9:
-        return "critical"
-    if confidence >= 0.75:
-        return "high"
-    if confidence >= 0.5:
-        return "medium"
-    return "low"

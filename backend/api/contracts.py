@@ -253,52 +253,6 @@ class ChatConversationResponse(BaseModel):
     messages: list[ChatMessageResponse] = Field(default_factory=lambda: cast(list[ChatMessageResponse], []))
 
 
-class KnowledgeBaseSummaryResponse(BaseModel):
-    """Summary record for the knowledge base manager."""
-
-    id: str
-    name: str
-    description: str
-    status: Literal["active", "building", "ready", "error", "archived"]
-    document_count: int = Field(ge=0)
-    entity_count: int = Field(ge=0)
-    relationship_count: int = Field(ge=0)
-    created_at: datetime
-
-
-class KnowledgeBaseListResponse(BaseModel):
-    """Collection response for knowledge base summaries."""
-
-    items: list[KnowledgeBaseSummaryResponse] = Field(default_factory=lambda: cast(list[KnowledgeBaseSummaryResponse], []))
-    total: int = Field(ge=0)
-
-
-class KnowledgeBaseDocumentResponse(BaseModel):
-    """Document row displayed in knowledge base inventory views."""
-
-    id: str
-    knowledge_base_id: str
-    filename: str
-    content_type: str | None = None
-    size_bytes: int | None = Field(default=None, ge=0)
-    status: Literal["pending", "registered", "building", "ready", "failed", "error"]
-    created_at: datetime
-
-
-class KnowledgeBaseDocumentListResponse(BaseModel):
-    """Document inventory for one knowledge base."""
-
-    items: list[KnowledgeBaseDocumentResponse] = Field(default_factory=lambda: cast(list[KnowledgeBaseDocumentResponse], []))
-    total: int = Field(ge=0)
-
-
-class KnowledgeBaseCreateRequest(BaseModel):
-    """Payload for creating a new knowledge base."""
-
-    name: str
-    description: str
-
-
 class WorkflowRunResponse(BaseModel):
     """Workflow run summary for pipeline status views."""
 
@@ -334,7 +288,7 @@ class RiskScoreResponse(BaseModel):
     factors: list[RiskFactorResponse] = Field(default_factory=lambda: cast(list[RiskFactorResponse], []))
 
 
-class TimeseriesPointResponse(BaseModel):
+class EntityTimeseriesPointResponse(BaseModel):
     """One point in an entity timeseries chart."""
 
     timestamp: datetime
@@ -343,12 +297,12 @@ class TimeseriesPointResponse(BaseModel):
     is_anomaly: bool = False
 
 
-class TimeseriesResponse(BaseModel):
+class EntityTimeseriesResponse(BaseModel):
     """Timeseries payload for entity trend charts."""
 
     entity_id: str
     metric_name: str
-    points: list[TimeseriesPointResponse] = Field(default_factory=lambda: cast(list[TimeseriesPointResponse], []))
+    points: list[EntityTimeseriesPointResponse] = Field(default_factory=lambda: cast(list[EntityTimeseriesPointResponse], []))
 
 
 class AnalyticsOverviewResponse(BaseModel):
@@ -421,14 +375,11 @@ __all__ = [
     "ChatMessageResponse",
     "EvidenceItemResponse",
     "EvidencePackResponse",
+    "EntityTimeseriesPointResponse",
+    "EntityTimeseriesResponse",
     "GraphEdgeResponse",
     "GraphEntityDetailResponse",
     "GraphNodeResponse",
-    "KnowledgeBaseCreateRequest",
-    "KnowledgeBaseDocumentListResponse",
-    "KnowledgeBaseDocumentResponse",
-    "KnowledgeBaseListResponse",
-    "KnowledgeBaseSummaryResponse",
     "PageInfo",
     "PolicyBriefCreateRequest",
     "PolicyBriefResponse",
@@ -441,8 +392,6 @@ __all__ = [
     "RealtimeSnapshotResponse",
     "RiskFactorResponse",
     "RiskScoreResponse",
-    "TimeseriesPointResponse",
-    "TimeseriesResponse",
     "WorkflowRunListResponse",
     "WorkflowRunResponse",
 ]

@@ -93,6 +93,7 @@ from events.types import (
 )
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.adapters.protocols import GraphRepository
+from graph.auth import resolve_graph_auth
 from graph.models import GraphUpsertResult
 from graph.service import GraphService, create_graph_service
 from graph.service_models import GraphBuildTask
@@ -236,20 +237,6 @@ _OBJECT_STORE_REGISTRY: dict[str, _ObjectStoreFactory] = {
 
 def _build_in_memory_graph_repository(_: GraphDbConfig) -> GraphRepository:
     return InMemoryGraphRepository()
-
-
-def resolve_graph_auth(config: GraphDbConfig) -> tuple[str, str] | None:
-    """Resolve optional Neo4j credentials from ``GraphDbConfig.auth_env_var``."""
-
-    if config.auth_env_var is None:
-        return None
-    raw_value = os.environ.get(config.auth_env_var)
-    if raw_value is None or raw_value.strip() == "":
-        return None
-    if ":" in raw_value:
-        username, password = raw_value.split(":", 1)
-        return username, password
-    return "neo4j", raw_value
 
 
 def _build_neo4j_graph_repository(config: GraphDbConfig) -> GraphRepository:
