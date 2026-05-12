@@ -175,7 +175,7 @@ The monorepo produces the following deployable containers:
 | **chili_app** | React 19, TypeScript, Vite 8 | Single-page application served as static assets (nginx or CDN). Full analyst workbench: graph explorer, alert feed, knowledge base manager, RAG chat, domain config editor. |
 | **Backend API** | Python 3.12, FastAPI | HTTP + WebSocket entry point for the frontend. Thin orchestration layer — routes requests to internal service modules, publishes events, pushes real-time updates. **No business logic in routers.** |
 | **Worker / Pipeline Runner** | Python 3.12, shares backend codebase | Long-running process(es) consuming events from Redis Streams. Executes ingestion, entity extraction, graph building, embedding, analytics pipelines, and alert generation. Scales via Redis consumer groups. |
-| **Redis** | Redis 7+ with Streams | Event-driven pipeline orchestration. Decouples API from worker. Also provides pub-sub for real-time UI push (alerts, pipeline status) relayed through API WebSockets. |
+| **Redis** | Redis 7+ with Streams | Event-driven pipeline orchestration. Decouples API from worker. Also stores shared operational workflow-run state when `CHILI_WORKFLOW_RUN_STORE_BACKEND=redis`, allowing API and worker containers to observe the same lifecycle updates. |
 | **Graph Database** | in-memory / Neo4j | Persists knowledge graphs. Accessed exclusively through the `graph` module's abstract repository protocol. |
 | **Vector Store** | in-memory / Qdrant | Persists embeddings. Accessed exclusively through the `vectorstore` module's abstract protocol. |
 | **Object Store** | S3 / MinIO / local FS | Persists raw uploaded files for audit trail and reprocessing. Accessed through an abstract storage protocol. |
@@ -189,6 +189,7 @@ The monorepo produces the following deployable containers:
 | Backend API → Redis | Redis Streams XADD | Publish pipeline events (`documents.uploaded`, `claims.ingested`, etc.) |
 | Worker ← Redis | Redis Streams XREADGROUP | Consume pipeline events, execute processing steps |
 | Worker → Redis | Redis Streams XADD | Publish downstream events (`entities.extracted`, `risk.scored`, `alerts.created`, etc.) |
+| Backend API / Worker → Redis | Redis key/value + sorted sets | Shared workflow-run operational state behind `agent.adapters.WorkflowRunStoreProtocol` |
 | Backend API / Worker → Graph DB | Adapter-specific driver | Graph CRUD, queries, metrics |
 | Backend API / Worker → Vector Store | Adapter-specific client | Embedding storage, similarity search |
 | Worker → Object Store | Adapter-specific SDK | Raw file persistence |
@@ -682,7 +683,7 @@ The investigation workbench is the primary analyst view. It is a composite page 
 - The FastAPI backend auto-generates an OpenAPI specification.
 - The current frontend uses typed fetch helpers plus TanStack Query hooks. Generated OpenAPI clients remain an optional hardening path via the existing codegen command.
 - TanStack Query wraps all API calls, providing caching, background refetching, and optimistic updates.
-- The realtime workspace stream uses `GET /events/stream` as Server-Sent Events. Snapshots include live active-alert counts from the API alert projection, live running-workflow counts from `AgentServiceProtocol`, and live KB statuses from the repository-backed KB projection.
+- The realtime workspace stream uses `GET /events/stream` as Server-Sent Events. Snapshots include live active-alert counts from the API alert projection, live running-workflow counts from `AgentServiceProtocol`, and live KB statuses from the repository-backed KB projection. In the dev stack, API and worker share workflow lifecycle state through Redis.
 - WebSocket support remains available for push-style interactions and follows typed message envelopes where applicable.
 
 ### 8.5 Domain-driven dynamic UI
@@ -858,6 +859,7 @@ services:
     environment:
       - CHILI_CONFIG_PATH=/config/medicare_fraud.yaml
       - CHILI_KB_REPOSITORY_BACKEND=object_store
+      - CHILI_WORKFLOW_RUN_STORE_BACKEND=redis
       - REDIS_URL=redis://redis:6379
     depends_on: [redis]
   worker:
@@ -865,6 +867,7 @@ services:
     command: python -m agent.coordinator  # or dedicated worker entry point
     environment:
       - CHILI_CONFIG_PATH=/config/medicare_fraud.yaml
+      - CHILI_WORKFLOW_RUN_STORE_BACKEND=redis
       - REDIS_URL=redis://redis:6379
     depends_on: [redis]
   redis:
@@ -1062,7 +1065,7 @@ Adapter selection is driven by environment configuration, not code changes.
 
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
-| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion, graph/vector/embedding/LLM/RAG services, analytics modules, monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, SSE workspace snapshots, and in-memory plus selected production-facing adapters | Add a production-grade KB metadata adapter/migration path, complete vector/document provenance cleanup, add production-mode adapter guardrails, and harden workflow recovery |
+| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion, graph/vector/embedding/LLM/RAG services, analytics modules, monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, and in-memory plus selected production-facing adapters | Add a production-grade KB metadata adapter/migration path, complete vector/document provenance cleanup, add production-mode adapter guardrails, and add audit-grade workflow history |
 | `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, live KB-scoped Investigation Workbench, RAG Chat, Configuration Editor, and realtime SSE hook | Complete persisted evidence-pack surface, config save endpoint integration, migrate remaining seeded read models to live projections, and production UX/performance polish |
 | `docs/` | Architecture, onboarding guide, security checklist, current TODO/stub audit, and archived historical planning/status material | Keep active docs synchronized with implementation and archive stale snapshots |
 | `infra/` | Docker Compose, flat Kubernetes manifests, and Helm chart | Add cloud-provider Terraform/Pulumi and production hardening as needed |

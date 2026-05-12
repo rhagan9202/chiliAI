@@ -419,7 +419,7 @@ export type DocumentRegistrationResponse = {
 export type WorkflowRunResponse = {
   id: string
   workflow_type: 'ingestion' | 'graph_build' | 'analytics' | 'monitoring'
-  status: 'queued' | 'running' | 'completed' | 'failed'
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
   knowledge_base_id: string
   started_at: string
   updated_at: string

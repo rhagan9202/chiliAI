@@ -20,9 +20,12 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import cast
 
+from agent.adapters.protocols import WorkflowRunStoreProtocol
+from agent.adapters.runtime import create_workflow_run_store_from_env
 from agent.exceptions import ConfigurationError
 from agent.health import HealthState, start_health_server
 from agent.models import HealthSettings, RetryPolicy
+from agent.workflow_tracking import WorkflowEventTracker
 from config.loader import load_config
 from config.schema import (
     DomainConfig,
@@ -172,6 +175,8 @@ class WorkerDependencies:
     explainability_service: ExplainabilityService
     monitoring_service: MonitoringService
     event_settings: EventBusSettings
+    workflow_run_store: WorkflowRunStoreProtocol
+    workflow_tracker: WorkflowEventTracker
 
 
 # ---------------------------------------------------------------------------
@@ -233,7 +238,7 @@ def _build_in_memory_graph_repository(_: GraphDbConfig) -> GraphRepository:
     return InMemoryGraphRepository()
 
 
-def _resolve_graph_auth(config: GraphDbConfig) -> tuple[str, str] | None:
+def resolve_graph_auth(config: GraphDbConfig) -> tuple[str, str] | None:
     """Resolve optional Neo4j credentials from ``GraphDbConfig.auth_env_var``."""
 
     if config.auth_env_var is None:
@@ -257,7 +262,7 @@ def _build_neo4j_graph_repository(config: GraphDbConfig) -> GraphRepository:
             message=str(exc),
         ) from exc
     try:
-        return Neo4jGraphRepository(config, auth=_resolve_graph_auth(config))
+        return Neo4jGraphRepository(config, auth=resolve_graph_auth(config))
     except (ImportError, ValueError) as exc:
         raise ConfigurationError(
             subsystem="graph",
@@ -547,6 +552,8 @@ def build_worker_dependencies() -> WorkerDependencies:
     config = load_config()
     event_settings = load_event_bus_settings()
     event_bus = create_event_bus(event_settings)
+    workflow_run_store = create_workflow_run_store_from_env()
+    workflow_tracker = WorkflowEventTracker(workflow_run_store)
 
     object_store = build_object_store(config)
     graph_repository = build_graph_repository(config)
@@ -621,6 +628,8 @@ def build_worker_dependencies() -> WorkerDependencies:
         explainability_service=explainability_service,
         monitoring_service=monitoring_service,
         event_settings=event_settings,
+        workflow_run_store=workflow_run_store,
+        workflow_tracker=workflow_tracker,
     )
 
 
@@ -1573,6 +1582,7 @@ def handle_event(
     risk_service: RiskService | None = None,
     explainability_service: ExplainabilityService | None = None,
     monitoring_service: MonitoringService | None = None,
+    workflow_tracker: WorkflowEventTracker | None = None,
 ) -> int:
     """Handle a single event and return the number of processed documents."""
 
@@ -1582,7 +1592,14 @@ def handle_event(
     with start_pipeline_span(
         stage_name, correlation_id=event.correlation_id
     ), observe_pipeline_stage(event.event_type):
-        return _dispatch_event(
+        if workflow_tracker is not None and not workflow_tracker.begin_event(event):
+            logger.info(
+                "Skipping terminal workflow event. event_type=%s correlation_id=%s",
+                event.event_type,
+                event.correlation_id,
+            )
+            return 0
+        processed = _dispatch_event(
             event=event,
             delivery=delivery,
             ingestion_service=ingestion_service,
@@ -1600,6 +1617,9 @@ def handle_event(
             explainability_service=explainability_service,
             monitoring_service=monitoring_service,
         )
+        if workflow_tracker is not None:
+            workflow_tracker.complete_event(event)
+        return processed
 
 
 def _dispatch_event(
@@ -1723,6 +1743,7 @@ async def run_handler_with_retry(
     event_bus: EventBus,
     retry_policy: RetryPolicy,
     sleep: Callable[[float], "asyncio.Future[None] | object"] = asyncio.sleep,
+    on_failure: Callable[[BaseException], None] | None = None,
 ) -> int:
     """Run ``handler`` with exponential-backoff retry and DLQ on exhaustion.
 
@@ -1765,6 +1786,8 @@ async def run_handler_with_retry(
         retry_policy.max_retries,
         str(last_exc),
     )
+    if on_failure is not None:
+        on_failure(last_exc)
     event_bus.publish_to_dlq(event, error_info)
     return 0
 
@@ -1791,6 +1814,7 @@ async def drain_ingestion_events(
     block_ms: int | None = None,
     retry_policy: RetryPolicy | None = None,
     health_state: HealthState | None = None,
+    workflow_tracker: WorkflowEventTracker | None = None,
     sleep: Callable[[float], "asyncio.Future[None] | object"] = asyncio.sleep,
 ) -> int:
     """Consume and process available ingestion events with retry/DLQ semantics."""
@@ -1836,7 +1860,15 @@ async def drain_ingestion_events(
                 risk_service=risk_service,
                 explainability_service=explainability_service,
                 monitoring_service=monitoring_service,
+                workflow_tracker=workflow_tracker,
             )
+
+        def _record_failure(
+            error: BaseException,
+            captured: EventDelivery = delivery,
+        ) -> None:
+            if workflow_tracker is not None:
+                workflow_tracker.fail_event(captured.event, error)
 
         processed += await run_handler_with_retry(
             _run_handler,
@@ -1844,6 +1876,7 @@ async def drain_ingestion_events(
             event_bus=event_bus,
             retry_policy=policy,
             sleep=sleep,
+            on_failure=_record_failure,
         )
         ackable.append(delivery)
         if health_state is not None:
@@ -1936,6 +1969,7 @@ async def run_worker(
                 block_ms=deps.event_settings.block_ms,
                 retry_policy=policy,
                 health_state=health_state,
+                workflow_tracker=deps.workflow_tracker,
             )
             if processed:
                 logger.info("Processed %s ingestion document(s)", processed)

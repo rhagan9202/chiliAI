@@ -52,6 +52,7 @@ class WorkflowStepStatus(str, Enum):
 class WorkflowRunStatus(str, Enum):
     """Lifecycle states for a workflow run."""
 
+    QUEUED = "queued"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -59,7 +60,11 @@ class WorkflowRunStatus(str, Enum):
 
 
 TERMINAL_RUN_STATUSES: frozenset[WorkflowRunStatus] = frozenset(
-    {WorkflowRunStatus.COMPLETED, WorkflowRunStatus.FAILED}
+    {
+        WorkflowRunStatus.COMPLETED,
+        WorkflowRunStatus.FAILED,
+        WorkflowRunStatus.CANCELLED,
+    }
 )
 
 
@@ -77,9 +82,10 @@ class WorkflowRun(BaseModel):
     workflow_id: str
     knowledge_base_id: str
     trigger_event_type: str
-    status: WorkflowRunStatus = WorkflowRunStatus.RUNNING
+    status: WorkflowRunStatus = WorkflowRunStatus.QUEUED
     steps: list[WorkflowStepState] = Field(default_factory=_empty_workflow_steps)
     created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
     idempotency_key: str | None = None
 
@@ -103,6 +109,7 @@ class WorkflowRunUpdate(BaseModel):
 
     status: WorkflowRunStatus | None = None
     steps: list[WorkflowStepState] | None = None
+    updated_at: datetime | None = None
     metadata: dict[str, MetadataValue] | None = None
 
 

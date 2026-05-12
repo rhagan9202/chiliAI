@@ -686,12 +686,10 @@ from api._alert_store import (  # noqa: E402  (intentional bottom-of-file import
     InMemoryAlertProjectionRepository,
     ObjectStoreAlertProjectionRepository,
 )
-from agent.adapters.in_memory import (  # noqa: E402  (intentional bottom-of-file import)
-    InMemoryWorkflowRunStore,
-)
 from agent.adapters.protocols import (  # noqa: E402  (intentional bottom-of-file import)
     WorkflowRunStoreProtocol,
 )
+from agent.adapters.runtime import create_workflow_run_store_from_env  # noqa: E402
 from agent.protocols import AgentServiceProtocol  # noqa: E402
 from agent.service import create_agent_service  # noqa: E402
 from api._kb_store import (  # noqa: E402  (intentional bottom-of-file import)
@@ -759,15 +757,7 @@ def get_workflow_run_store(request: Request) -> WorkflowRunStoreProtocol:
 
 def _create_workflow_run_store() -> WorkflowRunStoreProtocol:
     """Create the workflow run store selected by environment."""
-    backend = os.environ.get("CHILI_WORKFLOW_RUN_STORE_BACKEND", "in_memory")
-    backend = backend.strip().lower()
-    if backend in {"in_memory", "memory"}:
-        return InMemoryWorkflowRunStore()
-    _raise_unsupported_backend(
-        "workflow run store",
-        backend,
-        ("in_memory",),
-    )
+    return create_workflow_run_store_from_env()
 
 
 def get_agent_service(

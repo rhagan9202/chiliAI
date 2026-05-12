@@ -5,11 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from api.contracts import (
-    CaseCreateRequest,
     CaseDetailResponse,
-    CaseFeedbackCreateRequest,
     CaseListResponse,
-    CaseUpdateRequest,
 )
 from api.dependencies import (
     get_case_create_payload,

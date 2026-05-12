@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import BaseModel, Field
 
@@ -37,13 +37,13 @@ class AlertListItem(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     evidence_pack_id: str | None = None
     created_at: datetime
-    tags: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=lambda: cast(list[str], []))
 
 
 class AlertListResponse(BaseModel):
     """Paginated alert feed response."""
 
-    items: list[AlertListItem] = Field(default_factory=list)
+    items: list[AlertListItem] = Field(default_factory=lambda: cast(list[AlertListItem], []))
     page: PageInfo
 
 
@@ -79,7 +79,7 @@ class PolicyGapSummaryResponse(BaseModel):
 class PolicyGapListResponse(BaseModel):
     """Collection response for policy intelligence gaps."""
 
-    items: list[PolicyGapSummaryResponse] = Field(default_factory=list)
+    items: list[PolicyGapSummaryResponse] = Field(default_factory=lambda: cast(list[PolicyGapSummaryResponse], []))
     page: PageInfo
 
 
@@ -90,15 +90,15 @@ class PolicyGapDetailResponse(BaseModel):
     summary: str
     impact_statement: str
     recommendation: str
-    policy_citations: list[PolicyCitation] = Field(default_factory=list)
-    trend: list[PolicyTrendPointResponse] = Field(default_factory=list)
+    policy_citations: list[PolicyCitation] = Field(default_factory=lambda: cast(list[PolicyCitation], []))
+    trend: list[PolicyTrendPointResponse] = Field(default_factory=lambda: cast(list[PolicyTrendPointResponse], []))
 
 
 class PolicyGapCaseListResponse(BaseModel):
     """Case list attached to one policy gap."""
 
     gap_id: str
-    items: list["CaseSummaryResponse"] = Field(default_factory=list)
+    items: list["CaseSummaryResponse"] = Field(default_factory=lambda: cast(list[CaseSummaryResponse], []))
     page: PageInfo
 
 
@@ -119,8 +119,8 @@ class PolicyBriefResponse(BaseModel):
     audience: str
     objective: str
     narrative: str
-    recommendations: list[str] = Field(default_factory=list)
-    policy_citations: list[PolicyCitation] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    policy_citations: list[PolicyCitation] = Field(default_factory=lambda: cast(list[PolicyCitation], []))
     created_at: datetime
 
 
@@ -138,8 +138,8 @@ class AlertDetailResponse(BaseModel):
     """Expanded alert record used by alert and investigation views."""
 
     alert: AlertListItem
-    related_entity_ids: list[str] = Field(default_factory=list)
-    policy_citations: list[PolicyCitation] = Field(default_factory=list)
+    related_entity_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    policy_citations: list[PolicyCitation] = Field(default_factory=lambda: cast(list[PolicyCitation], []))
 
 
 class GraphNodeResponse(BaseModel):
@@ -167,9 +167,9 @@ class GraphEntityDetailResponse(BaseModel):
     """Entity detail and neighboring graph context for investigation views."""
 
     entity: GraphNodeResponse
-    neighbors: list[GraphNodeResponse] = Field(default_factory=list)
-    relationships: list[GraphEdgeResponse] = Field(default_factory=list)
-    related_alert_ids: list[str] = Field(default_factory=list)
+    neighbors: list[GraphNodeResponse] = Field(default_factory=lambda: cast(list[GraphNodeResponse], []))
+    relationships: list[GraphEdgeResponse] = Field(default_factory=lambda: cast(list[GraphEdgeResponse], []))
+    related_alert_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
 
 
 class EvidenceItemResponse(BaseModel):
@@ -190,10 +190,10 @@ class EvidencePackResponse(BaseModel):
     reasoning: str
     confidence: float = Field(ge=0.0, le=1.0)
     scores: dict[str, float] = Field(default_factory=dict)
-    subgraph_node_ids: list[str] = Field(default_factory=list)
-    subgraph_edge_ids: list[str] = Field(default_factory=list)
-    items: list[EvidenceItemResponse] = Field(default_factory=list)
-    policy_citations: list[PolicyCitation] = Field(default_factory=list)
+    subgraph_node_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    subgraph_edge_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    items: list[EvidenceItemResponse] = Field(default_factory=lambda: cast(list[EvidenceItemResponse], []))
+    policy_citations: list[PolicyCitation] = Field(default_factory=lambda: cast(list[PolicyCitation], []))
 
 
 class CaseSummaryResponse(BaseModel):
@@ -204,14 +204,14 @@ class CaseSummaryResponse(BaseModel):
     status: Literal["open", "in_review", "closed"]
     priority: Literal["low", "medium", "high", "critical"]
     assignee: str | None = None
-    alert_ids: list[str] = Field(default_factory=list)
+    alert_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
     updated_at: datetime
 
 
 class CaseListResponse(BaseModel):
     """Case collection response."""
 
-    items: list[CaseSummaryResponse] = Field(default_factory=list)
+    items: list[CaseSummaryResponse] = Field(default_factory=lambda: cast(list[CaseSummaryResponse], []))
     page: PageInfo
 
 
@@ -221,7 +221,7 @@ class AnalystFeedbackResponse(BaseModel):
     case_id: str
     label: Literal["suspicious", "not_suspicious", "insufficient_evidence"]
     evidence_adequacy: Literal["low", "medium", "high"]
-    missing_evidence: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=lambda: cast(list[str], []))
     notes: str
     submitted_at: datetime
 
@@ -230,8 +230,8 @@ class CaseDetailResponse(BaseModel):
     """Expanded case detail payload."""
 
     case: CaseSummaryResponse
-    alerts: list[AlertListItem] = Field(default_factory=list)
-    feedback_history: list[AnalystFeedbackResponse] = Field(default_factory=list)
+    alerts: list[AlertListItem] = Field(default_factory=lambda: cast(list[AlertListItem], []))
+    feedback_history: list[AnalystFeedbackResponse] = Field(default_factory=lambda: cast(list[AnalystFeedbackResponse], []))
 
 
 class ChatMessageResponse(BaseModel):
@@ -241,7 +241,7 @@ class ChatMessageResponse(BaseModel):
     role: Literal["user", "assistant", "system"]
     content: str
     created_at: datetime
-    citation_ids: list[str] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
 
 
 class ChatConversationResponse(BaseModel):
@@ -250,7 +250,7 @@ class ChatConversationResponse(BaseModel):
     id: str
     title: str
     knowledge_base_id: str
-    messages: list[ChatMessageResponse] = Field(default_factory=list)
+    messages: list[ChatMessageResponse] = Field(default_factory=lambda: cast(list[ChatMessageResponse], []))
 
 
 class KnowledgeBaseSummaryResponse(BaseModel):
@@ -269,7 +269,7 @@ class KnowledgeBaseSummaryResponse(BaseModel):
 class KnowledgeBaseListResponse(BaseModel):
     """Collection response for knowledge base summaries."""
 
-    items: list[KnowledgeBaseSummaryResponse] = Field(default_factory=list)
+    items: list[KnowledgeBaseSummaryResponse] = Field(default_factory=lambda: cast(list[KnowledgeBaseSummaryResponse], []))
     total: int = Field(ge=0)
 
 
@@ -288,7 +288,7 @@ class KnowledgeBaseDocumentResponse(BaseModel):
 class KnowledgeBaseDocumentListResponse(BaseModel):
     """Document inventory for one knowledge base."""
 
-    items: list[KnowledgeBaseDocumentResponse] = Field(default_factory=list)
+    items: list[KnowledgeBaseDocumentResponse] = Field(default_factory=lambda: cast(list[KnowledgeBaseDocumentResponse], []))
     total: int = Field(ge=0)
 
 
@@ -304,7 +304,7 @@ class WorkflowRunResponse(BaseModel):
 
     id: str
     workflow_type: Literal["ingestion", "graph_build", "analytics", "monitoring"]
-    status: Literal["queued", "running", "completed", "failed"]
+    status: Literal["queued", "running", "completed", "failed", "cancelled"]
     knowledge_base_id: str
     started_at: datetime
     updated_at: datetime
@@ -314,7 +314,7 @@ class WorkflowRunResponse(BaseModel):
 class WorkflowRunListResponse(BaseModel):
     """Collection of workflow runs."""
 
-    items: list[WorkflowRunResponse] = Field(default_factory=list)
+    items: list[WorkflowRunResponse] = Field(default_factory=lambda: cast(list[WorkflowRunResponse], []))
 
 
 class RiskFactorResponse(BaseModel):
@@ -331,7 +331,7 @@ class RiskScoreResponse(BaseModel):
     entity_id: str
     overall_score: float = Field(ge=0.0, le=1.0)
     risk_level: Literal["low", "medium", "high", "critical"]
-    factors: list[RiskFactorResponse] = Field(default_factory=list)
+    factors: list[RiskFactorResponse] = Field(default_factory=lambda: cast(list[RiskFactorResponse], []))
 
 
 class TimeseriesPointResponse(BaseModel):
@@ -348,7 +348,7 @@ class TimeseriesResponse(BaseModel):
 
     entity_id: str
     metric_name: str
-    points: list[TimeseriesPointResponse] = Field(default_factory=list)
+    points: list[TimeseriesPointResponse] = Field(default_factory=lambda: cast(list[TimeseriesPointResponse], []))
 
 
 class AnalyticsOverviewResponse(BaseModel):
@@ -366,7 +366,7 @@ class CaseCreateRequest(BaseModel):
     title: str
     priority: Literal["low", "medium", "high", "critical"]
     assignee: str | None = None
-    alert_ids: list[str] = Field(default_factory=list)
+    alert_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
 
 
 class CaseUpdateRequest(BaseModel):
@@ -383,7 +383,7 @@ class CaseFeedbackCreateRequest(BaseModel):
 
     label: Literal["suspicious", "not_suspicious", "insufficient_evidence"]
     evidence_adequacy: Literal["low", "medium", "high"]
-    missing_evidence: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=lambda: cast(list[str], []))
     notes: str
 
 

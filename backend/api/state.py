@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from threading import Lock
+from typing import Literal, cast
 
 from analytics.explainability.adapters.in_memory import InMemoryExplainabilityContextSource
 from analytics.explainability.models import ExplanationContext, ExplanationItem, ExplanationSubgraph
@@ -13,11 +14,11 @@ from analytics.explainability.service_models import ExplainabilityRequest, Expla
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
 from analytics.risk.models import RiskProfile, RiskSignal
 from analytics.risk.service import create_risk_service
-from analytics.risk.service_models import RiskAssessmentRequest, RiskAssessmentResponse
+from analytics.risk.service_models import RiskAssessmentRequest
 from analytics.timeseries.adapters.in_memory import InMemoryTimeSeriesHistorySource
 from analytics.timeseries.models import TimeSeriesObservation, TimeSeriesSeries
 from analytics.timeseries.service import create_timeseries_service
-from analytics.timeseries.service_models import TimeseriesAnalysisRequest, TimeseriesAnalysisResponse
+from analytics.timeseries.service_models import TimeseriesAnalysisRequest
 from api.contracts import (
     AlertDetailResponse,
     AlertListItem,
@@ -92,8 +93,8 @@ AlertStatus = str
 class CaseRecord:
     id: str
     title: str
-    status: str
-    priority: str
+    status: Literal["open", "in_review", "closed"]
+    priority: Literal["low", "medium", "high", "critical"]
     assignee: str | None
     alert_ids: list[str]
     updated_at: datetime
@@ -104,7 +105,7 @@ class ConversationRecord:
     id: str
     title: str
     knowledge_base_id: str
-    messages: list[ChatMessageResponse] = field(default_factory=list)
+    messages: list[ChatMessageResponse] = field(default_factory=lambda: cast(list[ChatMessageResponse], []))
 
 
 @dataclass(slots=True)
@@ -137,15 +138,15 @@ class KnowledgeBaseDocumentRecord:
     size_bytes: int | None
     status: str
     uploaded_at: datetime
-    timeline: list[DocumentTimelineEntryRecord] = field(default_factory=list)
+    timeline: list[DocumentTimelineEntryRecord] = field(default_factory=lambda: cast(list[DocumentTimelineEntryRecord], []))
 
 
 @dataclass(slots=True)
 class PolicyGapRecord:
     id: str
     title: str
-    status: str
-    severity: str
+    status: Literal["monitoring", "drafting", "recommended"]
+    severity: Literal["medium", "high", "critical"]
     impacted_entities: int
     affected_case_ids: list[str]
     knowledge_base_id: str
@@ -153,8 +154,8 @@ class PolicyGapRecord:
     summary: str
     impact_statement: str
     recommendation: str
-    policy_citations: list[PolicyCitation] = field(default_factory=list)
-    trend: list[PolicyTrendPointResponse] = field(default_factory=list)
+    policy_citations: list[PolicyCitation] = field(default_factory=lambda: cast(list[PolicyCitation], []))
+    trend: list[PolicyTrendPointResponse] = field(default_factory=lambda: cast(list[PolicyTrendPointResponse], []))
 
 
 class ApiState:
@@ -235,7 +236,7 @@ class ApiState:
         return AlertDetailResponse(
             alert=item,
             related_entity_ids=[item.entity_id, "claim-8821", "beneficiary-771"],
-            policy_citations=list(metadata["policy_citations"]),
+            policy_citations=cast(list[PolicyCitation], metadata["policy_citations"]),
         )
 
     def acknowledge_alert(self, alert_id: str) -> AlertListItem:
@@ -1087,14 +1088,14 @@ class ApiState:
             entity_id=alert.entity_id,
             entity_type=alert.entity_type,
             entity_label=str(metadata["entity_label"]),
-            severity=_normalize_severity(alert.severity, float(metadata["confidence"])),
-            status=str(metadata["status"]),
+            severity=_normalize_severity(alert.severity, cast(float, metadata["confidence"])),
+            status=cast(Literal["open", "acknowledged", "investigating", "resolved", "dismissed"], metadata["status"]),
             title=alert.title,
             reasoning=alert.reasoning,
-            confidence=float(metadata["confidence"]),
+            confidence=cast(float, metadata["confidence"]),
             evidence_pack_id=evidence_pack_id,
             created_at=alert.created_at,
-            tags=list(metadata["tags"]),
+            tags=cast(list[str], metadata["tags"]),
         )
 
     def _to_graph_node(self, entity: Entity, *, risk_score: float) -> GraphNodeResponse:
@@ -1142,7 +1143,7 @@ class ApiState:
                 )
                 for item in response.evidence_items
             ],
-            policy_citations=list(metadata["policy_citations"]),
+            policy_citations=cast(list[PolicyCitation], metadata["policy_citations"]),
         )
 
     def _to_case_summary(self, record: CaseRecord) -> CaseSummaryResponse:
@@ -1314,33 +1315,33 @@ def create_api_state() -> ApiState:
     return ApiState()
 
 
-def _normalize_severity(severity: str, confidence: float) -> str:
+def _normalize_severity(severity: str, confidence: float) -> Literal["low", "medium", "high", "critical"]:
     if severity == "high" and confidence >= 0.9:
         return "critical"
     if severity in {"high", "medium", "low", "critical"}:
-        return severity
+        return cast(Literal["low", "medium", "high", "critical"], severity)
     return "medium"
 
 
-def _normalize_risk_level(risk_level: str, overall_score: float) -> str:
+def _normalize_risk_level(risk_level: str, overall_score: float) -> Literal["low", "medium", "high", "critical"]:
     if overall_score >= 0.9:
         return "critical"
     if risk_level in {"high", "medium", "low", "critical"}:
-        return risk_level
+        return cast(Literal["low", "medium", "high", "critical"], risk_level)
     return "medium"
 
 
-def _normalize_knowledge_base_status(status: str) -> str:
+def _normalize_knowledge_base_status(status: str) -> Literal["active", "building", "ready", "error", "archived"]:
     if status in {"active", "ready", "error", "archived"}:
-        return status
+        return cast(Literal["active", "building", "ready", "error", "archived"], status)
     if status in {"indexing", "rebuilding", "building"}:
         return "building"
     return "active"
 
 
-def _normalize_document_status(status: str) -> str:
+def _normalize_document_status(status: str) -> Literal["pending", "registered", "building", "ready", "failed", "error"]:
     if status in {"pending", "registered", "building", "ready", "failed", "error"}:
-        return status
+        return cast(Literal["pending", "registered", "building", "ready", "failed", "error"], status)
     if status in {"parsing", "parsed", "chunked", "extracted"}:
         return "building"
     if status == "validated":

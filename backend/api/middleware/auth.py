@@ -206,7 +206,7 @@ def decode_token(
     return cast(dict[str, object], claims)
 
 
-def _coerce_roles(claim_value: object) -> list[str]:
+def coerce_roles(claim_value: object) -> list[str]:
     if isinstance(claim_value, list):
         roles_list = cast(list[object], claim_value)
         return [str(item) for item in roles_list if isinstance(item, (str, int))]
@@ -222,7 +222,7 @@ def _extract_user(
 ) -> User:
     raw_user_id = claims.get("sub") or claims.get("user_id") or "unknown"
     user_id = str(raw_user_id)
-    roles = _coerce_roles(claims.get(roles_claim))
+    roles = coerce_roles(claims.get(roles_claim))
     raw_email = claims.get("email")
     email = str(raw_email) if isinstance(raw_email, str) else None
     return User(user_id=user_id, roles=roles, email=email)

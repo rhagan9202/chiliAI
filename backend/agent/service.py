@@ -19,19 +19,16 @@ from agent.models import (
 from agent.service_models import WorkflowSubmissionRequest, WorkflowSubmissionResponse
 from events.protocols import EventBus
 from events.types import AgentWorkflowStartedEvent, AgentWorkflowStartedReference
-from shared.utils import generate_id
+from shared.utils import generate_id, utc_now
 
 
 class AgentService:
     """Coordinate workflow submission, persistence, and event publication."""
 
-    # TODO(production): If event_bus.publish() fails after the run is persisted,
-    # the workflow is orphaned — add retry or compensating transaction. Add async
-    # variants for non-blocking API integration. cancel_workflow is currently
-    # *soft* (marks intent only); the coordinator does not yet poll run status,
-    # so in-flight steps continue. A future AgentWorkflowCancelledEvent + a
-    # coordinator handler will make cancel hard. Idempotency keys have no TTL
-    # today; revisit once a durable run-store adapter lands.
+    # TODO(production): Add async variants for non-blocking API integration.
+    # cancel_workflow is still soft until the worker coordinator checks run
+    # status before each expensive stage. Idempotency keys have no TTL today;
+    # revisit once durable retention policies land.
 
     def __init__(self, run_store: WorkflowRunStoreProtocol, *, event_bus: EventBus) -> None:
         self._run_store = run_store
@@ -47,15 +44,20 @@ class AgentService:
                 self._verify_idempotency_match(cached, request)
                 return self._response_from_run(cached)
 
+        workflow_id = generate_id()
+        correlation_id = generate_id()
+        metadata = dict(request.metadata)
+        metadata["correlation_id"] = correlation_id
+
         try:
             run = self._run_store.save_run(
                 WorkflowRun(
-                    workflow_id=generate_id(),
+                    workflow_id=workflow_id,
                     knowledge_base_id=request.knowledge_base_id,
                     trigger_event_type=request.trigger_event_type,
-                    status=WorkflowRunStatus.RUNNING,
+                    status=WorkflowRunStatus.QUEUED,
                     steps=[WorkflowStepState(step_name=step_name) for step_name in request.requested_steps],
-                    metadata=request.metadata,
+                    metadata=metadata,
                     idempotency_key=request.idempotency_key,
                 )
             )
@@ -64,21 +66,47 @@ class AgentService:
         except Exception as exc:
             raise AgentStateStoreError("Failed to persist workflow run.") from exc
 
-        response = self._response_from_run(run)
-        self._event_bus.publish(
-            AgentWorkflowStartedEvent(
-                workflows=[
-                    AgentWorkflowStartedReference(
-                        workflow_id=response.workflow_id,
-                        knowledge_base_id=response.knowledge_base_id,
-                        trigger_event_type=response.trigger_event_type,
-                        step_count=response.step_count,
-                        status=response.status.value,
-                    )
-                ]
+        try:
+            self._event_bus.publish(
+                AgentWorkflowStartedEvent(
+                    correlation_id=correlation_id,
+                    workflows=[
+                        AgentWorkflowStartedReference(
+                            workflow_id=run.workflow_id,
+                            knowledge_base_id=run.knowledge_base_id,
+                            trigger_event_type=run.trigger_event_type,
+                            step_count=len(run.steps),
+                            status=WorkflowRunStatus.RUNNING.value,
+                        )
+                    ],
+                )
+            )
+        except Exception as exc:
+            failed_metadata = dict(run.metadata)
+            failed_metadata["publish_error"] = str(exc)
+            try:
+                self._run_store.update_run(
+                    run.workflow_id,
+                    WorkflowRunUpdate(
+                        status=WorkflowRunStatus.FAILED,
+                        updated_at=utc_now(),
+                        metadata=failed_metadata,
+                    ),
+                )
+            except Exception as update_exc:
+                raise AgentStateStoreError(
+                    "Failed to publish workflow event and record failure state."
+                ) from update_exc
+            raise AgentStateStoreError("Failed to publish workflow event.") from exc
+
+        run = self._run_store.update_run(
+            run.workflow_id,
+            WorkflowRunUpdate(
+                status=WorkflowRunStatus.RUNNING,
+                updated_at=utc_now(),
             )
         )
-        return response
+        return self._response_from_run(run)
 
     def get_workflow_status(self, workflow_id: str) -> WorkflowRun:
         return self._run_store.get_run(workflow_id)
@@ -106,7 +134,7 @@ class AgentService:
             raise WorkflowAlreadyTerminalError(workflow_id, existing.status)
         return self._run_store.update_run(
             workflow_id,
-            WorkflowRunUpdate(status=WorkflowRunStatus.CANCELLED),
+            WorkflowRunUpdate(status=WorkflowRunStatus.CANCELLED, updated_at=utc_now()),
         )
 
     @staticmethod
@@ -122,7 +150,12 @@ class AgentService:
             raise IdempotencyKeyConflictError(
                 request.idempotency_key, conflicting_field="requested_steps"
             )
-        if run.metadata != request.metadata:
+        user_metadata = {
+            key: value
+            for key, value in run.metadata.items()
+            if key not in {"correlation_id", "publish_error"}
+        }
+        if user_metadata != request.metadata:
             raise IdempotencyKeyConflictError(
                 request.idempotency_key, conflicting_field="metadata"
             )

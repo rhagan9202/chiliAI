@@ -17,7 +17,7 @@ from fastapi.responses import RedirectResponse
 
 import api.middleware.auth as _auth_module
 from api.dependencies import get_domain_config, get_session_store
-from api.middleware.auth import SESSION_COOKIE_NAME, User, _coerce_roles, get_current_user
+from api.middleware.auth import SESSION_COOKIE_NAME, User, coerce_roles, get_current_user
 from api.middleware.session_store import SessionNotFoundError, SessionRecord, SessionStoreProtocol
 from api.routers._oidc_client import (
     OidcClient,
@@ -141,7 +141,7 @@ def callback(
     raw_email = claims.get("email")
     email = raw_email if isinstance(raw_email, str) else None
     raw_roles = claims.get(auth_config.roles_claim)
-    roles = _coerce_roles(raw_roles)
+    roles = coerce_roles(raw_roles)
 
     sid = generate_id()
     now = time.time()

@@ -1456,6 +1456,8 @@ def test_graceful_shutdown_finishes_in_flight_event(
         SHUTDOWN_LOG_REQUESTED,
         run_worker,
     )
+    from agent.adapters.in_memory import InMemoryWorkflowRunStore
+    from agent.workflow_tracking import WorkflowEventTracker
 
     defaults_yaml = __file__.replace(
         "tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml"
@@ -1463,6 +1465,7 @@ def test_graceful_shutdown_finishes_in_flight_event(
     monkeypatch.setenv("CHILI_CONFIG_PATH", defaults_yaml)
 
     event_bus = InMemoryEventBus()
+    workflow_run_store = InMemoryWorkflowRunStore()
     object_store = InMemoryObjectStore()
     vector_store = InMemoryVectorStore()
     graph_repository = InMemoryGraphRepository()
@@ -1518,6 +1521,8 @@ def test_graceful_shutdown_finishes_in_flight_event(
             InMemoryObservationSource(), event_bus=event_bus
         ),
         event_settings=EventBusSettings(backend="in-memory"),
+        workflow_run_store=workflow_run_store,
+        workflow_tracker=WorkflowEventTracker(workflow_run_store),
     )
 
     monkeypatch.setattr(

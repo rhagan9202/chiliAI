@@ -146,7 +146,7 @@ class TestAuthEnabled:
     @pytest.fixture
     def jwks_setter(self, rsa_pem: str) -> Callable[[], None]:
         def _setter() -> None:
-            jwks = {"keys": [_public_jwk_from_pem(rsa_pem)]}
+            jwks: dict[str, object] = {"keys": [_public_jwk_from_pem(rsa_pem)]}
             set_jwks_fetcher(lambda _uri: jwks)
 
         return _setter
@@ -267,10 +267,10 @@ def test_get_current_user_refreshes_when_access_token_near_expiry(
     from fastapi.testclient import TestClient
 
     from api.dependencies import get_domain_config, get_session_store
-    from api.middleware.auth import User, get_current_user
+    from api.middleware.auth import get_current_user
     from api.middleware.session_store import InMemorySessionStore, SessionRecord
     from api.routers import _oidc_client
-    from config.schema import AuthConfig, DomainConfig
+    from config.schema import AuthConfig
 
     store = InMemorySessionStore()
     store.save(
@@ -305,7 +305,7 @@ def test_get_current_user_refreshes_when_access_token_near_expiry(
     monkeypatch.setattr(
         _oidc_client.OidcClient,
         "_http",
-        lambda self: httpx.Client(transport=httpx.MockTransport(fake_handler), timeout=5.0),
+        lambda self: httpx.Client(transport=httpx.MockTransport(fake_handler), timeout=5.0),  # type: ignore[reportUnknownLambdaType,reportUnknownArgumentType]
     )
     monkeypatch.setenv("OIDC_CLIENT_SECRET", "shh")
 
@@ -326,7 +326,7 @@ def test_get_current_user_refreshes_when_access_token_near_expiry(
     app = FastAPI()
 
     @app.get("/whoami")
-    def whoami(user: User = Depends(get_current_user)) -> dict[str, object]:
+    def whoami(user: User = Depends(get_current_user)) -> dict[str, object]:  # type: ignore[reportUnusedFunction]
         return {"user_id": user.user_id}
 
     app.dependency_overrides[get_domain_config] = lambda: domain
@@ -354,7 +354,7 @@ def test_get_current_user_returns_401_when_refresh_fails(
     from fastapi.testclient import TestClient
 
     from api.dependencies import get_domain_config, get_session_store
-    from api.middleware.auth import User, get_current_user
+    from api.middleware.auth import get_current_user
     from api.middleware.session_store import InMemorySessionStore, SessionRecord
     from api.routers import _oidc_client
     from config.schema import AuthConfig

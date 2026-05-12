@@ -95,7 +95,7 @@ def build_metrics_router(
     router = APIRouter(tags=["observability"])
 
     @router.get("/metrics")
-    async def metrics_endpoint() -> Response:
+    async def metrics_endpoint() -> Response:  # pyright: ignore[reportUnusedFunction]
         payload = generate_latest(target_registry)
         return Response(content=payload, media_type=CONTENT_TYPE_LATEST)
 

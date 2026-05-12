@@ -6,6 +6,7 @@ from threading import RLock
 
 from agent.exceptions import WorkflowRunNotFoundError
 from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowRunUpdate
+from shared.utils import utc_now
 
 __all__ = ["InMemoryWorkflowRunStore"]
 
@@ -83,6 +84,7 @@ class InMemoryWorkflowRunStore:
             patch = update.model_dump(exclude_none=True)
             if not patch:
                 return self._copy_run(existing)
+            patch.setdefault("updated_at", utc_now())
             merged = existing.model_dump()
             merged.update(patch)
             updated = WorkflowRun.model_validate(merged)

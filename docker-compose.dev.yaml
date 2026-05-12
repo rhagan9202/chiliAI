@@ -37,6 +37,7 @@ services:
       - CHILI_CONFIG_PATH=/app/config/defaults/medicare_fraud_dev.yaml
       - CHILI_KB_REPOSITORY_BACKEND=object_store
       - CHILI_ALERT_REPOSITORY_BACKEND=object_store
+      - CHILI_WORKFLOW_RUN_STORE_BACKEND=redis
       - CHILI_EVENT_BUS_BACKEND=redis
       - CHILI_EVENT_BLOCK_MS=100
       - REDIS_URL=redis://redis:6379
@@ -67,6 +68,7 @@ services:
       - chili-object-data:/app/data
     environment:
       - CHILI_CONFIG_PATH=/app/config/defaults/medicare_fraud_dev.yaml
+      - CHILI_WORKFLOW_RUN_STORE_BACKEND=redis
       - CHILI_EVENT_BUS_BACKEND=redis
       - CHILI_EVENT_BLOCK_MS=100
       - REDIS_URL=redis://redis:6379

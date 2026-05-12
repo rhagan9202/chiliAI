@@ -190,12 +190,14 @@ def test_list_runs_rejects_negative_offset() -> None:
 
 def test_update_run_patches_status() -> None:
     store = InMemoryWorkflowRunStore(runs=[_run()])
+    before = store.get_run("workflow-1").updated_at
 
     updated = store.update_run(
         "workflow-1", WorkflowRunUpdate(status=WorkflowRunStatus.COMPLETED)
     )
 
     assert updated.status == WorkflowRunStatus.COMPLETED
+    assert updated.updated_at >= before
     assert store.get_run("workflow-1").status == WorkflowRunStatus.COMPLETED
 
 

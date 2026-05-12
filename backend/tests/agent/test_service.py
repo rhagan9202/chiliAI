@@ -8,6 +8,7 @@ import pytest
 
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.exceptions import (
+    AgentStateStoreError,
     IdempotencyKeyConflictError,
     WorkflowAlreadyTerminalError,
     WorkflowRunNotFoundError,
@@ -20,7 +21,13 @@ from agent.models import (
 from agent.service import AgentService, create_agent_service
 from agent.service_models import WorkflowSubmissionRequest
 from events.adapters.in_memory import InMemoryEventBus
-from events.types import AgentWorkflowStartedEvent
+from events.types import AgentWorkflowStartedEvent, AnyEvent
+
+
+class _FailingEventBus(InMemoryEventBus):
+    def publish(self, event: AnyEvent) -> str | None:
+        del event
+        raise RuntimeError("publish unavailable")
 
 
 def _service(runs: list[WorkflowRun] | None = None) -> tuple[AgentService, InMemoryWorkflowRunStore, InMemoryEventBus]:
@@ -64,8 +71,31 @@ def test_agent_service_starts_workflow_persists_run_and_publishes_event() -> Non
     assert response.status.value == "running"
     assert response.step_count == 3
     assert stored_run.workflow_id == response.workflow_id
+    assert stored_run.status is WorkflowRunStatus.RUNNING
     assert stored_run.metadata["priority"] == "high"
+    assert "correlation_id" in stored_run.metadata
     assert isinstance(event_bus.published_events[-1], AgentWorkflowStartedEvent)
+    started_event = event_bus.published_events[-1]
+    assert isinstance(started_event, AgentWorkflowStartedEvent)
+    assert started_event.correlation_id == stored_run.metadata["correlation_id"]
+
+
+def test_agent_service_records_failed_run_when_publish_fails() -> None:
+    run_store = InMemoryWorkflowRunStore()
+    service = create_agent_service(run_store, event_bus=_FailingEventBus())
+
+    with pytest.raises(AgentStateStoreError):
+        service.start_workflow(
+            WorkflowSubmissionRequest(
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                requested_steps=["parse"],
+            )
+        )
+
+    [stored_run] = run_store.list_runs()
+    assert stored_run.status is WorkflowRunStatus.FAILED
+    assert stored_run.metadata["publish_error"] == "publish unavailable"
 
 
 def test_get_workflow_status_returns_persisted_run() -> None:
@@ -139,6 +169,15 @@ def test_cancel_workflow_transitions_running_to_cancelled() -> None:
 
 
 def test_cancel_workflow_is_idempotent_when_already_cancelled() -> None:
+    seeded = _run(status=WorkflowRunStatus.CANCELLED)
+    service, _, _ = _service(runs=[seeded])
+
+    result = service.cancel_workflow("workflow-1")
+
+    assert result.status is WorkflowRunStatus.CANCELLED
+
+
+def test_cancelled_workflow_is_terminal() -> None:
     seeded = _run(status=WorkflowRunStatus.CANCELLED)
     service, _, _ = _service(runs=[seeded])
 

@@ -104,7 +104,7 @@ class RedisSessionStore:
                 "Install with `pip install redis`."
             ) from exc
 
-        self._client = redis.Redis.from_url(redis_url, decode_responses=True)
+        self._client = redis.Redis.from_url(redis_url, decode_responses=True)  # pyright: ignore[reportUnknownMemberType]
         self._prefix = key_prefix
 
     def _session_key(self, session_id: str) -> str:

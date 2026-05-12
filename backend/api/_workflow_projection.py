@@ -18,7 +18,7 @@ __all__ = [
     "project_workflow_runs",
 ]
 
-WorkflowStatusValue = Literal["queued", "running", "completed", "failed"]
+WorkflowStatusValue = Literal["queued", "running", "completed", "failed", "cancelled"]
 WorkflowTypeValue = Literal["ingestion", "graph_build", "analytics", "monitoring"]
 
 
@@ -39,7 +39,7 @@ def project_workflow_run(run: WorkflowRun) -> WorkflowRunResponse:
         status=_workflow_status(run.status),
         knowledge_base_id=run.knowledge_base_id,
         started_at=run.created_at,
-        updated_at=run.created_at,
+        updated_at=run.updated_at,
         current_step=_current_step(run),
     )
 
@@ -51,10 +51,14 @@ def count_running_workflows(runs: list[WorkflowRun]) -> int:
 
 
 def _workflow_status(status: WorkflowRunStatus) -> WorkflowStatusValue:
+    if status is WorkflowRunStatus.QUEUED:
+        return "queued"
     if status is WorkflowRunStatus.RUNNING:
         return "running"
     if status is WorkflowRunStatus.COMPLETED:
         return "completed"
+    if status is WorkflowRunStatus.CANCELLED:
+        return "cancelled"
     return "failed"
 
 
