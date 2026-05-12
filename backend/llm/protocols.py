@@ -18,11 +18,10 @@ class LlmServiceProtocol(Protocol):
         self,
         request: GenerateRequest,
     ) -> AsyncIterator[str]:
-        """Stream tokens for `request`.
+        """Stream completion chunks for `request`.
 
-        Optional: implementations that do not support streaming should raise
-        ``NotImplementedError``. The default implementation here raises so
-        that adapter authors must opt in.
+        Implementations may provide provider-native token streaming or a
+        production-safe fallback that yields a one-shot completion chunk.
         """
 
         raise NotImplementedError(

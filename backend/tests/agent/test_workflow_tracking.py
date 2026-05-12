@@ -9,8 +9,12 @@ from agent.models import (
     WorkflowStepState,
     WorkflowStepStatus,
 )
+from agent.service import create_agent_service
+from agent.service_models import WorkflowSubmissionRequest
+from events.adapters.in_memory import InMemoryEventBus
 from agent.workflow_tracking import WorkflowEventTracker
 from events.types import (
+    AgentWorkflowStartedEvent,
     DocumentReference,
     DocumentsUploadedEvent,
     VectorsIndexedDocumentReference,
@@ -67,6 +71,33 @@ def test_tracker_creates_fallback_run_for_untracked_pipeline_event() -> None:
     [run] = run_store.list_runs()
     assert run.knowledge_base_id == "kb-1"
     assert run.metadata["correlation_id"] == "new-corr"
+    assert run.steps[0].step_name == "parse"
+    assert run.steps[0].status is WorkflowStepStatus.RUNNING
+
+
+def test_tracker_uses_service_published_correlation_without_fallback() -> None:
+    run_store = InMemoryWorkflowRunStore()
+    event_bus = InMemoryEventBus()
+    service = create_agent_service(run_store, event_bus=event_bus)
+    response = service.start_workflow(
+        WorkflowSubmissionRequest(
+            knowledge_base_id="kb-1",
+            trigger_event_type="documents.uploaded",
+            requested_steps=["parse"],
+        )
+    )
+    [started_event] = event_bus.published_events
+    assert isinstance(started_event, AgentWorkflowStartedEvent)
+
+    tracker = WorkflowEventTracker(run_store)
+    assert tracker.begin_event(
+        _uploaded_event(correlation_id=started_event.correlation_id)
+    ) is True
+
+    [run] = run_store.list_runs()
+    assert run.workflow_id == response.workflow_id
+    assert run.metadata["correlation_id"] == started_event.correlation_id
+    assert run.status is WorkflowRunStatus.RUNNING
     assert run.steps[0].step_name == "parse"
     assert run.steps[0].status is WorkflowStepStatus.RUNNING
 

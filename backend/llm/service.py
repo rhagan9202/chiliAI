@@ -17,10 +17,11 @@ class LlmService:
     """Coordinate request rendering, client invocation, and event publication."""
 
     # TODO(production): Add retry logic with exponential backoff for provider errors
-    # and rate limits. Add streaming response support (stream_generate method).
-    # Add pre-flight token budget checking. Add model capability registry to
-    # select models by feature (vision, tool use, context length). Add fallback
-    # model support: if primary model fails, try a configured secondary.
+    # and rate limits. Add provider-native token streaming once adapters expose
+    # stream_generate. Add pre-flight token budget checking. Add model capability
+    # registry to select models by feature (vision, tool use, context length).
+    # Add fallback model support: if primary model fails, try a configured
+    # secondary.
 
     def __init__(self, client: LlmClientProtocol, *, event_bus: EventBus) -> None:
         self._client = client
@@ -65,18 +66,17 @@ class LlmService:
         )
         return response
 
-    def generate_stream(self, request: GenerateRequest) -> AsyncIterator[str]:
-        """Stream tokens for ``request``.
+    async def generate_stream(self, request: GenerateRequest) -> AsyncIterator[str]:
+        """Stream a completion for ``request``.
 
-        The default service does not yet support streaming; adapter-backed
-        services that opt in should override this. Raising
-        ``NotImplementedError`` mirrors :class:`LlmServiceProtocol`'s default.
+        The default service provides a production-safe fallback by delegating to
+        :meth:`generate` and yielding the full completion as a single chunk.
+        Provider-native token streaming can be added by future adapters without
+        requiring callers to guard this method.
         """
 
-        del request
-        raise NotImplementedError(
-            "generate_stream is not implemented by the default LlmService."
-        )
+        response = self.generate(request)
+        yield response.completion
 
 
 def create_llm_service(client: LlmClientProtocol, *, event_bus: EventBus) -> LlmService:

@@ -647,6 +647,7 @@ def test_list_documents_returns_paginated_summaries(
     assert payload["total"] == 2
     assert len(payload["items"]) == 1
     summary = payload["items"][0]
+    assert summary["knowledge_base_id"] == kb_id
     assert summary["filename"] == "file-0.json"
     assert summary["content_type"] == "application/json"
     assert summary["size_bytes"] == len(b'{"x": 1}')

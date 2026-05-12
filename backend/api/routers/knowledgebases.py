@@ -66,6 +66,7 @@ class DocumentSummary(BaseModel):
     """Summary projection of a registered document."""
 
     id: str
+    knowledge_base_id: str
     filename: str
     content_type: str | None = None
     size_bytes: int | None = None
@@ -220,6 +221,7 @@ async def list_knowledge_base_documents(
     items = [
         DocumentSummary(
             id=record.id,
+            knowledge_base_id=record.knowledge_base_id,
             filename=record.filename,
             content_type=record.content_type,
             size_bytes=record.size_bytes,
