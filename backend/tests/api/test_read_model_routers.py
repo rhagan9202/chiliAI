@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
+from agent.adapters.in_memory import InMemoryWorkflowRunStore
+from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowStepState, WorkflowStepStatus
+from agent.service import create_agent_service
 from api._alert_store import AlertProjectionRecord, InMemoryAlertProjectionRepository
 from api.app import create_app
 from api.contracts import PolicyCitation
-from api.dependencies import get_alert_repository
+from api.dependencies import get_agent_service, get_alert_repository
+from events.adapters.in_memory import InMemoryEventBus
 from shared.types import Alert
 from shared.utils import utc_now
 
@@ -70,6 +74,44 @@ def _client_with_alerts() -> TestClient:
     app = create_app()
     repository = _seed_alert_repository()
     app.dependency_overrides[get_alert_repository] = lambda: repository
+    return TestClient(app)
+
+
+def _client_with_workflows() -> TestClient:
+    """Create a test client whose /workflows route uses agent service data."""
+    app = create_app()
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-ingestion-complete",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.COMPLETED,
+                steps=[
+                    WorkflowStepState(
+                        step_name="parse",
+                        status=WorkflowStepStatus.COMPLETED,
+                    )
+                ],
+                created_at=datetime(2026, 5, 8, 12, tzinfo=timezone.utc),
+            ),
+            WorkflowRun(
+                workflow_id="workflow-analytics-running",
+                knowledge_base_id="kb-1",
+                trigger_event_type="analytics.risk_scored",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[
+                    WorkflowStepState(
+                        step_name="risk_scoring",
+                        status=WorkflowStepStatus.RUNNING,
+                    )
+                ],
+                created_at=datetime(2026, 5, 8, 14, tzinfo=timezone.utc),
+            ),
+        ]
+    )
+    agent_service = create_agent_service(run_store, event_bus=InMemoryEventBus())
+    app.dependency_overrides[get_agent_service] = lambda: agent_service
     return TestClient(app)
 
 
@@ -163,13 +205,14 @@ def test_get_chat_conversation_returns_messages() -> None:
 
 
 def test_get_workflows_returns_recent_runs() -> None:
-    client = TestClient(create_app())
+    client = _client_with_workflows()
 
     response = client.get("/workflows")
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["items"][0]["workflow_type"] == "analytics"
+    assert payload["items"][0]["current_step"] == "risk_scoring"
     assert payload["items"][1]["status"] == "completed"
 
 

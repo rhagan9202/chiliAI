@@ -3,20 +3,27 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from agent.adapters.in_memory import InMemoryWorkflowRunStore
+from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowStepState
+from agent.protocols import AgentServiceProtocol
+from agent.service import create_agent_service
 from api._alert_store import AlertProjectionRecord, InMemoryAlertProjectionRepository
 from api._kb_store import DocumentRecord, InMemoryKnowledgeBaseRepository
 from api.dependencies import (
+    get_agent_service,
     get_alert_repository,
     get_graph_service,
     get_knowledge_base_repository,
     get_object_store,
 )
+from events.adapters.in_memory import InMemoryEventBus
 from graph.models import GraphMetrics
 from shared.types import Alert, KnowledgeBase
 from shared.utils import utc_now
@@ -74,6 +81,31 @@ def _seed_alert_repository() -> InMemoryAlertProjectionRepository:
     return repository
 
 
+def _seed_agent_service() -> AgentServiceProtocol:
+    """Return an agent service with one running and one completed workflow."""
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-running",
+                knowledge_base_id="kb-live-sse",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                created_at=datetime(2026, 5, 8, 12, tzinfo=timezone.utc),
+            ),
+            WorkflowRun(
+                workflow_id="workflow-completed",
+                knowledge_base_id="kb-live-sse",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.COMPLETED,
+                steps=[WorkflowStepState(step_name="parse")],
+                created_at=datetime(2026, 5, 8, 11, tzinfo=timezone.utc),
+            ),
+        ]
+    )
+    return create_agent_service(run_store, event_bus=InMemoryEventBus())
+
+
 def test_events_stream_returns_snapshot_when_auth_disabled() -> None:
     """In dev (auth disabled), an unauthenticated GET to /events/stream succeeds."""
     from api.app import create_app
@@ -115,7 +147,9 @@ def test_events_stream_returns_live_knowledge_base_statuses() -> None:
         GraphMetrics(entity_count=2, relationship_count=1, avg_degree=1.0)
     )
     alert_repository = _seed_alert_repository()
+    agent_service = _seed_agent_service()
     app.dependency_overrides[get_alert_repository] = lambda: alert_repository
+    app.dependency_overrides[get_agent_service] = lambda: agent_service
     app.dependency_overrides[get_knowledge_base_repository] = lambda: repository
     app.dependency_overrides[get_graph_service] = lambda: graph_service
     app.dependency_overrides[get_object_store] = lambda: object_store
@@ -126,6 +160,7 @@ def test_events_stream_returns_live_knowledge_base_statuses() -> None:
     body = response.content.decode()
     assert response.status_code == 200
     assert '"active_alerts":1' in body
+    assert '"running_workflows":1' in body
     assert '"knowledge_base_statuses":{"kb-live-sse":"ready"}' in body
     assert "kb-1" not in body
 

@@ -9,7 +9,16 @@ from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowRunUpdate
 
 @runtime_checkable
 class WorkflowRunStoreProtocol(Protocol):
-    """Persist and retrieve workflow runs."""
+    """Persist and retrieve workflow runs.
+
+    Implementations must return detached ``WorkflowRun`` objects so callers
+    cannot mutate persisted state except through ``save_run`` or
+    ``update_run``. ``save_run`` acts as an upsert keyed by ``workflow_id`` and
+    must enforce uniqueness for ``(knowledge_base_id, idempotency_key)`` when
+    an idempotency key is present. ``list_runs`` returns newest-first results
+    ordered by ``created_at``. ``delete_run`` is idempotent for missing IDs.
+    In-process stores must protect reads and writes that touch shared indexes.
+    """
 
     # TODO(production): Implement durable adapters behind this protocol —
     # PostgresWorkflowRunStore, RedisWorkflowRunStore — for production deployments.

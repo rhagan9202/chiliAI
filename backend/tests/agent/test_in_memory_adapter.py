@@ -46,6 +46,32 @@ def test_in_memory_workflow_run_store_returns_seeded_run() -> None:
     assert loaded == run
 
 
+def test_get_run_returns_detached_copy() -> None:
+    run = _run()
+    store = InMemoryWorkflowRunStore(runs=[run])
+
+    loaded = store.get_run("workflow-1")
+    loaded.metadata["mutated"] = True
+    loaded.steps[0].metadata["mutated"] = True
+
+    reloaded = store.get_run("workflow-1")
+    assert "mutated" not in reloaded.metadata
+    assert "mutated" not in reloaded.steps[0].metadata
+
+
+def test_save_run_stores_detached_copy() -> None:
+    run = _run()
+    store = InMemoryWorkflowRunStore()
+
+    saved = store.save_run(run)
+    saved.metadata["saved_mutation"] = True
+    run.metadata["source_mutation"] = True
+
+    reloaded = store.get_run("workflow-1")
+    assert "saved_mutation" not in reloaded.metadata
+    assert "source_mutation" not in reloaded.metadata
+
+
 def test_get_run_raises_when_workflow_id_is_unknown() -> None:
     store = InMemoryWorkflowRunStore()
 
@@ -69,6 +95,16 @@ def test_list_runs_returns_newest_first() -> None:
     listed = store.list_runs()
 
     assert [run.workflow_id for run in listed] == ["newer", "older"]
+
+
+def test_list_runs_returns_detached_copies() -> None:
+    store = InMemoryWorkflowRunStore(runs=[_run()])
+
+    listed = store.list_runs()
+    listed[0].metadata["mutated"] = True
+
+    reloaded = store.get_run("workflow-1")
+    assert "mutated" not in reloaded.metadata
 
 
 def test_list_runs_filters_by_knowledge_base_id() -> None:
@@ -336,3 +372,58 @@ def test_save_run_overwrite_drops_previous_idempotency_mapping() -> None:
         )
         == replacement
     )
+
+
+def test_save_run_rejects_duplicate_idempotency_key_for_different_run() -> None:
+    original = WorkflowRun(
+        workflow_id="workflow-1",
+        knowledge_base_id="kb-1",
+        trigger_event_type="documents.uploaded",
+        steps=[WorkflowStepState(step_name="parse")],
+        idempotency_key="shared-key",
+    )
+    duplicate = WorkflowRun(
+        workflow_id="workflow-2",
+        knowledge_base_id="kb-1",
+        trigger_event_type="documents.uploaded",
+        steps=[WorkflowStepState(step_name="parse")],
+        idempotency_key="shared-key",
+    )
+    store = InMemoryWorkflowRunStore(runs=[original])
+
+    with pytest.raises(ValueError, match="idempotency key"):
+        store.save_run(duplicate)
+
+    assert store.find_by_idempotency_key(
+        knowledge_base_id="kb-1",
+        idempotency_key="shared-key",
+    ) == original
+
+
+def test_save_run_allows_same_key_under_different_knowledge_base() -> None:
+    kb1 = WorkflowRun(
+        workflow_id="workflow-1",
+        knowledge_base_id="kb-1",
+        trigger_event_type="documents.uploaded",
+        steps=[WorkflowStepState(step_name="parse")],
+        idempotency_key="shared-key",
+    )
+    kb2 = WorkflowRun(
+        workflow_id="workflow-2",
+        knowledge_base_id="kb-2",
+        trigger_event_type="documents.uploaded",
+        steps=[WorkflowStepState(step_name="parse")],
+        idempotency_key="shared-key",
+    )
+    store = InMemoryWorkflowRunStore(runs=[kb1])
+
+    store.save_run(kb2)
+
+    assert store.find_by_idempotency_key(
+        knowledge_base_id="kb-1",
+        idempotency_key="shared-key",
+    ) == kb1
+    assert store.find_by_idempotency_key(
+        knowledge_base_id="kb-2",
+        idempotency_key="shared-key",
+    ) == kb2

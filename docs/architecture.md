@@ -682,7 +682,7 @@ The investigation workbench is the primary analyst view. It is a composite page 
 - The FastAPI backend auto-generates an OpenAPI specification.
 - The current frontend uses typed fetch helpers plus TanStack Query hooks. Generated OpenAPI clients remain an optional hardening path via the existing codegen command.
 - TanStack Query wraps all API calls, providing caching, background refetching, and optimistic updates.
-- The realtime workspace stream uses `GET /events/stream` as Server-Sent Events. Snapshots include seeded/demo alert/workflow counts plus live KB statuses from the repository-backed KB projection.
+- The realtime workspace stream uses `GET /events/stream` as Server-Sent Events. Snapshots include live active-alert counts from the API alert projection, live running-workflow counts from `AgentServiceProtocol`, and live KB statuses from the repository-backed KB projection.
 - WebSocket support remains available for push-style interactions and follows typed message envelopes where applicable.
 
 ### 8.5 Domain-driven dynamic UI

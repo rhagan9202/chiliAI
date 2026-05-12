@@ -32,7 +32,6 @@ from api.contracts import (
     PolicyGapListResponse,
     RiskScoreResponse,
     TimeseriesResponse,
-    WorkflowRunListResponse,
     WorkflowRunResponse,
 )
 from api.state import ApiState, create_api_state
@@ -81,6 +80,7 @@ from vectorstore.service import create_vector_service
 __all__ = [
     "get_api_state",
     "get_alert_repository",
+    "get_agent_service",
     "get_analytics_overview_payload",
     "get_case_create_payload",
     "get_case_detail_payload",
@@ -125,10 +125,10 @@ __all__ = [
     "get_remote_fetcher",
     "get_risk_score_payload",
     "get_timeseries_payload",
-    "get_workflow_runs_payload",
     "get_session_store",
     "get_vector_store",
     "get_vectorstore_service",
+    "get_workflow_run_store",
 ]
 
 
@@ -325,11 +325,6 @@ def get_policy_brief_payload(
 ) -> PolicyBriefResponse:
     """Generate a policy brief for the supplied policy gap."""
     return state.create_policy_brief(payload)
-
-
-def get_workflow_runs_payload(state: ApiState = Depends(get_api_state)) -> WorkflowRunListResponse:
-    """Return recent scaffold workflow runs."""
-    return state.list_workflows()
 
 
 def get_risk_score_payload(
@@ -691,6 +686,14 @@ from api._alert_store import (  # noqa: E402  (intentional bottom-of-file import
     InMemoryAlertProjectionRepository,
     ObjectStoreAlertProjectionRepository,
 )
+from agent.adapters.in_memory import (  # noqa: E402  (intentional bottom-of-file import)
+    InMemoryWorkflowRunStore,
+)
+from agent.adapters.protocols import (  # noqa: E402  (intentional bottom-of-file import)
+    WorkflowRunStoreProtocol,
+)
+from agent.protocols import AgentServiceProtocol  # noqa: E402
+from agent.service import create_agent_service  # noqa: E402
 from api._kb_store import (  # noqa: E402  (intentional bottom-of-file import)
     InMemoryKnowledgeBaseRepository,
     KnowledgeBaseRepository,
@@ -741,3 +744,35 @@ def _create_alert_repository() -> AlertProjectionRepository:
         backend,
         ("in_memory", "object_store"),
     )
+
+
+def get_workflow_run_store(request: Request) -> WorkflowRunStoreProtocol:
+    """Return the per-app workflow run store used by agent services."""
+    store = getattr(request.app.state, "workflow_run_store", None)
+    if isinstance(store, WorkflowRunStoreProtocol):
+        return store
+
+    store = _create_workflow_run_store()
+    request.app.state.workflow_run_store = store
+    return store
+
+
+def _create_workflow_run_store() -> WorkflowRunStoreProtocol:
+    """Create the workflow run store selected by environment."""
+    backend = os.environ.get("CHILI_WORKFLOW_RUN_STORE_BACKEND", "in_memory")
+    backend = backend.strip().lower()
+    if backend in {"in_memory", "memory"}:
+        return InMemoryWorkflowRunStore()
+    _raise_unsupported_backend(
+        "workflow run store",
+        backend,
+        ("in_memory",),
+    )
+
+
+def get_agent_service(
+    run_store: WorkflowRunStoreProtocol = Depends(get_workflow_run_store),
+    event_bus: EventBus = Depends(get_event_bus),
+) -> AgentServiceProtocol:
+    """Return the agent workflow service assembled from configured dependencies."""
+    return create_agent_service(run_store, event_bus=event_bus)
