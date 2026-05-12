@@ -11,12 +11,11 @@ from __future__ import annotations
 import logging
 import os
 from contextvars import ContextVar
-from typing import cast
+from typing import TYPE_CHECKING
 
-import structlog
-from structlog.contextvars import bind_contextvars, clear_contextvars
-from structlog.stdlib import BoundLogger
-from structlog.types import EventDict, Processor, WrappedLogger
+if TYPE_CHECKING:
+    from structlog.stdlib import BoundLogger
+    from structlog.types import EventDict, Processor, WrappedLogger
 
 __all__ = [
     "bind_correlation_id",
@@ -54,6 +53,8 @@ def configure_logging(*, log_format: str | None = None, level: int = logging.INF
     global _configured
     if _configured:
         return
+
+    import structlog
 
     chosen_format = (log_format or os.environ.get("LOG_FORMAT") or "console").lower()
 
@@ -101,11 +102,15 @@ def get_logger(name: str) -> BoundLogger:
 
     if not _configured:
         configure_logging()
-    return cast(BoundLogger, structlog.stdlib.get_logger(name))
+    import structlog
+
+    return structlog.stdlib.get_logger(name)
 
 
 def bind_correlation_id(correlation_id: str | None) -> None:
     """Bind a correlation id into structlog and the context variable."""
+
+    from structlog.contextvars import bind_contextvars, clear_contextvars
 
     if correlation_id is None:
         clear_contextvars()
@@ -117,6 +122,8 @@ def bind_correlation_id(correlation_id: str | None) -> None:
 
 def clear_correlation_id() -> None:
     """Clear the correlation id from structlog and the context variable."""
+
+    from structlog.contextvars import clear_contextvars
 
     _CORRELATION_ID_CTX.set(None)
     clear_contextvars()

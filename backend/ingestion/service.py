@@ -18,8 +18,8 @@ from events.types import (
     DocumentsUploadedEvent,
     ParsedDocumentReference,
 )
+from shared.protocols import ObjectStoreProtocol
 from shared.utils import generate_id
-from storage.protocols import ObjectStore
 
 
 class IngestionService:
@@ -35,7 +35,7 @@ class IngestionService:
         self,
         parser_orchestrator: ParserOrchestrator,
         *,
-        object_store: ObjectStore,
+        object_store: ObjectStoreProtocol,
         event_bus: EventBus,
     ) -> None:
         self._parser_orchestrator = parser_orchestrator

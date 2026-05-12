@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
+import sys
 from collections.abc import Iterator
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -17,6 +20,25 @@ from shared.logging import (
     configure_logging,
     get_logger,
 )
+
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+
+
+def test_importing_shared_logging_does_not_import_structlog() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import shared.logging; print('structlog' in sys.modules)",
+        ],
+        cwd=BACKEND_DIR,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout.strip() == "False"
 
 
 @pytest.fixture(autouse=True)

@@ -19,6 +19,8 @@ from analytics.timeseries.adapters.in_memory import InMemoryTimeSeriesHistorySou
 from analytics.timeseries.models import TimeSeriesObservation, TimeSeriesSeries
 from analytics.timeseries.service import create_timeseries_service
 from analytics.timeseries.service_models import TimeseriesAnalysisRequest
+from config.loader import load_config
+from config.schema import DomainConfig
 from api.contracts import (
     AlertDetailResponse,
     AlertListItem,
@@ -79,7 +81,7 @@ from rag.models import ContextRecord
 from rag.protocols import RagServiceProtocol
 from rag.service import create_rag_service
 from rag.service_models import RagQueryRequest
-from shared.types import Alert, Entity, Relationship
+from shared.types import Alert, Entity, EntityDefinition, Relationship
 from shared.utils import generate_id
 from storage.adapters.in_memory import InMemoryObjectStore
 
@@ -161,9 +163,18 @@ class PolicyGapRecord:
 class ApiState:
     """Own seeded services and mutable UI-facing state for local API reads and writes."""
 
-    def __init__(self) -> None:
+    def __init__(self, domain_config: DomainConfig | None = None) -> None:
         self._lock = Lock()
+        self._domain_config = domain_config or load_config()
+        self._entity_definitions = list(self._domain_config.entities)
+        self._entity_definition_by_type = {
+            definition.name: definition for definition in self._entity_definitions
+        }
         self._knowledge_base_id = "kb-1"
+        self._primary_entity_id = "provider-204"
+        self._secondary_entity_id = "provider-118"
+        self._tertiary_entity_id = "claim-8821"
+        self._quaternary_entity_id = "beneficiary-771"
         self._event_bus = InMemoryEventBus()
         self._graph_repository = InMemoryGraphRepository()
         self._graph_service = create_graph_service(
@@ -235,7 +246,11 @@ class ApiState:
         metadata = self._alert_metadata[alert_id]
         return AlertDetailResponse(
             alert=item,
-            related_entity_ids=[item.entity_id, "claim-8821", "beneficiary-771"],
+            related_entity_ids=[
+                item.entity_id,
+                self._tertiary_entity_id,
+                self._quaternary_entity_id,
+            ],
             policy_citations=cast(list[PolicyCitation], metadata["policy_citations"]),
         )
 
@@ -615,8 +630,8 @@ class ApiState:
     def _seed_graph(self) -> None:
         entities = [
             Entity(
-                id="provider-204",
-                type="provider",
+                id=self._primary_entity_id,
+                type=self._entity_type_at(0),
                 properties={
                     "npi": "1234567890",
                     "specialty": "Pain Management",
@@ -625,8 +640,8 @@ class ApiState:
                 },
             ),
             Entity(
-                id="provider-118",
-                type="provider",
+                id=self._secondary_entity_id,
+                type=self._entity_type_at(0),
                 properties={
                     "npi": "9988776655",
                     "specialty": "Imaging",
@@ -635,28 +650,28 @@ class ApiState:
                 },
             ),
             Entity(
-                id="claim-8821",
-                type="claim",
+                id=self._tertiary_entity_id,
+                type=self._entity_type_at(2),
                 properties={"claim_amount": 4812.5, "service_month": "2026-04", "display_name": "Claim 8821"},
             ),
             Entity(
-                id="beneficiary-771",
-                type="beneficiary",
+                id=self._quaternary_entity_id,
+                type=self._entity_type_at(1),
                 properties={"county": "King", "age_band": "65-74", "display_name": "Beneficiary 771"},
             ),
         ]
         relationships = [
             Relationship(
                 id="relationship-claim-provider-1",
-                type="submitted_by",
-                source_id="claim-8821",
-                target_id="provider-204",
+                type=self._relationship_type_at(0),
+                source_id=self._tertiary_entity_id,
+                target_id=self._primary_entity_id,
             ),
             Relationship(
                 id="relationship-beneficiary-claim-1",
-                type="received_service",
-                source_id="beneficiary-771",
-                target_id="claim-8821",
+                type=self._relationship_type_at(1),
+                source_id=self._quaternary_entity_id,
+                target_id=self._tertiary_entity_id,
             ),
         ]
         self._graph_repository.upsert_entities(self._knowledge_base_id, entities)
@@ -668,16 +683,16 @@ class ApiState:
             batch_id="batch-phase-5",
             observations=[
                 MonitoringObservation(
-                    entity_id="provider-204",
-                    entity_type="provider",
+                    entity_id=self._primary_entity_id,
+                    entity_type=self._entity_type_at(0),
                     metric_name="billing_intensity",
                     score=0.93,
                     rationale="Billing volume and unit intensity diverge from peer cohort baselines across three consecutive review windows.",
                     evidence_pack_id="evidence-seed-1",
                 ),
                 MonitoringObservation(
-                    entity_id="provider-118",
-                    entity_type="provider",
+                    entity_id=self._secondary_entity_id,
+                    entity_type=self._entity_type_at(0),
                     metric_name="referral_concentration",
                     score=0.84,
                     rationale="Referral traffic is concentrated through a narrow cluster with elevated downstream utilization.",
@@ -692,12 +707,12 @@ class ApiState:
         )
         stable_ids = ["alert-001", "alert-002"]
         labels = {
-            "provider-204": "Advanced Pain Specialists",
-            "provider-118": "North Harbor Imaging",
+            self._primary_entity_id: "Advanced Pain Specialists",
+            self._secondary_entity_id: "North Harbor Imaging",
         }
         tags = {
-            "provider-204": ["peer-group-outlier", "procedure-spike"],
-            "provider-118": ["network-pattern", "referral-cluster"],
+            self._primary_entity_id: ["peer-group-outlier", "procedure-spike"],
+            self._secondary_entity_id: ["network-pattern", "referral-cluster"],
         }
         alerts: dict[str, Alert] = {}
         metadata: dict[str, dict[str, object]] = {}
@@ -725,7 +740,7 @@ class ApiState:
         return [
             RiskProfile(
                 knowledge_base_id=self._knowledge_base_id,
-                entity_id="provider-204",
+                entity_id=self._primary_entity_id,
                 signals=[
                     RiskSignal(signal_name="peer_group_deviation", value=0.94, weight=2.0, rationale="Procedure mix exceeds peer benchmark."),
                     RiskSignal(signal_name="network_concentration", value=0.78, weight=1.3, rationale="A narrow referral cluster contributes outsized volume."),
@@ -734,7 +749,7 @@ class ApiState:
             ),
             RiskProfile(
                 knowledge_base_id=self._knowledge_base_id,
-                entity_id="provider-118",
+                entity_id=self._secondary_entity_id,
                 signals=[
                     RiskSignal(signal_name="referral_density", value=0.76, weight=1.8, rationale="Referrals are overly concentrated."),
                     RiskSignal(signal_name="peer_deviation", value=0.62, weight=1.2, rationale="Peer utilization exceeded expected range."),
@@ -742,7 +757,7 @@ class ApiState:
             ),
             RiskProfile(
                 knowledge_base_id=self._knowledge_base_id,
-                entity_id="claim-8821",
+                entity_id=self._tertiary_entity_id,
                 signals=[
                     RiskSignal(signal_name="claim_amount", value=0.88, weight=1.6, rationale="Claim amount exceeds cohort norm."),
                     RiskSignal(signal_name="linked_provider", value=0.92, weight=1.4, rationale="Claim is linked to a high-risk provider."),
@@ -750,7 +765,7 @@ class ApiState:
             ),
             RiskProfile(
                 knowledge_base_id=self._knowledge_base_id,
-                entity_id="beneficiary-771",
+                entity_id=self._quaternary_entity_id,
                 signals=[
                     RiskSignal(signal_name="utilization_pattern", value=0.67, weight=1.1, rationale="Repeated high-intensity utilization."),
                     RiskSignal(signal_name="network_affinity", value=0.58, weight=1.0, rationale="Services are clustered in a narrow provider network."),
@@ -763,7 +778,7 @@ class ApiState:
         return [
             TimeSeriesSeries(
                 knowledge_base_id=self._knowledge_base_id,
-                entity_id="provider-204",
+                entity_id=self._primary_entity_id,
                 metric_name="normalized_alert_pressure",
                 observations=[
                     TimeSeriesObservation(observed_at=start + timedelta(days=index * 7), value=value)
@@ -772,7 +787,7 @@ class ApiState:
             ),
             TimeSeriesSeries(
                 knowledge_base_id=self._knowledge_base_id,
-                entity_id="provider-118",
+                entity_id=self._secondary_entity_id,
                 metric_name="normalized_alert_pressure",
                 observations=[
                     TimeSeriesObservation(observed_at=start + timedelta(days=index * 7), value=value)
@@ -805,7 +820,11 @@ class ApiState:
                         ),
                     ],
                     subgraph=ExplanationSubgraph(
-                        node_ids=[alert.entity_id, "claim-8821", "beneficiary-771"],
+                        node_ids=[
+                            alert.entity_id,
+                            self._tertiary_entity_id,
+                            self._quaternary_entity_id,
+                        ],
                         edge_ids=["relationship-claim-provider-1", "relationship-beneficiary-claim-1"],
                     ),
                     confidence=0.9,
@@ -1004,8 +1023,8 @@ class ApiState:
         return {
             self._knowledge_base_id: KnowledgeBaseRecord(
                 id=self._knowledge_base_id,
-                name="Medicare FFS Policy Corpus",
-                description="Primary Medicare policy and utilization knowledge base for triage, graph analytics, and RAG retrieval.",
+                name=f"{self._domain_config.domain.display_name} Knowledge Base",
+                description=f"Primary {self._domain_config.domain.display_name} knowledge base for triage, graph analytics, and RAG retrieval.",
                 status="indexing",
                 entity_count=len(self._graph_repository.get_entities(self._knowledge_base_id)),
                 relationship_count=len(self._graph_repository.get_relationships(self._knowledge_base_id)),
@@ -1065,14 +1084,14 @@ class ApiState:
                 content_id="content-1",
                 embedding=[20.0, 16.0, 3.0, 4.0],
                 content="Provider 204 shows repeated injection billing patterns with peer cohort deviation and graph-linked concentration.",
-                metadata={"entity_id": "provider-204", "category": "alerts"},
+                metadata={"entity_id": self._primary_entity_id, "category": "alerts"},
             ),
             ContextRecord(
                 record_id="record-2",
                 content_id="content-2",
                 embedding=[18.0, 15.0, 2.0, 4.0],
                 content="North Harbor Imaging referral traffic is overly concentrated and linked to elevated utilization.",
-                metadata={"entity_id": "provider-118", "category": "network"},
+                metadata={"entity_id": self._secondary_entity_id, "category": "network"},
             ),
         ]
 
@@ -1100,7 +1119,7 @@ class ApiState:
 
     def _to_graph_node(self, entity: Entity, *, risk_score: float) -> GraphNodeResponse:
         label = str(entity.properties.get("display_name", entity.id))
-        summary = _entity_summary(entity)
+        summary = self._entity_summary(entity)
         return GraphNodeResponse(
             id=entity.id,
             type=entity.type,
@@ -1309,10 +1328,32 @@ class ApiState:
     def _now() -> datetime:
         return datetime.now(timezone.utc)
 
+    def _entity_type_at(self, index: int) -> str:
+        if not self._entity_definitions:
+            return "entity"
+        return self._entity_definitions[index % len(self._entity_definitions)].name
 
-def create_api_state() -> ApiState:
+    def _relationship_type_at(self, index: int) -> str:
+        relationships = list(self._domain_config.relationships)
+        if not relationships:
+            return "related_to"
+        return relationships[index % len(relationships)].name
+
+    def _entity_definition_for(self, entity_type: str) -> EntityDefinition | None:
+        return self._entity_definition_by_type.get(entity_type)
+
+    def _entity_summary(self, entity: Entity) -> str:
+        definition = self._entity_definition_for(entity.type)
+        label = definition.display_label if definition is not None else entity.type.title()
+        display_name = entity.properties.get("display_name")
+        if isinstance(display_name, str) and display_name.strip():
+            return f"{label} entity named {display_name} in the active knowledge base."
+        return f"{label} entity in the active knowledge base."
+
+
+def create_api_state(domain_config: DomainConfig | None = None) -> ApiState:
     """Create the seeded API application state."""
-    return ApiState()
+    return ApiState(domain_config)
 
 
 def _normalize_severity(severity: str, confidence: float) -> Literal["low", "medium", "high", "critical"]:
@@ -1349,11 +1390,3 @@ def _normalize_document_status(status: str) -> Literal["pending", "registered", 
     return "pending"
 
 
-def _entity_summary(entity: Entity) -> str:
-    if entity.type == "provider":
-        return "Provider entity with concentrated procedure mix and elevated longitudinal risk."
-    if entity.type == "claim":
-        return "Recent claim linked to high-dollar utilization in the flagged review window."
-    if entity.type == "beneficiary":
-        return "Beneficiary with repeated high-intensity utilization routed through the same provider cluster."
-    return f"{entity.type.title()} entity in the active knowledge base."

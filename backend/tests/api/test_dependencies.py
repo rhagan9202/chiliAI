@@ -14,6 +14,7 @@ from config.schema import (
     EventBusConfig,
     GraphDbConfig,
     LlmConfig,
+    MonitoringConfig,
     ObjectStoreConfig,
     VectorStoreConfig,
 )
@@ -22,7 +23,10 @@ from events.adapters.in_memory import InMemoryEventBus
 from events.adapters.redis_streams import RedisStreamsEventBus
 from graph.service import GraphService
 from llm.service import LlmService
+from monitoring.adapters.in_memory import InMemoryObservationSource
+from monitoring.models import MonitoringBatch, MonitoringObservation
 from monitoring.service import MonitoringService
+from monitoring.service_models import MonitoringEvaluationRequest
 from shared.exceptions import ConfigurationError
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.adapters.local_fs_adapter import LocalFsObjectStore
@@ -91,6 +95,55 @@ def test_factories_are_cached_for_same_config(
     assert dependencies.get_object_store() is dependencies.get_object_store()
     assert dependencies.get_graph_service() is dependencies.get_graph_service()
     assert dependencies.get_vectorstore_service() is dependencies.get_vectorstore_service()
+
+
+def test_monitoring_service_uses_configured_rate_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={
+            "monitoring": MonitoringConfig(
+                max_alerts_per_evaluation=1,
+                dedup_window_seconds=120,
+                grouping_window_seconds=60,
+            )
+        }
+    )
+    source = InMemoryObservationSource(
+        batches=[
+            MonitoringBatch(
+                knowledge_base_id="kb-1",
+                batch_id="batch-1",
+                observations=[
+                    MonitoringObservation(
+                        entity_id="entity-1",
+                        entity_type="provider",
+                        metric_name="billing_intensity",
+                        score=0.95,
+                        rationale="High billing intensity.",
+                    ),
+                    MonitoringObservation(
+                        entity_id="entity-2",
+                        entity_type="provider",
+                        metric_name="billing_intensity",
+                        score=0.93,
+                        rationale="High billing intensity.",
+                    ),
+                ],
+            )
+        ]
+    )
+    _install_config(monkeypatch, config)
+    monkeypatch.setattr(dependencies, "get_monitoring_source", lambda: source)
+
+    service = dependencies.get_monitoring_service()
+    response = service.evaluate(
+        MonitoringEvaluationRequest(knowledge_base_id="kb-1", batch_id="batch-1")
+    )
+
+    assert response.alert_count == 1
+    assert response.rate_limited_count == 1
 
 
 def test_event_bus_falls_back_to_environment_when_config_section_absent(

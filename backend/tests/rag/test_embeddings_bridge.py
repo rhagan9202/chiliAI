@@ -9,7 +9,7 @@ from embeddings.service_models import (
     EmbedRequest,
     EmbedResponse,
 )
-from rag.adapters.embeddings_bridge import ServiceQueryEmbedder
+from api._rag_bridges import ServiceQueryEmbedder
 from rag.adapters.protocols import QueryEmbedderProtocol
 from rag.exceptions import RagConfigurationError
 

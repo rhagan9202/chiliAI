@@ -17,8 +17,8 @@ from graph.service_models import (
     GraphMetricsResult,
     NeighborhoodQuery,
 )
+from shared.protocols import ObjectStoreProtocol
 from shared.types import Entity, Relationship
-from storage.protocols import ObjectStore
 
 ItemT = TypeVar("ItemT")
 
@@ -34,7 +34,7 @@ class GraphService:
         self,
         repository: GraphRepository,
         *,
-        object_store: ObjectStore,
+        object_store: ObjectStoreProtocol,
         event_bus: EventBus,
         batch_size: int = 500,
     ) -> None:
@@ -268,7 +268,7 @@ class GraphService:
 def create_graph_service(
     repository: GraphRepository,
     *,
-    object_store: ObjectStore,
+    object_store: ObjectStoreProtocol,
     event_bus: EventBus,
     batch_size: int = 500,
 ) -> GraphService:

@@ -8,7 +8,7 @@ import pytest
 
 from graph.models import GraphMetrics, SubgraphResult
 from graph.service_models import GraphBuildReceipt, GraphBuildTask
-from rag.adapters.graph_bridge import ServiceGraphContextExpander
+from api._rag_bridges import ServiceGraphContextExpander
 from rag.adapters.protocols import GraphContextExpanderProtocol
 from rag.models import RetrievedContextItem
 from shared.types import Entity, Relationship

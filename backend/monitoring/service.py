@@ -5,8 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Literal, get_args
 
-from monitoring.adapters.in_memory import InMemoryAlertRepository
-from monitoring.adapters.protocols import ObservationSourceProtocol
+from monitoring.adapters.protocols import AlertRepositoryProtocol, ObservationSourceProtocol
 from monitoring.exceptions import (
     AlertAlreadyResolvedError,
     AlertLifecycleError,
@@ -275,7 +274,7 @@ def transition_alert_status(
 class AlertsService:
     """Manage alert listing and lifecycle transitions over an alert repository."""
 
-    def __init__(self, repository: InMemoryAlertRepository) -> None:
+    def __init__(self, repository: AlertRepositoryProtocol) -> None:
         self._repository = repository
 
     def list_alerts(self, request: AlertListRequest) -> AlertListResponse:
@@ -325,8 +324,8 @@ class AlertsService:
         return updated
 
 
-def create_alerts_service(repository: InMemoryAlertRepository) -> AlertsService:
-    """Create the default alerts service from an in-memory repository."""
+def create_alerts_service(repository: AlertRepositoryProtocol) -> AlertsService:
+    """Create the default alerts service from an alert repository."""
 
     return AlertsService(repository)
 

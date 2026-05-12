@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from rag.adapters.protocols import ContextRetrieverProtocol
-from rag.adapters.vectorstore_bridge import ServiceContextRetriever
+from api._rag_bridges import ServiceContextRetriever
 from vectorstore.service_models import (
     VectorIndexReceipt,
     VectorIndexRequest,

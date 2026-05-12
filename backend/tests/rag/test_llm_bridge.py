@@ -8,7 +8,7 @@ import pytest
 
 from llm.models import MessageRole
 from llm.service_models import CompletionResponse, GenerateRequest
-from rag.adapters.llm_bridge import ServiceAnswerGenerator
+from api._rag_bridges import ServiceAnswerGenerator
 from rag.adapters.protocols import AnswerGeneratorProtocol
 from rag.models import (
     GraphContext,

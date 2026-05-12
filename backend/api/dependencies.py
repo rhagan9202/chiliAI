@@ -153,7 +153,7 @@ def get_api_state(request: Request) -> ApiState:
     """
     state = getattr(request.app.state, "api_state", None)
     if state is None:
-        state = create_api_state()
+        state = create_api_state(get_domain_config())
         request.app.state.api_state = state
     return state
 
@@ -657,14 +657,20 @@ def get_llm_service() -> LlmServiceProtocol:
 @lru_cache(maxsize=1)
 def get_monitoring_source() -> ObservationSourceProtocol:
     """Return the monitoring observation source selected by config."""
-    _ = get_domain_config().monitoring or MonitoringConfig()
     return InMemoryObservationSource()
 
 
 @lru_cache(maxsize=1)
 def get_monitoring_service() -> MonitoringServiceProtocol:
     """Return the monitoring service assembled from configured dependencies."""
-    return create_monitoring_service(get_monitoring_source(), event_bus=get_event_bus())
+    monitoring_config = get_domain_config().monitoring or MonitoringConfig()
+    return create_monitoring_service(
+        get_monitoring_source(),
+        event_bus=get_event_bus(),
+        dedup_window_seconds=monitoring_config.dedup_window_seconds,
+        max_alerts_per_evaluation=monitoring_config.max_alerts_per_evaluation,
+        grouping_window_seconds=monitoring_config.grouping_window_seconds,
+    )
 
 
 @lru_cache(maxsize=1)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from monitoring.models import MonitoringBatch
+from shared.types import Alert
 
 
 @runtime_checkable
@@ -21,6 +22,18 @@ class ObservationSourceProtocol(Protocol):
     def load_batch(self, *, knowledge_base_id: str, batch_id: str) -> MonitoringBatch: ...
 
 
+@runtime_checkable
+class AlertRepositoryProtocol(Protocol):
+    """Persist and list alert read models for alert lifecycle operations."""
+
+    def all(self) -> list[Alert]: ...
+
+    def get(self, alert_id: str) -> Alert | None: ...
+
+    def put(self, alert: Alert) -> None: ...
+
+
 __all__ = [
+    "AlertRepositoryProtocol",
     "ObservationSourceProtocol",
 ]
