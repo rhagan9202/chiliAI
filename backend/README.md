@@ -6,7 +6,7 @@ Python 3.12 backend for the chiliAI platform — a domain-reconfigurable Graph R
 
 ## Current State
 
-Working FastAPI gateway and pipeline-worker prototype with domain configuration, event-driven orchestration, ingestion, graph/vector/embedding/LLM/RAG service boundaries, analytics modules, monitoring, storage adapters, config-driven adapter selection, auth/RBAC middleware, route-level policy enforcement, live KB metadata projection, repository-backed SSE KB statuses, graph namespace cleanup, and extensive pytest coverage. Initial production-facing adapters now exist for Neo4j, Qdrant, OpenAI, Anthropic, sentence-transformers, and S3-compatible storage; remaining production work is mainly tenant/resource-level authorization, observability, durable workflow recovery, production-grade KB metadata persistence, vector/document provenance cleanup, and live adapter deployment profiles.
+Working FastAPI gateway and pipeline-worker prototype with domain configuration, event-driven orchestration, ingestion, graph/vector/embedding/LLM/RAG service boundaries, analytics modules, monitoring, storage adapters, config-driven adapter selection, auth/RBAC middleware, route-level policy enforcement, live KB metadata projection, API-owned alert projection, repository-backed SSE KB/active-alert status, graph namespace cleanup, and extensive pytest coverage. Initial production-facing adapters now exist for Neo4j, Qdrant, OpenAI, Anthropic, sentence-transformers, and S3-compatible storage; remaining production work is mainly tenant/resource-level authorization, observability, durable workflow recovery, production-grade projection metadata persistence, vector/document provenance cleanup, and live adapter deployment profiles.
 
 ### What's functional
 
@@ -17,6 +17,7 @@ Working FastAPI gateway and pipeline-worker prototype with domain configuration,
 - **`api/dependencies.py`** — Dependency injection wiring. `get_domain_config()` loads config once and process-caches (cleared at the top of `create_app()` for test isolation). `get_api_state()` reads from `request.app.state.api_state`, attached per-app in `create_app()`. Graph, vectorstore, storage, embedding, and LLM adapters are selected from config with lazy optional imports.
 - **`api/routers/`** — Knowledge base, alert, investigation, chat (rag), analytics, config, policy, cases, evidence, graph, workflows, events (SSE), auth, and WebSocket routers. Every Phase 5+ route carries `Depends(require_role(...))` (reads = viewer, writes = analyst); `policy_registry.assert_complete` runs on app startup when auth is enabled and refuses to boot if any route is unguarded.
 - **`api/_kb_store.py` / `api/_kb_projection.py`** — API-owned KB/document metadata projection. The in-memory repository remains available for tests and isolated local runs; the object-store repository persists dev KB/document metadata across API reloads through the configured `ObjectStore`. Projection reads merge repository metadata with live graph metrics/object-store build artifacts and persist status/count changes back through the repository.
+- **`api/_alert_store.py`** — API-owned alert read projection for `/alerts` and SSE `active_alerts`. Monitoring/analytics services still own alert generation; this projection preserves the frontend contract while decoupling alert reads from legacy seeded `ApiState`.
 - **`events/`** — In-memory and Redis Streams event bus implementations plus typed event envelopes.
 - **`ingestion/`** — Parser orchestration, document chunking, extraction, validation, and registration flows.
 - **`graph/`, `vectorstore/`, `embeddings/`, `llm/`, `rag/`** — Service/protocol boundaries with in-memory adapters and selected production-facing adapters.
@@ -100,6 +101,7 @@ The backend reads a domain configuration YAML/JSON file at startup (path set via
 | `CHILI_ENV` | unset | When set to `production`, `create_app()` enforces `auth.enabled=True` plus a complete `AuthConfig`. |
 | `ALLOWED_ORIGINS` | local dev defaults (`http://localhost:5173`, `:80`, `localhost`) | Comma-separated CORS allow-list for the frontend. Required when the SPA is deployed under a different origin. |
 | `CHILI_KB_REPOSITORY_BACKEND` | `in_memory` | Knowledge base metadata repository. Use `object_store` in the dev stack to persist KB/document metadata through API reloads via the configured object store. |
+| `CHILI_ALERT_REPOSITORY_BACKEND` | `in_memory` | Alert projection repository. Use `object_store` in the dev stack to persist alert read projections and SSE active-alert counts through API reloads via the configured object store. |
 | `OIDC_CLIENT_SECRET` | unset | OIDC client secret read by name from `auth.client_secret_env_var`. |
 | `REDIS_URL` | unset | Required for the Redis Streams event bus and the production session store when auth is enabled. |
 | `CHILI_EVENT_BUS_BACKEND` | `in_memory` | `in_memory` or `redis`. |
@@ -135,3 +137,9 @@ cfg = load_config("config/defaults/medicare_fraud.yaml")
 - `GET /knowledgebases`, `GET /knowledgebases/{id}`, `GET /knowledgebases/{id}/documents`, and `GET /events/stream` use the same live projection helpers so visible status/counts stay aligned.
 - `DELETE /knowledgebases/{id}` deletes object-store payloads, clears the graph namespace through `GraphServiceProtocol.delete_knowledge_base()`, deletes KB metadata, and publishes `kb.delete`.
 - The `object_store` KB repository is intended for local/dev single-writer durability. Add a dedicated production metadata adapter, optional dependency, and migration story before treating it as a high-concurrency production database.
+
+## Alert Projection Notes
+
+- Alert read models are owned by the FastAPI gateway behind `AlertProjectionRepository`; `/alerts` no longer reads from legacy seeded `ApiState`.
+- `GET /alerts`, `GET /alerts/{id}`, `POST /alerts/{id}/acknowledge`, and SSE `active_alerts` use the same projection store so feed state and realtime counts stay aligned.
+- The `object_store` alert repository is intended for local/dev single-writer durability. A production alert metadata adapter should implement the same protocol when alert projection writes become concurrent or tenant-scoped.

@@ -9,8 +9,6 @@ from typing import NoReturn, cast
 from fastapi import Depends, Path, Request
 
 from api.contracts import (
-    AlertDetailResponse,
-    AlertListResponse,
     AnalyticsOverviewResponse,
     ApiEnvelope,
     CaseCreateRequest,
@@ -82,9 +80,7 @@ from vectorstore.service import create_vector_service
 
 __all__ = [
     "get_api_state",
-    "get_alert_detail_payload",
-    "get_alert_list_payload",
-    "get_alert_mutation_payload",
+    "get_alert_repository",
     "get_analytics_overview_payload",
     "get_case_create_payload",
     "get_case_detail_payload",
@@ -160,28 +156,6 @@ def get_api_state(request: Request) -> ApiState:
         state = create_api_state()
         request.app.state.api_state = state
     return state
-
-
-def get_alert_list_payload(state: ApiState = Depends(get_api_state)) -> AlertListResponse:
-    """Return the alert feed read model."""
-    return state.list_alerts()
-
-
-def get_alert_detail_payload(
-    alert_id: str = Path(..., description="Alert identifier."),
-    state: ApiState = Depends(get_api_state),
-) -> AlertDetailResponse:
-    """Return one deterministic alert detail read model."""
-    return state.get_alert_detail(alert_id)
-
-
-def get_alert_mutation_payload(
-    alert_id: str = Path(..., description="Alert identifier."),
-    state: ApiState = Depends(get_api_state),
-) -> ApiEnvelope:
-    """Return the scaffold acknowledgement response."""
-    updated = state.acknowledge_alert(alert_id)
-    return ApiEnvelope(status="accepted", message=f"Alert '{updated.id}' is now {updated.status}.")
 
 
 def get_graph_entity_detail_payload(
@@ -712,6 +686,11 @@ def get_ingestion_service() -> IngestionService:
 # Keep this block at the end of the module so parallel router agents can append
 # their own DI factories without merge conflicts.
 
+from api._alert_store import (  # noqa: E402  (intentional bottom-of-file import)
+    AlertProjectionRepository,
+    InMemoryAlertProjectionRepository,
+    ObjectStoreAlertProjectionRepository,
+)
 from api._kb_store import (  # noqa: E402  (intentional bottom-of-file import)
     InMemoryKnowledgeBaseRepository,
     KnowledgeBaseRepository,
@@ -734,6 +713,31 @@ def get_knowledge_base_repository() -> KnowledgeBaseRepository:
         return ObjectStoreKnowledgeBaseRepository(get_object_store())
     _raise_unsupported_backend(
         "knowledge base repository",
+        backend,
+        ("in_memory", "object_store"),
+    )
+
+
+def get_alert_repository(request: Request) -> AlertProjectionRepository:
+    """Return the per-app alert projection repository used by alert routes."""
+    repository = getattr(request.app.state, "alert_repository", None)
+    if isinstance(repository, AlertProjectionRepository):
+        return repository
+
+    repository = _create_alert_repository()
+    request.app.state.alert_repository = repository
+    return repository
+
+
+def _create_alert_repository() -> AlertProjectionRepository:
+    """Create the alert projection repository selected by environment."""
+    backend = os.environ.get("CHILI_ALERT_REPOSITORY_BACKEND", "in_memory").strip().lower()
+    if backend in {"in_memory", "memory"}:
+        return InMemoryAlertProjectionRepository()
+    if backend in {"object_store", "object-store", "objectstore"}:
+        return ObjectStoreAlertProjectionRepository(get_object_store())
+    _raise_unsupported_backend(
+        "alert repository",
         backend,
         ("in_memory", "object_store"),
     )

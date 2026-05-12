@@ -4,11 +4,40 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from api._alert_store import AlertProjectionRecord, InMemoryAlertProjectionRepository
 from api.app import create_app
+from api.dependencies import get_alert_repository
+from shared.types import Alert
+from shared.utils import utc_now
+
+
+def _client_with_alert_projection() -> TestClient:
+    """Create a test client with deterministic alert projection records."""
+    app = create_app()
+    repository = InMemoryAlertProjectionRepository()
+    repository.upsert(
+        AlertProjectionRecord(
+            alert=Alert(
+                id="alert-001",
+                entity_type="provider",
+                entity_id="provider-204",
+                severity="critical",
+                title="Outlier billing concentration",
+                reasoning="Provider activity is materially above peers.",
+                evidence_pack_id="evidence-001",
+                created_at=utc_now(),
+            ),
+            entity_label="Redwood DME Group",
+            confidence=0.96,
+            tags=["billing"],
+        )
+    )
+    app.dependency_overrides[get_alert_repository] = lambda: repository
+    return TestClient(app)
 
 
 def test_alert_acknowledgement_changes_status() -> None:
-    client = TestClient(create_app())
+    client = _client_with_alert_projection()
 
     alerts = client.get("/alerts").json()["items"]
     alert_id = alerts[0]["id"]
@@ -21,7 +50,7 @@ def test_alert_acknowledgement_changes_status() -> None:
 
 
 def test_create_and_update_case_and_append_feedback() -> None:
-    client = TestClient(create_app())
+    client = _client_with_alert_projection()
 
     alert_id = client.get("/alerts").json()["items"][0]["id"]
     created = client.post(
@@ -77,7 +106,7 @@ def test_create_conversation_and_add_message() -> None:
 
 
 def test_graph_and_analytics_routes_are_service_backed() -> None:
-    client = TestClient(create_app())
+    client = _client_with_alert_projection()
 
     alerts = client.get("/alerts").json()["items"]
     entity_id = alerts[0]["entity_id"]

@@ -3,14 +3,78 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 
 from fastapi.testclient import TestClient
 
+from api._alert_store import AlertProjectionRecord, InMemoryAlertProjectionRepository
 from api.app import create_app
+from api.contracts import PolicyCitation
+from api.dependencies import get_alert_repository
+from shared.types import Alert
+from shared.utils import utc_now
+
+
+def _seed_alert_repository() -> InMemoryAlertProjectionRepository:
+    """Return a deterministic alert projection repository for API tests."""
+    repository = InMemoryAlertProjectionRepository()
+    created_at = utc_now()
+    repository.upsert(
+        AlertProjectionRecord(
+            alert=Alert(
+                id="alert-001",
+                entity_type="provider",
+                entity_id="provider-204",
+                severity="critical",
+                title="Outlier billing concentration",
+                reasoning="Provider activity is materially above peers.",
+                evidence_pack_id="evidence-001",
+                created_at=created_at,
+            ),
+            entity_label="Redwood DME Group",
+            confidence=0.96,
+            tags=["billing", "peer-deviation"],
+            related_entity_ids=["provider-204", "claim-8821"],
+            policy_citations=[
+                PolicyCitation(
+                    citation_id="policy-17",
+                    title="CMS Billing Integrity Manual",
+                    excerpt="Claims require documented medical necessity.",
+                    source_document_id="doc-policy-17",
+                )
+            ],
+        )
+    )
+    repository.upsert(
+        AlertProjectionRecord(
+            alert=Alert(
+                id="alert-002",
+                entity_type="provider",
+                entity_id="provider-118",
+                severity="high",
+                title="Referral concentration anomaly",
+                reasoning="Referral traffic is concentrated outside norms.",
+                evidence_pack_id=None,
+                created_at=created_at - timedelta(minutes=5),
+            ),
+            entity_label="North Harbor Imaging",
+            confidence=0.84,
+            tags=["network"],
+        )
+    )
+    return repository
+
+
+def _client_with_alerts() -> TestClient:
+    """Create a test client whose /alerts route uses projection data."""
+    app = create_app()
+    repository = _seed_alert_repository()
+    app.dependency_overrides[get_alert_repository] = lambda: repository
+    return TestClient(app)
 
 
 def test_get_alerts_returns_paginated_feed() -> None:
-    client = TestClient(create_app())
+    client = _client_with_alerts()
 
     response = client.get("/alerts")
 
@@ -21,7 +85,7 @@ def test_get_alerts_returns_paginated_feed() -> None:
 
 
 def test_get_alert_detail_returns_related_context() -> None:
-    client = TestClient(create_app())
+    client = _client_with_alerts()
 
     response = client.get("/alerts/alert-001")
 
@@ -32,7 +96,7 @@ def test_get_alert_detail_returns_related_context() -> None:
 
 
 def test_acknowledge_alert_returns_scaffold_status() -> None:
-    client = TestClient(create_app())
+    client = _client_with_alerts()
 
     response = client.post("/alerts/alert-001/acknowledge")
 
@@ -198,7 +262,10 @@ def test_create_policy_brief_returns_generated_brief() -> None:
 
 
 def test_workspace_event_stream_returns_snapshot() -> None:
-    client = TestClient(create_app())
+    app = create_app()
+    repository = _seed_alert_repository()
+    app.dependency_overrides[get_alert_repository] = lambda: repository
+    client = TestClient(app)
 
     response = client.get("/events/stream?max_events=1")
 

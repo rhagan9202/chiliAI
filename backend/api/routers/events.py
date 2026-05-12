@@ -8,17 +8,19 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 
+from api._alert_store import AlertProjectionRepository, count_active_alerts
 from api._kb_projection import project_knowledge_base
 from api._kb_store import KnowledgeBaseRepository
 from api.contracts import RealtimeSnapshotResponse
 from api.dependencies import (
     get_api_state,
+    get_alert_repository,
     get_graph_service,
     get_knowledge_base_repository,
     get_object_store,
 )
-from api.state import ApiState
 from api.middleware.rbac import require_role
+from api.state import ApiState
 from graph.protocols import GraphServiceProtocol
 from storage.protocols import ObjectStore
 
@@ -30,6 +32,7 @@ router = APIRouter(prefix="/events", tags=["events"])
 async def _stream_workspace_updates(
     request: Request,
     state: ApiState,
+    alert_repository: AlertProjectionRepository,
     repository: KnowledgeBaseRepository,
     graph_service: GraphServiceProtocol,
     object_store: ObjectStore,
@@ -45,6 +48,7 @@ async def _stream_workspace_updates(
         snapshot = _build_realtime_snapshot(
             sequence,
             state,
+            alert_repository,
             repository,
             graph_service,
             object_store,
@@ -59,6 +63,7 @@ async def stream_workspace_updates(
     request: Request,
     max_events: int | None = Query(default=None, ge=1),
     state: ApiState = Depends(get_api_state),
+    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
     graph_service: GraphServiceProtocol = Depends(get_graph_service),
     object_store: ObjectStore = Depends(get_object_store),
@@ -68,6 +73,7 @@ async def stream_workspace_updates(
         _stream_workspace_updates(
             request,
             state,
+            alert_repository,
             repository,
             graph_service,
             object_store,
@@ -84,6 +90,7 @@ async def stream_workspace_updates(
 def _build_realtime_snapshot(
     sequence: int,
     state: ApiState,
+    alert_repository: AlertProjectionRepository,
     repository: KnowledgeBaseRepository,
     graph_service: GraphServiceProtocol,
     object_store: ObjectStore,
@@ -100,5 +107,8 @@ def _build_realtime_snapshot(
         for knowledge_base in knowledge_bases
     }
     return seeded_snapshot.model_copy(
-        update={"knowledge_base_statuses": live_statuses}
+        update={
+            "active_alerts": count_active_alerts(alert_repository),
+            "knowledge_base_statuses": live_statuses,
+        }
     )

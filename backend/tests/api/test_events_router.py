@@ -9,14 +9,16 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from api._alert_store import AlertProjectionRecord, InMemoryAlertProjectionRepository
 from api._kb_store import DocumentRecord, InMemoryKnowledgeBaseRepository
 from api.dependencies import (
+    get_alert_repository,
     get_graph_service,
     get_knowledge_base_repository,
     get_object_store,
 )
 from graph.models import GraphMetrics
-from shared.types import KnowledgeBase
+from shared.types import Alert, KnowledgeBase
 from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore
 
@@ -35,6 +37,41 @@ class _MetricsOnlyGraphService:
 
 def _skip_policy_audit(app: FastAPI) -> None:
     del app
+
+
+def _seed_alert_repository() -> InMemoryAlertProjectionRepository:
+    """Return active and inactive alert projections for SSE tests."""
+    repository = InMemoryAlertProjectionRepository()
+    repository.upsert(
+        AlertProjectionRecord(
+            alert=Alert(
+                id="alert-active",
+                entity_type="provider",
+                entity_id="provider-204",
+                severity="high",
+                title="Active alert",
+                reasoning="This alert should count as active.",
+                created_at=utc_now(),
+            ),
+            confidence=0.82,
+        )
+    )
+    repository.upsert(
+        AlertProjectionRecord(
+            alert=Alert(
+                id="alert-resolved",
+                entity_type="provider",
+                entity_id="provider-118",
+                severity="medium",
+                title="Resolved alert",
+                reasoning="This alert should not count as active.",
+                created_at=utc_now(),
+                status="resolved",
+            ),
+            confidence=0.62,
+        )
+    )
+    return repository
 
 
 def test_events_stream_returns_snapshot_when_auth_disabled() -> None:
@@ -77,6 +114,8 @@ def test_events_stream_returns_live_knowledge_base_statuses() -> None:
     graph_service = _MetricsOnlyGraphService(
         GraphMetrics(entity_count=2, relationship_count=1, avg_degree=1.0)
     )
+    alert_repository = _seed_alert_repository()
+    app.dependency_overrides[get_alert_repository] = lambda: alert_repository
     app.dependency_overrides[get_knowledge_base_repository] = lambda: repository
     app.dependency_overrides[get_graph_service] = lambda: graph_service
     app.dependency_overrides[get_object_store] = lambda: object_store
@@ -86,6 +125,7 @@ def test_events_stream_returns_live_knowledge_base_statuses() -> None:
 
     body = response.content.decode()
     assert response.status_code == 200
+    assert '"active_alerts":1' in body
     assert '"knowledge_base_statuses":{"kb-live-sse":"ready"}' in body
     assert "kb-1" not in body
 
