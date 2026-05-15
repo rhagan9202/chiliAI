@@ -84,7 +84,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-omit = ["*/migrations/*"]
+omit = ["database/migrations/*"]
 
 [tool.pyright]
 pythonVersion = "3.12"

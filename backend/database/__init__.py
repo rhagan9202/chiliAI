@@ -13,7 +13,6 @@ from database.protocols import ConnectionProvider, DatabaseConnection, DatabaseC
 from database.runtime import create_connection_provider
 
 __all__ = [
-    "check_database_health",
     "ConnectionProvider",
     "DatabaseConnection",
     "DatabaseConnectionError",
@@ -22,5 +21,6 @@ __all__ = [
     "MigrationError",
     "QueryError",
     "Row",
+    "check_database_health",
     "create_connection_provider",
 ]
