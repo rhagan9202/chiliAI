@@ -117,6 +117,13 @@ events:
   stream_prefix: chili
   consumer_group: chili-workers
 
+database:
+  backend: postgres
+  dsn_env_var: DATABASE_URL
+  pool_size: 10
+  pool_max_overflow: 5
+  statement_timeout_ms: 30000
+
 monitoring:
   evaluation_interval_seconds: 300
   dedup_window_seconds: 3600
