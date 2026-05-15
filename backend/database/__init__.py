@@ -8,10 +8,12 @@ from database.exceptions import (
     MigrationError,
     QueryError,
 )
+from database.health import check_database_health
 from database.protocols import ConnectionProvider, DatabaseConnection, DatabaseCursor, Row
 from database.runtime import create_connection_provider
 
 __all__ = [
+    "check_database_health",
     "ConnectionProvider",
     "DatabaseConnection",
     "DatabaseConnectionError",
