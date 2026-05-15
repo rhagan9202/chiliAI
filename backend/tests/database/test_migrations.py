@@ -39,6 +39,18 @@ def _run_migrations(database_url: str) -> None:
     assert result.returncode == 0, result.stderr
 
 
+def _run_downgrade(database_url: str) -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "downgrade", "base"],
+        cwd=_BACKEND_DIR,
+        env={**os.environ, "DATABASE_URL": database_url},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_baseline_migration_creates_all_tables(database_url: str) -> None:
     _run_migrations(database_url)
     provider = create_connection_provider(DatabaseConfig(backend="postgres"))
@@ -59,3 +71,21 @@ def test_baseline_migration_creates_all_tables(database_url: str) -> None:
             assert _EXPECTED_HYPERTABLES.issubset(hypertables)
     finally:
         provider.close()
+
+
+def test_baseline_migration_downgrade_removes_all_tables(database_url: str) -> None:
+    _run_migrations(database_url)
+    _run_downgrade(database_url)
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    try:
+        with provider.connection() as conn:
+            rows = conn.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'public'"
+            ).fetchall()
+            tables = {str(row[0]) for row in rows}
+            assert _EXPECTED_TABLES.isdisjoint(tables)
+    finally:
+        provider.close()
+    _run_migrations(database_url)
