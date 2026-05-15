@@ -58,8 +58,15 @@ def create_connection_pool(dsn: str, config: DatabaseConfig) -> _ConnectionPoolP
     statement_timeout_ms = config.statement_timeout_ms
 
     def _configure(conn: DatabaseConnection) -> None:
+        """Apply session settings to every connection handed out by the pool.
+
+        The commit() is required: a session-level SET inside an open
+        transaction is reverted on rollback, and psycopg_pool will not
+        accept a connection left mid-transaction. Committing persists the
+        statement_timeout and returns the connection to IDLE status.
+        """
         conn.execute(f"SET statement_timeout = {statement_timeout_ms}")
-        conn.commit()  # commit persists the session-level SET and returns the connection to IDLE status as required by psycopg_pool
+        conn.commit()
 
     try:
         pool = pool_factory(
