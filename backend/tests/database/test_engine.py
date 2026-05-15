@@ -30,3 +30,15 @@ def test_bad_dsn_raises_database_connection_error() -> None:
         create_connection_pool(
             "postgresql://chili:wrong@127.0.0.1:1/nonexistent", config
         )
+
+
+def test_pooled_connection_has_statement_timeout(database_url: str) -> None:
+    config = DatabaseConfig(backend="postgres", statement_timeout_ms=30000)
+    provider = PsycopgConnectionProvider(create_connection_pool(database_url, config))
+    try:
+        with provider.connection() as conn:
+            row = conn.execute("SHOW statement_timeout").fetchone()
+            assert row is not None
+            assert row[0] == "30s"
+    finally:
+        provider.close()
