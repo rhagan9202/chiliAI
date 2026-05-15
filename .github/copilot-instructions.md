@@ -22,7 +22,7 @@
   2. **Agent / workflow coordinator** — process-driven pipelines over Redis Streams.
   3. **Lightweight shared library** (`shared/`) — stable contracts, domain types, and small utilities.
 - **Forbidden**: ad hoc cross-module imports, hidden shared state, and direct implementation coupling.
-- External systems must sit behind protocols/ABCs with concrete adapters: graph DB, vector store, LLM, object storage, embedding model, and event bus.
+- External systems must sit behind protocols/ABCs with concrete adapters: graph DB, vector store, LLM, object storage, embedding model, event bus, and relational DB (Postgres/TimescaleDB via the `database/` module's `ConnectionProvider` protocol).
 - Domain configuration is a single YAML/JSON surface. The frontend reads it at startup via API to render dynamic labels and feature gates. Do not hardcode domain entities in code.
 - FastAPI and Redis Streams are mandatory architectural components; do not replace them without an explicit architecture update.
 - For new backend modules, follow the package tree and responsibility matrix in `docs/architecture.md` §5.
@@ -30,7 +30,7 @@
 ## Current Implementation Map
 
 - `backend/` is a Python 3.12 FastAPI/API + worker prototype with service/protocol modules, routers, adapters, and tests. See `backend/README.md` and `docs/todos_and_stubs_audit_2026-05-05.md` for current status.
-- Backend modules include `api/`, `ingestion/`, `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/`, `analytics/` (timeseries, gnn, risk, explainability), `agent/`, `monitoring/`, `shared/`, `config/`, `events/`, and `storage/`.
+- Backend modules include `api/`, `ingestion/`, `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/`, `analytics/` (timeseries, gnn, risk, explainability), `agent/`, `monitoring/`, `shared/`, `config/`, `events/`, `storage/`, and `database/` (Postgres + TimescaleDB connection provider, Alembic migrations).
 - `chili_app/` is a routed analyst workbench, not a Vite placeholder. Implemented routes include Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration.
 - Known frontend prototype gaps include persisted evidence packs, config save, and production UX/performance hardening. See `chili_app/README.md` for route status.
 - Runtime topology is three app containers: **chili-app** (React SPA/nginx), **chili-api** (FastAPI gateway), and **chili-worker** (pipeline runner), plus Redis 7+, graph DB, vector store, and object store dependencies. See `docs/architecture.md` §4.

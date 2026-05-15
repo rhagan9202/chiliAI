@@ -179,6 +179,7 @@ The monorepo produces the following deployable containers:
 | **Graph Database** | in-memory / Neo4j | Persists knowledge graphs. Accessed exclusively through the `graph` module's abstract repository protocol. |
 | **Vector Store** | in-memory / Qdrant | Persists embeddings. Accessed exclusively through the `vectorstore` module's abstract protocol. |
 | **Object Store** | S3 / MinIO / local FS | Persists raw uploaded files for audit trail and reprocessing. Accessed through an abstract storage protocol. |
+| **Postgres / TimescaleDB** | PostgreSQL + TimescaleDB extension | Persists structured records, time-series observations, entity metric history (hypertable), current entity metrics, risk score history, and alert history. Accessed exclusively through the `database` module's `ConnectionProvider` protocol and Alembic-managed schema. |
 
 ### Communication patterns
 
@@ -301,13 +302,21 @@ backend/
 │   ├── types.py                # Event type definitions
 │   └── adapters/
 │       └── redis_streams.py    # Redis Streams implementation
-└── storage/                    # Object / file storage abstraction
+├── storage/                    # Object / file storage abstraction
+│   ├── __init__.py
+│   ├── protocols.py            # Abstract ObjectStore protocol
+│   └── adapters/
+│       ├── s3.py
+│       ├── minio.py
+│       └── local.py
+└── database/                   # Postgres + TimescaleDB connection provider, Alembic migrations
     ├── __init__.py
-    ├── protocols.py            # Abstract ObjectStore protocol
-    └── adapters/
-        ├── s3.py
-        ├── minio.py
-        └── local.py
+    ├── protocols.py            # ConnectionProvider, DatabaseConnection, DatabaseCursor
+    ├── engine.py               # psycopg 3 pool-backed provider (lazy import)
+    ├── runtime.py              # create_connection_provider(config) factory
+    ├── health.py               # check_database_health(provider) readiness probe
+    ├── exceptions.py           # Module-specific exceptions
+    └── migrations/             # Alembic environment + versioned raw-SQL migrations
 ```
 
 ### 5.2 Module responsibility matrix
@@ -328,6 +337,7 @@ backend/
 | `config` | Configuration loading and validation | `shared.types` | Everything except `shared` |
 | `events` | Event bus abstraction | `shared.types` | Everything except `shared` |
 | `storage` | Object/file storage abstraction | `shared.types` | Everything except `shared` |
+| `database` | Connection pooling, schema migrations | `config`, `shared` | domain logic, business logic, imports of any capability module |
 
 ### 5.3 Cross-module interaction rules
 

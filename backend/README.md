@@ -24,6 +24,7 @@ Working FastAPI gateway and pipeline-worker prototype with domain configuration,
 - **`graph/`, `vectorstore/`, `embeddings/`, `llm/`, `rag/`** — Service/protocol boundaries with in-memory adapters and selected production-facing adapters.
 - **`analytics/` and `monitoring/`** — Heuristic timeseries, GNN, risk, explainability, alert, and monitoring services.
 - **`storage/`** — In-memory, local filesystem, and S3-compatible object-store adapters.
+- **`database/`** — Postgres + TimescaleDB connection provider, `DatabaseConfig`-driven backend selection, and Alembic-managed schema (six persistence tables). Infrastructure only — no domain logic.
 - **`api/middleware/`** — Metrics, auth, and RBAC middleware with route-level policy enforcement and auth-enabled startup audit.
 - **`agent/coordinator.py`** — Worker entry point (`python -m agent.coordinator`) for Redis-stream processing, Flow A/Flow B handlers, workflow lifecycle tracking, retry/DLQ routing, graceful shutdown, and a lightweight health endpoint.
 - **`main.py`** — Uvicorn launcher for local development.
@@ -50,7 +51,8 @@ backend/
 ├── shared/          # Domain types, protocols, utilities (dependency-light, no business logic)
 ├── config/          # Domain configuration loader (YAML/JSON)
 ├── events/          # Event bus abstraction + Redis Streams adapter
-└── storage/         # Object/file storage abstraction + adapters (S3, MinIO, local FS)
+├── storage/         # Object/file storage abstraction + adapters (S3, MinIO, local FS)
+└── database/        # Postgres + TimescaleDB connection provider, Alembic migrations
 ```
 
 ## Cross-Module Interaction Rules
@@ -107,6 +109,7 @@ The backend reads a domain configuration YAML/JSON file at startup (path set via
 | `OIDC_CLIENT_SECRET` | unset | OIDC client secret read by name from `auth.client_secret_env_var`. |
 | `REDIS_URL` | unset | Required for the Redis Streams event bus, `CHILI_WORKFLOW_RUN_STORE_BACKEND=redis`, and the production session store when auth is enabled. |
 | `CHILI_EVENT_BUS_BACKEND` | `in_memory` | `in_memory` or `redis`. |
+| `DATABASE_URL` | unset | Postgres/TimescaleDB DSN. Required when `DatabaseConfig.backend=postgres` and to run Alembic migrations. |
 
 ### Setting the config path
 
