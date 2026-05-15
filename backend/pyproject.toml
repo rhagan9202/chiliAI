@@ -83,6 +83,9 @@ markers = [
     "e2e: end-to-end pipeline tests that exercise multiple modules through public APIs",
 ]
 
+[tool.coverage.run]
+omit = ["*/migrations/*"]
+
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
