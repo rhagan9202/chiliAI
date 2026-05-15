@@ -55,6 +55,11 @@ analytics = [
 auth = [
     "python-jose[cryptography]>=3.3",
 ]
+postgres = [
+    "psycopg[binary]>=3.2",
+    "psycopg-pool>=3.2",
+    "alembic>=1.13",
+]
 observability = [
     "opentelemetry-api>=1.20",
     "opentelemetry-sdk>=1.20",
@@ -69,7 +74,7 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["api*", "agent*", "shared*", "config*", "events*", "storage*",
            "ingestion*", "graph*", "vectorstore*", "embeddings*", "rag*",
-           "llm*", "analytics*", "monitoring*"]
+           "llm*", "analytics*", "monitoring*", "database*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -99,6 +104,7 @@ include = [
     "api/routers/knowledgebases.py",
     "api/routers/workflows.py",
     "api/routers/ws.py",
+    "database",
     "events",
     "graph",
     "monitoring",
@@ -115,6 +121,7 @@ include = [
     "tests/api/test_ws_router.py",
     "tests/api/test_workflow_projection.py",
     "tests/api/test_workflows_router.py",
+    "tests/database",
     "tests/e2e",
     "tests/events",
     "tests/graph",
