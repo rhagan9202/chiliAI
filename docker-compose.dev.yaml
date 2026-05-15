@@ -115,7 +115,7 @@ services:
       - chili-net
 
   postgres:
-    image: postgres:16-alpine
+    image: timescale/timescaledb:latest-pg16
     ports:
       - "5432:5432"
     environment:
