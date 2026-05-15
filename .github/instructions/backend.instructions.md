@@ -1,5 +1,5 @@
 ---
-description: "Use when creating or modifying Python backend modules, services, tests, or architecture in backend/. Enforces Python 3.12, strict type checking, loose coupling, modular boundaries, restricted cross-module interaction, and pytest coverage requirements."
+description: "Use when creating or modifying Python backend code in backend/. Prioritize architecture boundaries, strict typing, and pytest coverage."
 name: "Backend Architecture And Quality"
 applyTo: "backend/**/*.py"
 ---
@@ -10,12 +10,20 @@ applyTo: "backend/**/*.py"
 
 ## Language And Typing
 
-- Target Python 3.12. Use Python 3.12 syntax and standard library features when they improve clarity, but do not introduce dependencies that weaken portability without a concrete need.
+- Target Python 3.12. Prefer standard library features such as `typing.override`, `pathlib`, `dataclasses`, `enum.StrEnum`, and structural pattern matching when they fit existing style. Add new runtime dependencies only when the standard library or existing project dependencies cannot meet the requirement. In such cases, document the need in the relevant README or design note.
 - Write backend code so it is compatible with `pyright --strict`. Fully annotate public APIs and non-trivial internal functions, avoid untyped `Any`, prefer explicit domain types, and structure code so strict checking can pass. The active Pyright scope is currently defined in `backend/pyproject.toml`.
 
 ## Module Structure
 
-- The backend is organized into 16 modules: `api/`, `ingestion/`, `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/`, `analytics/` (with sub-modules `timeseries/`, `gnn/`, `risk/`, `explainability/`), `agent/`, `monitoring/`, `shared/`, `config/`, `events/`, `storage/`.
+- The backend is organized into focused modules:
+
+| Concern | Modules |
+| --- | --- |
+| API and orchestration | `api/`, `agent/`, `events/` |
+| Knowledge pipeline | `ingestion/`, `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/` |
+| Analytics and monitoring | `analytics/timeseries/`, `analytics/gnn/`, `analytics/risk/`, `analytics/explainability/`, `monitoring/` |
+| Shared platform services | `shared/`, `config/`, `storage/` |
+
 - Keep modules loosely coupled and narrowly scoped. Each module owns its internal implementation and exposes a narrow public contract.
 - The `api/` module is a FastAPI gateway — thin routing, request validation, and dependency injection. **No business logic in routers.**
 - The `shared/` module provides stable domain types (`Entity`, `Relationship`, `Alert`, `EvidencePack`, `KnowledgeBase`), config-definition types, protocol definitions, and small utilities. It must stay dependency-light and must never contain business logic.
@@ -27,6 +35,7 @@ applyTo: "backend/**/*.py"
   - **Path A**: Orchestration through the FastAPI gateway when a frontend-initiated API boundary is appropriate.
   - **Path B**: Orchestration through the agent/workflow coordinator (`agent/coordinator.py`) when the interaction is process-driven, using events via Redis Streams.
   - **Path C**: A lightweight shared library (`shared/`) for stable contracts, shared types, or small reusable utilities.
+- If a cross-module interaction does not fit these paths, escalate it for architecture review before implementing it.
 - Shared libraries must stay small and dependency-light. Do not turn a shared package into a dumping ground for business logic or a back door for tight coupling.
 
 ## Interface And Adapter Pattern
