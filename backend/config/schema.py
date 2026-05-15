@@ -153,6 +153,16 @@ class EventBusConfig(BaseModel):
     consumer_group: str = "chili-workers"
 
 
+class DatabaseConfig(BaseModel):
+    """Configuration for selecting the relational / time-series database backend."""
+
+    backend: Literal["postgres", "in_memory"] = "in_memory"
+    dsn_env_var: str = "DATABASE_URL"
+    pool_size: int = Field(default=10, gt=0)
+    pool_max_overflow: int = Field(default=5, ge=0)
+    statement_timeout_ms: int = Field(default=30000, gt=0)
+
+
 class MonitoringConfig(BaseModel):
     """Configuration for alert deduplication and evaluation cadence."""
 
@@ -288,6 +298,7 @@ class DomainConfig(BaseModel):
     embeddings: EmbeddingsConfig | None = None
     storage: ObjectStoreConfig | None = None
     events: EventBusConfig | None = None
+    database: DatabaseConfig | None = None
     monitoring: MonitoringConfig | None = None
     rag: RagConfig | None = None
     auth: AuthConfig | None = None
@@ -321,6 +332,8 @@ class DomainConfig(BaseModel):
             self.storage = ObjectStoreConfig()
         if self.events is None:
             self.events = EventBusConfig()
+        if self.database is None:
+            self.database = DatabaseConfig()
         if self.monitoring is None:
             self.monitoring = MonitoringConfig()
         if self.rag is None:
@@ -384,6 +397,7 @@ __all__ = [
     "AuthConfig",
     "CapabilitiesConfig",
     "ChunkingConfig",
+    "DatabaseConfig",
     "DomainConfig",
     "DomainInfo",
     "GraphDbConfig",
