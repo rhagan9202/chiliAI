@@ -461,6 +461,18 @@ class DomainConfig(BaseModel):
                         f"Records feed '{feed.name}' maps to unknown relationship "
                         f"type '{relationship_mapping.relationship_type}'."
                     )
+                if relationship_mapping.source_entity_type not in feed_entity_types:
+                    errors.append(
+                        f"Records feed '{feed.name}' relationship mapping "
+                        f"source_entity_type '{relationship_mapping.source_entity_type}' "
+                        f"is not mapped by the feed."
+                    )
+                if relationship_mapping.target_entity_type not in feed_entity_types:
+                    errors.append(
+                        f"Records feed '{feed.name}' relationship mapping "
+                        f"target_entity_type '{relationship_mapping.target_entity_type}' "
+                        f"is not mapped by the feed."
+                    )
             for observation_mapping in feed.observations:
                 if observation_mapping.entity_type not in feed_entity_types:
                     errors.append(
