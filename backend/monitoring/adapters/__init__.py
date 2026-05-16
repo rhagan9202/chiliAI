@@ -8,6 +8,7 @@ from monitoring.adapters.in_memory import (
     InMemoryObservationWriter,
 )
 from monitoring.adapters.postgres import (
+    PostgresAlertHistoryStore,
     PostgresObservationSource,
     PostgresObservationStore,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "InMemoryObservationWriter",
     "ObservationSourceProtocol",
     "ObservationWriter",
+    "PostgresAlertHistoryStore",
     "PostgresObservationSource",
     "PostgresObservationStore",
 ]
