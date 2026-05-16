@@ -143,7 +143,7 @@ from monitoring.adapters.protocols import (
     ObservationWriter,
 )
 from monitoring.exceptions import MonitoringError
-from monitoring.models import MonitoringBatch
+from monitoring.models import AlertHistoryRecord, MonitoringBatch
 from monitoring.service import MonitoringService, create_monitoring_service
 from monitoring.service_models import MonitoringEvaluationRequest
 from monitoring.metrics import observe_pipeline_stage
@@ -180,6 +180,7 @@ __all__ = [
     "build_vector_store",
     "build_worker_dependencies",
     "drain_ingestion_events",
+    "handle_alerts_created_for_graph",
     "handle_documents_chunked",
     "handle_documents_parsed",
     "handle_embeddings_complete",
@@ -1525,6 +1526,68 @@ def handle_risk_scored_for_graph(
     return processed
 
 
+def handle_alerts_created_for_graph(
+    event: AlertsCreatedEvent,
+    *,
+    alert_history_writer: AlertHistoryWriter,
+    graph_service: GraphService,
+) -> int:
+    """Flow 4 — persist alerts to the alert-history log and snapshot onto the graph.
+
+    Idempotent: ``alert_history`` is keyed by alert_id; the entity's
+    ``active_alert_count`` is derived from a count of open alerts (never blindly
+    incremented), so retry/DLQ replay is safe. The graph write publishes no
+    event, so it cannot re-trigger the analytics pipeline.
+    """
+
+    created_at = __datetime__.now(tz=__timezone__.utc)
+    records: list[AlertHistoryRecord] = []
+    severity_by_entity: dict[tuple[str, str], str] = {}
+    for alert in event.alerts:
+        records.append(
+            AlertHistoryRecord(
+                knowledge_base_id=alert.knowledge_base_id,
+                alert_id=alert.alert_id,
+                entity_id=alert.entity_id,
+                entity_type=alert.entity_type,
+                severity=alert.severity,
+                status=alert.status,
+                title=alert.title,
+                reasoning=alert.reasoning,
+                metric_name=alert.metric_name,
+                evidence_pack_id=alert.evidence_pack_id,
+                created_at=created_at,
+                updated_at=created_at,
+            )
+        )
+        severity_by_entity[(alert.knowledge_base_id, alert.entity_id)] = alert.severity
+
+    alert_history_writer.write_alerts(records)
+
+    for (knowledge_base_id, entity_id), severity in severity_by_entity.items():
+        try:
+            open_count = alert_history_writer.count_open_alerts(
+                knowledge_base_id=knowledge_base_id, entity_id=entity_id
+            )
+            graph_service.update_entity_properties(
+                knowledge_base_id,
+                entity_id,
+                {
+                    "active_alert_count": open_count,
+                    "last_alert_at": created_at.isoformat(),
+                    "last_alert_severity": severity,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 - graph backend may be unavailable
+            logger.warning(
+                "Failed to snapshot alerts to graph kb=%s entity=%s: %s",
+                knowledge_base_id,
+                entity_id,
+                exc,
+            )
+    return len(records)
+
+
 def handle_records_ingested(
     event: RecordsIngestedEvent,
     *,
@@ -2077,6 +2140,21 @@ def _dispatch_event(
                     exc,
                 )
         return processed
+    if isinstance(event, AlertsCreatedEvent):
+        if alert_history_writer is None:
+            return 0
+        try:
+            return handle_alerts_created_for_graph(
+                event,
+                alert_history_writer=alert_history_writer,
+                graph_service=graph_service,
+            )
+        except Exception as exc:  # noqa: BLE001 - write-back must not abort pipeline
+            logger.warning(
+                "Alert graph write-back raised; continuing. error=%s",
+                exc,
+            )
+            return 0
     if isinstance(event, RecordsIngestedEvent):
         if (
             records_config is None
