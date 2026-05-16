@@ -64,12 +64,16 @@ jobs:
         run: pip install pip-audit
 
       - name: Run pip-audit (fail on HIGH/CRITICAL)
+        # --skip-editable: the project installs itself editable (chili-backend),
+        # which is not on PyPI and cannot be audited. --strict is intentionally
+        # omitted — it would fail on that un-auditable local package; pip-audit
+        # still exits non-zero on any real dependency vulnerability.
         run: |
           pip-audit \
-            --strict \
+            --skip-editable \
             --vulnerability-service=pypi \
             --ignore-vuln GHSA-0000-0000-0000 \
-            || pip-audit --strict
+            || pip-audit --skip-editable
 
   frontend:
     name: Frontend (lint, typecheck, tests, build, audit)
