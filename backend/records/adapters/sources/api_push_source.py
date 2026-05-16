@@ -15,7 +15,11 @@ class ApiPushSource:
 
     def read_rows(self, raw: bytes) -> list[dict[str, object]]:
         try:
-            parsed = json.loads(raw.decode("utf-8"))
+            decoded = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise RecordValidationError("Api-push payload is not valid UTF-8.") from exc
+        try:
+            parsed = json.loads(decoded)
         except json.JSONDecodeError as exc:
             raise RecordValidationError("Api-push payload is not valid JSON.") from exc
         if not isinstance(parsed, list):
