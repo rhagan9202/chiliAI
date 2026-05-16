@@ -7,14 +7,9 @@ from monitoring.adapters.in_memory import (
     InMemoryObservationSource,
     InMemoryObservationWriter,
 )
-from monitoring.adapters.protocols import (
-    AlertRepositoryProtocol,
-    ObservationSourceProtocol,
-    ObservationWriter,
-)
+from monitoring.adapters.protocols import ObservationSourceProtocol, ObservationWriter
 
 __all__ = [
-    "AlertRepositoryProtocol",
     "InMemoryAlertRepository",
     "InMemoryObservationSource",
     "InMemoryObservationWriter",
