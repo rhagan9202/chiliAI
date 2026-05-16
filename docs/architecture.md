@@ -597,7 +597,7 @@ handle_records_ingested()
   ├── map_batch()  → GraphService.upsert_records_graph()
   │                   # entities + relationships, no document artifacts,
   │                   # no GraphUpdatedEvent published
-  └── map_observations() → PostgresObservationStore.store_observations()
+  └── map_observations() → PostgresObservationStore.write_observations()
                               # observations table (idempotent upsert)
 ```
 
