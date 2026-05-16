@@ -1752,6 +1752,10 @@ def handle_event(
     records_config: RecordsConfig | None = None,
     raw_record_store: RawRecordStore | None = None,
     observation_writer: ObservationWriter | None = None,
+    entity_metric_repository: EntityMetricRepository | None = None,
+    metrics_throttle: MetricsRecomputeThrottle | None = None,
+    risk_history_writer: RiskHistoryWriter | None = None,
+    alert_history_writer: AlertHistoryWriter | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
 ) -> int:
     """Handle a single event and return the number of processed documents."""
@@ -1789,6 +1793,10 @@ def handle_event(
             records_config=records_config,
             raw_record_store=raw_record_store,
             observation_writer=observation_writer,
+            entity_metric_repository=entity_metric_repository,
+            metrics_throttle=metrics_throttle,
+            risk_history_writer=risk_history_writer,
+            alert_history_writer=alert_history_writer,
         )
         if workflow_tracker is not None:
             workflow_tracker.complete_event(event)
@@ -1816,6 +1824,10 @@ def _dispatch_event(
     records_config: RecordsConfig | None,
     raw_record_store: RawRecordStore | None,
     observation_writer: ObservationWriter | None,
+    entity_metric_repository: EntityMetricRepository | None,
+    metrics_throttle: MetricsRecomputeThrottle | None,
+    risk_history_writer: RiskHistoryWriter | None,
+    alert_history_writer: AlertHistoryWriter | None,
 ) -> int:
     del delivery  # reserved for future stream offsets / dlq metadata
     if isinstance(event, DocumentsUploadedEvent):
@@ -2004,6 +2016,10 @@ async def drain_ingestion_events(
     records_config: RecordsConfig | None = None,
     raw_record_store: RawRecordStore | None = None,
     observation_writer: ObservationWriter | None = None,
+    entity_metric_repository: EntityMetricRepository | None = None,
+    metrics_throttle: MetricsRecomputeThrottle | None = None,
+    risk_history_writer: RiskHistoryWriter | None = None,
+    alert_history_writer: AlertHistoryWriter | None = None,
     consumer_group: str,
     consumer_name: str,
     limit: int = 10,
@@ -2028,6 +2044,7 @@ async def drain_ingestion_events(
         "vectors.indexed",
         "risk.scored",
         "records.ingested",
+        "alerts.created",
     ]
     event_bus.ensure_consumer_group(event_types, consumer_group=consumer_group)
     deliveries = event_bus.consume(
@@ -2060,6 +2077,10 @@ async def drain_ingestion_events(
                 records_config=records_config,
                 raw_record_store=raw_record_store,
                 observation_writer=observation_writer,
+                entity_metric_repository=entity_metric_repository,
+                metrics_throttle=metrics_throttle,
+                risk_history_writer=risk_history_writer,
+                alert_history_writer=alert_history_writer,
                 workflow_tracker=workflow_tracker,
             )
 
@@ -2166,6 +2187,10 @@ async def run_worker(
                 records_config=deps.records_config,
                 raw_record_store=deps.raw_record_store,
                 observation_writer=deps.observation_writer,
+                entity_metric_repository=deps.entity_metric_repository,
+                metrics_throttle=deps.metrics_throttle,
+                risk_history_writer=deps.risk_history_writer,
+                alert_history_writer=deps.alert_history_writer,
                 consumer_group=deps.event_settings.consumer_group,
                 consumer_name=deps.event_settings.consumer_name(),
                 limit=deps.event_settings.batch_size,
