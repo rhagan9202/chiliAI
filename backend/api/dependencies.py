@@ -107,7 +107,6 @@ __all__ = [
     "get_ingestion_service",
     "get_graph_repository",
     "get_graph_service",
-    "get_ingestion_service",
     "get_connection_provider",
     "get_raw_record_store",
     "get_records_service",

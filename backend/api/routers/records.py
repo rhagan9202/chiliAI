@@ -9,7 +9,7 @@ from api.dependencies import get_domain_config, get_records_service
 from api.middleware.rbac import require_role
 from config.schema import DomainConfig, ValidationConfig
 from records.adapters.sources.file_source import CsvFileSource, JsonlFileSource
-from records.exceptions import RecordFeedNotFoundError, RecordsError
+from records.exceptions import RecordFeedNotFoundError, RecordPersistenceError, RecordsError
 from records.protocols import RecordsServiceProtocol
 from records.service_models import RecordIngestReceipt, RecordSubmission
 
@@ -27,7 +27,7 @@ class RecordPushRequest(BaseModel):
 
 def _select_file_source(filename: str) -> CsvFileSource | JsonlFileSource:
     lowered = filename.lower()
-    if lowered.endswith((".jsonl", ".json")):
+    if lowered.endswith(".jsonl"):
         return JsonlFileSource()
     if lowered.endswith(".csv"):
         return CsvFileSource()
@@ -77,6 +77,11 @@ async def upload_record_file(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
+    except RecordPersistenceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Record storage failure.",
+        ) from exc
     except RecordsError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
@@ -108,6 +113,11 @@ async def push_records(
     except RecordFeedNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    except RecordPersistenceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Record storage failure.",
         ) from exc
     except RecordsError as exc:
         raise HTTPException(
