@@ -125,6 +125,7 @@ include = [
     "tests/api/test_investigation_router.py",
     "tests/api/test_kb_projection.py",
     "tests/api/test_metrics.py",
+    "tests/api/test_monitoring_source_selection.py",
     "tests/api/test_policy_registry.py",
     "tests/api/test_production_guardrail.py",
     "tests/api/test_records_router.py",
