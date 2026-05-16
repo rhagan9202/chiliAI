@@ -94,6 +94,7 @@ venv = ".venv"
 include = [
     "agent",
     "analytics/gnn",
+    "analytics/metrics",
     "analytics/timeseries",
     "api/_alert_store.py",
     "api/_kb_projection.py",
@@ -115,6 +116,7 @@ include = [
     "records",
     "tests/agent",
     "tests/analytics/gnn",
+    "tests/analytics/metrics",
     "tests/analytics/timeseries",
     "tests/api/test_alert_store_object_store.py",
     "tests/api/test_chat_router.py",
