@@ -1520,6 +1520,15 @@ def test_graceful_shutdown_finishes_in_flight_event(
         monitoring_service=create_monitoring_service(
             InMemoryObservationSource(), event_bus=event_bus
         ),
+        records_config=__import__(
+            "config.schema", fromlist=["RecordsConfig"]
+        ).RecordsConfig(),
+        raw_record_store=__import__(
+            "records.adapters.in_memory", fromlist=["InMemoryRawRecordStore"]
+        ).InMemoryRawRecordStore(),
+        observation_writer=__import__(
+            "monitoring.adapters.in_memory", fromlist=["InMemoryObservationWriter"]
+        ).InMemoryObservationWriter(),
         event_settings=EventBusSettings(backend="in-memory"),
         workflow_run_store=workflow_run_store,
         workflow_tracker=WorkflowEventTracker(workflow_run_store),

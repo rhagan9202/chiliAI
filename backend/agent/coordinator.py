@@ -28,13 +28,18 @@ from agent.models import HealthSettings, RetryPolicy
 from agent.workflow_tracking import WorkflowEventTracker
 from config.loader import load_config
 from config.schema import (
+    DatabaseConfig,
     DomainConfig,
     EmbeddingsConfig,
     GraphDbConfig,
     LlmConfig,
     ObjectStoreConfig,
+    RecordFeedConfig,
+    RecordsConfig,
     VectorStoreConfig,
 )
+from database.protocols import ConnectionProvider
+from database.runtime import create_connection_provider
 from analytics.explainability.adapters.in_memory import (
     InMemoryExplainabilityContextSource,
 )
@@ -85,6 +90,7 @@ from events.types import (
     GraphUpdatedEvent,
     KnowledgeBaseReadyEvent,
     KnowledgeBaseReadyReference,
+    RecordsIngestedEvent,
     RiskScoredEvent,
     ValidatedDocumentReference,
     VectorIndexedReference,
@@ -107,12 +113,22 @@ from ingestion.service import IngestionService
 from ingestion.validator import ExtractionResultValidator, create_extraction_validator
 from llm.adapters.in_memory import InMemoryLlmClient
 from llm.adapters.protocols import LlmClientProtocol
-from monitoring.adapters.in_memory import InMemoryObservationSource
-from monitoring.adapters.protocols import ObservationSourceProtocol
+from monitoring.adapters.in_memory import (
+    InMemoryObservationSource,
+    InMemoryObservationWriter,
+)
+from monitoring.adapters.postgres import PostgresObservationStore
+from monitoring.adapters.protocols import ObservationSourceProtocol, ObservationWriter
 from monitoring.exceptions import MonitoringError
+from monitoring.models import MonitoringBatch
 from monitoring.service import MonitoringService, create_monitoring_service
 from monitoring.service_models import MonitoringEvaluationRequest
 from monitoring.metrics import observe_pipeline_stage
+from records.adapters.in_memory import InMemoryRawRecordStore
+from records.adapters.postgres import PostgresRawRecordStore
+from records.adapters.protocols import RawRecordStore
+from records.exceptions import RecordFeedNotFoundError
+from records.mappers.feed_mapper import map_batch, map_observations
 from shared.logging import bind_correlation_id, configure_logging, get_logger
 from shared.tracing import setup_tracing, start_pipeline_span
 from shared.types import Entity
@@ -124,6 +140,7 @@ from vectorstore.models import VectorRecord
 
 __all__ = [
     "WorkerDependencies",
+    "build_connection_provider",
     "build_embedder",
     "build_explainability_context_source",
     "build_graph_repository",
@@ -131,6 +148,8 @@ __all__ = [
     "build_llm_client",
     "build_monitoring_observation_source",
     "build_object_store",
+    "build_observation_writer",
+    "build_raw_record_store",
     "build_risk_signal_source",
     "build_vector_store",
     "build_worker_dependencies",
@@ -143,6 +162,7 @@ __all__ = [
     "handle_event",
     "handle_graph_updated",
     "handle_graph_updated_for_analytics",
+    "handle_records_ingested",
     "handle_risk_scored",
     "handle_vectors_indexed",
     "main",
@@ -175,6 +195,9 @@ class WorkerDependencies:
     risk_service: RiskService
     explainability_service: ExplainabilityService
     monitoring_service: MonitoringService
+    records_config: RecordsConfig
+    raw_record_store: RawRecordStore
+    observation_writer: ObservationWriter
     event_settings: EventBusSettings
     workflow_run_store: WorkflowRunStoreProtocol
     workflow_tracker: WorkflowEventTracker
@@ -433,6 +456,32 @@ def build_monitoring_observation_source(
     return InMemoryObservationSource()
 
 
+def build_connection_provider(config: DomainConfig) -> ConnectionProvider | None:
+    """Return a database connection provider, or None for the in-memory backend."""
+
+    return create_connection_provider(config.database or DatabaseConfig())
+
+
+def build_raw_record_store(
+    provider: ConnectionProvider | None,
+) -> RawRecordStore:
+    """Select a raw record store: Postgres when a provider exists, else in-memory."""
+
+    if provider is None:
+        return InMemoryRawRecordStore()
+    return PostgresRawRecordStore(provider)
+
+
+def build_observation_writer(
+    provider: ConnectionProvider | None,
+) -> ObservationWriter:
+    """Select an observation writer: Postgres when a provider exists, else in-memory."""
+
+    if provider is None:
+        return InMemoryObservationWriter()
+    return PostgresObservationStore(provider)
+
+
 def _section_is_default(value: object, default: object) -> bool:
     """Return True when a config subsystem section equals its post-validator default.
 
@@ -598,6 +647,10 @@ def build_worker_dependencies() -> WorkerDependencies:
             else 300
         ),
     )
+    connection_provider = build_connection_provider(config)
+    raw_record_store = build_raw_record_store(connection_provider)
+    observation_writer = build_observation_writer(connection_provider)
+    records_config = config.records or RecordsConfig()
 
     return WorkerDependencies(
         event_bus=event_bus,
@@ -614,6 +667,9 @@ def build_worker_dependencies() -> WorkerDependencies:
         risk_service=risk_service,
         explainability_service=explainability_service,
         monitoring_service=monitoring_service,
+        records_config=records_config,
+        raw_record_store=raw_record_store,
+        observation_writer=observation_writer,
         event_settings=event_settings,
         workflow_run_store=workflow_run_store,
         workflow_tracker=workflow_tracker,
@@ -1259,6 +1315,62 @@ def handle_risk_scored(
     return processed
 
 
+def handle_records_ingested(
+    event: RecordsIngestedEvent,
+    *,
+    records_config: RecordsConfig,
+    raw_record_store: RawRecordStore,
+    graph_service: GraphService,
+    observation_writer: ObservationWriter,
+) -> int:
+    """Flow 1 — fan a structured-records batch out to the graph and observations.
+
+    A single handler: map rows to graph entities/relationships and upsert them,
+    then derive observations and persist them. Every write is idempotent so the
+    worker's retry/DLQ wrapper can safely re-run this handler.
+    """
+
+    feed = _resolve_records_feed(records_config, event.feed_name)
+    records = raw_record_store.load_batch(
+        knowledge_base_id=event.knowledge_base_id,
+        correlation_id=event.correlation_id,
+    )
+    if not records:
+        logger.info(
+            "No raw records found for feed=%s kb=%s correlation=%s",
+            event.feed_name,
+            event.knowledge_base_id,
+            event.correlation_id,
+        )
+        return 0
+
+    mapped = map_batch(feed, records)
+    graph_service.upsert_records_graph(
+        event.knowledge_base_id, mapped.entities, mapped.relationships
+    )
+
+    observations = map_observations(feed, records)
+    if observations:
+        observation_writer.write_observations(
+            MonitoringBatch(
+                knowledge_base_id=event.knowledge_base_id,
+                batch_id=event.correlation_id,
+                observations=observations,
+            ),
+            correlation_id=event.correlation_id,
+        )
+    return len(records)
+
+
+def _resolve_records_feed(
+    records_config: RecordsConfig, feed_name: str
+) -> RecordFeedConfig:
+    for feed in records_config.feeds:
+        if feed.name == feed_name:
+            return feed
+    raise RecordFeedNotFoundError(feed_name)
+
+
 def _publish_analysis_failed(
     *,
     event_bus: EventBus,
@@ -1569,6 +1681,9 @@ def handle_event(
     risk_service: RiskService | None = None,
     explainability_service: ExplainabilityService | None = None,
     monitoring_service: MonitoringService | None = None,
+    records_config: RecordsConfig | None = None,
+    raw_record_store: RawRecordStore | None = None,
+    observation_writer: ObservationWriter | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
 ) -> int:
     """Handle a single event and return the number of processed documents."""
@@ -1603,6 +1718,9 @@ def handle_event(
             risk_service=risk_service,
             explainability_service=explainability_service,
             monitoring_service=monitoring_service,
+            records_config=records_config,
+            raw_record_store=raw_record_store,
+            observation_writer=observation_writer,
         )
         if workflow_tracker is not None:
             workflow_tracker.complete_event(event)
@@ -1627,6 +1745,9 @@ def _dispatch_event(
     risk_service: RiskService | None,
     explainability_service: ExplainabilityService | None,
     monitoring_service: MonitoringService | None,
+    records_config: RecordsConfig | None,
+    raw_record_store: RawRecordStore | None,
+    observation_writer: ObservationWriter | None,
 ) -> int:
     del delivery  # reserved for future stream offsets / dlq metadata
     if isinstance(event, DocumentsUploadedEvent):
@@ -1720,6 +1841,23 @@ def _dispatch_event(
                 exc,
             )
             return 0
+    if isinstance(event, RecordsIngestedEvent):
+        if (
+            records_config is None
+            or raw_record_store is None
+            or observation_writer is None
+        ):
+            logger.warning(
+                "RecordsIngestedEvent received but records dependencies are not wired."
+            )
+            return 0
+        return handle_records_ingested(
+            event,
+            records_config=records_config,
+            raw_record_store=raw_record_store,
+            graph_service=graph_service,
+            observation_writer=observation_writer,
+        )
     return 0
 
 
@@ -1795,6 +1933,9 @@ async def drain_ingestion_events(
     risk_service: RiskService | None = None,
     explainability_service: ExplainabilityService | None = None,
     monitoring_service: MonitoringService | None = None,
+    records_config: RecordsConfig | None = None,
+    raw_record_store: RawRecordStore | None = None,
+    observation_writer: ObservationWriter | None = None,
     consumer_group: str,
     consumer_name: str,
     limit: int = 10,
@@ -1818,6 +1959,7 @@ async def drain_ingestion_events(
         "embeddings.complete",
         "vectors.indexed",
         "risk.scored",
+        "records.ingested",
     ]
     event_bus.ensure_consumer_group(event_types, consumer_group=consumer_group)
     deliveries = event_bus.consume(
@@ -1847,6 +1989,9 @@ async def drain_ingestion_events(
                 risk_service=risk_service,
                 explainability_service=explainability_service,
                 monitoring_service=monitoring_service,
+                records_config=records_config,
+                raw_record_store=raw_record_store,
+                observation_writer=observation_writer,
                 workflow_tracker=workflow_tracker,
             )
 
@@ -1950,6 +2095,9 @@ async def run_worker(
                 risk_service=deps.risk_service,
                 explainability_service=deps.explainability_service,
                 monitoring_service=deps.monitoring_service,
+                records_config=deps.records_config,
+                raw_record_store=deps.raw_record_store,
+                observation_writer=deps.observation_writer,
                 consumer_group=deps.event_settings.consumer_group,
                 consumer_name=deps.event_settings.consumer_name(),
                 limit=deps.event_settings.batch_size,
