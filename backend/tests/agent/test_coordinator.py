@@ -28,8 +28,11 @@ from config.schema import (
     GraphDbConfig,
     LlmConfig,
     ObjectStoreConfig,
+    RecordsConfig,
     VectorStoreConfig,
 )
+from monitoring.adapters.in_memory import InMemoryObservationWriter
+from records.adapters.in_memory import InMemoryRawRecordStore
 from embeddings.adapters.in_memory import InMemoryEmbedder
 from embeddings.models import EmbeddingMetadata, EmbeddingResult
 from embeddings.service import EmbeddingsService
@@ -1520,6 +1523,9 @@ def test_graceful_shutdown_finishes_in_flight_event(
         monitoring_service=create_monitoring_service(
             InMemoryObservationSource(), event_bus=event_bus
         ),
+        records_config=RecordsConfig(),
+        raw_record_store=InMemoryRawRecordStore(),
+        observation_writer=InMemoryObservationWriter(),
         event_settings=EventBusSettings(backend="in-memory"),
         workflow_run_store=workflow_run_store,
         workflow_tracker=WorkflowEventTracker(workflow_run_store),

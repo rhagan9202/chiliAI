@@ -23,6 +23,21 @@ class ObservationSourceProtocol(Protocol):
 
 
 @runtime_checkable
+class ObservationWriter(Protocol):
+    """Persist scored observations to the analytics-facing observations store.
+
+    The read-side ``ObservationSourceProtocol`` adapter is added in Plan C;
+    this write-side protocol is what the worker's Flow 1 handler depends on.
+    """
+
+    def write_observations(
+        self, batch: MonitoringBatch, *, correlation_id: str
+    ) -> int:
+        """Persist a batch's observations idempotently; return the row count written."""
+        ...
+
+
+@runtime_checkable
 class AlertRepositoryProtocol(Protocol):
     """Persist and list alert read models for alert lifecycle operations."""
 
@@ -36,4 +51,5 @@ class AlertRepositoryProtocol(Protocol):
 __all__ = [
     "AlertRepositoryProtocol",
     "ObservationSourceProtocol",
+    "ObservationWriter",
 ]

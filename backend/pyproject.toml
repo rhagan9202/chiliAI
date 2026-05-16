@@ -55,6 +55,11 @@ analytics = [
 auth = [
     "python-jose[cryptography]>=3.3",
 ]
+postgres = [
+    "psycopg[binary]>=3.2",
+    "psycopg-pool>=3.2",
+    "alembic>=1.13",
+]
 observability = [
     "opentelemetry-api>=1.20",
     "opentelemetry-sdk>=1.20",
@@ -69,7 +74,7 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["api*", "agent*", "shared*", "config*", "events*", "storage*",
            "ingestion*", "graph*", "vectorstore*", "embeddings*", "rag*",
-           "llm*", "analytics*", "monitoring*"]
+           "llm*", "analytics*", "monitoring*", "database*", "records*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -77,6 +82,9 @@ markers = [
     "integration: tests that require external services or optional dependencies",
     "e2e: end-to-end pipeline tests that exercise multiple modules through public APIs",
 ]
+
+[tool.coverage.run]
+omit = ["database/migrations/*"]
 
 [tool.pyright]
 pythonVersion = "3.12"
@@ -95,13 +103,16 @@ include = [
     "api/middleware/rbac.py",
     "api/middleware/session_store.py",
     "api/routers/alerts.py",
+    "api/routers/records.py",
     "api/routers/investigation.py",
     "api/routers/knowledgebases.py",
     "api/routers/workflows.py",
     "api/routers/ws.py",
+    "database",
     "events",
     "graph",
     "monitoring",
+    "records",
     "tests/agent",
     "tests/analytics/gnn",
     "tests/analytics/timeseries",
@@ -112,11 +123,16 @@ include = [
     "tests/api/test_metrics.py",
     "tests/api/test_policy_registry.py",
     "tests/api/test_production_guardrail.py",
+    "tests/api/test_records_router.py",
     "tests/api/test_ws_router.py",
     "tests/api/test_workflow_projection.py",
     "tests/api/test_workflows_router.py",
+    "tests/database",
     "tests/e2e",
     "tests/events",
     "tests/graph",
+    "tests/monitoring/test_observation_writer.py",
+    "tests/monitoring/test_postgres_observation_store.py",
+    "tests/records",
 ]
 exclude = ["**/__pycache__", "chili_backend.egg-info"]

@@ -179,6 +179,7 @@ The monorepo produces the following deployable containers:
 | **Graph Database** | in-memory / Neo4j | Persists knowledge graphs. Accessed exclusively through the `graph` module's abstract repository protocol. |
 | **Vector Store** | in-memory / Qdrant | Persists embeddings. Accessed exclusively through the `vectorstore` module's abstract protocol. |
 | **Object Store** | S3 / MinIO / local FS | Persists raw uploaded files for audit trail and reprocessing. Accessed through an abstract storage protocol. |
+| **Postgres / TimescaleDB** | PostgreSQL + TimescaleDB extension | Persists structured records, time-series observations, entity metric history (hypertable), current entity metrics, risk score history, and alert history. Accessed exclusively through the `database` module's `ConnectionProvider` protocol and Alembic-managed schema. |
 
 ### Communication patterns
 
@@ -301,13 +302,38 @@ backend/
 │   ├── types.py                # Event type definitions
 │   └── adapters/
 │       └── redis_streams.py    # Redis Streams implementation
-└── storage/                    # Object / file storage abstraction
+├── storage/                    # Object / file storage abstraction
+│   ├── __init__.py
+│   ├── protocols.py            # Abstract ObjectStore protocol
+│   └── adapters/
+│       ├── s3.py
+│       ├── minio.py
+│       └── local.py
+├── database/                   # Postgres + TimescaleDB connection provider, Alembic migrations
+│   ├── __init__.py
+│   ├── protocols.py            # ConnectionProvider, DatabaseConnection, DatabaseCursor
+│   ├── engine.py               # psycopg 3 pool-backed provider (lazy import)
+│   ├── runtime.py              # create_connection_provider(config) factory
+│   ├── health.py               # check_database_health(provider) readiness probe
+│   ├── exceptions.py           # Module-specific exceptions
+│   └── migrations/             # Alembic environment + versioned raw-SQL migrations
+└── records/                    # structured/tabular ingestion (CSV/JSONL/api-push), raw_records landing
     ├── __init__.py
-    ├── protocols.py            # Abstract ObjectStore protocol
+    ├── models.py               # RawRecord, RecordBatch, content_hash_for (idempotency digest)
+    ├── service_models.py       # RecordSubmission, RecordIngestReceipt (API boundary)
+    ├── validation.py           # coerce_row / validate_rows (feed schema validation)
+    ├── service.py              # RecordsService.register_records(): validate → persist → publish
+    ├── protocols.py            # RecordsServiceProtocol (service boundary)
+    ├── exceptions.py           # Module-specific exceptions
+    ├── mappers/
+    │   └── feed_mapper.py      # map_batch (rows → entities/relationships), map_observations
     └── adapters/
-        ├── s3.py
-        ├── minio.py
-        └── local.py
+        ├── protocols.py        # RawRecordStore, RecordSourceProtocol
+        ├── in_memory.py        # InMemoryRawRecordStore (local/test backend)
+        ├── postgres.py         # PostgresRawRecordStore (raw_records table)
+        └── sources/
+            ├── file_source.py      # CsvFileSource, JsonlFileSource
+            └── api_push_source.py  # ApiPushSource
 ```
 
 ### 5.2 Module responsibility matrix
@@ -328,6 +354,8 @@ backend/
 | `config` | Configuration loading and validation | `shared.types` | Everything except `shared` |
 | `events` | Event bus abstraction | `shared.types` | Everything except `shared` |
 | `storage` | Object/file storage abstraction | `shared.types` | Everything except `shared` |
+| `database` | Connection pooling, schema migrations | `config`, `shared` | domain logic, business logic, imports of any capability module |
+| `records` | Structured-record validation, raw_records persistence, feed mapping | `config`, `shared`, `events`, `database`, `monitoring.models` | imports of `graph`/`analytics` internals — communicates downstream only by publishing `RecordsIngestedEvent` |
 
 ### 5.3 Cross-module interaction rules
 
@@ -543,7 +571,41 @@ Data Source             API / Feed          Redis              Workers
   │              Analyst◀═══════════════════◀│                   │
 ```
 
-### 6.3 Self-reinforcing analysis loop
+### 6.3 Flow 1 — Structured Record Ingestion
+
+This flow handles tabular feeds (CSV/JSONL file uploads, JSON api-push) submitted through the records API. It is parallel to Flow A (document ingestion) but targets the `raw_records` table rather than the document pipeline.
+
+```
+Data source (CSV / JSONL / api-push)
+  │
+  │  POST /records/{knowledge_base_id}/files
+  │  POST /records/{knowledge_base_id}/push
+  ▼
+RecordsService.register_records()
+  • Resolve feed config (DomainConfig.records.feeds)
+  • validate_rows(): coerce types, check against feed schema
+  • Build RawRecord list with content_hash (idempotency digest)
+  │
+  ▼
+RawRecordStore.persist()             # raw_records table (idempotent upsert)
+  │
+  ▼
+publish RecordsIngestedEvent
+  │
+  ▼ (Redis Streams → worker)
+handle_records_ingested()
+  ├── map_batch()  → GraphService.upsert_records_graph()
+  │                   # entities + relationships, no document artifacts,
+  │                   # no GraphUpdatedEvent published
+  └── map_observations() → PostgresObservationStore.write_observations()
+                              # observations table (idempotent upsert)
+```
+
+Every write is an idempotent upsert keyed on `(knowledge_base_id, record_type, record_id)` for `raw_records` and on `(entity_id, metric_name, observed_at)` for `observations`, so the worker's retry/DLQ wrapper can re-run the handler safely without duplicating data.
+
+`GraphService.upsert_records_graph` is the records-specific graph entry point. Unlike the document pipeline's `upsert_graph`, it accepts no document artifacts and does not publish a `GraphUpdatedEvent`. The `observations` table has a write-side adapter at `monitoring/adapters/postgres.py` (`PostgresObservationStore`).
+
+### 6.4 Self-reinforcing analysis loop
 
 The analytics pipeline is designed as a **feedback loop**: analysis results (risk scores, cluster memberships, anomaly flags) are written back to the knowledge graph, enriching it for subsequent analysis rounds. This means:
 

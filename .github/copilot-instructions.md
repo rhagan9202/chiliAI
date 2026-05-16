@@ -1,56 +1,66 @@
 # Project Guidelines
 
-> The authoritative architecture reference is `docs/architecture.md`. These guidelines are the condensed operating rules for agents working in this repo.
+> `docs/architecture.md` is the design source of truth. This file is the condensed operating guide for agents working in this repo; keep it aligned with `CLAUDE.md`, the root `README.md`, and module READMEs.
 
 ## Project Scope
-- This repository is a monorepo with a Python 3.12 backend in `backend/` and a React 19 + TypeScript frontend in `chili_app/`.
-- chiliAI is a domain-reconfigurable Graph RAG analytics platform. The starting exemplar is Medicare fraud detection.
-- Treat the top-level `README.md` as product vision and quick-start context. Treat `docs/architecture.md` as the design source of truth.
-- Prefer changes that clarify architecture and preserve future modularity over quick, tightly coupled implementations.
 
-## Current Architecture
-- `backend/` is a Python 3.12 FastAPI and worker prototype with service/protocol modules, routers, adapters, and tests. See `backend/README.md` for the live implementation surface and `docs/todos_and_stubs_audit_2026-05-05.md` for the current TODO/stub inventory.
-- The backend structure is 16 modules: `api/`, `ingestion/`, `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/`, `analytics/` (timeseries, gnn, risk, explainability), `agent/`, `monitoring/`, `shared/`, `config/`, `events/`, `storage/`. See `docs/architecture.md` §5 for the full package tree and responsibility matrix.
-- `chili_app/` is a routed React 19 + TypeScript analyst workbench, not the Vite placeholder. Implemented routes include Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration.
-- The frontend still has prototype gaps around persisted evidence packs, config save, and production UX/performance hardening. See `chili_app/README.md` for current route status.
+- chiliAI is a domain-reconfigurable Graph RAG analytics platform. The starting exemplar is Medicare fraud detection.
+- Prefer changes that clarify architecture, preserve modularity, and avoid tight coupling.
 - Keep frontend and backend concerns separate. Do not invent cross-layer contracts implicitly inside UI code.
 
-## Container Architecture
-- The platform deploys as three containers: **chili-app** (React SPA / nginx), **chili-api** (FastAPI gateway), and **chili-worker** (pipeline runner consuming Redis Streams).
-- External dependencies: Redis 7+ (event streaming), a pluggable graph database, a pluggable vector store, and a pluggable object store.
-- See `docs/architecture.md` §4 for full container diagram and communication patterns.
+| Area | Location | Stack / purpose |
+| --- | --- | --- |
+| Backend | `backend/` | Python 3.12 FastAPI API and worker |
+| Frontend | `chili_app/` | React 19 + TypeScript/Vite 8 workbench |
+| Design docs | `docs/` | Architecture and planning source material |
+| Deployment | `infra/` | Infrastructure and runtime assets |
 
-## Build And Test
-- Frontend commands live in `chili_app/package.json`:
+## Architecture Guardrails
+
+- Backend modules may communicate only through:
+  1. **FastAPI gateway orchestration** — frontend-initiated actions via API routers and service modules.
+  2. **Agent / workflow coordinator** — process-driven pipelines over Redis Streams.
+  3. **Lightweight shared library** (`shared/`) — stable contracts, domain types, and small utilities.
+- **Forbidden**: ad hoc cross-module imports, hidden shared state, and direct implementation coupling.
+- External systems must sit behind protocols/ABCs with concrete adapters: graph DB, vector store, LLM, object storage, embedding model, event bus, and relational DB (Postgres/TimescaleDB via the `database/` module's `ConnectionProvider` protocol).
+- Domain configuration is a single YAML/JSON surface. The frontend reads it at startup via API to render dynamic labels and feature gates. Do not hardcode domain entities in code.
+- FastAPI and Redis Streams are mandatory architectural components; do not replace them without an explicit architecture update.
+- For new backend modules, follow the package tree and responsibility matrix in `docs/architecture.md` §5.
+
+## Current Implementation Map
+
+- `backend/` is a Python 3.12 FastAPI/API + worker prototype with service/protocol modules, routers, adapters, and tests. See `backend/README.md` and `docs/todos_and_stubs_audit_2026-05-05.md` for current status.
+- Backend modules include `api/`, `ingestion/`, `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/`, `analytics/` (timeseries, gnn, risk, explainability), `agent/`, `monitoring/`, `shared/`, `config/`, `events/`, `storage/`, `database/` (Postgres + TimescaleDB connection provider, Alembic migrations), and `records/` (structured/tabular ingestion: CSV/JSONL/api-push, raw_records landing — parallel to `ingestion/` for documents).
+- `chili_app/` is a routed analyst workbench, not a Vite placeholder. Implemented routes include Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration.
+- Known frontend prototype gaps include persisted evidence packs, config save, and production UX/performance hardening. See `chili_app/README.md` for route status.
+- Runtime topology is three app containers: **chili-app** (React SPA/nginx), **chili-api** (FastAPI gateway), and **chili-worker** (pipeline runner), plus Redis 7+, graph DB, vector store, and object store dependencies. See `docs/architecture.md` §4.
+
+## Tooling And Commands
+
+- Follow existing lockfiles and module READMEs for package managers. Current frontend commands are defined in `chili_app/package.json` and use npm scripts:
   - `npm run dev` — Vite dev server
   - `npm run build` — TypeScript compile + Vite production build
   - `npm run lint` — ESLint
-- Backend uses Python 3.12 as declared in `backend/.python-version` and `backend/pyproject.toml`.
-  - Target API server: `uvicorn api.app:create_app --reload --port 8000`
-  - Target worker: `python -m agent.coordinator`
-  - Tests: `pytest --cov` (≥ 85% coverage required per backend package)
-- CI runs backend lint/typecheck/tests and frontend lint/typecheck/tests/build. Keep touched areas green and document new commands in the relevant README.
+- Backend uses Python 3.12 as declared in `backend/.python-version` and `backend/pyproject.toml`:
+  - API server: `uvicorn api.app:create_app --factory --reload --port 8000`
+  - Worker: `python -m agent.coordinator`
+  - Tests: `pytest --cov`
+  - Type check/lint: `pyright`, `ruff check .`
+- CI runs backend lint/typecheck/tests and frontend lint/typecheck/tests/build. Keep touched areas green.
 
-## Conventions
-- Preserve the monorepo split: frontend work in `chili_app/`, backend work in `backend/`, design docs in `docs/`, deployment config in `infra/`.
-- Frontend TypeScript is strict: `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`. Keep builds and lint clean.
-- Follow existing frontend patterns: functional React components, hooks, and the current Vite/ESLint setup. Target libraries: TanStack Query for server state, Zustand for client state, React Router v7 for routing.
-- Backend code must be compatible with `pyright --strict` — full annotations, no untyped `Any`, explicit domain types. The active Pyright scope is currently defined in `backend/pyproject.toml`.
-- Design around abstract interfaces (protocols, ABCs) and interchangeable adapters for all external systems: graph DB, vector store, LLM, object storage.
-- Domain configuration is a single YAML/JSON surface. The frontend reads it at startup via API to render dynamic labels and feature gates. See `docs/architecture.md` §9.
+## Quality Gates
 
-## Cross-Module Interaction Rules
-Backend modules may only interact through these three paths:
-1. **FastAPI gateway orchestration** — for frontend-initiated actions (API router → service modules).
-2. **Agent / workflow coordinator** — for process-driven multi-step pipelines (events via Redis Streams).
-3. **Lightweight shared library** (`shared/`) — for stable contracts, domain types, and small utilities.
+- Backend functional code must be fully typed, compatible with `pyright --strict`, and avoid untyped `Any`. The active Pyright scope is in `backend/pyproject.toml`.
+- Backend changes require pytest coverage ≥ 85% for affected packages and full green tests before acceptance.
+- Frontend TypeScript is strict (`noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`) and must remain ESLint clean.
+- Follow existing frontend patterns: functional React components, hooks, Vite/ESLint setup, TanStack Query for server state, Zustand for client state, and React Router v7 for routing.
+- Use e2e/Playwright verification for workflows, UI behavior, and integration points when practical.
+- Never silence errors, suppress warnings, bypass type checks, or leave known errors as TODOs. Fix relevant errors when found; import-order-only issues are the exception.
 
-**Forbidden**: ad hoc cross-module imports, hidden shared state, direct implementation coupling.
+## Agent Workflow Rules
 
-## Working Rules For Agents
-- FastAPI is the chosen API framework. Redis Streams is the event transport. These are architectural decisions, not assumptions.
-- For new backend modules, follow the package tree in `docs/architecture.md` §5. Establish module boundaries first and avoid coupling concerns.
-- Every external system (graph DB, vector store, LLM, object store, embedding model) must be behind an abstract protocol with concrete adapters.
-- Backend changes must include pytest tests maintaining ≥ 85% coverage for the affected package.
-- For planning tasks, prefer documenting assumptions and open questions instead of fabricating missing implementation details.
-- For implementation tasks, update adjacent docs when you introduce a new command, dependency, or architectural decision.
+- When planning, read nearby `README.md`, `AGENT_Instructions.md`, or `AGENT.md` files if present, and document assumptions/open questions instead of fabricating details.
+- When implementing, update adjacent docs for new commands, dependencies, APIs, or architectural decisions. Update `docs/architecture.md` and the root `README.md` for design or cross-cutting changes.
+- When changing frontend behavior, run and visually/interaction-test the app when practical; do not rely only on code review.
+- When changing backend behavior, run relevant tests and, when practical, verify API/worker behavior, logs, and persisted state.
+- Before committing broad or cross-cutting work, check `CLAUDE.md`, `.github/` instructions, module READMEs, and non-archived docs for contradictions or outdated guidance.

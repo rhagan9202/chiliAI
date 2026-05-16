@@ -37,14 +37,17 @@ jobs:
       - name: Install backend with all extras
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,neo4j,qdrant,openai,anthropic,s3,sentence-transformers,analytics]" \
+          pip install -e ".[dev,neo4j,qdrant,openai,anthropic,s3,sentence-transformers,analytics,postgres]" \
             || pip install -e ".[dev]"
 
       - name: Lint with ruff
         run: ruff check .
 
       - name: Type-check with pyright
-        run: pyright .
+        # No path argument: pyright honours tool.pyright.include in
+        # pyproject.toml, which scopes strict checking to the hardened
+        # modules. Passing "." would override that and check the whole tree.
+        run: pyright
 
       - name: Run pytest with coverage gate
         run: pytest --cov --cov-report=xml --cov-report=term --cov-fail-under=85
@@ -61,12 +64,16 @@ jobs:
         run: pip install pip-audit
 
       - name: Run pip-audit (fail on HIGH/CRITICAL)
+        # --skip-editable: the project installs itself editable (chili-backend),
+        # which is not on PyPI and cannot be audited. --strict is intentionally
+        # omitted — it would fail on that un-auditable local package; pip-audit
+        # still exits non-zero on any real dependency vulnerability.
         run: |
           pip-audit \
-            --strict \
+            --skip-editable \
             --vulnerability-service=pypi \
             --ignore-vuln GHSA-0000-0000-0000 \
-            || pip-audit --strict
+            || pip-audit --skip-editable
 
   frontend:
     name: Frontend (lint, typecheck, tests, build, audit)

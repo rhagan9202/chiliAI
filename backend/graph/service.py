@@ -182,6 +182,48 @@ class GraphService:
             knowledge_base_id, entity_id, properties
         )
 
+    def upsert_records_graph(
+        self,
+        knowledge_base_id: str,
+        entities: list[Entity],
+        relationships: list[Relationship],
+    ) -> tuple[list[Entity], list[Relationship]]:
+        """Upsert entities and relationships from a structured-records feed.
+
+        Unlike :meth:`upsert_task`, this writes no document-pipeline artifacts
+        and publishes no ``GraphUpdatedEvent`` — structured records have no
+        parsed-document lineage. Both writes are idempotent upserts, so the
+        worker's Flow 1 handler is safely replayable.
+        """
+
+        stored_entities: list[Entity] = []
+        for entity_batch in self._chunk_items(entities):
+            try:
+                with self._repository.transaction(knowledge_base_id):
+                    stored_entities.extend(
+                        self._repository.upsert_entities(knowledge_base_id, entity_batch)
+                    )
+            except Exception as exc:
+                raise BatchUpsertError(
+                    successful_entity_count=len(stored_entities),
+                    successful_relationship_count=0,
+                ) from exc
+
+        stored_relationships: list[Relationship] = []
+        for relationship_batch in self._chunk_items(relationships):
+            try:
+                with self._repository.transaction(knowledge_base_id):
+                    stored_relationships.extend(
+                        self._repository.upsert_relationships(knowledge_base_id, relationship_batch)
+                    )
+            except Exception as exc:
+                raise BatchUpsertError(
+                    successful_entity_count=len(stored_entities),
+                    successful_relationship_count=len(stored_relationships),
+                ) from exc
+
+        return stored_entities, stored_relationships
+
     def query_neighborhood(
         self,
         knowledge_base_id: str,

@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-from monitoring.adapters.in_memory import InMemoryObservationSource
-from monitoring.adapters.protocols import ObservationSourceProtocol
+from monitoring.adapters.in_memory import (
+    InMemoryAlertRepository,
+    InMemoryObservationSource,
+    InMemoryObservationWriter,
+)
+from monitoring.adapters.protocols import ObservationSourceProtocol, ObservationWriter
 
-__all__ = ["InMemoryObservationSource", "ObservationSourceProtocol"]
+__all__ = [
+    "InMemoryAlertRepository",
+    "InMemoryObservationSource",
+    "InMemoryObservationWriter",
+    "ObservationSourceProtocol",
+    "ObservationWriter",
+]
