@@ -73,6 +73,7 @@ from analytics.risk.adapters.in_memory import InMemoryRiskHistoryWriter, InMemor
 from analytics.risk.adapters.postgres import PostgresRiskHistoryStore
 from analytics.risk.adapters.protocols import RiskHistoryWriter, RiskSignalSourceProtocol
 from analytics.risk.exceptions import RiskError
+from analytics.risk.models import RiskAssessmentRecord, RiskFactor
 from analytics.risk.service import RiskService, create_risk_service
 from analytics.risk.service_models import (
     RiskAssessmentRequest,
@@ -189,6 +190,7 @@ __all__ = [
     "handle_graph_updated_for_analytics",
     "handle_records_ingested",
     "handle_risk_scored",
+    "handle_risk_scored_for_graph",
     "handle_vectors_indexed",
     "main",
     "run_handler_with_retry",
@@ -1466,6 +1468,63 @@ def handle_risk_scored(
     return processed
 
 
+def handle_risk_scored_for_graph(
+    event: RiskScoredEvent,
+    *,
+    risk_history_writer: RiskHistoryWriter,
+    graph_service: GraphService,
+) -> int:
+    """Flow 3 — persist risk assessments and snapshot risk onto the graph entity.
+
+    Idempotent: ``risk_score_history`` is keyed by request_id and
+    ``update_entity_properties`` is a property merge, so the worker's retry/DLQ
+    wrapper can safely re-run this handler. The graph write publishes no event,
+    so it cannot re-trigger the analytics pipeline.
+    """
+
+    assessed_at = __datetime__.now(tz=__timezone__.utc)
+    processed = 0
+    for assessment in event.assessments:
+        record = RiskAssessmentRecord(
+            knowledge_base_id=assessment.knowledge_base_id,
+            entity_id=assessment.entity_id,
+            request_id=assessment.request_id,
+            overall_score=assessment.overall_score,
+            risk_level=assessment.risk_level,
+            factors=[
+                RiskFactor(
+                    factor_name=factor.factor_name,
+                    raw_value=factor.raw_value,
+                    weight=factor.weight,
+                    contribution=factor.contribution,
+                    rationale=factor.rationale,
+                )
+                for factor in assessment.factors
+            ],
+            assessed_at=assessed_at,
+        )
+        risk_history_writer.write_assessment(record)
+        try:
+            graph_service.update_entity_properties(
+                assessment.knowledge_base_id,
+                assessment.entity_id,
+                {
+                    "risk_score": float(assessment.overall_score),
+                    "risk_level": assessment.risk_level,
+                    "risk_assessed_at": assessed_at.isoformat(),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 - graph backend may be unavailable
+            logger.warning(
+                "Failed to snapshot risk to graph kb=%s entity=%s: %s",
+                assessment.knowledge_base_id,
+                assessment.entity_id,
+                exc,
+            )
+        processed += 1
+    return processed
+
+
 def handle_records_ingested(
     event: RecordsIngestedEvent,
     *,
@@ -1992,20 +2051,32 @@ def _dispatch_event(
             event_bus=event_bus,
         )
     if isinstance(event, RiskScoredEvent):
-        if monitoring_service is None:
-            return 0
-        try:
-            return handle_risk_scored(
-                event,
-                monitoring_service=monitoring_service,
-                event_bus=event_bus,
-            )
-        except Exception as exc:  # noqa: BLE001 - monitoring must not abort pipeline
-            logger.warning(
-                "Monitoring stream consumer raised; continuing. error=%s",
-                exc,
-            )
-            return 0
+        processed = 0
+        if monitoring_service is not None:
+            try:
+                processed = handle_risk_scored(
+                    event,
+                    monitoring_service=monitoring_service,
+                    event_bus=event_bus,
+                )
+            except Exception as exc:  # noqa: BLE001 - monitoring must not abort pipeline
+                logger.warning(
+                    "Monitoring stream consumer raised; continuing. error=%s",
+                    exc,
+                )
+        if risk_history_writer is not None:
+            try:
+                handle_risk_scored_for_graph(
+                    event,
+                    risk_history_writer=risk_history_writer,
+                    graph_service=graph_service,
+                )
+            except Exception as exc:  # noqa: BLE001 - write-back must not abort pipeline
+                logger.warning(
+                    "Risk graph write-back raised; continuing. error=%s",
+                    exc,
+                )
+        return processed
     if isinstance(event, RecordsIngestedEvent):
         if (
             records_config is None
