@@ -15,7 +15,7 @@ Working FastAPI gateway and pipeline-worker prototype with domain configuration,
 - **`api/app.py`** — FastAPI app factory with `/health`, CORS, metrics instrumentation, and all API routers.
 - **`api/routers/config.py`** — `GET /config/domain` returns the active domain configuration as JSON.
 - **`api/dependencies.py`** — Dependency injection wiring. `get_domain_config()` loads config once and process-caches (cleared at the top of `create_app()` for test isolation). `get_api_state()` reads from `request.app.state.api_state`, attached per-app in `create_app()`. Graph, vectorstore, storage, embedding, and LLM adapters are selected from config with lazy optional imports.
-- **`api/routers/`** — Knowledge base, alert, investigation, chat (rag), analytics, config, policy, cases, evidence, graph, workflows, events (SSE), auth, and WebSocket routers. Every Phase 5+ route carries `Depends(require_role(...))` (reads = viewer, writes = analyst); `policy_registry.assert_complete` runs on app startup when auth is enabled and refuses to boot if any route is unguarded.
+- **`api/routers/`** — Knowledge base, alert, investigation, chat (rag), analytics, config, policy, cases, evidence, graph, workflows, events (SSE), auth, WebSocket, and records routers. Every Phase 5+ route carries `Depends(require_role(...))` (reads = viewer, writes = analyst); `policy_registry.assert_complete` runs on app startup when auth is enabled and refuses to boot if any route is unguarded. Records routes: `POST /records/{knowledge_base_id}/files` (CSV/JSONL file upload) and `POST /records/{knowledge_base_id}/push` (JSON api-push).
 - **`api/_kb_store.py` / `api/_kb_projection.py`** — API-owned KB/document metadata projection. The in-memory repository remains available for tests and isolated local runs; the object-store repository persists dev KB/document metadata across API reloads through the configured `ObjectStore`. Projection reads merge repository metadata with live graph metrics/object-store build artifacts and persist status/count changes back through the repository.
 - **`api/_alert_store.py`** — API-owned alert read projection for `/alerts` and SSE `active_alerts`. Monitoring/analytics services still own alert generation; this projection preserves the frontend contract while decoupling alert reads from legacy seeded `ApiState`.
 - **`api/_workflow_projection.py`** — API DTO projection for workflow summaries. The `agent/` module owns workflow state behind `WorkflowRunStoreProtocol`; `/workflows` and SSE `running_workflows` read through `AgentServiceProtocol` instead of legacy seeded `ApiState`. The dev stack uses the Redis workflow store so API and worker share lifecycle updates.
@@ -25,6 +25,7 @@ Working FastAPI gateway and pipeline-worker prototype with domain configuration,
 - **`analytics/` and `monitoring/`** — Heuristic timeseries, GNN, risk, explainability, alert, and monitoring services.
 - **`storage/`** — In-memory, local filesystem, and S3-compatible object-store adapters.
 - **`database/`** — Postgres + TimescaleDB connection provider, `DatabaseConfig`-driven backend selection, and Alembic-managed schema (six persistence tables). Infrastructure only — no domain logic.
+- **`records/`** — structured/tabular ingestion (CSV/JSONL/api-push). Validates rows against config-declared feed schemas, lands canonical rows in `raw_records`, and publishes `RecordsIngestedEvent`. Parallel to `ingestion/` for documents.
 - **`api/middleware/`** — Metrics, auth, and RBAC middleware with route-level policy enforcement and auth-enabled startup audit.
 - **`agent/coordinator.py`** — Worker entry point (`python -m agent.coordinator`) for Redis-stream processing, Flow A/Flow B handlers, workflow lifecycle tracking, retry/DLQ routing, graceful shutdown, and a lightweight health endpoint.
 - **`main.py`** — Uvicorn launcher for local development.
@@ -52,7 +53,8 @@ backend/
 ├── config/          # Domain configuration loader (YAML/JSON)
 ├── events/          # Event bus abstraction + Redis Streams adapter
 ├── storage/         # Object/file storage abstraction + adapters (S3, MinIO, local FS)
-└── database/        # Postgres + TimescaleDB connection provider, Alembic migrations
+├── database/        # Postgres + TimescaleDB connection provider, Alembic migrations
+└── records/         # structured/tabular ingestion (CSV/JSONL/api-push), raw_records landing
 ```
 
 ## Cross-Module Interaction Rules
