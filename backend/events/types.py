@@ -261,6 +261,16 @@ class GnnAnalyzedEvent(EventBase):
     analyses: list[GnnAnalyzedReference]
 
 
+class RiskFactorReference(BaseModel):
+    """A single weighted risk factor carried on a RiskScoredReference."""
+
+    factor_name: str
+    raw_value: float = Field(ge=0.0, le=1.0)
+    weight: float = Field(gt=0.0)
+    contribution: float = Field(ge=0.0, le=1.0)
+    rationale: str | None = None
+
+
 class RiskScoredReference(BaseModel):
     knowledge_base_id: str
     request_id: str
@@ -268,6 +278,9 @@ class RiskScoredReference(BaseModel):
     overall_score: float = Field(ge=0.0, le=1.0)
     risk_level: str
     factor_count: int = Field(ge=0)
+    factors: list[RiskFactorReference] = Field(
+        default_factory=lambda: list[RiskFactorReference]()
+    )
 
 
 class RiskScoredEvent(EventBase):
@@ -454,6 +467,7 @@ __all__ = [
     "RagCompletedEvent",
     "RagCompletionReference",
     "RecordsIngestedEvent",
+    "RiskFactorReference",
     "RiskScoredEvent",
     "RiskScoredReference",
     "TimeseriesAnalyzedEvent",

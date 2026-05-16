@@ -359,6 +359,34 @@ def test_risk_service_trend_respects_custom_delta_threshold() -> None:
     assert response.trend == "stable"
 
 
+def test_assess_publishes_factors_on_risk_scored_event() -> None:
+    from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
+    from analytics.risk.models import RiskProfile, RiskSignal
+    from analytics.risk.service import create_risk_service
+    from analytics.risk.service_models import RiskAssessmentRequest
+    from events.adapters.in_memory import InMemoryEventBus
+    from events.types import RiskScoredEvent
+
+    profile = RiskProfile(
+        knowledge_base_id="kb-1",
+        entity_id="claim:c1",
+        signals=[
+            RiskSignal(signal_name="anomaly", value=0.9, weight=1.0),
+            RiskSignal(signal_name="volume", value=0.4, weight=1.0),
+        ],
+    )
+    event_bus = InMemoryEventBus()
+    service = create_risk_service(
+        InMemoryRiskSignalSource(profiles=[profile]), event_bus=event_bus
+    )
+    service.assess(
+        RiskAssessmentRequest(knowledge_base_id="kb-1", entity_id="claim:c1")
+    )
+    published = [e for e in event_bus.published_events if isinstance(e, RiskScoredEvent)]
+    assert len(published) == 1
+    assert len(published[0].assessments[0].factors) == 2
+
+
 def test_in_memory_source_returns_none_when_no_history_seeded() -> None:
     source = InMemoryRiskSignalSource()
 

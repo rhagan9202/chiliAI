@@ -21,7 +21,7 @@ from analytics.risk.service_models import (
     RiskTrend,
 )
 from events.protocols import EventBus
-from events.types import RiskScoredEvent, RiskScoredReference
+from events.types import RiskFactorReference, RiskScoredEvent, RiskScoredReference
 from shared.utils import generate_id
 
 DEFAULT_TREND_DELTA_THRESHOLD = 0.05
@@ -118,6 +118,16 @@ class RiskService:
                         overall_score=response.overall_score,
                         risk_level=response.risk_level,
                         factor_count=response.factor_count,
+                        factors=[
+                            RiskFactorReference(
+                                factor_name=factor.factor_name,
+                                raw_value=factor.raw_value,
+                                weight=factor.weight,
+                                contribution=factor.contribution,
+                                rationale=factor.rationale,
+                            )
+                            for factor in response.factors
+                        ],
                     )
                 ]
             )
