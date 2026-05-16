@@ -61,6 +61,13 @@ from analytics.gnn.service_models import GnnAnalysisRequest, GnnAnalysisResponse
 from analytics.metrics.adapters.in_memory import InMemoryEntityMetricRepository
 from analytics.metrics.adapters.postgres import PostgresEntityMetricRepository
 from analytics.metrics.adapters.protocols import EntityMetricRepository
+from analytics.metrics.models import (
+    GRAPH_SCOPE_ENTITY_ID,
+    METRIC_AVG_DEGREE,
+    METRIC_ENTITY_COUNT,
+    METRIC_RELATIONSHIP_COUNT,
+    EntityMetricSample,
+)
 from analytics.metrics.throttle import MetricsRecomputeThrottle
 from analytics.risk.adapters.in_memory import InMemoryRiskHistoryWriter, InMemoryRiskSignalSource
 from analytics.risk.adapters.postgres import PostgresRiskHistoryStore
@@ -1100,6 +1107,8 @@ def handle_graph_updated_for_analytics(
     graph_service: GraphService,
     event_bus: EventBus,
     object_store: ObjectStore | None = None,
+    entity_metric_repository: EntityMetricRepository | None = None,
+    metrics_throttle: MetricsRecomputeThrottle | None = None,
 ) -> int:
     """Run Flow B (GNN -> risk -> explainability -> alerts.created).
 
@@ -1156,6 +1165,13 @@ def handle_graph_updated_for_analytics(
             )
             if alert_reference is not None:
                 alerts.append(alert_reference)
+
+    _persist_graph_metrics_for_event(
+        event=event,
+        graph_service=graph_service,
+        entity_metric_repository=entity_metric_repository,
+        metrics_throttle=metrics_throttle,
+    )
 
     if alerts:
         event_bus.publish(
@@ -1277,6 +1293,73 @@ def _run_explainability_stage(
         title=f"{risk_response.risk_level.title()} risk: {entity_id}",
         reasoning=response.evidence_pack.reasoning,
     )
+
+
+def _persist_graph_metrics_for_event(
+    *,
+    event: GraphUpdatedEvent,
+    graph_service: GraphService,
+    entity_metric_repository: EntityMetricRepository | None,
+    metrics_throttle: MetricsRecomputeThrottle | None,
+) -> None:
+    """Flow 2 — persist graph metrics per KB, throttled to avoid recompute storms.
+
+    Best-effort: a failure here is logged but never aborts Flow B. The throttle
+    drops recomputes that arrive within the configured per-KB interval so a
+    burst of graph updates cannot thrash the system.
+    """
+
+    if entity_metric_repository is None or metrics_throttle is None:
+        return
+    now = __datetime__.now(tz=__timezone__.utc)
+    seen: set[str] = set()
+    for document in event.documents:
+        knowledge_base_id = document.knowledge_base_id
+        if knowledge_base_id in seen:
+            continue
+        seen.add(knowledge_base_id)
+        if not metrics_throttle.should_recompute(knowledge_base_id, now=now):
+            logger.debug(
+                "Skipping throttled graph-metric recompute for kb=%s",
+                knowledge_base_id,
+            )
+            continue
+        try:
+            metrics = graph_service.compute_metrics(knowledge_base_id)
+            entity_metric_repository.record_metrics(
+                [
+                    EntityMetricSample(
+                        knowledge_base_id=knowledge_base_id,
+                        entity_id=GRAPH_SCOPE_ENTITY_ID,
+                        metric_name=METRIC_ENTITY_COUNT,
+                        value=float(metrics.entity_count),
+                        observed_at=now,
+                        correlation_id=event.correlation_id,
+                    ),
+                    EntityMetricSample(
+                        knowledge_base_id=knowledge_base_id,
+                        entity_id=GRAPH_SCOPE_ENTITY_ID,
+                        metric_name=METRIC_RELATIONSHIP_COUNT,
+                        value=float(metrics.relationship_count),
+                        observed_at=now,
+                        correlation_id=event.correlation_id,
+                    ),
+                    EntityMetricSample(
+                        knowledge_base_id=knowledge_base_id,
+                        entity_id=GRAPH_SCOPE_ENTITY_ID,
+                        metric_name=METRIC_AVG_DEGREE,
+                        value=metrics.avg_degree,
+                        observed_at=now,
+                        correlation_id=event.correlation_id,
+                    ),
+                ]
+            )
+        except Exception as exc:  # noqa: BLE001 - metrics must not block Flow B
+            logger.warning(
+                "Failed to persist graph metrics for kb=%s: %s",
+                knowledge_base_id,
+                exc,
+            )
 
 
 def _write_analytics_properties_to_graph(
@@ -1882,6 +1965,8 @@ def _dispatch_event(
                     graph_service=graph_service,
                     event_bus=event_bus,
                     object_store=object_store,
+                    entity_metric_repository=entity_metric_repository,
+                    metrics_throttle=metrics_throttle,
                 )
             except Exception as exc:  # noqa: BLE001 - analytics must not block Flow A
                 logger.warning(
