@@ -33,4 +33,5 @@ def test_event_round_trips_through_the_codec() -> None:
     assert decoded.correlation_id == "corr-1"
     assert decoded.knowledge_base_id == "kb-1"
     assert decoded.feed_name == "claims_feed"
+    assert decoded.record_type == "claim_record"
     assert decoded.record_count == 5
