@@ -158,6 +158,9 @@ database:
   pool_max_overflow: 5
   statement_timeout_ms: 30000
 
+analytics:
+  metrics_recompute_min_interval_seconds: 300
+
 monitoring:
   evaluation_interval_seconds: 300
   dedup_window_seconds: 3600
