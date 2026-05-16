@@ -1208,6 +1208,9 @@ def _run_explainability_stage(
         entity_id=entity_id,
         severity=risk_response.risk_level,
         evidence_pack_id=response.evidence_pack.id,
+        status="open",
+        title=f"{risk_response.risk_level.title()} risk: {entity_id}",
+        reasoning=response.evidence_pack.reasoning,
     )
 
 

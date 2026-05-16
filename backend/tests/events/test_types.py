@@ -111,3 +111,19 @@ def test_risk_scored_reference_factors_default_empty() -> None:
         factor_count=0,
     )
     assert reference.factors == []
+
+
+def test_alert_created_reference_new_fields_default() -> None:
+    from events.types import AlertCreatedReference
+
+    reference = AlertCreatedReference(
+        knowledge_base_id="kb-1",
+        alert_id="a-1",
+        entity_id="claim:c1",
+        severity="high",
+    )
+    assert reference.entity_type == ""
+    assert reference.status == "open"
+    assert reference.title == ""
+    assert reference.reasoning == ""
+    assert reference.metric_name == ""

@@ -322,6 +322,11 @@ class AlertCreatedReference(BaseModel):
     entity_id: str
     severity: str
     evidence_pack_id: str | None = None
+    entity_type: str = ""
+    status: str = "open"
+    title: str = ""
+    reasoning: str = ""
+    metric_name: str = ""
 
 
 class AlertsCreatedEvent(EventBase):
