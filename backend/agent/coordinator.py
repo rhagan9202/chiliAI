@@ -28,6 +28,7 @@ from agent.models import HealthSettings, RetryPolicy
 from agent.workflow_tracking import WorkflowEventTracker
 from config.loader import load_config
 from config.schema import (
+    AnalyticsConfig,
     DatabaseConfig,
     DomainConfig,
     EmbeddingsConfig,
@@ -57,8 +58,13 @@ from analytics.gnn.adapters.protocols import GraphSnapshotSourceProtocol
 from analytics.gnn.exceptions import GnnError
 from analytics.gnn.service import GnnService, create_gnn_service
 from analytics.gnn.service_models import GnnAnalysisRequest, GnnAnalysisResponse
-from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
-from analytics.risk.adapters.protocols import RiskSignalSourceProtocol
+from analytics.metrics.adapters.in_memory import InMemoryEntityMetricRepository
+from analytics.metrics.adapters.postgres import PostgresEntityMetricRepository
+from analytics.metrics.adapters.protocols import EntityMetricRepository
+from analytics.metrics.throttle import MetricsRecomputeThrottle
+from analytics.risk.adapters.in_memory import InMemoryRiskHistoryWriter, InMemoryRiskSignalSource
+from analytics.risk.adapters.postgres import PostgresRiskHistoryStore
+from analytics.risk.adapters.protocols import RiskHistoryWriter, RiskSignalSourceProtocol
 from analytics.risk.exceptions import RiskError
 from analytics.risk.service import RiskService, create_risk_service
 from analytics.risk.service_models import (
@@ -114,11 +120,20 @@ from ingestion.validator import ExtractionResultValidator, create_extraction_val
 from llm.adapters.in_memory import InMemoryLlmClient
 from llm.adapters.protocols import LlmClientProtocol
 from monitoring.adapters.in_memory import (
+    InMemoryAlertHistoryWriter,
     InMemoryObservationSource,
     InMemoryObservationWriter,
 )
-from monitoring.adapters.postgres import PostgresObservationStore
-from monitoring.adapters.protocols import ObservationSourceProtocol, ObservationWriter
+from monitoring.adapters.postgres import (
+    PostgresAlertHistoryStore,
+    PostgresObservationSource,
+    PostgresObservationStore,
+)
+from monitoring.adapters.protocols import (
+    AlertHistoryWriter,
+    ObservationSourceProtocol,
+    ObservationWriter,
+)
 from monitoring.exceptions import MonitoringError
 from monitoring.models import MonitoringBatch
 from monitoring.service import MonitoringService, create_monitoring_service
@@ -140,8 +155,10 @@ from vectorstore.models import VectorRecord
 
 __all__ = [
     "WorkerDependencies",
+    "build_alert_history_writer",
     "build_connection_provider",
     "build_embedder",
+    "build_entity_metric_repository",
     "build_explainability_context_source",
     "build_graph_repository",
     "build_graph_snapshot_source",
@@ -150,6 +167,7 @@ __all__ = [
     "build_object_store",
     "build_observation_writer",
     "build_raw_record_store",
+    "build_risk_history_writer",
     "build_risk_signal_source",
     "build_vector_store",
     "build_worker_dependencies",
@@ -198,6 +216,10 @@ class WorkerDependencies:
     records_config: RecordsConfig
     raw_record_store: RawRecordStore
     observation_writer: ObservationWriter
+    entity_metric_repository: EntityMetricRepository
+    metrics_throttle: MetricsRecomputeThrottle
+    risk_history_writer: RiskHistoryWriter
+    alert_history_writer: AlertHistoryWriter
     event_settings: EventBusSettings
     workflow_run_store: WorkflowRunStoreProtocol
     workflow_tracker: WorkflowEventTracker
@@ -449,11 +471,13 @@ def build_explainability_context_source(
 
 
 def build_monitoring_observation_source(
-    _config: DomainConfig,
+    provider: ConnectionProvider | None,
 ) -> ObservationSourceProtocol:
-    """Return the configured monitoring observation source adapter."""
+    """Select a monitoring observation source: Postgres when a provider exists."""
 
-    return InMemoryObservationSource()
+    if provider is None:
+        return InMemoryObservationSource()
+    return PostgresObservationSource(provider)
 
 
 def build_connection_provider(config: DomainConfig) -> ConnectionProvider | None:
@@ -480,6 +504,36 @@ def build_observation_writer(
     if provider is None:
         return InMemoryObservationWriter()
     return PostgresObservationStore(provider)
+
+
+def build_entity_metric_repository(
+    provider: ConnectionProvider | None,
+) -> EntityMetricRepository:
+    """Select an entity-metric repository: Postgres when a provider exists."""
+
+    if provider is None:
+        return InMemoryEntityMetricRepository()
+    return PostgresEntityMetricRepository(provider)
+
+
+def build_risk_history_writer(
+    provider: ConnectionProvider | None,
+) -> RiskHistoryWriter:
+    """Select a risk-history writer: Postgres when a provider exists."""
+
+    if provider is None:
+        return InMemoryRiskHistoryWriter()
+    return PostgresRiskHistoryStore(provider)
+
+
+def build_alert_history_writer(
+    provider: ConnectionProvider | None,
+) -> AlertHistoryWriter:
+    """Select an alert-history writer: Postgres when a provider exists."""
+
+    if provider is None:
+        return InMemoryAlertHistoryWriter()
+    return PostgresAlertHistoryStore(provider)
 
 
 def _section_is_default(value: object, default: object) -> bool:
@@ -627,9 +681,10 @@ def build_worker_dependencies() -> WorkerDependencies:
         build_explainability_context_source(config),
         event_bus=event_bus,
     )
+    connection_provider = build_connection_provider(config)
     monitoring_config = config.monitoring
     monitoring_service = create_monitoring_service(
-        build_monitoring_observation_source(config),
+        build_monitoring_observation_source(connection_provider),
         event_bus=event_bus,
         dedup_window_seconds=(
             monitoring_config.dedup_window_seconds
@@ -647,9 +702,15 @@ def build_worker_dependencies() -> WorkerDependencies:
             else 300
         ),
     )
-    connection_provider = build_connection_provider(config)
     raw_record_store = build_raw_record_store(connection_provider)
     observation_writer = build_observation_writer(connection_provider)
+    entity_metric_repository = build_entity_metric_repository(connection_provider)
+    risk_history_writer = build_risk_history_writer(connection_provider)
+    alert_history_writer = build_alert_history_writer(connection_provider)
+    analytics_config = config.analytics or AnalyticsConfig()
+    metrics_throttle = MetricsRecomputeThrottle(
+        min_interval_seconds=analytics_config.metrics_recompute_min_interval_seconds
+    )
     records_config = config.records or RecordsConfig()
 
     return WorkerDependencies(
@@ -670,6 +731,10 @@ def build_worker_dependencies() -> WorkerDependencies:
         records_config=records_config,
         raw_record_store=raw_record_store,
         observation_writer=observation_writer,
+        entity_metric_repository=entity_metric_repository,
+        metrics_throttle=metrics_throttle,
+        risk_history_writer=risk_history_writer,
+        alert_history_writer=alert_history_writer,
         event_settings=event_settings,
         workflow_run_store=workflow_run_store,
         workflow_tracker=workflow_tracker,

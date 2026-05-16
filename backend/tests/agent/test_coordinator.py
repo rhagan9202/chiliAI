@@ -1498,6 +1498,11 @@ def test_graceful_shutdown_finishes_in_flight_event(
     from monitoring.adapters.in_memory import InMemoryObservationSource
     from monitoring.service import create_monitoring_service
 
+    from analytics.metrics.adapters.in_memory import InMemoryEntityMetricRepository
+    from analytics.metrics.throttle import MetricsRecomputeThrottle
+    from analytics.risk.adapters.in_memory import InMemoryRiskHistoryWriter
+    from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter
+
     fake_deps = WorkerDependencies(
         event_bus=event_bus,
         ingestion_service=ingestion_service,
@@ -1526,6 +1531,10 @@ def test_graceful_shutdown_finishes_in_flight_event(
         records_config=RecordsConfig(),
         raw_record_store=InMemoryRawRecordStore(),
         observation_writer=InMemoryObservationWriter(),
+        entity_metric_repository=InMemoryEntityMetricRepository(),
+        metrics_throttle=MetricsRecomputeThrottle(min_interval_seconds=300),
+        risk_history_writer=InMemoryRiskHistoryWriter(),
+        alert_history_writer=InMemoryAlertHistoryWriter(),
         event_settings=EventBusSettings(backend="in-memory"),
         workflow_run_store=workflow_run_store,
         workflow_tracker=WorkflowEventTracker(workflow_run_store),
