@@ -31,6 +31,7 @@ from api.contracts import (
 from api.state import ApiState, create_api_state
 from config.loader import load_config
 from config.schema import (
+    DatabaseConfig,
     DomainConfig,
     EmbeddingsConfig,
     EventBusConfig,
@@ -38,6 +39,7 @@ from config.schema import (
     LlmConfig,
     MonitoringConfig,
     ObjectStoreConfig,
+    RecordsConfig,
     VectorStoreConfig,
 )
 from embeddings.adapters.in_memory import InMemoryEmbedder
@@ -63,6 +65,13 @@ from monitoring.adapters.in_memory import InMemoryObservationSource
 from monitoring.adapters.protocols import ObservationSourceProtocol
 from monitoring.protocols import MonitoringServiceProtocol
 from monitoring.service import create_monitoring_service
+from database.protocols import ConnectionProvider
+from database.runtime import create_connection_provider
+from records.adapters.in_memory import InMemoryRawRecordStore
+from records.adapters.postgres import PostgresRawRecordStore
+from records.adapters.protocols import RawRecordStore
+from records.protocols import RecordsServiceProtocol
+from records.service import create_records_service
 from shared.exceptions import ConfigurationError
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.adapters.local_fs_adapter import LocalFsObjectStore
@@ -99,6 +108,9 @@ __all__ = [
     "get_graph_repository",
     "get_graph_service",
     "get_ingestion_service",
+    "get_connection_provider",
+    "get_raw_record_store",
+    "get_records_service",
     "get_knowledge_base_repository",
     "get_llm_client",
     "get_llm_service",
@@ -598,6 +610,36 @@ def get_ingestion_service() -> IngestionService:
         object_store=get_object_store(),
         event_bus=get_event_bus(),
     )
+
+
+@lru_cache(maxsize=1)
+def get_connection_provider() -> ConnectionProvider | None:
+    """Return the database connection provider, or None for the in-memory backend."""
+    config = get_domain_config()
+    return create_connection_provider(config.database or DatabaseConfig())
+
+
+@lru_cache(maxsize=1)
+def get_raw_record_store() -> RawRecordStore:
+    """Return the raw record store selected by the configured database backend."""
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemoryRawRecordStore()
+    return PostgresRawRecordStore(provider)
+
+
+def get_records_service(
+    event_bus: EventBus = Depends(get_event_bus),
+    store: RawRecordStore = Depends(get_raw_record_store),
+    config: DomainConfig = Depends(get_domain_config),
+) -> RecordsServiceProtocol:
+    """Return the records ingestion service assembled from configured dependencies."""
+    return create_records_service(
+        store,
+        event_bus=event_bus,
+        records_config=config.records or RecordsConfig(),
+    )
+
 
 from api._alert_store import (  # noqa: E402  (intentional bottom-of-file import)
     AlertProjectionRepository,
