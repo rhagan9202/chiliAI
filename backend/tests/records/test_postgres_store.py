@@ -38,6 +38,9 @@ def test_persist_and_load_round_trip(database_url: str) -> None:
             )
             conn.commit()
 
+        # Empty batch short-circuits before touching the DB.
+        assert store.persist([]) == 0
+
         inserted = store.persist(
             [
                 _record("claim-1", correlation_id=correlation_id),

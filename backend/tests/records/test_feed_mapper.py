@@ -101,3 +101,47 @@ def test_map_observations_uses_record_ingested_at() -> None:
     assert observation.metric_name == "claim_anomaly"
     assert observation.score == 0.8
     assert observation.observed_at == record.ingested_at
+
+
+def _record_with_score(claim_id: str, score: object) -> RawRecord:
+    payload: dict[str, object] = {
+        "claim_id": claim_id,
+        "provider_npi": "1234567890",
+        "billed_amount": 99.0,
+        "anomaly_score": score,
+    }
+    return RawRecord(
+        knowledge_base_id="kb-1",
+        record_type="claim_record",
+        record_id=claim_id,
+        payload=payload,
+        source_type="file_upload",
+        source_ref="claims.csv",
+        correlation_id="corr-1",
+        content_hash=content_hash_for(payload),
+    )
+
+
+def test_map_observations_coerces_numeric_string_score() -> None:
+    record = _record_with_score("c2", "0.8")
+    observations = map_observations(_feed(), [record])
+    assert len(observations) == 1
+    assert observations[0].score == 0.8
+
+
+def test_map_observations_raises_on_bool_score() -> None:
+    record = _record_with_score("c3", True)
+    with pytest.raises(RecordMappingError, match="boolean"):
+        map_observations(_feed(), [record])
+
+
+def test_map_observations_raises_on_non_numeric_type_score() -> None:
+    record = _record_with_score("c4", {"value": 0.8})
+    with pytest.raises(RecordMappingError, match="not numeric"):
+        map_observations(_feed(), [record])
+
+
+def test_map_observations_raises_on_non_numeric_string_score() -> None:
+    record = _record_with_score("c5", "not-a-number")
+    with pytest.raises(RecordMappingError, match="not numeric"):
+        map_observations(_feed(), [record])
