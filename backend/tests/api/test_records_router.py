@@ -8,6 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app import create_app
+from api.dependencies import get_raw_record_store
+from records.adapters.in_memory import InMemoryRawRecordStore
 
 
 @pytest.fixture
@@ -16,7 +18,12 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv(
         "CHILI_CONFIG_PATH", "config/defaults/medicare_fraud.yaml"
     )
-    return TestClient(create_app())
+    app = create_app()
+    # Inject a fresh in-memory store per test so that lru_cached singletons do
+    # not cause cross-test record deduplication (e.g. record c1 inserted in the
+    # push test would prevent the CSV upload test from seeing accepted_count=1).
+    app.dependency_overrides[get_raw_record_store] = InMemoryRawRecordStore
+    return TestClient(app)
 
 
 def test_push_records_returns_a_receipt(client: TestClient) -> None:
