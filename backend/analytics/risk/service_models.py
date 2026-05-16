@@ -43,7 +43,7 @@ class RiskAssessmentResponse(BaseModel):
     overall_score: float = Field(ge=0.0, le=1.0)
     risk_level: str
     factor_count: int = Field(ge=0)
-    factors: list[RiskFactorScore] = Field(default_factory=list)
+    factors: list[RiskFactorScore] = Field(default_factory=list[RiskFactorScore])
     trend: RiskTrend | None = None
     previous_score: float | None = Field(default=None, ge=0.0, le=1.0)
 

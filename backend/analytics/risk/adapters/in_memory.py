@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from analytics.risk.models import RankedRiskEntry, RiskProfile
+from analytics.risk.models import RankedRiskEntry, RiskAssessmentRecord, RiskProfile
 
-__all__ = ["InMemoryRiskSignalSource"]
+__all__ = ["InMemoryRiskHistoryWriter", "InMemoryRiskSignalSource"]
 
 
 class InMemoryRiskSignalSource:
@@ -65,3 +65,30 @@ class InMemoryRiskSignalSource:
         entity_id: str,
     ) -> float | None:
         return self._historical_scores.get((knowledge_base_id, entity_id))
+
+
+class InMemoryRiskHistoryWriter:
+    """A ``RiskHistoryWriter`` that records assessments in memory."""
+
+    def __init__(self) -> None:
+        self._records: dict[str, RiskAssessmentRecord] = {}
+
+    def write_assessment(self, record: RiskAssessmentRecord) -> bool:
+        if record.request_id in self._records:
+            return False
+        self._records[record.request_id] = record
+        return True
+
+    def load_historical_score(
+        self, *, knowledge_base_id: str, entity_id: str
+    ) -> float | None:
+        matches = [
+            record
+            for record in self._records.values()
+            if record.knowledge_base_id == knowledge_base_id
+            and record.entity_id == entity_id
+        ]
+        if not matches:
+            return None
+        latest = max(matches, key=lambda record: record.assessed_at)
+        return latest.overall_score
