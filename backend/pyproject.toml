@@ -133,6 +133,7 @@ include = [
     "tests/e2e",
     "tests/events",
     "tests/graph",
+    "tests/monitoring/test_alert_history_writer.py",
     "tests/monitoring/test_observation_writer.py",
     "tests/monitoring/test_postgres_observation_store.py",
     "tests/monitoring/test_postgres_observation_source.py",

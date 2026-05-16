@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from monitoring.models import MonitoringBatch
+from monitoring.models import AlertHistoryRecord, MonitoringBatch
 from shared.types import Alert
 
-__all__ = ["InMemoryAlertRepository", "InMemoryObservationSource", "InMemoryObservationWriter"]
+__all__ = ["InMemoryAlertHistoryWriter", "InMemoryAlertRepository", "InMemoryObservationSource", "InMemoryObservationWriter"]
 
 
 class InMemoryObservationSource:
@@ -60,3 +60,31 @@ class InMemoryAlertRepository:
 
     def all(self) -> list[Alert]:
         return list(self._alerts.values())
+
+
+class InMemoryAlertHistoryWriter:
+    """An ``AlertHistoryWriter`` that records alert rows in memory."""
+
+    def __init__(self) -> None:
+        self._records: dict[tuple[str, str], AlertHistoryRecord] = {}
+
+    def write_alerts(self, records: list[AlertHistoryRecord]) -> int:
+        written = 0
+        for record in records:
+            key = (record.knowledge_base_id, record.alert_id)
+            if key in self._records:
+                continue
+            self._records[key] = record
+            written += 1
+        return written
+
+    def count_open_alerts(
+        self, *, knowledge_base_id: str, entity_id: str
+    ) -> int:
+        return sum(
+            1
+            for record in self._records.values()
+            if record.knowledge_base_id == knowledge_base_id
+            and record.entity_id == entity_id
+            and record.status == "open"
+        )

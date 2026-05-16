@@ -96,9 +96,27 @@ class AlertGroup(BaseModel):
     correlation_reason: str
 
 
+class AlertHistoryRecord(BaseModel):
+    """A row destined for the analytics-facing ``alert_history`` log."""
+
+    knowledge_base_id: str
+    alert_id: str
+    entity_id: str
+    entity_type: str
+    severity: str
+    status: str
+    title: str
+    reasoning: str
+    metric_name: str
+    evidence_pack_id: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 __all__ = [
     "AlertCandidate",
     "AlertGroup",
+    "AlertHistoryRecord",
     "MonitoringBatch",
     "MonitoringObservation",
     "SuppressionRule",
