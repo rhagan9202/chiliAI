@@ -5,7 +5,7 @@ from __future__ import annotations
 from monitoring.models import MonitoringBatch
 from shared.types import Alert
 
-__all__ = ["InMemoryAlertRepository", "InMemoryObservationSource"]
+__all__ = ["InMemoryAlertRepository", "InMemoryObservationSource", "InMemoryObservationWriter"]
 
 
 class InMemoryObservationSource:
@@ -26,6 +26,19 @@ class InMemoryObservationSource:
                 f"No monitoring batch registered for knowledge_base_id='{knowledge_base_id}' and batch_id='{batch_id}'."
             )
         return batch
+
+
+class InMemoryObservationWriter:
+    """An ``ObservationWriter`` that records written batches in memory."""
+
+    def __init__(self) -> None:
+        self.written: list[tuple[MonitoringBatch, str]] = []
+
+    def write_observations(
+        self, batch: MonitoringBatch, *, correlation_id: str
+    ) -> int:
+        self.written.append((batch, correlation_id))
+        return len(batch.observations)
 
 
 class InMemoryAlertRepository:
