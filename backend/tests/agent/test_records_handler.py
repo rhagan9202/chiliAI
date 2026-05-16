@@ -15,7 +15,7 @@ from config.schema import (
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import RecordsIngestedEvent
 from graph.adapters.in_memory import InMemoryGraphRepository
-from graph.service import create_graph_service
+from graph.service import GraphService, create_graph_service
 from monitoring.adapters.in_memory import InMemoryObservationWriter
 from records.adapters.in_memory import InMemoryRawRecordStore
 from records.exceptions import RecordFeedNotFoundError
@@ -82,7 +82,7 @@ def _seed_store(store: InMemoryRawRecordStore, correlation_id: str) -> None:
     )
 
 
-def _graph_service() -> object:
+def _graph_service() -> GraphService:
     return create_graph_service(
         InMemoryGraphRepository(),
         object_store=InMemoryObjectStore(),
@@ -106,12 +106,12 @@ def test_handler_fans_records_out_to_graph_and_observations() -> None:
         ),
         records_config=_records_config(),
         raw_record_store=store,
-        graph_service=graph_service,  # type: ignore[arg-type]
+        graph_service=graph_service,
         observation_writer=writer,
     )
 
     assert processed == 1
-    assert graph_service.get_entity("kb-1", "claim:c1") is not None  # type: ignore[attr-defined]
+    assert graph_service.get_entity("kb-1", "claim:c1") is not None
     assert len(writer.written) == 1
     batch, correlation_id = writer.written[0]
     assert correlation_id == "corr-1"
@@ -130,7 +130,7 @@ def test_handler_raises_for_unknown_feed() -> None:
             ),
             records_config=_records_config(),
             raw_record_store=InMemoryRawRecordStore(),
-            graph_service=_graph_service(),  # type: ignore[arg-type]
+            graph_service=_graph_service(),
             observation_writer=InMemoryObservationWriter(),
         )
 
@@ -146,7 +146,7 @@ def test_handler_returns_zero_when_no_records_found() -> None:
         ),
         records_config=_records_config(),
         raw_record_store=InMemoryRawRecordStore(),
-        graph_service=_graph_service(),  # type: ignore[arg-type]
+        graph_service=_graph_service(),
         observation_writer=InMemoryObservationWriter(),
     )
     assert processed == 0
