@@ -220,3 +220,33 @@ def test_domain_config_rejects_relationship_source_entity_not_mapped() -> None:
     }
     with pytest.raises(ValidationError, match="not mapped by the feed"):
         base.__class__.model_validate(payload)
+
+
+def test_domain_config_rejects_relationship_target_entity_not_mapped() -> None:
+    from config.loader import load_config  # noqa: PLC0415
+
+    base = load_config()
+    payload = base.model_dump()
+    payload["records"] = {
+        "feeds": [
+            {
+                "name": "bad_feed",
+                "record_type": "claim_record",
+                "source": "file_upload",
+                "id_field": "claim_id",
+                "record_schema": {
+                    "claim_id": {"type": "string", "display": "Claim ID", "required": True}
+                },
+                "entities": [{"entity_type": "claim", "id_field": "claim_id"}],
+                "relationships": [
+                    {
+                        "relationship_type": "submitted_by",
+                        "source_entity_type": "claim",
+                        "target_entity_type": "not_mapped",
+                    }
+                ],
+            }
+        ]
+    }
+    with pytest.raises(ValidationError, match="not mapped by the feed"):
+        base.__class__.model_validate(payload)
