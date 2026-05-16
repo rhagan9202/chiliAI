@@ -367,6 +367,20 @@ class ClaimsIngestedEvent(EventBase):
     record_count: int = Field(ge=0)
 
 
+class RecordsIngestedEvent(EventBase):
+    """Published when a structured-records batch has landed in ``raw_records``.
+
+    Carries enough context for the worker's Flow 1 handler to resolve the
+    feed config and read the persisted rows back by ``correlation_id``.
+    """
+
+    event_type: Literal["records.ingested"] = "records.ingested"
+    knowledge_base_id: str
+    feed_name: str
+    record_type: str
+    record_count: int = Field(ge=0)
+
+
 AnyEvent = (
     KnowledgeBaseCreatedEvent
     | KnowledgeBaseDeletedEvent
@@ -394,6 +408,7 @@ AnyEvent = (
     | DocumentsFailedEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent
+    | RecordsIngestedEvent
 )
 
 
@@ -438,6 +453,7 @@ __all__ = [
     "PipelineProgressEvent",
     "RagCompletedEvent",
     "RagCompletionReference",
+    "RecordsIngestedEvent",
     "RiskScoredEvent",
     "RiskScoredReference",
     "TimeseriesAnalyzedEvent",

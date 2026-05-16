@@ -32,6 +32,7 @@ from events.types import (
     LlmCompletedEvent,
     PipelineProgressEvent,
     RagCompletedEvent,
+    RecordsIngestedEvent,
     RiskScoredEvent,
     TimeseriesAnalyzedEvent,
     VectorsIndexedEvent,
@@ -69,6 +70,7 @@ EVENT_TYPE_REGISTRY: dict[str, type[EventBase]] = {
     "documents.failed": DocumentsFailedEvent,
     "claims.received": ClaimsReceivedEvent,
     "claims.ingested": ClaimsIngestedEvent,
+    "records.ingested": RecordsIngestedEvent,
 }
 
 
