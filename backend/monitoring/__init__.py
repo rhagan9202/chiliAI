@@ -7,6 +7,10 @@ from monitoring.adapters.in_memory import (
     InMemoryObservationSource,
     InMemoryObservationWriter,
 )
+from monitoring.adapters.postgres import (
+    PostgresObservationSource,
+    PostgresObservationStore,
+)
 from monitoring.adapters.protocols import ObservationSourceProtocol, ObservationWriter
 from monitoring.exceptions import (
     AlertAlreadyResolvedError,
@@ -55,6 +59,8 @@ __all__ = [
     "MonitoringSourceError",
     "ObservationSourceProtocol",
     "ObservationWriter",
+    "PostgresObservationSource",
+    "PostgresObservationStore",
     "ResolutionRequest",
     "create_alerts_service",
     "create_monitoring_service",
