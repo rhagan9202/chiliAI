@@ -32,6 +32,11 @@ def test_raw_record_carries_all_table_columns() -> None:
     assert record.record_type == "claim_record"
     assert record.source_type == "file_upload"
     assert record.ingested_at is not None
+    assert record.record_id == "claim-1"
+    assert record.correlation_id == "corr-1"
+    assert record.source_ref == "claims.csv"
+    assert record.payload == {"claim_id": "claim-1", "amount": 10.0}
+    assert record.content_hash == content_hash_for({"claim_id": "claim-1", "amount": 10.0})
 
 
 def test_record_batch_groups_records() -> None:
