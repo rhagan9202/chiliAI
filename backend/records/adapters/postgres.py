@@ -10,6 +10,7 @@ needed.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Literal, cast
 
 from database.protocols import ConnectionProvider, Row
@@ -101,7 +102,7 @@ def _row_to_record(row: Row) -> RawRecord:
         source_ref=None if row[5] is None else str(row[5]),
         correlation_id=str(row[6]),
         content_hash=str(row[7]),
-        ingested_at=row[8],  # type: ignore[arg-type]
+        ingested_at=cast(datetime, row[8]),
     )
 
 
