@@ -250,3 +250,35 @@ def test_domain_config_rejects_relationship_target_entity_not_mapped() -> None:
     }
     with pytest.raises(ValidationError, match="not mapped by the feed"):
         base.__class__.model_validate(payload)
+
+
+def test_domain_config_rejects_observation_score_field_not_in_schema() -> None:
+    from config.loader import load_config  # noqa: PLC0415
+
+    base = load_config()
+    payload = base.model_dump()
+    payload["records"] = {
+        "feeds": [
+            {
+                "name": "bad_feed",
+                "record_type": "claim_record",
+                "source": "file_upload",
+                "id_field": "claim_id",
+                "record_schema": {
+                    "claim_id": {"type": "string", "display": "Claim ID", "required": True}
+                },
+                "entities": [{"entity_type": "claim", "id_field": "claim_id"}],
+                "observations": [
+                    {
+                        "metric_name": "risk",
+                        "entity_type": "claim",
+                        "score_field": "missing_score",
+                    }
+                ],
+            }
+        ]
+    }
+    with pytest.raises(
+        ValidationError, match="score_field 'missing_score' is not in record_schema"
+    ):
+        base.__class__.model_validate(payload)

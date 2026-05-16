@@ -113,3 +113,19 @@ def test_coerce_row_raises_on_unrecognized_boolean_token() -> None:
     schema = _feed_with_int_bool().record_schema
     with pytest.raises(RecordValidationError, match="not a valid boolean"):
         coerce_row({"rec_id": "r1", "count": 1, "active": "maybe"}, schema)
+
+
+def test_validate_rows_reports_coercion_error_with_row_index() -> None:
+    """A coercion failure is folded into the batched 'row N' error format."""
+
+    with pytest.raises(RecordValidationError, match="row 1") as exc_info:
+        validate_rows(
+            _feed(),
+            [
+                {"claim_id": "c1", "amount": "10"},
+                {"claim_id": "c2", "amount": "not-a-number"},
+            ],
+        )
+    message = str(exc_info.value)
+    assert "Feed 'claims_feed' validation failed" in message
+    assert "not a valid number" in message

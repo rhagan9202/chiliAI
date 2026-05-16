@@ -82,7 +82,11 @@ def validate_rows(
     coerced_rows: list[dict[str, object]] = []
     errors: list[str] = []
     for index, row in enumerate(rows):
-        coerced = coerce_row(row, feed.record_schema)
+        try:
+            coerced = coerce_row(row, feed.record_schema)
+        except RecordValidationError as exc:
+            errors.append(f"row {index}: {exc}")
+            continue
         coerced_rows.append(coerced)
         row_errors = validate_entity(
             Entity(id=f"row-{index}", type=feed.record_type, properties=coerced),

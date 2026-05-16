@@ -479,6 +479,11 @@ class DomainConfig(BaseModel):
                         f"Records feed '{feed.name}' observation references entity "
                         f"type '{observation_mapping.entity_type}' not mapped by the feed."
                     )
+                if observation_mapping.score_field not in schema_fields:
+                    errors.append(
+                        f"Records feed '{feed.name}' observation mapping score_field "
+                        f"'{observation_mapping.score_field}' is not in record_schema."
+                    )
 
         if errors:
             raise ValueError(

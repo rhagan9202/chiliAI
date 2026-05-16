@@ -52,6 +52,7 @@ def _run_downgrade(database_url: str) -> None:
 
 
 def test_baseline_migration_creates_all_tables(database_url: str) -> None:
+    _run_downgrade(database_url)
     _run_migrations(database_url)
     provider = create_connection_provider(DatabaseConfig(backend="postgres"))
     assert provider is not None
@@ -88,4 +89,4 @@ def test_baseline_migration_downgrade_removes_all_tables(database_url: str) -> N
             assert _EXPECTED_TABLES.isdisjoint(tables)
     finally:
         provider.close()
-    _run_migrations(database_url)
+        _run_migrations(database_url)
