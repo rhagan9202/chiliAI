@@ -270,10 +270,19 @@ backend/
 │   ├── risk/                   # Risk scoring engine
 │   │   ├── __init__.py
 │   │   └── scorer.py
-│   └── explainability/         # Evidence pack generation
+│   ├── explainability/         # Evidence pack generation
+│   │   ├── __init__.py
+│   │   ├── evidence.py         # Build evidence packs (reasoning, subgraph, scores)
+│   │   └── subgraph.py         # Extract explanatory subgraph patterns
+│   └── metrics/                # Entity-metric persistence (no service, no events)
 │       ├── __init__.py
-│       ├── evidence.py         # Build evidence packs (reasoning, subgraph, scores)
-│       └── subgraph.py         # Extract explanatory subgraph patterns
+│       ├── models.py           # EntityMetric, EntityMetricSnapshot
+│       ├── exceptions.py       # Module-specific exceptions
+│       ├── throttle.py         # MetricsRecomputeThrottle — per-KB rate limiter
+│       └── adapters/
+│           ├── protocols.py    # EntityMetricRepository protocol
+│           ├── in_memory.py    # InMemoryEntityMetricRepository (tests/local)
+│           └── postgres.py     # PostgresEntityMetricRepository
 ├── agent/                      # Workflow / pipeline coordinator
 │   ├── __init__.py
 │   ├── coordinator.py          # Async state machine for multi-step pipelines
@@ -348,6 +357,7 @@ backend/
 | `rag` | RAG pipeline orchestration | `vectorstore` (protocol), `graph` (protocol), `llm` (protocol), `embeddings` (protocol) | `api`, `ingestion`, `analytics` |
 | `llm` | LLM client abstraction, prompt management | `shared.types` | Everything except `shared` |
 | `analytics/*` | ML/AI analysis (timeseries, GNN, risk, explainability) | `shared.types`, `graph` (protocol for reads) | `api`, `ingestion`, other analytics sub-modules |
+| `analytics/metrics` | Entity-metric persistence: append history, upsert current snapshot | `database.ConnectionProvider` (Postgres adapter), `config` (backend selection) | domain logic, events, service modules |
 | `agent` | Pipeline coordination, state machine | `events` (protocol), `shared.types` | Direct imports of service internals |
 | `monitoring` | Stream consumption, alert generation | `shared.types`, `events` (protocol) | `api`, `ingestion` internals |
 | `shared` | Domain types, protocols, utilities | Python stdlib only | Everything — must be leaf dependency |
@@ -605,7 +615,31 @@ Every write is an idempotent upsert keyed on `(knowledge_base_id, record_type, r
 
 `GraphService.upsert_records_graph` is the records-specific graph entry point. Unlike the document pipeline's `upsert_graph`, it accepts no document artifacts and does not publish a `GraphUpdatedEvent`. The `observations` table has a write-side adapter at `monitoring/adapters/postgres.py` (`PostgresObservationStore`).
 
-### 6.4 Self-reinforcing analysis loop
+### 6.4 Plan C Persistence Flows (worker-side write-back)
+
+These three flows run in the worker (`agent/coordinator.py`) and form the **persistence backbone** that durably records analytics results to Postgres/TimescaleDB. The per-consumer Postgres adapters (`monitoring/adapters/postgres.py::PostgresObservationSource`, `analytics/timeseries/adapters/postgres.py::PostgresTimeSeriesHistorySource`, `analytics/risk/adapters/postgres.py::PostgresRiskHistoryStore`, `analytics/metrics/adapters/postgres.py::PostgresEntityMetricRepository`, and `monitoring/adapters/postgres.py::PostgresAlertHistoryStore`) are now the implemented read/write side of this backbone.
+
+**Flow 2 — Graph metric persistence** (`handle_graph_updated_for_analytics`)
+
+Triggered by `GraphUpdatedEvent`. Computes graph-scope metrics (entity count, relationship count, avg degree) from the graph service and writes them to `entity_metric_history` (TimescaleDB hypertable, append) and `entity_metrics_current` (upsert). Throttled per knowledge-base by `MetricsRecomputeThrottle` (configurable interval, default 300 s) to prevent recompute storms from bursts of `GraphUpdatedEvent`s.
+
+**Flow 3 — Risk score persistence** (`handle_risk_scored_for_graph`)
+
+Triggered by `RiskScoredEvent`. Writes the full risk assessment to `risk_score_history` for durable audit. Also snapshots `risk_score`, `risk_level`, and `risk_assessed_at` as properties onto the affected graph entities so investigation queries can read current scores from the graph without a SQL join.
+
+**Flow 4 — Alert persistence** (`handle_alerts_created_for_graph`)
+
+Triggered by `AlertsCreatedEvent`. Writes each alert to `alert_history` for durable audit. Also snapshots `active_alert_count`, `last_alert_at`, and `last_alert_severity` onto the affected graph entities.
+
+#### Plan C design deviations
+
+The following decisions were made during Plan C implementation and differ from the original design intent:
+
+- **Risk adapter is writer-only**: `PostgresRiskHistoryStore` is a write-side adapter plus `load_historical_score` (point read). It does not back the full `RiskSignalSourceProtocol` — risk signals remain graph-derived. Full Postgres-backed risk signal reads are deferred.
+- **Entity-property snapshot instead of graph history nodes**: Flows 3 and 4 write a flat entity-property snapshot to the graph (e.g., `risk_score`, `active_alert_count`) alongside full history in SQL tables. Graph-native "history nodes" (linking graph entities to historical result nodes inside the graph DB) are deferred.
+- **Flow 2 throttled per-KB**: Metric recompute is rate-limited per knowledge-base to avoid redundant work on ingest bursts. The interval is configurable via `analytics.metrics_recompute_min_interval_seconds` (default 300 s) in the domain config.
+
+### 6.5 Self-reinforcing analysis loop
 
 The analytics pipeline is designed as a **feedback loop**: analysis results (risk scores, cluster memberships, anomaly flags) are written back to the knowledge graph, enriching it for subsequent analysis rounds. This means:
 

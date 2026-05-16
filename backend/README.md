@@ -23,11 +23,15 @@ Working FastAPI gateway and pipeline-worker prototype with domain configuration,
 - **`ingestion/`** — Parser orchestration, document chunking, extraction, validation, and registration flows.
 - **`graph/`, `vectorstore/`, `embeddings/`, `llm/`, `rag/`** — Service/protocol boundaries with in-memory adapters and selected production-facing adapters.
 - **`analytics/` and `monitoring/`** — Heuristic timeseries, GNN, risk, explainability, alert, and monitoring services.
+- **`analytics/metrics/`** — Entity-metric persistence package (no service layer, no events). `EntityMetricRepository` protocol backed by `InMemoryEntityMetricRepository` (tests/local) or `PostgresEntityMetricRepository` (Postgres). `MetricsRecomputeThrottle` limits per-KB recompute rate. Graph-scope metrics use sentinel `entity_id = "__graph__"`.
 - **`storage/`** — In-memory, local filesystem, and S3-compatible object-store adapters.
 - **`database/`** — Postgres + TimescaleDB connection provider, `DatabaseConfig`-driven backend selection, and Alembic-managed schema (six persistence tables). Infrastructure only — no domain logic.
 - **`records/`** — structured/tabular ingestion (CSV/JSONL/api-push). Validates rows against config-declared feed schemas, lands canonical rows in `raw_records`, and publishes `RecordsIngestedEvent`. Parallel to `ingestion/` for documents.
 - **`api/middleware/`** — Metrics, auth, and RBAC middleware with route-level policy enforcement and auth-enabled startup audit.
-- **`agent/coordinator.py`** — Worker entry point (`python -m agent.coordinator`) for Redis-stream processing, Flow A/Flow B handlers, workflow lifecycle tracking, retry/DLQ routing, graceful shutdown, and a lightweight health endpoint.
+- **`agent/coordinator.py`** — Worker entry point (`python -m agent.coordinator`) for Redis-stream processing, workflow lifecycle tracking, retry/DLQ routing, graceful shutdown, and a lightweight health endpoint. Implements persistence-layer worker flows:
+  - **Flow 2** (`handle_graph_updated_for_analytics`) — On `GraphUpdatedEvent`, computes graph metrics (entity count, relationship count, avg degree) and persists them to `entity_metric_history` / `entity_metrics_current`, throttled per knowledge-base by `MetricsRecomputeThrottle`.
+  - **Flow 3** (`handle_risk_scored_for_graph`) — On `RiskScoredEvent`, writes risk assessments to `risk_score_history` and snapshots `risk_score` / `risk_level` / `risk_assessed_at` onto graph entities.
+  - **Flow 4** (`handle_alerts_created_for_graph`) — On `AlertsCreatedEvent`, writes alerts to `alert_history` and snapshots `active_alert_count` / `last_alert_at` / `last_alert_severity` onto graph entities.
 - **`main.py`** — Uvicorn launcher for local development.
 - **`Dockerfile`** — Multi-stage build producing a production-ready image.
 
@@ -46,7 +50,8 @@ backend/
 │   ├── timeseries/  # Time-series anomaly detection
 │   ├── gnn/         # GNN link prediction, clustering
 │   ├── risk/        # Risk scoring engine
-│   └── explainability/  # Evidence pack generation, subgraph extraction
+│   ├── explainability/  # Evidence pack generation, subgraph extraction
+│   └── metrics/     # Entity-metric persistence (entity_metric_history / entity_metrics_current)
 ├── agent/           # Workflow coordinator — async state machine for multi-step pipelines
 ├── monitoring/      # Active monitoring — claim stream consumer, alert generation
 ├── shared/          # Domain types, protocols, utilities (dependency-light, no business logic)
@@ -112,6 +117,17 @@ The backend reads a domain configuration YAML/JSON file at startup (path set via
 | `REDIS_URL` | unset | Required for the Redis Streams event bus, `CHILI_WORKFLOW_RUN_STORE_BACKEND=redis`, and the production session store when auth is enabled. |
 | `CHILI_EVENT_BUS_BACKEND` | `in_memory` | `in_memory` or `redis`. |
 | `DATABASE_URL` | unset | Postgres/TimescaleDB DSN. Required when `DatabaseConfig.backend=postgres` and to run Alembic migrations. |
+
+### Optional `analytics` config section
+
+The domain configuration YAML/JSON accepts an optional `analytics` section (type `AnalyticsConfig`):
+
+```yaml
+analytics:
+  metrics_recompute_min_interval_seconds: 300  # default 300 s
+```
+
+`metrics_recompute_min_interval_seconds` sets the minimum wall-clock interval between metric recomputes for a given knowledge base (Flow 2). The throttle is applied per-KB in the worker; bursts of `GraphUpdatedEvent`s do not trigger redundant recomputes within the window.
 
 ### Setting the config path
 
