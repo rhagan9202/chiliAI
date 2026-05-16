@@ -29,8 +29,6 @@ class PostgresObservationStore:
     def write_observations(
         self, batch: MonitoringBatch, *, correlation_id: str
     ) -> int:
-        if not batch.observations:
-            return 0
         written = 0
         try:
             with self._provider.connection() as conn:
