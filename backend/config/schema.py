@@ -30,7 +30,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from shared.types import EntityDefinition, RelationshipDefinition
+from shared.types import EntityDefinition, PropertyDefinition, RelationshipDefinition
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +54,7 @@ class CapabilitiesConfig(BaseModel):
     risk_scoring: bool = False
     rag_chat: bool = False
     explainability: bool = False
+    structured_ingestion: bool = False
 
 
 class IngestionSourceConfig(BaseModel):
@@ -274,6 +275,50 @@ class ValidationConfig(BaseModel):
     max_rag_question_length: int = Field(default=5000, gt=0)
 
 
+class RecordEntityMapping(BaseModel):
+    """Maps fields of a record row onto one graph entity."""
+
+    entity_type: str
+    id_field: str
+    property_fields: dict[str, str] = Field(default_factory=dict)
+
+
+class RecordRelationshipMapping(BaseModel):
+    """Maps a pair of a row's mapped entities onto one graph relationship."""
+
+    relationship_type: str
+    source_entity_type: str
+    target_entity_type: str
+
+
+class RecordObservationMapping(BaseModel):
+    """Maps a numeric record field onto a scored monitoring observation."""
+
+    metric_name: str
+    entity_type: str
+    score_field: str
+    rationale: str = ""
+
+
+class RecordFeedConfig(BaseModel):
+    """A single structured-ingestion feed definition."""
+
+    name: str
+    record_type: str
+    source: Literal["file_upload", "api_push"]
+    id_field: str
+    record_schema: dict[str, PropertyDefinition] = Field(default_factory=dict)
+    entities: list[RecordEntityMapping] = Field(default_factory=lambda: [])
+    relationships: list[RecordRelationshipMapping] = Field(default_factory=lambda: [])
+    observations: list[RecordObservationMapping] = Field(default_factory=lambda: [])
+
+
+class RecordsConfig(BaseModel):
+    """Structured-ingestion feed configuration for the domain."""
+
+    feeds: list[RecordFeedConfig] = Field(default_factory=lambda: [])
+
+
 # ---------------------------------------------------------------------------
 # Top-level config
 # ---------------------------------------------------------------------------
@@ -303,6 +348,7 @@ class DomainConfig(BaseModel):
     rag: RagConfig | None = None
     auth: AuthConfig | None = None
     validation: ValidationConfig | None = None
+    records: RecordsConfig | None = None
     alerts: AlertsConfig
     ui: UiConfig | None = None
 
@@ -342,6 +388,8 @@ class DomainConfig(BaseModel):
             self.auth = AuthConfig()
         if self.validation is None:
             self.validation = ValidationConfig()
+        if self.records is None:
+            self.records = RecordsConfig()
 
         errors: list[str] = []
 
@@ -384,6 +432,42 @@ class DomainConfig(BaseModel):
                         f"has type 'enum' but no enum_values defined."
                     )
 
+        # --- records feed references ---
+        records_config: RecordsConfig = self.records
+        relationship_name_set = set(rel_names)
+        for feed in records_config.feeds:
+            schema_fields = set(feed.record_schema.keys())
+            if feed.id_field not in schema_fields:
+                errors.append(
+                    f"Records feed '{feed.name}' id_field '{feed.id_field}' "
+                    f"is not declared in record_schema."
+                )
+            feed_entity_types: set[str] = set()
+            for entity_mapping in feed.entities:
+                feed_entity_types.add(entity_mapping.entity_type)
+                if entity_mapping.entity_type not in entity_name_set:
+                    errors.append(
+                        f"Records feed '{feed.name}' maps to unknown entity "
+                        f"type '{entity_mapping.entity_type}'."
+                    )
+                if entity_mapping.id_field not in schema_fields:
+                    errors.append(
+                        f"Records feed '{feed.name}' entity mapping id_field "
+                        f"'{entity_mapping.id_field}' is not in record_schema."
+                    )
+            for relationship_mapping in feed.relationships:
+                if relationship_mapping.relationship_type not in relationship_name_set:
+                    errors.append(
+                        f"Records feed '{feed.name}' maps to unknown relationship "
+                        f"type '{relationship_mapping.relationship_type}'."
+                    )
+            for observation_mapping in feed.observations:
+                if observation_mapping.entity_type not in feed_entity_types:
+                    errors.append(
+                        f"Records feed '{feed.name}' observation references entity "
+                        f"type '{observation_mapping.entity_type}' not mapped by the feed."
+                    )
+
         if errors:
             raise ValueError(
                 "Domain config validation failed:\n  - " + "\n  - ".join(errors)
@@ -414,6 +498,11 @@ __all__ = [
     "MonitoringConfig",
     "ObjectStoreConfig",
     "RagConfig",
+    "RecordEntityMapping",
+    "RecordFeedConfig",
+    "RecordObservationMapping",
+    "RecordRelationshipMapping",
+    "RecordsConfig",
     "ValidationConfig",
     "VectorStoreConfig",
 ]
