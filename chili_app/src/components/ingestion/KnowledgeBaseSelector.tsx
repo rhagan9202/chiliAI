@@ -76,6 +76,7 @@ export function KnowledgeBaseSelector({
 
             return (
               <button
+                aria-pressed={isActive}
                 className={[
                   'page-list-item',
                   'ingestion-kb-list__item',

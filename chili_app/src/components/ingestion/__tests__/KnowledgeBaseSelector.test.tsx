@@ -54,13 +54,15 @@ function renderSelector(
 describe('KnowledgeBaseSelector', () => {
   it('selects an existing knowledge base from the list', () => {
     const props = renderSelector()
+    const activeButton = screen.getByRole('button', { name: /policy corpus/i })
+    const inactiveButton = screen.getByRole('button', { name: /claims review/i })
 
-    fireEvent.click(screen.getByRole('button', { name: /claims review/i }))
+    fireEvent.click(inactiveButton)
 
     expect(props.onSelect).toHaveBeenCalledWith('kb-claims')
-    expect(screen.getByRole('button', { name: /policy corpus/i })).toHaveClass(
-      'page-list-item--active',
-    )
+    expect(activeButton).toHaveClass('page-list-item--active')
+    expect(activeButton).toHaveAttribute('aria-pressed', 'true')
+    expect(inactiveButton).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByText('2 knowledge bases')).toBeInTheDocument()
     expect(screen.getByText('12 docs')).toBeInTheDocument()
     expect(screen.getByText('84 entities')).toBeInTheDocument()
