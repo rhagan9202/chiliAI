@@ -73,4 +73,16 @@ describe('RecordsPreviewTable', () => {
     expect(within(table).queryByRole('columnheader', { name: 'col_9' })).not.toBeInTheDocument()
     expect(within(table).queryByText('value 9')).not.toBeInTheDocument()
   })
+
+  it('limits rendered preview rows to the first 25 records', () => {
+    const rows = Array.from({ length: 26 }, (_, index) => ({
+      claim_id: `claim-${index + 1}`,
+    }))
+
+    render(<RecordsPreviewTable issues={[]} rows={rows} />)
+
+    const table = screen.getByRole('table', { name: /records preview/i })
+    expect(within(table).getByText('claim-25')).toBeInTheDocument()
+    expect(within(table).queryByText('claim-26')).not.toBeInTheDocument()
+  })
 })

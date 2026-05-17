@@ -42,12 +42,15 @@ function statusLabel(count: number): string {
   return count === 0 ? 'valid' : `${count} ${count === 1 ? 'issue' : 'issues'}`
 }
 
+const previewRowLimit = 25
+
 export function RecordsPreviewTable({ rows, issues }: RecordsPreviewTableProps) {
   if (rows.length === 0) {
     return <EmptyState title="No records parsed" />
   }
 
   const columns = getColumns(rows)
+  const previewRows = rows.slice(0, previewRowLimit)
 
   return (
     <div className="ingestion-records-preview">
@@ -65,7 +68,7 @@ export function RecordsPreviewTable({ rows, issues }: RecordsPreviewTableProps) 
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => {
+            {previewRows.map((row, index) => {
               const rowIssueCount = issues.filter((issue) => issue.rowIndex === index).length
 
               return (
