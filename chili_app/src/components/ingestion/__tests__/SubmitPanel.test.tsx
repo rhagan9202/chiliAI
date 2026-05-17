@@ -40,6 +40,26 @@ describe('SubmitPanel', () => {
 
     expect(screen.getByRole('button', { name: 'Submit documents' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Submit records' })).toBeDisabled()
+    expect(screen.getByText('Select documents')).toBeInTheDocument()
+    expect(screen.getByText('Submitting records')).toBeInTheDocument()
+    expect(screen.queryByText('Documents ready')).not.toBeInTheDocument()
+  })
+
+  it('shows unavailable copy when records cannot be submitted', () => {
+    render(
+      <SubmitPanel
+        canSubmitDocuments
+        canSubmitRecords={false}
+        documentPending={false}
+        recordsPending={false}
+        onSubmitDocuments={vi.fn()}
+        onSubmitRecords={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Documents ready')).toBeInTheDocument()
+    expect(screen.getByText('Parse records')).toBeInTheDocument()
+    expect(screen.queryByText('Records ready')).not.toBeInTheDocument()
   })
 
   it('shows pending copy without changing the action labels', () => {

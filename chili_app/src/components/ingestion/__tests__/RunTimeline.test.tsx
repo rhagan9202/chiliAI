@@ -63,4 +63,14 @@ describe('RunTimeline', () => {
     expect(within(receiptItem as HTMLElement).getByText('accepted')).toBeInTheDocument()
     expect(within(receiptItem as HTMLElement).getByText('Accepted 2 claim records.')).toBeInTheDocument()
   })
+
+  it('sorts workflows and receipts by timestamp with newest first', () => {
+    render(<RunTimeline workflows={workflows} receipts={receipts} />)
+
+    const list = screen.getByRole('list', { name: /ingestion runs/i })
+    const items = within(list).getAllByRole('listitem')
+
+    expect(within(items[0]).getByText('records')).toBeInTheDocument()
+    expect(within(items[1]).getByText('ingestion')).toBeInTheDocument()
+  })
 })

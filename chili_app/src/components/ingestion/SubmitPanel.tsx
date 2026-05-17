@@ -12,21 +12,51 @@ type SubmitPanelProps = {
 
 type SubmitActionProps = {
   buttonLabel: string
+  canSubmit: boolean
   disabled: boolean
   pending: boolean
   pendingLabel: string
   readyLabel: string
+  unavailableLabel: string
   onSubmit: () => void
+}
+
+function getStatusLabel({
+  canSubmit,
+  pending,
+  pendingLabel,
+  readyLabel,
+  unavailableLabel,
+}: Pick<
+  SubmitActionProps,
+  'canSubmit' | 'pending' | 'pendingLabel' | 'readyLabel' | 'unavailableLabel'
+>) {
+  if (pending) {
+    return pendingLabel
+  }
+
+  return canSubmit ? readyLabel : unavailableLabel
 }
 
 function SubmitAction({
   buttonLabel,
+  canSubmit,
   disabled,
   pending,
   pendingLabel,
   readyLabel,
+  unavailableLabel,
   onSubmit,
 }: SubmitActionProps) {
+  const statusLabel = getStatusLabel({
+    canSubmit,
+    pending,
+    pendingLabel,
+    readyLabel,
+    unavailableLabel,
+  })
+  const statusTone = pending ? 'info' : canSubmit ? 'default' : 'warning'
+
   return (
     <div className="ingestion-submit-panel__action">
       <button
@@ -39,7 +69,7 @@ function SubmitAction({
         {buttonLabel}
       </button>
       <span className="ingestion-submit-panel__status" role={pending ? 'status' : undefined}>
-        <Chip tone={pending ? 'info' : 'default'} label={pending ? pendingLabel : readyLabel} />
+        <Chip tone={statusTone} label={statusLabel} />
       </span>
     </div>
   )
@@ -64,18 +94,22 @@ export function SubmitPanel({
       <div className="ingestion-submit-panel__actions">
         <SubmitAction
           buttonLabel="Submit documents"
+          canSubmit={canSubmitDocuments}
           disabled={!canSubmitDocuments || documentPending}
           pending={documentPending}
           pendingLabel="Submitting documents"
           readyLabel="Documents ready"
+          unavailableLabel="Select documents"
           onSubmit={onSubmitDocuments}
         />
         <SubmitAction
           buttonLabel="Submit records"
+          canSubmit={canSubmitRecords}
           disabled={!canSubmitRecords || recordsPending}
           pending={recordsPending}
           pendingLabel="Submitting records"
           readyLabel="Records ready"
+          unavailableLabel="Parse records"
           onSubmit={onSubmitRecords}
         />
       </div>
