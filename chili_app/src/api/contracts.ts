@@ -28,6 +28,48 @@ export type DomainCapabilities = {
   risk_scoring: boolean
   rag_chat: boolean
   explainability: boolean
+  structured_ingestion?: boolean
+}
+
+export type RecordEntityMapping = {
+  entity_type: string
+  id_field: string
+  property_fields: Record<string, string>
+}
+
+export type RecordRelationshipMapping = {
+  relationship_type: string
+  source_entity_type: string
+  target_entity_type: string
+}
+
+export type RecordObservationMapping = {
+  metric_name: string
+  entity_type: string
+  score_field: string
+  rationale: string
+}
+
+export type RecordFeedConfig = {
+  name: string
+  record_type: string
+  source: 'file_upload' | 'api_push'
+  id_field: string
+  record_schema: Record<string, DomainPropertyDefinition>
+  entities: RecordEntityMapping[]
+  relationships: RecordRelationshipMapping[]
+  observations: RecordObservationMapping[]
+}
+
+export type RecordsConfig = {
+  feeds: RecordFeedConfig[]
+}
+
+export type ValidationConfig = {
+  max_file_size_mb: number
+  allowed_content_types: string[]
+  max_query_length: number
+  max_rag_question_length: number
 }
 
 export type DomainConfig = {
@@ -40,6 +82,8 @@ export type DomainConfig = {
   relationships: DomainRelationshipDefinition[]
   capabilities: DomainCapabilities
   ingestion: Record<string, unknown>
+  validation?: ValidationConfig | null
+  records?: RecordsConfig | null
   alerts: {
     thresholds: Record<string, Record<string, number>>
   }
@@ -414,6 +458,20 @@ export type DocumentReceiptResponse = {
 
 export type DocumentRegistrationResponse = {
   documents: DocumentReceiptResponse[]
+}
+
+export type RecordPushRequest = {
+  feed_name: string
+  rows: Record<string, unknown>[]
+}
+
+export type RecordIngestReceipt = {
+  knowledge_base_id: string
+  feed_name: string
+  record_type: string
+  correlation_id: string
+  accepted_count: number
+  created_at: string
 }
 
 export type WorkflowRunResponse = {
