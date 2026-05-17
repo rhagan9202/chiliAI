@@ -46,7 +46,12 @@ const previewRowLimit = 25
 
 export function RecordsPreviewTable({ rows, issues }: RecordsPreviewTableProps) {
   if (rows.length === 0) {
-    return <EmptyState title="No records parsed" />
+    return (
+      <EmptyState
+        description="Paste CSV or JSONL content and parse it to preview records."
+        title="No records parsed"
+      />
+    )
   }
 
   const previewRows = rows.slice(0, previewRowLimit)
