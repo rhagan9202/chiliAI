@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 import type { RecordFeedConfig } from '../../api/contracts'
 import { parseCsvRecords, parseJsonlRecords } from '../../lib/ingestion/parseRecords'
@@ -50,17 +50,28 @@ export function RecordsSourcePanel({
 }: RecordsSourcePanelProps) {
   const [format, setFormat] = useState<RecordsFormat>('csv')
   const [content, setContent] = useState('')
+  const draftRevisionRef = useRef(0)
 
   const selectedFeed = useMemo(
     () => feeds.find((feed) => feed.name === selectedFeedName) ?? null,
     [feeds, selectedFeedName],
   )
 
+  function invalidateDraft() {
+    draftRevisionRef.current += 1
+    onDraftChange()
+  }
+
   async function parseRecords() {
+    const draftRevision = draftRevisionRef.current
     const input = recordFile ? await readFileText(recordFile) : content
     const result = format === 'csv'
       ? parseCsvRecords(input)
       : parseJsonlRecords(input)
+
+    if (draftRevision !== draftRevisionRef.current) {
+      return
+    }
 
     onRowsParsed(result.rows, result.errors)
   }
@@ -82,7 +93,7 @@ export function RecordsSourcePanel({
           value={selectedFeedName ?? ''}
           onChange={(event) => {
             onFeedChange(event.currentTarget.value || null)
-            onDraftChange()
+            invalidateDraft()
           }}
           >
             <option value="">Select a feed</option>
@@ -102,7 +113,7 @@ export function RecordsSourcePanel({
           value={format}
           onChange={(event) => {
             setFormat(event.currentTarget.value as RecordsFormat)
-            onDraftChange()
+            invalidateDraft()
           }}
           >
             <option value="csv">CSV</option>
@@ -141,7 +152,7 @@ export function RecordsSourcePanel({
           aria-label="Records file"
           onChange={(event) => {
             onFileChange(event.currentTarget.files?.[0] ?? null)
-            onDraftChange()
+            invalidateDraft()
           }}
         />
       </label>
@@ -162,7 +173,7 @@ export function RecordsSourcePanel({
           rows={8}
           onChange={(event) => {
             setContent(event.currentTarget.value)
-            onDraftChange()
+            invalidateDraft()
           }}
         />
       </label>

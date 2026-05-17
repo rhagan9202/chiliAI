@@ -30,6 +30,14 @@ const feeds: RecordFeedConfig[] = [
   },
 ]
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve
+  })
+  return { promise, resolve }
+}
+
 describe('RecordsSourcePanel', () => {
   it('selects feeds, clears feed selection, and parses pasted JSONL records', () => {
     const onFeedChange = vi.fn()
@@ -190,5 +198,58 @@ describe('RecordsSourcePanel', () => {
     })
 
     expect(onDraftChange).toHaveBeenCalledTimes(2)
+  })
+
+  it('ignores delayed file parse results after the draft changes', async () => {
+    const onDraftChange = vi.fn()
+    const onFileChange = vi.fn()
+    const onRowsParsed = vi.fn()
+    const delayedText = createDeferred<string>()
+    const firstFile = new File([''], 'claims-a.csv', { type: 'text/csv' })
+    const secondFile = new File(['claim_id,provider_npi\nc2,1234567890\n'], 'claims-b.csv', {
+      type: 'text/csv',
+    })
+    Object.defineProperty(firstFile, 'text', {
+      value: vi.fn(() => delayedText.promise),
+    })
+
+    const { rerender } = render(
+      <RecordsSourcePanel
+        feeds={feeds}
+        issues={[]}
+        onDraftChange={onDraftChange}
+        onFileChange={onFileChange}
+        onFeedChange={vi.fn()}
+        onRowsParsed={onRowsParsed}
+        recordFile={firstFile}
+        rows={[]}
+        selectedFeedName="claims_feed"
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Parse records' }))
+    fireEvent.change(screen.getByLabelText('Records file'), {
+      target: { files: [secondFile] },
+    })
+    rerender(
+      <RecordsSourcePanel
+        feeds={feeds}
+        issues={[]}
+        onDraftChange={onDraftChange}
+        onFileChange={onFileChange}
+        onFeedChange={vi.fn()}
+        onRowsParsed={onRowsParsed}
+        recordFile={secondFile}
+        rows={[]}
+        selectedFeedName="claims_feed"
+      />,
+    )
+    delayedText.resolve('claim_id,provider_npi\nc1,1234567890\n')
+    await delayedText.promise
+    await Promise.resolve()
+
+    expect(firstFile.text).toHaveBeenCalled()
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
+    expect(onRowsParsed).not.toHaveBeenCalled()
   })
 })
