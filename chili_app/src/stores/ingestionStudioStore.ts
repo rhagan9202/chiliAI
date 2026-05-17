@@ -34,7 +34,7 @@ type IngestionStudioActions = {
 export type IngestionStudioState = IngestionStudioStateValues &
   IngestionStudioActions
 
-const initialState: IngestionStudioStateValues = {
+const createInitialState = (): IngestionStudioStateValues => ({
   currentStep: 'knowledge-base',
   sourceType: null,
   selectedFeedName: null,
@@ -43,10 +43,10 @@ const initialState: IngestionStudioStateValues = {
   validationIssues: [],
   receipts: [],
   activeTimelineEntryId: null,
-}
+})
 
 export const useIngestionStudioStore = create<IngestionStudioState>((set) => ({
-  ...initialState,
+  ...createInitialState(),
   setCurrentStep: (currentStep) => set({ currentStep }),
   setSourceType: (sourceType) => set({ sourceType }),
   setSelectedFeedName: (selectedFeedName) => set({ selectedFeedName }),
@@ -61,5 +61,5 @@ export const useIngestionStudioStore = create<IngestionStudioState>((set) => ({
     set((state) => ({ receipts: [receipt, ...state.receipts] })),
   setActiveTimelineEntryId: (activeTimelineEntryId) =>
     set({ activeTimelineEntryId }),
-  reset: () => set({ ...initialState }),
+  reset: () => set(createInitialState()),
 }))

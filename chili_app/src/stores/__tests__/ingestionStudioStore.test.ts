@@ -116,4 +116,34 @@ describe('useIngestionStudioStore', () => {
     expect(state.receipts).toEqual([])
     expect(state.activeTimelineEntryId).toBeNull()
   })
+
+  it('reset returns clean fresh arrays after accidental in-place mutation', () => {
+    useIngestionStudioStore.getState().reset()
+    const pollutedPendingFiles = useIngestionStudioStore.getState().pendingFiles
+    const pollutedParsedRows = useIngestionStudioStore.getState().parsedRows
+    const pollutedValidationIssues =
+      useIngestionStudioStore.getState().validationIssues
+    const pollutedReceipts = useIngestionStudioStore.getState().receipts
+
+    pollutedPendingFiles.push(
+      new File(['policy'], 'mutated-policy.pdf', {
+        type: 'application/pdf',
+      }),
+    )
+    pollutedParsedRows.push({ id: 'mutated-record' })
+    pollutedValidationIssues.push(validationIssue)
+    pollutedReceipts.push(documentReceipt)
+
+    useIngestionStudioStore.getState().reset()
+
+    const state = useIngestionStudioStore.getState()
+    expect(state.pendingFiles).toEqual([])
+    expect(state.parsedRows).toEqual([])
+    expect(state.validationIssues).toEqual([])
+    expect(state.receipts).toEqual([])
+    expect(state.pendingFiles).not.toBe(pollutedPendingFiles)
+    expect(state.parsedRows).not.toBe(pollutedParsedRows)
+    expect(state.validationIssues).not.toBe(pollutedValidationIssues)
+    expect(state.receipts).not.toBe(pollutedReceipts)
+  })
 })
