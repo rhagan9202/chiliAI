@@ -28,6 +28,7 @@ from agent.models import HealthSettings, RetryPolicy
 from agent.workflow_tracking import WorkflowEventTracker
 from config.loader import load_config
 from config.schema import (
+    AnalyticsConfig,
     DatabaseConfig,
     DomainConfig,
     EmbeddingsConfig,
@@ -57,9 +58,22 @@ from analytics.gnn.adapters.protocols import GraphSnapshotSourceProtocol
 from analytics.gnn.exceptions import GnnError
 from analytics.gnn.service import GnnService, create_gnn_service
 from analytics.gnn.service_models import GnnAnalysisRequest, GnnAnalysisResponse
-from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
-from analytics.risk.adapters.protocols import RiskSignalSourceProtocol
+from analytics.metrics.adapters.in_memory import InMemoryEntityMetricRepository
+from analytics.metrics.adapters.postgres import PostgresEntityMetricRepository
+from analytics.metrics.adapters.protocols import EntityMetricRepository
+from analytics.metrics.models import (
+    GRAPH_SCOPE_ENTITY_ID,
+    METRIC_AVG_DEGREE,
+    METRIC_ENTITY_COUNT,
+    METRIC_RELATIONSHIP_COUNT,
+    EntityMetricSample,
+)
+from analytics.metrics.throttle import MetricsRecomputeThrottle
+from analytics.risk.adapters.in_memory import InMemoryRiskHistoryWriter, InMemoryRiskSignalSource
+from analytics.risk.adapters.postgres import PostgresRiskHistoryStore
+from analytics.risk.adapters.protocols import RiskHistoryWriter, RiskSignalSourceProtocol
 from analytics.risk.exceptions import RiskError
+from analytics.risk.models import RiskAssessmentRecord, RiskFactor
 from analytics.risk.service import RiskService, create_risk_service
 from analytics.risk.service_models import (
     RiskAssessmentRequest,
@@ -114,13 +128,22 @@ from ingestion.validator import ExtractionResultValidator, create_extraction_val
 from llm.adapters.in_memory import InMemoryLlmClient
 from llm.adapters.protocols import LlmClientProtocol
 from monitoring.adapters.in_memory import (
+    InMemoryAlertHistoryWriter,
     InMemoryObservationSource,
     InMemoryObservationWriter,
 )
-from monitoring.adapters.postgres import PostgresObservationStore
-from monitoring.adapters.protocols import ObservationSourceProtocol, ObservationWriter
+from monitoring.adapters.postgres import (
+    PostgresAlertHistoryStore,
+    PostgresObservationSource,
+    PostgresObservationStore,
+)
+from monitoring.adapters.protocols import (
+    AlertHistoryWriter,
+    ObservationSourceProtocol,
+    ObservationWriter,
+)
 from monitoring.exceptions import MonitoringError
-from monitoring.models import MonitoringBatch
+from monitoring.models import AlertHistoryRecord, MonitoringBatch
 from monitoring.service import MonitoringService, create_monitoring_service
 from monitoring.service_models import MonitoringEvaluationRequest
 from monitoring.metrics import observe_pipeline_stage
@@ -140,8 +163,10 @@ from vectorstore.models import VectorRecord
 
 __all__ = [
     "WorkerDependencies",
+    "build_alert_history_writer",
     "build_connection_provider",
     "build_embedder",
+    "build_entity_metric_repository",
     "build_explainability_context_source",
     "build_graph_repository",
     "build_graph_snapshot_source",
@@ -150,10 +175,12 @@ __all__ = [
     "build_object_store",
     "build_observation_writer",
     "build_raw_record_store",
+    "build_risk_history_writer",
     "build_risk_signal_source",
     "build_vector_store",
     "build_worker_dependencies",
     "drain_ingestion_events",
+    "handle_alerts_created_for_graph",
     "handle_documents_chunked",
     "handle_documents_parsed",
     "handle_embeddings_complete",
@@ -164,6 +191,7 @@ __all__ = [
     "handle_graph_updated_for_analytics",
     "handle_records_ingested",
     "handle_risk_scored",
+    "handle_risk_scored_for_graph",
     "handle_vectors_indexed",
     "main",
     "run_handler_with_retry",
@@ -198,6 +226,10 @@ class WorkerDependencies:
     records_config: RecordsConfig
     raw_record_store: RawRecordStore
     observation_writer: ObservationWriter
+    entity_metric_repository: EntityMetricRepository
+    metrics_throttle: MetricsRecomputeThrottle
+    risk_history_writer: RiskHistoryWriter
+    alert_history_writer: AlertHistoryWriter
     event_settings: EventBusSettings
     workflow_run_store: WorkflowRunStoreProtocol
     workflow_tracker: WorkflowEventTracker
@@ -449,11 +481,13 @@ def build_explainability_context_source(
 
 
 def build_monitoring_observation_source(
-    _config: DomainConfig,
+    provider: ConnectionProvider | None,
 ) -> ObservationSourceProtocol:
-    """Return the configured monitoring observation source adapter."""
+    """Select a monitoring observation source: Postgres when a provider exists."""
 
-    return InMemoryObservationSource()
+    if provider is None:
+        return InMemoryObservationSource()
+    return PostgresObservationSource(provider)
 
 
 def build_connection_provider(config: DomainConfig) -> ConnectionProvider | None:
@@ -480,6 +514,36 @@ def build_observation_writer(
     if provider is None:
         return InMemoryObservationWriter()
     return PostgresObservationStore(provider)
+
+
+def build_entity_metric_repository(
+    provider: ConnectionProvider | None,
+) -> EntityMetricRepository:
+    """Select an entity-metric repository: Postgres when a provider exists."""
+
+    if provider is None:
+        return InMemoryEntityMetricRepository()
+    return PostgresEntityMetricRepository(provider)
+
+
+def build_risk_history_writer(
+    provider: ConnectionProvider | None,
+) -> RiskHistoryWriter:
+    """Select a risk-history writer: Postgres when a provider exists."""
+
+    if provider is None:
+        return InMemoryRiskHistoryWriter()
+    return PostgresRiskHistoryStore(provider)
+
+
+def build_alert_history_writer(
+    provider: ConnectionProvider | None,
+) -> AlertHistoryWriter:
+    """Select an alert-history writer: Postgres when a provider exists."""
+
+    if provider is None:
+        return InMemoryAlertHistoryWriter()
+    return PostgresAlertHistoryStore(provider)
 
 
 def _section_is_default(value: object, default: object) -> bool:
@@ -627,9 +691,10 @@ def build_worker_dependencies() -> WorkerDependencies:
         build_explainability_context_source(config),
         event_bus=event_bus,
     )
+    connection_provider = build_connection_provider(config)
     monitoring_config = config.monitoring
     monitoring_service = create_monitoring_service(
-        build_monitoring_observation_source(config),
+        build_monitoring_observation_source(connection_provider),
         event_bus=event_bus,
         dedup_window_seconds=(
             monitoring_config.dedup_window_seconds
@@ -647,9 +712,15 @@ def build_worker_dependencies() -> WorkerDependencies:
             else 300
         ),
     )
-    connection_provider = build_connection_provider(config)
     raw_record_store = build_raw_record_store(connection_provider)
     observation_writer = build_observation_writer(connection_provider)
+    entity_metric_repository = build_entity_metric_repository(connection_provider)
+    risk_history_writer = build_risk_history_writer(connection_provider)
+    alert_history_writer = build_alert_history_writer(connection_provider)
+    analytics_config = config.analytics or AnalyticsConfig()
+    metrics_throttle = MetricsRecomputeThrottle(
+        min_interval_seconds=analytics_config.metrics_recompute_min_interval_seconds
+    )
     records_config = config.records or RecordsConfig()
 
     return WorkerDependencies(
@@ -670,6 +741,10 @@ def build_worker_dependencies() -> WorkerDependencies:
         records_config=records_config,
         raw_record_store=raw_record_store,
         observation_writer=observation_writer,
+        entity_metric_repository=entity_metric_repository,
+        metrics_throttle=metrics_throttle,
+        risk_history_writer=risk_history_writer,
+        alert_history_writer=alert_history_writer,
         event_settings=event_settings,
         workflow_run_store=workflow_run_store,
         workflow_tracker=workflow_tracker,
@@ -1035,6 +1110,8 @@ def handle_graph_updated_for_analytics(
     graph_service: GraphService,
     event_bus: EventBus,
     object_store: ObjectStore | None = None,
+    entity_metric_repository: EntityMetricRepository | None = None,
+    metrics_throttle: MetricsRecomputeThrottle | None = None,
 ) -> int:
     """Run Flow B (GNN -> risk -> explainability -> alerts.created).
 
@@ -1091,6 +1168,13 @@ def handle_graph_updated_for_analytics(
             )
             if alert_reference is not None:
                 alerts.append(alert_reference)
+
+    _persist_graph_metrics_for_event(
+        event=event,
+        graph_service=graph_service,
+        entity_metric_repository=entity_metric_repository,
+        metrics_throttle=metrics_throttle,
+    )
 
     if alerts:
         event_bus.publish(
@@ -1208,7 +1292,77 @@ def _run_explainability_stage(
         entity_id=entity_id,
         severity=risk_response.risk_level,
         evidence_pack_id=response.evidence_pack.id,
+        status="open",
+        title=f"{risk_response.risk_level.title()} risk: {entity_id}",
+        reasoning=response.evidence_pack.reasoning,
     )
+
+
+def _persist_graph_metrics_for_event(
+    *,
+    event: GraphUpdatedEvent,
+    graph_service: GraphService,
+    entity_metric_repository: EntityMetricRepository | None,
+    metrics_throttle: MetricsRecomputeThrottle | None,
+) -> None:
+    """Flow 2 — persist graph metrics per KB, throttled to avoid recompute storms.
+
+    Best-effort: a failure here is logged but never aborts Flow B. The throttle
+    drops recomputes that arrive within the configured per-KB interval so a
+    burst of graph updates cannot thrash the system.
+    """
+
+    if entity_metric_repository is None or metrics_throttle is None:
+        return
+    now = __datetime__.now(tz=__timezone__.utc)
+    seen: set[str] = set()
+    for document in event.documents:
+        knowledge_base_id = document.knowledge_base_id
+        if knowledge_base_id in seen:
+            continue
+        seen.add(knowledge_base_id)
+        if not metrics_throttle.should_recompute(knowledge_base_id, now=now):
+            logger.debug(
+                "Skipping throttled graph-metric recompute for kb=%s",
+                knowledge_base_id,
+            )
+            continue
+        try:
+            metrics = graph_service.compute_metrics(knowledge_base_id)
+            entity_metric_repository.record_metrics(
+                [
+                    EntityMetricSample(
+                        knowledge_base_id=knowledge_base_id,
+                        entity_id=GRAPH_SCOPE_ENTITY_ID,
+                        metric_name=METRIC_ENTITY_COUNT,
+                        value=float(metrics.entity_count),
+                        observed_at=now,
+                        correlation_id=event.correlation_id,
+                    ),
+                    EntityMetricSample(
+                        knowledge_base_id=knowledge_base_id,
+                        entity_id=GRAPH_SCOPE_ENTITY_ID,
+                        metric_name=METRIC_RELATIONSHIP_COUNT,
+                        value=float(metrics.relationship_count),
+                        observed_at=now,
+                        correlation_id=event.correlation_id,
+                    ),
+                    EntityMetricSample(
+                        knowledge_base_id=knowledge_base_id,
+                        entity_id=GRAPH_SCOPE_ENTITY_ID,
+                        metric_name=METRIC_AVG_DEGREE,
+                        value=metrics.avg_degree,
+                        observed_at=now,
+                        correlation_id=event.correlation_id,
+                    ),
+                ]
+            )
+        except Exception as exc:  # noqa: BLE001 - metrics must not block Flow B
+            logger.warning(
+                "Failed to persist graph metrics for kb=%s: %s",
+                knowledge_base_id,
+                exc,
+            )
 
 
 def _write_analytics_properties_to_graph(
@@ -1313,6 +1467,125 @@ def handle_risk_scored(
         if response.alert_count >= 0:
             processed += 1
     return processed
+
+
+def handle_risk_scored_for_graph(
+    event: RiskScoredEvent,
+    *,
+    risk_history_writer: RiskHistoryWriter,
+    graph_service: GraphService,
+) -> int:
+    """Flow 3 — persist risk assessments and snapshot risk onto the graph entity.
+
+    Idempotent: ``risk_score_history`` is keyed by request_id and
+    ``update_entity_properties`` is a property merge, so the worker's retry/DLQ
+    wrapper can safely re-run this handler. The graph write publishes no event,
+    so it cannot re-trigger the analytics pipeline.
+    """
+
+    assessed_at = __datetime__.now(tz=__timezone__.utc)
+    processed = 0
+    for assessment in event.assessments:
+        record = RiskAssessmentRecord(
+            knowledge_base_id=assessment.knowledge_base_id,
+            entity_id=assessment.entity_id,
+            request_id=assessment.request_id,
+            overall_score=assessment.overall_score,
+            risk_level=assessment.risk_level,
+            factors=[
+                RiskFactor(
+                    factor_name=factor.factor_name,
+                    raw_value=factor.raw_value,
+                    weight=factor.weight,
+                    contribution=factor.contribution,
+                    rationale=factor.rationale,
+                )
+                for factor in assessment.factors
+            ],
+            assessed_at=assessed_at,
+        )
+        risk_history_writer.write_assessment(record)
+        try:
+            graph_service.update_entity_properties(
+                assessment.knowledge_base_id,
+                assessment.entity_id,
+                {
+                    "risk_score": float(assessment.overall_score),
+                    "risk_level": assessment.risk_level,
+                    "risk_assessed_at": assessed_at.isoformat(),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 - graph backend may be unavailable
+            logger.warning(
+                "Failed to snapshot risk to graph kb=%s entity=%s: %s",
+                assessment.knowledge_base_id,
+                assessment.entity_id,
+                exc,
+            )
+        processed += 1
+    return processed
+
+
+def handle_alerts_created_for_graph(
+    event: AlertsCreatedEvent,
+    *,
+    alert_history_writer: AlertHistoryWriter,
+    graph_service: GraphService,
+) -> int:
+    """Flow 4 — persist alerts to the alert-history log and snapshot onto the graph.
+
+    Idempotent: ``alert_history`` is keyed by alert_id; the entity's
+    ``active_alert_count`` is derived from a count of open alerts (never blindly
+    incremented), so retry/DLQ replay is safe. The graph write publishes no
+    event, so it cannot re-trigger the analytics pipeline.
+    """
+
+    created_at = __datetime__.now(tz=__timezone__.utc)
+    records: list[AlertHistoryRecord] = []
+    severity_by_entity: dict[tuple[str, str], str] = {}
+    for alert in event.alerts:
+        records.append(
+            AlertHistoryRecord(
+                knowledge_base_id=alert.knowledge_base_id,
+                alert_id=alert.alert_id,
+                entity_id=alert.entity_id,
+                entity_type=alert.entity_type,
+                severity=alert.severity,
+                status=alert.status,
+                title=alert.title,
+                reasoning=alert.reasoning,
+                metric_name=alert.metric_name,
+                evidence_pack_id=alert.evidence_pack_id,
+                created_at=created_at,
+                updated_at=created_at,
+            )
+        )
+        severity_by_entity[(alert.knowledge_base_id, alert.entity_id)] = alert.severity
+
+    alert_history_writer.write_alerts(records)
+
+    for (knowledge_base_id, entity_id), severity in severity_by_entity.items():
+        try:
+            open_count = alert_history_writer.count_open_alerts(
+                knowledge_base_id=knowledge_base_id, entity_id=entity_id
+            )
+            graph_service.update_entity_properties(
+                knowledge_base_id,
+                entity_id,
+                {
+                    "active_alert_count": open_count,
+                    "last_alert_at": created_at.isoformat(),
+                    "last_alert_severity": severity,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 - graph backend may be unavailable
+            logger.warning(
+                "Failed to snapshot alerts to graph kb=%s entity=%s: %s",
+                knowledge_base_id,
+                entity_id,
+                exc,
+            )
+    return len(records)
 
 
 def handle_records_ingested(
@@ -1684,6 +1957,10 @@ def handle_event(
     records_config: RecordsConfig | None = None,
     raw_record_store: RawRecordStore | None = None,
     observation_writer: ObservationWriter | None = None,
+    entity_metric_repository: EntityMetricRepository | None = None,
+    metrics_throttle: MetricsRecomputeThrottle | None = None,
+    risk_history_writer: RiskHistoryWriter | None = None,
+    alert_history_writer: AlertHistoryWriter | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
 ) -> int:
     """Handle a single event and return the number of processed documents."""
@@ -1721,6 +1998,10 @@ def handle_event(
             records_config=records_config,
             raw_record_store=raw_record_store,
             observation_writer=observation_writer,
+            entity_metric_repository=entity_metric_repository,
+            metrics_throttle=metrics_throttle,
+            risk_history_writer=risk_history_writer,
+            alert_history_writer=alert_history_writer,
         )
         if workflow_tracker is not None:
             workflow_tracker.complete_event(event)
@@ -1748,6 +2029,10 @@ def _dispatch_event(
     records_config: RecordsConfig | None,
     raw_record_store: RawRecordStore | None,
     observation_writer: ObservationWriter | None,
+    entity_metric_repository: EntityMetricRepository | None,
+    metrics_throttle: MetricsRecomputeThrottle | None,
+    risk_history_writer: RiskHistoryWriter | None,
+    alert_history_writer: AlertHistoryWriter | None,
 ) -> int:
     del delivery  # reserved for future stream offsets / dlq metadata
     if isinstance(event, DocumentsUploadedEvent):
@@ -1802,6 +2087,8 @@ def _dispatch_event(
                     graph_service=graph_service,
                     event_bus=event_bus,
                     object_store=object_store,
+                    entity_metric_repository=entity_metric_repository,
+                    metrics_throttle=metrics_throttle,
                 )
             except Exception as exc:  # noqa: BLE001 - analytics must not block Flow A
                 logger.warning(
@@ -1827,17 +2114,44 @@ def _dispatch_event(
             event_bus=event_bus,
         )
     if isinstance(event, RiskScoredEvent):
-        if monitoring_service is None:
+        processed = 0
+        if monitoring_service is not None:
+            try:
+                processed = handle_risk_scored(
+                    event,
+                    monitoring_service=monitoring_service,
+                    event_bus=event_bus,
+                )
+            except Exception as exc:  # noqa: BLE001 - monitoring must not abort pipeline
+                logger.warning(
+                    "Monitoring stream consumer raised; continuing. error=%s",
+                    exc,
+                )
+        if risk_history_writer is not None:
+            try:
+                handle_risk_scored_for_graph(
+                    event,
+                    risk_history_writer=risk_history_writer,
+                    graph_service=graph_service,
+                )
+            except Exception as exc:  # noqa: BLE001 - write-back must not abort pipeline
+                logger.warning(
+                    "Risk graph write-back raised; continuing. error=%s",
+                    exc,
+                )
+        return processed
+    if isinstance(event, AlertsCreatedEvent):
+        if alert_history_writer is None:
             return 0
         try:
-            return handle_risk_scored(
+            return handle_alerts_created_for_graph(
                 event,
-                monitoring_service=monitoring_service,
-                event_bus=event_bus,
+                alert_history_writer=alert_history_writer,
+                graph_service=graph_service,
             )
-        except Exception as exc:  # noqa: BLE001 - monitoring must not abort pipeline
+        except Exception as exc:  # noqa: BLE001 - write-back must not abort pipeline
             logger.warning(
-                "Monitoring stream consumer raised; continuing. error=%s",
+                "Alert graph write-back raised; continuing. error=%s",
                 exc,
             )
             return 0
@@ -1936,6 +2250,10 @@ async def drain_ingestion_events(
     records_config: RecordsConfig | None = None,
     raw_record_store: RawRecordStore | None = None,
     observation_writer: ObservationWriter | None = None,
+    entity_metric_repository: EntityMetricRepository | None = None,
+    metrics_throttle: MetricsRecomputeThrottle | None = None,
+    risk_history_writer: RiskHistoryWriter | None = None,
+    alert_history_writer: AlertHistoryWriter | None = None,
     consumer_group: str,
     consumer_name: str,
     limit: int = 10,
@@ -1960,6 +2278,7 @@ async def drain_ingestion_events(
         "vectors.indexed",
         "risk.scored",
         "records.ingested",
+        "alerts.created",
     ]
     event_bus.ensure_consumer_group(event_types, consumer_group=consumer_group)
     deliveries = event_bus.consume(
@@ -1992,6 +2311,10 @@ async def drain_ingestion_events(
                 records_config=records_config,
                 raw_record_store=raw_record_store,
                 observation_writer=observation_writer,
+                entity_metric_repository=entity_metric_repository,
+                metrics_throttle=metrics_throttle,
+                risk_history_writer=risk_history_writer,
+                alert_history_writer=alert_history_writer,
                 workflow_tracker=workflow_tracker,
             )
 
@@ -2098,6 +2421,10 @@ async def run_worker(
                 records_config=deps.records_config,
                 raw_record_store=deps.raw_record_store,
                 observation_writer=deps.observation_writer,
+                entity_metric_repository=deps.entity_metric_repository,
+                metrics_throttle=deps.metrics_throttle,
+                risk_history_writer=deps.risk_history_writer,
+                alert_history_writer=deps.alert_history_writer,
                 consumer_group=deps.event_settings.consumer_group,
                 consumer_name=deps.event_settings.consumer_name(),
                 limit=deps.event_settings.batch_size,

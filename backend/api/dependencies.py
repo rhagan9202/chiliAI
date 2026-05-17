@@ -62,6 +62,7 @@ from llm.adapters.protocols import LlmClientProtocol
 from llm.protocols import LlmServiceProtocol
 from llm.service import create_llm_service
 from monitoring.adapters.in_memory import InMemoryObservationSource
+from monitoring.adapters.postgres import PostgresObservationSource
 from monitoring.adapters.protocols import ObservationSourceProtocol
 from monitoring.protocols import MonitoringServiceProtocol
 from monitoring.service import create_monitoring_service
@@ -584,8 +585,11 @@ def get_llm_service() -> LlmServiceProtocol:
 
 @lru_cache(maxsize=1)
 def get_monitoring_source() -> ObservationSourceProtocol:
-    """Return the monitoring observation source selected by config."""
-    return InMemoryObservationSource()
+    """Return the monitoring observation source selected by the database backend."""
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemoryObservationSource()
+    return PostgresObservationSource(provider)
 
 
 @lru_cache(maxsize=1)

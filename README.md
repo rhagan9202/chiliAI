@@ -94,7 +94,7 @@ npm run lint      # ESLint check
 cd backend
 # Create and activate a virtual environment, then:
 pip install -e ".[dev]"
-CHILI_ENV=local uvicorn api.app:create_app --reload --port 8000   # API server
+CHILI_ENV=local uvicorn api.app:create_app --factory --reload --port 8000   # API server
 python -m agent.coordinator                         # Pipeline worker
 pytest --cov                                        # Run tests with coverage
 ```

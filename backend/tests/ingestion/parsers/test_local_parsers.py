@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 from io import BytesIO
 
 import pytest
@@ -12,6 +13,7 @@ from ingestion.models import DocumentFormat, SourceDocument, SourceType
 from ingestion.parsers.csv import CsvParser
 from ingestion.parsers.docx import DocxParser
 from ingestion.parsers.exceptions import ParserError
+from ingestion.parsers.html import HtmlParser
 from ingestion.parsers.json import JsonParser
 from ingestion.parsers.pdf import PdfParser
 from ingestion.parsers.txt import TextParser
@@ -70,9 +72,89 @@ def test_csv_parser_rejects_empty_content() -> None:
         parser.parse(_source("doc-csv", DocumentFormat.CSV), b"   ")
 
 
+def test_csv_parser_falls_back_when_dialect_sniffing_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_sniff(
+        self: object,
+        sample: str,
+        delimiters: str | None = None,
+    ) -> csv.Dialect:
+        raise csv.Error("cannot sniff")
+
+    monkeypatch.setattr("csv.Sniffer.sniff", fail_sniff)
+
+    parser = CsvParser()
+    parsed = parser.parse(
+        _source("doc-csv", DocumentFormat.CSV),
+        b"claim_id,amount\n1,100\n",
+    )
+
+    assert parsed.records[0].fields["claim_id"] == "1"
+    assert parsed.parser_metadata["delimiter"] == ","
+
+
+def test_csv_parser_generates_column_names_without_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def no_header(self: object, sample: str) -> bool:
+        del self, sample
+        return False
+
+    monkeypatch.setattr("csv.Sniffer.has_header", no_header)
+
+    parser = CsvParser()
+    parsed = parser.parse(
+        _source("doc-csv", DocumentFormat.CSV),
+        b"1,100\n2,250\n",
+    )
+
+    assert parsed.records[0].fields == {"column_1": "1", "column_2": "100"}
+    assert parsed.parser_metadata["has_header"] is False
+
+
+def test_csv_parser_rejects_no_rows_after_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    def empty_reader(
+        csvfile: object,
+        dialect: csv.Dialect | str = "excel",
+        **fmtparams: object,
+    ) -> list[list[str]]:
+        del csvfile, dialect, fmtparams
+        return []
+
+    monkeypatch.setattr("csv.reader", empty_reader)
+
+    parser = CsvParser()
+    with pytest.raises(ParserError, match="does not contain any rows"):
+        parser.parse(_source("doc-csv", DocumentFormat.CSV), b"claim_id\n1\n")
+
+
+def test_csv_parser_rejects_headers_without_data_rows() -> None:
+    parser = CsvParser()
+    with pytest.raises(ParserError, match="headers but no data rows"):
+        parser.parse(_source("doc-csv", DocumentFormat.CSV), b"claim_id,amount\n")
+
+
+def test_html_parser_extracts_visible_text() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b"""
+        <html>
+          <head><title>Ignored</title><script>alert("x")</script></head>
+          <body><h1>Claim Summary</h1><p>Claim ID C-1 &amp; amount $42.</p></body>
+        </html>
+        """,
+    )
+
+    assert parsed.text_content == "Claim Summary\n\nClaim ID C-1 & amount $42."
+    assert parsed.parser_metadata["encoding"] == "utf-8"
+
+
 def test_xlsx_parser_creates_records_with_sheet_metadata() -> None:
     workbook = Workbook()
     sheet = workbook.active
+    assert sheet is not None
     sheet.title = "Claims"
     sheet.append(["claim_id", "amount"])
     sheet.append(["C-1", 42])

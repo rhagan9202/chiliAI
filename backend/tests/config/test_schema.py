@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from config.schema import (
     AlertsConfig,
+    AnalyticsConfig,
     AuthConfig,
     CapabilitiesConfig,
     ChunkingConfig,
@@ -610,3 +611,32 @@ class TestPropertyTypeValues:
         )
         cfg = _make_config(entities=[entity])
         assert cfg.entities[0].properties["field"].type is ptype
+
+
+# ---------------------------------------------------------------------------
+# AnalyticsConfig
+# ---------------------------------------------------------------------------
+
+
+def test_analytics_config_defaults() -> None:
+    config = AnalyticsConfig()
+    assert config.metrics_recompute_min_interval_seconds == 300
+
+
+def test_analytics_config_rejects_non_positive_interval() -> None:
+    with pytest.raises(ValidationError):
+        AnalyticsConfig(metrics_recompute_min_interval_seconds=0)
+
+
+def test_domain_config_defaults_analytics_section() -> None:
+    """A config that omits `analytics` gets the default AnalyticsConfig."""
+    from pathlib import Path
+
+    from config.loader import load_config
+
+    config = load_config(
+        Path(__file__).resolve().parents[2]
+        / "config" / "defaults" / "medicare_fraud.yaml"
+    )
+    assert config.analytics is not None
+    assert config.analytics.metrics_recompute_min_interval_seconds == 300

@@ -523,3 +523,30 @@ def test_suppression_rules_property_returns_copy() -> None:
     rules.clear()
 
     assert len(service.suppression_rules) == 1
+
+
+def test_evaluate_publishes_enriched_alert_references() -> None:
+    service, event_bus = _build_service(
+        [
+            _observation(
+                score=0.92,
+                entity_id="provider-7",
+                entity_type="provider",
+                metric_name="claim_volume",
+                rationale="Threshold exceeded.",
+            ),
+        ]
+    )
+
+    response = service.evaluate(_request())
+
+    assert response.alert_count == 1
+    assert isinstance(event_bus.published_events[-1], AlertsCreatedEvent)
+    event = event_bus.published_events[-1]
+    assert isinstance(event, AlertsCreatedEvent)
+    ref = event.alerts[0]
+    assert ref.metric_name != ""
+    assert ref.title != ""
+    assert ref.reasoning != ""
+    assert ref.entity_type != ""
+    assert ref.status == response.alerts[0].status

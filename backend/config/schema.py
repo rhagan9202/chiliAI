@@ -174,6 +174,12 @@ class MonitoringConfig(BaseModel):
     grouping_window_seconds: int = Field(default=300, gt=0)
 
 
+class AnalyticsConfig(BaseModel):
+    """Configuration for analytics persistence and recompute behavior."""
+
+    metrics_recompute_min_interval_seconds: int = Field(default=300, gt=0)
+
+
 class RagConfig(BaseModel):
     """Configuration for retrieval-augmented generation behavior."""
 
@@ -349,6 +355,7 @@ class DomainConfig(BaseModel):
     auth: AuthConfig | None = None
     validation: ValidationConfig | None = None
     records: RecordsConfig | None = None
+    analytics: AnalyticsConfig | None = None
     alerts: AlertsConfig
     ui: UiConfig | None = None
 
@@ -390,6 +397,8 @@ class DomainConfig(BaseModel):
             self.validation = ValidationConfig()
         if self.records is None:
             self.records = RecordsConfig()
+        if self.analytics is None:
+            self.analytics = AnalyticsConfig()
 
         errors: list[str] = []
 
@@ -495,6 +504,7 @@ class DomainConfig(BaseModel):
 
 __all__ = [
     "AlertsConfig",
+    "AnalyticsConfig",
     "AuthConfig",
     "CapabilitiesConfig",
     "ChunkingConfig",

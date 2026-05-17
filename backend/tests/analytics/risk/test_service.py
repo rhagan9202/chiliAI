@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
@@ -197,10 +199,10 @@ def test_linear_strategy_matches_legacy_inline_implementation() -> None:
 
     assert len(factors) == 3
     assert factors[0].factor_name == "timeseries"
-    assert factors[0].contribution == pytest.approx(0.4)
-    assert factors[1].contribution == pytest.approx(0.8 * 1.5 / 4.5)
-    assert factors[2].contribution == pytest.approx(0.6 * 1.0 / 4.5)
-    assert overall == pytest.approx(0.8)
+    assert math.isclose(factors[0].contribution, 0.4)
+    assert math.isclose(factors[1].contribution, 0.8 * 1.5 / 4.5)
+    assert math.isclose(factors[2].contribution, 0.6 * 1.0 / 4.5)
+    assert math.isclose(overall, 0.8)
 
 
 def test_linear_strategy_normalizes_contributions_by_total_weight() -> None:
@@ -211,8 +213,8 @@ def test_linear_strategy_normalizes_contributions_by_total_weight() -> None:
     factors = LinearScoringStrategy().score(signals)
 
     total_weight = 10.1
-    assert factors[0].contribution == pytest.approx((1.0 * 10.0) / total_weight)
-    assert factors[1].contribution == pytest.approx((0.1 * 0.1) / total_weight)
+    assert math.isclose(factors[0].contribution, (1.0 * 10.0) / total_weight)
+    assert math.isclose(factors[1].contribution, (0.1 * 0.1) / total_weight)
     assert all(0.0 <= f.contribution <= 1.0 for f in factors)
 
 
@@ -253,7 +255,7 @@ def test_risk_service_delegates_to_injected_scoring_strategy() -> None:
     ]
     assert response.factor_count == 2
     assert [factor.factor_name for factor in response.factors] == ["custom", "custom_2"]
-    assert response.overall_score == pytest.approx(0.5)
+    assert math.isclose(response.overall_score, 0.5)
 
 
 def test_risk_service_default_strategy_preserves_backward_compat() -> None:
@@ -304,7 +306,7 @@ def test_risk_service_trend_increasing() -> None:
         RiskAssessmentRequest(knowledge_base_id="kb-1", entity_id="provider-7")
     )
 
-    assert response.previous_score == pytest.approx(0.6)
+    assert response.previous_score == 0.6
     assert response.trend == "increasing"
 
 
@@ -319,7 +321,7 @@ def test_risk_service_trend_decreasing() -> None:
         RiskAssessmentRequest(knowledge_base_id="kb-1", entity_id="provider-7")
     )
 
-    assert response.previous_score == pytest.approx(0.95)
+    assert response.previous_score == 0.95
     assert response.trend == "decreasing"
 
 
@@ -334,7 +336,7 @@ def test_risk_service_trend_stable_within_threshold() -> None:
         RiskAssessmentRequest(knowledge_base_id="kb-1", entity_id="provider-7")
     )
 
-    assert response.previous_score == pytest.approx(0.78)
+    assert response.previous_score == 0.78
     assert response.trend == "stable"
 
 
@@ -353,8 +355,36 @@ def test_risk_service_trend_respects_custom_delta_threshold() -> None:
         RiskAssessmentRequest(knowledge_base_id="kb-1", entity_id="provider-7")
     )
 
-    assert response.previous_score == pytest.approx(0.7)
+    assert response.previous_score == 0.7
     assert response.trend == "stable"
+
+
+def test_assess_publishes_factors_on_risk_scored_event() -> None:
+    from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
+    from analytics.risk.models import RiskProfile, RiskSignal
+    from analytics.risk.service import create_risk_service
+    from analytics.risk.service_models import RiskAssessmentRequest
+    from events.adapters.in_memory import InMemoryEventBus
+    from events.types import RiskScoredEvent
+
+    profile = RiskProfile(
+        knowledge_base_id="kb-1",
+        entity_id="claim:c1",
+        signals=[
+            RiskSignal(signal_name="anomaly", value=0.9, weight=1.0),
+            RiskSignal(signal_name="volume", value=0.4, weight=1.0),
+        ],
+    )
+    event_bus = InMemoryEventBus()
+    service = create_risk_service(
+        InMemoryRiskSignalSource(profiles=[profile]), event_bus=event_bus
+    )
+    service.assess(
+        RiskAssessmentRequest(knowledge_base_id="kb-1", entity_id="claim:c1")
+    )
+    published = [e for e in event_bus.published_events if isinstance(e, RiskScoredEvent)]
+    assert len(published) == 1
+    assert len(published[0].assessments[0].factors) == 2
 
 
 def test_in_memory_source_returns_none_when_no_history_seeded() -> None:
@@ -374,5 +404,5 @@ def test_in_memory_source_put_historical_score_updates_lookup() -> None:
 
     assert (
         source.load_historical_score(knowledge_base_id="kb-1", entity_id="provider-7")
-        == pytest.approx(0.42)
+        == 0.42
     )

@@ -71,7 +71,7 @@ def create_connection_pool(dsn: str, config: DatabaseConfig) -> _ConnectionPoolP
     try:
         pool = pool_factory(
             _normalize_dsn(dsn),
-            min_size=1,
+            min_size=config.pool_size,
             max_size=config.pool_size + config.pool_max_overflow,
             open=False,
             configure=_configure,

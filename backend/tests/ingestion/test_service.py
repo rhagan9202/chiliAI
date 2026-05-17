@@ -5,7 +5,8 @@ from __future__ import annotations
 from ingestion.models import ParsedDocument
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import DocumentReference, DocumentsFailedEvent, DocumentsParsedEvent, DocumentsUploadedEvent
-from ingestion.models import SourceDocument, SourceType
+from ingestion.models import DocumentFormat, SourceDocument, SourceType
+from ingestion.orchestrators.protocols import DocumentParseFailure, ParseResult
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
@@ -69,7 +70,8 @@ def test_ingest_task_parses_stored_document_and_publishes_parsed_event() -> None
     )
 
     assert isinstance(event_bus.published_events[-1], DocumentsParsedEvent)
-    assert outcome.parsed_document.records[0].fields["claim_id"] == "42"  # type: ignore[union-attr]
+    assert isinstance(outcome, ParseResult)
+    assert outcome.parsed_document.records[0].fields["claim_id"] == "42"
     parsed_event = event_bus.published_events[-1]
     assert parsed_event.documents[0].parsed_document_storage_key is not None
 
@@ -100,4 +102,29 @@ def test_process_documents_uploaded_publishes_failure_for_unresolved_format() ->
 
     assert len(outcomes) == 1
     assert isinstance(event_bus.published_events[-1], DocumentsFailedEvent)
-    assert outcomes[0].error_type == "RemoteFetchError"  # type: ignore[union-attr]
+    assert isinstance(outcomes[0], DocumentParseFailure)
+    assert outcomes[0].error_type == "RemoteFetchError"
+
+
+def test_process_documents_uploaded_preserves_event_source_metadata() -> None:
+    service, _event_bus, _object_store = _service()
+    uploaded = DocumentsUploadedEvent(
+        documents=[
+            DocumentReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-batch",
+                filename="batch.json",
+                content_type="application/json",
+                storage_key=None,
+                uri=None,
+                document_format=DocumentFormat.JSON.value,
+                source_type=SourceType.BATCH_LOAD.value,
+                size_bytes=123,
+            )
+        ]
+    )
+
+    outcomes = service.process_documents_uploaded(uploaded)
+
+    assert outcomes[0].source_document.source_type is SourceType.BATCH_LOAD
+    assert outcomes[0].source_document.size_bytes == 123

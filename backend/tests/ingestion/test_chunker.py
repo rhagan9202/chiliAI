@@ -6,14 +6,12 @@ import pytest
 
 from config.schema import ChunkingConfig
 from ingestion.chunker import (
-    ChunkingStrategy,
     DocumentChunker,
     FixedSizeSplitter,
     HeuristicTokenizer,
     RecursiveCharacterSplitter,
     SentenceSplitter,
     StructuredRecordChunker,
-    Tokenizer,
     create_document_chunker,
     resolve_chunking_config,
 )
@@ -193,10 +191,14 @@ class TestDocumentChunker:
 class TestFactories:
     def test_create_document_chunker_uses_runtime_checkable_protocols(self) -> None:
         chunker = create_document_chunker(ChunkingConfig(strategy="sentence"))
+        result = chunker.chunk_document(
+            _parsed_document(text_content="One sentence. Two sentence."),
+            source_document_id="source-1",
+        )
 
         assert isinstance(chunker, DocumentChunkerProtocol)
-        assert isinstance(chunker._strategy, ChunkingStrategy)
-        assert isinstance(chunker._tokenizer, Tokenizer)
+        assert result.strategy_used == "SentenceSplitter"
+        assert result.chunks[0].tokens_estimate is not None
 
     def test_env_overrides_are_applied(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CHILI_CHUNK_SIZE", "256")

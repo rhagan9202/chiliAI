@@ -8,7 +8,7 @@ import json
 import os
 import re
 from string import Formatter
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from pydantic import BaseModel, Field
 
@@ -33,7 +33,7 @@ class ChunkingResult(BaseModel):
 
 	source_document_id: str
 	parsed_document_id: str
-	chunks: list[Chunk] = Field(default_factory=list)
+	chunks: list[Chunk] = Field(default_factory=lambda: cast(list[Chunk], []))
 	strategy_used: str
 	chunked_at: datetime = Field(default_factory=utc_now)
 
@@ -43,6 +43,18 @@ class Tokenizer(Protocol):
 	"""Estimate token counts for a text span."""
 
 	def estimate_tokens(self, text: str) -> int: ...
+
+
+class _TiktokenEncoding(Protocol):
+	"""Small typed surface used from optional tiktoken encodings."""
+
+	def encode(self, text: str) -> list[int]: ...
+
+
+class _TiktokenModule(Protocol):
+	"""Small typed surface used from the optional tiktoken module."""
+
+	def get_encoding(self, encoding_name: str) -> _TiktokenEncoding: ...
 
 
 @runtime_checkable
@@ -78,7 +90,8 @@ class TiktokenTokenizer:
 			raise RuntimeError(
 				"tiktoken is not installed. Use HeuristicTokenizer or add the dependency."
 			) from exc
-		self._encoding = tiktoken.get_encoding(encoding_name)
+		tiktoken_module = cast(_TiktokenModule, tiktoken)
+		self._encoding: _TiktokenEncoding = tiktoken_module.get_encoding(encoding_name)
 
 	def estimate_tokens(self, text: str) -> int:
 		return len(self._encoding.encode(text))

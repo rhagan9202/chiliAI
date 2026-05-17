@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+from typing import cast
 
 from openpyxl import load_workbook
 
@@ -46,7 +47,10 @@ class XlsxParser:
             for row_number, row in enumerate(row_iter, start=1):
                 if all(value in (None, "") for value in row):
                     continue
-                fields = {headers[index]: row[index] for index in range(len(headers))}
+                fields = {
+                    headers[index]: cast(object, row[index])
+                    for index in range(len(headers))
+                }
                 records.append(
                     StructuredRecord(
                         id=f"{source.id}-row-{record_index}",

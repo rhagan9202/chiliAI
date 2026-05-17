@@ -157,7 +157,7 @@ class PatternDocumentExtractor:
 				for candidate in candidate_entities
 				if candidate.type == relationship_definition.target
 			]
-			for source_candidate, target_candidate in _candidate_pairs(
+			for source_candidate, target_candidate in candidate_pairs(
 				source_candidates,
 				target_candidates,
 				chunk=chunk,
@@ -215,7 +215,7 @@ def _coerce_value(value: str) -> object:
 		return stripped.strip('"')
 
 
-def _candidate_pairs(
+def candidate_pairs(
 	source_candidates: list[CandidateEntity],
 	target_candidates: list[CandidateEntity],
 	*,
@@ -298,4 +298,4 @@ def _relationship_evidence(
 	]
 
 
-__all__ = ["PatternDocumentExtractor", "create_document_extractor"]
+__all__ = ["PatternDocumentExtractor", "candidate_pairs", "create_document_extractor"]

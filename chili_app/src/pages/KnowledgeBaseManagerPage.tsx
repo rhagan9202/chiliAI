@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { useDomainConfig } from '../api/config'
 import {
   useCreateKnowledgeBase,
   useDeleteKnowledgeBase,
@@ -9,21 +10,40 @@ import {
   useKnowledgeBases,
   useUploadKnowledgeBaseDocuments,
 } from '../api/knowledgebases'
+import { usePushRecords, useUploadRecordFile } from '../api/records'
+import { useWorkflows } from '../api/workflows'
+import { DocumentSourcePanel } from '../components/ingestion/DocumentSourcePanel'
+import { IngestionStepper } from '../components/ingestion/IngestionStepper'
+import { KnowledgeBaseSelector } from '../components/ingestion/KnowledgeBaseSelector'
+import { RecordsSourcePanel } from '../components/ingestion/RecordsSourcePanel'
+import { RunTimeline } from '../components/ingestion/RunTimeline'
+import { SourceTypeStep } from '../components/ingestion/SourceTypeStep'
+import { SubmitPanel } from '../components/ingestion/SubmitPanel'
+import { ValidationPanel } from '../components/ingestion/ValidationPanel'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import {
+  validateDocumentFiles,
+  validateRecordRows,
+  validateRequiredWizardState,
+} from '../lib/ingestion/validateIngestion'
+import { useIngestionStudioStore } from '../stores/ingestionStudioStore'
 import './pages.css'
 
 export function KnowledgeBaseManagerPage() {
+  const studio = useIngestionStudioStore()
   const knowledgeBasesQuery = useKnowledgeBases()
+  const domainConfigQuery = useDomainConfig()
+  const workflowsQuery = useWorkflows()
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<string | null>(null)
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
   const [knowledgeBaseName, setKnowledgeBaseName] = useState('')
   const [knowledgeBaseDescription, setKnowledgeBaseDescription] = useState('')
-  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+
   const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
   const activeKnowledgeBaseId = knowledgeBases.some((item) => item.id === selectedKnowledgeBaseId)
     ? selectedKnowledgeBaseId
@@ -34,129 +54,229 @@ export function KnowledgeBaseManagerPage() {
   const activeDocumentId = documents.some((document) => document.id === selectedDocumentId)
     ? selectedDocumentId
     : documents[0]?.id ?? null
+  const knowledgeBase = knowledgeBaseDetailQuery.data ?? null
+
   const createKnowledgeBaseMutation = useCreateKnowledgeBase()
   const deleteKnowledgeBaseMutation = useDeleteKnowledgeBase()
   const uploadMutation = useUploadKnowledgeBaseDocuments(activeKnowledgeBaseId)
   const deleteDocumentMutation = useDeleteKnowledgeBaseDocument(activeKnowledgeBaseId)
+  const pushRecordsMutation = usePushRecords(activeKnowledgeBaseId)
+  const uploadRecordFileMutation = useUploadRecordFile(activeKnowledgeBaseId)
 
-  if (knowledgeBasesQuery.isLoading) {
-    return <LoadingState label="Loading knowledge base inventory" />
+  const feeds = domainConfigQuery.data?.records?.feeds ?? []
+  const selectedFeed = feeds.find((feed) => feed.name === studio.selectedFeedName) ?? null
+  const documentIssues = validateDocumentFiles(
+    studio.pendingFiles,
+    domainConfigQuery.data?.validation,
+  )
+  const recordIssues = selectedFeed
+    ? validateRecordRows(selectedFeed, studio.parsedRows)
+    : []
+  const requiredIssues = validateRequiredWizardState({
+    knowledgeBaseId: activeKnowledgeBaseId,
+    sourceType: studio.sourceType,
+    feedName: studio.selectedFeedName,
+  })
+  const currentIssues = [
+    ...requiredIssues,
+    ...(studio.sourceType === 'documents' ? documentIssues : []),
+    ...(studio.sourceType === 'records' ? recordIssues : []),
+    ...studio.validationIssues,
+  ]
+
+  function submitDocuments() {
+    const issues = [
+      ...validateRequiredWizardState({
+        knowledgeBaseId: activeKnowledgeBaseId,
+        sourceType: 'documents',
+        feedName: studio.selectedFeedName,
+      }),
+      ...validateDocumentFiles(studio.pendingFiles, domainConfigQuery.data?.validation),
+    ]
+
+    if (issues.some((issue) => issue.severity === 'error')) {
+      studio.setValidationIssues(issues)
+      return
+    }
+
+    uploadMutation.mutate(studio.pendingFiles, {
+      onSuccess: (response) => {
+        const count = response.documents.length
+        const suffix = count === 1 ? 'document' : 'documents'
+
+        studio.setValidationIssues([])
+        studio.addReceipt({
+          id: `documents-${response.documents.map((document) => document.source_document_id).join('-')}`,
+          sourceType: 'documents',
+          status: 'accepted',
+          message: `${count} ${suffix} accepted.`,
+          createdAt: response.documents[0]?.created_at ?? new Date().toISOString(),
+        })
+        studio.setPendingFiles([])
+        studio.setCurrentStep('runs')
+      },
+      onError: (error) => {
+        studio.addValidationIssues([
+          {
+            id: `documents-backend-error-${Date.now()}`,
+            source: 'backend',
+            severity: 'error',
+            message: error instanceof Error ? error.message : 'Document submission failed.',
+          },
+        ])
+      },
+    })
   }
 
-  if (knowledgeBasesQuery.isError) {
-    return <ErrorState description="Knowledge base inventory could not be loaded from the API." />
-  }
+  function submitRecords() {
+    const missingRecordFileIssue = selectedFeed?.source === 'file_upload' && !studio.pendingRecordFile
+      ? [{
+          id: 'missing-record-file',
+          source: 'client' as const,
+          severity: 'error' as const,
+          message: 'Select a CSV or JSONL records file before submitting this feed.',
+        }]
+      : []
+    const issues = [
+      ...validateRequiredWizardState({
+        knowledgeBaseId: activeKnowledgeBaseId,
+        sourceType: 'records',
+        feedName: studio.selectedFeedName,
+      }),
+      ...missingRecordFileIssue,
+      ...(selectedFeed ? validateRecordRows(selectedFeed, studio.parsedRows) : []),
+    ]
 
-  if (!knowledgeBasesQuery.data) {
-    return <LoadingState label="Waiting for knowledge base inventory" />
-  }
+    if (issues.some((issue) => issue.severity === 'error') || !selectedFeed) {
+      studio.setValidationIssues(issues)
+      return
+    }
 
-  if (knowledgeBases.length === 0) {
-    return (
-      <section className="page-grid">
-        <SectionHeader
-          actions={<Chip label="0 knowledge bases" tone="info" />}
-          eyebrow="Ingestion control"
-          subtitle="Create a knowledge base before uploading documents or running graph ingestion."
-          title="Knowledge Base Manager"
-        />
-        <Card>
-          <EmptyState
-            description="Create a corpus for policy, claims, or reference documents to begin ingestion."
-            title="No knowledge bases yet"
-          />
-          <CreateKnowledgeBaseForm
-            description={knowledgeBaseDescription}
-            disabled={createKnowledgeBaseMutation.isPending}
-            name={knowledgeBaseName}
-            onDescriptionChange={setKnowledgeBaseDescription}
-            onNameChange={setKnowledgeBaseName}
-            onSubmit={() => {
-              createKnowledgeBaseMutation.mutate(
-                {
-                  name: knowledgeBaseName.trim(),
-                  description: knowledgeBaseDescription.trim(),
-                },
-                {
-                  onSuccess: (created) => {
-                    setSelectedKnowledgeBaseId(created.id)
-                    setKnowledgeBaseName('')
-                    setKnowledgeBaseDescription('')
-                  },
-                },
-              )
-            }}
-          />
-        </Card>
-      </section>
+    if (selectedFeed.source === 'file_upload') {
+      uploadRecordFileMutation.mutate(
+        {
+          feedName: selectedFeed.name,
+          file: studio.pendingRecordFile,
+        },
+        {
+          onSuccess: (receipt) => {
+            studio.setValidationIssues([])
+            studio.addReceipt({
+              id: `records-${receipt.correlation_id}`,
+              sourceType: 'records',
+              status: 'accepted',
+              message: `${receipt.accepted_count} records accepted for ${receipt.feed_name}.`,
+              createdAt: receipt.created_at,
+              receipt,
+            })
+            studio.setCurrentStep('runs')
+          },
+          onError: (error) => {
+            studio.addValidationIssues([
+              {
+                id: `records-backend-error-${Date.now()}`,
+                source: 'backend',
+                severity: 'error',
+                message: error instanceof Error ? error.message : 'Records submission failed.',
+              },
+            ])
+          },
+        },
+      )
+      return
+    }
+
+    pushRecordsMutation.mutate(
+      {
+        feed_name: selectedFeed.name,
+        rows: studio.parsedRows,
+      },
+      {
+        onSuccess: (receipt) => {
+          studio.setValidationIssues([])
+          studio.addReceipt({
+            id: `records-${receipt.correlation_id}`,
+            sourceType: 'records',
+            status: 'accepted',
+            message: `${receipt.accepted_count} records accepted for ${receipt.feed_name}.`,
+            createdAt: receipt.created_at,
+            receipt,
+          })
+          studio.setCurrentStep('runs')
+        },
+        onError: (error) => {
+          studio.addValidationIssues([
+            {
+              id: `records-backend-error-${Date.now()}`,
+              source: 'backend',
+              severity: 'error',
+              message: error instanceof Error ? error.message : 'Records submission failed.',
+            },
+          ])
+        },
+      },
     )
   }
 
-  if (knowledgeBaseDetailQuery.isLoading || documentsQuery.isLoading) {
-    return <LoadingState label="Loading knowledge base detail" />
+  if (knowledgeBasesQuery.isLoading || domainConfigQuery.isLoading) {
+    return <LoadingState label="Loading ingestion studio" />
+  }
+
+  if (knowledgeBasesQuery.isError || domainConfigQuery.isError) {
+    return <ErrorState description="Ingestion Studio configuration could not be loaded from the API." />
+  }
+
+  if (!knowledgeBasesQuery.data || !domainConfigQuery.data) {
+    return <LoadingState label="Waiting for ingestion studio configuration" />
+  }
+
+  if (activeKnowledgeBaseId && (knowledgeBaseDetailQuery.isLoading || documentsQuery.isLoading)) {
+    return <LoadingState label="Loading selected knowledge base" />
   }
 
   if (knowledgeBaseDetailQuery.isError || documentsQuery.isError) {
-    return <ErrorState description="Knowledge base detail could not be loaded from the API." />
+    return <ErrorState description="Selected knowledge base detail could not be loaded from the API." />
   }
 
-  if (!knowledgeBaseDetailQuery.data || !documentsQuery.data) {
-    return <LoadingState label="Waiting for knowledge base detail" />
-  }
-
-  const knowledgeBase = knowledgeBaseDetailQuery.data
-
-  const isSubmittingCreate = createKnowledgeBaseMutation.isPending
-  const isSubmittingUpload = uploadMutation.isPending
+  const completedStepIds = new Set([
+    ...(activeKnowledgeBaseId ? (['knowledge-base'] as const) : []),
+    ...(studio.sourceType ? (['source'] as const) : []),
+    ...(studio.pendingFiles.length > 0 || studio.parsedRows.length > 0 ? (['preview'] as const) : []),
+    ...(currentIssues.length === 0 ? (['validate'] as const) : []),
+    ...(studio.receipts.length > 0 ? (['submit'] as const) : []),
+  ])
+  const errorStepIds = new Set(currentIssues.length > 0 ? (['validate'] as const) : [])
 
   return (
     <section className="page-grid">
       <SectionHeader
-        actions={<Chip label={`${knowledgeBases.length} knowledge bases`} tone="info" />}
+        actions={<Chip label="Documents + records" tone="info" />}
         eyebrow="Ingestion control"
-        subtitle="Manage live knowledge base metadata, document inventory, and upload registration against the backend API."
-        title="Knowledge Base Manager"
+        subtitle="Guide documents and config-defined structured records into the selected knowledge base."
+        title="Ingestion Studio"
       />
 
-      <div className="knowledge-base-layout">
+      <div className="ingestion-studio-layout">
         <Card>
-          <div className="metric-stack">
-            <div className="metric-row">
-              <strong>Knowledge bases</strong>
-              <Chip label={knowledgeBase.status} tone={toneForKnowledgeBaseStatus(knowledgeBase.status)} />
-            </div>
+          <IngestionStepper
+            currentStep={studio.currentStep}
+            completedStepIds={completedStepIds}
+            errorStepIds={errorStepIds}
+          />
+        </Card>
 
-            {knowledgeBases.map((item) => (
-              <button
-                className={
-                  activeKnowledgeBaseId === item.id
-                    ? 'page-list-item page-list-item--active'
-                    : 'page-list-item'
-                }
-                key={item.id}
-                onClick={() => {
-                  setSelectedKnowledgeBaseId(item.id)
-                  setSelectedDocumentId(null)
-                  setPendingFiles([])
-                }}
-                type="button"
-              >
-                <strong>{item.name}</strong>
-                <span className="metric-row__label">{item.description}</span>
-                <div className="alert-row-card__meta">
-                  <Chip label={`${item.document_count} docs`} tone="default" />
-                  <Chip label={`${item.entity_count} entities`} tone="network" />
-                </div>
-              </button>
-            ))}
-
-            <CreateKnowledgeBaseForm
-              description={knowledgeBaseDescription}
-              disabled={isSubmittingCreate}
-              name={knowledgeBaseName}
-              onDescriptionChange={setKnowledgeBaseDescription}
-              onNameChange={setKnowledgeBaseName}
-              onSubmit={() => {
+        <div className="ingestion-studio-main">
+          <Card>
+            <KnowledgeBaseSelector
+              activeKnowledgeBaseId={activeKnowledgeBaseId}
+              createDescription={knowledgeBaseDescription}
+              createDisabled={createKnowledgeBaseMutation.isPending}
+              createName={knowledgeBaseName}
+              deleteDisabled={deleteKnowledgeBaseMutation.isPending}
+              knowledgeBases={knowledgeBases}
+              onCreateDescriptionChange={setKnowledgeBaseDescription}
+              onCreateNameChange={setKnowledgeBaseName}
+              onCreateSubmit={() => {
                 createKnowledgeBaseMutation.mutate(
                   {
                     name: knowledgeBaseName.trim(),
@@ -165,174 +285,254 @@ export function KnowledgeBaseManagerPage() {
                   {
                     onSuccess: (created) => {
                       setSelectedKnowledgeBaseId(created.id)
+                      setSelectedDocumentId(null)
                       setKnowledgeBaseName('')
                       setKnowledgeBaseDescription('')
+                      studio.setCurrentStep('source')
                     },
                   },
                 )
               }}
+              onDelete={(knowledgeBaseId) => {
+                deleteKnowledgeBaseMutation.mutate(knowledgeBaseId, {
+                  onSuccess: () => {
+                    setSelectedKnowledgeBaseId(null)
+                    setSelectedDocumentId(null)
+                    studio.setCurrentStep('knowledge-base')
+                  },
+                })
+              }}
+              onSelect={(knowledgeBaseId) => {
+                setSelectedKnowledgeBaseId(knowledgeBaseId)
+                setSelectedDocumentId(null)
+                studio.setCurrentStep('source')
+              }}
             />
-          </div>
-        </Card>
-
-        <div className="knowledge-base-main">
-          <Card>
-            <div className="metric-stack">
-              <div className="metric-row">
-                <div>
-                  <strong>{knowledgeBase.name}</strong>
-                  <p className="page-copy-block">{knowledgeBase.description}</p>
-                </div>
-                <div className="page-actions-inline">
-                  <button
-                    className="page-button page-button--secondary"
-                    disabled={deleteKnowledgeBaseMutation.isPending}
-                    onClick={() =>
-                      deleteKnowledgeBaseMutation.mutate(activeKnowledgeBaseId ?? '', {
-                        onSuccess: () => {
-                          setSelectedKnowledgeBaseId(null)
-                          setSelectedDocumentId(null)
-                        },
-                      })
-                    }
-                    type="button"
-                  >
-                    Delete knowledge base
-                  </button>
-                </div>
-              </div>
-
-              <div className="knowledge-base-stats">
-                <div className="knowledge-base-stat">
-                  <span className="metric-row__label">Documents</span>
-                  <strong>{knowledgeBase.document_count}</strong>
-                </div>
-                <div className="knowledge-base-stat">
-                  <span className="metric-row__label">Entities</span>
-                  <strong>{knowledgeBase.entity_count}</strong>
-                </div>
-                <div className="knowledge-base-stat">
-                  <span className="metric-row__label">Relationships</span>
-                  <strong>{knowledgeBase.relationship_count}</strong>
-                </div>
-                <div className="knowledge-base-stat">
-                  <span className="metric-row__label">Last ingest</span>
-                  <strong>{formatTimestamp(knowledgeBase.created_at)}</strong>
-                </div>
-              </div>
-            </div>
           </Card>
 
-          <div className="knowledge-base-detail-grid">
-            <Card>
-              <div className="metric-stack">
-                <div className="metric-row">
-                  <strong>Document upload</strong>
-                  <Chip label={pendingFiles.length > 0 ? `${pendingFiles.length} selected` : 'No files'} tone="info" />
-                </div>
-                <input
-                  className="page-input page-input--file"
-                  multiple
-                  onChange={(event) => setPendingFiles(Array.from(event.target.files ?? []))}
-                  type="file"
-                />
-                {pendingFiles.length > 0 ? (
-                  <div className="alert-row-card__meta">
-                    {pendingFiles.map((file) => (
-                      <Chip key={`${file.name}-${file.size}`} label={file.name} tone="default" />
-                    ))}
-                  </div>
-                ) : null}
-                <button
-                  className="page-button"
-                  disabled={isSubmittingUpload || pendingFiles.length === 0}
-                  onClick={() => {
-                    uploadMutation.mutate(pendingFiles, {
-                      onSuccess: () => {
-                        setPendingFiles([])
-                      },
-                    })
-                  }}
-                  type="button"
-                >
-                  {isSubmittingUpload ? 'Registering documents…' : 'Upload documents'}
-                </button>
-              </div>
-            </Card>
+          <Card>
+            <SourceTypeStep
+              selectedSourceType={studio.sourceType}
+              onChange={(sourceType) => {
+                studio.setSourceType(sourceType)
+                studio.setCurrentStep('preview')
+              }}
+            />
+          </Card>
 
+          {studio.sourceType === 'documents' ? (
             <Card>
-              <div className="metric-stack">
-                <div className="metric-row">
-                  <strong>Document inventory</strong>
-                  <Chip label={`${documents.length} tracked`} tone="network" />
-                </div>
-                {documents.length > 0 ? (
-                  <div className="knowledge-base-documents">
-                    {documents.map((document) => (
-                      <button
-                        className={
-                          activeDocumentId === document.id
-                            ? 'page-list-item page-list-item--active'
-                            : 'page-list-item'
-                        }
-                        key={document.id}
-                        onClick={() => setSelectedDocumentId(document.id)}
-                        type="button"
-                      >
-                        <strong>{document.filename}</strong>
-                        <span className="metric-row__label">
-                          {formatFileSize(document.size_bytes)} • {formatTimestamp(document.created_at)}
-                        </span>
-                        <div className="alert-row-card__meta">
-                          <Chip label={document.status} tone={toneForDocumentStatus(document.status)} />
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyState description="Register policy, claims, or reference documents to start ingestion." title="No documents yet" />
-                )}
-              </div>
+              <DocumentSourcePanel
+                files={studio.pendingFiles}
+                onFilesChange={(files) => {
+                  studio.setPendingFiles(files)
+                  studio.setValidationIssues([])
+                  studio.setCurrentStep('validate')
+                }}
+              />
             </Card>
-          </div>
+          ) : null}
+
+          {studio.sourceType === 'records' ? (
+            <Card>
+              <RecordsSourcePanel
+                feeds={feeds}
+                issues={recordIssues}
+                onDraftChange={() => {
+                  studio.setParsedRows([])
+                  studio.setValidationIssues([])
+                  studio.setCurrentStep('preview')
+                }}
+                onFileChange={(file) => {
+                  studio.setPendingRecordFile(file)
+                }}
+                rows={studio.parsedRows}
+                recordFile={studio.pendingRecordFile}
+                selectedFeedName={studio.selectedFeedName}
+                onFeedChange={(feedName) => {
+                  studio.setSelectedFeedName(feedName)
+                  studio.setPendingRecordFile(null)
+                }}
+                onRowsParsed={(rows, parseIssues) => {
+                  studio.setParsedRows(rows)
+                  studio.setValidationIssues(parseIssues)
+                  studio.setCurrentStep('validate')
+                }}
+              />
+            </Card>
+          ) : null}
 
           <Card>
-            <div className="metric-stack">
-              <div className="metric-row">
-                <strong>Selected document</strong>
-                {activeDocumentId ? (
-                  <div className="page-actions-inline">
-                    <Chip label={documents.find((document) => document.id === activeDocumentId)?.filename ?? activeDocumentId} tone="default" />
-                    <button
-                      className="page-button page-button--secondary"
-                      disabled={deleteDocumentMutation.isPending}
-                      onClick={() => {
-                        if (!activeDocumentId) {
-                          return
-                        }
-                        deleteDocumentMutation.mutate(activeDocumentId, {
-                          onSuccess: () => setSelectedDocumentId(null),
-                        })
-                      }}
-                      type="button"
-                    >
-                      Remove document
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-              <EmptyState
-                description={
-                  activeDocumentId
-                    ? 'Per-document timelines are not exposed by the current API. Use document status in the inventory until timeline projection is available.'
-                    : 'Select a document to inspect its current registration status.'
-                }
-                title={activeDocumentId ? 'Timeline unavailable' : 'No document selected'}
-              />
-            </div>
+            <ValidationPanel issues={currentIssues} />
+          </Card>
+
+          <Card>
+            <SubmitPanel
+              canSubmitDocuments={
+                studio.sourceType === 'documents' &&
+                studio.pendingFiles.length > 0 &&
+                documentIssues.every((issue) => issue.severity !== 'error')
+              }
+              canSubmitRecords={
+                studio.sourceType === 'records' &&
+                selectedFeed !== null &&
+                (selectedFeed.source !== 'file_upload' || studio.pendingRecordFile !== null) &&
+                studio.parsedRows.length > 0 &&
+                recordIssues.every((issue) => issue.severity !== 'error')
+              }
+              documentPending={uploadMutation.isPending}
+              recordsPending={pushRecordsMutation.isPending || uploadRecordFileMutation.isPending}
+              onSubmitDocuments={submitDocuments}
+              onSubmitRecords={submitRecords}
+            />
           </Card>
         </div>
+
+        <aside className="ingestion-studio-context" aria-label="Ingestion context">
+          <Card>
+            <SelectedKnowledgeBaseSummary knowledgeBase={knowledgeBase} />
+          </Card>
+
+          <Card>
+            <RunTimeline
+              receipts={studio.receipts}
+              workflows={workflowsQuery.data?.items ?? []}
+            />
+          </Card>
+
+          <Card>
+            <DocumentInventory
+              activeDocumentId={activeDocumentId}
+              deleteDisabled={deleteDocumentMutation.isPending}
+              documents={documents}
+              onDeleteDocument={(documentId) => {
+                deleteDocumentMutation.mutate(documentId, {
+                  onSuccess: () => setSelectedDocumentId(null),
+                })
+              }}
+              onSelectDocument={setSelectedDocumentId}
+            />
+          </Card>
+        </aside>
       </div>
+    </section>
+  )
+}
+
+function SelectedKnowledgeBaseSummary({
+  knowledgeBase,
+}: {
+  knowledgeBase: NonNullable<ReturnType<typeof useKnowledgeBase>['data']> | null
+}) {
+  if (!knowledgeBase) {
+    return (
+      <EmptyState
+        description="Create or select a knowledge base before submitting ingestion runs."
+        title="No knowledge base selected"
+      />
+    )
+  }
+
+  return (
+    <section className="ingestion-studio-summary" aria-labelledby="selected-kb-title">
+      <div className="metric-row">
+        <div>
+          <strong id="selected-kb-title">{knowledgeBase.name}</strong>
+          <p className="page-copy-block">{knowledgeBase.description}</p>
+        </div>
+        <Chip label={knowledgeBase.status} tone={toneForKnowledgeBaseStatus(knowledgeBase.status)} />
+      </div>
+
+      <div className="knowledge-base-stats">
+        <div className="knowledge-base-stat">
+          <span className="metric-row__label">Documents</span>
+          <strong>{knowledgeBase.document_count}</strong>
+        </div>
+        <div className="knowledge-base-stat">
+          <span className="metric-row__label">Entities</span>
+          <strong>{knowledgeBase.entity_count}</strong>
+        </div>
+        <div className="knowledge-base-stat">
+          <span className="metric-row__label">Relationships</span>
+          <strong>{knowledgeBase.relationship_count}</strong>
+        </div>
+        <div className="knowledge-base-stat">
+          <span className="metric-row__label">Created</span>
+          <strong>{formatTimestamp(knowledgeBase.created_at)}</strong>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+type DocumentInventoryProps = {
+  activeDocumentId: string | null
+  deleteDisabled: boolean
+  documents: Array<{
+    id: string
+    filename: string
+    size_bytes: number | null
+    status: string
+    created_at: string
+  }>
+  onDeleteDocument: (documentId: string) => void
+  onSelectDocument: (documentId: string) => void
+}
+
+function DocumentInventory({
+  activeDocumentId,
+  deleteDisabled,
+  documents,
+  onDeleteDocument,
+  onSelectDocument,
+}: DocumentInventoryProps) {
+  return (
+    <section className="ingestion-studio-documents" aria-labelledby="document-inventory-title">
+      <div className="metric-row">
+        <strong id="document-inventory-title">Document inventory</strong>
+        <Chip label={`${documents.length} tracked`} tone="network" />
+      </div>
+
+      {documents.length > 0 ? (
+        <div className="knowledge-base-documents">
+          {documents.map((document) => (
+            <button
+              className={
+                activeDocumentId === document.id
+                  ? 'page-list-item page-list-item--active'
+                  : 'page-list-item'
+              }
+              key={document.id}
+              onClick={() => onSelectDocument(document.id)}
+              type="button"
+            >
+              <strong>{document.filename}</strong>
+              <span className="metric-row__label">
+                {formatFileSize(document.size_bytes)} | {formatTimestamp(document.created_at)}
+              </span>
+              <span className="alert-row-card__meta">
+                <Chip label={document.status} tone={toneForDocumentStatus(document.status)} />
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          description="Register policy, claims, or reference documents to start ingestion."
+          title="No documents yet"
+        />
+      )}
+
+      {activeDocumentId ? (
+        <button
+          className="page-button page-button--secondary"
+          disabled={deleteDisabled}
+          onClick={() => onDeleteDocument(activeDocumentId)}
+          type="button"
+        >
+          Remove document
+        </button>
+      ) : null}
     </section>
   )
 }
@@ -379,55 +579,11 @@ function toneForKnowledgeBaseStatus(status: 'active' | 'building' | 'ready' | 'e
 }
 
 function toneForDocumentStatus(status: string) {
-  if (status === 'validated') {
+  if (status === 'ready' || status === 'validated') {
     return 'success' as const
   }
-  if (status === 'failed') {
+  if (status === 'failed' || status === 'error') {
     return 'danger' as const
   }
   return 'warning' as const
-}
-
-interface CreateKnowledgeBaseFormProps {
-  description: string
-  disabled: boolean
-  name: string
-  onDescriptionChange: (value: string) => void
-  onNameChange: (value: string) => void
-  onSubmit: () => void
-}
-
-function CreateKnowledgeBaseForm({
-  description,
-  disabled,
-  name,
-  onDescriptionChange,
-  onNameChange,
-  onSubmit,
-}: CreateKnowledgeBaseFormProps) {
-  return (
-    <div className="knowledge-base-form">
-      <strong>Create knowledge base</strong>
-      <input
-        className="page-input"
-        onChange={(event) => onNameChange(event.target.value)}
-        placeholder="Name"
-        value={name}
-      />
-      <textarea
-        className="page-textarea"
-        onChange={(event) => onDescriptionChange(event.target.value)}
-        placeholder="Describe the corpus, policy scope, or intended analyst workflow"
-        value={description}
-      />
-      <button
-        className="page-button"
-        disabled={disabled || name.trim().length === 0 || description.trim().length === 0}
-        onClick={onSubmit}
-        type="button"
-      >
-        {disabled ? 'Creating…' : 'Create knowledge base'}
-      </button>
-    </div>
-  )
 }

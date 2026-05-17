@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
 from analytics.risk.adapters.linear_strategy import LinearScoringStrategy
+from analytics.risk.adapters.postgres import PostgresRiskHistoryStore
 from analytics.risk.adapters.protocols import RiskSignalSourceProtocol
 from analytics.risk.exceptions import (
     RiskConfigurationError,
     RiskError,
+    RiskHistoryError,
     RiskInsufficientSignalsError,
     RiskSourceError,
 )
@@ -38,12 +40,14 @@ __all__ = [
     "DEFAULT_TREND_DELTA_THRESHOLD",
     "InMemoryRiskSignalSource",
     "LinearScoringStrategy",
+    "PostgresRiskHistoryStore",
     "RankedRiskEntry",
     "RiskAssessmentRequest",
     "RiskAssessmentResponse",
     "RiskAssessmentResult",
     "RiskConfigurationError",
     "RiskError",
+    "RiskHistoryError",
     "RiskFactor",
     "RiskFactorScore",
     "RiskInsufficientSignalsError",

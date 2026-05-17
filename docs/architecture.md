@@ -202,44 +202,83 @@ The monorepo produces the following deployable containers:
 
 ### 5.1 Package tree
 
+> Capability modules (graph, vectorstore, embeddings, llm, rag, ingestion, records, monitoring, and each `analytics/*` submodule) follow a common shape: `service.py`, `service_models.py`, `protocols.py`, `models.py`, `exceptions.py`, and an `adapters/` subpackage. Only deviations from that template are called out below. `alembic.ini` lives at the `backend/` root; the Alembic environment and versioned migrations live under `backend/database/migrations/`.
+
 ```
 backend/
 ├── main.py                     # Local Uvicorn launcher
 ├── pyproject.toml              # Project metadata, dependencies
+├── alembic.ini                 # Alembic config (script_location → database/migrations)
 ├── api/                        # FastAPI gateway layer
 │   ├── __init__.py
-│   ├── app.py                  # FastAPI application factory
+│   ├── app.py                  # FastAPI application factory (create_app)
 │   ├── dependencies.py         # Dependency injection wiring
+│   ├── state.py                # Application state container assembled at startup
+│   ├── contracts.py            # API-facing request/response models
+│   ├── _alert_store.py         # In-process alert read model
+│   ├── _kb_store.py            # KB write model (event-sourced)
+│   ├── _kb_projection.py       # KB read projection updated from events
+│   ├── _rag_bridges.py         # RAG <-> KB document/entity bridges
+│   ├── _workflow_projection.py # Worker-updated workflow lifecycle projection
+│   ├── middleware/
+│   │   ├── auth.py             # JWT/cookie/Bearer auth middleware
+│   │   ├── rbac.py             # require_role dependency factory
+│   │   ├── session_store.py    # chiliai_session cookie session store
+│   │   ├── policy_registry.py  # Route policy registry (default-deny audit)
+│   │   ├── metrics.py          # HTTP metrics middleware
+│   │   └── exceptions.py
 │   └── routers/
 │       ├── knowledgebases.py   # KB CRUD, document management
+│       ├── records.py          # Structured-record submission endpoints
 │       ├── alerts.py           # Alert feed, acknowledgment
-│       ├── investigation.py    # Graph queries, entity detail
-│       ├── chat.py             # RAG chat endpoints
+│       ├── investigation.py    # Investigation queries
+│       ├── graph.py            # Graph queries, entity detail
+│       ├── cases.py            # Investigation cases
+│       ├── evidence.py         # Evidence-pack endpoints (/evidence-packs)
+│       ├── rag.py              # RAG chat endpoints (mounted at /chat)
 │       ├── analytics.py        # Analytics endpoints
-│       ├── config.py           # Domain configuration endpoints
-│       └── ws.py               # WebSocket hub for real-time push
+│       ├── workflows.py        # Workflow run history
+│       ├── events.py           # SSE workspace snapshot stream
+│       ├── ws.py               # WebSocket hub for real-time push
+│       ├── auth.py             # /auth/login, /auth/logout, /auth/whoami
+│       ├── _oidc_client.py     # OIDC client helpers used by auth router
+│       ├── policy.py           # Route policy introspection
+│       └── config.py           # Domain configuration endpoints
 ├── ingestion/                  # Document parsing & entity extraction
 │   ├── __init__.py
-│   ├── parsers/                # Format-specific parsers (PDF, DOCX, HTML, JSON, TXT)
+│   ├── service.py              # IngestionService orchestration
+│   ├── service_models.py
+│   ├── protocols.py
+│   ├── models.py               # DocumentFormat enum, ParsedDocument, SourceDocument
 │   ├── chunker.py              # Text chunking strategies
 │   ├── extractor.py            # Entity & relationship extraction (uses LLM adapter)
-│   └── models.py               # Ingestion-internal data models
+│   ├── validator.py            # Source validation
+│   ├── orchestrators/          # Batch + source-document orchestration helpers
+│   └── parsers/                # Format-specific parsers
+│       ├── registry.py         # ParserRegistry, create_default_registry
+│       ├── format_resolver.py
+│       ├── protocols.py
+│       ├── pdf.py, docx.py, txt.py, json.py, csv.py, xlsx.py
+│       └── remote.py           # Fetch-and-parse for remote URLs
+│       # NOTE: DocumentFormat.HTML exists in the enum but no html.py parser is registered yet.
 ├── graph/                      # Graph database access
 │   ├── __init__.py
-│   ├── protocols.py            # Abstract GraphRepository protocol
-│   ├── models.py               # Graph-layer data models
+│   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
+│   ├── auth.py                 # Graph-scoped authorization helpers
 │   └── adapters/
+│       ├── protocols.py
 │       ├── in_memory.py
 │       └── neo4j_adapter.py
 ├── vectorstore/                # Vector store access
 │   ├── __init__.py
-│   ├── protocols.py            # Abstract VectorStore protocol
+│   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
 │   └── adapters/
+│       ├── protocols.py
 │       ├── in_memory.py
 │       └── qdrant_adapter.py
 ├── embeddings/                 # Embedding generation
 │   ├── __init__.py
-│   ├── protocols.py            # Abstract Embedder protocol
+│   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
 │   └── adapters/
 │       ├── in_memory.py
 │       ├── openai_adapter.py
@@ -247,89 +286,121 @@ backend/
 ├── rag/                        # Retrieval-augmented generation pipeline
 │   ├── __init__.py
 │   ├── service.py              # Query → embed → search → expand → assemble → LLM → answer
-│   ├── service_models.py
-│   └── adapters/               # Bridges to embeddings, vectorstore, graph, and LLM services
+│   ├── service_models.py, protocols.py, models.py, exceptions.py
+│   ├── auth.py
+│   └── adapters/
+│       ├── protocols.py
+│       └── in_memory.py
 ├── llm/                        # LLM client abstraction
 │   ├── __init__.py
-│   ├── protocols.py            # Abstract LLMClient protocol
-│   ├── prompts.py              # Prompt templates and management
+│   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
 │   └── adapters/
 │       ├── in_memory.py
 │       ├── openai_adapter.py
 │       └── anthropic_adapter.py
 ├── analytics/                  # ML / AI capability modules
 │   ├── __init__.py
-│   ├── timeseries/             # Time-series anomaly detection
-│   │   ├── __init__.py
-│   │   ├── detector.py
-│   │   └── models.py
-│   ├── gnn/                    # Graph neural network analysis
-│   │   ├── __init__.py
-│   │   ├── link_prediction.py
-│   │   └── clustering.py
-│   ├── risk/                   # Risk scoring engine
-│   │   ├── __init__.py
-│   │   └── scorer.py
-│   └── explainability/         # Evidence pack generation
+│   ├── timeseries/             # Time-series anomaly detection (standard module shape)
+│   │   └── adapters/
+│   │       ├── in_memory.py
+│   │       └── postgres.py     # PostgresObservationStore / PostgresObservationSource
+│   ├── gnn/                    # Graph neural network analysis (standard module shape)
+│   │   └── adapters/
+│   │       └── in_memory.py
+│   ├── risk/                   # Risk scoring engine (standard module shape)
+│   │   └── adapters/
+│   │       ├── in_memory.py
+│   │       ├── linear_strategy.py
+│   │       └── postgres.py     # Writer-only risk history persistence
+│   ├── explainability/         # Evidence pack generation (standard module shape)
+│   │   └── adapters/
+│   │       ├── in_memory.py
+│   │       └── shap_adapter.py
+│   └── metrics/                # Entity-metric persistence (no service, no events)
 │       ├── __init__.py
-│       ├── evidence.py         # Build evidence packs (reasoning, subgraph, scores)
-│       └── subgraph.py         # Extract explanatory subgraph patterns
+│       ├── models.py           # EntityMetric, EntityMetricSnapshot
+│       ├── exceptions.py
+│       ├── throttle.py         # MetricsRecomputeThrottle — per-KB rate limiter
+│       └── adapters/
+│           ├── protocols.py    # EntityMetricRepository protocol
+│           ├── in_memory.py
+│           └── postgres.py     # PostgresEntityMetricRepository
 ├── agent/                      # Workflow / pipeline coordinator
 │   ├── __init__.py
-│   ├── coordinator.py          # Async state machine for multi-step pipelines
-│   ├── steps.py                # Pluggable step handlers
-│   └── models.py               # Pipeline state, step result types
+│   ├── coordinator.py          # Worker entrypoint + event consumer + Plan C handlers
+│   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
+│   ├── health.py               # Optional health-check HTTP endpoint
+│   ├── workflow_tracking.py    # WorkflowEventTracker
+│   └── adapters/               # WorkflowRunStore implementations
+│       ├── protocols.py
+│       ├── in_memory.py
+│       ├── redis_store.py
+│       └── runtime.py          # create_workflow_run_store_from_env
 ├── monitoring/                 # Active monitoring service
 │   ├── __init__.py
-│   ├── consumer.py             # Claim stream consumer
-│   └── alerting.py             # Threshold evaluation, alert generation
+│   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
+│   ├── metrics.py              # Threshold evaluation helpers
+│   └── adapters/
+│       ├── protocols.py
+│       ├── in_memory.py
+│       └── postgres.py         # PostgresAlertHistoryStore + observation adapters
 ├── shared/                     # Lightweight shared contracts library
 │   ├── __init__.py
 │   ├── types.py                # Generic platform types: Entity, Relationship,
 │   │                           #   Alert, EvidencePack, KnowledgeBase
 │   ├── protocols.py            # Cross-cutting protocol definitions
-│   └── utils.py                # Small, dependency-light utilities
+│   ├── alerts.py               # Alert-domain helpers
+│   ├── exceptions.py           # Shared exception hierarchy
+│   ├── logging.py              # structlog setup
+│   ├── tracing.py              # OpenTelemetry helpers
+│   ├── validation.py
+│   └── utils.py
 ├── config/                     # Domain configuration
 │   ├── __init__.py
 │   ├── loader.py               # Reads YAML/JSON domain config
-│   ├── schema.py               # Config schema definition & validation
+│   ├── schema.py               # Pydantic DomainConfig + sub-models
 │   └── defaults/               # Example domain configs
 │       ├── medicare_fraud.yaml
+│       ├── medicare_fraud_dev.yaml
 │       └── food_supply_chain.yaml
 ├── events/                     # Event bus abstraction
 │   ├── __init__.py
 │   ├── protocols.py            # Abstract EventBus protocol
-│   ├── types.py                # Event type definitions
+│   ├── types.py                # Event type definitions (incl. RecordsIngestedEvent)
+│   ├── codec.py                # Event serialization
+│   ├── runtime.py              # Bus selection / factory
 │   └── adapters/
-│       └── redis_streams.py    # Redis Streams implementation
+│       ├── in_memory.py
+│       └── redis_streams.py
 ├── storage/                    # Object / file storage abstraction
 │   ├── __init__.py
 │   ├── protocols.py            # Abstract ObjectStore protocol
+│   ├── models.py
 │   └── adapters/
-│       ├── s3.py
-│       ├── minio.py
-│       └── local.py
+│       ├── in_memory.py
+│       ├── local_fs_adapter.py
+│       └── s3_adapter.py       # Serves both S3 and MinIO
 ├── database/                   # Postgres + TimescaleDB connection provider, Alembic migrations
 │   ├── __init__.py
 │   ├── protocols.py            # ConnectionProvider, DatabaseConnection, DatabaseCursor
 │   ├── engine.py               # psycopg 3 pool-backed provider (lazy import)
 │   ├── runtime.py              # create_connection_provider(config) factory
 │   ├── health.py               # check_database_health(provider) readiness probe
-│   ├── exceptions.py           # Module-specific exceptions
-│   └── migrations/             # Alembic environment + versioned raw-SQL migrations
-└── records/                    # structured/tabular ingestion (CSV/JSONL/api-push), raw_records landing
+│   ├── exceptions.py
+│   └── migrations/             # Alembic env.py + versioned raw-SQL migrations
+└── records/                    # Structured/tabular ingestion (CSV/JSONL/api-push), raw_records landing
     ├── __init__.py
-    ├── models.py               # RawRecord, RecordBatch, content_hash_for (idempotency digest)
-    ├── service_models.py       # RecordSubmission, RecordIngestReceipt (API boundary)
-    ├── validation.py           # coerce_row / validate_rows (feed schema validation)
     ├── service.py              # RecordsService.register_records(): validate → persist → publish
+    ├── service_models.py       # RecordSubmission, RecordIngestReceipt (API boundary)
     ├── protocols.py            # RecordsServiceProtocol (service boundary)
-    ├── exceptions.py           # Module-specific exceptions
+    ├── models.py               # RawRecord, RecordBatch, content_hash_for
+    ├── exceptions.py
+    ├── validation.py           # coerce_row / validate_rows (feed schema validation)
     ├── mappers/
     │   └── feed_mapper.py      # map_batch (rows → entities/relationships), map_observations
     └── adapters/
         ├── protocols.py        # RawRecordStore, RecordSourceProtocol
-        ├── in_memory.py        # InMemoryRawRecordStore (local/test backend)
+        ├── in_memory.py        # InMemoryRawRecordStore
         ├── postgres.py         # PostgresRawRecordStore (raw_records table)
         └── sources/
             ├── file_source.py      # CsvFileSource, JsonlFileSource
@@ -348,6 +419,7 @@ backend/
 | `rag` | RAG pipeline orchestration | `vectorstore` (protocol), `graph` (protocol), `llm` (protocol), `embeddings` (protocol) | `api`, `ingestion`, `analytics` |
 | `llm` | LLM client abstraction, prompt management | `shared.types` | Everything except `shared` |
 | `analytics/*` | ML/AI analysis (timeseries, GNN, risk, explainability) | `shared.types`, `graph` (protocol for reads) | `api`, `ingestion`, other analytics sub-modules |
+| `analytics/metrics` | Entity-metric persistence: append history, upsert current snapshot | `database.ConnectionProvider` (Postgres adapter), `config` (backend selection) | domain logic, events, service modules |
 | `agent` | Pipeline coordination, state machine | `events` (protocol), `shared.types` | Direct imports of service internals |
 | `monitoring` | Stream consumption, alert generation | `shared.types`, `events` (protocol) | `api`, `ingestion` internals |
 | `shared` | Domain types, protocols, utilities | Python stdlib only | Everything — must be leaf dependency |
@@ -605,7 +677,31 @@ Every write is an idempotent upsert keyed on `(knowledge_base_id, record_type, r
 
 `GraphService.upsert_records_graph` is the records-specific graph entry point. Unlike the document pipeline's `upsert_graph`, it accepts no document artifacts and does not publish a `GraphUpdatedEvent`. The `observations` table has a write-side adapter at `monitoring/adapters/postgres.py` (`PostgresObservationStore`).
 
-### 6.4 Self-reinforcing analysis loop
+### 6.4 Plan C Persistence Flows (worker-side write-back)
+
+These three flows run in the worker (`agent/coordinator.py`) and form the **persistence backbone** that durably records analytics results to Postgres/TimescaleDB. The per-consumer Postgres adapters (`monitoring/adapters/postgres.py::PostgresObservationSource`, `analytics/timeseries/adapters/postgres.py::PostgresTimeSeriesHistorySource`, `analytics/risk/adapters/postgres.py::PostgresRiskHistoryStore`, `analytics/metrics/adapters/postgres.py::PostgresEntityMetricRepository`, and `monitoring/adapters/postgres.py::PostgresAlertHistoryStore`) are now the implemented read/write side of this backbone.
+
+**Flow 2 — Graph metric persistence** (`handle_graph_updated_for_analytics`)
+
+Triggered by `GraphUpdatedEvent`. Computes graph-scope metrics (entity count, relationship count, avg degree) from the graph service and writes them to `entity_metric_history` (TimescaleDB hypertable, append) and `entity_metrics_current` (upsert). Throttled per knowledge-base by `MetricsRecomputeThrottle` (configurable interval, default 300 s) to prevent recompute storms from bursts of `GraphUpdatedEvent`s.
+
+**Flow 3 — Risk score persistence** (`handle_risk_scored_for_graph`)
+
+Triggered by `RiskScoredEvent`. Writes the full risk assessment to `risk_score_history` for durable audit. Also snapshots `risk_score`, `risk_level`, and `risk_assessed_at` as properties onto the affected graph entities so investigation queries can read current scores from the graph without a SQL join.
+
+**Flow 4 — Alert persistence** (`handle_alerts_created_for_graph`)
+
+Triggered by `AlertsCreatedEvent`. Writes each alert to `alert_history` for durable audit. Also snapshots `active_alert_count`, `last_alert_at`, and `last_alert_severity` onto the affected graph entities.
+
+#### Plan C design deviations
+
+The following decisions were made during Plan C implementation and differ from the original design intent:
+
+- **Risk adapter is writer-only**: `PostgresRiskHistoryStore` is a write-side adapter plus `load_historical_score` (point read). It does not back the full `RiskSignalSourceProtocol` — risk signals remain graph-derived. Full Postgres-backed risk signal reads are deferred.
+- **Entity-property snapshot instead of graph history nodes**: Flows 3 and 4 write a flat entity-property snapshot to the graph (e.g., `risk_score`, `active_alert_count`) alongside full history in SQL tables. Graph-native "history nodes" (linking graph entities to historical result nodes inside the graph DB) are deferred.
+- **Flow 2 throttled per-KB**: Metric recompute is rate-limited per knowledge-base to avoid redundant work on ingest bursts. The interval is configurable via `analytics.metrics_recompute_min_interval_seconds` (default 300 s) in the domain config.
+
+### 6.5 Self-reinforcing analysis loop
 
 The analytics pipeline is designed as a **feedback loop**: analysis results (risk scores, cluster memberships, anomaly flags) are written back to the knowledge graph, enriching it for subsequent analysis rounds. This means:
 
@@ -835,14 +931,68 @@ capabilities:
   risk_scoring: true
   rag_chat: true
   explainability: true
+  structured_ingestion: true   # enables records/ pipeline and Plan C write-back flows
 
 ingestion:
   sources:
     - type: file_upload
-      formats: [pdf, docx, txt, csv, json]
+      formats: [pdf, docx, txt, csv, json, xlsx]
     - type: api_push
       format: json
       endpoint: /ingest/claims
+  chunking:
+    strategy: recursive          # recursive | fixed_size | sentence
+    chunk_size: 1000
+    chunk_overlap: 200
+    min_chunk_size: 50
+
+records:                         # structured-record ingestion (records/)
+  feeds:
+    - name: claims
+      source: api_push
+      entity_type: claim
+
+graph_db:
+  backend: in_memory             # in_memory | neo4j
+vector_store:
+  backend: in_memory             # in_memory | qdrant
+  dimensions: 384
+llm:
+  provider: local                # local | openai | anthropic
+  model: local-default
+  api_key_env_var: OPENAI_API_KEY
+embeddings:
+  provider: local                # local | openai | sentence_transformers
+object_store:
+  backend: local                 # local | s3 (also serves MinIO)
+event_bus:
+  backend: in_memory             # in_memory | redis_streams
+
+database:                        # Postgres + TimescaleDB (database/)
+  backend: postgres              # in_memory | postgres
+  dsn_env_var: CHILI_DATABASE_DSN
+  pool_size: 10
+
+monitoring:
+  backend: in_memory             # in_memory | postgres (persists alerts + observations)
+
+analytics:
+  metrics_recompute_min_interval_seconds: 300  # MetricsRecomputeThrottle default
+  timeseries:
+    backend: in_memory           # in_memory | postgres
+  risk:
+    backend: in_memory           # in_memory | postgres (writer-only history)
+  metrics:
+    backend: in_memory           # in_memory | postgres
+
+rag:
+  top_k: 8
+  graph_expansion_hops: 1
+
+auth:
+  enabled: false                 # when false, requests run as anonymous viewer
+  jwt_signing_key_env_var: JWT_SIGNING_KEY
+  session_cookie_name: chiliai_session
 
 alerts:
   thresholds:
@@ -853,7 +1003,36 @@ alerts:
       risk_score: 0.80
     claim:
       amount_percentile: 99
+
+ui:
+  navigation:
+    pages:
+      - id: dashboard
+        label: Dashboard
+      - id: knowledge_bases
+        label: Knowledge Bases
+      - id: alerts
+        label: Alert Feed
+      - id: investigation
+        label: Investigation
+      - id: chat
+        label: RAG Chat
+      - id: configuration
+        label: Configuration
+  display_fields:
+    provider: [npi, specialty, state]
+    beneficiary: [hic_number, age]
+    claim: [claim_id, amount, service_date]
+  roles:
+    - name: viewer
+      can: [read]
+    - name: analyst
+      can: [read, ack_alert, chat]
+    - name: admin
+      can: [read, ack_alert, chat, manage_kb, manage_config]
 ```
+
+> The full schema lives in [backend/config/schema.py](../backend/config/schema.py). The example above is illustrative; all blocks have sensible defaults so a minimal config only needs `domain`, `entities`, `relationships`, and `ingestion`.
 
 ### 9.2 How configuration flows through the system
 
@@ -1014,7 +1193,7 @@ Adapter selection is driven by environment configuration, not code changes.
 
 ### 11.3 Distributed tracing
 
-- **Library**: OpenTelemetry SDK
+- **Library**: OpenTelemetry SDK (installed via the optional `[observability]` extra in `backend/pyproject.toml`; falls back to no-op spans when the extra is absent)
 - **Propagation**: W3C Trace Context across HTTP calls and Redis Stream events (trace ID embedded in event metadata)
 - **Export**: OTLP to Jaeger, Tempo, or cloud-native tracing backend
 
@@ -1123,11 +1302,11 @@ Adapter selection is driven by environment configuration, not code changes.
 
 ### 14.3 Current state vs. target
 
-> **Last updated**: April 2026. For implementation status, verify the current code and tests first. Historical status reports and planning docs live under [`docs/archive/`](archive/); use [`todos_and_stubs_audit_2026-05-05.md`](todos_and_stubs_audit_2026-05-05.md) for the current TODO/stub inventory.
+> **Last updated**: May 2026. For implementation status, verify the current code and tests first. Historical status reports and planning docs live under [`docs/archive/`](archive/); use [`todos_and_stubs_audit_2026-05-05.md`](todos_and_stubs_audit_2026-05-05.md) for the current TODO/stub inventory.
 
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
-| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion, graph/vector/embedding/LLM/RAG services, analytics modules, monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, and in-memory plus selected production-facing adapters | Add a production-grade KB metadata adapter/migration path, complete vector/document provenance cleanup, add production-mode adapter guardrails, and add audit-grade workflow history |
+| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion, graph/vector/embedding/LLM/RAG services, analytics modules (timeseries/gnn/risk/explainability/metrics), monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, `database/` (psycopg 3 + Alembic + TimescaleDB) connection provider, `records/` structured-ingestion pipeline (raw_records landing + `RecordsIngestedEvent`), and Plan C per-consumer Postgres adapters with write-back flows in `agent/coordinator.py` (`handle_records_ingested`, `handle_graph_updated_for_analytics`, `handle_risk_scored_for_graph`, `handle_alerts_created_for_graph`) | Add a production-grade KB metadata adapter/migration path, complete vector/document provenance cleanup, add production-mode adapter guardrails, add audit-grade workflow history, and register an HTML parser for `DocumentFormat.HTML` |
 | `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, live KB-scoped Investigation Workbench, RAG Chat, Configuration Editor, and realtime SSE hook | Complete persisted evidence-pack surface, config save endpoint integration, migrate remaining seeded read models to live projections, and production UX/performance polish |
 | `docs/` | Architecture, onboarding guide, security checklist, current TODO/stub audit, and archived historical planning/status material | Keep active docs synchronized with implementation and archive stale snapshots |
 | `infra/` | Docker Compose, flat Kubernetes manifests, and Helm chart | Add cloud-provider Terraform/Pulumi and production hardening as needed |
