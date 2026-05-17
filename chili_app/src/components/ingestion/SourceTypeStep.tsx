@@ -30,23 +30,29 @@ const sourceOptions: Array<{
 
 export function SourceTypeStep({ selectedSourceType, onChange }: SourceTypeStepProps) {
   return (
-    <div className="ingestion-source-choice" role="group" aria-label="Source type">
+    <fieldset className="ingestion-source-choice">
+      <legend className="ingestion-source-choice__legend">Source type</legend>
       {sourceOptions.map(({ id, title, description, Icon }) => {
         const isSelected = selectedSourceType === id
 
         return (
-          <button
+          <label
             key={id}
-            type="button"
             className={[
-              'ingestion-source-choice__button',
-              isSelected ? 'ingestion-source-choice__button--selected' : '',
+              'ingestion-source-choice__option',
+              isSelected ? 'ingestion-source-choice__option--selected' : '',
             ]
               .filter(Boolean)
               .join(' ')}
-            aria-pressed={isSelected}
-            onClick={() => onChange(id)}
           >
+            <input
+              className="ingestion-source-choice__input"
+              type="radio"
+              name="ingestion-source-type"
+              value={id}
+              checked={isSelected}
+              onChange={() => onChange(id)}
+            />
             <span className="ingestion-source-choice__icon" aria-hidden="true">
               <Icon size={20} strokeWidth={2.2} />
             </span>
@@ -54,9 +60,9 @@ export function SourceTypeStep({ selectedSourceType, onChange }: SourceTypeStepP
               <span className="ingestion-source-choice__title">{title}</span>
               <span className="ingestion-source-choice__description">{description}</span>
             </span>
-          </button>
+          </label>
         )
       })}
-    </div>
+    </fieldset>
   )
 }
