@@ -11,8 +11,10 @@ type RecordsFormat = 'csv' | 'jsonl'
 type RecordsSourcePanelProps = {
   feeds: RecordFeedConfig[]
   selectedFeedName: string | null
+  recordFile: File | null
   rows: Record<string, unknown>[]
   issues: ValidationIssue[]
+  onFileChange: (file: File | null) => void
   onFeedChange: (feedName: string | null) => void
   onRowsParsed: (rows: Record<string, unknown>[], issues: ValidationIssue[]) => void
 }
@@ -21,11 +23,26 @@ function sourceLabel(source: RecordFeedConfig['source']): string {
   return source.replace(/_/g, ' ')
 }
 
+function readFileText(file: File): Promise<string> {
+  if ('text' in file && typeof file.text === 'function') {
+    return file.text()
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsText(file)
+  })
+}
+
 export function RecordsSourcePanel({
   feeds,
   selectedFeedName,
+  recordFile,
   rows,
   issues,
+  onFileChange,
   onFeedChange,
   onRowsParsed,
 }: RecordsSourcePanelProps) {
@@ -37,10 +54,11 @@ export function RecordsSourcePanel({
     [feeds, selectedFeedName],
   )
 
-  function parseRecords() {
+  async function parseRecords() {
+    const input = recordFile ? await readFileText(recordFile) : content
     const result = format === 'csv'
-      ? parseCsvRecords(content)
-      : parseJsonlRecords(content)
+      ? parseCsvRecords(input)
+      : parseJsonlRecords(input)
 
     onRowsParsed(result.rows, result.errors)
   }
@@ -107,6 +125,24 @@ export function RecordsSourcePanel({
       ) : null}
 
       <label className="ingestion-source-panel__field">
+        <span className="ingestion-source-panel__label">Records file</span>
+        <input
+          className="ingestion-records-source__file"
+          type="file"
+          accept=".csv,.jsonl,text/csv,application/json,application/x-ndjson"
+          aria-label="Records file"
+          onChange={(event) => onFileChange(event.currentTarget.files?.[0] ?? null)}
+        />
+      </label>
+
+      {recordFile ? (
+        <div className="ingestion-records-source__selected-file">
+          <span>{recordFile.name}</span>
+          <span>{recordFile.type || 'unknown type'}</span>
+        </div>
+      ) : null}
+
+      <label className="ingestion-source-panel__field">
         <span className="ingestion-source-panel__label">Records content</span>
         <textarea
           className="ingestion-records-source__textarea"
@@ -117,7 +153,7 @@ export function RecordsSourcePanel({
         />
       </label>
 
-      <button className="ingestion-records-source__parse" type="button" onClick={parseRecords}>
+      <button className="ingestion-records-source__parse" type="button" onClick={() => void parseRecords()}>
         Parse records
       </button>
 

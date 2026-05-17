@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { RecordFeedConfig } from '../../../api/contracts'
@@ -39,8 +39,10 @@ describe('RecordsSourcePanel', () => {
       <RecordsSourcePanel
         feeds={feeds}
         issues={[]}
+        onFileChange={vi.fn()}
         onFeedChange={onFeedChange}
         onRowsParsed={onRowsParsed}
+        recordFile={null}
         rows={[]}
         selectedFeedName="claims_feed"
       />,
@@ -82,8 +84,10 @@ describe('RecordsSourcePanel', () => {
       <RecordsSourcePanel
         feeds={feeds}
         issues={[]}
+        onFileChange={vi.fn()}
         onFeedChange={vi.fn()}
         onRowsParsed={onRowsParsed}
+        recordFile={null}
         rows={[]}
         selectedFeedName="claims_feed"
       />,
@@ -106,5 +110,52 @@ describe('RecordsSourcePanel', () => {
       ],
       [],
     )
+  })
+
+  it('selects and parses a CSV records file for file upload feeds', async () => {
+    const onFileChange = vi.fn()
+    const onRowsParsed = vi.fn()
+    const file = new File(['claim_id,provider_npi\nc1,1234567890\n'], 'claims.csv', {
+      type: 'text/csv',
+    })
+
+    const { rerender } = render(
+      <RecordsSourcePanel
+        feeds={feeds}
+        issues={[]}
+        onFileChange={onFileChange}
+        onFeedChange={vi.fn()}
+        onRowsParsed={onRowsParsed}
+        recordFile={null}
+        rows={[]}
+        selectedFeedName="claims_feed"
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Records file'), {
+      target: { files: [file] },
+    })
+    rerender(
+      <RecordsSourcePanel
+        feeds={feeds}
+        issues={[]}
+        onFileChange={onFileChange}
+        onFeedChange={vi.fn()}
+        onRowsParsed={onRowsParsed}
+        recordFile={file}
+        rows={[]}
+        selectedFeedName="claims_feed"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Parse records' }))
+
+    expect(onFileChange).toHaveBeenCalledWith(file)
+    expect(await screen.findByText('claims.csv')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(onRowsParsed).toHaveBeenCalledWith(
+        [{ claim_id: 'c1', provider_npi: '1234567890' }],
+        [],
+      )
+    })
   })
 })

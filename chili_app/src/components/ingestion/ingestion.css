@@ -326,6 +326,7 @@
 
 .ingestion-source-panel__control,
 .ingestion-document-source__input,
+.ingestion-records-source__file,
 .ingestion-records-source__textarea {
   width: 100%;
   min-width: 0;
@@ -336,7 +337,8 @@
 }
 
 .ingestion-source-panel__control,
-.ingestion-document-source__input {
+.ingestion-document-source__input,
+.ingestion-records-source__file {
   min-height: 40px;
   padding: 9px 10px;
 }
@@ -381,6 +383,23 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+  color: var(--c-dim);
+  font-size: 12px;
+}
+
+.ingestion-records-source__selected-file {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  color: var(--c-text);
+  background: var(--c-s2);
+  border: 1px solid var(--c-b0);
+  border-radius: 8px;
+}
+
+.ingestion-records-source__selected-file span:last-child {
   color: var(--c-dim);
   font-size: 12px;
 }

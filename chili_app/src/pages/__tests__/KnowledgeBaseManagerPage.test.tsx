@@ -59,6 +59,23 @@ const domainConfig = {
         relationships: [],
         observations: [],
       },
+      {
+        name: 'provider_push',
+        record_type: 'provider_record',
+        source: 'api_push',
+        id_field: 'provider_npi',
+        record_schema: {
+          provider_npi: {
+            type: 'string',
+            display: 'Provider NPI',
+            required: true,
+            pattern: '^[0-9]{10}$',
+          },
+        },
+        entities: [],
+        relationships: [],
+        observations: [],
+      },
     ],
   },
   alerts: { thresholds: {} },
@@ -170,9 +187,23 @@ function installFetchMock({ recordsFail = false }: { recordsFail?: boolean } = {
       return new Response(
         JSON.stringify({
           knowledge_base_id: 'kb-1',
+          feed_name: 'provider_push',
+          record_type: 'provider_record',
+          correlation_id: 'corr-1',
+          accepted_count: 1,
+          created_at: '2026-05-17T00:00:00Z',
+        }),
+        { status: 202, headers: { 'content-type': 'application/json' } },
+      )
+    }
+
+    if (url.endsWith('/records/kb-1/files')) {
+      return new Response(
+        JSON.stringify({
+          knowledge_base_id: 'kb-1',
           feed_name: 'claims_feed',
           record_type: 'claim_record',
-          correlation_id: 'corr-1',
+          correlation_id: 'corr-file-1',
           accepted_count: 1,
           created_at: '2026-05-17T00:00:00Z',
         }),
@@ -189,11 +220,11 @@ function installFetchMock({ recordsFail = false }: { recordsFail?: boolean } = {
 
 async function parseValidRecords() {
   await userEvent.click(screen.getByRole('radio', { name: /Structured Records/i }))
-  await userEvent.selectOptions(screen.getByLabelText('Records feed'), 'claims_feed')
+  await userEvent.selectOptions(screen.getByLabelText('Records feed'), 'provider_push')
   await userEvent.selectOptions(screen.getByLabelText('Records format'), 'CSV')
   await userEvent.type(
     screen.getByLabelText('Records content'),
-    'claim_id,provider_npi,billed_amount\nc1,1234567890,99.50\n',
+    'provider_npi\n1234567890\n',
   )
   await userEvent.click(screen.getByRole('button', { name: 'Parse records' }))
 }
@@ -241,7 +272,30 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     await parseValidRecords()
     await userEvent.click(screen.getByRole('button', { name: 'Submit records' }))
 
+    expect(await screen.findByText('1 records accepted for provider_push.')).toBeInTheDocument()
+  })
+
+  it('uploads configured file-upload records feeds through the records file endpoint', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('Ingestion Studio')
+    await userEvent.click(screen.getByRole('radio', { name: /Structured Records/i }))
+    await userEvent.selectOptions(screen.getByLabelText('Records feed'), 'claims_feed')
+    await userEvent.upload(
+      screen.getByLabelText('Records file'),
+      new File(['claim_id,provider_npi,billed_amount\nc1,1234567890,99.50\n'], 'claims.csv', {
+        type: 'text/csv',
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Parse records' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Submit records' }))
+
     expect(await screen.findByText('1 records accepted for claims_feed.')).toBeInTheDocument()
+    const recordsFileCall = vi
+      .mocked(fetch)
+      .mock.calls.find(([input]) => input.toString().endsWith('/records/kb-1/files'))
+    expect(recordsFileCall).toBeDefined()
+    expect(recordsFileCall?.[1]?.body).toBeInstanceOf(FormData)
   })
 
   it('shows client validation before records submit', async () => {

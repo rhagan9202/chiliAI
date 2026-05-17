@@ -10,7 +10,7 @@ import {
   useKnowledgeBases,
   useUploadKnowledgeBaseDocuments,
 } from '../api/knowledgebases'
-import { usePushRecords } from '../api/records'
+import { usePushRecords, useUploadRecordFile } from '../api/records'
 import { useWorkflows } from '../api/workflows'
 import { DocumentSourcePanel } from '../components/ingestion/DocumentSourcePanel'
 import { IngestionStepper } from '../components/ingestion/IngestionStepper'
@@ -61,6 +61,7 @@ export function KnowledgeBaseManagerPage() {
   const uploadMutation = useUploadKnowledgeBaseDocuments(activeKnowledgeBaseId)
   const deleteDocumentMutation = useDeleteKnowledgeBaseDocument(activeKnowledgeBaseId)
   const pushRecordsMutation = usePushRecords(activeKnowledgeBaseId)
+  const uploadRecordFileMutation = useUploadRecordFile(activeKnowledgeBaseId)
 
   const feeds = domainConfigQuery.data?.records?.feeds ?? []
   const selectedFeed = feeds.find((feed) => feed.name === studio.selectedFeedName) ?? null
@@ -128,17 +129,60 @@ export function KnowledgeBaseManagerPage() {
   }
 
   function submitRecords() {
+    const missingRecordFileIssue = selectedFeed?.source === 'file_upload' && !studio.pendingRecordFile
+      ? [{
+          id: 'missing-record-file',
+          source: 'client' as const,
+          severity: 'error' as const,
+          message: 'Select a CSV or JSONL records file before submitting this feed.',
+        }]
+      : []
     const issues = [
       ...validateRequiredWizardState({
         knowledgeBaseId: activeKnowledgeBaseId,
         sourceType: 'records',
         feedName: studio.selectedFeedName,
       }),
+      ...missingRecordFileIssue,
       ...(selectedFeed ? validateRecordRows(selectedFeed, studio.parsedRows) : []),
     ]
 
     if (issues.some((issue) => issue.severity === 'error') || !selectedFeed) {
       studio.setValidationIssues(issues)
+      return
+    }
+
+    if (selectedFeed.source === 'file_upload') {
+      uploadRecordFileMutation.mutate(
+        {
+          feedName: selectedFeed.name,
+          file: studio.pendingRecordFile,
+        },
+        {
+          onSuccess: (receipt) => {
+            studio.setValidationIssues([])
+            studio.addReceipt({
+              id: `records-${receipt.correlation_id}`,
+              sourceType: 'records',
+              status: 'accepted',
+              message: `${receipt.accepted_count} records accepted for ${receipt.feed_name}.`,
+              createdAt: receipt.created_at,
+              receipt,
+            })
+            studio.setCurrentStep('runs')
+          },
+          onError: (error) => {
+            studio.addValidationIssues([
+              {
+                id: `records-backend-error-${Date.now()}`,
+                source: 'backend',
+                severity: 'error',
+                message: error instanceof Error ? error.message : 'Records submission failed.',
+              },
+            ])
+          },
+        },
+      )
       return
     }
 
@@ -294,10 +338,17 @@ export function KnowledgeBaseManagerPage() {
               <RecordsSourcePanel
                 feeds={feeds}
                 issues={recordIssues}
+                onFileChange={(file) => {
+                  studio.setPendingRecordFile(file)
+                  studio.setValidationIssues([])
+                  studio.setCurrentStep('preview')
+                }}
                 rows={studio.parsedRows}
+                recordFile={studio.pendingRecordFile}
                 selectedFeedName={studio.selectedFeedName}
                 onFeedChange={(feedName) => {
                   studio.setSelectedFeedName(feedName)
+                  studio.setPendingRecordFile(null)
                   studio.setValidationIssues([])
                   studio.setCurrentStep('preview')
                 }}
@@ -324,11 +375,12 @@ export function KnowledgeBaseManagerPage() {
               canSubmitRecords={
                 studio.sourceType === 'records' &&
                 selectedFeed !== null &&
+                (selectedFeed.source !== 'file_upload' || studio.pendingRecordFile !== null) &&
                 studio.parsedRows.length > 0 &&
                 recordIssues.every((issue) => issue.severity !== 'error')
               }
               documentPending={uploadMutation.isPending}
-              recordsPending={pushRecordsMutation.isPending}
+              recordsPending={pushRecordsMutation.isPending || uploadRecordFileMutation.isPending}
               onSubmitDocuments={submitDocuments}
               onSubmitRecords={submitRecords}
             />

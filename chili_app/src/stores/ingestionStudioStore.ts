@@ -12,6 +12,7 @@ type IngestionStudioStateValues = {
   sourceType: IngestionSourceType | null
   selectedFeedName: string | null
   pendingFiles: File[]
+  pendingRecordFile: File | null
   parsedRows: Record<string, unknown>[]
   validationIssues: ValidationIssue[]
   receipts: IngestionReceiptEntry[]
@@ -23,6 +24,7 @@ type IngestionStudioActions = {
   setSourceType: (sourceType: IngestionSourceType | null) => void
   setSelectedFeedName: (selectedFeedName: string | null) => void
   setPendingFiles: (pendingFiles: File[]) => void
+  setPendingRecordFile: (pendingRecordFile: File | null) => void
   setParsedRows: (parsedRows: Record<string, unknown>[]) => void
   setValidationIssues: (validationIssues: ValidationIssue[]) => void
   addValidationIssues: (validationIssues: ValidationIssue[]) => void
@@ -39,6 +41,7 @@ const createInitialState = (): IngestionStudioStateValues => ({
   sourceType: null,
   selectedFeedName: null,
   pendingFiles: [],
+  pendingRecordFile: null,
   parsedRows: [],
   validationIssues: [],
   receipts: [],
@@ -51,6 +54,7 @@ export const useIngestionStudioStore = create<IngestionStudioState>((set) => ({
   setSourceType: (sourceType) => set({ sourceType }),
   setSelectedFeedName: (selectedFeedName) => set({ selectedFeedName }),
   setPendingFiles: (pendingFiles) => set({ pendingFiles }),
+  setPendingRecordFile: (pendingRecordFile) => set({ pendingRecordFile }),
   setParsedRows: (parsedRows) => set({ parsedRows }),
   setValidationIssues: (validationIssues) => set({ validationIssues }),
   addValidationIssues: (validationIssues) =>

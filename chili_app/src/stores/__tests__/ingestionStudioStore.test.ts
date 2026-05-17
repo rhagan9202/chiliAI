@@ -43,6 +43,7 @@ describe('useIngestionStudioStore', () => {
     expect(state.sourceType).toBeNull()
     expect(state.selectedFeedName).toBeNull()
     expect(state.pendingFiles).toEqual([])
+    expect(state.pendingRecordFile).toBeNull()
     expect(state.parsedRows).toEqual([])
     expect(state.validationIssues).toEqual([])
     expect(state.receipts).toEqual([])
@@ -67,6 +68,7 @@ describe('useIngestionStudioStore', () => {
     useIngestionStudioStore.getState().setSourceType('records')
     useIngestionStudioStore.getState().setSelectedFeedName('Claims CSV')
     useIngestionStudioStore.getState().setPendingFiles([file])
+    useIngestionStudioStore.getState().setPendingRecordFile(file)
     useIngestionStudioStore.getState().setParsedRows(rows)
     useIngestionStudioStore.getState().setValidationIssues([validationIssue])
     useIngestionStudioStore.getState().addValidationIssues([nextIssue])
@@ -77,6 +79,7 @@ describe('useIngestionStudioStore', () => {
     expect(state.sourceType).toBe('records')
     expect(state.selectedFeedName).toBe('Claims CSV')
     expect(state.pendingFiles).toEqual([file])
+    expect(state.pendingRecordFile).toBe(file)
     expect(state.parsedRows).toEqual(rows)
     expect(state.validationIssues).toEqual([validationIssue, nextIssue])
     expect(state.activeTimelineEntryId).toBe('timeline-1')
@@ -99,6 +102,9 @@ describe('useIngestionStudioStore', () => {
     useIngestionStudioStore.getState().setPendingFiles([
       new File(['policy'], 'policy.pdf', { type: 'application/pdf' }),
     ])
+    useIngestionStudioStore.getState().setPendingRecordFile(
+      new File(['claim_id\nc1\n'], 'claims.csv', { type: 'text/csv' }),
+    )
     useIngestionStudioStore.getState().setParsedRows([{ id: 'record-1' }])
     useIngestionStudioStore.getState().setValidationIssues([validationIssue])
     useIngestionStudioStore.getState().addReceipt(documentReceipt)
@@ -111,6 +117,7 @@ describe('useIngestionStudioStore', () => {
     expect(state.sourceType).toBeNull()
     expect(state.selectedFeedName).toBeNull()
     expect(state.pendingFiles).toEqual([])
+    expect(state.pendingRecordFile).toBeNull()
     expect(state.parsedRows).toEqual([])
     expect(state.validationIssues).toEqual([])
     expect(state.receipts).toEqual([])
