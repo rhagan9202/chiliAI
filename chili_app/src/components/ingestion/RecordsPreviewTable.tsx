@@ -49,8 +49,8 @@ export function RecordsPreviewTable({ rows, issues }: RecordsPreviewTableProps) 
     return <EmptyState title="No records parsed" />
   }
 
-  const columns = getColumns(rows)
   const previewRows = rows.slice(0, previewRowLimit)
+  const columns = getColumns(previewRows)
 
   return (
     <div className="ingestion-records-preview">

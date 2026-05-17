@@ -85,4 +85,19 @@ describe('RecordsPreviewTable', () => {
     expect(within(table).getByText('claim-25')).toBeInTheDocument()
     expect(within(table).queryByText('claim-26')).not.toBeInTheDocument()
   })
+
+  it('does not render columns that only exist outside the 25-row preview', () => {
+    const rows = Array.from({ length: 26 }, (_, index) => (
+      index === 25
+        ? { hidden_only: 'hidden value' }
+        : { claim_id: `claim-${index + 1}` }
+    ))
+
+    render(<RecordsPreviewTable issues={[]} rows={rows} />)
+
+    const table = screen.getByRole('table', { name: /records preview/i })
+    expect(within(table).getByRole('columnheader', { name: 'claim_id' })).toBeInTheDocument()
+    expect(within(table).queryByRole('columnheader', { name: 'hidden_only' })).not.toBeInTheDocument()
+    expect(within(table).queryByText('hidden value')).not.toBeInTheDocument()
+  })
 })
