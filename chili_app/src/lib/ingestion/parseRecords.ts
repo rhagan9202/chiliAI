@@ -10,14 +10,15 @@ function issue(message: string, rowIndex?: number): ValidationIssue {
   }
 }
 
-function parseCsvLine(line: string): string[] {
-  const cells: string[] = []
+function parseCsvRows(content: string): string[][] {
+  const rows: string[][] = []
+  let currentRow: string[] = []
   let current = ''
   let inQuotes = false
 
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index]
-    const next = line[index + 1]
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index]
+    const next = content[index + 1]
 
     if (char === '"' && inQuotes && next === '"') {
       current += '"'
@@ -31,7 +32,18 @@ function parseCsvLine(line: string): string[] {
     }
 
     if (char === ',' && !inQuotes) {
-      cells.push(current.trim())
+      currentRow.push(current.trim())
+      current = ''
+      continue
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') {
+        index += 1
+      }
+      currentRow.push(current.trim())
+      rows.push(currentRow)
+      currentRow = []
       current = ''
       continue
     }
@@ -43,22 +55,21 @@ function parseCsvLine(line: string): string[] {
     throw new Error('Unterminated quoted field')
   }
 
-  cells.push(current.trim())
-  return cells
+  currentRow.push(current.trim())
+  rows.push(currentRow)
+
+  return rows.filter((row) => row.some((cell) => cell.length > 0))
 }
 
 export function parseCsvRecords(content: string): ParsedRecordsResult {
-  const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0)
-
-  if (lines.length === 0) {
-    return { rows: [], errors: [issue('CSV content is empty.')] }
-  }
-
   try {
-    const headers = parseCsvLine(lines[0])
-    const rows = lines.slice(1).map((line) => {
-      const cells = parseCsvLine(line)
+    const parsedRows = parseCsvRows(content)
+    if (parsedRows.length === 0) {
+      return { rows: [], errors: [issue('CSV content is empty.')] }
+    }
 
+    const headers = parsedRows[0]
+    const rows = parsedRows.slice(1).map((cells) => {
       return headers.reduce<Record<string, unknown>>((row, header, index) => {
         if (header.length > 0 && cells[index] !== undefined && cells[index] !== '') {
           row[header] = cells[index]

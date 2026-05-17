@@ -92,6 +92,28 @@ function isMissing(value: unknown): boolean {
   return value === undefined || value === null || value === ''
 }
 
+function numericValue(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (trimmed.length === 0) {
+      return null
+    }
+
+    const parsed = Number(trimmed)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  return null
+}
+
+function matchesFullString(pattern: string, value: unknown): boolean {
+  return new RegExp(`^(?:${pattern})$`).test(String(value))
+}
+
 function validatePrimitive(
   rowNumber: number,
   fieldName: string,
@@ -102,7 +124,7 @@ function validatePrimitive(
   const rowIndex = rowNumber - 1
   const fieldIssues: ValidationIssue[] = []
 
-  if (definition.type === 'decimal' && Number.isNaN(Number(value))) {
+  if (definition.type === 'decimal' && numericValue(value) === null) {
     fieldIssues.push(
       issue(
         `row-${rowNumber}-${fieldName}-decimal`,
@@ -113,7 +135,8 @@ function validatePrimitive(
     )
   }
 
-  if (definition.type === 'integer' && !Number.isInteger(Number(value))) {
+  const integerValue = definition.type === 'integer' ? numericValue(value) : null
+  if (definition.type === 'integer' && !Number.isInteger(integerValue)) {
     fieldIssues.push(
       issue(
         `row-${rowNumber}-${fieldName}-integer`,
@@ -125,7 +148,7 @@ function validatePrimitive(
   }
 
   if (definition.type === 'boolean') {
-    const normalized = String(value).toLowerCase()
+    const normalized = String(value).trim().toLowerCase()
     if (!['true', 'false', '1', '0', 'yes', 'no'].includes(normalized)) {
       fieldIssues.push(
         issue(
@@ -150,8 +173,7 @@ function validatePrimitive(
   }
 
   if (definition.pattern) {
-    const pattern = new RegExp(definition.pattern)
-    if (!pattern.test(String(value))) {
+    if (!matchesFullString(definition.pattern, value)) {
       fieldIssues.push(
         issue(
           `row-${rowNumber}-${fieldName}-pattern`,

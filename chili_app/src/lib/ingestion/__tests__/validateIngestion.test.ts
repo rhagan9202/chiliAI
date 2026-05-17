@@ -145,6 +145,64 @@ describe('ingestion validation', () => {
     ])
   })
 
+  it('rejects typed JSONL values that are invalid for numeric fields', () => {
+    const issues = validateRecordRows(feed, [
+      {
+        claim_id: 'c1',
+        provider_npi: '1234567890',
+        billed_amount: false,
+        line_count: [],
+        service_date: '2026-01-15',
+        anomaly_score: {},
+      },
+      {
+        claim_id: 'c2',
+        provider_npi: '1234567890',
+        billed_amount: '   ',
+        line_count: true,
+        service_date: '2026-01-15',
+        anomaly_score: 0.4,
+      },
+    ])
+
+    expect(issues.map((issue) => issue.message)).toEqual([
+      'Row 1 field Billed Amount must be a decimal number.',
+      'Row 1 field Line Count must be an integer.',
+      'Row 1 field Anomaly Score must be a decimal number.',
+      'Row 2 field Billed Amount must be a decimal number.',
+      'Row 2 field Line Count must be an integer.',
+    ])
+  })
+
+  it('matches string patterns against the full field value', () => {
+    const patternFeed: RecordFeedConfig = {
+      ...feed,
+      record_schema: {
+        ...feed.record_schema,
+        provider_npi: {
+          type: 'string',
+          display: 'Provider NPI',
+          required: true,
+          pattern: '\\d{10}',
+        },
+      },
+    }
+
+    const issues = validateRecordRows(patternFeed, [
+      {
+        claim_id: 'c1',
+        provider_npi: 'abc1234567890xyz',
+        billed_amount: '99.50',
+        service_date: '2026-01-15',
+        anomaly_score: '0.8',
+      },
+    ])
+
+    expect(issues.map((issue) => issue.message)).toEqual([
+      'Row 1 field Provider NPI does not match \\d{10}.',
+    ])
+  })
+
   it('passes valid record rows', () => {
     const issues = validateRecordRows(feed, [
       {

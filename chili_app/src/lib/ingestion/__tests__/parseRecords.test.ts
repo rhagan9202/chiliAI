@@ -20,6 +20,16 @@ describe('record preview parsers', () => {
     expect(result.rows[0]).toEqual({ claim_id: 'c1', note: 'office, "outpatient"' })
   })
 
+  it('keeps newlines inside quoted CSV fields', () => {
+    const result = parseCsvRecords('claim_id,note\nc1,"line one\nline two"\nc2,single line\n')
+
+    expect(result.rows).toEqual([
+      { claim_id: 'c1', note: 'line one\nline two' },
+      { claim_id: 'c2', note: 'single line' },
+    ])
+    expect(result.errors).toEqual([])
+  })
+
   it('reports empty CSV content', () => {
     const result = parseCsvRecords('\n\n')
 
