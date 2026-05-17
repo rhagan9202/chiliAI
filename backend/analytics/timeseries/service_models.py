@@ -86,9 +86,14 @@ class MetricTimeseriesResponse(BaseModel):
     points: list[TimeseriesPoint] = Field(default_factory=list[TimeseriesPoint])
 
 
+# Re-export so API routers can import TimeSeriesObservation from the service
+# boundary instead of reaching into the internal models layer.
+from analytics.timeseries.models import TimeSeriesObservation as TimeSeriesObservation  # noqa: PLC0414
+
 __all__ = [
     "DetectionStrategy",
     "MetricTimeseriesResponse",
+    "TimeSeriesObservation",
     "TimeseriesAnalysisRequest",
     "TimeseriesAnalysisResponse",
     "TimeseriesAnomaly",

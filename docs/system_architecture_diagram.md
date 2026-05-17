@@ -24,15 +24,17 @@ flowchart LR
         subgraph api["chili-api container<br/>FastAPI gateway"]
             cors["CORS + metrics + tracing middleware<br/>Prometheus metrics, OpenTelemetry hooks"]
             auth["Auth / RBAC middleware<br/>JWT validation paths"]
-            routers["REST routers<br/>/config, /knowledgebases,<br/>/alerts, /investigation,<br/>/chat, /analytics"]
+            routers["REST routers<br/>/config, /knowledgebases, /records,<br/>/alerts, /investigation, /chat, /analytics,<br/>/workflows, /events (SSE), /ws,<br/>/policy, /cases, /evidence, /graph, /auth"]
             wshub["WebSocket hub<br/>/ws/alerts, /ws/pipeline"]
             di["Dependency injection composition root<br/>Config-cached services and adapters"]
-            kbrepo["Knowledge base metadata repository<br/>Current: in-memory"]
+            kbrepo["Knowledge base metadata repository<br/>Selectable: in-memory or object_store"]
         end
 
         subgraph services["Backend capability services<br/>Interface-first Python packages"]
             config["config<br/>DomainConfig YAML / JSON loader<br/>entity types, relationships,<br/>capabilities, thresholds, adapters"]
             ingestion["ingestion<br/>Parser orchestration, remote fetch,<br/>chunking, extraction, validation"]
+            records["records<br/>Structured / tabular ingestion<br/>CSV / JSONL / api-push, raw_records landing"]
+            database["database<br/>ConnectionProvider protocol<br/>Postgres + TimescaleDB, Alembic migrations"]
             graphsvc["graph<br/>Graph service + repository protocol<br/>entity and relationship CRUD,<br/>neighborhoods, graph metrics"]
             vectorsvc["vectorstore<br/>Vector service + store protocol<br/>embedding records and similarity search"]
             embedsvc["embeddings<br/>Embedder protocol<br/>local / sentence-transformers / OpenAI-ready"]
@@ -52,7 +54,7 @@ flowchart LR
             deps["WorkerDependencies<br/>adapter registries selected by DomainConfig"]
             handlers["Event handlers<br/>documents.parsed, documents.chunked,<br/>entities.extracted, entities.validated,<br/>graph.updated, embeddings.complete,<br/>vectors.indexed, risk.scored"]
             pipeline["Pipeline execution<br/>parse -> chunk -> extract -> validate -><br/>upsert graph -> embed -> index vectors -><br/>analytics -> evidence -> alerts -> kb.ready"]
-            health["Worker health server<br/>port 8001 /health"]
+            health["Worker health server<br/>/health on configurable port (state.settings.port)"]
         end
 
         subgraph runtime["Runtime infrastructure"]
@@ -68,8 +70,8 @@ flowchart LR
         graphdb["Graph database<br/>Current dev: Neo4j 5<br/>Selectable: in-memory, Neo4j"]
         vectordb["Vector store<br/>Current dev: in-memory / Qdrant container available<br/>Selectable: in-memory, Qdrant"]
         objectstore["Object store<br/>Current dev: local filesystem volume<br/>Target: S3, MinIO, local FS"]
-        llmprovider["LLM provider<br/>Current default: local in-memory<br/>Target: OpenAI, Anthropic, Ollama / vLLM"]
-        embedprovider["Embedding provider<br/>Current default: local in-memory<br/>Target: OpenAI, sentence-transformers"]
+        llmprovider["LLM provider<br/>Current: local, OpenAI, Anthropic<br/>Roadmap: Ollama / vLLM"]
+        embedprovider["Embedding provider<br/>Current: local, OpenAI, sentence-transformers"]
     end
 
     analyst -->|"HTTPS"| ingress
@@ -218,7 +220,7 @@ sequenceDiagram
 | Layer | Local development | Production / cluster path |
 | --- | --- | --- |
 | Frontend | `chili_app` Vite dev server on `:5173` | `chili-app` nginx container behind Ingress |
-| API | `uvicorn api.app:create_app --reload` on `:8000` | `chili-api` Deployment + Service + optional HPA |
+| API | `uvicorn api.app:create_app --factory --reload` on `:8000` | `chili-api` Deployment + Service + optional HPA |
 | Worker | `python -m agent.coordinator` | `chili-worker` Deployment + Service + optional HPA |
 | Events | Redis Compose service | Redis StatefulSet or managed Redis |
 | Graph | Neo4j Compose service in dev config | External Neo4j |

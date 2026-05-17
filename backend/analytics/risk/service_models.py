@@ -73,7 +73,11 @@ class RiskScoreListResponse(BaseModel):
     total: int = Field(ge=0)
 
 
+# Re-export so API routers can import RankedRiskEntry from the service boundary.
+from analytics.risk.models import RankedRiskEntry as RankedRiskEntry  # noqa: PLC0414
+
 __all__ = [
+    "RankedRiskEntry",
     "RiskAssessmentRequest",
     "RiskAssessmentResponse",
     "RiskFactorScore",

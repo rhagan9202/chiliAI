@@ -8,8 +8,8 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 
-from agent.models import WorkflowRunStatus
 from agent.protocols import AgentServiceProtocol
+from agent.service_models import WorkflowRunStatus
 from api._alert_store import AlertProjectionRepository, count_active_alerts
 from api._kb_projection import project_knowledge_base
 from api._kb_store import KnowledgeBaseRepository

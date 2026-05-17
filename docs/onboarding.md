@@ -94,7 +94,7 @@ The full stack (API, worker, Redis, Neo4j, Qdrant, MinIO) runs inside Docker, so
 
 ```bash
 # 1. Clone
-git clone https://github.com/Fed-Incubator/Crushing-Fraud-XAI.git chiliAI
+git clone https://github.com/rhagan9202/chiliAI.git chiliAI
 cd chiliAI
 
 # 2. Create local environment file (gitignored)
@@ -241,12 +241,13 @@ chili-app (React SPA)  →  chili-api (FastAPI)  ↔  chili-worker (pipeline run
 
 The API never does long-running computation. It validates input, publishes events to Redis, and returns `202 Accepted`. Workers consume those events and do the real work.
 
-### 5.2 Sixteen backend modules
+### 5.2 Backend modules
 
 ```
 backend/
   api/          FastAPI gateway — thin routing only, no business logic
   ingestion/    Document parsing, chunking, entity extraction
+  records/      Structured/tabular ingestion (CSV / JSONL / API push) — raw_records landing
   graph/        Knowledge graph CRUD (in-memory / Neo4j; other adapters are roadmap)
   vectorstore/  Embedding storage and similarity search (in-memory / Qdrant; other adapters are roadmap)
   embeddings/   Text and graph-metric embedding generation
@@ -263,6 +264,7 @@ backend/
   config/       YAML/JSON domain config loading and validation
   events/       Redis Streams event bus abstraction
   storage/      Object/file storage abstraction (S3 / MinIO / local FS)
+  database/     Postgres + TimescaleDB ConnectionProvider, Alembic migrations
 ```
 
 ### 5.3 Cross-module interaction rules (strictly enforced)
@@ -1012,11 +1014,11 @@ Before opening a PR:
 
 ```bash
 # Check existing issues
-gh issue list --repo Fed-Incubator/Crushing-Fraud-XAI
+gh issue list --repo rhagan9202/chiliAI
 
 # Create an issue from an archived story prompt, if it is still relevant
 gh issue create \
-  --repo Fed-Incubator/Crushing-Fraud-XAI \
+  --repo rhagan9202/chiliAI \
   --title "Story E14-S02: EmbeddingsService — graph-metric hybrid embedding flow" \
   --body-file docs/archive/planning/story_prompts/SP_E14_S02_prompt.md
 

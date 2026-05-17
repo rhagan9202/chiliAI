@@ -79,7 +79,7 @@ Ad hoc cross-module imports, hidden shared state, and direct implementation coup
 pip install -e ".[dev]"
 
 # API server
-CHILI_ENV=local uvicorn api.app:create_app --reload --port 8000
+CHILI_ENV=local uvicorn api.app:create_app --factory --reload --port 8000
 
 # Pipeline worker
 python -m agent.coordinator
@@ -145,6 +145,7 @@ cfg = load_config("config/defaults/medicare_fraud.yaml")
 | File | Domain |
 |------|--------|
 | `config/defaults/medicare_fraud.yaml` | Medicare fraud detection (4 entities, 4 relationships, all capabilities) |
+| `config/defaults/medicare_fraud_dev.yaml` | Medicare fraud variant wired for the dev Compose stack (Neo4j graph, Redis event bus, object-store KB/alert repos, Redis workflow run store) |
 | `config/defaults/food_supply_chain.yaml` | Food supply chain monitoring (4 entities, 3 relationships, partial capabilities) |
 
 ### Creating a new domain
