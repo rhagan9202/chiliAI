@@ -39,6 +39,7 @@ describe('RecordsSourcePanel', () => {
       <RecordsSourcePanel
         feeds={feeds}
         issues={[]}
+        onDraftChange={vi.fn()}
         onFileChange={vi.fn()}
         onFeedChange={onFeedChange}
         onRowsParsed={onRowsParsed}
@@ -84,6 +85,7 @@ describe('RecordsSourcePanel', () => {
       <RecordsSourcePanel
         feeds={feeds}
         issues={[]}
+        onDraftChange={vi.fn()}
         onFileChange={vi.fn()}
         onFeedChange={vi.fn()}
         onRowsParsed={onRowsParsed}
@@ -114,6 +116,7 @@ describe('RecordsSourcePanel', () => {
 
   it('selects and parses a CSV records file for file upload feeds', async () => {
     const onFileChange = vi.fn()
+    const onDraftChange = vi.fn()
     const onRowsParsed = vi.fn()
     const file = new File(['claim_id,provider_npi\nc1,1234567890\n'], 'claims.csv', {
       type: 'text/csv',
@@ -123,6 +126,7 @@ describe('RecordsSourcePanel', () => {
       <RecordsSourcePanel
         feeds={feeds}
         issues={[]}
+        onDraftChange={onDraftChange}
         onFileChange={onFileChange}
         onFeedChange={vi.fn()}
         onRowsParsed={onRowsParsed}
@@ -139,6 +143,7 @@ describe('RecordsSourcePanel', () => {
       <RecordsSourcePanel
         feeds={feeds}
         issues={[]}
+        onDraftChange={onDraftChange}
         onFileChange={onFileChange}
         onFeedChange={vi.fn()}
         onRowsParsed={onRowsParsed}
@@ -150,6 +155,7 @@ describe('RecordsSourcePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Parse records' }))
 
     expect(onFileChange).toHaveBeenCalledWith(file)
+    expect(onDraftChange).toHaveBeenCalledTimes(1)
     expect(await screen.findByText('claims.csv')).toBeInTheDocument()
     await waitFor(() => {
       expect(onRowsParsed).toHaveBeenCalledWith(
@@ -157,5 +163,32 @@ describe('RecordsSourcePanel', () => {
         [],
       )
     })
+  })
+
+  it('invalidates parsed rows when pasted content or format changes', () => {
+    const onDraftChange = vi.fn()
+
+    render(
+      <RecordsSourcePanel
+        feeds={feeds}
+        issues={[]}
+        onDraftChange={onDraftChange}
+        onFileChange={vi.fn()}
+        onFeedChange={vi.fn()}
+        onRowsParsed={vi.fn()}
+        recordFile={null}
+        rows={[{ claim_id: 'c1' }]}
+        selectedFeedName="provider_feed"
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Records content'), {
+      target: { value: '{"provider_npi":"1234567890"}' },
+    })
+    fireEvent.change(screen.getByLabelText('Records format'), {
+      target: { value: 'jsonl' },
+    })
+
+    expect(onDraftChange).toHaveBeenCalledTimes(2)
   })
 })

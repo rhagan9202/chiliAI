@@ -338,10 +338,13 @@ export function KnowledgeBaseManagerPage() {
               <RecordsSourcePanel
                 feeds={feeds}
                 issues={recordIssues}
-                onFileChange={(file) => {
-                  studio.setPendingRecordFile(file)
+                onDraftChange={() => {
+                  studio.setParsedRows([])
                   studio.setValidationIssues([])
                   studio.setCurrentStep('preview')
+                }}
+                onFileChange={(file) => {
+                  studio.setPendingRecordFile(file)
                 }}
                 rows={studio.parsedRows}
                 recordFile={studio.pendingRecordFile}
@@ -349,8 +352,6 @@ export function KnowledgeBaseManagerPage() {
                 onFeedChange={(feedName) => {
                   studio.setSelectedFeedName(feedName)
                   studio.setPendingRecordFile(null)
-                  studio.setValidationIssues([])
-                  studio.setCurrentStep('preview')
                 }}
                 onRowsParsed={(rows, parseIssues) => {
                   studio.setParsedRows(rows)

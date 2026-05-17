@@ -298,6 +298,43 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     expect(recordsFileCall?.[1]?.body).toBeInstanceOf(FormData)
   })
 
+  it('requires re-parsing after changing a records file upload draft', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('Ingestion Studio')
+    await userEvent.click(screen.getByRole('radio', { name: /Structured Records/i }))
+    await userEvent.selectOptions(screen.getByLabelText('Records feed'), 'claims_feed')
+    await userEvent.upload(
+      screen.getByLabelText('Records file'),
+      new File(['claim_id,provider_npi,billed_amount\nc1,1234567890,99.50\n'], 'claims.csv', {
+        type: 'text/csv',
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Parse records' }))
+    expect(screen.getByRole('button', { name: 'Submit records' })).toBeEnabled()
+
+    await userEvent.upload(
+      screen.getByLabelText('Records file'),
+      new File(['claim_id,provider_npi,billed_amount\nc2,1234567890,101.25\n'], 'claims-2.csv', {
+        type: 'text/csv',
+      }),
+    )
+
+    expect(screen.getByRole('button', { name: 'Submit records' })).toBeDisabled()
+  })
+
+  it('requires re-parsing after editing pasted api-push records', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('Ingestion Studio')
+    await parseValidRecords()
+    expect(screen.getByRole('button', { name: 'Submit records' })).toBeEnabled()
+
+    await userEvent.type(screen.getByLabelText('Records content'), '1')
+
+    expect(screen.getByRole('button', { name: 'Submit records' })).toBeDisabled()
+  })
+
   it('shows client validation before records submit', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 

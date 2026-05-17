@@ -14,6 +14,7 @@ type RecordsSourcePanelProps = {
   recordFile: File | null
   rows: Record<string, unknown>[]
   issues: ValidationIssue[]
+  onDraftChange: () => void
   onFileChange: (file: File | null) => void
   onFeedChange: (feedName: string | null) => void
   onRowsParsed: (rows: Record<string, unknown>[], issues: ValidationIssue[]) => void
@@ -42,6 +43,7 @@ export function RecordsSourcePanel({
   recordFile,
   rows,
   issues,
+  onDraftChange,
   onFileChange,
   onFeedChange,
   onRowsParsed,
@@ -75,10 +77,13 @@ export function RecordsSourcePanel({
         <label className="ingestion-source-panel__field">
           <span className="ingestion-source-panel__label">Records feed</span>
           <select
-            className="ingestion-source-panel__control"
-            aria-label="Records feed"
-            value={selectedFeedName ?? ''}
-            onChange={(event) => onFeedChange(event.currentTarget.value || null)}
+          className="ingestion-source-panel__control"
+          aria-label="Records feed"
+          value={selectedFeedName ?? ''}
+          onChange={(event) => {
+            onFeedChange(event.currentTarget.value || null)
+            onDraftChange()
+          }}
           >
             <option value="">Select a feed</option>
             {feeds.map((feed) => (
@@ -92,10 +97,13 @@ export function RecordsSourcePanel({
         <label className="ingestion-source-panel__field">
           <span className="ingestion-source-panel__label">Records format</span>
           <select
-            className="ingestion-source-panel__control"
-            aria-label="Records format"
-            value={format}
-            onChange={(event) => setFormat(event.currentTarget.value as RecordsFormat)}
+          className="ingestion-source-panel__control"
+          aria-label="Records format"
+          value={format}
+          onChange={(event) => {
+            setFormat(event.currentTarget.value as RecordsFormat)
+            onDraftChange()
+          }}
           >
             <option value="csv">CSV</option>
             <option value="jsonl">JSONL</option>
@@ -131,7 +139,10 @@ export function RecordsSourcePanel({
           type="file"
           accept=".csv,.jsonl,text/csv,application/json,application/x-ndjson"
           aria-label="Records file"
-          onChange={(event) => onFileChange(event.currentTarget.files?.[0] ?? null)}
+          onChange={(event) => {
+            onFileChange(event.currentTarget.files?.[0] ?? null)
+            onDraftChange()
+          }}
         />
       </label>
 
@@ -149,7 +160,10 @@ export function RecordsSourcePanel({
           aria-label="Records content"
           value={content}
           rows={8}
-          onChange={(event) => setContent(event.currentTarget.value)}
+          onChange={(event) => {
+            setContent(event.currentTarget.value)
+            onDraftChange()
+          }}
         />
       </label>
 
