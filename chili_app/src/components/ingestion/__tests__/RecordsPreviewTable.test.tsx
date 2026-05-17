@@ -46,4 +46,31 @@ describe('RecordsPreviewTable', () => {
     expect(within(table).getByText('valid')).toBeInTheDocument()
     expect(within(table).getByText('2 issues')).toBeInTheDocument()
   })
+
+  it('limits preview columns to the first 8 discovered row keys', () => {
+    render(
+      <RecordsPreviewTable
+        issues={[]}
+        rows={[
+          {
+            col_1: 'value 1',
+            col_2: 'value 2',
+            col_3: 'value 3',
+            col_4: 'value 4',
+            col_5: 'value 5',
+            col_6: 'value 6',
+            col_7: 'value 7',
+            col_8: 'value 8',
+            col_9: 'value 9',
+          },
+        ]}
+      />,
+    )
+
+    const table = screen.getByRole('table', { name: /records preview/i })
+    expect(within(table).getByRole('columnheader', { name: 'col_1' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'col_8' })).toBeInTheDocument()
+    expect(within(table).queryByRole('columnheader', { name: 'col_9' })).not.toBeInTheDocument()
+    expect(within(table).queryByText('value 9')).not.toBeInTheDocument()
+  })
 })
