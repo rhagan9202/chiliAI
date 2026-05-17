@@ -1,3 +1,6 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { renderHook, waitFor } from '@testing-library/react'
+import { createElement, type ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { apiPost, apiUpload } from '../client'
@@ -16,6 +19,27 @@ vi.mock('../client', () => ({
 
 const apiPostMock = vi.mocked(apiPost)
 const apiUploadMock = vi.mocked(apiUpload)
+
+function createQueryWrapper(queryClient: QueryClient) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return createElement(QueryClientProvider, { client: queryClient }, children)
+  }
+}
+
+function createTestQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      mutations: { retry: false },
+      queries: { retry: false },
+    },
+  })
+}
+
+function invalidatedQueryKeys(queryClient: QueryClient) {
+  return vi
+    .mocked(queryClient.invalidateQueries)
+    .mock.calls.map(([filters]) => filters?.queryKey)
+}
 
 describe('records API', () => {
   it('pushes structured records and resolves an ingest receipt', async () => {
@@ -64,5 +88,69 @@ describe('records API', () => {
   it('exports records ingestion mutation hooks', () => {
     expect(typeof usePushRecords).toBe('function')
     expect(typeof useUploadRecordFile).toBe('function')
+  })
+
+  it('invalidates records-ingestion dependent caches after pushing records', async () => {
+    const receipt: RecordIngestReceipt = {
+      knowledge_base_id: 'kb-1',
+      feed_name: 'claims_feed',
+      record_type: 'claim',
+      correlation_id: 'corr-1',
+      accepted_count: 1,
+      created_at: '2026-05-16T12:00:00Z',
+    }
+    const queryClient = createTestQueryClient()
+    vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue()
+    apiPostMock.mockResolvedValue(receipt)
+
+    const { result } = renderHook(() => usePushRecords('kb-1'), {
+      wrapper: createQueryWrapper(queryClient),
+    })
+
+    await result.current.mutateAsync({
+      feed_name: 'claims_feed',
+      rows: [{ claim_id: 'c1', anomaly_score: 0.8 }],
+    })
+
+    await waitFor(() => {
+      expect(invalidatedQueryKeys(queryClient)).toEqual([
+        ['knowledge-bases'],
+        ['workflows'],
+        ['analytics'],
+        ['graph'],
+        ['knowledge-bases', 'kb-1'],
+        ['knowledge-bases', 'kb-1', 'documents'],
+      ])
+    })
+  })
+
+  it('skips detail and document invalidations when uploading without a knowledge base id', async () => {
+    const file = new File(['claim_id\nc1\n'], 'claims.csv', { type: 'text/csv' })
+    const receipt: RecordIngestReceipt = {
+      knowledge_base_id: '',
+      feed_name: 'claims_feed',
+      record_type: 'claim',
+      correlation_id: 'corr-1',
+      accepted_count: 1,
+      created_at: '2026-05-16T12:00:00Z',
+    }
+    const queryClient = createTestQueryClient()
+    vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue()
+    apiUploadMock.mockResolvedValue(receipt)
+
+    const { result } = renderHook(() => useUploadRecordFile(null), {
+      wrapper: createQueryWrapper(queryClient),
+    })
+
+    await result.current.mutateAsync({ feedName: 'claims_feed', file })
+
+    await waitFor(() => {
+      expect(invalidatedQueryKeys(queryClient)).toEqual([
+        ['knowledge-bases'],
+        ['workflows'],
+        ['analytics'],
+        ['graph'],
+      ])
+    })
   })
 })
