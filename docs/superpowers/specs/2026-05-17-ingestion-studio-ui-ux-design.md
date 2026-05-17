@@ -155,8 +155,8 @@ Required tests:
 Verification commands:
 
 ```bash
-pnpm test
-pnpm build
+npm test -- --run
+npm run build
 ```
 
 Both commands must pass before the implementation is considered complete.

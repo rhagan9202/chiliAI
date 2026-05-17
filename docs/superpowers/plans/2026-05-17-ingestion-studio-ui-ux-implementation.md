@@ -124,7 +124,7 @@ describe('records API helpers', () => {
 Run:
 
 ```bash
-pnpm test -- src/api/__tests__/records.test.ts
+npm test -- --run src/api/__tests__/records.test.ts
 ```
 
 Expected: FAIL because `src/api/records.ts` does not exist.
@@ -307,7 +307,7 @@ export function useUploadRecordFile(knowledgeBaseId: string | null) {
 Run:
 
 ```bash
-pnpm test -- src/api/__tests__/records.test.ts
+npm test -- --run src/api/__tests__/records.test.ts
 ```
 
 Expected: PASS.
@@ -493,7 +493,7 @@ describe('ingestion validation', () => {
 Run:
 
 ```bash
-pnpm test -- src/lib/ingestion/__tests__/parseRecords.test.ts src/lib/ingestion/__tests__/validateIngestion.test.ts
+npm test -- --run src/lib/ingestion/__tests__/parseRecords.test.ts src/lib/ingestion/__tests__/validateIngestion.test.ts
 ```
 
 Expected: FAIL because the ingestion library files do not exist.
@@ -817,7 +817,7 @@ export function validateRecordRows(
 Run:
 
 ```bash
-pnpm test -- src/lib/ingestion/__tests__/parseRecords.test.ts src/lib/ingestion/__tests__/validateIngestion.test.ts
+npm test -- --run src/lib/ingestion/__tests__/parseRecords.test.ts src/lib/ingestion/__tests__/validateIngestion.test.ts
 ```
 
 Expected: PASS.
@@ -933,7 +933,7 @@ describe('useIngestionStudioStore', () => {
 Run:
 
 ```bash
-pnpm test -- src/stores/__tests__/ingestionStudioStore.test.ts
+npm test -- --run src/stores/__tests__/ingestionStudioStore.test.ts
 ```
 
 Expected: FAIL because `ingestionStudioStore.ts` does not exist.
@@ -1006,7 +1006,7 @@ export const useIngestionStudioStore = create<IngestionStudioState>((set) => ({
 Run:
 
 ```bash
-pnpm test -- src/stores/__tests__/ingestionStudioStore.test.ts
+npm test -- --run src/stores/__tests__/ingestionStudioStore.test.ts
 ```
 
 Expected: PASS.
@@ -1121,7 +1121,7 @@ describe('ValidationPanel', () => {
 Run:
 
 ```bash
-pnpm test -- src/components/ingestion/__tests__/IngestionStepper.test.tsx src/components/ingestion/__tests__/SourceTypeStep.test.tsx src/components/ingestion/__tests__/ValidationPanel.test.tsx
+npm test -- --run src/components/ingestion/__tests__/IngestionStepper.test.tsx src/components/ingestion/__tests__/SourceTypeStep.test.tsx src/components/ingestion/__tests__/ValidationPanel.test.tsx
 ```
 
 Expected: FAIL because the components do not exist.
@@ -1381,7 +1381,7 @@ Create `chili_app/src/components/ingestion/ingestion.css`:
 Run:
 
 ```bash
-pnpm test -- src/components/ingestion/__tests__/IngestionStepper.test.tsx src/components/ingestion/__tests__/SourceTypeStep.test.tsx src/components/ingestion/__tests__/ValidationPanel.test.tsx
+npm test -- --run src/components/ingestion/__tests__/IngestionStepper.test.tsx src/components/ingestion/__tests__/SourceTypeStep.test.tsx src/components/ingestion/__tests__/ValidationPanel.test.tsx
 ```
 
 Expected: PASS.
@@ -1481,7 +1481,7 @@ describe('KnowledgeBaseSelector', () => {
 Run:
 
 ```bash
-pnpm test -- src/components/ingestion/__tests__/KnowledgeBaseSelector.test.tsx
+npm test -- --run src/components/ingestion/__tests__/KnowledgeBaseSelector.test.tsx
 ```
 
 Expected: FAIL because `KnowledgeBaseSelector.tsx` does not exist.
@@ -1613,7 +1613,7 @@ Append to `chili_app/src/components/ingestion/ingestion.css`:
 Run:
 
 ```bash
-pnpm test -- src/components/ingestion/__tests__/KnowledgeBaseSelector.test.tsx
+npm test -- --run src/components/ingestion/__tests__/KnowledgeBaseSelector.test.tsx
 ```
 
 Expected: PASS.
@@ -1748,7 +1748,7 @@ describe('RecordsSourcePanel', () => {
 Run:
 
 ```bash
-pnpm test -- src/components/ingestion/__tests__/DocumentSourcePanel.test.tsx src/components/ingestion/__tests__/RecordsPreviewTable.test.tsx src/components/ingestion/__tests__/RecordsSourcePanel.test.tsx
+npm test -- --run src/components/ingestion/__tests__/DocumentSourcePanel.test.tsx src/components/ingestion/__tests__/RecordsPreviewTable.test.tsx src/components/ingestion/__tests__/RecordsSourcePanel.test.tsx
 ```
 
 Expected: FAIL because the panel components do not exist.
@@ -2008,7 +2008,7 @@ Append to `chili_app/src/components/ingestion/ingestion.css`:
 Run:
 
 ```bash
-pnpm test -- src/components/ingestion/__tests__/DocumentSourcePanel.test.tsx src/components/ingestion/__tests__/RecordsPreviewTable.test.tsx src/components/ingestion/__tests__/RecordsSourcePanel.test.tsx
+npm test -- --run src/components/ingestion/__tests__/DocumentSourcePanel.test.tsx src/components/ingestion/__tests__/RecordsPreviewTable.test.tsx src/components/ingestion/__tests__/RecordsSourcePanel.test.tsx
 ```
 
 Expected: PASS.
@@ -2106,7 +2106,7 @@ describe('RunTimeline', () => {
 Run:
 
 ```bash
-pnpm test -- src/components/ingestion/__tests__/SubmitPanel.test.tsx src/components/ingestion/__tests__/RunTimeline.test.tsx
+npm test -- --run src/components/ingestion/__tests__/SubmitPanel.test.tsx src/components/ingestion/__tests__/RunTimeline.test.tsx
 ```
 
 Expected: FAIL because the components do not exist.
@@ -2220,7 +2220,7 @@ Append to `chili_app/src/components/ingestion/ingestion.css`:
 Run:
 
 ```bash
-pnpm test -- src/components/ingestion/__tests__/SubmitPanel.test.tsx src/components/ingestion/__tests__/RunTimeline.test.tsx
+npm test -- --run src/components/ingestion/__tests__/SubmitPanel.test.tsx src/components/ingestion/__tests__/RunTimeline.test.tsx
 ```
 
 Expected: PASS.
@@ -2462,7 +2462,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
 Run:
 
 ```bash
-pnpm test -- src/pages/__tests__/KnowledgeBaseManagerPage.test.tsx
+npm test -- --run src/pages/__tests__/KnowledgeBaseManagerPage.test.tsx
 ```
 
 Expected: FAIL because the current page is still the old Knowledge Base Manager and does not render Ingestion Studio controls.
@@ -2755,7 +2755,7 @@ Append to `chili_app/src/pages/pages.css`:
 Run:
 
 ```bash
-pnpm test -- src/pages/__tests__/KnowledgeBaseManagerPage.test.tsx
+npm test -- --run src/pages/__tests__/KnowledgeBaseManagerPage.test.tsx
 ```
 
 Expected: PASS.
@@ -2779,27 +2779,27 @@ git commit -m "feat(ui): replace knowledge base manager with ingestion studio"
 Run:
 
 ```bash
-pnpm test
+npm test -- --run
 ```
 
-Expected: PASS. If tests fail, fix only the failing behavior in the relevant feature files and rerun `pnpm test`.
+Expected: PASS. If tests fail, fix only the failing behavior in the relevant feature files and rerun `npm test -- --run`.
 
 - [ ] **Step 2: Run the production build**
 
 Run:
 
 ```bash
-pnpm build
+npm run build
 ```
 
-Expected: PASS. If TypeScript or Vite reports errors, fix the exact reported files and rerun `pnpm build`.
+Expected: PASS. If TypeScript or Vite reports errors, fix the exact reported files and rerun `npm run build`.
 
 - [ ] **Step 3: Optional browser verification if dev server is available**
 
 Run:
 
 ```bash
-pnpm dev -- --host 0.0.0.0
+npm run dev -- --host 0.0.0.0
 ```
 
 Open `/knowledge-bases` and verify:
@@ -2830,4 +2830,4 @@ If no fixes were required, do not create an empty commit.
 - Spec coverage: This plan covers records API helpers, parsing/validation helpers, Zustand client state, TanStack Query server mutations, modular ingestion components, `/knowledge-bases` replacement, run timeline, mixed outcome handling, and full frontend verification.
 - Scope control: The plan does not add backend schema changes, UI feed mapping editors, combined backend runs, or full observability diagnostics.
 - State consistency: Zustand stores only draft/session data, parsed client artifacts, validation issues, and receipts. TanStack Query remains the owner of domain config, knowledge bases, documents, workflows, and mutations.
-- Acceptance: The final gate requires `pnpm test` and `pnpm build`.
+- Acceptance: The final gate requires `npm test -- --run` and `npm run build`.
