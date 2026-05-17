@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { RecordFeedConfig } from '../../api/contracts'
 import { parseCsvRecords, parseJsonlRecords } from '../../lib/ingestion/parseRecords'
@@ -56,6 +56,12 @@ export function RecordsSourcePanel({
     () => feeds.find((feed) => feed.name === selectedFeedName) ?? null,
     [feeds, selectedFeedName],
   )
+
+  useEffect(() => {
+    return () => {
+      draftRevisionRef.current += 1
+    }
+  }, [])
 
   function invalidateDraft() {
     draftRevisionRef.current += 1

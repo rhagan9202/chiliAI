@@ -252,4 +252,36 @@ describe('RecordsSourcePanel', () => {
     expect(onDraftChange).toHaveBeenCalledTimes(1)
     expect(onRowsParsed).not.toHaveBeenCalled()
   })
+
+  it('ignores delayed file parse results after unmount', async () => {
+    const delayedText = createDeferred<string>()
+    const onRowsParsed = vi.fn()
+    const file = new File([''], 'claims.csv', { type: 'text/csv' })
+    Object.defineProperty(file, 'text', {
+      value: vi.fn(() => delayedText.promise),
+    })
+
+    const { unmount } = render(
+      <RecordsSourcePanel
+        feeds={feeds}
+        issues={[]}
+        onDraftChange={vi.fn()}
+        onFileChange={vi.fn()}
+        onFeedChange={vi.fn()}
+        onRowsParsed={onRowsParsed}
+        recordFile={file}
+        rows={[]}
+        selectedFeedName="claims_feed"
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Parse records' }))
+    unmount()
+    delayedText.resolve('claim_id,provider_npi\nc1,1234567890\n')
+    await delayedText.promise
+    await Promise.resolve()
+
+    expect(file.text).toHaveBeenCalled()
+    expect(onRowsParsed).not.toHaveBeenCalled()
+  })
 })
