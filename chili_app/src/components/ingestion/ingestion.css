@@ -232,6 +232,64 @@
   overflow-wrap: anywhere;
 }
 
+.ingestion-kb-selector,
+.ingestion-kb-list,
+.ingestion-kb-selector__form,
+.ingestion-kb-selector__field {
+  display: grid;
+  gap: 12px;
+}
+
+.ingestion-kb-selector__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ingestion-kb-selector__title {
+  margin: 0;
+  color: var(--c-text);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.ingestion-kb-list__item {
+  width: 100%;
+}
+
+.ingestion-kb-list__name {
+  color: var(--c-text);
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+.ingestion-kb-list__description {
+  min-width: 0;
+  color: var(--c-dim);
+  overflow-wrap: anywhere;
+}
+
+.ingestion-kb-list__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ingestion-kb-selector__delete {
+  justify-self: flex-start;
+}
+
+.ingestion-kb-selector__label {
+  color: var(--c-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
 @media (max-width: 680px) {
   .ingestion-source-choice {
     grid-template-columns: 1fr;
