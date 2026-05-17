@@ -44,6 +44,7 @@ def create_default_registry() -> ParserRegistry:
     """Return a parser registry populated with built-in parsers."""
     from ingestion.parsers.csv import CsvParser
     from ingestion.parsers.docx import DocxParser
+    from ingestion.parsers.html import HtmlParser
     from ingestion.parsers.json import JsonParser
     from ingestion.parsers.pdf import PdfParser
     from ingestion.parsers.txt import TextParser
@@ -53,6 +54,7 @@ def create_default_registry() -> ParserRegistry:
         parsers=[
             CsvParser(),
             DocxParser(),
+            HtmlParser(),
             JsonParser(),
             PdfParser(),
             TextParser(),

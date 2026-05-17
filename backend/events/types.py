@@ -38,6 +38,7 @@ class DocumentReference(BaseModel):
     storage_key: str | None = None
     uri: str | None = None
     document_format: str | None = None
+    source_type: str | None = None
     size_bytes: int | None = None
 
 

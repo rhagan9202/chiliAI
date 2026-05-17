@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from importlib import import_module
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,7 @@ _EXPECTED_TABLES = {
     "alert_history",
 }
 _EXPECTED_HYPERTABLES = {"observations", "entity_metric_history"}
+_BASELINE_MIGRATION = "database.migrations.versions.0001_persistence_baseline"
 
 
 def _run_migrations(database_url: str) -> None:
@@ -72,6 +74,23 @@ def test_baseline_migration_creates_all_tables(database_url: str) -> None:
             assert _EXPECTED_HYPERTABLES.issubset(hypertables)
     finally:
         provider.close()
+
+
+def test_baseline_migration_adds_metric_range_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration = import_module(_BASELINE_MIGRATION)
+    statements: list[str] = []
+    monkeypatch.setattr(migration.op, "execute", statements.append)
+
+    migration.upgrade()
+
+    normalized = " ".join(statements).lower()
+    assert "ix_entity_metric_history_metric_range" in normalized
+    assert (
+        "on entity_metric_history (knowledge_base_id, metric_name, observed_at)"
+        in normalized
+    )
 
 
 def test_baseline_migration_downgrade_removes_all_tables(database_url: str) -> None:

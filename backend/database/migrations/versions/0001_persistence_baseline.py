@@ -86,6 +86,10 @@ def upgrade() -> None:
         """
     )
     op.execute("SELECT create_hypertable('entity_metric_history', 'observed_at')")
+    op.execute(
+        "CREATE INDEX ix_entity_metric_history_metric_range "
+        "ON entity_metric_history (knowledge_base_id, metric_name, observed_at)"
+    )
 
     # --- analytics: latest metric snapshot (data table) --------------------
     op.execute(

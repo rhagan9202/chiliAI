@@ -103,6 +103,7 @@ class IngestionService:
                         if source_document.document_format is not None
                         else None
                     ),
+                    source_type=source_document.source_type.value,
                     size_bytes=source_document.size_bytes,
                 )
             )
@@ -193,7 +194,13 @@ class IngestionService:
         for document in event.documents:
             source_document = SourceDocument(
                 id=document.source_document_id,
-                source_type=SourceType.API_PUSH if document.uri else SourceType.FILE_UPLOAD,
+                source_type=(
+                    SourceType(document.source_type)
+                    if document.source_type is not None
+                    else SourceType.API_PUSH
+                    if document.uri
+                    else SourceType.FILE_UPLOAD
+                ),
                 document_format=(
                     DocumentFormat(document.document_format)
                     if document.document_format is not None

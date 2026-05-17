@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from config.schema import DatabaseConfig
@@ -9,6 +11,40 @@ from database.engine import create_connection_pool, PsycopgConnectionProvider
 from database.exceptions import DatabaseConnectionError
 
 pytestmark = pytest.mark.integration
+
+
+def test_connection_pool_uses_configured_pool_size_as_min_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_kwargs: dict[str, object] = {}
+
+    class FakePool:
+        def __init__(self, dsn: str, **kwargs: object) -> None:
+            del dsn
+            captured_kwargs.update(kwargs)
+
+        def open(self, wait: bool = False, timeout: float = 0.0) -> None:
+            del wait, timeout
+
+        def close(self) -> None:
+            pass
+
+    def fake_import_module(module_name: str) -> SimpleNamespace:
+        assert module_name == "psycopg_pool"
+        return SimpleNamespace(ConnectionPool=FakePool)
+
+    monkeypatch.setattr(
+        "database.engine.importlib.import_module",
+        fake_import_module,
+    )
+
+    create_connection_pool(
+        "postgresql+psycopg://user:pass@localhost/db",
+        DatabaseConfig(backend="postgres", pool_size=7, pool_max_overflow=3),
+    )
+
+    assert captured_kwargs["min_size"] == 7
+    assert captured_kwargs["max_size"] == 10
 
 
 def test_provider_runs_a_query(database_url: str) -> None:

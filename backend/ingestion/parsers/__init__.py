@@ -10,6 +10,7 @@ from ingestion.parsers.exceptions import (
     RemoteFetchError,
     UnsupportedFormatError,
 )
+from ingestion.parsers.html import HtmlParser
 from ingestion.parsers.json import JsonParser
 from ingestion.parsers.pdf import PdfParser
 from ingestion.parsers.protocols import DocumentParser, RemoteDocumentFetcher, RemoteDocumentPayload
@@ -22,6 +23,7 @@ __all__ = [
     "CsvParser",
     "DocxParser",
     "DocumentParser",
+    "HtmlParser",
     "JsonParser",
     "ParserError",
     "ParserRegistry",
