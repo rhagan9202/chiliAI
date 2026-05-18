@@ -171,6 +171,7 @@ All service URLs when the dev stack is running:
 
 Dev-stack notes:
 
+- The dev stack starts Neo4j with `NEO4J_AUTH=none`, while the production compose file uses `NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}`. When a domain config selects `graph.backend: neo4j`, the API/worker use `graph.auth_env_var` if configured; otherwise they fall back to `NEO4J_USER`/`NEO4J_PASSWORD`. Keep those values aligned with the Neo4j service on fresh machines.
 - The API container uses explicit Uvicorn `--reload-dir` entries for backend source packages and keeps mutable runtime data such as `/app/data` outside the watch set. Do not revert dev compose to a bare repository-wide reload watcher; runtime artifact writes can otherwise trigger reload loops.
 - Uvicorn excludes common generated/cache paths (`*.pyc`, `__pycache__/*`, `*.egg-info/*`) from reload watches.
 - API and worker Redis Streams polling defaults to `CHILI_EVENT_BLOCK_MS=500` in dev compose to reduce idle wakeups while preserving responsive local event handling.
