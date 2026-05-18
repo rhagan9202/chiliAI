@@ -121,6 +121,9 @@ The backend reads a domain configuration YAML/JSON file at startup (path set via
 | `LOG_LEVEL` | `INFO` | Stdlib/structlog log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, or a numeric level). |
 | `LOG_FORMAT` | `console` | `console` for local readable logs, `json` for structured aggregation. |
 | `DATABASE_URL` | unset | Postgres/TimescaleDB DSN. Required when `DatabaseConfig.backend=postgres` and to run Alembic migrations. |
+| `NEO4J_USER` | `neo4j` | Neo4j username used when `GraphDbConfig.backend=neo4j` and `auth_env_var` is not set. Matches the Compose `NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}` setting. |
+| `NEO4J_PASSWORD` | unset | Neo4j password used with `NEO4J_USER` when `GraphDbConfig.backend=neo4j` and `auth_env_var` is not set. Leave unset only when the Neo4j service is started with `NEO4J_AUTH=none`. |
+| `NEO4J_AUTH` or configured `GraphDbConfig.auth_env_var` | unset | Optional explicit Neo4j credential env. Accepts `username:password`, Docker-style `username/password`, password-only values (defaults username to `neo4j`), or `none` for anonymous local Neo4j. |
 
 ### Optional `analytics` config section
 
