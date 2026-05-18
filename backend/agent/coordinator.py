@@ -55,7 +55,7 @@ from analytics.explainability.service import (
 from analytics.explainability.service_models import ExplainabilityRequest
 from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
 from analytics.gnn.adapters.protocols import GraphSnapshotSourceProtocol
-from analytics.gnn.exceptions import GnnError
+from analytics.gnn.exceptions import GnnDisabledError, GnnError, GnnSnapshotUnavailableError
 from analytics.gnn.service import GnnService, create_gnn_service
 from analytics.gnn.service_models import GnnAnalysisRequest, GnnAnalysisResponse
 from analytics.metrics.adapters.in_memory import InMemoryEntityMetricRepository
@@ -682,6 +682,7 @@ def build_worker_dependencies() -> WorkerDependencies:
     gnn_service = create_gnn_service(
         build_graph_snapshot_source(config),
         event_bus=event_bus,
+        gnn_enabled=lambda: config.capabilities.gnn,
     )
     risk_service = create_risk_service(
         build_risk_signal_source(config),
@@ -1220,6 +1221,20 @@ def _run_gnn_stage(
         return gnn_service.analyze(
             GnnAnalysisRequest(knowledge_base_id=knowledge_base_id),
         )
+    except GnnDisabledError:
+        logger.info(
+            "Skipping GNN analytics because the capability is disabled. kb=%s",
+            knowledge_base_id,
+        )
+        return None
+    except GnnSnapshotUnavailableError as exc:
+        logger.info(
+            "Skipping GNN analytics because no graph snapshot is available yet. "
+            "kb=%s error=%s",
+            knowledge_base_id,
+            exc,
+        )
+        return None
     except GnnError as exc:
         _publish_analysis_failed(
             event_bus=event_bus,

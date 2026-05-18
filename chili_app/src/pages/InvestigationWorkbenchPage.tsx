@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useAlerts } from '../api/alerts'
 import { useRiskScore, useTimeseries } from '../api/analytics'
@@ -32,13 +32,15 @@ import './pages.css'
 
 export function InvestigationWorkbenchPage() {
   const { entityId } = useParams()
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const domainConfigQuery = useDomainConfig()
   const knowledgeBasesQuery = useKnowledgeBases()
   const alertsQuery = useAlerts()
-  const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(entityId ?? null)
-  const [depth, setDepth] = useState(2)
+  const selectedEntityId = entityId ?? null
+  const selectedKnowledgeBaseId = searchParams.get('kb')
+  const depth = depthFromSearchParams(searchParams)
 
   const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
   const activeKnowledgeBaseId = knowledgeBases.some((item) => item.id === selectedKnowledgeBaseId)
@@ -116,8 +118,9 @@ export function InvestigationWorkbenchPage() {
               className="page-input"
               id="investigation-kb-select"
               onChange={(event) => {
-                setSelectedKnowledgeBaseId(event.target.value)
-                setSelectedEntityId(null)
+                const nextSearch = new URLSearchParams(searchParams)
+                nextSearch.set('kb', event.target.value)
+                navigate({ pathname: '/investigation', search: nextSearch.toString() })
               }}
               value={activeKnowledgeBaseId ?? ''}
             >
@@ -150,7 +153,13 @@ export function InvestigationWorkbenchPage() {
                 <button
                   className={selectedEntityId === result.id ? 'page-list-item page-list-item--active' : 'page-list-item'}
                   key={result.id}
-                  onClick={() => setSelectedEntityId(result.id)}
+                  onClick={() => {
+                    const nextSearch = new URLSearchParams(searchParams)
+                    if (activeKnowledgeBaseId) {
+                      nextSearch.set('kb', activeKnowledgeBaseId)
+                    }
+                    navigate({ pathname: `/investigation/${result.id}`, search: nextSearch.toString() })
+                  }}
                   type="button"
                 >
                   <strong>{getEntityTitle(result, domainConfigQuery.data)}</strong>
@@ -229,7 +238,11 @@ export function InvestigationWorkbenchPage() {
                   <select
                     className="page-input"
                     id="investigation-depth"
-                    onChange={(event) => setDepth(Number(event.target.value))}
+                    onChange={(event) => {
+                      const nextSearch = new URLSearchParams(searchParams)
+                      nextSearch.set('depth', event.target.value)
+                      setSearchParams(nextSearch)
+                    }}
                     value={depth}
                   >
                     {[1, 2, 3, 4, 5].map((value) => (
@@ -270,6 +283,14 @@ export function InvestigationWorkbenchPage() {
       ) : null}
     </section>
   )
+}
+
+function depthFromSearchParams(searchParams: URLSearchParams): number {
+  const value = Number(searchParams.get('depth') ?? 2)
+  if (!Number.isInteger(value)) {
+    return 2
+  }
+  return Math.min(Math.max(value, 1), 5)
 }
 
 function NeighborhoodList({

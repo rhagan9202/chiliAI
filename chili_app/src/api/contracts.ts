@@ -482,6 +482,7 @@ export type WorkflowRunResponse = {
   started_at: string
   updated_at: string
   current_step: string
+  last_error: string | null
 }
 
 export type WorkflowRunListResponse = {

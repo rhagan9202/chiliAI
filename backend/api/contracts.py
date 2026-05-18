@@ -263,6 +263,7 @@ class WorkflowRunResponse(BaseModel):
     started_at: datetime
     updated_at: datetime
     current_step: str
+    last_error: str | None = None
 
 
 class WorkflowRunListResponse(BaseModel):

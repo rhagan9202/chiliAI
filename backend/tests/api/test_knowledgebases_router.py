@@ -632,7 +632,11 @@ def test_list_documents_returns_paginated_summaries(
             files=[
                 (
                     "files",
-                    (f"file-{index}.json", b'{"x": 1}', "application/json"),
+                    (
+                        f"file-{index}.json",
+                        f'{{"x": {index}}}'.encode("utf-8"),
+                        "application/json",
+                    ),
                 )
             ],
         )
@@ -650,7 +654,7 @@ def test_list_documents_returns_paginated_summaries(
     assert summary["knowledge_base_id"] == kb_id
     assert summary["filename"] == "file-0.json"
     assert summary["content_type"] == "application/json"
-    assert summary["size_bytes"] == len(b'{"x": 1}')
+    assert summary["size_bytes"] == len(b'{"x": 0}')
     assert summary["status"]
     assert summary["created_at"]
 

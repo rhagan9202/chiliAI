@@ -18,6 +18,7 @@ def _run(
     trigger_event_type: str = "documents.uploaded",
     status: WorkflowRunStatus = WorkflowRunStatus.RUNNING,
     steps: list[WorkflowStepState] | None = None,
+    metadata: dict[str, str | int | float | bool] | None = None,
 ) -> WorkflowRun:
     return WorkflowRun(
         workflow_id=workflow_id,
@@ -27,6 +28,7 @@ def _run(
         steps=steps or [WorkflowStepState(step_name="parse")],
         created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         updated_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        metadata=metadata or {},
     )
 
 
@@ -101,6 +103,20 @@ def test_current_step_uses_terminal_labels() -> None:
     ).current_step == "failed"
 
 
+def test_current_step_uses_terminal_label_even_with_pending_steps() -> None:
+    response = project_workflow_run(
+        _run(
+            status=WorkflowRunStatus.COMPLETED,
+            steps=[
+                WorkflowStepState(step_name="parse", status=WorkflowStepStatus.COMPLETED),
+                WorkflowStepState(step_name="monitoring", status=WorkflowStepStatus.PENDING),
+            ],
+        )
+    )
+
+    assert response.current_step == "completed"
+
+
 def test_project_workflow_runs_wraps_items() -> None:
     response = project_workflow_runs([
         _run(workflow_id="workflow-1"),
@@ -108,6 +124,18 @@ def test_project_workflow_runs_wraps_items() -> None:
     ])
 
     assert [item.id for item in response.items] == ["workflow-1", "workflow-2"]
+
+
+def test_project_workflow_run_exposes_last_error() -> None:
+    response = project_workflow_run(
+        _run(
+            status=WorkflowRunStatus.FAILED,
+            steps=[WorkflowStepState(step_name="parse", status=WorkflowStepStatus.FAILED)],
+            metadata={"last_error": "parser exploded"},
+        )
+    )
+
+    assert response.last_error == "parser exploded"
 
 
 def test_count_running_workflows_counts_only_running() -> None:

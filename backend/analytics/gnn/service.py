@@ -7,7 +7,13 @@ from math import sqrt
 from typing import TYPE_CHECKING, cast
 
 from analytics.gnn.adapters.protocols import GraphSnapshotSourceProtocol
-from analytics.gnn.exceptions import GnnConfigurationError, GnnInsufficientGraphError, GnnSourceError
+from analytics.gnn.exceptions import (
+    GnnConfigurationError,
+    GnnDisabledError,
+    GnnInsufficientGraphError,
+    GnnSnapshotUnavailableError,
+    GnnSourceError,
+)
 from analytics.gnn.models import (
     GnnAnalysisResult,
     GnnCommunity,
@@ -55,8 +61,13 @@ class GnnService:
         self._gnn_enabled = gnn_enabled if gnn_enabled is not None else _always_enabled
 
     def analyze(self, request: GnnAnalysisRequest) -> GnnAnalysisResponse:
+        if not self._gnn_enabled():
+            raise GnnDisabledError("GNN analysis is disabled by domain configuration.")
+
         try:
             snapshot = self._snapshot_source.load_snapshot(knowledge_base_id=request.knowledge_base_id)
+        except GnnSnapshotUnavailableError:
+            raise
         except ValueError as exc:
             raise GnnConfigurationError(str(exc)) from exc
         except Exception as exc:

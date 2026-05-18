@@ -331,6 +331,8 @@ async def register_knowledge_base_documents(
     for receipt, (filename, content_type, size_bytes) in zip(
         receipts, raw_metadata, strict=True
     ):
+        if repository.get_document(knowledge_base_id, receipt.source_document_id) is not None:
+            continue
         repository.add_document(
             DocumentRecord(
                 id=receipt.source_document_id,

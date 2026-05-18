@@ -31,6 +31,20 @@ _CORRELATION_ID_CTX: ContextVar[str | None] = ContextVar(
 _configured: bool = False
 
 
+def _resolve_log_level(level: int | str | None) -> int:
+    """Resolve an explicit or environment-driven log level."""
+
+    value = level if level is not None else os.environ.get("LOG_LEVEL", "INFO")
+    if isinstance(value, int):
+        return value
+
+    normalized = value.strip().upper()
+    if normalized.isdigit():
+        return int(normalized)
+    resolved = logging.getLevelName(normalized)
+    return resolved if isinstance(resolved, int) else logging.INFO
+
+
 def _correlation_id_processor(
     _logger: WrappedLogger, _method_name: str, event_dict: EventDict
 ) -> EventDict:
@@ -43,7 +57,11 @@ def _correlation_id_processor(
     return event_dict
 
 
-def configure_logging(*, log_format: str | None = None, level: int = logging.INFO) -> None:
+def configure_logging(
+    *,
+    log_format: str | None = None,
+    level: int | str | None = None,
+) -> None:
     """Configure structlog and stdlib logging.
 
     Idempotent: subsequent calls are no-ops, so both API and worker entry
@@ -59,7 +77,7 @@ def configure_logging(*, log_format: str | None = None, level: int = logging.INF
     chosen_format = (log_format or os.environ.get("LOG_FORMAT") or "console").lower()
 
     logging.basicConfig(
-        level=level,
+        level=_resolve_log_level(level),
         format="%(message)s",
         force=True,
     )

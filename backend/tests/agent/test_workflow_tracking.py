@@ -15,8 +15,11 @@ from events.adapters.in_memory import InMemoryEventBus
 from agent.workflow_tracking import WorkflowEventTracker
 from events.types import (
     AgentWorkflowStartedEvent,
+    DocumentFailureReference,
     DocumentReference,
+    DocumentsFailedEvent,
     DocumentsUploadedEvent,
+    RecordsIngestedEvent,
     VectorsIndexedDocumentReference,
     VectorsIndexedEvent,
 )
@@ -136,6 +139,63 @@ def test_tracker_marks_terminal_success_for_vector_indexed_event() -> None:
 
     run = run_store.get_run("workflow-1")
     assert run.status is WorkflowRunStatus.COMPLETED
+    assert run.steps[0].status is WorkflowStepStatus.COMPLETED
+
+
+def test_tracker_marks_document_failure_event_terminal() -> None:
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-1",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                metadata={"correlation_id": "corr-1"},
+            )
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+    event = DocumentsFailedEvent(
+        correlation_id="corr-1",
+        documents=[
+            DocumentFailureReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-1",
+                error_message="Could not parse document.",
+            )
+        ],
+    )
+
+    assert tracker.begin_event(event) is True
+    tracker.complete_event(event)
+
+    run = run_store.get_run("workflow-1")
+    assert run.status is WorkflowRunStatus.FAILED
+    assert run.steps[0].status is WorkflowStepStatus.FAILED
+    assert run.metadata["last_event_type"] == "documents.failed"
+
+
+def test_tracker_creates_completed_records_workflow_for_untracked_event() -> None:
+    run_store = InMemoryWorkflowRunStore()
+    tracker = WorkflowEventTracker(run_store)
+    event = RecordsIngestedEvent(
+        correlation_id="records-corr-1",
+        knowledge_base_id="kb-1",
+        feed_name="claims",
+        record_type="Claim",
+        record_count=2,
+    )
+
+    assert tracker.begin_event(event) is True
+    tracker.complete_event(event)
+
+    [run] = run_store.list_runs()
+    assert run.knowledge_base_id == "kb-1"
+    assert run.status is WorkflowRunStatus.COMPLETED
+    assert run.trigger_event_type == "records.ingested"
+    assert run.metadata["correlation_id"] == "records-corr-1"
+    assert run.steps[0].step_name == "records_ingest"
     assert run.steps[0].status is WorkflowStepStatus.COMPLETED
 
 

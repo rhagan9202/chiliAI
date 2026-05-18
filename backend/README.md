@@ -19,6 +19,7 @@ Working FastAPI gateway and pipeline-worker prototype with domain configuration,
 - **`api/_kb_store.py` / `api/_kb_projection.py`** — API-owned KB/document metadata projection. The in-memory repository remains available for tests and isolated local runs; the object-store repository persists dev KB/document metadata across API reloads through the configured `ObjectStore`. Projection reads merge repository metadata with live graph metrics/object-store build artifacts and persist status/count changes back through the repository.
 - **`api/_alert_store.py`** — API-owned alert read projection for `/alerts` and SSE `active_alerts`. Monitoring/analytics services still own alert generation; this projection preserves the frontend contract while decoupling alert reads from legacy seeded `ApiState`.
 - **`api/_workflow_projection.py`** — API DTO projection for workflow summaries. The `agent/` module owns workflow state behind `WorkflowRunStoreProtocol`; `/workflows` and SSE `running_workflows` read through `AgentServiceProtocol` instead of legacy seeded `ApiState`. The dev stack uses the Redis workflow store so API and worker share lifecycle updates.
+- **`api/routers/events.py`** — SSE workspace heartbeat for alert/workflow/KB status deltas. The heartbeat reads cached API-owned projections only; live graph/object-store reconciliation stays on explicit KB list/detail reads so idle browser tabs do not poll Neo4j every five seconds.
 - **`events/`** — In-memory and Redis Streams event bus implementations plus typed event envelopes.
 - **`ingestion/`** — Parser orchestration, document chunking, extraction, validation, and registration flows.
 - **`graph/`, `vectorstore/`, `embeddings/`, `llm/`, `rag/`** — Service/protocol boundaries with in-memory adapters and selected production-facing adapters.
@@ -117,7 +118,13 @@ The backend reads a domain configuration YAML/JSON file at startup (path set via
 | `OIDC_CLIENT_SECRET` | unset | OIDC client secret read by name from `auth.client_secret_env_var`. |
 | `REDIS_URL` | unset | Required for the Redis Streams event bus, `CHILI_WORKFLOW_RUN_STORE_BACKEND=redis`, and the production session store when auth is enabled. |
 | `CHILI_EVENT_BUS_BACKEND` | `in_memory` | `in_memory` or `redis`. |
+| `CHILI_EVENT_BLOCK_MS` | `500` in dev compose | Redis Streams blocking read timeout in milliseconds. Higher local-dev values reduce idle worker wakeups without changing event semantics. |
+| `LOG_LEVEL` | `INFO` | Stdlib/structlog log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, or a numeric level). |
+| `LOG_FORMAT` | `console` | `console` for local readable logs, `json` for structured aggregation. |
 | `DATABASE_URL` | unset | Postgres/TimescaleDB DSN. Required when `DatabaseConfig.backend=postgres` and to run Alembic migrations. |
+| `NEO4J_USER` | `neo4j` | Neo4j username used when `GraphDbConfig.backend=neo4j` and `auth_env_var` is not set. Matches the Compose `NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}` setting. |
+| `NEO4J_PASSWORD` | unset | Neo4j password used with `NEO4J_USER` when `GraphDbConfig.backend=neo4j` and `auth_env_var` is not set. Leave unset only when the Neo4j service is started with `NEO4J_AUTH=none`. |
+| `NEO4J_AUTH` or configured `GraphDbConfig.auth_env_var` | unset | Optional explicit Neo4j credential env. Accepts `username:password`, Docker-style `username/password`, password-only values (defaults username to `neo4j`), or `none` for anonymous local Neo4j. |
 
 ### Optional `analytics` config section
 
@@ -163,6 +170,11 @@ cfg = load_config("config/defaults/medicare_fraud.yaml")
 - `DELETE /knowledgebases/{id}` deletes object-store payloads, clears the graph namespace through `GraphServiceProtocol.delete_knowledge_base()`, deletes KB metadata, and publishes `kb.delete`.
 - The `object_store` KB repository is intended for local/dev single-writer durability. Add a dedicated production metadata adapter, optional dependency, and migration story before treating it as a high-concurrency production database.
 
+## Ingestion Registration Notes
+
+- Document registration is idempotent per knowledge base for repeated content bytes and repeated remote URIs. The ingestion service derives deterministic source document IDs from content SHA-256 hashes or URI hashes and does not publish duplicate `documents.uploaded` events when the source has already been registered.
+- Content uploads are stored under the deterministic source document ID; remote URI submissions write a small marker object for deduplication while preserving the original URI on the event/receipt.
+
 ## Alert Projection Notes
 
 - Alert read models are owned by the FastAPI gateway behind `AlertProjectionRepository`; `/alerts` no longer reads from legacy seeded `ApiState`.
@@ -172,7 +184,12 @@ cfg = load_config("config/defaults/medicare_fraud.yaml")
 ## Workflow Projection Notes
 
 - Workflow state is owned by `agent/` behind `WorkflowRunStoreProtocol` and surfaced to API routes through `AgentServiceProtocol`.
-- `GET /workflows` and SSE `running_workflows` are service-backed and no longer read workflow summaries from legacy seeded `ApiState`.
-- Workflow runs now track `queued`, `running`, `completed`, `failed`, and `cancelled` states with `updated_at` timestamps. The worker coordinator updates stage progress and marks failed workflows after retry/DLQ exhaustion.
+- `GET /workflows` and SSE `running_workflows` are service-backed and no longer read workflow summaries from legacy seeded `ApiState`. `GET /workflows` accepts `knowledge_base_id`, `status`, `limit`, and `offset` query parameters for scoped timeline views.
+- Workflow runs now track `queued`, `running`, `completed`, `failed`, and `cancelled` states with `updated_at` timestamps. The worker coordinator updates stage progress, preserves correlation IDs across document parsing events, marks document parse failures terminal, and tracks structured-record ingestion as a KB-scoped workflow.
 - The in-memory workflow store remains available for local/test usage with detached returned models, idempotency-key uniqueness checks, and lock-protected shared indexes.
 - The Redis workflow store is intended for shared operational state between API and worker containers. For compliance-grade immutable workflow history, add a Postgres/audit adapter or outbox/event-sourcing layer behind the same protocol.
+
+## Analytics Runtime Notes
+
+- GNN analysis is controlled by the domain `capabilities.gnn` flag. When the capability is disabled, the worker skips GNN Flow B without emitting `analysis.failed`.
+- Fresh knowledge bases may not have a registered graph snapshot yet. Missing snapshots are treated as a controlled skip, not a failed analytics stage, so document/vector Flow A remains quiet and successful while GNN waits for a configured snapshot source.

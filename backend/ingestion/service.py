@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
+
 from ingestion.models import DocumentFormat, SourceDocument, SourceType
 from ingestion.orchestrators.protocols import (
     DocumentParseFailure,
@@ -25,11 +27,10 @@ from shared.utils import generate_id
 class IngestionService:
     """Coordinate document registration, parsing, and event publication."""
 
-    # TODO(production): Add idempotency checks (deduplicate by content hash).
-    # Add error recovery: if event publication fails after storage, persist a
-    # retry record. Add progress reporting via events or status polling.
-    # Make I/O operations async (object store, event bus). Add configurable
-    # file size limits and content-type whitelisting at this layer.
+    # TODO(production): Add error recovery: if event publication fails after
+    # storage, persist a retry record. Add progress reporting via events or
+    # status polling. Make I/O operations async (object store, event bus). Add
+    # configurable file size limits and content-type whitelisting at this layer.
 
     def __init__(
         self,
@@ -54,31 +55,52 @@ class IngestionService:
             source_type = submission.source_type or (
                 SourceType.API_PUSH if submission.uri is not None else SourceType.FILE_UPLOAD
             )
+            source_document_id = self._source_document_id(submission)
+            checksum = (
+                sha256(submission.content).hexdigest()
+                if submission.content is not None
+                else None
+            )
             source_document = SourceDocument(
-                id=generate_id(),
+                id=source_document_id,
                 source_type=source_type,
                 document_format=submission.document_format,
                 filename=submission.filename,
                 uri=submission.uri,
                 media_type=submission.content_type,
+                checksum=checksum,
                 size_bytes=len(submission.content) if submission.content is not None else None,
             )
 
             storage_key: str | None = None
+            should_publish = True
             if submission.content is not None:
                 storage_key = self._build_storage_key(
                     knowledge_base_id,
                     source_document.id,
-                    submission.filename,
                 )
-                stored = self._object_store.put_bytes(
-                    storage_key,
-                    submission.content,
-                    media_type=submission.content_type,
-                    metadata={
-                        "knowledge_base_id": knowledge_base_id,
-                        "source_document_id": source_document.id,
-                    },
+                existing_storage_key = self._existing_document_storage_key(
+                    knowledge_base_id,
+                    source_document.id,
+                )
+                if existing_storage_key is not None:
+                    storage_key = existing_storage_key
+                already_registered = existing_storage_key is not None
+                should_publish = not already_registered
+                stored = (
+                    self._object_store.get_bytes(storage_key)
+                    if already_registered
+                    else self._object_store.put_bytes(
+                        storage_key,
+                        submission.content,
+                        media_type=submission.content_type,
+                        metadata={
+                            "knowledge_base_id": knowledge_base_id,
+                            "source_document_id": source_document.id,
+                            "checksum": checksum or "",
+                            "idempotency_strategy": "sha256",
+                        },
+                    )
                 )
                 source_document = source_document.model_copy(
                     update={
@@ -89,24 +111,43 @@ class IngestionService:
                         },
                     }
                 )
-
-            document_references.append(
-                DocumentReference(
-                    knowledge_base_id=knowledge_base_id,
-                    source_document_id=source_document.id,
-                    filename=source_document.filename,
-                    content_type=source_document.media_type,
-                    storage_key=storage_key,
-                    uri=source_document.uri,
-                    document_format=(
-                        source_document.document_format.value
-                        if source_document.document_format is not None
-                        else None
-                    ),
-                    source_type=source_document.source_type.value,
-                    size_bytes=source_document.size_bytes,
+            elif submission.uri is not None:
+                marker_key = self._build_remote_marker_key(
+                    knowledge_base_id,
+                    source_document.id,
                 )
-            )
+                should_publish = not self._object_store.exists(marker_key)
+                if should_publish:
+                    self._object_store.put_bytes(
+                        marker_key,
+                        b"",
+                        media_type="application/octet-stream",
+                        metadata={
+                            "knowledge_base_id": knowledge_base_id,
+                            "source_document_id": source_document.id,
+                            "uri": submission.uri,
+                            "idempotency_strategy": "uri_sha256",
+                        },
+                    )
+
+            if should_publish:
+                document_references.append(
+                    DocumentReference(
+                        knowledge_base_id=knowledge_base_id,
+                        source_document_id=source_document.id,
+                        filename=source_document.filename,
+                        content_type=source_document.media_type,
+                        storage_key=storage_key,
+                        uri=source_document.uri,
+                        document_format=(
+                            source_document.document_format.value
+                            if source_document.document_format is not None
+                            else None
+                        ),
+                        source_type=source_document.source_type.value,
+                        size_bytes=source_document.size_bytes,
+                    )
+                )
             receipts.append(
                 DocumentReceipt(
                     knowledge_base_id=knowledge_base_id,
@@ -119,10 +160,16 @@ class IngestionService:
                 )
             )
 
-        self._event_bus.publish(DocumentsUploadedEvent(documents=document_references))
+        if document_references:
+            self._event_bus.publish(DocumentsUploadedEvent(documents=document_references))
         return receipts
 
-    def ingest_task(self, task: IngestionTask) -> ParseResult | DocumentParseFailure:
+    def ingest_task(
+        self,
+        task: IngestionTask,
+        *,
+        correlation_id: str | None = None,
+    ) -> ParseResult | DocumentParseFailure:
         if task.storage_key is not None:
             stored = self._object_store.get_bytes(task.storage_key)
             outcome = self._parser_orchestrator.safe_parse_content(
@@ -152,6 +199,7 @@ class IngestionService:
             )
             self._event_bus.publish(
                 DocumentsParsedEvent(
+                    correlation_id=correlation_id or generate_id(),
                     documents=[
                         ParsedDocumentReference(
                             knowledge_base_id=task.knowledge_base_id,
@@ -174,6 +222,7 @@ class IngestionService:
 
         self._event_bus.publish(
             DocumentsFailedEvent(
+                correlation_id=correlation_id or generate_id(),
                 documents=[
                     DocumentFailureReference(
                         knowledge_base_id=task.knowledge_base_id,
@@ -218,7 +267,8 @@ class IngestionService:
                         source_document=source_document,
                         storage_key=document.storage_key,
                         content_type=document.content_type,
-                    )
+                    ),
+                    correlation_id=event.correlation_id,
                 )
             )
         return results
@@ -227,10 +277,33 @@ class IngestionService:
     def _build_storage_key(
         knowledge_base_id: str,
         source_document_id: str,
-        filename: str | None,
     ) -> str:
-        suffix = filename or "document"
-        return f"knowledgebases/{knowledge_base_id}/documents/{source_document_id}/{suffix}"
+        return f"knowledgebases/{knowledge_base_id}/documents/{source_document_id}/source"
+
+    def _existing_document_storage_key(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> str | None:
+        prefix = f"knowledgebases/{knowledge_base_id}/documents/{source_document_id}/"
+        existing_keys = self._object_store.list_keys(prefix)
+        return existing_keys[0] if existing_keys else None
+
+    @staticmethod
+    def _build_remote_marker_key(
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> str:
+        return f"knowledgebases/{knowledge_base_id}/documents/{source_document_id}/remote.marker"
+
+    @staticmethod
+    def _source_document_id(submission: DocumentSubmission) -> str:
+        if submission.content is not None:
+            return f"doc-sha256-{sha256(submission.content).hexdigest()[:24]}"
+        if submission.uri is not None:
+            uri_hash = sha256(submission.uri.encode("utf-8")).hexdigest()
+            return f"doc-uri-{uri_hash[:24]}"
+        return generate_id()
 
     @staticmethod
     def _build_parsed_storage_key(

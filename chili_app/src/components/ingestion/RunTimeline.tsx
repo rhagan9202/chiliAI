@@ -109,6 +109,11 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
                       <dd>{workflow.updated_at}</dd>
                     </div>
                   </dl>
+                  {workflow.status === 'failed' ? (
+                    <p className="ingestion-run-timeline__message" role="alert">
+                      {workflow.last_error ?? 'Workflow failed. Check backend logs for full retry details.'}
+                    </p>
+                  ) : null}
                 </div>
               </li>
             )

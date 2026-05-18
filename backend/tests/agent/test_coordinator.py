@@ -19,8 +19,10 @@ from agent.coordinator import (
     handle_vectors_indexed,
     run_handler_with_retry,
 )
+from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.exceptions import ConfigurationError
-from agent.models import RetryPolicy
+from agent.models import RetryPolicy, WorkflowRunStatus
+from agent.workflow_tracking import WorkflowEventTracker
 from config.loader import load_config
 from config.schema import (
     DomainConfig,
@@ -54,6 +56,7 @@ from events.types import (
     KnowledgeBaseCreatedEvent,
     KnowledgeBaseReadyEvent,
     ParsedDocumentReference,
+    RecordsIngestedEvent,
     RiskScoredEvent as _RiskScoredEvent,
     ValidatedDocumentReference,
     VectorsIndexedDocumentReference,
@@ -1440,6 +1443,61 @@ def test_drain_ingestion_events_routes_failing_event_to_dlq() -> None:
     assert dlq_entry.error.retry_count == 1
 
 
+def test_drain_ingestion_events_marks_records_workflow_failed_after_retry_exhaustion() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    workflow_run_store = InMemoryWorkflowRunStore()
+    workflow_tracker = WorkflowEventTracker(workflow_run_store)
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    event_bus.publish(
+        RecordsIngestedEvent(
+            correlation_id="corr-records-fail",
+            knowledge_base_id="kb-1",
+            feed_name="missing_feed",
+            record_type="claim_record",
+            record_count=1,
+        )
+    )
+
+    processed = asyncio.run(drain_ingestion_events(
+        event_bus,
+        IngestionService(
+            DocumentParsingOrchestrator(
+                create_default_registry(),
+                fetcher=HttpxRemoteDocumentFetcher(),
+            ),
+            object_store=object_store,
+            event_bus=event_bus,
+        ),
+        create_document_chunker(),
+        create_document_extractor([]),
+        create_extraction_validator([], []),
+        graph_service,
+        object_store,
+        records_config=RecordsConfig(),
+        raw_record_store=InMemoryRawRecordStore(),
+        observation_writer=InMemoryObservationWriter(),
+        consumer_group="test-workers",
+        consumer_name="worker-1",
+        retry_policy=RetryPolicy(max_retries=0, base_delay_seconds=0.0),
+        workflow_tracker=workflow_tracker,
+        sleep=_instant_sleep,
+    ))
+
+    runs = workflow_run_store.list_runs()
+    assert processed == 0
+    assert len(event_bus.dlq_entries) == 1
+    assert len(runs) == 1
+    assert runs[0].status is WorkflowRunStatus.FAILED
+    assert runs[0].metadata["correlation_id"] == "corr-records-fail"
+    assert "missing_feed" in str(runs[0].metadata["last_error"])
+
+
 # ---------------------------------------------------------------------------
 # E4-S06 — graceful shutdown
 # ---------------------------------------------------------------------------
@@ -2307,8 +2365,8 @@ def test_analytics_handler_emits_analysis_failed_when_risk_profile_missing() -> 
     assert failures[0].entity_id == "provider-1"
 
 
-def test_analytics_handler_failure_does_not_abort_flow_a() -> None:
-    """Even when the analytics chain fails, embeddings (Flow A) still publishes."""
+def test_analytics_handler_skips_missing_gnn_snapshot_without_failing_flow_a() -> None:
+    """Missing GNN snapshots are controlled skips while Flow A still publishes."""
 
     from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
     from analytics.gnn.service import create_gnn_service
@@ -2354,7 +2412,8 @@ def test_analytics_handler_failure_does_not_abort_flow_a() -> None:
         media_type="application/json",
     )
 
-    # Empty analytics adapters cause GNN to raise (no snapshot).
+    # Empty analytics adapters do not have a GNN snapshot yet. Fresh KBs should
+    # skip Flow B quietly instead of emitting a misleading analysis.failed event.
     gnn_service = create_gnn_service(
         InMemoryGraphSnapshotSource(), event_bus=event_bus
     )
@@ -2418,8 +2477,7 @@ def test_analytics_handler_failure_does_not_abort_flow_a() -> None:
     failures = [
         e for e in event_bus.published_events if isinstance(e, AnalysisFailedEvent)
     ]
-    assert len(failures) >= 1
-    assert any(failure.stage == "gnn" for failure in failures)
+    assert failures == []
 
 
 # ---------------------------------------------------------------------------
