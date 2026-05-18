@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { RecordFeedConfig, ValidationConfig } from '../../../api/contracts'
 import {
   validateDocumentFiles,
+  validateRecordFile,
   validateRecordRows,
   validateRequiredWizardState,
 } from '../validateIngestion'
@@ -94,6 +95,41 @@ describe('ingestion validation', () => {
     expect(issues.map((issue) => issue.message)).toContain(
       'claims.exe exceeds the configured 1 MB file limit.',
     )
+  })
+
+  it('rejects empty document files before upload', () => {
+    const file = new File([''], 'empty.json', { type: 'application/json' })
+
+    const issues = validateDocumentFiles([file], validationConfig)
+
+    expect(issues).toMatchObject([
+      {
+        id: 'empty-empty.json',
+        severity: 'error',
+        message: 'empty.json is empty.',
+      },
+    ])
+  })
+
+  it('validates records upload files', () => {
+    expect(validateRecordFile(null)).toMatchObject([
+      { id: 'missing-record-file', severity: 'error' },
+    ])
+
+    const empty = new File([''], 'claims.csv', { type: 'text/csv' })
+    expect(validateRecordFile(empty)).toMatchObject([
+      { id: 'empty-record-file', message: 'claims.csv is empty.' },
+    ])
+
+    const unsupported = new File(['hello'], 'claims.exe', {
+      type: 'application/x-msdownload',
+    })
+    expect(validateRecordFile(unsupported)).toMatchObject([
+      {
+        id: 'unsupported-record-file',
+        message: 'claims.exe must be a CSV or JSONL records file.',
+      },
+    ])
   })
 
   it('warns for large document files when no max file size is configured', () => {

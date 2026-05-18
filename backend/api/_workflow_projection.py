@@ -41,6 +41,7 @@ def project_workflow_run(run: WorkflowRun) -> WorkflowRunResponse:
         started_at=run.created_at,
         updated_at=run.updated_at,
         current_step=_current_step(run),
+        last_error=_last_error(run),
     )
 
 
@@ -63,19 +64,24 @@ def _workflow_status(status: WorkflowRunStatus) -> WorkflowStatusValue:
 
 
 def _current_step(run: WorkflowRun) -> str:
-    for step in run.steps:
-        if step.status is WorkflowStepStatus.RUNNING:
-            return step.step_name
-    for step in run.steps:
-        if step.status is WorkflowStepStatus.PENDING:
-            return step.step_name
     if run.status is WorkflowRunStatus.COMPLETED:
         return "completed"
     if run.status is WorkflowRunStatus.CANCELLED:
         return "cancelled"
     if run.status is WorkflowRunStatus.FAILED:
         return "failed"
+    for step in run.steps:
+        if step.status is WorkflowStepStatus.RUNNING:
+            return step.step_name
+    for step in run.steps:
+        if step.status is WorkflowStepStatus.PENDING:
+            return step.step_name
     return run.steps[-1].step_name
+
+
+def _last_error(run: WorkflowRun) -> str | None:
+    value = run.metadata.get("last_error")
+    return value if isinstance(value, str) and value else None
 
 
 def _workflow_type_for_trigger(trigger_event_type: str) -> WorkflowTypeValue:

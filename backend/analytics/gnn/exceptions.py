@@ -11,8 +11,16 @@ class GnnConfigurationError(GnnError):
     """Raised when a gnn request is invalid or incomplete."""
 
 
+class GnnDisabledError(GnnError):
+    """Raised when GNN analysis is disabled by domain configuration."""
+
+
 class GnnInsufficientGraphError(GnnError):
     """Raised when a graph snapshot is too small for analysis."""
+
+
+class GnnSnapshotUnavailableError(GnnError):
+    """Raised when no graph snapshot exists yet for a knowledge base."""
 
 
 class GnnSourceError(GnnError):
@@ -21,7 +29,9 @@ class GnnSourceError(GnnError):
 
 __all__ = [
     "GnnConfigurationError",
+    "GnnDisabledError",
     "GnnError",
     "GnnInsufficientGraphError",
+    "GnnSnapshotUnavailableError",
     "GnnSourceError",
 ]

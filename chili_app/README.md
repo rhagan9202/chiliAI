@@ -34,7 +34,7 @@ projections are migrated.
 | Page | Purpose |
 |------|---------|
 | **Dashboard** | System overview, recent alerts, knowledge base summaries |
-| **Knowledge Base Manager** | List, create, delete KBs; document inventory, add/remove docs |
+| **Knowledge Base Manager** | List, create, delete KBs; document inventory, add/remove docs, and show a selected-KB-scoped ingestion workflow timeline |
 | **Alert Feed** | Streaming alert list, severity filtering, acknowledgment workflow |
 | **Investigation Workbench** | Core analyst view — active KB selection, live entity search/detail/neighborhood, evidence packs, timeline |
 | **RAG Chat** | Conversational interface for querying knowledge bases; current API path uses seeded/local RAG responses while service-backed vector/LLM wiring is pending |
@@ -86,12 +86,26 @@ API DTOs are `snake_case` (matching the Python backend) — there is no
 camelCase transformation layer. If you need camelCase, convert at the
 page-component boundary; do not introduce a deserialization shim.
 
+Realtime workspace updates use `EventSource` with credentials and compare
+successive `RealtimeSnapshotResponse` payloads before invalidating TanStack
+Query caches. Keep invalidation targeted: alert count changes refresh alerts,
+running workflow count changes refresh workflow queries, and KB status changes
+refresh the KB list plus affected KB detail/document queries. Do not re-add
+broad analytics or policy invalidation for every heartbeat.
+
 The transport (`src/lib/apiClient.ts`, re-exported by `src/api/client.ts`)
 sends `credentials: 'include'` on every request and redirects to `/login`
-on 401 (except for `/auth/*` paths, which surface the error). The realtime
-SSE stream (`src/api/realtime.ts`) opens `EventSource` with
-`withCredentials: true` so the server-side `require_role` guard sees the
-session cookie.
+for non-auth `401` responses. It applies a default 30-second timeout while
+preserving caller-provided `AbortSignal`s. UI mutation handlers should use
+`apiErrorMessage(error, fallback)` so FastAPI `detail` strings and validation
+arrays render as analyst-readable messages.
+
+Page routes are wrapped with `ErrorBoundary` so a rendering failure in one
+workbench page does not collapse the authenticated app shell. The Investigation
+Workbench keeps selected entity, knowledge base, and graph depth in the URL via
+`/investigation/:entityId?kb=<id>&depth=<1-5>` for refresh/share continuity.
+The KB Manager run timeline renders `WorkflowRunResponse.last_error` for failed
+workflow runs when the backend exposes retry-exhaustion details.
 
 ## Domain-Driven Dynamic UI
 

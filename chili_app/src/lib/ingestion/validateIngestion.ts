@@ -66,6 +66,10 @@ export function validateDocumentFiles(
       )
     }
 
+    if (file.size === 0) {
+      issues.push(issue(`empty-${file.name}`, `${file.name} is empty.`))
+    }
+
     if (maxBytes !== null && file.size > maxBytes) {
       issues.push(
         issue(
@@ -86,6 +90,41 @@ export function validateDocumentFiles(
 
     return issues
   })
+}
+
+export function validateRecordFile(file: File | null): ValidationIssue[] {
+  if (file === null) {
+    return [issue('missing-record-file', 'Select a CSV or JSONL records file before submitting this feed.')]
+  }
+
+  const issues: ValidationIssue[] = []
+  const lowerName = file.name.toLowerCase()
+  const allowedTypes = ['text/csv', 'application/json', 'application/x-ndjson']
+  const hasSupportedExtension = lowerName.endsWith('.csv') || lowerName.endsWith('.jsonl')
+
+  if (file.size === 0) {
+    issues.push(issue('empty-record-file', `${file.name} is empty.`))
+  }
+
+  if (file.type && !allowedTypes.includes(file.type) && !hasSupportedExtension) {
+    issues.push(
+      issue(
+        'unsupported-record-file',
+        `${file.name} must be a CSV or JSONL records file.`,
+      ),
+    )
+  }
+
+  if (!file.type && !hasSupportedExtension) {
+    issues.push(
+      issue(
+        'unsupported-record-file',
+        `${file.name} must use a .csv or .jsonl extension.`,
+      ),
+    )
+  }
+
+  return issues
 }
 
 function isMissing(value: unknown): boolean {

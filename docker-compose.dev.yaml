@@ -28,6 +28,25 @@ services:
     command: >
       uvicorn api.app:create_app
       --factory --host 0.0.0.0 --port 8000 --reload
+      --reload-dir /app/api
+      --reload-dir /app/agent
+      --reload-dir /app/ingestion
+      --reload-dir /app/graph
+      --reload-dir /app/vectorstore
+      --reload-dir /app/embeddings
+      --reload-dir /app/rag
+      --reload-dir /app/llm
+      --reload-dir /app/analytics
+      --reload-dir /app/monitoring
+      --reload-dir /app/shared
+      --reload-dir /app/config
+      --reload-dir /app/events
+      --reload-dir /app/storage
+      --reload-dir /app/database
+      --reload-dir /app/records
+      --reload-exclude '*.pyc'
+      --reload-exclude '__pycache__/*'
+      --reload-exclude '*.egg-info/*'
     ports:
       - "8000:8000"
     volumes:
@@ -40,7 +59,9 @@ services:
       - CHILI_ALERT_REPOSITORY_BACKEND=object_store
       - CHILI_WORKFLOW_RUN_STORE_BACKEND=redis
       - CHILI_EVENT_BUS_BACKEND=redis
-      - CHILI_EVENT_BLOCK_MS=100
+      - CHILI_EVENT_BLOCK_MS=500
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=console
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgresql://chili:chili@postgres:5432/chili
       - NEO4J_URI=bolt://neo4j:7687
@@ -57,6 +78,12 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     networks:
       - chili-net
 
@@ -72,7 +99,9 @@ services:
       - CHILI_CONFIG_PATH=/app/config/defaults/medicare_fraud_dev.yaml
       - CHILI_WORKFLOW_RUN_STORE_BACKEND=redis
       - CHILI_EVENT_BUS_BACKEND=redis
-      - CHILI_EVENT_BLOCK_MS=100
+      - CHILI_EVENT_BLOCK_MS=500
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=console
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgresql://chili:chili@postgres:5432/chili
       - NEO4J_URI=bolt://neo4j:7687

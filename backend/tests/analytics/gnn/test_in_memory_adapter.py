@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
+from analytics.gnn.exceptions import GnnSnapshotUnavailableError
 from analytics.gnn.models import ClusterSummary, GraphNodeSignal, GraphSnapshot
 
 
@@ -23,7 +24,7 @@ def test_in_memory_snapshot_source_returns_seeded_snapshot() -> None:
 def test_in_memory_snapshot_source_raises_for_unknown_snapshot() -> None:
     source = InMemoryGraphSnapshotSource()
 
-    with pytest.raises(ValueError, match="No graph snapshot registered"):
+    with pytest.raises(GnnSnapshotUnavailableError, match="No graph snapshot registered"):
         source.load_snapshot(knowledge_base_id="kb-missing")
 
 

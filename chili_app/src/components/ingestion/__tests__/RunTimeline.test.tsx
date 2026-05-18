@@ -14,6 +14,7 @@ const workflows: WorkflowRunResponse[] = [
     started_at: '2026-05-17T12:00:00Z',
     updated_at: '2026-05-17T12:01:00Z',
     current_step: 'extract_text',
+    last_error: null,
   },
 ]
 
@@ -72,5 +73,16 @@ describe('RunTimeline', () => {
 
     expect(within(items[0]).getByText('records')).toBeInTheDocument()
     expect(within(items[1]).getByText('ingestion')).toBeInTheDocument()
+  })
+
+  it('renders failure detail for failed workflows', () => {
+    render(<RunTimeline workflows={[{
+      ...workflows[0],
+      status: 'failed',
+      current_step: 'failed',
+      last_error: 'Parser failed after retries.',
+    }]} receipts={[]} />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Parser failed after retries.')
   })
 })

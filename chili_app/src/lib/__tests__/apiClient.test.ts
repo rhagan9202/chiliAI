@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { API_BASE_URL, ApiError, apiRequest } from '../apiClient'
+import { API_BASE_URL, ApiError, apiErrorMessage, apiRequest } from '../apiClient'
 
 describe('apiClient', () => {
   let originalFetch: typeof fetch
@@ -23,6 +23,7 @@ describe('apiClient', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
@@ -95,5 +96,77 @@ describe('apiClient', () => {
 
     await expect(apiRequest('/auth/me')).rejects.toBeInstanceOf(ApiError)
     expect(assignMock).not.toHaveBeenCalled()
+  })
+
+  it('formats FastAPI validation details into readable messages', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          detail: [
+            { loc: ['body', 'rows', 0, 'claim_id'], msg: 'Field required' },
+            { loc: ['body', 'rows', 0, 'amount'], msg: 'Input should be a number' },
+          ],
+        }),
+        {
+          status: 422,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
+    ) as unknown as typeof fetch
+
+    await expect(apiRequest('/records/kb-1/push')).rejects.toMatchObject({
+      message: 'body.rows.0.claim_id: Field required\nbody.rows.0.amount: Input should be a number',
+    })
+  })
+
+  it('extracts structured ApiError messages for UI callers', () => {
+    const error = new ApiError(422, 'fallback', {
+      detail: [{ loc: ['body', 'file'], msg: 'Unsupported media type' }],
+    })
+
+    expect(apiErrorMessage(error, 'Upload failed.')).toBe(
+      'body.file: Unsupported media type',
+    )
+  })
+
+  it('times out requests with a user-readable error', async () => {
+    vi.useFakeTimers()
+    globalThis.fetch = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('Aborted', 'AbortError'))
+          })
+        }),
+    ) as unknown as typeof fetch
+
+    const request = apiRequest('/slow', { timeoutMs: 50 })
+    const assertion = expect(request).rejects.toMatchObject({
+      status: 0,
+      message: 'Request timed out. Please try again.',
+    })
+    await vi.advanceTimersByTimeAsync(50)
+
+    await assertion
+  })
+
+  it('preserves caller-provided abort signals', async () => {
+    const controller = new AbortController()
+    globalThis.fetch = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('Aborted', 'AbortError'))
+          })
+        }),
+    ) as unknown as typeof fetch
+
+    const request = apiRequest('/abortable', {
+      signal: controller.signal,
+      timeoutMs: 0,
+    })
+    controller.abort()
+
+    await expect(request).rejects.toMatchObject({ name: 'AbortError' })
   })
 })

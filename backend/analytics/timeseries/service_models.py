@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
+from analytics.timeseries.models import TimeSeriesObservation as TimeSeriesObservation
 from pydantic import BaseModel, Field, model_validator
 
 DetectionStrategy = Literal["z_score", "stl_decomposition", "isolation_forest"]
@@ -84,11 +85,6 @@ class MetricTimeseriesResponse(BaseModel):
     start: datetime
     end: datetime
     points: list[TimeseriesPoint] = Field(default_factory=list[TimeseriesPoint])
-
-
-# Re-export so API routers can import TimeSeriesObservation from the service
-# boundary instead of reaching into the internal models layer.
-from analytics.timeseries.models import TimeSeriesObservation as TimeSeriesObservation  # noqa: PLC0414
 
 __all__ = [
     "DetectionStrategy",

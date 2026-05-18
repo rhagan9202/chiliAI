@@ -18,6 +18,10 @@ const mocks = vi.hoisted(() => ({
   }>,
   searchItems: [] as RuntimeEntity[],
   selectedEntity: null as RuntimeEntity | null,
+  navigate: vi.fn(),
+  routeEntityId: null as string | null,
+  setSearchParams: vi.fn(),
+  searchParams: new URLSearchParams(),
 }))
 
 const domainConfig: DomainConfig = {
@@ -66,7 +70,9 @@ const domainConfig: DomainConfig = {
 }
 
 vi.mock('react-router-dom', () => ({
-  useParams: () => ({}),
+  useParams: () => (mocks.routeEntityId ? { entityId: mocks.routeEntityId } : {}),
+  useNavigate: () => mocks.navigate,
+  useSearchParams: () => [mocks.searchParams, mocks.setSearchParams],
 }))
 
 vi.mock('../../api/config', () => ({
@@ -127,6 +133,10 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.knowledgeBases = []
     mocks.searchItems = []
     mocks.selectedEntity = null
+    mocks.navigate.mockReset()
+    mocks.routeEntityId = null
+    mocks.setSearchParams.mockReset()
+    mocks.searchParams = new URLSearchParams()
   })
 
   it('renders a live no-KB state instead of seeded graph data', () => {
@@ -164,12 +174,17 @@ describe('InvestigationWorkbenchPage', () => {
     ]
     mocks.searchItems = [provider]
     mocks.selectedEntity = provider
+    mocks.routeEntityId = 'provider-204'
 
     render(<InvestigationWorkbenchPage />)
 
     await userEvent.type(screen.getByRole('searchbox', { name: 'Entity search' }), '123')
     await userEvent.click(await screen.findByRole('button', { name: /1234567890/i }))
 
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      pathname: '/investigation/provider-204',
+      search: 'kb=kb-live',
+    })
     expect(screen.getByRole('heading', { name: '1234567890' })).toBeInTheDocument()
     expect(screen.getByText('Provider')).toBeInTheDocument()
     expect(screen.getByText('state: WA')).toBeInTheDocument()
