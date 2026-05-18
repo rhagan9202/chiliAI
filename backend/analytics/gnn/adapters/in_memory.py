@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from analytics.gnn.exceptions import GnnSnapshotUnavailableError
 from analytics.gnn.models import ClusterSummary, GraphSnapshot
 
 __all__ = ["InMemoryGraphSnapshotSource"]
@@ -33,7 +34,10 @@ class InMemoryGraphSnapshotSource:
     def load_snapshot(self, *, knowledge_base_id: str) -> GraphSnapshot:
         snapshot = self._snapshots.get(knowledge_base_id)
         if snapshot is None:
-            raise ValueError(f"No graph snapshot registered for knowledge_base_id='{knowledge_base_id}'.")
+            raise GnnSnapshotUnavailableError(
+                "No graph snapshot registered for "
+                f"knowledge_base_id='{knowledge_base_id}'."
+            )
         return snapshot
 
     def load_clusters(self, *, knowledge_base_id: str) -> list[ClusterSummary]:

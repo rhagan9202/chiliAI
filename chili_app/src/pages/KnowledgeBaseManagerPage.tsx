@@ -28,9 +28,11 @@ import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import {
   validateDocumentFiles,
+  validateRecordFile,
   validateRecordRows,
   validateRequiredWizardState,
 } from '../lib/ingestion/validateIngestion'
+import { apiErrorMessage } from '../lib/apiClient'
 import { useIngestionStudioStore } from '../stores/ingestionStudioStore'
 import './pages.css'
 
@@ -38,7 +40,6 @@ export function KnowledgeBaseManagerPage() {
   const studio = useIngestionStudioStore()
   const knowledgeBasesQuery = useKnowledgeBases()
   const domainConfigQuery = useDomainConfig()
-  const workflowsQuery = useWorkflows()
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<string | null>(null)
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
   const [knowledgeBaseName, setKnowledgeBaseName] = useState('')
@@ -48,6 +49,10 @@ export function KnowledgeBaseManagerPage() {
   const activeKnowledgeBaseId = knowledgeBases.some((item) => item.id === selectedKnowledgeBaseId)
     ? selectedKnowledgeBaseId
     : knowledgeBases[0]?.id ?? null
+  const workflowsQuery = useWorkflows(
+    { knowledgeBaseId: activeKnowledgeBaseId ?? undefined },
+    { enabled: Boolean(activeKnowledgeBaseId) },
+  )
   const knowledgeBaseDetailQuery = useKnowledgeBase(activeKnowledgeBaseId)
   const documentsQuery = useKnowledgeBaseDocuments(activeKnowledgeBaseId)
   const documents = documentsQuery.data?.items ?? []
@@ -121,7 +126,7 @@ export function KnowledgeBaseManagerPage() {
             id: `documents-backend-error-${Date.now()}`,
             source: 'backend',
             severity: 'error',
-            message: error instanceof Error ? error.message : 'Document submission failed.',
+            message: apiErrorMessage(error, 'Document submission failed.'),
           },
         ])
       },
@@ -129,13 +134,8 @@ export function KnowledgeBaseManagerPage() {
   }
 
   function submitRecords() {
-    const missingRecordFileIssue = selectedFeed?.source === 'file_upload' && !studio.pendingRecordFile
-      ? [{
-          id: 'missing-record-file',
-          source: 'client' as const,
-          severity: 'error' as const,
-          message: 'Select a CSV or JSONL records file before submitting this feed.',
-        }]
+    const recordFileIssues = selectedFeed?.source === 'file_upload'
+      ? validateRecordFile(studio.pendingRecordFile)
       : []
     const issues = [
       ...validateRequiredWizardState({
@@ -143,7 +143,7 @@ export function KnowledgeBaseManagerPage() {
         sourceType: 'records',
         feedName: studio.selectedFeedName,
       }),
-      ...missingRecordFileIssue,
+      ...recordFileIssues,
       ...(selectedFeed ? validateRecordRows(selectedFeed, studio.parsedRows) : []),
     ]
 
@@ -153,6 +153,10 @@ export function KnowledgeBaseManagerPage() {
     }
 
     if (selectedFeed.source === 'file_upload') {
+      if (!studio.pendingRecordFile) {
+        studio.setValidationIssues(recordFileIssues)
+        return
+      }
       uploadRecordFileMutation.mutate(
         {
           feedName: selectedFeed.name,
@@ -177,7 +181,7 @@ export function KnowledgeBaseManagerPage() {
                 id: `records-backend-error-${Date.now()}`,
                 source: 'backend',
                 severity: 'error',
-                message: error instanceof Error ? error.message : 'Records submission failed.',
+                message: apiErrorMessage(error, 'Records submission failed.'),
               },
             ])
           },
@@ -210,7 +214,7 @@ export function KnowledgeBaseManagerPage() {
               id: `records-backend-error-${Date.now()}`,
               source: 'backend',
               severity: 'error',
-              message: error instanceof Error ? error.message : 'Records submission failed.',
+              message: apiErrorMessage(error, 'Records submission failed.'),
             },
           ])
         },

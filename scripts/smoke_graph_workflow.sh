@@ -95,6 +95,6 @@ assert payload["entities"], "expected neighborhood entities"
 print(json.dumps({"entity_count": len(payload["entities"]), "relationship_count": len(payload["relationships"])}, indent=2, sort_keys=True))
 '
 
-INVESTIGATION_URL="$APP_BASE_URL/investigation?kb_id=$KB_ID&entity_id=$ENTITY_ID"
+INVESTIGATION_URL="$APP_BASE_URL/investigation/$ENTITY_ID?kb=$KB_ID"
 printf '\nGraph workflow smoke passed.\n'
 printf 'Open Investigation route:\n%s\n' "$INVESTIGATION_URL"

@@ -117,6 +117,9 @@ The backend reads a domain configuration YAML/JSON file at startup (path set via
 | `OIDC_CLIENT_SECRET` | unset | OIDC client secret read by name from `auth.client_secret_env_var`. |
 | `REDIS_URL` | unset | Required for the Redis Streams event bus, `CHILI_WORKFLOW_RUN_STORE_BACKEND=redis`, and the production session store when auth is enabled. |
 | `CHILI_EVENT_BUS_BACKEND` | `in_memory` | `in_memory` or `redis`. |
+| `CHILI_EVENT_BLOCK_MS` | `500` in dev compose | Redis Streams blocking read timeout in milliseconds. Higher local-dev values reduce idle worker wakeups without changing event semantics. |
+| `LOG_LEVEL` | `INFO` | Stdlib/structlog log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, or a numeric level). |
+| `LOG_FORMAT` | `console` | `console` for local readable logs, `json` for structured aggregation. |
 | `DATABASE_URL` | unset | Postgres/TimescaleDB DSN. Required when `DatabaseConfig.backend=postgres` and to run Alembic migrations. |
 
 ### Optional `analytics` config section
@@ -163,6 +166,11 @@ cfg = load_config("config/defaults/medicare_fraud.yaml")
 - `DELETE /knowledgebases/{id}` deletes object-store payloads, clears the graph namespace through `GraphServiceProtocol.delete_knowledge_base()`, deletes KB metadata, and publishes `kb.delete`.
 - The `object_store` KB repository is intended for local/dev single-writer durability. Add a dedicated production metadata adapter, optional dependency, and migration story before treating it as a high-concurrency production database.
 
+## Ingestion Registration Notes
+
+- Document registration is idempotent per knowledge base for repeated content bytes and repeated remote URIs. The ingestion service derives deterministic source document IDs from content SHA-256 hashes or URI hashes and does not publish duplicate `documents.uploaded` events when the source has already been registered.
+- Content uploads are stored under the deterministic source document ID; remote URI submissions write a small marker object for deduplication while preserving the original URI on the event/receipt.
+
 ## Alert Projection Notes
 
 - Alert read models are owned by the FastAPI gateway behind `AlertProjectionRepository`; `/alerts` no longer reads from legacy seeded `ApiState`.
@@ -172,7 +180,12 @@ cfg = load_config("config/defaults/medicare_fraud.yaml")
 ## Workflow Projection Notes
 
 - Workflow state is owned by `agent/` behind `WorkflowRunStoreProtocol` and surfaced to API routes through `AgentServiceProtocol`.
-- `GET /workflows` and SSE `running_workflows` are service-backed and no longer read workflow summaries from legacy seeded `ApiState`.
-- Workflow runs now track `queued`, `running`, `completed`, `failed`, and `cancelled` states with `updated_at` timestamps. The worker coordinator updates stage progress and marks failed workflows after retry/DLQ exhaustion.
+- `GET /workflows` and SSE `running_workflows` are service-backed and no longer read workflow summaries from legacy seeded `ApiState`. `GET /workflows` accepts `knowledge_base_id`, `status`, `limit`, and `offset` query parameters for scoped timeline views.
+- Workflow runs now track `queued`, `running`, `completed`, `failed`, and `cancelled` states with `updated_at` timestamps. The worker coordinator updates stage progress, preserves correlation IDs across document parsing events, marks document parse failures terminal, and tracks structured-record ingestion as a KB-scoped workflow.
 - The in-memory workflow store remains available for local/test usage with detached returned models, idempotency-key uniqueness checks, and lock-protected shared indexes.
 - The Redis workflow store is intended for shared operational state between API and worker containers. For compliance-grade immutable workflow history, add a Postgres/audit adapter or outbox/event-sourcing layer behind the same protocol.
+
+## Analytics Runtime Notes
+
+- GNN analysis is controlled by the domain `capabilities.gnn` flag. When the capability is disabled, the worker skips GNN Flow B without emitting `analysis.failed`.
+- Fresh knowledge bases may not have a registered graph snapshot yet. Missing snapshots are treated as a controlled skip, not a failed analytics stage, so document/vector Flow A remains quiet and successful while GNN waits for a configured snapshot source.

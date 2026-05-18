@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from analytics.risk.models import RankedRiskEntry as RankedRiskEntry
 from pydantic import BaseModel, Field, model_validator
 
 RiskTrend = Literal["increasing", "stable", "decreasing"]
@@ -71,10 +72,6 @@ class RiskScoreListResponse(BaseModel):
     knowledge_base_id: str
     items: list[RiskScore] = Field(default_factory=list[RiskScore])
     total: int = Field(ge=0)
-
-
-# Re-export so API routers can import RankedRiskEntry from the service boundary.
-from analytics.risk.models import RankedRiskEntry as RankedRiskEntry  # noqa: PLC0414
 
 __all__ = [
     "RankedRiskEntry",

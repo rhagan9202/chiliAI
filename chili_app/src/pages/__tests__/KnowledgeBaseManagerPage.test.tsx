@@ -81,7 +81,15 @@ const domainConfig = {
   alerts: { thresholds: {} },
 }
 
-function installFetchMock({ recordsFail = false }: { recordsFail?: boolean } = {}) {
+function installFetchMock({
+  documentFail = false,
+  recordsFail = false,
+  structuredRecordsFail = false,
+}: {
+  documentFail?: boolean
+  recordsFail?: boolean
+  structuredRecordsFail?: boolean
+} = {}) {
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()
 
@@ -92,7 +100,7 @@ function installFetchMock({ recordsFail = false }: { recordsFail?: boolean } = {
       })
     }
 
-    if (url.endsWith('/workflows')) {
+    if (url.includes('/workflows')) {
       return new Response(JSON.stringify({ items: [] }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -137,6 +145,13 @@ function installFetchMock({ recordsFail = false }: { recordsFail?: boolean } = {
     }
 
     if (url.endsWith('/knowledgebases/kb-1/documents') && init?.method === 'POST') {
+      if (documentFail) {
+        return new Response(
+          JSON.stringify({ detail: 'Unsupported document content type.' }),
+          { status: 415, headers: { 'content-type': 'application/json' } },
+        )
+      }
+
       return new Response(
         JSON.stringify({
           documents: [
@@ -177,6 +192,17 @@ function installFetchMock({ recordsFail = false }: { recordsFail?: boolean } = {
     }
 
     if (url.endsWith('/records/kb-1/push')) {
+      if (structuredRecordsFail) {
+        return new Response(
+          JSON.stringify({
+            detail: [
+              { loc: ['body', 'rows', 0, 'provider_npi'], msg: 'Field required' },
+            ],
+          }),
+          { status: 422, headers: { 'content-type': 'application/json' } },
+        )
+      }
+
       if (recordsFail) {
         return new Response(JSON.stringify({ detail: 'Records backend rejected the file.' }), {
           status: 422,
@@ -355,6 +381,34 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
 
     expect(await screen.findByText('Backend response')).toBeInTheDocument()
     expect(screen.getByText('Records backend rejected the file.')).toBeInTheDocument()
+  })
+
+  it('shows unsupported document upload errors in the validation panel', async () => {
+    installFetchMock({ documentFail: true })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('Ingestion Studio')
+    await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
+    await userEvent.upload(
+      screen.getByLabelText('Document files'),
+      new File(['hello'], 'policy.txt', { type: 'text/plain' }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Submit documents' }))
+
+    expect(await screen.findByText('Backend response')).toBeInTheDocument()
+    expect(screen.getByText('Unsupported document content type.')).toBeInTheDocument()
+  })
+
+  it('shows structured backend validation arrays for records errors', async () => {
+    installFetchMock({ structuredRecordsFail: true })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('Ingestion Studio')
+    await parseValidRecords()
+    await userEvent.click(screen.getByRole('button', { name: 'Submit records' }))
+
+    expect(await screen.findByText('Backend response')).toBeInTheDocument()
+    expect(screen.getByText('body.rows.0.provider_npi: Field required')).toBeInTheDocument()
   })
 
   it('preserves successful document receipt when records validation fails', async () => {

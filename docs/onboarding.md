@@ -169,6 +169,14 @@ All service URLs when the dev stack is running:
 | MinIO console | http://localhost:9001 (admin: `minioadmin` / `minioadmin`) |
 | Redis | localhost:6379 (no browser UI; use `redis-cli`) |
 
+Dev-stack notes:
+
+- The API container uses explicit Uvicorn `--reload-dir` entries for backend source packages and keeps mutable runtime data such as `/app/data` outside the watch set. Do not revert dev compose to a bare repository-wide reload watcher; runtime artifact writes can otherwise trigger reload loops.
+- Uvicorn excludes common generated/cache paths (`*.pyc`, `__pycache__/*`, `*.egg-info/*`) from reload watches.
+- API and worker Redis Streams polling defaults to `CHILI_EVENT_BLOCK_MS=500` in dev compose to reduce idle wakeups while preserving responsive local event handling.
+- `make dev` attaches to Docker Compose logs. In the interactive Compose log UI, press `d` to detach while leaving containers running.
+- Browser tests or manual Playwright checks should avoid waiting for `networkidle` on pages that open `/events/stream`; the SSE connection is intentionally long-lived.
+
 ### 4.2 Running services individually (without Docker)
 
 You will need Redis, Neo4j, Qdrant, and MinIO running separately. The easiest way is to start just the infrastructure containers:
@@ -223,6 +231,9 @@ The key environment variables consumed by the backend:
 | `MINIO_ACCESS_KEY` | `minioadmin` | MinIO access key |
 | `MINIO_SECRET_KEY` | `minioadmin` | MinIO secret key |
 | `ALLOWED_ORIGINS` | localhost origins in dev | Comma-separated CORS origin list |
+| `CHILI_EVENT_BLOCK_MS` | `500` in dev compose | Redis Streams blocking read timeout; increase to reduce idle wakeups, decrease only if local event latency requires it |
+| `LOG_LEVEL` | `INFO` | Backend log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, or numeric level) |
+| `LOG_FORMAT` | `console` | Backend log renderer; use `json` for structured log aggregation |
 
 ---
 
