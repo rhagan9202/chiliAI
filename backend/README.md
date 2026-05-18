@@ -23,6 +23,7 @@ Working FastAPI gateway and pipeline-worker prototype with domain configuration,
 - **`ingestion/`** — Parser orchestration, document chunking, extraction, validation, and registration flows.
 - **`graph/`, `vectorstore/`, `embeddings/`, `llm/`, `rag/`** — Service/protocol boundaries with in-memory adapters and selected production-facing adapters.
 - **`analytics/` and `monitoring/`** — Heuristic timeseries, GNN, risk, explainability, alert, and monitoring services.
+- **`analytics/README.md`** — Contributor guide for turning Postgres-backed scripts and notebook algorithms into typed analytics services, adapters, tests, and API/worker wiring.
 - **`analytics/metrics/`** — Entity-metric persistence package (no service layer, no events). `EntityMetricRepository` protocol backed by `InMemoryEntityMetricRepository` (tests/local) or `PostgresEntityMetricRepository` (Postgres). `MetricsRecomputeThrottle` limits per-KB recompute rate. Graph-scope metrics use sentinel `entity_id = "__graph__"`.
 - **`storage/`** — In-memory, local filesystem, and S3-compatible object-store adapters.
 - **`database/`** — Postgres + TimescaleDB connection provider, `DatabaseConfig`-driven backend selection, and Alembic-managed schema (six persistence tables). Infrastructure only — no domain logic.
