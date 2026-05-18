@@ -105,12 +105,14 @@ export async function apiRequest<T>(
   }
 
   let body: BodyInit | undefined
+  let isFormDataBody = false
   if (options.body !== undefined) {
     if (
       options.body instanceof FormData ||
       options.body instanceof Blob ||
       typeof options.body === 'string'
     ) {
+      isFormDataBody = options.body instanceof FormData
       body = options.body as BodyInit
     } else {
       headers['Content-Type'] = headers['Content-Type'] ?? 'application/json'
@@ -118,7 +120,7 @@ export async function apiRequest<T>(
     }
   }
 
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const timeoutMs = options.timeoutMs ?? (isFormDataBody ? 0 : DEFAULT_TIMEOUT_MS)
   const controller = new AbortController()
   let timedOut = false
   const timeout = timeoutMs > 0

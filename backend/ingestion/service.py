@@ -78,9 +78,14 @@ class IngestionService:
                 storage_key = self._build_storage_key(
                     knowledge_base_id,
                     source_document.id,
-                    submission.filename,
                 )
-                already_registered = self._object_store.exists(storage_key)
+                existing_storage_key = self._existing_document_storage_key(
+                    knowledge_base_id,
+                    source_document.id,
+                )
+                if existing_storage_key is not None:
+                    storage_key = existing_storage_key
+                already_registered = existing_storage_key is not None
                 should_publish = not already_registered
                 stored = (
                     self._object_store.get_bytes(storage_key)
@@ -272,10 +277,17 @@ class IngestionService:
     def _build_storage_key(
         knowledge_base_id: str,
         source_document_id: str,
-        filename: str | None,
     ) -> str:
-        suffix = filename or "document"
-        return f"knowledgebases/{knowledge_base_id}/documents/{source_document_id}/{suffix}"
+        return f"knowledgebases/{knowledge_base_id}/documents/{source_document_id}/source"
+
+    def _existing_document_storage_key(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> str | None:
+        prefix = f"knowledgebases/{knowledge_base_id}/documents/{source_document_id}/"
+        existing_keys = self._object_store.list_keys(prefix)
+        return existing_keys[0] if existing_keys else None
 
     @staticmethod
     def _build_remote_marker_key(

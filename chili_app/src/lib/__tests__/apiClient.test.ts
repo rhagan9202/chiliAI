@@ -150,6 +150,23 @@ describe('apiClient', () => {
     await assertion
   })
 
+  it('does not apply the default timeout to FormData uploads', async () => {
+    const setTimeoutSpy = vi.spyOn(window, 'setTimeout')
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ) as unknown as typeof fetch
+
+    const formData = new FormData()
+    formData.append('files', new Blob(['{}'], { type: 'application/json' }), 'claims.json')
+
+    await apiRequest('/upload', { method: 'POST', body: formData })
+
+    expect(setTimeoutSpy).not.toHaveBeenCalled()
+  })
+
   it('preserves caller-provided abort signals', async () => {
     const controller = new AbortController()
     globalThis.fetch = vi.fn(

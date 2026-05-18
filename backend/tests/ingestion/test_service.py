@@ -70,6 +70,38 @@ def test_register_documents_deduplicates_repeated_content() -> None:
     ]
 
 
+def test_register_documents_deduplicates_repeated_content_with_different_filename() -> None:
+    service, event_bus, object_store = _service()
+
+    first = service.register_documents(
+        "kb-1",
+        [
+            DocumentSubmission(
+                filename="claims.json",
+                content=b'{"claim_id": "42"}',
+                content_type="application/json",
+            )
+        ],
+    )
+    second = service.register_documents(
+        "kb-1",
+        [
+            DocumentSubmission(
+                filename="renamed-claims.json",
+                content=b'{"claim_id": "42"}',
+                content_type="application/json",
+            )
+        ],
+    )
+
+    assert second[0].source_document_id == first[0].source_document_id
+    assert second[0].storage_key == first[0].storage_key
+    assert len(event_bus.published_events) == 1
+    assert object_store.list_keys("knowledgebases/kb-1/documents/") == [
+        first[0].storage_key
+    ]
+
+
 def test_register_documents_deduplicates_repeated_remote_uri() -> None:
     service, event_bus, object_store = _service()
     submission = DocumentSubmission(
