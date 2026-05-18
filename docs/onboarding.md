@@ -175,6 +175,7 @@ Dev-stack notes:
 - The API container uses explicit Uvicorn `--reload-dir` entries for backend source packages and keeps mutable runtime data such as `/app/data` outside the watch set. Do not revert dev compose to a bare repository-wide reload watcher; runtime artifact writes can otherwise trigger reload loops.
 - Uvicorn excludes common generated/cache paths (`*.pyc`, `__pycache__/*`, `*.egg-info/*`) from reload watches.
 - API and worker Redis Streams polling defaults to `CHILI_EVENT_BLOCK_MS=500` in dev compose to reduce idle wakeups while preserving responsive local event handling.
+- The browser opens `/events/stream` for realtime workspace status. This SSE heartbeat intentionally reads cached API projections only and must not perform live graph metric recomputation; use the KB list/detail APIs for explicit graph-backed projection refreshes.
 - `make dev` attaches to Docker Compose logs. In the interactive Compose log UI, press `d` to detach while leaving containers running.
 - Browser tests or manual Playwright checks should avoid waiting for `networkidle` on pages that open `/events/stream`; the SSE connection is intentionally long-lived.
 
