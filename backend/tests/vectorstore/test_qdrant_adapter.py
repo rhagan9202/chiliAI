@@ -134,6 +134,30 @@ def test_qdrant_vector_store_accepts_composite_record_ids() -> None:
     assert point.payload["record_id"] == "kb-1:entity-1"
 
 
+def test_qdrant_vector_store_creates_collection_with_batch_dimension() -> None:
+    client = _FakeQdrantClient()
+    store = QdrantVectorStore(
+        VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=384),
+        client=cast(QdrantClientProtocol, client),
+    )
+
+    store.upsert_records(
+        "kb-1__graph",
+        [
+            VectorRecord(
+                id="kb-1:entity-1:graph",
+                knowledge_base_id="kb-1",
+                content_id="entity-1",
+                embedding=[0.1, 0.2, 0.3],
+                metadata={"embedding_channel": "graph"},
+            )
+        ],
+    )
+
+    assert client.created_collections[0][0] == "chili_kb-1__graph"
+    assert client.created_collections[0][1].size == 3
+
+
 def test_qdrant_vector_store_search_translates_filters_and_returns_matches() -> None:
     client = _FakeQdrantClient()
     client.existing_collections.add("chili_kb-1")
@@ -210,7 +234,7 @@ def test_qdrant_vector_store_delete_records_targets_collection_ids() -> None:
     ]
 
 
-def test_qdrant_vector_store_rejects_dimension_mismatch() -> None:
+def test_qdrant_vector_store_rejects_inconsistent_batch_dimensions() -> None:
     client = _FakeQdrantClient()
     store = QdrantVectorStore(
         VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=3),
@@ -226,9 +250,23 @@ def test_qdrant_vector_store_rejects_dimension_mismatch() -> None:
                     knowledge_base_id="kb-1",
                     content_id="content-1",
                     embedding=[1.0, 0.0],
+                ),
+                VectorRecord(
+                    id="22222222-2222-2222-2222-222222222222",
+                    knowledge_base_id="kb-1",
+                    content_id="content-2",
+                    embedding=[1.0, 0.0, 0.0],
                 )
             ],
         )
+
+
+def test_qdrant_vector_store_rejects_query_dimension_mismatch() -> None:
+    client = _FakeQdrantClient()
+    store = QdrantVectorStore(
+        VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=3),
+        client=cast(QdrantClientProtocol, client),
+    )
 
     with pytest.raises(VectorDimensionMismatchError, match="dimension"):
         store.search("kb-1", [1.0, 0.0], 1)

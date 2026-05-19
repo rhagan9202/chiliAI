@@ -110,9 +110,9 @@ class QdrantVectorStore(VectorStoreProtocol):
         if not records:
             return []
 
-        self._validate_batch_dimensions(records)
+        dimension = self._validate_batch_dimensions(records)
         collection_name = self._collection_name(knowledge_base_id)
-        self._ensure_collection(collection_name)
+        self._ensure_collection(collection_name, dimension)
 
         try:
             self._client.upsert(
@@ -178,12 +178,14 @@ class QdrantVectorStore(VectorStoreProtocol):
 
         return len(record_ids)
 
-    def _validate_batch_dimensions(self, records: list[VectorRecord]) -> None:
+    def _validate_batch_dimensions(self, records: list[VectorRecord]) -> int:
+        dimension = len(records[0].embedding)
         for record in records:
-            if len(record.embedding) != self._config.dimensions:
+            if len(record.embedding) != dimension:
                 raise VectorDimensionMismatchError(
-                    "Embedding dimension does not match the configured Qdrant collection dimension."
+                    "All records in a batch must have the same embedding dimension."
                 )
+        return dimension
 
     def _validate_query_dimension(self, query_vector: list[float]) -> None:
         if len(query_vector) != self._config.dimensions:
@@ -191,14 +193,14 @@ class QdrantVectorStore(VectorStoreProtocol):
                 "Query vector dimension does not match the configured Qdrant collection dimension."
             )
 
-    def _ensure_collection(self, collection_name: str) -> None:
+    def _ensure_collection(self, collection_name: str, dimension: int) -> None:
         if self._client.collection_exists(collection_name):
             return
 
         self._client.create_collection(
             collection_name=collection_name,
             vectors_config=_require_qdrant_models().VectorParams(
-                size=self._config.dimensions,
+                size=dimension,
                 distance=self._distance,
             ),
         )
