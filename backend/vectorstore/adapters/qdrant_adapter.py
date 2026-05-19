@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Protocol, cast
 from uuid import NAMESPACE_URL, uuid5
 
 from config.schema import VectorStoreConfig
-from vectorstore.adapters.protocols import VectorStoreProtocol
 from vectorstore.exceptions import VectorDimensionMismatchError, VectorStoreError
 from vectorstore.models import MetadataValue, VectorMatch, VectorRecord
 
@@ -82,7 +81,7 @@ except ImportError:  # pragma: no cover - optional dependency
 __all__ = ["QdrantVectorStore"]
 
 
-class QdrantVectorStore(VectorStoreProtocol):
+class QdrantVectorStore:
     """Persist vector records and execute similarity search through Qdrant."""
 
     def __init__(

@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import math
 
-from vectorstore.adapters.protocols import VectorStoreProtocol
 from vectorstore.exceptions import VectorDimensionMismatchError
 from vectorstore.models import MetadataValue, VectorMatch, VectorRecord
 
 __all__ = ["InMemoryVectorStore"]
 
 
-class InMemoryVectorStore(VectorStoreProtocol):
+class InMemoryVectorStore:
     """Store vector records in process-local dictionaries keyed by knowledge base."""
 
     def __init__(self) -> None:
