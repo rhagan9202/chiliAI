@@ -22,6 +22,7 @@ from typing import cast
 
 from agent.adapters.protocols import WorkflowRunStoreProtocol
 from agent.adapters.runtime import create_workflow_run_store_from_env
+from agent.embeddings_graph_bridge import GnnGraphEmbeddingProvider
 from agent.exceptions import ConfigurationError
 from agent.health import HealthState, start_health_server
 from agent.models import HealthSettings, RetryPolicy
@@ -81,7 +82,7 @@ from analytics.risk.service_models import (
 )
 from embeddings.adapters.in_memory import InMemoryEmbedder
 from embeddings.adapters.protocols import EmbedderProtocol
-from embeddings.models import EmbeddingMetadata, EmbeddingResult
+from embeddings.models import EmbeddingMetadata, EmbeddingResult, EmbeddingVector
 from embeddings.protocols import EmbeddingsServiceProtocol
 from embeddings.service import create_embeddings_service
 from embeddings.service_models import EmbedRequest, EmbedSubmission
@@ -678,11 +679,19 @@ def build_worker_dependencies() -> WorkerDependencies:
         object_store=object_store,
         event_bus=event_bus,
     )
-    embeddings_service = create_embeddings_service(embedder, event_bus=event_bus)
     gnn_service = create_gnn_service(
         build_graph_snapshot_source(config),
         event_bus=event_bus,
         gnn_enabled=lambda: config.capabilities.gnn,
+    )
+    embeddings_service = create_embeddings_service(
+        embedder,
+        event_bus=event_bus,
+        graph_embedding_provider=(
+            GnnGraphEmbeddingProvider(gnn_service)
+            if config.capabilities.gnn
+            else None
+        ),
     )
     risk_service = create_risk_service(
         build_risk_signal_source(config),
@@ -1034,6 +1043,8 @@ def handle_graph_updated(
         response = embeddings_service.embed(
             EmbedRequest(
                 knowledge_base_id=document.knowledge_base_id,
+                include_graph_embeddings=True,
+                graph_embedding_dimension=3,
                 submissions=[
                     EmbedSubmission(
                         content_id=entity.id,
@@ -1045,12 +1056,28 @@ def handle_graph_updated(
         )
         embeddings_result = EmbeddingResult(
             request_id=response.request_id,
-            vectors={item.content_id: item.vector for item in response.items},
+            vectors={
+                item.content_id: item.vector
+                for item in response.items
+                if item.channel == "text"
+            },
             metadata=EmbeddingMetadata(
                 model_name=response.model_name,
                 dimensions=response.dimensions,
                 provider="embeddings-service",
             ),
+            items=[
+                EmbeddingVector(
+                    content_id=item.content_id,
+                    channel=item.channel,
+                    vector=list(item.vector),
+                    model_name=item.model_name or response.model_name,
+                    provider=item.provider or "embeddings-service",
+                    dimensions=item.dimensions or len(item.vector),
+                )
+                for item in response.items
+            ],
+            graph_status=response.graph_status,
         )
         embeddings_storage_key = _build_embeddings_storage_key(
             document.graph_update_storage_key,

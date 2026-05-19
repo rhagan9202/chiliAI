@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
+from collections.abc import Sequence
+
 import pytest
 
 from agent.coordinator import (
@@ -36,8 +38,8 @@ from config.schema import (
 from monitoring.adapters.in_memory import InMemoryObservationWriter
 from records.adapters.in_memory import InMemoryRawRecordStore
 from embeddings.adapters.in_memory import InMemoryEmbedder
-from embeddings.models import EmbeddingMetadata, EmbeddingResult
-from embeddings.service import EmbeddingsService
+from embeddings.models import EmbeddingMetadata, EmbeddingResult, GraphEmbeddingBatch
+from embeddings.service import EmbeddingsService, create_embeddings_service
 from embeddings.service_models import EmbedRequest, EmbedResponse, EmbeddedItem
 from events.protocols import EventDelivery
 from events.runtime import EventBusSettings
@@ -104,6 +106,85 @@ class _FakeEmbeddingsService:
         )
 
 
+class _StaticGraphProvider:
+    def __init__(self, vectors: dict[str, list[float]], *, dimensions: int) -> None:
+        self._vectors = vectors
+        self._dimensions = dimensions
+
+    def get_node_embeddings(
+        self,
+        *,
+        knowledge_base_id: str,
+        content_ids: Sequence[str],
+        dimensions: int,
+    ) -> GraphEmbeddingBatch:
+        return GraphEmbeddingBatch(
+            vectors={
+                key: value for key, value in self._vectors.items() if key in content_ids
+            },
+            model_name="gnn-spectral",
+            provider="test-gnn",
+            dimensions=self._dimensions,
+        )
+
+
+def _graph_updated_event_with_valid_entity(
+    *,
+    knowledge_base_id: str,
+    entity_id: str,
+    object_store: InMemoryObjectStore,
+) -> GraphUpdatedEvent:
+    graph_update_storage_key = (
+        f"knowledgebases/{knowledge_base_id}/graph_updates/extract-1.json"
+    )
+    validation_storage_key = (
+        f"knowledgebases/{knowledge_base_id}/validations/extract-1.json"
+    )
+    object_store.put_bytes(
+        graph_update_storage_key,
+        GraphUpsertResult(
+            knowledge_base_id=knowledge_base_id,
+            source_document_id="doc-1",
+            parsed_document_id="parsed-1",
+            extraction_result_id="extract-1",
+            validation_report_id="validate-1",
+            upserted_entity_ids=[entity_id],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    object_store.put_bytes(
+        validation_storage_key,
+        ValidationReport(
+            id="validate-1",
+            extraction_result_id="extract-1",
+            source_document_id="doc-1",
+            valid_entities=[
+                Entity(
+                    id=entity_id,
+                    type="provider",
+                    properties={"name": "Alpha Clinic"},
+                ),
+            ],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    return GraphUpdatedEvent(
+        documents=[
+            GraphUpdatedDocumentReference(
+                knowledge_base_id=knowledge_base_id,
+                source_document_id="doc-1",
+                parsed_document_id="parsed-1",
+                extraction_result_id="extract-1",
+                validation_report_id="validate-1",
+                upserted_entity_count=1,
+                upserted_relationship_count=0,
+                validation_storage_key=validation_storage_key,
+                graph_update_storage_key=graph_update_storage_key,
+            )
+        ],
+    )
+
+
 def test_build_worker_dependencies_assembles_ingestion_pipeline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -161,6 +242,7 @@ def test_handle_event_returns_zero_for_unhandled_event() -> None:
     )
 
     assert processed == 0
+
 
 
 def test_drain_ingestion_events_processes_uploaded_documents() -> None:
@@ -696,6 +778,42 @@ def test_handle_graph_updated_publishes_embeddings_complete_event() -> None:
     assert embeddings_result.request_id == "embed-request-1"
     assert list(embeddings_result.vectors) == ["provider-1", "provider-2"]
     assert stored_embeddings.metadata["graph_update_storage_key"] == graph_update_storage_key
+
+
+def test_handle_graph_updated_persists_text_and_graph_embedding_channels() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    embeddings_service = create_embeddings_service(
+        InMemoryEmbedder(dimensions=4),
+        event_bus=event_bus,
+        graph_embedding_provider=_StaticGraphProvider(
+            {"entity-1": [0.1, 0.2, 0.3]},
+            dimensions=3,
+        ),
+    )
+    event = _graph_updated_event_with_valid_entity(
+        knowledge_base_id="kb-1",
+        entity_id="entity-1",
+        object_store=object_store,
+    )
+
+    handled = handle_graph_updated(
+        event,
+        embeddings_service=embeddings_service,
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    assert handled == 1
+    complete_event = event_bus.published_events[-1]
+    storage_key = complete_event.documents[0].embeddings_storage_key
+    artifact = EmbeddingResult.model_validate_json(
+        object_store.get_bytes(storage_key).content
+    )
+    assert [(item.content_id, item.channel) for item in artifact.items] == [
+        ("entity-1", "text"),
+        ("entity-1", "graph"),
+    ]
 
 
 def test_handle_graph_updated_publishes_kb_ready_for_zero_entities() -> None:
@@ -2724,4 +2842,3 @@ def test_handle_event_absorbs_unexpected_monitoring_exception() -> None:
     )
 
     assert processed == 0
-
