@@ -18,6 +18,7 @@ FORBIDDEN_EMBEDDINGS_IMPORT_PREFIXES = (
 
 APPROVED_OPENAI_IMPORT_FILES = {
     BACKEND_ROOT / "embeddings" / "adapters" / "openai_adapter.py",
+    BACKEND_ROOT / "llm" / "adapters" / "openai_adapter.py",
     BACKEND_ROOT / "tests" / "embeddings" / "test_openai_adapter.py",
 }
 
@@ -71,6 +72,26 @@ def test_provider_sdk_imports_stay_behind_adapters() -> None:
     assert sentence_transformers_offenders == []
 
 
+def test_import_scanner_detects_dynamic_imports(tmp_path: Path) -> None:
+    module = tmp_path / "dynamic_imports.py"
+    module.write_text(
+        "\n".join(
+            [
+                "import importlib",
+                "import pytest",
+                'importlib.import_module("openai")',
+                'pytest.importorskip("sentence_transformers")',
+                '__import__("analytics.gnn")',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert {"openai", "sentence_transformers", "analytics.gnn"} <= _imported_names(
+        module
+    )
+
+
 def _python_files(root: Path) -> list[Path]:
     return [
         path
@@ -87,4 +108,36 @@ def _imported_names(path: Path) -> set[str]:
             names.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module is not None:
             names.add(node.module)
+        elif isinstance(node, ast.Call):
+            dynamic_name = _dynamic_import_name(node)
+            if dynamic_name is not None:
+                names.add(dynamic_name)
     return names
+
+
+def _dynamic_import_name(node: ast.Call) -> str | None:
+    if not node.args:
+        return None
+    if _call_name(node.func) not in {
+        "__import__",
+        "import_module",
+        "importlib.import_module",
+        "importorskip",
+        "pytest.importorskip",
+    }:
+        return None
+    first_arg = node.args[0]
+    if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+        return first_arg.value
+    return None
+
+
+def _call_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = _call_name(node.value)
+        if parent:
+            return f"{parent}.{node.attr}"
+        return node.attr
+    return ""
