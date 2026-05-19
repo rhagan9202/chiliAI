@@ -30,6 +30,8 @@ if TYPE_CHECKING:
 class QdrantClientProtocol(Protocol):
     def collection_exists(self, collection_name: str, **kwargs: object) -> bool: ...
 
+    def get_collection(self, collection_name: str, **kwargs: object) -> object: ...
+
     def create_collection(
         self,
         collection_name: str,
@@ -195,6 +197,11 @@ class QdrantVectorStore(VectorStoreProtocol):
 
     def _ensure_collection(self, collection_name: str, dimension: int) -> None:
         if self._client.collection_exists(collection_name):
+            existing_dimension = self._collection_dimension(collection_name)
+            if existing_dimension != dimension:
+                raise VectorDimensionMismatchError(
+                    "Embedding dimension does not match the existing Qdrant collection dimension."
+                )
             return
 
         self._client.create_collection(
@@ -203,6 +210,18 @@ class QdrantVectorStore(VectorStoreProtocol):
                 size=dimension,
                 distance=self._distance,
             ),
+        )
+
+    def _collection_dimension(self, collection_name: str) -> int:
+        collection = self._client.get_collection(collection_name)
+        config = getattr(collection, "config", None)
+        params = getattr(config, "params", None)
+        vectors = getattr(params, "vectors", None)
+        size = getattr(vectors, "size", None)
+        if isinstance(size, int):
+            return size
+        raise VectorStoreError(
+            "Failed to determine Qdrant collection vector dimension."
         )
 
     def _point_for(self, record: VectorRecord) -> PointStruct:

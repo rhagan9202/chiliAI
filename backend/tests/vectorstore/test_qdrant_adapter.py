@@ -28,6 +28,21 @@ class _FakeQueryResponse:
         self.points = points
 
 
+class _FakeCollectionParams:
+    def __init__(self, vectors: qdrant_models.VectorParams) -> None:
+        self.vectors = vectors
+
+
+class _FakeCollectionConfig:
+    def __init__(self, vectors: qdrant_models.VectorParams) -> None:
+        self.params = _FakeCollectionParams(vectors)
+
+
+class _FakeCollectionInfo:
+    def __init__(self, vectors: qdrant_models.VectorParams) -> None:
+        self.config = _FakeCollectionConfig(vectors)
+
+
 class _FakeQdrantClient:
     def __init__(self) -> None:
         self.created_collections: list[tuple[str, qdrant_models.VectorParams]] = []
@@ -37,10 +52,19 @@ class _FakeQdrantClient:
         ] = []
         self.deletes: list[tuple[str, qdrant_models.PointIdsList]] = []
         self.existing_collections: set[str] = set()
+        self.collection_dimensions: dict[str, int] = {}
         self.query_response = _FakeQueryResponse(points=[])
 
     def collection_exists(self, collection_name: str, **_: object) -> bool:
         return collection_name in self.existing_collections
+
+    def get_collection(self, collection_name: str, **_: object) -> _FakeCollectionInfo:
+        return _FakeCollectionInfo(
+            qdrant_models.VectorParams(
+                size=self.collection_dimensions[collection_name],
+                distance=qdrant_models.Distance.COSINE,
+            )
+        )
 
     def create_collection(
         self,
@@ -50,6 +74,7 @@ class _FakeQdrantClient:
     ) -> bool:
         self.created_collections.append((collection_name, vectors_config))
         self.existing_collections.add(collection_name)
+        self.collection_dimensions[collection_name] = vectors_config.size
         return True
 
     def upsert(
@@ -58,6 +83,12 @@ class _FakeQdrantClient:
         points: Sequence[qdrant_models.PointStruct],
         **_: object,
     ) -> object:
+        dimension = self.collection_dimensions[collection_name]
+        for point in points:
+            if len(cast(list[float], point.vector)) != dimension:
+                raise VectorDimensionMismatchError(
+                    "Embedding dimension does not match the existing namespace dimension."
+                )
         self.upserts.append((collection_name, list(points)))
         return object()
 
@@ -142,20 +173,45 @@ def test_qdrant_vector_store_creates_collection_with_batch_dimension() -> None:
     )
 
     store.upsert_records(
-        "kb-1__graph",
+        "kb-1_custom",
         [
             VectorRecord(
-                id="kb-1:entity-1:graph",
+                id="kb-1:entity-1:custom",
                 knowledge_base_id="kb-1",
                 content_id="entity-1",
                 embedding=[0.1, 0.2, 0.3],
-                metadata={"embedding_channel": "graph"},
+                metadata={"source": "custom"},
             )
         ],
     )
 
-    assert client.created_collections[0][0] == "chili_kb-1__graph"
+    assert client.created_collections[0][0] == "chili_kb-1_custom"
     assert client.created_collections[0][1].size == 3
+
+
+def test_qdrant_vector_store_rejects_existing_collection_dimension_mismatch() -> None:
+    client = _FakeQdrantClient()
+    client.existing_collections.add("chili_kb-1")
+    client.collection_dimensions["chili_kb-1"] = 2
+    store = QdrantVectorStore(
+        VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=2),
+        client=cast(QdrantClientProtocol, client),
+    )
+
+    with pytest.raises(VectorDimensionMismatchError, match="existing Qdrant collection"):
+        store.upsert_records(
+            "kb-1",
+            [
+                VectorRecord(
+                    id="kb-1:entity-1",
+                    knowledge_base_id="kb-1",
+                    content_id="entity-1",
+                    embedding=[0.1, 0.2, 0.3],
+                )
+            ],
+        )
+
+    assert client.upserts == []
 
 
 def test_qdrant_vector_store_search_translates_filters_and_returns_matches() -> None:
