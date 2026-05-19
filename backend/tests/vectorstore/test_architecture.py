@@ -10,11 +10,20 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = REPO_ROOT
 APPROVED_QDRANT_IMPORT_FILES = {
     BACKEND_ROOT / "vectorstore" / "adapters" / "qdrant_adapter.py",
-    BACKEND_ROOT / "api" / "dependencies.py",
-    BACKEND_ROOT / "agent" / "coordinator.py",
     BACKEND_ROOT / "tests" / "vectorstore" / "test_qdrant_adapter.py",
 }
-IGNORED_PARTS = {"__pycache__", ".venv", "chili_backend.egg-info"}
+IGNORED_PARTS = {
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".tox",
+    ".nox",
+    ".mypy_cache",
+    ".pytest_cache",
+    "build",
+    "dist",
+    "chili_backend.egg-info",
+}
 
 
 def test_qdrant_sdk_imports_stay_behind_adapter_boundary() -> None:

@@ -7,7 +7,7 @@
 Application code depends on `VectorServiceProtocol` from `vectorstore.protocols`.
 `VectorService` depends on `VectorStoreProtocol` from `vectorstore.adapters.protocols`.
 Qdrant is available only through `vectorstore.adapters.qdrant_adapter.QdrantVectorStore`.
-Do not import `qdrant_client` outside the Qdrant adapter, dependency factories, or Qdrant-specific tests.
+Dependency factories may import `QdrantVectorStore`, but direct `qdrant_client` imports belong only in the Qdrant adapter and Qdrant-specific tests.
 
 ## Service Contract
 
