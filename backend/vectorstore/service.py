@@ -70,8 +70,10 @@ class VectorService:
                 stored_records.extend(
                     self._store.upsert_records(request.knowledge_base_id, chunk)
                 )
+        except VectorDimensionMismatchError:
+            raise
         except ValueError as exc:
-            raise VectorDimensionMismatchError(str(exc)) from exc
+            raise VectorStoreError("Failed to index vector records.") from exc
         except Exception as exc:
             raise VectorStoreError("Failed to index vector records.") from exc
 
@@ -142,8 +144,10 @@ class VectorService:
                 request.limit,
                 request.filters,
             )
+        except VectorDimensionMismatchError:
+            raise
         except ValueError as exc:
-            raise VectorDimensionMismatchError(str(exc)) from exc
+            raise VectorStoreError("Failed to search vector records.") from exc
         except Exception as exc:
             raise VectorStoreError("Failed to search vector records.") from exc
 

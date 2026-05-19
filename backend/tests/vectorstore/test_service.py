@@ -7,7 +7,7 @@ from events.types import VectorsIndexedEvent
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.models import StoredObjectWriteResult
 from vectorstore.adapters.in_memory import InMemoryVectorStore
-from vectorstore.exceptions import VectorStoreError
+from vectorstore.exceptions import VectorDimensionMismatchError, VectorStoreError
 from vectorstore.models import MetadataValue, VectorMatch, VectorRecord
 from vectorstore.service import create_vector_service
 from vectorstore.service_models import (
@@ -86,6 +86,36 @@ class _FailingObjectStore(InMemoryObjectStore):
     ) -> StoredObjectWriteResult:
         del key, content, media_type, metadata
         raise RuntimeError("object store unavailable")
+
+
+class _FailingIndexVectorStore(InMemoryVectorStore):
+    def __init__(self, exc: Exception) -> None:
+        super().__init__()
+        self._exc = exc
+
+    def upsert_records(
+        self,
+        knowledge_base_id: str,
+        records: list[VectorRecord],
+    ) -> list[VectorRecord]:
+        del knowledge_base_id, records
+        raise self._exc
+
+
+class _FailingSearchVectorStore(InMemoryVectorStore):
+    def __init__(self, exc: Exception) -> None:
+        super().__init__()
+        self._exc = exc
+
+    def search(
+        self,
+        knowledge_base_id: str,
+        query_vector: list[float],
+        limit: int,
+        filters: dict[str, MetadataValue] | None = None,
+    ) -> list[VectorMatch]:
+        del knowledge_base_id, query_vector, limit, filters
+        raise self._exc
 
 
 def test_vector_service_indexes_records_and_publishes_event() -> None:
@@ -315,3 +345,77 @@ def test_vector_service_delete_knowledge_base_publishes_event() -> None:
     assert response.deleted_count == 2
     assert service.count("kb-1") == 0
     assert event_bus.published_events[-1].event_type == "vectors.deleted"
+
+
+def test_vector_service_search_preserves_adapter_dimension_mismatch() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_vector_service(
+        _FailingSearchVectorStore(VectorDimensionMismatchError("dimension mismatch")),
+        event_bus=event_bus,
+    )
+
+    with pytest.raises(VectorDimensionMismatchError, match="dimension mismatch"):
+        service.search(
+            VectorSearchRequest(
+                knowledge_base_id="kb-1",
+                query_vector=[1.0],
+                limit=1,
+            )
+        )
+
+
+def test_vector_service_index_preserves_adapter_dimension_mismatch() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_vector_service(
+        _FailingIndexVectorStore(VectorDimensionMismatchError("dimension mismatch")),
+        event_bus=event_bus,
+    )
+
+    with pytest.raises(VectorDimensionMismatchError, match="dimension mismatch"):
+        service.index(
+            VectorIndexRequest(
+                knowledge_base_id="kb-1",
+                submissions=[
+                    VectorIndexSubmission(content_id="content-1", embedding=[1.0])
+                ],
+            )
+        )
+
+    assert event_bus.published_events == []
+
+
+def test_vector_service_search_wraps_adapter_value_error() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_vector_service(
+        _FailingSearchVectorStore(ValueError("backend value failure")),
+        event_bus=event_bus,
+    )
+
+    with pytest.raises(VectorStoreError, match="Failed to search vector records"):
+        service.search(
+            VectorSearchRequest(
+                knowledge_base_id="kb-1",
+                query_vector=[1.0],
+                limit=1,
+            )
+        )
+
+
+def test_vector_service_index_wraps_adapter_value_error() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_vector_service(
+        _FailingIndexVectorStore(ValueError("backend value failure")),
+        event_bus=event_bus,
+    )
+
+    with pytest.raises(VectorStoreError, match="Failed to index vector records"):
+        service.index(
+            VectorIndexRequest(
+                knowledge_base_id="kb-1",
+                submissions=[
+                    VectorIndexSubmission(content_id="content-1", embedding=[1.0])
+                ],
+            )
+        )
+
+    assert event_bus.published_events == []
