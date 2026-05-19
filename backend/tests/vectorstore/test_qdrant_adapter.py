@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
-from uuid import uuid4
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
+from uuid import uuid4
 
 import pytest
 
@@ -51,8 +52,11 @@ class _FakeQdrantClient:
         self.retrieve_response: list[qdrant_models.Record] = []
         self.count_response = _FakeCountResponse(count=0)
         self.delete_collection_response = True
+        self.collection_exists_error: Exception | None = None
 
     def collection_exists(self, collection_name: str, **_: object) -> bool:
+        if self.collection_exists_error is not None:
+            raise self.collection_exists_error
         return collection_name in self.existing_collections
 
     def create_collection(
@@ -227,6 +231,31 @@ def test_qdrant_vector_store_search_translates_filters_and_returns_matches() -> 
     assert risk_range.lte == 0.75
 
 
+def test_qdrant_vector_store_search_wraps_malformed_matches() -> None:
+    client = _FakeQdrantClient()
+    client.existing_collections.add("chili_kb-1")
+    client.query_response = _FakeQueryResponse(
+        points=[
+            qdrant_models.ScoredPoint(
+                id="11111111-1111-1111-1111-111111111111",
+                version=1,
+                score=0.98,
+                payload={"record_id": "kb-1:content-1"},
+                vector=None,
+                shard_key=None,
+                order_value=None,
+            )
+        ]
+    )
+    store = QdrantVectorStore(
+        VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=2),
+        client=cast(QdrantClientProtocol, client),
+    )
+
+    with pytest.raises(VectorStoreError, match="Failed to search Qdrant vector records."):
+        store.search("kb-1", [1.0, 0.0], 5)
+
+
 def test_qdrant_vector_store_delete_records_targets_collection_ids() -> None:
     client = _FakeQdrantClient()
     client.existing_collections.add("chili_kb-1")
@@ -254,6 +283,7 @@ def test_qdrant_vector_store_delete_records_targets_collection_ids() -> None:
 def test_qdrant_vector_store_get_record_reconstructs_payload_and_vector() -> None:
     client = _FakeQdrantClient()
     client.existing_collections.add("chili_kb-1")
+    indexed_at = datetime(2026, 5, 19, 12, 30, tzinfo=UTC)
     client.retrieve_response = [
         qdrant_models.Record(
             id="11111111-1111-1111-1111-111111111111",
@@ -263,6 +293,7 @@ def test_qdrant_vector_store_get_record_reconstructs_payload_and_vector() -> Non
                 "content_id": "content-1",
                 "content": "Alpha",
                 "metadata": {"source": "policy"},
+                "indexed_at": indexed_at.isoformat(),
             },
             vector=[1.0, 0.0],
             shard_key=None,
@@ -279,6 +310,7 @@ def test_qdrant_vector_store_get_record_reconstructs_payload_and_vector() -> Non
     assert record.id == "kb-1:content-1"
     assert record.embedding == [1.0, 0.0]
     assert record.metadata == {"source": "policy"}
+    assert record.indexed_at == indexed_at
     assert client.retrieved_ids[0][0] == "chili_kb-1"
     assert client.retrieve_flags == [(True, True)]
 
@@ -426,6 +458,28 @@ def test_qdrant_vector_store_rejects_dimension_mismatch() -> None:
 
     with pytest.raises(VectorDimensionMismatchError, match="dimension"):
         store.search("kb-1", [1.0, 0.0], 1)
+
+
+def test_qdrant_vector_store_upsert_wraps_collection_errors() -> None:
+    client = _FakeQdrantClient()
+    client.collection_exists_error = RuntimeError("connection refused")
+    store = QdrantVectorStore(
+        VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=2),
+        client=cast(QdrantClientProtocol, client),
+    )
+
+    with pytest.raises(VectorStoreError, match="Failed to upsert Qdrant vector records."):
+        store.upsert_records(
+            "kb-1",
+            [
+                VectorRecord(
+                    id="11111111-1111-1111-1111-111111111111",
+                    knowledge_base_id="kb-1",
+                    content_id="content-1",
+                    embedding=[1.0, 0.0],
+                )
+            ],
+        )
 
 
 @pytest.mark.integration

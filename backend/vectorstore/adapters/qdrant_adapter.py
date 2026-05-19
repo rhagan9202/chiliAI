@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, cast
 from uuid import NAMESPACE_URL, uuid5
 
@@ -131,9 +132,9 @@ class QdrantVectorStore:
 
         self._validate_batch_dimensions(records)
         collection_name = self._collection_name(knowledge_base_id)
-        self._ensure_collection(collection_name)
 
         try:
+            self._ensure_collection(collection_name)
             self._client.upsert(
                 collection_name=collection_name,
                 points=[self._point_for(record) for record in records],
@@ -172,7 +173,10 @@ class QdrantVectorStore:
         except Exception as exc:
             raise VectorStoreError("Failed to search Qdrant vector records.") from exc
 
-        return [self._match_from_scored_point(point) for point in response.points]
+        try:
+            return [self._match_from_scored_point(point) for point in response.points]
+        except Exception as exc:
+            raise VectorStoreError("Failed to search Qdrant vector records.") from exc
 
     def get_record(
         self,
@@ -326,17 +330,21 @@ class QdrantVectorStore:
         ):
             raise VectorStoreError("Qdrant record did not include a dense vector.")
         dense_vector = cast(list[float], raw_vector)
-        return VectorRecord(
-            id=cast(str, payload.get("record_id", str(record.id))),
-            knowledge_base_id=cast(
+        record_data: dict[str, object] = {
+            "id": cast(str, payload.get("record_id", str(record.id))),
+            "knowledge_base_id": cast(
                 str,
                 payload.get("knowledge_base_id", knowledge_base_id),
             ),
-            content_id=cast(str, payload["content_id"]),
-            embedding=[float(value) for value in dense_vector],
-            content=cast(str | None, payload.get("content")),
-            metadata=cast(dict[str, MetadataValue], payload.get("metadata", {})),
-        )
+            "content_id": cast(str, payload["content_id"]),
+            "embedding": [float(value) for value in dense_vector],
+            "content": cast(str | None, payload.get("content")),
+            "metadata": cast(dict[str, MetadataValue], payload.get("metadata", {})),
+        }
+        indexed_at = payload.get("indexed_at")
+        if indexed_at is not None:
+            record_data["indexed_at"] = datetime.fromisoformat(cast(str, indexed_at))
+        return VectorRecord.model_validate(record_data)
 
     @staticmethod
     def _collection_name(knowledge_base_id: str) -> str:
