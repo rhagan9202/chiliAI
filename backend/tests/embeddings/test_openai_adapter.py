@@ -207,6 +207,10 @@ def test_openai_embedder_constructs_requests_and_preserves_item_order(
         "text-embedding-3-small",
     ]
     assert [item.dimensions for item in result.items] == [3, 3]
+    assert [item.vector for item in result.items] == [
+        result.vectors["item-1"],
+        result.vectors["item-2"],
+    ]
 
 
 def test_openai_embedder_batches_by_batch_size_and_token_budget(
@@ -377,6 +381,7 @@ def test_openai_embedder_live_smoke() -> None:
     if api_key is None or api_key.strip() == "":
         pytest.skip("OPENAI_API_KEY is required for OpenAI embedding live smoke.")
 
+    pytest.importorskip("openai")
     embedder = OpenAIEmbedder(
         EmbeddingsConfig(
             provider="openai",
@@ -397,6 +402,7 @@ def test_openai_embedder_live_smoke() -> None:
 
     assert len(result.vectors["probe"]) == result.metadata.dimensions
     assert result.items[0].channel == "text"
+    assert result.items[0].vector == result.vectors["probe"]
 
 
 def _vector_for_text(text: str) -> list[float]:

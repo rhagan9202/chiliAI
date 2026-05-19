@@ -95,6 +95,13 @@ def test_sentence_transformers_embedder_batches_and_normalizes_vectors() -> None
     ]
     assert [item.model_name for item in result.items] == [config.model] * 5
     assert [item.dimensions for item in result.items] == [config.dimensions] * 5
+    assert [item.vector for item in result.items] == [
+        result.vectors["item-1"],
+        result.vectors["item-2"],
+        result.vectors["item-3"],
+        result.vectors["item-4"],
+        result.vectors["item-5"],
+    ]
     assert list(result.vectors) == [
         "item-1",
         "item-2",
@@ -219,3 +226,4 @@ def test_sentence_transformers_embedder_local_smoke() -> None:
 
     assert len(result.vectors["probe"]) == result.metadata.dimensions
     assert result.items[0].channel == "text"
+    assert result.items[0].vector == result.vectors["probe"]

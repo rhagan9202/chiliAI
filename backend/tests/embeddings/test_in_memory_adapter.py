@@ -52,6 +52,7 @@ def test_in_memory_embedder_populates_text_channel_items() -> None:
     ]
     assert result.items[0].model_name == "test-model"
     assert result.items[0].dimensions == 4
+    assert result.items[0].vector == result.vectors["item-1"]
 
 
 def test_in_memory_embedder_differs_for_distinct_content() -> None:
