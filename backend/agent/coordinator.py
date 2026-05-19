@@ -1044,7 +1044,6 @@ def handle_graph_updated(
             EmbedRequest(
                 knowledge_base_id=document.knowledge_base_id,
                 include_graph_embeddings=True,
-                graph_embedding_dimension=3,
                 submissions=[
                     EmbedSubmission(
                         content_id=entity.id,

@@ -110,6 +110,7 @@ class _StaticGraphProvider:
     def __init__(self, vectors: dict[str, list[float]], *, dimensions: int) -> None:
         self._vectors = vectors
         self._dimensions = dimensions
+        self.calls: list[tuple[str, list[str], int]] = []
 
     def get_node_embeddings(
         self,
@@ -118,6 +119,7 @@ class _StaticGraphProvider:
         content_ids: Sequence[str],
         dimensions: int,
     ) -> GraphEmbeddingBatch:
+        self.calls.append((knowledge_base_id, list(content_ids), dimensions))
         return GraphEmbeddingBatch(
             vectors={
                 key: value for key, value in self._vectors.items() if key in content_ids
@@ -242,7 +244,6 @@ def test_handle_event_returns_zero_for_unhandled_event() -> None:
     )
 
     assert processed == 0
-
 
 
 def test_drain_ingestion_events_processes_uploaded_documents() -> None:
@@ -783,13 +784,14 @@ def test_handle_graph_updated_publishes_embeddings_complete_event() -> None:
 def test_handle_graph_updated_persists_text_and_graph_embedding_channels() -> None:
     event_bus = InMemoryEventBus()
     object_store = InMemoryObjectStore()
+    graph_provider = _StaticGraphProvider(
+        {"entity-1": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]},
+        dimensions=8,
+    )
     embeddings_service = create_embeddings_service(
         InMemoryEmbedder(dimensions=4),
         event_bus=event_bus,
-        graph_embedding_provider=_StaticGraphProvider(
-            {"entity-1": [0.1, 0.2, 0.3]},
-            dimensions=3,
-        ),
+        graph_embedding_provider=graph_provider,
     )
     event = _graph_updated_event_with_valid_entity(
         knowledge_base_id="kb-1",
@@ -814,6 +816,7 @@ def test_handle_graph_updated_persists_text_and_graph_embedding_channels() -> No
         ("entity-1", "text"),
         ("entity-1", "graph"),
     ]
+    assert graph_provider.calls == [("kb-1", ["entity-1"], 8)]
 
 
 def test_handle_graph_updated_publishes_kb_ready_for_zero_entities() -> None:
