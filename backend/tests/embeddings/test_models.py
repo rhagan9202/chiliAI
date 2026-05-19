@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from embeddings.models import (
-    EmbeddingChannel,
     EmbeddingItem,
     EmbeddingMetadata,
     EmbeddingRequest,
