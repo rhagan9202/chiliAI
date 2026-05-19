@@ -148,7 +148,7 @@ def test_service_context_retriever_defaults_to_text_embedding_channel() -> None:
     }
 
 
-def test_service_context_retriever_allows_embedding_channel_filter_override() -> None:
+def test_service_context_retriever_enforces_text_embedding_channel() -> None:
     service = _RecordingVectorService()
     retriever = ServiceContextRetriever(service)
 
@@ -159,7 +159,7 @@ def test_service_context_retriever_allows_embedding_channel_filter_override() ->
         filters={"embedding_channel": "graph"},
     )
 
-    assert service.search_requests[0].filters == {"embedding_channel": "graph"}
+    assert service.search_requests[0].filters == {"embedding_channel": "text"}
 
 
 def test_service_query_embedder_uses_configured_model_name() -> None:

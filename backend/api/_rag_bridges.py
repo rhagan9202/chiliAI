@@ -115,10 +115,8 @@ class ServiceContextRetriever:
         limit: int,
         filters: dict[str, str | int | float | bool],
     ) -> list[RetrievedContextItem]:
-        search_filters: dict[str, str | int | float | bool] = {
-            "embedding_channel": "text"
-        }
-        search_filters.update(filters)
+        search_filters: dict[str, str | int | float | bool] = dict(filters)
+        search_filters["embedding_channel"] = "text"
 
         request = VectorSearchRequest(
             knowledge_base_ids=[knowledge_base_id],

@@ -1768,7 +1768,7 @@ def handle_embeddings_complete(
                         content_id,
                         channel,
                     ),
-                    knowledge_base_id=namespace,
+                    knowledge_base_id=document.knowledge_base_id,
                     content_id=content_id,
                     embedding=list(embedding_item.vector),
                     metadata=metadata,
@@ -1817,7 +1817,7 @@ def handle_embeddings_complete(
                 documents=document_references,
             )
         )
-    return len(record_references)
+    return len(document_references)
 
 
 def _embedding_namespace(knowledge_base_id: str, channel: str) -> str:

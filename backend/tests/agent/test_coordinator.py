@@ -1301,7 +1301,7 @@ def test_handle_embeddings_complete_indexes_text_and_graph_channels_separately()
         event_bus=event_bus,
     )
 
-    assert count == 2
+    assert count == 1
     text_matches = vector_store.search(
         "kb-1",
         [0.1, 0.2, 0.3, 0.4],
@@ -1316,6 +1316,11 @@ def test_handle_embeddings_complete_indexes_text_and_graph_channels_separately()
     )
     assert text_matches[0].record_id == "kb-1:entity-1:text"
     assert graph_matches[0].record_id == "kb-1:entity-1:graph"
+    assert graph_matches[0].metadata["knowledge_base_id"] == "kb-1"
+    indexed_event = next(
+        event for event in event_bus.published_events if isinstance(event, VectorsIndexedEvent)
+    )
+    assert indexed_event.documents[0].vector_count == 2
 
 
 def test_handle_embeddings_complete_skips_when_no_vectors() -> None:
