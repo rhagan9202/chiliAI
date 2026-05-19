@@ -40,9 +40,10 @@ class InMemoryVectorStore:
 
         self._dimensions[knowledge_base_id] = dimension
         bucket = self._records.setdefault(knowledge_base_id, {})
-        for record in records:
+        stored_records = [record.model_copy(deep=True) for record in records]
+        for record in stored_records:
             bucket[record.id] = record
-        return list(records)
+        return [record.model_copy(deep=True) for record in stored_records]
 
     def search(
         self,
@@ -82,7 +83,10 @@ class InMemoryVectorStore:
         knowledge_base_id: str,
         record_id: str,
     ) -> VectorRecord | None:
-        return self._records.get(knowledge_base_id, {}).get(record_id)
+        record = self._records.get(knowledge_base_id, {}).get(record_id)
+        if record is None:
+            return None
+        return record.model_copy(deep=True)
 
     def count_records(self, knowledge_base_id: str) -> int:
         return len(self._records.get(knowledge_base_id, {}))
