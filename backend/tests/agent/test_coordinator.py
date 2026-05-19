@@ -38,7 +38,12 @@ from config.schema import (
 from monitoring.adapters.in_memory import InMemoryObservationWriter
 from records.adapters.in_memory import InMemoryRawRecordStore
 from embeddings.adapters.in_memory import InMemoryEmbedder
-from embeddings.models import EmbeddingMetadata, EmbeddingResult, GraphEmbeddingBatch
+from embeddings.models import (
+    EmbeddingMetadata,
+    EmbeddingResult,
+    EmbeddingVector,
+    GraphEmbeddingBatch,
+)
 from embeddings.service import EmbeddingsService, create_embeddings_service
 from embeddings.service_models import EmbedRequest, EmbedResponse, EmbeddedItem
 from events.protocols import EventDelivery
@@ -1157,6 +1162,49 @@ def _seed_validation_and_graph(
     )
 
 
+def _embeddings_complete_event_with_artifacts(
+    *,
+    object_store: InMemoryObjectStore,
+    embeddings_result: EmbeddingResult,
+    knowledge_base_id: str,
+) -> EmbeddingsCompleteEvent:
+    graph_update_storage_key = (
+        f"knowledgebases/{knowledge_base_id}/graph_updates/extract-1.json"
+    )
+    validation_storage_key = (
+        f"knowledgebases/{knowledge_base_id}/validations/extract-1.json"
+    )
+    embeddings_storage_key = (
+        f"knowledgebases/{knowledge_base_id}/embeddings/extract-1.embeddings.json"
+    )
+    _seed_validation_and_graph(
+        object_store,
+        knowledge_base_id=knowledge_base_id,
+        graph_update_storage_key=graph_update_storage_key,
+        validation_storage_key=validation_storage_key,
+    )
+    object_store.put_bytes(
+        embeddings_storage_key,
+        embeddings_result.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    return EmbeddingsCompleteEvent(
+        correlation_id="corr-embeddings-1",
+        documents=[
+            EmbeddingsCompleteDocumentReference(
+                knowledge_base_id=knowledge_base_id,
+                source_document_id="doc-1",
+                parsed_document_id="parsed-1",
+                extraction_result_id="extract-1",
+                validation_report_id="validate-1",
+                entity_count=1,
+                graph_update_storage_key=graph_update_storage_key,
+                embeddings_storage_key=embeddings_storage_key,
+            )
+        ],
+    )
+
+
 def test_handle_embeddings_complete_indexes_vectors_and_publishes_event() -> None:
     event_bus = InMemoryEventBus()
     object_store = InMemoryObjectStore()
@@ -1205,8 +1253,69 @@ def test_handle_embeddings_complete_indexes_vectors_and_publishes_event() -> Non
     )
     assert indexed_event.correlation_id == "corr-vec-1"
     assert indexed_event.documents[0].vector_count == 1
-    assert indexed_event.documents[0].record_ids == ["kb-1:entity-1"]
+    assert indexed_event.documents[0].record_ids == ["kb-1:entity-1:text"]
     assert indexed_event.records[0].dimension == 3
+
+
+def test_handle_embeddings_complete_indexes_text_and_graph_channels_separately() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    vector_store = InMemoryVectorStore()
+    embeddings_result = EmbeddingResult(
+        request_id="embed-1",
+        vectors={"entity-1": [0.1, 0.2, 0.3, 0.4]},
+        metadata=EmbeddingMetadata(
+            model_name="text-model",
+            dimensions=4,
+            provider="test",
+        ),
+        items=[
+            EmbeddingVector(
+                content_id="entity-1",
+                channel="text",
+                vector=[0.1, 0.2, 0.3, 0.4],
+                model_name="text-model",
+                provider="test",
+                dimensions=4,
+            ),
+            EmbeddingVector(
+                content_id="entity-1",
+                channel="graph",
+                vector=[0.8, 0.1],
+                model_name="gnn-spectral",
+                provider="test-gnn",
+                dimensions=2,
+            ),
+        ],
+    )
+    event = _embeddings_complete_event_with_artifacts(
+        object_store=object_store,
+        embeddings_result=embeddings_result,
+        knowledge_base_id="kb-1",
+    )
+
+    count = handle_embeddings_complete(
+        event,
+        vector_store=vector_store,
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    assert count == 2
+    text_matches = vector_store.search(
+        "kb-1",
+        [0.1, 0.2, 0.3, 0.4],
+        5,
+        {"embedding_channel": "text"},
+    )
+    graph_matches = vector_store.search(
+        "kb-1__graph",
+        [0.8, 0.1],
+        5,
+        {"embedding_channel": "graph"},
+    )
+    assert text_matches[0].record_id == "kb-1:entity-1:text"
+    assert graph_matches[0].record_id == "kb-1:entity-1:graph"
 
 
 def test_handle_embeddings_complete_skips_when_no_vectors() -> None:

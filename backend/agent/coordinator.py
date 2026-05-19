@@ -1738,36 +1738,54 @@ def handle_embeddings_complete(
         )
         entities_by_id = {entity.id: entity for entity in validation_report.valid_entities}
 
-        records: list[VectorRecord] = []
-        for content_id in sorted(embeddings_result.vectors):
-            embedding = embeddings_result.vectors[content_id]
+        records_by_namespace: dict[str, list[VectorRecord]] = {}
+        embedding_items = _embedding_items_for_indexing(embeddings_result)
+        for embedding_item in sorted(
+            embedding_items,
+            key=lambda item: (item.channel, item.content_id),
+        ):
+            content_id = embedding_item.content_id
+            channel = embedding_item.channel
             entity = entities_by_id.get(content_id)
             metadata: dict[str, str | int | float | bool] = {
                 "knowledge_base_id": document.knowledge_base_id,
                 "entity_id": content_id,
+                "embedding_channel": channel,
+                "embedding_model_name": embedding_item.model_name,
+                "embedding_provider": embedding_item.provider,
+                "embedding_dimensions": embedding_item.dimensions,
                 "source_document_id": document.source_document_id,
                 "extraction_result_id": document.extraction_result_id,
                 "validation_report_id": document.validation_report_id,
             }
             if entity is not None:
                 metadata["entity_type"] = entity.type
-            records.append(
+            namespace = _embedding_namespace(document.knowledge_base_id, channel)
+            records_by_namespace.setdefault(namespace, []).append(
                 VectorRecord(
-                    id=f"{document.knowledge_base_id}:{content_id}",
-                    knowledge_base_id=document.knowledge_base_id,
+                    id=_embedding_record_id(
+                        document.knowledge_base_id,
+                        content_id,
+                        channel,
+                    ),
+                    knowledge_base_id=namespace,
                     content_id=content_id,
-                    embedding=list(embedding),
+                    embedding=list(embedding_item.vector),
                     metadata=metadata,
                 )
             )
 
-        if not records:
+        if not records_by_namespace:
             continue
 
-        stored_records = vector_store.upsert_records(
-            document.knowledge_base_id,
-            records,
-        )
+        stored_records: list[VectorRecord] = []
+        for namespace in sorted(records_by_namespace):
+            stored_records.extend(
+                vector_store.upsert_records(
+                    namespace,
+                    records_by_namespace[namespace],
+                )
+            )
 
         document_references.append(
             VectorsIndexedDocumentReference(
@@ -1783,7 +1801,7 @@ def handle_embeddings_complete(
         )
         record_references.extend(
             VectorIndexedReference(
-                knowledge_base_id=record.knowledge_base_id,
+                knowledge_base_id=document.knowledge_base_id,
                 record_id=record.id,
                 content_id=record.content_id,
                 dimension=len(record.embedding),
@@ -1799,7 +1817,37 @@ def handle_embeddings_complete(
                 documents=document_references,
             )
         )
-    return len(document_references)
+    return len(record_references)
+
+
+def _embedding_namespace(knowledge_base_id: str, channel: str) -> str:
+    if channel == "graph":
+        return f"{knowledge_base_id}__graph"
+    return knowledge_base_id
+
+
+def _embedding_record_id(knowledge_base_id: str, content_id: str, channel: str) -> str:
+    return f"{knowledge_base_id}:{content_id}:{channel}"
+
+
+def _embedding_items_for_indexing(
+    embeddings_result: EmbeddingResult,
+) -> list[EmbeddingVector]:
+    if embeddings_result.items:
+        return list(embeddings_result.items)
+
+    return [
+        EmbeddingVector(
+            content_id=content_id,
+            channel="text",
+            vector=list(vector),
+            model_name=embeddings_result.metadata.model_name,
+            provider=embeddings_result.metadata.provider,
+            dimensions=embeddings_result.metadata.dimensions,
+            created_at=embeddings_result.metadata.created_at,
+        )
+        for content_id, vector in embeddings_result.vectors.items()
+    ]
 
 
 def handle_vectors_indexed(
