@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import cast
 
@@ -197,6 +198,15 @@ def test_openai_embedder_constructs_requests_and_preserves_item_order(
     assert result.metadata.provider == "openai"
     assert result.metadata.model_name == "text-embedding-3-small"
     assert result.metadata.dimensions == 3
+    assert [(item.content_id, item.channel) for item in result.items] == [
+        ("item-1", "text"),
+        ("item-2", "text"),
+    ]
+    assert [item.model_name for item in result.items] == [
+        "text-embedding-3-small",
+        "text-embedding-3-small",
+    ]
+    assert [item.dimensions for item in result.items] == [3, 3]
 
 
 def test_openai_embedder_batches_by_batch_size_and_token_budget(
@@ -359,6 +369,34 @@ def test_openai_embedder_rejects_dimension_mismatch(
                 items=[EmbeddingItem(id="item-1", content="Alpha")],
             )
         )
+
+
+@pytest.mark.integration
+def test_openai_embedder_live_smoke() -> None:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key is None or api_key.strip() == "":
+        pytest.skip("OPENAI_API_KEY is required for OpenAI embedding live smoke.")
+
+    embedder = OpenAIEmbedder(
+        EmbeddingsConfig(
+            provider="openai",
+            model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
+            dimensions=int(os.getenv("OPENAI_EMBEDDING_DIMENSIONS", "1536")),
+            batch_size=2,
+            api_key_env_var="OPENAI_API_KEY",
+        )
+    )
+
+    result = embedder.embed(
+        EmbeddingRequest(
+            request_id="live-openai",
+            model_name="ignored",
+            items=[EmbeddingItem(id="probe", content="live embedding smoke test")],
+        )
+    )
+
+    assert len(result.vectors["probe"]) == result.metadata.dimensions
+    assert result.items[0].channel == "text"
 
 
 def _vector_for_text(text: str) -> list[float]:

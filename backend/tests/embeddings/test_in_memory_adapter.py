@@ -36,6 +36,24 @@ def test_in_memory_embedder_honors_configured_dimensions() -> None:
     assert len(result.vectors["item-1"]) == 16
 
 
+def test_in_memory_embedder_populates_text_channel_items() -> None:
+    embedder = InMemoryEmbedder(dimensions=4)
+
+    result = embedder.embed(
+        EmbeddingRequest(
+            request_id="request-1",
+            model_name="test-model",
+            items=[EmbeddingItem(id="item-1", content="Alpha")],
+        )
+    )
+
+    assert [(item.content_id, item.channel) for item in result.items] == [
+        ("item-1", "text")
+    ]
+    assert result.items[0].model_name == "test-model"
+    assert result.items[0].dimensions == 4
+
+
 def test_in_memory_embedder_differs_for_distinct_content() -> None:
     embedder = InMemoryEmbedder()
 
