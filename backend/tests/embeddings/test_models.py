@@ -49,6 +49,18 @@ def test_embedding_vector_requires_non_empty_vector() -> None:
         )
 
 
+def test_embedding_vector_requires_matching_dimensions() -> None:
+    with pytest.raises(ValueError, match="length must match"):
+        EmbeddingVector(
+            content_id="entity-1",
+            channel="text",
+            vector=[0.1, 0.2],
+            model_name="model",
+            provider="local",
+            dimensions=3,
+        )
+
+
 def test_embedding_result_exposes_text_vectors_for_compatibility() -> None:
     result = EmbeddingResult(
         request_id="request-1",
@@ -99,6 +111,29 @@ def test_embedding_result_preserves_graph_channel_items() -> None:
     assert result.graph_status.requested is True
 
 
+def test_embedding_result_requires_text_vector() -> None:
+    with pytest.raises(ValueError, match="at least one text vector"):
+        EmbeddingResult(
+            request_id="request-1",
+            vectors={},
+            metadata=EmbeddingMetadata(
+                model_name="graph-model",
+                dimensions=2,
+                provider="gnn",
+            ),
+            items=[
+                EmbeddingVector(
+                    content_id="entity-1",
+                    channel="graph",
+                    vector=[0.1, 0.2],
+                    model_name="graph-model",
+                    provider="gnn",
+                    dimensions=2,
+                )
+            ],
+        )
+
+
 def test_graph_embedding_batch_requires_positive_dimensions() -> None:
     with pytest.raises(ValueError, match="greater than 0"):
         GraphEmbeddingBatch(
@@ -106,6 +141,16 @@ def test_graph_embedding_batch_requires_positive_dimensions() -> None:
             model_name="gnn",
             provider="gnn",
             dimensions=0,
+        )
+
+
+def test_graph_embedding_batch_requires_vectors_match_dimensions() -> None:
+    with pytest.raises(ValueError, match="must match dimensions"):
+        GraphEmbeddingBatch(
+            vectors={"entity-1": [1.0, 2.0]},
+            model_name="gnn",
+            provider="gnn",
+            dimensions=3,
         )
 
 
