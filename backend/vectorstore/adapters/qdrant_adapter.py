@@ -118,7 +118,7 @@ class QdrantVectorStore:
         self._config = config
         self._client: QdrantClientProtocol = cast(
             QdrantClientProtocol,
-            client or client_class(url=config.uri, prefer_grpc=True),
+            client or client_class(url=config.uri, prefer_grpc=False),
         )
         self._distance: Distance = _distance_for(config.distance_metric)
 

@@ -11,6 +11,7 @@ from uuid import uuid4
 import pytest
 
 from config.schema import VectorStoreConfig
+import vectorstore.adapters.qdrant_adapter as qdrant_adapter
 from vectorstore.adapters.qdrant_adapter import QdrantClientProtocol, QdrantVectorStore
 from vectorstore.exceptions import VectorDimensionMismatchError, VectorStoreError
 from vectorstore.models import VectorRecord
@@ -126,6 +127,24 @@ class _FakeQdrantClient:
         if self.delete_collection_response:
             self.existing_collections.discard(collection_name)
         return self.delete_collection_response
+
+
+def test_qdrant_vector_store_uses_http_client_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client_kwargs: dict[str, object] = {}
+
+    class FakeClient:
+        def __init__(self, **kwargs: object) -> None:
+            client_kwargs.update(kwargs)
+
+    monkeypatch.setattr(qdrant_adapter, "QdrantClient", FakeClient)
+
+    QdrantVectorStore(
+        VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=2)
+    )
+
+    assert client_kwargs == {"url": "http://qdrant:6333", "prefer_grpc": False}
 
 
 def test_qdrant_vector_store_creates_collection_and_upserts_records() -> None:
@@ -529,7 +548,7 @@ def test_qdrant_vector_store_round_trip_search() -> None:
         assert store.count_records(knowledge_base_id) == 0
     finally:
         store.delete_records(knowledge_base_id, [record.id])
-        cleanup_client = QdrantClient(url=uri, prefer_grpc=True)
+        cleanup_client = QdrantClient(url=uri)
         cleanup_client.delete_collection(f"chili_{knowledge_base_id}")
 
 
@@ -569,5 +588,5 @@ def test_qdrant_vector_store_live_delete_namespace() -> None:
         assert store.delete_namespace(knowledge_base_id) == 2
         assert store.delete_namespace(knowledge_base_id) == 0
     finally:
-        cleanup_client = QdrantClient(url=uri, prefer_grpc=True)
+        cleanup_client = QdrantClient(url=uri)
         cleanup_client.delete_collection(f"chili_{knowledge_base_id}")
