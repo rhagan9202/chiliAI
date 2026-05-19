@@ -180,6 +180,12 @@ class VectorsIndexedEvent(EventBase):
     )
 
 
+class VectorsDeletedEvent(EventBase):
+    event_type: Literal["vectors.deleted"] = "vectors.deleted"
+    knowledge_base_id: str
+    deleted_count: int = Field(ge=0)
+
+
 class KnowledgeBaseReadyReference(BaseModel):
     knowledge_base_id: str
     entity_count: int = Field(ge=0)
@@ -411,6 +417,7 @@ AnyEvent = (
     | GraphUpdatedEvent
     | EmbeddingsCompleteEvent
     | VectorsIndexedEvent
+    | VectorsDeletedEvent
     | KnowledgeBaseReadyEvent
     | LlmCompletedEvent
     | EmbeddingsGeneratedEvent
@@ -480,6 +487,7 @@ __all__ = [
     "TimeseriesAnalyzedReference",
     "ValidatedDocumentReference",
     "VectorIndexedReference",
+    "VectorsDeletedEvent",
     "VectorsIndexedDocumentReference",
     "VectorsIndexedEvent",
 ]

@@ -9,6 +9,8 @@ from vectorstore.models import MetadataValue, VectorMatch, VectorRecord
 from vectorstore.protocols import VectorServiceProtocol
 from vectorstore.service import VectorService, create_vector_service
 from vectorstore.service_models import (
+    VectorAuditArtifact,
+    VectorDeleteResponse,
     VectorIndexReceipt,
     VectorIndexRequest,
     VectorIndexSubmission,
@@ -20,6 +22,8 @@ from vectorstore.service_models import (
 __all__ = [
     "InMemoryVectorStore",
     "MetadataValue",
+    "VectorAuditArtifact",
+    "VectorDeleteResponse",
     "VectorDimensionMismatchError",
     "VectorError",
     "VectorIndexReceipt",

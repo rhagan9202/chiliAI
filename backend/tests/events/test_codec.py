@@ -39,6 +39,7 @@ from events.types import (
     TimeseriesAnalyzedReference,
     ValidatedDocumentReference,
     VectorIndexedReference,
+    VectorsDeletedEvent,
     VectorsIndexedEvent,
 )
 
@@ -244,6 +245,16 @@ def test_event_codec_round_trips_vectors_indexed_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "vectors.indexed"
+
+
+def test_event_codec_round_trips_vectors_deleted_event() -> None:
+    event = VectorsDeletedEvent(knowledge_base_id="kb-1", deleted_count=2)
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "vectors.deleted"
 
 
 def test_event_codec_round_trips_llm_completed_event() -> None:
