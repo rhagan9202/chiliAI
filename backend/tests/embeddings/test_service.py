@@ -190,6 +190,34 @@ def test_embeddings_service_requires_graph_vectors_when_requested() -> None:
         )
 
 
+def test_embeddings_service_requires_graph_channel_even_when_not_included() -> None:
+    event_bus = InMemoryEventBus()
+    graph_provider = _GraphProvider(vectors={"content-1": [0.3, 0.4, 0.5]})
+    service = create_embeddings_service(
+        InMemoryEmbedder(dimensions=4),
+        event_bus=event_bus,
+        graph_embedding_provider=graph_provider,
+    )
+
+    response = service.embed(
+        EmbedRequest(
+            knowledge_base_id="kb-1",
+            include_graph_embeddings=False,
+            require_graph_embeddings=True,
+            graph_embedding_dimension=3,
+            submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+        )
+    )
+
+    assert [(item.content_id, item.channel) for item in response.items] == [
+        ("content-1", "text"),
+        ("content-1", "graph"),
+    ]
+    assert graph_provider.calls == [("kb-1", ["content-1"], 3)]
+    assert response.graph_status is not None
+    assert response.graph_status.missing_content_ids == []
+
+
 def test_embeddings_service_records_graph_provider_failure_when_not_required() -> None:
     event_bus = InMemoryEventBus()
     service = create_embeddings_service(

@@ -109,7 +109,7 @@ class EmbeddingsService:
         request: EmbedRequest,
         embedding_request: EmbeddingRequest,
     ) -> tuple[list[EmbeddedItem], GraphEmbeddingStatus | None]:
-        if not request.include_graph_embeddings:
+        if not request.include_graph_embeddings and not request.require_graph_embeddings:
             return [], None
 
         content_ids = [item.id for item in embedding_request.items]
