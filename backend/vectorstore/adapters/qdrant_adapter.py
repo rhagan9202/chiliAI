@@ -189,12 +189,11 @@ class QdrantVectorStore:
                 with_payload=True,
                 with_vectors=True,
             )
+            if not records:
+                return None
+            return self._record_from_qdrant_record(records[0], knowledge_base_id)
         except Exception as exc:
             raise VectorStoreError("Failed to retrieve Qdrant vector record.") from exc
-
-        if not records:
-            return None
-        return self._record_from_qdrant_record(records[0], knowledge_base_id)
 
     def count_records(self, knowledge_base_id: str) -> int:
         collection_name = self._collection_name(knowledge_base_id)
@@ -218,7 +217,10 @@ class QdrantVectorStore:
             if not self._client.collection_exists(collection_name):
                 return 0
             deleted_count = self.count_records(knowledge_base_id)
-            self._client.delete_collection(collection_name=collection_name)
+            if not self._client.delete_collection(collection_name=collection_name):
+                raise VectorStoreError(
+                    "Qdrant collection deletion was not acknowledged."
+                )
         except Exception as exc:
             raise VectorStoreError("Failed to delete Qdrant vector namespace.") from exc
         return deleted_count
