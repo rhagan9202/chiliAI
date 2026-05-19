@@ -14,10 +14,14 @@ from embeddings.exceptions import (
     EmbeddingProviderError,
 )
 from embeddings.models import (
+    EmbeddingChannel,
     EmbeddingItem,
     EmbeddingMetadata,
     EmbeddingRequest,
     EmbeddingResult,
+    EmbeddingVector,
+    GraphEmbeddingBatch,
+    GraphEmbeddingStatus,
 )
 from embeddings.protocols import EmbeddingsServiceProtocol
 from embeddings.service import EmbeddingsService, create_embeddings_service
@@ -34,6 +38,7 @@ __all__ = [
     "EmbedSubmission",
     "EmbedderProtocol",
     "EmbeddedItem",
+    "EmbeddingChannel",
     "EmbeddingConfigurationError",
     "EmbeddingError",
     "EmbeddingItem",
@@ -41,8 +46,11 @@ __all__ = [
     "EmbeddingProviderError",
     "EmbeddingRequest",
     "EmbeddingResult",
+    "EmbeddingVector",
     "EmbeddingsService",
     "EmbeddingsServiceProtocol",
+    "GraphEmbeddingBatch",
+    "GraphEmbeddingStatus",
     "InMemoryEmbedder",
     "OpenAIEmbedder",
     "SentenceTransformersEmbedder",
