@@ -234,6 +234,7 @@ class WorkerDependencies:
     event_settings: EventBusSettings
     workflow_run_store: WorkflowRunStoreProtocol
     workflow_tracker: WorkflowEventTracker
+    graph_embeddings_enabled: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -758,6 +759,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         event_settings=event_settings,
         workflow_run_store=workflow_run_store,
         workflow_tracker=workflow_tracker,
+        graph_embeddings_enabled=config.capabilities.gnn,
     )
 
 
@@ -1002,6 +1004,7 @@ def handle_graph_updated(
     embeddings_service: EmbeddingsServiceProtocol,
     object_store: ObjectStore,
     event_bus: EventBus,
+    include_graph_embeddings: bool = False,
 ) -> int:
     """Generate and persist embeddings for entities upserted into the graph."""
     references: list[EmbeddingsCompleteDocumentReference] = []
@@ -1043,7 +1046,7 @@ def handle_graph_updated(
         response = embeddings_service.embed(
             EmbedRequest(
                 knowledge_base_id=document.knowledge_base_id,
-                include_graph_embeddings=True,
+                include_graph_embeddings=include_graph_embeddings,
                 submissions=[
                     EmbedSubmission(
                         content_id=entity.id,
@@ -2003,6 +2006,7 @@ def handle_event(
     risk_history_writer: RiskHistoryWriter | None = None,
     alert_history_writer: AlertHistoryWriter | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
+    graph_embeddings_enabled: bool = False,
 ) -> int:
     """Handle a single event and return the number of processed documents."""
 
@@ -2043,6 +2047,7 @@ def handle_event(
             metrics_throttle=metrics_throttle,
             risk_history_writer=risk_history_writer,
             alert_history_writer=alert_history_writer,
+            graph_embeddings_enabled=graph_embeddings_enabled,
         )
         if workflow_tracker is not None:
             workflow_tracker.complete_event(event)
@@ -2074,6 +2079,7 @@ def _dispatch_event(
     metrics_throttle: MetricsRecomputeThrottle | None,
     risk_history_writer: RiskHistoryWriter | None,
     alert_history_writer: AlertHistoryWriter | None,
+    graph_embeddings_enabled: bool,
 ) -> int:
     del delivery  # reserved for future stream offsets / dlq metadata
     if isinstance(event, DocumentsUploadedEvent):
@@ -2113,6 +2119,7 @@ def _dispatch_event(
             embeddings_service=embeddings_service,
             object_store=object_store,
             event_bus=event_bus,
+            include_graph_embeddings=graph_embeddings_enabled,
         )
         if (
             gnn_service is not None
@@ -2302,6 +2309,7 @@ async def drain_ingestion_events(
     retry_policy: RetryPolicy | None = None,
     health_state: HealthState | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
+    graph_embeddings_enabled: bool = False,
     sleep: Callable[[float], "asyncio.Future[None] | object"] = asyncio.sleep,
 ) -> int:
     """Consume and process available ingestion events with retry/DLQ semantics."""
@@ -2357,6 +2365,7 @@ async def drain_ingestion_events(
                 risk_history_writer=risk_history_writer,
                 alert_history_writer=alert_history_writer,
                 workflow_tracker=workflow_tracker,
+                graph_embeddings_enabled=graph_embeddings_enabled,
             )
 
         def _record_failure(
@@ -2473,6 +2482,7 @@ async def run_worker(
                 retry_policy=policy,
                 health_state=health_state,
                 workflow_tracker=deps.workflow_tracker,
+                graph_embeddings_enabled=deps.graph_embeddings_enabled,
             )
             if processed:
                 logger.info("Processed %s ingestion document(s)", processed)

@@ -763,9 +763,10 @@ def test_handle_graph_updated_publishes_embeddings_complete_event() -> None:
         'id=provider-1\ntype=provider\nalpha="first"\nzeta="last"'
     )
     assert request.submissions[1].content == "Beta Clinic"
+    assert request.include_graph_embeddings is False
 
-    assert isinstance(event_bus.published_events[-1], EmbeddingsCompleteEvent)
     complete_event = event_bus.published_events[-1]
+    assert isinstance(complete_event, EmbeddingsCompleteEvent)
     assert complete_event.correlation_id == "corr-embeddings-123"
     complete_reference = complete_event.documents[0]
     assert complete_reference.entity_count == 2
@@ -778,6 +779,7 @@ def test_handle_graph_updated_publishes_embeddings_complete_event() -> None:
     embeddings_result = EmbeddingResult.model_validate_json(stored_embeddings.content)
     assert embeddings_result.request_id == "embed-request-1"
     assert list(embeddings_result.vectors) == ["provider-1", "provider-2"]
+    assert embeddings_result.graph_status is None
     assert stored_embeddings.metadata["graph_update_storage_key"] == graph_update_storage_key
 
 
@@ -804,10 +806,12 @@ def test_handle_graph_updated_persists_text_and_graph_embedding_channels() -> No
         embeddings_service=embeddings_service,
         object_store=object_store,
         event_bus=event_bus,
+        include_graph_embeddings=True,
     )
 
     assert handled == 1
     complete_event = event_bus.published_events[-1]
+    assert isinstance(complete_event, EmbeddingsCompleteEvent)
     storage_key = complete_event.documents[0].embeddings_storage_key
     artifact = EmbeddingResult.model_validate_json(
         object_store.get_bytes(storage_key).content
