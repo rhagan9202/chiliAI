@@ -77,6 +77,32 @@ class InMemoryVectorStore:
         scored_matches.sort(key=lambda match: match.score, reverse=True)
         return scored_matches[:limit]
 
+    def get_record(
+        self,
+        knowledge_base_id: str,
+        record_id: str,
+    ) -> VectorRecord | None:
+        return self._records.get(knowledge_base_id, {}).get(record_id)
+
+    def count_records(self, knowledge_base_id: str) -> int:
+        return len(self._records.get(knowledge_base_id, {}))
+
+    def delete_record(self, knowledge_base_id: str, record_id: str) -> bool:
+        bucket = self._records.get(knowledge_base_id)
+        if bucket is None or record_id not in bucket:
+            return False
+        del bucket[record_id]
+        if not bucket:
+            self._records.pop(knowledge_base_id, None)
+            self._dimensions.pop(knowledge_base_id, None)
+        return True
+
+    def delete_namespace(self, knowledge_base_id: str) -> int:
+        deleted_count = len(self._records.get(knowledge_base_id, {}))
+        self._records.pop(knowledge_base_id, None)
+        self._dimensions.pop(knowledge_base_id, None)
+        return deleted_count
+
 
 def _matches_filters(record: VectorRecord, filters: dict[str, MetadataValue]) -> bool:
     for key, value in filters.items():
