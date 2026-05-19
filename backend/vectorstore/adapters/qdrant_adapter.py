@@ -13,6 +13,7 @@ from vectorstore.models import MetadataValue, VectorMatch, VectorRecord
 if TYPE_CHECKING:
     from qdrant_client import QdrantClient as QdrantClientType
     from qdrant_client.http.models.models import (
+        CountResult,
         Distance,
         FieldCondition,
         Filter,
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
         PointStruct,
         QueryResponse,
         Range,
+        Record,
         ScoredPoint,
         VectorParams,
     )
@@ -59,6 +61,24 @@ class QdrantClientProtocol(Protocol):
         points_selector: PointIdsList,
         **kwargs: object,
     ) -> object: ...
+
+    def retrieve(
+        self,
+        collection_name: str,
+        ids: Sequence[str],
+        with_payload: bool,
+        with_vectors: bool,
+        **kwargs: object,
+    ) -> list[Record]: ...
+
+    def count(
+        self,
+        collection_name: str,
+        exact: bool,
+        **kwargs: object,
+    ) -> CountResult: ...
+
+    def delete_collection(self, collection_name: str, **kwargs: object) -> bool: ...
 
 
 class QdrantModelsProtocol(Protocol):
@@ -154,6 +174,55 @@ class QdrantVectorStore:
 
         return [self._match_from_scored_point(point) for point in response.points]
 
+    def get_record(
+        self,
+        knowledge_base_id: str,
+        record_id: str,
+    ) -> VectorRecord | None:
+        collection_name = self._collection_name(knowledge_base_id)
+        try:
+            if not self._client.collection_exists(collection_name):
+                return None
+            records = self._client.retrieve(
+                collection_name=collection_name,
+                ids=[_point_id_for(record_id)],
+                with_payload=True,
+                with_vectors=True,
+            )
+        except Exception as exc:
+            raise VectorStoreError("Failed to retrieve Qdrant vector record.") from exc
+
+        if not records:
+            return None
+        return self._record_from_qdrant_record(records[0], knowledge_base_id)
+
+    def count_records(self, knowledge_base_id: str) -> int:
+        collection_name = self._collection_name(knowledge_base_id)
+        try:
+            if not self._client.collection_exists(collection_name):
+                return 0
+            result = self._client.count(collection_name=collection_name, exact=True)
+        except Exception as exc:
+            raise VectorStoreError("Failed to count Qdrant vector records.") from exc
+        return int(result.count)
+
+    def delete_record(self, knowledge_base_id: str, record_id: str) -> bool:
+        if self.get_record(knowledge_base_id, record_id) is None:
+            return False
+        self.delete_records(knowledge_base_id, [record_id])
+        return True
+
+    def delete_namespace(self, knowledge_base_id: str) -> int:
+        collection_name = self._collection_name(knowledge_base_id)
+        try:
+            if not self._client.collection_exists(collection_name):
+                return 0
+            deleted_count = self.count_records(knowledge_base_id)
+            self._client.delete_collection(collection_name=collection_name)
+        except Exception as exc:
+            raise VectorStoreError("Failed to delete Qdrant vector namespace.") from exc
+        return deleted_count
+
     def delete_records(self, knowledge_base_id: str, record_ids: Sequence[str]) -> int:
         """Delete the provided record IDs from the Qdrant collection."""
 
@@ -241,6 +310,30 @@ class QdrantVectorStore:
             score=float(point.score),
             content=cast(str | None, payload.get("content")),
             metadata=cast(dict[str, MetadataValue], raw_metadata),
+        )
+
+    def _record_from_qdrant_record(
+        self,
+        record: Record,
+        knowledge_base_id: str,
+    ) -> VectorRecord:
+        payload = cast(dict[str, object], record.payload or {})
+        raw_vector = record.vector
+        if not isinstance(raw_vector, list) or any(
+            isinstance(value, list) for value in raw_vector
+        ):
+            raise VectorStoreError("Qdrant record did not include a dense vector.")
+        dense_vector = cast(list[float], raw_vector)
+        return VectorRecord(
+            id=cast(str, payload.get("record_id", str(record.id))),
+            knowledge_base_id=cast(
+                str,
+                payload.get("knowledge_base_id", knowledge_base_id),
+            ),
+            content_id=cast(str, payload["content_id"]),
+            embedding=[float(value) for value in dense_vector],
+            content=cast(str | None, payload.get("content")),
+            metadata=cast(dict[str, MetadataValue], payload.get("metadata", {})),
         )
 
     @staticmethod

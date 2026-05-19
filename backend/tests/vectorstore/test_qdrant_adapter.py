@@ -28,6 +28,11 @@ class _FakeQueryResponse:
         self.points = points
 
 
+class _FakeCountResponse:
+    def __init__(self, count: int) -> None:
+        self.count = count
+
+
 class _FakeQdrantClient:
     def __init__(self) -> None:
         self.created_collections: list[tuple[str, qdrant_models.VectorParams]] = []
@@ -38,6 +43,11 @@ class _FakeQdrantClient:
         self.deletes: list[tuple[str, qdrant_models.PointIdsList]] = []
         self.existing_collections: set[str] = set()
         self.query_response = _FakeQueryResponse(points=[])
+        self.retrieved_ids: list[tuple[str, list[str]]] = []
+        self.counted_collections: list[str] = []
+        self.deleted_collections: list[str] = []
+        self.retrieve_response: list[qdrant_models.Record] = []
+        self.count_response = _FakeCountResponse(count=0)
 
     def collection_exists(self, collection_name: str, **_: object) -> bool:
         return collection_name in self.existing_collections
@@ -81,6 +91,33 @@ class _FakeQdrantClient:
     ) -> object:
         self.deletes.append((collection_name, points_selector))
         return object()
+
+    def retrieve(
+        self,
+        collection_name: str,
+        ids: Sequence[str],
+        with_payload: bool,
+        with_vectors: bool,
+        **_: object,
+    ) -> list[qdrant_models.Record]:
+        del with_payload, with_vectors
+        self.retrieved_ids.append((collection_name, list(ids)))
+        return self.retrieve_response
+
+    def count(
+        self,
+        collection_name: str,
+        exact: bool,
+        **_: object,
+    ) -> _FakeCountResponse:
+        del exact
+        self.counted_collections.append(collection_name)
+        return self.count_response
+
+    def delete_collection(self, collection_name: str, **_: object) -> bool:
+        self.deleted_collections.append(collection_name)
+        self.existing_collections.discard(collection_name)
+        return True
 
 
 def test_qdrant_vector_store_creates_collection_and_upserts_records() -> None:
@@ -210,6 +247,96 @@ def test_qdrant_vector_store_delete_records_targets_collection_ids() -> None:
     ]
 
 
+def test_qdrant_vector_store_get_record_reconstructs_payload_and_vector() -> None:
+    client = _FakeQdrantClient()
+    client.existing_collections.add("chili_kb-1")
+    client.retrieve_response = [
+        qdrant_models.Record(
+            id="11111111-1111-1111-1111-111111111111",
+            payload={
+                "record_id": "kb-1:content-1",
+                "knowledge_base_id": "kb-1",
+                "content_id": "content-1",
+                "content": "Alpha",
+                "metadata": {"source": "policy"},
+            },
+            vector=[1.0, 0.0],
+            shard_key=None,
+        )
+    ]
+    store = QdrantVectorStore(
+        VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=2),
+        client=cast(QdrantClientProtocol, client),
+    )
+
+    record = store.get_record("kb-1", "kb-1:content-1")
+
+    assert record is not None
+    assert record.id == "kb-1:content-1"
+    assert record.embedding == [1.0, 0.0]
+    assert record.metadata == {"source": "policy"}
+    assert client.retrieved_ids[0][0] == "chili_kb-1"
+
+
+def test_qdrant_vector_store_get_record_returns_none_for_missing_collection() -> None:
+    client = _FakeQdrantClient()
+    store = QdrantVectorStore(
+        VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=2),
+        client=cast(QdrantClientProtocol, client),
+    )
+
+    assert store.get_record("kb-1", "record-1") is None
+    assert client.retrieved_ids == []
+
+
+def test_qdrant_vector_store_counts_records() -> None:
+    client = _FakeQdrantClient()
+    client.existing_collections.add("chili_kb-1")
+    client.count_response = _FakeCountResponse(count=4)
+    store = QdrantVectorStore(
+        VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=2),
+        client=cast(QdrantClientProtocol, client),
+    )
+
+    assert store.count_records("kb-1") == 4
+    assert store.count_records("missing-kb") == 0
+
+
+def test_qdrant_vector_store_delete_record_is_idempotent() -> None:
+    client = _FakeQdrantClient()
+    client.existing_collections.add("chili_kb-1")
+    client.retrieve_response = [
+        qdrant_models.Record(
+            id="11111111-1111-1111-1111-111111111111",
+            payload={"record_id": "record-1", "content_id": "content-1"},
+            vector=[1.0, 0.0],
+            shard_key=None,
+        )
+    ]
+    store = QdrantVectorStore(
+        VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=2),
+        client=cast(QdrantClientProtocol, client),
+    )
+
+    assert store.delete_record("kb-1", "record-1") is True
+    client.retrieve_response = []
+    assert store.delete_record("kb-1", "record-1") is False
+
+
+def test_qdrant_vector_store_delete_namespace_counts_then_deletes_collection() -> None:
+    client = _FakeQdrantClient()
+    client.existing_collections.add("chili_kb-1")
+    client.count_response = _FakeCountResponse(count=3)
+    store = QdrantVectorStore(
+        VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=2),
+        client=cast(QdrantClientProtocol, client),
+    )
+
+    assert store.delete_namespace("kb-1") == 3
+    assert client.deleted_collections == ["chili_kb-1"]
+    assert store.delete_namespace("kb-1") == 0
+
+
 def test_qdrant_vector_store_rejects_dimension_mismatch() -> None:
     client = _FakeQdrantClient()
     store = QdrantVectorStore(
@@ -270,7 +397,52 @@ def test_qdrant_vector_store_round_trip_search() -> None:
         assert len(matches) == 1
         assert matches[0].record_id == record.id
         assert matches[0].content_id == "content-1"
+
+        fetched = store.get_record(knowledge_base_id, record.id)
+        assert fetched is not None
+        assert fetched.id == record.id
+        assert fetched.embedding == [1.0, 0.0]
+        assert store.count_records(knowledge_base_id) == 1
+        assert store.delete_record(knowledge_base_id, record.id) is True
+        assert store.delete_record(knowledge_base_id, record.id) is False
+        assert store.count_records(knowledge_base_id) == 0
     finally:
         store.delete_records(knowledge_base_id, [record.id])
         cleanup_client = QdrantClient(url=uri, prefer_grpc=True)
         cleanup_client.delete_collection(f"chili_{knowledge_base_id}")
+
+
+@pytest.mark.integration
+def test_qdrant_vector_store_live_delete_namespace() -> None:
+    uri = os.getenv("QDRANT_URL")
+    if uri is None:
+        pytest.skip("QDRANT_URL is required for Qdrant integration tests.")
+
+    knowledge_base_id = f"kb-qdrant-delete-{uuid4()}"
+    store = QdrantVectorStore(
+        VectorStoreConfig(
+            backend="qdrant",
+            uri=uri,
+            dimensions=2,
+            distance_metric="cosine",
+        )
+    )
+    records = [
+        VectorRecord(
+            id=str(uuid4()),
+            knowledge_base_id=knowledge_base_id,
+            content_id="content-1",
+            embedding=[1.0, 0.0],
+        ),
+        VectorRecord(
+            id=str(uuid4()),
+            knowledge_base_id=knowledge_base_id,
+            content_id="content-2",
+            embedding=[0.0, 1.0],
+        ),
+    ]
+
+    store.upsert_records(knowledge_base_id, records)
+
+    assert store.delete_namespace(knowledge_base_id) == 2
+    assert store.delete_namespace(knowledge_base_id) == 0
