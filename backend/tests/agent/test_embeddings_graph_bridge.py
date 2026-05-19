@@ -5,6 +5,8 @@ from __future__ import annotations
 from analytics.gnn.service_models import (
     GnnAnalysisRequest,
     GnnAnalysisResponse,
+    GnnClusterRequest,
+    GnnClusterResponse,
 )
 from agent.embeddings_graph_bridge import GnnGraphEmbeddingProvider
 
@@ -18,7 +20,7 @@ class _RecordingGnnService:
         self.requests.append(request)
         return self._response
 
-    def list_clusters(self, request: object) -> object:
+    def list_clusters(self, request: GnnClusterRequest) -> GnnClusterResponse:
         raise NotImplementedError
 
 
