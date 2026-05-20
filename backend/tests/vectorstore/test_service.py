@@ -6,7 +6,7 @@ from events.adapters.in_memory import InMemoryEventBus
 from events.types import VectorsIndexedEvent
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 from vectorstore.adapters.protocols import VectorStoreProtocol
-from vectorstore.exceptions import VectorStoreError
+from vectorstore.exceptions import VectorDimensionMismatchError, VectorStoreError
 from vectorstore.models import MetadataValue, VectorMatch, VectorRecord
 from vectorstore.service import create_vector_service
 from vectorstore.service_models import (
@@ -119,3 +119,134 @@ def test_vector_search_match_allows_distance_scores_above_one() -> None:
     )
 
     assert match.score == 2.75
+
+
+# ---------------------------------------------------------------------------
+# Error-path tests — cover ValueError and generic Exception branches
+# ---------------------------------------------------------------------------
+
+
+class _ValueErrorUpsertStore(VectorStoreProtocol):
+    """Raises ValueError (dimension mismatch) on upsert."""
+
+    def upsert_records(
+        self,
+        knowledge_base_id: str,
+        records: list[VectorRecord],
+    ) -> list[VectorRecord]:
+        del knowledge_base_id, records
+        raise ValueError("dimension mismatch on upsert")
+
+    def search(
+        self,
+        knowledge_base_id: str,
+        query_vector: list[float],
+        limit: int,
+        filters: dict[str, MetadataValue] | None = None,
+    ) -> list[VectorMatch]:
+        del knowledge_base_id, query_vector, limit, filters
+        return []
+
+
+class _GenericErrorUpsertStore(VectorStoreProtocol):
+    """Raises a generic Exception on upsert."""
+
+    def upsert_records(
+        self,
+        knowledge_base_id: str,
+        records: list[VectorRecord],
+    ) -> list[VectorRecord]:
+        del knowledge_base_id, records
+        raise RuntimeError("backend unavailable")
+
+    def search(
+        self,
+        knowledge_base_id: str,
+        query_vector: list[float],
+        limit: int,
+        filters: dict[str, MetadataValue] | None = None,
+    ) -> list[VectorMatch]:
+        del knowledge_base_id, query_vector, limit, filters
+        return []
+
+
+class _ValueErrorSearchStore(VectorStoreProtocol):
+    """Upserts fine, but raises ValueError on search."""
+
+    def upsert_records(
+        self,
+        knowledge_base_id: str,
+        records: list[VectorRecord],
+    ) -> list[VectorRecord]:
+        del knowledge_base_id
+        return records
+
+    def search(
+        self,
+        knowledge_base_id: str,
+        query_vector: list[float],
+        limit: int,
+        filters: dict[str, MetadataValue] | None = None,
+    ) -> list[VectorMatch]:
+        del knowledge_base_id, query_vector, limit, filters
+        raise ValueError("dimension mismatch on search")
+
+
+class _GenericErrorSearchStore(VectorStoreProtocol):
+    """Upserts fine, but raises a generic Exception on search."""
+
+    def upsert_records(
+        self,
+        knowledge_base_id: str,
+        records: list[VectorRecord],
+    ) -> list[VectorRecord]:
+        del knowledge_base_id
+        return records
+
+    def search(
+        self,
+        knowledge_base_id: str,
+        query_vector: list[float],
+        limit: int,
+        filters: dict[str, MetadataValue] | None = None,
+    ) -> list[VectorMatch]:
+        del knowledge_base_id, query_vector, limit, filters
+        raise RuntimeError("backend unavailable on search")
+
+
+def test_vector_index_wraps_value_error_as_dimension_mismatch() -> None:
+    service = create_vector_service(_ValueErrorUpsertStore(), event_bus=InMemoryEventBus())
+    with pytest.raises(VectorDimensionMismatchError, match="dimension mismatch on upsert"):
+        service.index(
+            VectorIndexRequest(
+                knowledge_base_id="kb-1",
+                submissions=[VectorIndexSubmission(content_id="c1", embedding=[0.1])],
+            )
+        )
+
+
+def test_vector_index_wraps_generic_exception_as_store_error() -> None:
+    service = create_vector_service(_GenericErrorUpsertStore(), event_bus=InMemoryEventBus())
+    with pytest.raises(VectorStoreError, match="Failed to index"):
+        service.index(
+            VectorIndexRequest(
+                knowledge_base_id="kb-1",
+                submissions=[VectorIndexSubmission(content_id="c1", embedding=[0.1])],
+            )
+        )
+
+
+def test_vector_search_wraps_value_error_as_dimension_mismatch() -> None:
+    service = create_vector_service(_ValueErrorSearchStore(), event_bus=InMemoryEventBus())
+    with pytest.raises(VectorDimensionMismatchError, match="dimension mismatch on search"):
+        service.search(
+            VectorSearchRequest(knowledge_base_id="kb-1", query_vector=[0.1], limit=5)
+        )
+
+
+def test_vector_search_wraps_generic_exception_as_store_error() -> None:
+    service = create_vector_service(_GenericErrorSearchStore(), event_bus=InMemoryEventBus())
+    with pytest.raises(VectorStoreError, match="Failed to search"):
+        service.search(
+            VectorSearchRequest(knowledge_base_id="kb-1", query_vector=[0.1], limit=5)
+        )

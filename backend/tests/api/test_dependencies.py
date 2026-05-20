@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
 import api.dependencies as dependencies
 from config.loader import load_config
 from config.schema import (
+    DatabaseConfig,
     DomainConfig,
     EmbeddingsConfig,
     EventBusConfig,
@@ -24,9 +27,12 @@ from events.adapters.redis_streams import RedisStreamsEventBus
 from graph.service import GraphService
 from llm.service import LlmService
 from monitoring.adapters.in_memory import InMemoryObservationSource
+from monitoring.adapters.postgres import PostgresObservationSource
 from monitoring.models import MonitoringBatch, MonitoringObservation
 from monitoring.service import MonitoringService
 from monitoring.service_models import MonitoringEvaluationRequest
+from records.adapters.in_memory import InMemoryRawRecordStore
+from records.adapters.postgres import PostgresRawRecordStore
 from shared.exceptions import ConfigurationError
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.adapters.local_fs_adapter import LocalFsObjectStore
@@ -55,6 +61,12 @@ def clear_dependency_caches() -> None:
         dependencies.get_monitoring_service,
         dependencies.get_ingestion_service,
         dependencies.get_session_store,
+        dependencies.get_connection_provider,
+        dependencies.get_raw_record_store,
+        dependencies.get_knowledge_base_repository,
+        dependencies.get_parser_registry,
+        dependencies.get_remote_fetcher,
+        dependencies.get_parser_orchestrator,
     ]
     for factory in cacheable_factories:
         factory.cache_clear()
@@ -412,3 +424,570 @@ def test_get_session_store_raises_when_auth_enabled_and_redis_url_missing(
 
     with pytest.raises(ConfigurationError, match="REDIS_URL"):
         dependencies.get_session_store()
+
+
+# ---------------------------------------------------------------------------
+# get_parser_registry / get_remote_fetcher / get_parser_orchestrator
+# These are lru_cache'd factories whose bodies were not exercised by any prior
+# test (they are only reachable via get_ingestion_service paths).
+# ---------------------------------------------------------------------------
+
+
+def test_get_parser_registry_returns_a_registry(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    from ingestion.parsers.registry import ParserRegistry
+
+    _install_config(monkeypatch, base_config)
+
+    registry = dependencies.get_parser_registry()
+
+    assert isinstance(registry, ParserRegistry)
+
+
+def test_get_remote_fetcher_returns_a_fetcher(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
+
+    _install_config(monkeypatch, base_config)
+
+    fetcher = dependencies.get_remote_fetcher()
+
+    assert isinstance(fetcher, HttpxRemoteDocumentFetcher)
+
+
+def test_get_parser_orchestrator_returns_an_orchestrator(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    from ingestion.orchestrators.parser import DocumentParsingOrchestrator
+
+    _install_config(monkeypatch, base_config)
+
+    orchestrator = dependencies.get_parser_orchestrator()
+
+    assert isinstance(orchestrator, DocumentParsingOrchestrator)
+
+
+def test_get_ingestion_service_returns_an_ingestion_service(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    from ingestion.service import IngestionService
+
+    _install_config(monkeypatch, base_config)
+
+    service = dependencies.get_ingestion_service()
+
+    assert isinstance(service, IngestionService)
+
+
+# ---------------------------------------------------------------------------
+# _resolve_event_bus_settings: explicit EventBusConfig section with defaults
+# ---------------------------------------------------------------------------
+
+
+def test_event_bus_falls_back_to_env_when_explicit_section_equals_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    # model_copy with an EventBusConfig() that equals the default triggers the
+    # ``event_config == EventBusConfig()`` branch on line 383.
+    config = base_config.model_copy(update={"events": EventBusConfig()})
+    _install_config(monkeypatch, base_config)
+    monkeypatch.delenv("CHILI_EVENT_BUS_BACKEND", raising=False)
+    monkeypatch.delenv("REDIS_URL", raising=False)
+
+    # We need load_config to return the config WITH the events section set
+    # so _event_bus_section_is_explicit returns True.
+    monkeypatch.setattr(dependencies, "load_config", lambda: config)
+
+    bus = dependencies.get_event_bus()
+
+    assert isinstance(bus, InMemoryEventBus)
+
+
+# ---------------------------------------------------------------------------
+# get_object_store: s3/minio ImportError wrapping
+# ---------------------------------------------------------------------------
+
+
+def test_s3_storage_import_error_raises_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={"storage": ObjectStoreConfig.model_construct(backend="s3")}
+    )
+    _install_config(monkeypatch, config)
+
+    sentinel = sys.modules.get("storage.adapters.s3_adapter")
+    try:
+        sys.modules["storage.adapters.s3_adapter"] = None  # type: ignore[assignment]
+        with pytest.raises(ConfigurationError):
+            dependencies.get_object_store()
+    finally:
+        if sentinel is None:
+            sys.modules.pop("storage.adapters.s3_adapter", None)
+        else:
+            sys.modules["storage.adapters.s3_adapter"] = sentinel
+
+
+def test_s3_storage_constructor_value_error_raises_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    import storage.adapters.s3_adapter as s3_adapter
+
+    def _raising_constructor(config: ObjectStoreConfig) -> None:
+        raise ValueError("missing bucket")
+
+    monkeypatch.setattr(s3_adapter, "S3ObjectStore", _raising_constructor)
+    config = base_config.model_copy(
+        update={"storage": ObjectStoreConfig.model_construct(backend="s3")}
+    )
+    _install_config(monkeypatch, config)
+
+    with pytest.raises(ConfigurationError, match="missing bucket"):
+        dependencies.get_object_store()
+
+
+def test_unsupported_storage_backend_raises_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={"storage": ObjectStoreConfig.model_construct(backend="gcs")}
+    )
+    _install_config(monkeypatch, config)
+
+    with pytest.raises(ConfigurationError, match="gcs"):
+        dependencies.get_object_store()
+
+
+# ---------------------------------------------------------------------------
+# get_graph_repository: neo4j ImportError and ValueError wrapping
+# ---------------------------------------------------------------------------
+
+
+def test_neo4j_import_error_raises_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={"graph": GraphDbConfig.model_construct(backend="neo4j")}
+    )
+    _install_config(monkeypatch, config)
+
+    sentinel = sys.modules.get("graph.adapters.neo4j_adapter")
+    try:
+        sys.modules["graph.adapters.neo4j_adapter"] = None  # type: ignore[assignment]
+        with pytest.raises(ConfigurationError):
+            dependencies.get_graph_repository()
+    finally:
+        if sentinel is None:
+            sys.modules.pop("graph.adapters.neo4j_adapter", None)
+        else:
+            sys.modules["graph.adapters.neo4j_adapter"] = sentinel
+
+
+def test_neo4j_constructor_value_error_raises_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    import graph.adapters.neo4j_adapter as neo4j_adapter
+
+    class _RaisingNeo4jRepository:
+        def __init__(self, config: GraphDbConfig, **kwargs: object) -> None:
+            raise ValueError("invalid neo4j URI")
+
+    monkeypatch.setattr(neo4j_adapter, "Neo4jGraphRepository", _RaisingNeo4jRepository)
+    config = base_config.model_copy(
+        update={"graph": GraphDbConfig.model_construct(backend="neo4j")}
+    )
+    _install_config(monkeypatch, config)
+
+    with pytest.raises(ConfigurationError, match="invalid neo4j URI"):
+        dependencies.get_graph_repository()
+
+
+# ---------------------------------------------------------------------------
+# get_vector_store: qdrant ImportError and ValueError wrapping
+# ---------------------------------------------------------------------------
+
+
+def test_qdrant_import_error_raises_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={"vectorstore": VectorStoreConfig.model_construct(backend="qdrant", dimensions=384)}
+    )
+    _install_config(monkeypatch, config)
+
+    sentinel = sys.modules.get("vectorstore.adapters.qdrant_adapter")
+    try:
+        sys.modules["vectorstore.adapters.qdrant_adapter"] = None  # type: ignore[assignment]
+        with pytest.raises(ConfigurationError):
+            dependencies.get_vector_store()
+    finally:
+        if sentinel is None:
+            sys.modules.pop("vectorstore.adapters.qdrant_adapter", None)
+        else:
+            sys.modules["vectorstore.adapters.qdrant_adapter"] = sentinel
+
+
+def test_qdrant_constructor_value_error_raises_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    import vectorstore.adapters.qdrant_adapter as qdrant_adapter
+
+    def _raising_constructor(config: VectorStoreConfig) -> None:
+        raise ValueError("cannot connect to qdrant")
+
+    monkeypatch.setattr(qdrant_adapter, "QdrantVectorStore", _raising_constructor)
+    config = base_config.model_copy(
+        update={"vectorstore": VectorStoreConfig.model_construct(backend="qdrant", dimensions=384)}
+    )
+    _install_config(monkeypatch, config)
+
+    with pytest.raises(ConfigurationError, match="cannot connect to qdrant"):
+        dependencies.get_vector_store()
+
+
+# ---------------------------------------------------------------------------
+# get_embedder: unsupported provider path
+# ---------------------------------------------------------------------------
+
+
+def test_unsupported_embeddings_provider_raises_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={"embeddings": EmbeddingsConfig.model_construct(provider="cohere", dimensions=384)}
+    )
+    _install_config(monkeypatch, config)
+
+    with pytest.raises(ConfigurationError, match="cohere"):
+        dependencies.get_embedder()
+
+
+def test_sentence_transformers_import_error_raises_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    # Use a non-default model name so the config does NOT equal EmbeddingsConfig()
+    # and the sentence_transformers adapter branch is reached.
+    config = base_config.model_copy(
+        update={
+            "embeddings": EmbeddingsConfig(
+                provider="sentence_transformers",  # type: ignore[arg-type]
+                model="paraphrase-MiniLM-L3-v2",  # differs from default "all-MiniLM-L6-v2"
+                dimensions=384,
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+
+    sentinel = sys.modules.get("embeddings.adapters.sentence_transformers_adapter")
+    try:
+        sys.modules["embeddings.adapters.sentence_transformers_adapter"] = None  # type: ignore[assignment]
+        with pytest.raises(ConfigurationError):
+            dependencies.get_embedder()
+    finally:
+        if sentinel is None:
+            sys.modules.pop("embeddings.adapters.sentence_transformers_adapter", None)
+        else:
+            sys.modules["embeddings.adapters.sentence_transformers_adapter"] = sentinel
+
+
+def test_sentence_transformers_constructor_value_error_raises_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    import embeddings.adapters.sentence_transformers_adapter as st_adapter
+
+    def _raising_constructor(config: EmbeddingsConfig) -> None:
+        raise ValueError("model not found")
+
+    monkeypatch.setattr(st_adapter, "SentenceTransformersEmbedder", _raising_constructor)
+    # Use a non-default model name so the config differs from EmbeddingsConfig()
+    # and the sentence_transformers adapter branch is actually entered.
+    config = base_config.model_copy(
+        update={
+            "embeddings": EmbeddingsConfig(
+                provider="sentence_transformers",  # type: ignore[arg-type]
+                model="paraphrase-MiniLM-L3-v2",
+                dimensions=384,
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+
+    with pytest.raises(ConfigurationError, match="model not found"):
+        dependencies.get_embedder()
+
+
+def test_openai_embedder_import_error_raises_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={
+            "embeddings": EmbeddingsConfig(
+                provider="openai",  # type: ignore[arg-type]
+                model="text-embedding-ada-002",
+                dimensions=1536,
+                api_key_env_var="OPENAI_API_KEY",
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+
+    sentinel = sys.modules.get("embeddings.adapters.openai_adapter")
+    try:
+        sys.modules["embeddings.adapters.openai_adapter"] = None  # type: ignore[assignment]
+        with pytest.raises(ConfigurationError):
+            dependencies.get_embedder()
+    finally:
+        if sentinel is None:
+            sys.modules.pop("embeddings.adapters.openai_adapter", None)
+        else:
+            sys.modules["embeddings.adapters.openai_adapter"] = sentinel
+
+
+# ---------------------------------------------------------------------------
+# get_llm_client: unsupported provider and ImportError wrapping
+# ---------------------------------------------------------------------------
+
+
+def test_unsupported_llm_provider_raises_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={"llm": LlmConfig.model_construct(provider="gemini")}
+    )
+    _install_config(monkeypatch, config)
+
+    with pytest.raises(ConfigurationError, match="gemini"):
+        dependencies.get_llm_client()
+
+
+def test_openai_llm_import_error_raises_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={
+            "llm": LlmConfig(
+                provider="openai",  # type: ignore[arg-type]
+                model="gpt-4o",
+                api_key_env_var="OPENAI_API_KEY",
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+
+    sentinel = sys.modules.get("llm.adapters.openai_adapter")
+    try:
+        sys.modules["llm.adapters.openai_adapter"] = None  # type: ignore[assignment]
+        with pytest.raises(ConfigurationError):
+            dependencies.get_llm_client()
+    finally:
+        if sentinel is None:
+            sys.modules.pop("llm.adapters.openai_adapter", None)
+        else:
+            sys.modules["llm.adapters.openai_adapter"] = sentinel
+
+
+def test_anthropic_llm_import_error_raises_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={
+            "llm": LlmConfig(
+                provider="anthropic",  # type: ignore[arg-type]
+                model="claude-3-5-sonnet-20241022",
+                api_key_env_var="ANTHROPIC_API_KEY",
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+
+    sentinel = sys.modules.get("llm.adapters.anthropic_adapter")
+    try:
+        sys.modules["llm.adapters.anthropic_adapter"] = None  # type: ignore[assignment]
+        with pytest.raises(ConfigurationError):
+            dependencies.get_llm_client()
+    finally:
+        if sentinel is None:
+            sys.modules.pop("llm.adapters.anthropic_adapter", None)
+        else:
+            sys.modules["llm.adapters.anthropic_adapter"] = sentinel
+
+
+# ---------------------------------------------------------------------------
+# get_monitoring_source: postgres path when connection provider is non-None
+# ---------------------------------------------------------------------------
+
+
+def test_get_monitoring_source_uses_postgres_when_provider_is_non_null(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    fake_provider = MagicMock()
+    _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: fake_provider)
+
+    source = dependencies.get_monitoring_source()
+
+    assert isinstance(source, PostgresObservationSource)
+
+
+# ---------------------------------------------------------------------------
+# get_connection_provider / get_raw_record_store: postgres path
+# ---------------------------------------------------------------------------
+
+
+def test_get_connection_provider_returns_none_for_in_memory_backend(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={"database": DatabaseConfig(backend="in_memory")}
+    )
+    _install_config(monkeypatch, config)
+
+    provider = dependencies.get_connection_provider()
+
+    assert provider is None
+
+
+def test_get_raw_record_store_returns_postgres_store_when_provider_non_null(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    fake_provider = MagicMock()
+    _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: fake_provider)
+
+    store = dependencies.get_raw_record_store()
+
+    assert isinstance(store, PostgresRawRecordStore)
+
+
+def test_get_raw_record_store_returns_in_memory_when_provider_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: None)
+
+    store = dependencies.get_raw_record_store()
+
+    assert isinstance(store, InMemoryRawRecordStore)
+
+
+# ---------------------------------------------------------------------------
+# get_knowledge_base_repository: object_store branch and unsupported backend
+# ---------------------------------------------------------------------------
+
+
+def test_get_knowledge_base_repository_returns_object_store_repo(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    from api._kb_store import ObjectStoreKnowledgeBaseRepository
+
+    monkeypatch.setenv("CHILI_KB_REPOSITORY_BACKEND", "object_store")
+    _install_config(monkeypatch, base_config)
+
+    repo = dependencies.get_knowledge_base_repository()
+
+    assert isinstance(repo, ObjectStoreKnowledgeBaseRepository)
+
+
+@pytest.mark.parametrize("alias", ["object_store", "object-store", "objectstore"])
+def test_get_knowledge_base_repository_accepts_all_object_store_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+    alias: str,
+) -> None:
+    from api._kb_store import ObjectStoreKnowledgeBaseRepository
+
+    monkeypatch.setenv("CHILI_KB_REPOSITORY_BACKEND", alias)
+    _install_config(monkeypatch, base_config)
+
+    repo = dependencies.get_knowledge_base_repository()
+
+    assert isinstance(repo, ObjectStoreKnowledgeBaseRepository)
+
+
+def test_get_knowledge_base_repository_unsupported_backend_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    monkeypatch.setenv("CHILI_KB_REPOSITORY_BACKEND", "postgres")
+    _install_config(monkeypatch, base_config)
+
+    with pytest.raises(ConfigurationError, match="postgres"):
+        dependencies.get_knowledge_base_repository()
+
+
+# ---------------------------------------------------------------------------
+# _create_alert_repository: object_store branch and unsupported backend
+# ---------------------------------------------------------------------------
+
+
+def _call_create_alert_repository() -> object:
+    """Call the private _create_alert_repository via getattr to satisfy pyright."""
+    factory = getattr(dependencies, "_create_alert_repository")
+    return factory()
+
+
+def test_create_alert_repository_object_store_backend(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    from api._alert_store import ObjectStoreAlertProjectionRepository
+
+    monkeypatch.setenv("CHILI_ALERT_REPOSITORY_BACKEND", "object_store")
+    _install_config(monkeypatch, base_config)
+
+    repo = _call_create_alert_repository()
+
+    assert isinstance(repo, ObjectStoreAlertProjectionRepository)
+
+
+@pytest.mark.parametrize("alias", ["object_store", "object-store", "objectstore"])
+def test_create_alert_repository_accepts_all_object_store_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+    alias: str,
+) -> None:
+    from api._alert_store import ObjectStoreAlertProjectionRepository
+
+    monkeypatch.setenv("CHILI_ALERT_REPOSITORY_BACKEND", alias)
+    _install_config(monkeypatch, base_config)
+
+    repo = _call_create_alert_repository()
+
+    assert isinstance(repo, ObjectStoreAlertProjectionRepository)
+
+
+def test_create_alert_repository_unsupported_backend_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    monkeypatch.setenv("CHILI_ALERT_REPOSITORY_BACKEND", "dynamodb")
+    _install_config(monkeypatch, base_config)
+
+    with pytest.raises(ConfigurationError, match="dynamodb"):
+        _call_create_alert_repository()
