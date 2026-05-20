@@ -137,7 +137,7 @@ This section describes chiliAI's external actors and the systems it interacts wi
 | **Vector store** | Stores embeddings for RAG retrieval and similarity search. Current selectable backends are in-memory and Qdrant behind an abstract adapter. pgvector and Weaviate remain roadmap adapters until their adapter/factory wiring exists. |
 | **LLM provider** | Powers RAG conversational interface and entity extraction during ingestion. Vendor-agnostic — OpenAI, Anthropic, or self-hosted (Ollama, vLLM) behind an abstract adapter. |
 | **Object store** | Persists raw ingested files for audit and reprocessing. The dev stack can also use the object store as a single-writer durable KB metadata projection. S3, MinIO, or local filesystem sit behind an abstract adapter. |
-| **Auth provider** | *(Future)* External identity provider (OIDC/OAuth2) for authentication. Designed-for but deferred. |
+| **Auth provider** | External identity provider (OIDC/OAuth2). Auth/RBAC middleware, `/auth/*` routes, cookie/Bearer token handling, and frontend login/session flow are implemented (completed 2026-05-08). Production IdP profiles, tenant isolation, and resource-level authorization remain future hardening. |
 
 ---
 
@@ -1292,7 +1292,7 @@ Adapter selection is driven by environment configuration, not code changes.
 | Capability | Description | Priority |
 |------------|-------------|----------|
 | **CI/CD pipeline** | Baseline lint, type-check, test, build, and dependency audits run in GitHub Actions. | Add deploy/promotion jobs once environments are finalized. |
-| **Authentication & RBAC** | Pluggable auth middleware, role enforcement. See §12. | High — implement before any multi-user deployment |
+| **Authentication & RBAC** | Pluggable auth middleware, role enforcement. See §12. Implemented 2026-05-08; remaining hardening: production IdP profiles, tenant isolation, resource-level authorization. | Medium — production IdP and tenant isolation before multi-user deployment |
 | **Multi-tenancy** | Tenant-isolated data, config, and KB namespaces. | Medium — after auth |
 | **Configuration UI wizard** | Browser-based domain configuration editor instead of manual YAML editing. | Medium |
 | **Model training pipeline** | Scheduled/triggered GNN training, embedding fine-tuning. | Medium |

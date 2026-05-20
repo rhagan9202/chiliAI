@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Development Rules
-- Use uv for python environment management, pnpm for node and typescript. Do not use pipenv, poetry, npm, or yarn.
+- Use uv for python environment management, npm for node and typescript. Do not use pipenv, poetry, pnpm, or yarn.
 - Use Python 3.12 and React 19 with Vite 8.
 - All functional code must be fully typed with no `Any` types. Use `pyright --strict` to check.
 - All functional backend code must have pytest coverage >= 85% coverage, full green before acceptance.
@@ -67,6 +67,10 @@ npm run dev       # Vite on :5173
 npm run build     # tsc -b && vite build
 npm run lint      # ESLint
 npm run preview
+npm run test           # Vitest unit tests (watch mode)
+npm run test:run       # Vitest unit tests (single run)
+npm run test:e2e       # Playwright e2e tests (starts Vite automatically)
+npm run test:e2e:ui    # Playwright UI mode for interactive debugging
 ```
 
 ## Architecture: Hard Rules (Don't Break These)
@@ -109,7 +113,7 @@ Three app containers + pluggable infrastructure:
 - **chili-api** — FastAPI gateway
 - **chili-worker** — pipeline runner consuming Redis Streams
 
-Infra services in dev compose: Redis 7, Neo4j 5, Qdrant, MinIO. Redis Streams is the event transport (architectural decision, not a placeholder).
+Infra services in dev compose: Redis 7, Neo4j 5, Qdrant, MinIO, Postgres (TimescaleDB). Redis Streams is the event transport (architectural decision, not a placeholder).
 
 ## When Planning vs. Implementing
 
