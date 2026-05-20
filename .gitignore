@@ -34,10 +34,22 @@ Thumbs.db
 .coverage
 htmlcov/
 
+# Local agent state
+.claude/
+
+# Coverage artifacts
+backend/coverage.json
+coverage.json
+
 # Browser automation cache
 .playwright-mcp/
 .superpowers/
 .worktrees/
+
+# Playwright e2e artifacts
+chili_app/test-results/
+chili_app/playwright-report/
+chili_app/playwright/.cache/
 
 # Editor configs
 .vscode/
