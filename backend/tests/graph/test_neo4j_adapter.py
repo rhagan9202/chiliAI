@@ -550,7 +550,7 @@ def test_neo4j_repository_schema_ensure_is_idempotent(
     # Each construction creates a new fake driver, so the second driver's query
     # log captures its own four schema statements (independent of the first).
     assert len(first_driver.queries) == first_query_count  # first driver unchanged
-    assert len(second_driver.queries) >= 4
+    assert len(second_driver.queries) == 4
     second_schema_text = "\n".join(entry[0] for entry in second_driver.queries)
     assert "CREATE CONSTRAINT entity_kb_id_unique IF NOT EXISTS" in second_schema_text
 
