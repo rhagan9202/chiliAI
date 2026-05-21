@@ -149,4 +149,20 @@ describe('RagChatPage', () => {
     const arg = mocks.setSearchParams.mock.calls[0][0] as URLSearchParams
     expect(arg.get('kb')).toBe('kb-2')
   })
+
+  it('clears any in-progress draft when the user switches KB', async () => {
+    mocks.knowledgeBases = [KB_ONE, KB_TWO]
+
+    render(<RagChatPage />)
+
+    const textarea = screen.getByPlaceholderText(
+      'Ask the investigation assistant about an entity, alert, or evidence trail',
+    )
+    await userEvent.type(textarea, 'partial question')
+    expect((textarea as HTMLTextAreaElement).value).toBe('partial question')
+
+    await userEvent.selectOptions(screen.getByLabelText('Knowledge base'), 'kb-2')
+
+    expect((textarea as HTMLTextAreaElement).value).toBe('')
+  })
 })
