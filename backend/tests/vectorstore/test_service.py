@@ -283,3 +283,59 @@ def test_vector_service_search_spans_multiple_knowledge_base_ids() -> None:
     content_ids = {match.content_id for match in response.matches}
     assert content_ids == {"content-a-1", "content-b-1"}
     assert response.knowledge_base_ids == ["kb-a", "kb-b"]
+
+
+def test_vector_service_search_merges_cross_kb_results_by_score_and_applies_limit_after_merge() -> None:
+    """Service sorts merged matches by score descending and applies limit AFTER merge.
+    
+    This test uses DIFFERENT embeddings across KBs to exercise the merge-ordering logic.
+    If the service applied limit per-KB or skipped sorting, lower-scoring content from kb-b
+    could leak through when limit=1 is requested.
+    """
+    event_bus = InMemoryEventBus()
+    service = create_vector_service(InMemoryVectorStore(), event_bus=event_bus)
+
+    # Index a high-similarity vector in kb-a (perfectly aligned to the query).
+    service.index(
+        VectorIndexRequest(
+            knowledge_base_id="kb-a",
+            submissions=[
+                VectorIndexSubmission(
+                    content_id="content-a-1",
+                    embedding=[1.0, 0.0, 0.0],
+                    metadata={},
+                ),
+            ],
+        )
+    )
+
+    # Index a lower-similarity vector in kb-b (cos sim ~0.6 to query).
+    service.index(
+        VectorIndexRequest(
+            knowledge_base_id="kb-b",
+            submissions=[
+                VectorIndexSubmission(
+                    content_id="content-b-1",
+                    embedding=[0.6, 0.8, 0.0],
+                    metadata={},
+                ),
+            ],
+        )
+    )
+
+    # Query exactly aligned with kb-a's vector.
+    response = service.search(
+        VectorSearchRequest(
+            knowledge_base_ids=["kb-a", "kb-b"],
+            query_vector=[1.0, 0.0, 0.0],
+            limit=1,
+        )
+    )
+
+    # With limit=1 across both KBs, only the highest-scoring match should return,
+    # which must be content-a-1 (perfect alignment). If the service applied limit
+    # per-KB or skipped sorting, content-b-1 could leak through.
+    assert len(response.matches) == 1
+    assert response.matches[0].content_id == "content-a-1"
+    # The response carries the full kb_ids scope, not just the source KB of the match.
+    assert response.knowledge_base_ids == ["kb-a", "kb-b"]
