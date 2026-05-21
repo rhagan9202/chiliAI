@@ -53,7 +53,12 @@ export function validateDocumentFiles(
   validationConfig: ValidationConfig | null | undefined,
 ): ValidationIssue[] {
   if (files.length === 0) {
-    return [issue('missing-files', 'Select at least one document file before submitting.')]
+    return [
+      {
+        ...issue('missing-files', 'Select at least one document file before submitting.'),
+        kind: 'prerequisite',
+      },
+    ]
   }
 
   const allowed = validationConfig?.allowed_content_types ?? []
@@ -103,7 +108,12 @@ export function validateDocumentFiles(
 
 export function validateRecordFile(file: File | null): ValidationIssue[] {
   if (file === null) {
-    return [issue('missing-record-file', 'Select a CSV or JSONL records file before submitting this feed.')]
+    return [
+      {
+        ...issue('missing-record-file', 'Select a CSV or JSONL records file before submitting this feed.'),
+        kind: 'prerequisite',
+      },
+    ]
   }
 
   const issues: ValidationIssue[] = []
@@ -241,7 +251,12 @@ export function validateRecordRows(
   rows: Record<string, unknown>[],
 ): ValidationIssue[] {
   if (rows.length === 0) {
-    return [issue('missing-records', 'Provide at least one structured record row before submitting.')]
+    return [
+      {
+        ...issue('missing-records', 'Provide at least one structured record row before submitting.'),
+        kind: 'prerequisite',
+      },
+    ]
   }
 
   return rows.flatMap((row, index) => {

@@ -72,12 +72,35 @@ describe('ingestion validation', () => {
     ).toMatchObject([{ id: 'missing-feed', severity: 'error', source: 'client', kind: 'prerequisite' }])
   })
 
-  it('does not tag content-level validation issues with a prerequisite kind', () => {
-    const fileIssues = validateDocumentFiles([], validationConfig)
-    const recordIssues = validateRecordRows(feed, [])
+  it('tags empty-collection issues as prerequisites and leaves other content issues untagged', () => {
+    // Empty collections → prerequisite kind (user just hasn't uploaded yet)
+    const noFiles = validateDocumentFiles([], validationConfig)
+    expect(noFiles).toMatchObject([{ id: 'missing-files', kind: 'prerequisite' }])
 
+    const noRecordFile = validateRecordFile(null)
+    expect(noRecordFile).toMatchObject([{ id: 'missing-record-file', kind: 'prerequisite' }])
+
+    const noRows = validateRecordRows(feed, [])
+    expect(noRows).toMatchObject([{ id: 'missing-records', kind: 'prerequisite' }])
+
+    // Actual bad content (wrong type, oversized file, row pattern mismatch) → untagged
+    const badFile = new File(['x'], 'claims.exe', { type: 'application/x-msdownload' })
+    Object.defineProperty(badFile, 'size', { value: 2 * 1024 * 1024 })
+    const fileIssues = validateDocumentFiles([badFile], validationConfig)
+    expect(fileIssues.length).toBeGreaterThan(0)
     expect(fileIssues.every((issue) => issue.kind === undefined)).toBe(true)
-    expect(recordIssues.every((issue) => issue.kind === undefined)).toBe(true)
+
+    const badRow = validateRecordRows(feed, [
+      {
+        claim_id: 'c1',
+        provider_npi: 'not-numeric',
+        billed_amount: 'not-money',
+        service_date: '2026-01-15',
+        anomaly_score: '0.8',
+      },
+    ])
+    expect(badRow.length).toBeGreaterThan(0)
+    expect(badRow.every((issue) => issue.kind === undefined)).toBe(true)
   })
 
   it('requires document files', () => {

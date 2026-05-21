@@ -479,4 +479,15 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     const validateItem = getStepperItem('Validate')
     expect(within(validateItem).getByText('Complete')).toBeInTheDocument()
   })
+
+  it('keeps Validate idle after Documents source is picked but no files have been uploaded', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('Ingestion Studio')
+    await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
+
+    const validateItem = getStepperItem('Validate')
+    expect(within(validateItem).queryByText('Needs attention')).not.toBeInTheDocument()
+    expect(within(validateItem).queryByText('Complete')).not.toBeInTheDocument()
+  })
 })
