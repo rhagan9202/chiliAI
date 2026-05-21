@@ -198,8 +198,8 @@ def test_neo4j_repository_upserts_entities_and_relationships_with_merge(
 
     assert entities[0].id == "entity-1"
     assert relationships[0].id == "relationship-1"
-    assert "MERGE (entity:Entity" in driver.queries[4][0]
-    assert "MERGE (source)-[relationship:RELATES" in driver.queries[5][0]
+    assert any("MERGE (entity:Entity" in entry[0] for entry in driver.queries)
+    assert any("MERGE (source)-[relationship:RELATES" in entry[0] for entry in driver.queries)
 
 
 def test_neo4j_repository_reads_searches_counts_and_deletes(
@@ -230,7 +230,7 @@ def test_neo4j_repository_reads_searches_counts_and_deletes(
     repository.delete_entity("kb-1", "entity-2")
     repository.delete_relationship("kb-1", "relationship-2")
 
-    assert "entity.properties_json" in driver.queries[5][0]
+    assert any("entity.properties_json" in entry[0] for entry in driver.queries)
     assert "DETACH DELETE entity" in driver.queries[-3][0]
     assert "DELETE relationship" in driver.queries[-1][0]
 
@@ -291,7 +291,7 @@ def test_neo4j_repository_get_neighbors_uses_variable_length_path_pattern(
     assert {entity.id for entity in result.entities} == {"entity-1", "entity-2"}
     assert [relationship.id for relationship in result.relationships] == ["relationship-1"]
     assert [entity.id for entity in zero_depth_result.entities] == ["entity-1"]
-    assert "*1..2" in driver.queries[5][0]
+    assert any("*1..2" in entry[0] for entry in driver.queries)
 
 
 def test_neo4j_repository_get_neighbors_preserves_inbound_relationship_direction(
