@@ -366,6 +366,14 @@ class DomainConfig(BaseModel):
     analytics: AnalyticsConfig | None = None
     alerts: AlertsConfig
     ui: UiConfig | None = None
+    default_reference_kb_id: str | None = Field(
+        default=None,
+        description=(
+            "ID of a knowledge base that is auto-attached to every read in this "
+            "domain (the 'policy graph'). When None, dual-graph behavior is disabled "
+            "and reads scope to the primary KB only."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_cross_references(self) -> DomainConfig:

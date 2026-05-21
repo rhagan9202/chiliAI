@@ -66,6 +66,7 @@ def _make_config(
     monitoring: MonitoringConfig | None = None,
     rag: RagConfig | None = None,
     schema_version: str = "1.0",
+    default_reference_kb_id: str | None = None,
 ) -> DomainConfig:
     """Build a minimal valid DomainConfig, optionally overriding parts."""
     ents = entities if entities is not None else [_minimal_entity("alpha")]
@@ -112,6 +113,7 @@ def _make_config(
                 )
             },
         ),
+        default_reference_kb_id=default_reference_kb_id,
     )
 
 
@@ -640,3 +642,18 @@ def test_domain_config_defaults_analytics_section() -> None:
     )
     assert config.analytics is not None
     assert config.analytics.metrics_recompute_min_interval_seconds == 300
+
+
+# ---------------------------------------------------------------------------
+# default_reference_kb_id
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultReferenceKbId:
+    def test_domain_config_default_reference_kb_id_is_none_by_default(self) -> None:
+        cfg = _make_config()
+        assert cfg.default_reference_kb_id is None
+
+    def test_domain_config_default_reference_kb_id_accepts_string(self) -> None:
+        cfg = _make_config(default_reference_kb_id="kb-policy-v1")
+        assert cfg.default_reference_kb_id == "kb-policy-v1"
