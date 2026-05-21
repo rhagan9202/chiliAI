@@ -51,6 +51,7 @@ describe('ingestion validation', () => {
       'Select a knowledge base before submitting.',
       'Choose Documents or Structured Records before submitting.',
     ])
+    expect(issues.every((issue) => issue.kind === 'prerequisite')).toBe(true)
   })
 
   it('requires feed name only for structured records', () => {
@@ -68,7 +69,15 @@ describe('ingestion validation', () => {
         sourceType: 'records',
         feedName: null,
       }),
-    ).toMatchObject([{ id: 'missing-feed', severity: 'error', source: 'client' }])
+    ).toMatchObject([{ id: 'missing-feed', severity: 'error', source: 'client', kind: 'prerequisite' }])
+  })
+
+  it('does not tag content-level validation issues with a prerequisite kind', () => {
+    const fileIssues = validateDocumentFiles([], validationConfig)
+    const recordIssues = validateRecordRows(feed, [])
+
+    expect(fileIssues.every((issue) => issue.kind === undefined)).toBe(true)
+    expect(recordIssues.every((issue) => issue.kind === undefined)).toBe(true)
   })
 
   it('requires document files', () => {

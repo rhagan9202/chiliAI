@@ -25,15 +25,24 @@ export function validateRequiredWizardState({
   const issues: ValidationIssue[] = []
 
   if (!knowledgeBaseId) {
-    issues.push(issue('missing-kb', 'Select a knowledge base before submitting.'))
+    issues.push({
+      ...issue('missing-kb', 'Select a knowledge base before submitting.'),
+      kind: 'prerequisite',
+    })
   }
 
   if (!sourceType) {
-    issues.push(issue('missing-source', 'Choose Documents or Structured Records before submitting.'))
+    issues.push({
+      ...issue('missing-source', 'Choose Documents or Structured Records before submitting.'),
+      kind: 'prerequisite',
+    })
   }
 
   if (sourceType === 'records' && !feedName) {
-    issues.push(issue('missing-feed', 'Select a structured records feed before submitting.'))
+    issues.push({
+      ...issue('missing-feed', 'Select a structured records feed before submitting.'),
+      kind: 'prerequisite',
+    })
   }
 
   return issues
