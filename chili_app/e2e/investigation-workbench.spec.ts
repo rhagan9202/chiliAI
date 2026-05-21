@@ -33,7 +33,7 @@
 
 import { test, expect } from '@playwright/test'
 
-import { mockAuthenticatedShell } from './helpers/mocks'
+import { mockAuthenticatedShell, mockKnowledgeBases } from './helpers/mocks'
 
 const API = 'http://localhost:5173/api'
 
@@ -127,5 +127,23 @@ test.describe('Investigation workbench', () => {
     // and the utils use properties.name as the title.
     // Source: src/utils/domainDisplay.ts — getEntityTitle reads the first property.
     await expect(page.getByText('Acme Medical Supply')).toBeVisible()
+  })
+
+  test('shows Create KB CTA on the no-KB empty state and navigates on click', async ({
+    page,
+  }) => {
+    await mockAuthenticatedShell(page)
+    await mockKnowledgeBases(page, [])
+
+    await page.goto('/investigation')
+
+    await expect(page.getByText('No graph-ready knowledge base')).toBeVisible()
+
+    const cta = page.getByRole('button', { name: /create knowledge base/i })
+    await expect(cta).toBeVisible()
+
+    await cta.click()
+
+    await expect(page).toHaveURL(/\/knowledge-bases$/)
   })
 })
