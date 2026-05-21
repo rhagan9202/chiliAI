@@ -35,7 +35,7 @@ def test_upsert_records_graph_persists_entities_and_relationships() -> None:
     assert [relationship.id for relationship in stored_relationships] == [
         "submitted_by:claim:c1->provider:p1"
     ]
-    assert service.get_entity("kb-1", "claim:c1") is not None
+    assert service.get_entity(["kb-1"], "claim:c1") is not None
 
 
 def test_upsert_records_graph_publishes_no_graph_updated_event() -> None:

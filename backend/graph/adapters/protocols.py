@@ -35,7 +35,7 @@ class GraphRepository(Protocol):
 
     def get_relationships(self, knowledge_base_id: str) -> list[Relationship]: ...
 
-    def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None: ...
+    def get_entity(self, knowledge_base_ids: list[str], entity_id: str) -> Entity | None: ...
 
     def update_entity_properties(
         self,
@@ -62,7 +62,7 @@ class GraphRepository(Protocol):
 
     def search_entities(
         self,
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         query: str,
         limit: int,
     ) -> list[Entity]: ...

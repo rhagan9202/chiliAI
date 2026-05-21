@@ -54,8 +54,12 @@ class InMemoryGraphRepository(GraphRepository):
     def get_relationships(self, knowledge_base_id: str) -> list[Relationship]:
         return list(self._relationships.get(knowledge_base_id, {}).values())
 
-    def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None:
-        return self._entities.get(knowledge_base_id, {}).get(entity_id)
+    def get_entity(self, knowledge_base_ids: list[str], entity_id: str) -> Entity | None:
+        for kb_id in knowledge_base_ids:
+            entity = self._entities.get(kb_id, {}).get(entity_id)
+            if entity is not None:
+                return entity
+        return None
 
     def update_entity_properties(
         self,
@@ -153,7 +157,7 @@ class InMemoryGraphRepository(GraphRepository):
 
     def search_entities(
         self,
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         query: str,
         limit: int,
     ) -> list[Entity]:
@@ -165,17 +169,18 @@ class InMemoryGraphRepository(GraphRepository):
             return []
 
         matches: list[Entity] = []
-        for entity in self.get_entities(knowledge_base_id):
-            haystacks = [
-                property_value
-                for property_value in entity.properties.values()
-                if isinstance(property_value, str)
-            ]
-            if any(normalized_query in haystack.lower() for haystack in haystacks):
-                matches.append(entity)
+        for kb_id in knowledge_base_ids:
+            for entity in self.get_entities(kb_id):
+                haystacks = [
+                    property_value
+                    for property_value in entity.properties.values()
+                    if isinstance(property_value, str)
+                ]
+                if any(normalized_query in haystack.lower() for haystack in haystacks):
+                    matches.append(entity)
             if len(matches) >= limit:
                 break
-        return matches
+        return matches[:limit]
 
     def count_entities(self, knowledge_base_id: str) -> int:
         return len(self._entities.get(knowledge_base_id, {}))

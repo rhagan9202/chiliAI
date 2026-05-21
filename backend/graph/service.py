@@ -167,8 +167,8 @@ class GraphService:
         for start in range(0, len(items), self._batch_size):
             yield items[start : start + self._batch_size]
 
-    def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None:
-        return self._repository.get_entity(knowledge_base_id, entity_id)
+    def get_entity(self, knowledge_base_ids: list[str], entity_id: str) -> Entity | None:
+        return self._repository.get_entity(knowledge_base_ids, entity_id)
 
     def update_entity_properties(
         self,
@@ -259,19 +259,21 @@ class GraphService:
 
     def search_entities(
         self,
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         query: str,
         limit: int,
         offset: int,
     ) -> list[Entity]:
+        # Validate limit/offset via EntitySearchQuery; knowledge_base_id field is
+        # unused for routing — pass a placeholder until the model is updated in Task 6.
         search_query = EntitySearchQuery(
-            knowledge_base_id=knowledge_base_id,
+            knowledge_base_id="__multi__",
             query=query,
             limit=limit,
             offset=offset,
         )
         repository_results = self._repository.search_entities(
-            search_query.knowledge_base_id,
+            knowledge_base_ids,
             search_query.query,
             search_query.limit + search_query.offset,
         )

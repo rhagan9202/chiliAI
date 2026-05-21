@@ -341,14 +341,14 @@ def test_graph_service_get_entity_delegates(
     repository = _repository_for(graph_service)
     expected_entity = Entity(id="entity-1", type="claim", properties={"claim_id": "42"})
 
-    def fake_get_entity(knowledge_base_id: str, entity_id: str) -> Entity | None:
-        assert knowledge_base_id == "kb-1"
+    def fake_get_entity(knowledge_base_ids: list[str], entity_id: str) -> Entity | None:
+        assert knowledge_base_ids == ["kb-1"]
         assert entity_id == "entity-1"
         return expected_entity
 
     monkeypatch.setattr(repository, "get_entity", fake_get_entity)
 
-    assert graph_service.get_entity("kb-1", "entity-1") == expected_entity
+    assert graph_service.get_entity(["kb-1"], "entity-1") == expected_entity
 
 
 def test_graph_service_query_neighborhood_delegates_with_default_direction(
@@ -397,18 +397,18 @@ def test_graph_service_search_entities_delegates_and_applies_offset(
     ]
 
     def fake_search_entities(
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         query: str,
         limit: int,
     ) -> list[Entity]:
-        assert knowledge_base_id == "kb-1"
+        assert knowledge_base_ids == ["kb-1"]
         assert query == "claim"
         assert limit == 4
         return repository_entities
 
     monkeypatch.setattr(repository, "search_entities", fake_search_entities)
 
-    assert graph_service.search_entities("kb-1", "claim", limit=2, offset=2) == [
+    assert graph_service.search_entities(["kb-1"], "claim", limit=2, offset=2) == [
         repository_entities[2]
     ]
 
@@ -417,7 +417,7 @@ def test_graph_service_search_entities_rejects_excessive_limit(
     graph_service: GraphService,
 ) -> None:
     with pytest.raises(ValueError):
-        graph_service.search_entities("kb-1", "claim", limit=501, offset=0)
+        graph_service.search_entities(["kb-1"], "claim", limit=501, offset=0)
 
 
 def test_graph_service_compute_metrics_uses_repository_counts(

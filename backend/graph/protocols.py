@@ -18,7 +18,7 @@ class GraphServiceProtocol(Protocol):
 
     def upsert_task(self, task: GraphBuildTask) -> GraphBuildReceipt: ...
 
-    def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None: ...
+    def get_entity(self, knowledge_base_ids: list[str], entity_id: str) -> Entity | None: ...
 
     def update_entity_properties(
         self,
@@ -36,7 +36,7 @@ class GraphServiceProtocol(Protocol):
 
     def search_entities(
         self,
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         query: str,
         limit: int,
         offset: int,

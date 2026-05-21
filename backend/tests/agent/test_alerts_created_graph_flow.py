@@ -57,7 +57,7 @@ def test_flow4_persists_history_and_snapshots_graph() -> None:
     assert (
         writer.count_open_alerts(knowledge_base_id="kb-1", entity_id="claim:c1") == 2
     )
-    entity = service.get_entity("kb-1", "claim:c1")
+    entity = service.get_entity(["kb-1"], "claim:c1")
     assert entity is not None
     assert entity.properties["active_alert_count"] == 2
     assert entity.properties["last_alert_severity"] == "high"
@@ -75,6 +75,6 @@ def test_flow4_is_idempotent_on_replay() -> None:
     handle_alerts_created_for_graph(
         event, alert_history_writer=writer, graph_service=service
     )
-    entity = service.get_entity("kb-1", "claim:c1")
+    entity = service.get_entity(["kb-1"], "claim:c1")
     assert entity is not None
     assert entity.properties["active_alert_count"] == 2

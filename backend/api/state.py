@@ -219,7 +219,7 @@ class ApiState:
         return self._to_alert_item(alert_id)
 
     def get_graph_entity_detail(self, entity_id: str) -> GraphEntityDetailResponse:
-        entity = self._graph_service.get_entity(self._knowledge_base_id, entity_id)
+        entity = self._graph_service.get_entity([self._knowledge_base_id], entity_id)
         if entity is None:
             raise KeyError(entity_id)
         neighbors, relationships = self._graph_service.get_neighbors(self._knowledge_base_id, entity_id)

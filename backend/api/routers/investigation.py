@@ -36,7 +36,7 @@ async def read_entity(
     graph_service: GraphServiceProtocol = Depends(get_graph_service),
 ) -> EntityDetailResponse:
     """Return a single entity from the knowledge base or 404 if unknown."""
-    entity = graph_service.get_entity(kb_id, entity_id)
+    entity = graph_service.get_entity([kb_id], entity_id)
     if entity is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -57,7 +57,7 @@ async def read_entity_neighborhood(
     graph_service: GraphServiceProtocol = Depends(get_graph_service),
 ) -> NeighborhoodResponse:
     """Return the neighborhood subgraph around an entity up to ``depth`` hops."""
-    if graph_service.get_entity(kb_id, entity_id) is None:
+    if graph_service.get_entity([kb_id], entity_id) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Entity '{entity_id}' not found in knowledge base '{kb_id}'.",
@@ -83,5 +83,5 @@ async def search_entities(
     graph_service: GraphServiceProtocol = Depends(get_graph_service),
 ) -> EntitySearchResponse:
     """Return entities matching ``q`` paginated by ``limit`` and ``offset``."""
-    items = graph_service.search_entities(kb_id, q, limit, offset)
+    items = graph_service.search_entities([kb_id], q, limit, offset)
     return EntitySearchResponse(items=items, total=len(items))

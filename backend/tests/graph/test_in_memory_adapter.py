@@ -79,8 +79,8 @@ def populated_repository() -> InMemoryGraphRepository:
 
 
 def test_get_entity_and_counts(populated_repository: InMemoryGraphRepository) -> None:
-    assert populated_repository.get_entity("kb-1", "entity-2") is not None
-    assert populated_repository.get_entity("kb-1", "missing") is None
+    assert populated_repository.get_entity(["kb-1"], "entity-2") is not None
+    assert populated_repository.get_entity(["kb-1"], "missing") is None
     assert populated_repository.count_entities("kb-1") == 3
     assert populated_repository.count_relationships("kb-1") == 2
 
@@ -127,11 +127,11 @@ def test_search_entities_matches_string_properties_case_insensitively(
 ) -> None:
     assert [
         entity.id
-        for entity in populated_repository.search_entities("kb-1", "ALICE", limit=10)
+        for entity in populated_repository.search_entities(["kb-1"], "ALICE", limit=10)
     ] == ["entity-2"]
     assert [
         entity.id
-        for entity in populated_repository.search_entities("kb-1", "cardiac", limit=10)
+        for entity in populated_repository.search_entities(["kb-1"], "cardiac", limit=10)
     ] == ["entity-1"]
 
 
@@ -144,15 +144,15 @@ def test_search_entities_ignores_non_string_properties_and_blank_queries() -> No
         ],
     )
 
-    assert repository.search_entities("kb-1", "125", limit=10) == []
-    assert repository.search_entities("kb-1", "   ", limit=10) == []
+    assert repository.search_entities(["kb-1"], "125", limit=10) == []
+    assert repository.search_entities(["kb-1"], "   ", limit=10) == []
 
 
 def test_search_entities_returns_empty_for_non_positive_limit(
     populated_repository: InMemoryGraphRepository,
 ) -> None:
-    assert populated_repository.search_entities("kb-1", "alice", limit=0) == []
-    assert populated_repository.search_entities("kb-1", "alice", limit=-1) == []
+    assert populated_repository.search_entities(["kb-1"], "alice", limit=0) == []
+    assert populated_repository.search_entities(["kb-1"], "alice", limit=-1) == []
 
 
 def test_get_neighbors_traverses_outbound_bfs(populated_repository: InMemoryGraphRepository) -> None:
@@ -236,7 +236,7 @@ def test_delete_entity_cascades_relationship_cleanup(
 ) -> None:
     populated_repository.delete_entity("kb-1", "entity-2")
 
-    assert populated_repository.get_entity("kb-1", "entity-2") is None
+    assert populated_repository.get_entity(["kb-1"], "entity-2") is None
     assert populated_repository.count_entities("kb-1") == 2
     assert populated_repository.count_relationships("kb-1") == 0
 
@@ -390,3 +390,22 @@ def test_in_memory_repository_update_entity_properties_raises_when_missing() -> 
         repository.update_entity_properties(
             "kb-1", "missing-entity", {"risk_score": 0.1}
         )
+
+
+def test_in_memory_get_entity_finds_entity_across_multiple_kb_ids() -> None:
+    """get_entity with a multi-KB scope returns the match from whichever KB has it."""
+    repo = InMemoryGraphRepository()
+    entity = Entity(id="entity-1", type="claim", properties={"x": 1})
+    with repo.transaction("kb-claims"):
+        repo.upsert_entities("kb-claims", [entity])
+
+    result = repo.get_entity(["kb-other-empty", "kb-claims"], "entity-1")
+
+    assert result is not None
+    assert result.id == "entity-1"
+
+
+def test_in_memory_get_entity_returns_none_when_no_kb_in_scope_has_it() -> None:
+    repo = InMemoryGraphRepository()
+    result = repo.get_entity(["kb-a", "kb-b"], "entity-missing")
+    assert result is None

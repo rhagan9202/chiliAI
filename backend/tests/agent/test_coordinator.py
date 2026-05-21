@@ -2261,7 +2261,7 @@ def test_handle_event_dispatches_analytics_pipeline_for_graph_updated() -> None:
     assert len(alert_events) == 1
     assert alert_events[0].alerts[0].entity_id == "provider-1"
     # Risk + GNN properties were written back to the graph (E7-S11 self-loop).
-    updated = graph_repository.get_entity("kb-1", "provider-1")
+    updated = graph_repository.get_entity(["kb-1"], "provider-1")
     assert updated is not None
     assert "risk_score" in updated.properties
     assert "risk_level" in updated.properties

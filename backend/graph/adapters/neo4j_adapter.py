@@ -267,15 +267,16 @@ class Neo4jGraphRepository(GraphRepository):
         """
         return self._query_relationships(query, knowledge_base_id=knowledge_base_id)
 
-    def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None:
+    def get_entity(self, knowledge_base_ids: list[str], entity_id: str) -> Entity | None:
         query = f"""
-        MATCH (entity:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: $entity_id}})
+        MATCH (entity:{_ENTITY_LABEL} {{entity_id: $entity_id}})
+        WHERE entity.knowledge_base_id IN $knowledge_base_ids
         RETURN entity
         LIMIT 1
         """
         entities = self._query_entities(
             query,
-            knowledge_base_id=knowledge_base_id,
+            knowledge_base_ids=knowledge_base_ids,
             entity_id=entity_id,
         )
         return entities[0] if entities else None
@@ -286,7 +287,7 @@ class Neo4jGraphRepository(GraphRepository):
         entity_id: str,
         properties: dict[str, object],
     ) -> Entity:
-        existing = self.get_entity(knowledge_base_id, entity_id)
+        existing = self.get_entity([knowledge_base_id], entity_id)
         if existing is None:
             raise KeyError(
                 f"Entity '{entity_id}' not found in knowledge base '{knowledge_base_id}'."
@@ -309,7 +310,7 @@ class Neo4jGraphRepository(GraphRepository):
             msg = "direction must be one of 'in', 'out', or 'both'"
             raise ValueError(msg)
 
-        root_entity = self.get_entity(knowledge_base_id, entity_id)
+        root_entity = self.get_entity([knowledge_base_id], entity_id)
         if root_entity is None:
             return SubgraphResult()
         if depth == 0:
@@ -405,7 +406,7 @@ class Neo4jGraphRepository(GraphRepository):
 
     def search_entities(
         self,
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         query: str,
         limit: int,
     ) -> list[Entity]:
@@ -414,15 +415,16 @@ class Neo4jGraphRepository(GraphRepository):
             return []
 
         cypher = f"""
-        MATCH (entity:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id}})
-                WHERE toLower(coalesce(entity.properties_json, "")) CONTAINS $normalized_query
+        MATCH (entity:{_ENTITY_LABEL})
+        WHERE entity.knowledge_base_id IN $knowledge_base_ids
+          AND toLower(coalesce(entity.properties_json, "")) CONTAINS $normalized_query
         RETURN entity
         ORDER BY entity.entity_id
         LIMIT $limit
         """
         return self._query_entities(
             cypher,
-            knowledge_base_id=knowledge_base_id,
+            knowledge_base_ids=knowledge_base_ids,
             normalized_query=normalized_query,
             limit=limit,
         )

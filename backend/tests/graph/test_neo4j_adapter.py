@@ -222,8 +222,8 @@ def test_neo4j_repository_reads_searches_counts_and_deletes(
         [],
     ]
 
-    assert repository.get_entity("kb-1", "entity-1") is not None
-    assert repository.search_entities("kb-1", "alice", limit=10)[0].id == "entity-2"
+    assert repository.get_entity(["kb-1"], "entity-1") is not None
+    assert repository.search_entities(["kb-1"], "alice", limit=10)[0].id == "entity-2"
     assert repository.count_entities("kb-1") == 3
     assert repository.count_relationships("kb-1") == 2
     repository.delete_knowledge_base("kb-1")
@@ -637,7 +637,7 @@ def test_neo4j_repository_round_trip_crud(
         "relationship-1",
         "relationship-2",
     ]
-    assert repository.get_entity(knowledge_base_id, "entity-2") is not None
+    assert repository.get_entity([knowledge_base_id], "entity-2") is not None
     assert repository.count_entities(knowledge_base_id) == 3
     assert repository.count_relationships(knowledge_base_id) == 2
     assert [
@@ -649,7 +649,7 @@ def test_neo4j_repository_round_trip_crud(
             offset=0,
         )
     ] == ["entity-2", "entity-3"]
-    assert [entity.id for entity in repository.search_entities(knowledge_base_id, "alice", limit=10)] == [
+    assert [entity.id for entity in repository.search_entities([knowledge_base_id], "alice", limit=10)] == [
         "entity-2"
     ]
 
@@ -676,7 +676,7 @@ def test_neo4j_repository_round_trip_crud(
     )
     repository.delete_entity(knowledge_base_id, "entity-2")
 
-    assert repository.get_entity(knowledge_base_id, "entity-2") is None
+    assert repository.get_entity([knowledge_base_id], "entity-2") is None
     assert repository.count_entities(knowledge_base_id) == 2
     assert repository.count_relationships(knowledge_base_id) == 0
 
@@ -699,4 +699,4 @@ def test_neo4j_repository_transaction_rolls_back_changes(
             )
             raise RuntimeError("rollback")
 
-    assert repository.get_entity(knowledge_base_id, "rollback-entity") is None
+    assert repository.get_entity([knowledge_base_id], "rollback-entity") is None

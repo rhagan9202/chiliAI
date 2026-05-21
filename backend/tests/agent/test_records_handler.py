@@ -111,7 +111,7 @@ def test_handler_fans_records_out_to_graph_and_observations() -> None:
     )
 
     assert processed == 1
-    assert graph_service.get_entity("kb-1", "claim:c1") is not None
+    assert graph_service.get_entity(["kb-1"], "claim:c1") is not None
     assert len(writer.written) == 1
     batch, correlation_id = writer.written[0]
     assert correlation_id == "corr-1"
