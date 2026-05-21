@@ -16,17 +16,22 @@ from typing import Union
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
+from api._kb_store import KnowledgeBaseRepository
 from api.contracts import ChatConversationResponse, ChatMessageCreateRequest
 from api.dependencies import (
     get_api_state,
     get_chat_conversation_create_payload,
     get_chat_conversation_payload,
+    get_domain_config,
+    get_knowledge_base_repository,
 )
 from api.middleware.rbac import require_role
 from api.state import ApiState
+from config.schema import DomainConfig
 from rag.exceptions import RagConfigurationError
 from rag.protocols import RagServiceProtocol
 from rag.service_models import RagQueryRequest, RagStreamChunk
+from shared.kb_scope import resolve_kb_scope
 
 __all__ = ["router"]
 
@@ -67,12 +72,14 @@ async def add_message(
     payload: ChatMessageCreateRequest,
     stream: bool = False,
     state: ApiState = Depends(get_api_state),
+    domain_config: DomainConfig = Depends(get_domain_config),
+    kb_repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
 ) -> Union[ChatConversationResponse, StreamingResponse]:
     """Append a message to a conversation; stream tokens with ``?stream=true``."""
 
     if not stream:
         try:
-            return state.add_message(conversation_id, payload)
+            return state.add_message(conversation_id, payload, kb_repository=kb_repository)
         except KeyError as exc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -87,10 +94,11 @@ async def add_message(
             detail=f"Conversation '{conversation_id}' not found.",
         ) from exc
 
+    kb_ids = resolve_kb_scope(conversation.knowledge_base_id, domain_config, kb_repository)
     return StreamingResponse(
         _stream_sse(
             state.rag_service,
-            knowledge_base_id=conversation.knowledge_base_id,
+            knowledge_base_ids=kb_ids,
             question=payload.content,
         ),
         media_type="text/event-stream",
@@ -100,11 +108,11 @@ async def add_message(
 async def _stream_sse(
     rag_service: RagServiceProtocol,
     *,
-    knowledge_base_id: str,
+    knowledge_base_ids: list[str],
     question: str,
 ) -> AsyncIterator[bytes]:
     query_request = RagQueryRequest(
-        knowledge_base_ids=[knowledge_base_id],  # TODO(task-6): Replace with resolve_kb_scope
+        knowledge_base_ids=knowledge_base_ids,
         question=question,
     )
     try:

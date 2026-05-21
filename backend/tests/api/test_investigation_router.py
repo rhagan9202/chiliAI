@@ -10,7 +10,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.dependencies import get_domain_config
-from api.routers.investigation import get_graph_service, router
+from api.routers.investigation import (
+    get_domain_config as router_get_domain_config,
+    get_graph_service,
+    get_knowledge_base_repository as router_get_knowledge_base_repository,
+    router,
+)
 from config.schema import (
     AlertsConfig,
     AuthConfig,
@@ -26,6 +31,20 @@ from graph.protocols import GraphServiceProtocol
 from graph.service import create_graph_service
 from shared.types import Entity, Relationship
 from storage.adapters.in_memory import InMemoryObjectStore
+
+
+class _StubKbRepository:
+    """Minimal KB existence check stub for tests.
+
+    By default every KB is reported as absent (no reference KB auto-attach).
+    Pass ``present_ids`` to mark specific KBs as existing.
+    """
+
+    def __init__(self, present_ids: set[str] | None = None) -> None:
+        self._present: set[str] = present_ids or set()
+
+    def get(self, knowledge_base_id: str) -> object | None:
+        return knowledge_base_id if knowledge_base_id in self._present else None
 
 
 def _build_no_auth_domain_config() -> DomainConfig:
@@ -112,6 +131,8 @@ def client(graph_service: GraphServiceProtocol) -> Iterator[TestClient]:
     app.include_router(router)
     app.dependency_overrides[get_graph_service] = lambda: graph_service
     app.dependency_overrides[get_domain_config] = _build_no_auth_domain_config
+    app.dependency_overrides[router_get_domain_config] = _build_no_auth_domain_config
+    app.dependency_overrides[router_get_knowledge_base_repository] = lambda: _StubKbRepository()
     with TestClient(app) as test_client:
         yield test_client
 
@@ -339,3 +360,78 @@ def test_investigation_entity_get_requires_viewer_when_auth_enabled(
         assert client.get(
             "/investigation/entities/no-such-entity", params={"kb_id": "kb-demo"}
         ).status_code in {200, 404}
+
+
+# ---------------------------------------------------------------------------
+# Auto-attach integration test — resolve_kb_scope end-to-end
+# ---------------------------------------------------------------------------
+
+
+def _build_auto_attach_domain_config() -> DomainConfig:
+    """Domain config with default_reference_kb_id set to 'kb-policy'."""
+    return DomainConfig(
+        domain=DomainInfo(name="test", display_name="Test", description="Test"),
+        entities=[],
+        relationships=[],
+        capabilities=CapabilitiesConfig(),
+        ingestion=IngestionConfig(sources=[]),
+        auth=AuthConfig(enabled=False),
+        validation=ValidationConfig(
+            max_file_size_mb=1,
+            allowed_content_types=["text/plain", "application/json"],
+        ),
+        alerts=AlertsConfig(thresholds={}),
+        default_reference_kb_id="kb-policy",
+    )
+
+
+def test_read_entity_auto_attaches_reference_kb() -> None:
+    """resolve_kb_scope causes a cross-KB entity lookup to succeed.
+
+    Setup:
+    - DomainConfig has default_reference_kb_id = "kb-policy"
+    - "kb-claims" holds entity-c1; "kb-policy" holds entity-p1
+    - Analyst queries GET /investigation/entities/entity-p1?kb_id=kb-claims
+
+    Expected: 200 with entity-p1 returned (the entity exists only in kb-policy,
+    and kb-policy is auto-attached because it's the configured reference KB).
+    """
+    # Build a graph service with both KBs seeded.
+    graph_service = _build_graph_service()
+    repository = cast(InMemoryGraphRepository, getattr(graph_service, "_repository"))
+    repository.upsert_entities(
+        "kb-claims",
+        [Entity(id="entity-c1", type="claim", properties={"label": "Claim 1"})],
+    )
+    repository.upsert_entities(
+        "kb-policy",
+        [Entity(id="entity-p1", type="policy", properties={"label": "Policy 1"})],
+    )
+
+    # KB repository that reports kb-policy as existing.
+    kb_repo = _StubKbRepository(present_ids={"kb-policy"})
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_graph_service] = lambda: graph_service
+    app.dependency_overrides[router_get_domain_config] = _build_auto_attach_domain_config
+    app.dependency_overrides[router_get_knowledge_base_repository] = lambda: kb_repo
+    # get_domain_config (api.dependencies) override keeps auth disabled for the test.
+    app.dependency_overrides[get_domain_config] = _build_auto_attach_domain_config
+
+    with TestClient(app) as test_client:
+        # entity-p1 lives in kb-policy, but we request from kb-claims.
+        # resolve_kb_scope should auto-attach kb-policy, making entity-p1 visible.
+        response = test_client.get(
+            "/investigation/entities/entity-p1", params={"kb_id": "kb-claims"}
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["entity"]["id"] == "entity-p1"
+
+        # entity-c1 lives in kb-claims and should also be reachable.
+        response2 = test_client.get(
+            "/investigation/entities/entity-c1", params={"kb_id": "kb-claims"}
+        )
+        assert response2.status_code == 200, response2.text
+        assert response2.json()["entity"]["id"] == "entity-c1"
