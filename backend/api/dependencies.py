@@ -236,7 +236,8 @@ def get_chat_message_payload(
     state: ApiState = Depends(get_api_state),
 ) -> ChatConversationResponse:
     """Append a message and return the updated conversation."""
-    return state.add_message(conversation_id, payload)
+    kb_repository = get_knowledge_base_repository()
+    return state.add_message(conversation_id, payload, kb_repository=kb_repository)
 
 
 def get_policy_gap_list_payload(
