@@ -35,6 +35,7 @@ from events.types import (
     RecordsIngestedEvent,
     RiskScoredEvent,
     TimeseriesAnalyzedEvent,
+    VectorsDeletedEvent,
     VectorsIndexedEvent,
 )
 
@@ -59,6 +60,7 @@ EVENT_TYPE_REGISTRY: dict[str, type[EventBase]] = {
     "graph.updated": GraphUpdatedEvent,
     "embeddings.complete": EmbeddingsCompleteEvent,
     "vectors.indexed": VectorsIndexedEvent,
+    "vectors.deleted": VectorsDeletedEvent,
     "kb.ready": KnowledgeBaseReadyEvent,
     "llm.completed": LlmCompletedEvent,
     "embeddings.generated": EmbeddingsGeneratedEvent,

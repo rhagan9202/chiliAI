@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, cast
 from uuid import NAMESPACE_URL, uuid5
 
 from config.schema import VectorStoreConfig
-from vectorstore.adapters.protocols import VectorStoreProtocol
 from vectorstore.exceptions import VectorDimensionMismatchError, VectorStoreError
 from vectorstore.models import MetadataValue, VectorMatch, VectorRecord
 
 if TYPE_CHECKING:
     from qdrant_client import QdrantClient as QdrantClientType
     from qdrant_client.http.models.models import (
+        CountResult,
         Distance,
         FieldCondition,
         Filter,
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
         PointStruct,
         QueryResponse,
         Range,
+        Record,
         ScoredPoint,
         VectorParams,
     )
@@ -63,6 +65,24 @@ class QdrantClientProtocol(Protocol):
         **kwargs: object,
     ) -> object: ...
 
+    def retrieve(
+        self,
+        collection_name: str,
+        ids: Sequence[str],
+        with_payload: bool,
+        with_vectors: bool,
+        **kwargs: object,
+    ) -> list[Record]: ...
+
+    def count(
+        self,
+        collection_name: str,
+        exact: bool,
+        **kwargs: object,
+    ) -> CountResult: ...
+
+    def delete_collection(self, collection_name: str, **kwargs: object) -> bool: ...
+
 
 class QdrantModelsProtocol(Protocol):
     Distance: type[Distance]
@@ -84,7 +104,7 @@ except ImportError:  # pragma: no cover - optional dependency
 __all__ = ["QdrantVectorStore"]
 
 
-class QdrantVectorStore(VectorStoreProtocol):
+class QdrantVectorStore:
     """Persist vector records and execute similarity search through Qdrant."""
 
     def __init__(
@@ -100,7 +120,7 @@ class QdrantVectorStore(VectorStoreProtocol):
         self._config = config
         self._client: QdrantClientProtocol = cast(
             QdrantClientProtocol,
-            client or client_class(url=config.uri, prefer_grpc=True),
+            client or client_class(url=config.uri, prefer_grpc=False),
         )
         self._distance: Distance = _distance_for(config.distance_metric)
 
@@ -114,9 +134,9 @@ class QdrantVectorStore(VectorStoreProtocol):
 
         dimension = self._validate_batch_dimensions(records)
         collection_name = self._collection_name(knowledge_base_id)
-        self._ensure_collection(collection_name, dimension)
 
         try:
+            self._ensure_collection(collection_name, dimension)
             self._client.upsert(
                 collection_name=collection_name,
                 points=[self._point_for(record) for record in records],
@@ -155,7 +175,61 @@ class QdrantVectorStore(VectorStoreProtocol):
         except Exception as exc:
             raise VectorStoreError("Failed to search Qdrant vector records.") from exc
 
-        return [self._match_from_scored_point(point) for point in response.points]
+        try:
+            return [self._match_from_scored_point(point) for point in response.points]
+        except Exception as exc:
+            raise VectorStoreError("Failed to search Qdrant vector records.") from exc
+
+    def get_record(
+        self,
+        knowledge_base_id: str,
+        record_id: str,
+    ) -> VectorRecord | None:
+        collection_name = self._collection_name(knowledge_base_id)
+        try:
+            if not self._client.collection_exists(collection_name):
+                return None
+            records = self._client.retrieve(
+                collection_name=collection_name,
+                ids=[_point_id_for(record_id)],
+                with_payload=True,
+                with_vectors=True,
+            )
+            if not records:
+                return None
+            return self._record_from_qdrant_record(records[0], knowledge_base_id)
+        except Exception as exc:
+            raise VectorStoreError("Failed to retrieve Qdrant vector record.") from exc
+
+    def count_records(self, knowledge_base_id: str) -> int:
+        collection_name = self._collection_name(knowledge_base_id)
+        try:
+            if not self._client.collection_exists(collection_name):
+                return 0
+            result = self._client.count(collection_name=collection_name, exact=True)
+        except Exception as exc:
+            raise VectorStoreError("Failed to count Qdrant vector records.") from exc
+        return int(result.count)
+
+    def delete_record(self, knowledge_base_id: str, record_id: str) -> bool:
+        if self.get_record(knowledge_base_id, record_id) is None:
+            return False
+        self.delete_records(knowledge_base_id, [record_id])
+        return True
+
+    def delete_namespace(self, knowledge_base_id: str) -> int:
+        collection_name = self._collection_name(knowledge_base_id)
+        try:
+            if not self._client.collection_exists(collection_name):
+                return 0
+            deleted_count = self.count_records(knowledge_base_id)
+            if not self._client.delete_collection(collection_name=collection_name):
+                raise VectorStoreError(
+                    "Qdrant collection deletion was not acknowledged."
+                )
+        except Exception as exc:
+            raise VectorStoreError("Failed to delete Qdrant vector namespace.") from exc
+        return deleted_count
 
     def delete_records(self, knowledge_base_id: str, record_ids: Sequence[str]) -> int:
         """Delete the provided record IDs from the Qdrant collection."""
@@ -264,6 +338,34 @@ class QdrantVectorStore(VectorStoreProtocol):
             content=cast(str | None, payload.get("content")),
             metadata=cast(dict[str, MetadataValue], raw_metadata),
         )
+
+    def _record_from_qdrant_record(
+        self,
+        record: Record,
+        knowledge_base_id: str,
+    ) -> VectorRecord:
+        payload = cast(dict[str, object], record.payload or {})
+        raw_vector = record.vector
+        if not isinstance(raw_vector, list) or any(
+            isinstance(value, list) for value in raw_vector
+        ):
+            raise VectorStoreError("Qdrant record did not include a dense vector.")
+        dense_vector = cast(list[float], raw_vector)
+        record_data: dict[str, object] = {
+            "id": cast(str, payload.get("record_id", str(record.id))),
+            "knowledge_base_id": cast(
+                str,
+                payload.get("knowledge_base_id", knowledge_base_id),
+            ),
+            "content_id": cast(str, payload["content_id"]),
+            "embedding": [float(value) for value in dense_vector],
+            "content": cast(str | None, payload.get("content")),
+            "metadata": cast(dict[str, MetadataValue], payload.get("metadata", {})),
+        }
+        indexed_at = payload.get("indexed_at")
+        if indexed_at is not None:
+            record_data["indexed_at"] = datetime.fromisoformat(cast(str, indexed_at))
+        return VectorRecord.model_validate(record_data)
 
     @staticmethod
     def _collection_name(knowledge_base_id: str) -> str:

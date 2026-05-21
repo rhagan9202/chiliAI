@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import math
 
-from vectorstore.adapters.protocols import VectorStoreProtocol
 from vectorstore.exceptions import VectorDimensionMismatchError
 from vectorstore.models import MetadataValue, VectorMatch, VectorRecord
 
 __all__ = ["InMemoryVectorStore"]
 
 
-class InMemoryVectorStore(VectorStoreProtocol):
+class InMemoryVectorStore:
     """Store vector records in process-local dictionaries keyed by knowledge base."""
 
     def __init__(self) -> None:
@@ -41,9 +40,10 @@ class InMemoryVectorStore(VectorStoreProtocol):
 
         self._dimensions[knowledge_base_id] = dimension
         bucket = self._records.setdefault(knowledge_base_id, {})
-        for record in records:
+        stored_records = [record.model_copy(deep=True) for record in records]
+        for record in stored_records:
             bucket[record.id] = record
-        return list(records)
+        return [record.model_copy(deep=True) for record in stored_records]
 
     def search(
         self,
@@ -77,6 +77,35 @@ class InMemoryVectorStore(VectorStoreProtocol):
 
         scored_matches.sort(key=lambda match: match.score, reverse=True)
         return scored_matches[:limit]
+
+    def get_record(
+        self,
+        knowledge_base_id: str,
+        record_id: str,
+    ) -> VectorRecord | None:
+        record = self._records.get(knowledge_base_id, {}).get(record_id)
+        if record is None:
+            return None
+        return record.model_copy(deep=True)
+
+    def count_records(self, knowledge_base_id: str) -> int:
+        return len(self._records.get(knowledge_base_id, {}))
+
+    def delete_record(self, knowledge_base_id: str, record_id: str) -> bool:
+        bucket = self._records.get(knowledge_base_id)
+        if bucket is None or record_id not in bucket:
+            return False
+        del bucket[record_id]
+        if not bucket:
+            self._records.pop(knowledge_base_id, None)
+            self._dimensions.pop(knowledge_base_id, None)
+        return True
+
+    def delete_namespace(self, knowledge_base_id: str) -> int:
+        deleted_count = len(self._records.get(knowledge_base_id, {}))
+        self._records.pop(knowledge_base_id, None)
+        self._dimensions.pop(knowledge_base_id, None)
+        return deleted_count
 
 
 def _matches_filters(record: VectorRecord, filters: dict[str, MetadataValue]) -> bool:

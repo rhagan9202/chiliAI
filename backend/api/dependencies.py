@@ -501,7 +501,11 @@ def get_vector_store() -> VectorStoreProtocol:
 @lru_cache(maxsize=1)
 def get_vectorstore_service() -> VectorServiceProtocol:
     """Return the vectorstore service assembled from configured dependencies."""
-    return create_vector_service(get_vector_store(), event_bus=get_event_bus())
+    return create_vector_service(
+        get_vector_store(),
+        event_bus=get_event_bus(),
+        object_store=get_object_store(),
+    )
 
 
 @lru_cache(maxsize=1)

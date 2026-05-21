@@ -117,6 +117,7 @@ include = [
     "ingestion",
     "monitoring",
     "records",
+    "vectorstore",
     "tests/agent",
     "tests/analytics/gnn",
     "tests/analytics/metrics",
@@ -146,5 +147,6 @@ include = [
     "tests/monitoring/test_postgres_observation_store.py",
     "tests/monitoring/test_postgres_observation_source.py",
     "tests/records",
+    "tests/vectorstore",
 ]
 exclude = ["**/__pycache__", "chili_backend.egg-info"]
