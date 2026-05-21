@@ -87,6 +87,7 @@ export function RagChatPage() {
               className="page-input"
               id="rag-kb-select"
               onChange={(event) => {
+                // setSearchParams (not navigate) because RAG Chat has no entity sub-path to reset.
                 const next = new URLSearchParams(searchParams)
                 next.set('kb', event.target.value)
                 setSearchParams(next)

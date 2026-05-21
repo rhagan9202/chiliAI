@@ -78,7 +78,7 @@ const KB_TWO = {
   id: 'kb-2',
   name: 'Policy KB',
   description: '',
-  status: 'indexing',
+  status: 'building',
   document_count: 0,
   entity_count: 0,
   relationship_count: 0,
@@ -115,7 +115,7 @@ describe('RagChatPage', () => {
     const select = screen.getByLabelText('Knowledge base') as HTMLSelectElement
     expect(select.value).toBe('kb-1')
     expect(screen.getByRole('option', { name: /Fraud KB · ready/ })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: /Policy KB · indexing/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Policy KB · building/ })).toBeInTheDocument()
   })
 
   it('honors the ?kb=... URL parameter when it matches an existing KB', () => {
