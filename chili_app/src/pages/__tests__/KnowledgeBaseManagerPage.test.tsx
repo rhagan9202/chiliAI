@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -255,6 +255,16 @@ async function parseValidRecords() {
   await userEvent.click(screen.getByRole('button', { name: 'Parse records' }))
 }
 
+function getStepperItem(stepLabel: string): HTMLLIElement {
+  const item = screen
+    .getAllByRole('listitem')
+    .find((li) => within(li).queryByText(stepLabel))
+  if (!item) {
+    throw new Error(`Stepper item with label "${stepLabel}" not found`)
+  }
+  return item as HTMLLIElement
+}
+
 describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
   const originalFetch = globalThis.fetch
 
@@ -430,5 +440,43 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
       expect(screen.getByText('1 document accepted.')).toBeInTheDocument()
       expect(screen.getByText('Select a structured records feed before submitting.')).toBeInTheDocument()
     })
+  })
+
+  it('renders the Validate stepper item as idle on cold load (no error chip, no complete chip)', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('Ingestion Studio')
+
+    const validateItem = getStepperItem('Validate')
+    expect(within(validateItem).queryByText('Needs attention')).not.toBeInTheDocument()
+    expect(within(validateItem).queryByText('Complete')).not.toBeInTheDocument()
+  })
+
+  it('flips Validate to Needs attention when an empty document file is queued', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('Ingestion Studio')
+    await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
+    await userEvent.upload(
+      screen.getByLabelText('Document files'),
+      new File([''], 'empty.txt', { type: 'text/plain' }),
+    )
+
+    const validateItem = getStepperItem('Validate')
+    expect(within(validateItem).getByText('Needs attention')).toBeInTheDocument()
+  })
+
+  it('marks Validate as Complete when a clean document file is queued', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('Ingestion Studio')
+    await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
+    await userEvent.upload(
+      screen.getByLabelText('Document files'),
+      new File(['hello'], 'policy.txt', { type: 'text/plain' }),
+    )
+
+    const validateItem = getStepperItem('Validate')
+    expect(within(validateItem).getByText('Complete')).toBeInTheDocument()
   })
 })

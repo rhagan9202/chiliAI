@@ -242,14 +242,23 @@ export function KnowledgeBaseManagerPage() {
     return <ErrorState description="Selected knowledge base detail could not be loaded from the API." />
   }
 
+  const contentErrors = currentIssues.filter(
+    (item) => (item.kind ?? 'content') === 'content' && item.severity === 'error',
+  )
+  const userHasSubmittableState =
+    Boolean(activeKnowledgeBaseId) &&
+    Boolean(studio.sourceType) &&
+    (studio.pendingFiles.length > 0 || studio.parsedRows.length > 0)
+
   const completedStepIds = new Set([
     ...(activeKnowledgeBaseId ? (['knowledge-base'] as const) : []),
     ...(studio.sourceType ? (['source'] as const) : []),
     ...(studio.pendingFiles.length > 0 || studio.parsedRows.length > 0 ? (['preview'] as const) : []),
-    ...(currentIssues.length === 0 ? (['validate'] as const) : []),
+    ...(userHasSubmittableState && contentErrors.length === 0 ? (['validate'] as const) : []),
     ...(studio.receipts.length > 0 ? (['submit'] as const) : []),
   ])
-  const errorStepIds = new Set(currentIssues.length > 0 ? (['validate'] as const) : [])
+  const errorStepIds = new Set(contentErrors.length > 0 ? (['validate'] as const) : [])
+
 
   return (
     <section className="page-grid">
