@@ -460,26 +460,27 @@ def test_neo4j_repository_tolerates_schema_failure(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """If a single CREATE statement fails, init logs a warning and continues."""
+    """If a single CREATE statement fails, init logs a warning and the rest still run."""
 
     class _FlakySession(_FakeSession):
-        def __init__(self, driver: _FakeDriver) -> None:
-            super().__init__(driver)
-            self._call_count = 0
-
         def execute_write(
             self,
             callback: Callable[..., list[FakeRecord]],
             query: str,
             **parameters: object,
         ) -> list[FakeRecord]:
-            self._call_count += 1
+            assert isinstance(self._driver, _FlakyDriver)
+            self._driver.execute_write_calls += 1
             self._driver.queries.append((query, parameters, "write"))
-            if self._call_count == 1:
+            if self._driver.execute_write_calls == 1:
                 raise neo4j_adapter.Neo4jError("simulated DDL permission denied")
             return callback(_FakeTransaction(self._driver), query, **parameters)
 
     class _FlakyDriver(_FakeDriver):
+        def __init__(self) -> None:
+            super().__init__()
+            self.execute_write_calls = 0
+
         def session(self, **kwargs: object) -> _FlakySession:
             self.session_kwargs.append(kwargs)
             return _FlakySession(self)
@@ -508,16 +509,19 @@ def test_neo4j_repository_tolerates_schema_failure(
 
     driver = _FlakyDatabase.driver_instance
     assert driver is not None
-    # All four schema statements were still attempted even though the first one failed.
+    # All four schema statements were attempted (the loop continued past the first failure).
+    assert driver.execute_write_calls == 4
     assert len(driver.queries) == 4
-    # The failure was logged at WARNING.
+    # Exactly one WARNING was logged — only the first statement failed, the rest succeeded.
     warning_messages = [
         record.getMessage()
         for record in caplog.records
         if record.levelname == "WARNING"
+        and record.name == "graph.adapters.neo4j_adapter"
     ]
-    assert any("Failed to ensure Neo4j schema" in msg for msg in warning_messages)
-    assert any("simulated DDL permission denied" in msg for msg in warning_messages)
+    assert len(warning_messages) == 1, warning_messages
+    assert "Failed to ensure Neo4j schema" in warning_messages[0]
+    assert "simulated DDL permission denied" in warning_messages[0]
 
 
 @pytest.fixture()
