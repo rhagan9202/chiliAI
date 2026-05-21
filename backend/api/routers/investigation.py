@@ -84,6 +84,9 @@ async def read_entity_neighborhood(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Entity '{entity_id}' not found in knowledge base '{kb_id}'.",
         )
+    # query_neighborhood is single-graph by spec — traversal cannot span KBs because
+    # cross-KB relationships are not stored. An entity found in the reference KB
+    # via the existence check above will return an empty neighborhood here.
     subgraph = graph_service.query_neighborhood(kb_id, entity_id, depth)
     return NeighborhoodResponse(
         center_entity_id=entity_id,

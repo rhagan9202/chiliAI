@@ -264,8 +264,9 @@ class GraphService:
         limit: int,
         offset: int,
     ) -> list[Entity]:
-        # Validate limit/offset via EntitySearchQuery; knowledge_base_id field is
-        # unused for routing — pass a placeholder until the model is updated in Task 6.
+        # EntitySearchQuery.knowledge_base_id is a validation shim only — routing
+        # uses knowledge_base_ids passed directly to the repository. The "__multi__"
+        # placeholder satisfies the model's non-empty-string constraint.
         search_query = EntitySearchQuery(
             knowledge_base_id="__multi__",
             query=query,
