@@ -456,6 +456,70 @@ def test_neo4j_repository_ensures_schema_statements_on_init(
     assert "ON (r.knowledge_base_id)" in schema_text
 
 
+def test_neo4j_repository_tolerates_schema_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """If a single CREATE statement fails, init logs a warning and continues."""
+
+    class _FlakySession(_FakeSession):
+        def __init__(self, driver: _FakeDriver) -> None:
+            super().__init__(driver)
+            self._call_count = 0
+
+        def execute_write(
+            self,
+            callback: Callable[..., list[FakeRecord]],
+            query: str,
+            **parameters: object,
+        ) -> list[FakeRecord]:
+            self._call_count += 1
+            self._driver.queries.append((query, parameters, "write"))
+            if self._call_count == 1:
+                raise neo4j_adapter.Neo4jError("simulated DDL permission denied")
+            return callback(_FakeTransaction(self._driver), query, **parameters)
+
+    class _FlakyDriver(_FakeDriver):
+        def session(self, **kwargs: object) -> _FlakySession:
+            self.session_kwargs.append(kwargs)
+            return _FlakySession(self)
+
+    class _FlakyDatabase:
+        driver_instance: _FlakyDriver | None = None
+
+        @classmethod
+        def driver(
+            cls,
+            uri: str,
+            *,
+            auth: tuple[str, str] | None,
+            max_connection_pool_size: int,
+        ) -> _FlakyDriver:
+            cls.driver_instance = _FlakyDriver()
+            return cls.driver_instance
+
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FlakyDatabase)
+
+    with caplog.at_level("WARNING", logger="graph.adapters.neo4j_adapter"):
+        Neo4jGraphRepository(
+            GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+            auth=("neo4j", "password"),
+        )
+
+    driver = _FlakyDatabase.driver_instance
+    assert driver is not None
+    # All four schema statements were still attempted even though the first one failed.
+    assert len(driver.queries) == 4
+    # The failure was logged at WARNING.
+    warning_messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelname == "WARNING"
+    ]
+    assert any("Failed to ensure Neo4j schema" in msg for msg in warning_messages)
+    assert any("simulated DDL permission denied" in msg for msg in warning_messages)
+
+
 @pytest.fixture()
 def neo4j_repository() -> Generator[tuple[Neo4jGraphRepository, str], None, None]:
     pytest.importorskip("neo4j")

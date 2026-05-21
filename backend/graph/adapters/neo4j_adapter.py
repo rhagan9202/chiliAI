@@ -151,8 +151,11 @@ class Neo4jGraphRepository(GraphRepository):
             "ON (r.knowledge_base_id)",
         ]
         for stmt in statements:
-            with self._session() as session:
-                session.execute_write(self._run_query, stmt)
+            try:
+                with self._session() as session:
+                    session.execute_write(self._run_query, stmt)
+            except Neo4jError as exc:
+                logger.warning("Failed to ensure Neo4j schema: %s — %s", stmt, exc)
 
     def transaction(self, knowledge_base_id: str) -> AbstractContextManager[None]:
         return self._transaction_scope()
