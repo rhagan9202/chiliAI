@@ -85,7 +85,7 @@ const CONVERSATION_WITH_REPLY = {
 }
 
 test.describe('RAG chat page', () => {
-  test('renders chat interface and shows "no KB" empty state when no knowledge bases exist', async ({
+  test('renders chat interface and shows "no KB" empty state with Create CTA', async ({
     page,
   }) => {
     await mockAuthenticatedShell(page)
@@ -95,6 +95,13 @@ test.describe('RAG chat page', () => {
 
     await expect(page.getByRole('heading', { name: 'RAG Chat' })).toBeVisible()
     await expect(page.getByText('No knowledge base available')).toBeVisible()
+
+    const cta = page.getByRole('button', { name: /create knowledge base/i })
+    await expect(cta).toBeVisible()
+
+    await cta.click()
+
+    await expect(page).toHaveURL(/\/knowledge-bases$/)
   })
 
   test('renders chat thread and assistant response after sending a message', async ({ page }) => {
