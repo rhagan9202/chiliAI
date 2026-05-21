@@ -95,6 +95,8 @@ class _FakeTransaction:
         self._driver = driver
 
     def run(self, query: str, **parameters: object) -> list[FakeRecord]:
+        if not self._driver.results:
+            return []
         return self._driver.results.pop(0)
 
 
