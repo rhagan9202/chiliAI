@@ -198,8 +198,8 @@ def test_neo4j_repository_upserts_entities_and_relationships_with_merge(
 
     assert entities[0].id == "entity-1"
     assert relationships[0].id == "relationship-1"
-    assert "MERGE (entity:Entity" in driver.queries[0][0]
-    assert "MERGE (source)-[relationship:RELATES" in driver.queries[1][0]
+    assert "MERGE (entity:Entity" in driver.queries[4][0]
+    assert "MERGE (source)-[relationship:RELATES" in driver.queries[5][0]
 
 
 def test_neo4j_repository_reads_searches_counts_and_deletes(
@@ -230,7 +230,7 @@ def test_neo4j_repository_reads_searches_counts_and_deletes(
     repository.delete_entity("kb-1", "entity-2")
     repository.delete_relationship("kb-1", "relationship-2")
 
-    assert "entity.properties_json" in driver.queries[1][0]
+    assert "entity.properties_json" in driver.queries[5][0]
     assert "DETACH DELETE entity" in driver.queries[-3][0]
     assert "DELETE relationship" in driver.queries[-1][0]
 
@@ -291,7 +291,7 @@ def test_neo4j_repository_get_neighbors_uses_variable_length_path_pattern(
     assert {entity.id for entity in result.entities} == {"entity-1", "entity-2"}
     assert [relationship.id for relationship in result.relationships] == ["relationship-1"]
     assert [entity.id for entity in zero_depth_result.entities] == ["entity-1"]
-    assert "*1..2" in driver.queries[1][0]
+    assert "*1..2" in driver.queries[5][0]
 
 
 def test_neo4j_repository_get_neighbors_preserves_inbound_relationship_direction(
@@ -424,6 +424,36 @@ def test_neo4j_repository_transaction_rolls_back_on_failure(
     assert driver.last_transaction is not None
     assert driver.last_transaction.rolled_back is True
     assert driver.last_transaction.committed is False
+
+
+def test_neo4j_repository_ensures_schema_statements_on_init(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+
+    schema_queries = [entry[0] for entry in driver.queries]
+    schema_text = "\n".join(schema_queries)
+
+    assert "CREATE CONSTRAINT entity_kb_id_unique IF NOT EXISTS" in schema_text
+    assert "FOR (e:Entity)" in schema_text
+    assert "REQUIRE (e.knowledge_base_id, e.entity_id) IS UNIQUE" in schema_text
+
+    assert "CREATE INDEX entity_kb_id IF NOT EXISTS" in schema_text
+    assert "ON (e.knowledge_base_id)" in schema_text
+
+    assert "CREATE INDEX rel_kb_id_relationship_id IF NOT EXISTS" in schema_text
+    assert "FOR ()-[r:RELATES]-()" in schema_text
+    assert "ON (r.knowledge_base_id, r.relationship_id)" in schema_text
+
+    assert "CREATE INDEX rel_kb_id IF NOT EXISTS" in schema_text
+    assert "ON (r.knowledge_base_id)" in schema_text
 
 
 @pytest.fixture()

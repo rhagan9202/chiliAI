@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable, Generator, Iterable, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from datetime import datetime
@@ -97,6 +98,8 @@ else:
 
 __all__ = ["Neo4jGraphRepository"]
 
+logger = logging.getLogger(__name__)
+
 _MAX_NEIGHBOR_DEPTH = 5
 _ENTITY_LABEL = "Entity"
 _RELATIONSHIP_LABEL = "RELATES"
@@ -127,9 +130,29 @@ class Neo4jGraphRepository(GraphRepository):
         )
         self._active_transaction: Neo4jTransactionProtocol | None = None
         self._active_session: Neo4jSessionProtocol | None = None
+        self._ensure_schema()
 
     def close(self) -> None:
         self._driver.close()
+
+    def _ensure_schema(self) -> None:
+        statements = [
+            "CREATE CONSTRAINT entity_kb_id_unique IF NOT EXISTS "
+            "FOR (e:Entity) "
+            "REQUIRE (e.knowledge_base_id, e.entity_id) IS UNIQUE",
+            "CREATE INDEX entity_kb_id IF NOT EXISTS "
+            "FOR (e:Entity) "
+            "ON (e.knowledge_base_id)",
+            "CREATE INDEX rel_kb_id_relationship_id IF NOT EXISTS "
+            "FOR ()-[r:RELATES]-() "
+            "ON (r.knowledge_base_id, r.relationship_id)",
+            "CREATE INDEX rel_kb_id IF NOT EXISTS "
+            "FOR ()-[r:RELATES]-() "
+            "ON (r.knowledge_base_id)",
+        ]
+        for stmt in statements:
+            with self._session() as session:
+                session.execute_write(self._run_query, stmt)
 
     def transaction(self, knowledge_base_id: str) -> AbstractContextManager[None]:
         return self._transaction_scope()
