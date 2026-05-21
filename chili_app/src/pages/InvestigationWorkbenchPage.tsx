@@ -82,7 +82,16 @@ export function InvestigationWorkbenchPage() {
         />
         <Card>
           <EmptyState
-            description="The live investigation workbench queries the graph through a selected knowledge base. Create one on the Knowledge Bases page, upload documents, then return here to search extracted entities."
+            action={
+              <button
+                className="page-button"
+                onClick={() => navigate('/knowledge-bases')}
+                type="button"
+              >
+                + Create Knowledge Base
+              </button>
+            }
+            description="Investigation queries the graph through a selected knowledge base. Create one, upload documents, and return here to search extracted entities."
             title="No graph-ready knowledge base"
           />
         </Card>

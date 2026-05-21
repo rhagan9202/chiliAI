@@ -146,6 +146,19 @@ describe('InvestigationWorkbenchPage', () => {
     expect(screen.getByText(/queries the graph through a selected knowledge base/i)).toBeInTheDocument()
   })
 
+  it('renders a Create Knowledge Base CTA on the no-KB empty state that navigates to /knowledge-bases', async () => {
+    render(<InvestigationWorkbenchPage />)
+
+    const cta = await screen.findByRole('button', {
+      name: /create knowledge base/i,
+    })
+    expect(cta).toBeInTheDocument()
+
+    await userEvent.click(cta)
+
+    expect(mocks.navigate).toHaveBeenCalledWith('/knowledge-bases')
+  })
+
   it('searches a selected KB and renders config-derived entity details', async () => {
     const provider: RuntimeEntity = {
       id: 'provider-204',
