@@ -524,6 +524,37 @@ def test_neo4j_repository_tolerates_schema_failure(
     assert "simulated DDL permission denied" in warning_messages[0]
 
 
+
+def test_neo4j_repository_schema_ensure_is_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Constructing the repository twice issues the schema statements both times."""
+    _FakeGraphDatabase.captured = []
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+
+    Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    first_driver = _FakeGraphDatabase.driver_instance
+    assert first_driver is not None
+    first_query_count = len(first_driver.queries)
+
+    Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    second_driver = _FakeGraphDatabase.driver_instance
+    assert second_driver is not None
+
+    # Each construction creates a new fake driver, so the second driver's query
+    # log captures its own four schema statements (independent of the first).
+    assert len(first_driver.queries) == first_query_count  # first driver unchanged
+    assert len(second_driver.queries) >= 4
+    second_schema_text = "\n".join(entry[0] for entry in second_driver.queries)
+    assert "CREATE CONSTRAINT entity_kb_id_unique IF NOT EXISTS" in second_schema_text
+
+
 @pytest.fixture()
 def neo4j_repository() -> Generator[tuple[Neo4jGraphRepository, str], None, None]:
     pytest.importorskip("neo4j")
