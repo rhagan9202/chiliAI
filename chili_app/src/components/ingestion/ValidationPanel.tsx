@@ -18,8 +18,15 @@ function countLabel(count: number): string {
   return `${count} ${count === 1 ? 'issue' : 'issues'}`
 }
 
+function prerequisiteCountLabel(count: number): string {
+  return `${count} to do`
+}
+
 export function ValidationPanel({ issues }: ValidationPanelProps) {
-  if (issues.length === 0) {
+  const prerequisiteIssues = issues.filter((issue) => issue.kind === 'prerequisite')
+  const contentIssues = issues.filter((issue) => (issue.kind ?? 'content') === 'content')
+
+  if (prerequisiteIssues.length === 0 && contentIssues.length === 0) {
     return (
       <EmptyState
         title="Ready for submission"
@@ -30,8 +37,35 @@ export function ValidationPanel({ issues }: ValidationPanelProps) {
 
   return (
     <div className="ingestion-validation-panel">
+      {prerequisiteIssues.length > 0 ? (
+        <section
+          className="ingestion-validation-panel__group"
+          aria-labelledby="validation-prerequisites-title"
+        >
+          <div className="ingestion-validation-panel__group-header">
+            <h3
+              id="validation-prerequisites-title"
+              className="ingestion-validation-panel__group-title"
+            >
+              Prerequisites
+            </h3>
+            <Chip tone="info" label={prerequisiteCountLabel(prerequisiteIssues.length)} />
+          </div>
+          <ul className="ingestion-validation-panel__list">
+            {prerequisiteIssues.map((issue) => (
+              <li key={issue.id} className="ingestion-validation-panel__issue">
+                <span className="ingestion-validation-panel__severity ingestion-validation-panel__severity--prerequisite">
+                  to do
+                </span>
+                <span className="ingestion-validation-panel__message">{issue.message}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {sourceOrder.map((source) => {
-        const sourceIssues = issues.filter((issue) => issue.source === source)
+        const sourceIssues = contentIssues.filter((issue) => issue.source === source)
 
         if (sourceIssues.length === 0) {
           return null

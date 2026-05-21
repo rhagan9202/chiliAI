@@ -224,6 +224,10 @@
   color: var(--c-cyan);
 }
 
+.ingestion-validation-panel__severity--prerequisite {
+  color: var(--c-cyan);
+}
+
 .ingestion-validation-panel__message {
   min-width: 0;
   color: var(--c-dim);
