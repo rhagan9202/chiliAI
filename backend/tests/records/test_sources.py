@@ -58,6 +58,19 @@ def test_csv_source_omits_missing_columns_in_short_rows() -> None:
     assert "amount" not in rows[1]
 
 
+def test_csv_source_omits_blank_string_cells() -> None:
+    # An empty value in a populated row (e.g. "c1,,") must be absent, not
+    # present as "".  This mirrors CMS DE-SynPUF wide files where most
+    # optional columns are blank for a given row.
+    raw = b"id,optional_code,amount\nc1,,10\nc2,ABC,20\n"
+    rows = CsvFileSource().read_rows(raw)
+    # Row 1: blank middle column must be absent
+    assert "optional_code" not in rows[0]
+    assert rows[0]["amount"] == "10"
+    # Row 2: non-blank values present as normal
+    assert rows[1]["optional_code"] == "ABC"
+
+
 def test_csv_source_rejects_non_utf8_bytes() -> None:
     with pytest.raises(RecordValidationError):
         CsvFileSource().read_rows(b"\xff\xfe\x00bad")

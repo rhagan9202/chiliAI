@@ -27,11 +27,18 @@ def _coerce_value(value: object, property_type: PropertyType) -> object:
     """Coerce a string-encoded value to the declared property type.
 
     Non-string values pass through untouched (JSON sources are already typed).
+    For DATE fields, bare 8-digit YYYYMMDD strings are normalised to ISO-8601
+    (YYYY-MM-DD) so that downstream validators can accept them.
     """
 
     if not isinstance(value, str):
         return value
     text = value.strip()
+    if property_type is PropertyType.DATE:
+        # Accept YYYYMMDD (e.g. CMS DE-SynPUF) and convert to YYYY-MM-DD.
+        if len(text) == 8 and text.isdigit():
+            return f"{text[:4]}-{text[4:6]}-{text[6:8]}"
+        return text
     if property_type is PropertyType.INTEGER:
         try:
             return int(text)
@@ -71,6 +78,12 @@ def validate_rows(
 
     Returns the coerced rows on success; raises :class:`RecordValidationError`
     listing every offending row when any row fails.
+
+    When ``feed.allow_extra_fields`` is ``True``, columns not declared in
+    ``record_schema`` are passed through to the stored payload but are excluded
+    from entity validation.  This supports wide real-world files (e.g. CMS
+    DE-SynPUF carrier claims with 142 columns) where only a subset of fields
+    need to be typed and validated.
     """
 
     definition = EntityDefinition(
@@ -88,8 +101,16 @@ def validate_rows(
             errors.append(f"row {index}: {exc}")
             continue
         coerced_rows.append(coerced)
+        # When allow_extra_fields is set, only the declared-schema properties
+        # are passed to the entity validator so extra columns do not trigger
+        # "Unexpected property" errors.
+        entity_props: dict[str, object] = (
+            {k: coerced[k] for k in feed.record_schema if k in coerced}
+            if feed.allow_extra_fields
+            else coerced
+        )
         row_errors = validate_entity(
-            Entity(id=f"row-{index}", type=feed.record_type, properties=coerced),
+            Entity(id=f"row-{index}", type=feed.record_type, properties=entity_props),
             [definition],
         )
         if row_errors:

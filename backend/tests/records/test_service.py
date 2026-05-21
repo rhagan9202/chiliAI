@@ -76,6 +76,48 @@ def test_register_records_rejects_unknown_feed() -> None:
         )
 
 
+def test_register_records_uses_id_template() -> None:
+    """When a feed declares id_template, record_id is the interpolated composite key."""
+    config = RecordsConfig(
+        feeds=[
+            RecordFeedConfig(
+                name="segmented_feed",
+                record_type="seg_record",
+                source="file_upload",
+                id_field="CLM_ID",
+                id_template="{CLM_ID}:{SEGMENT}",
+                record_schema={
+                    "CLM_ID": PropertyDefinition(
+                        type=PropertyType.STRING, display="Claim ID", required=True
+                    ),
+                    "SEGMENT": PropertyDefinition(
+                        type=PropertyType.STRING, display="Segment", required=True
+                    ),
+                },
+            )
+        ]
+    )
+    store = InMemoryRawRecordStore()
+    bus = InMemoryEventBus()
+    service = create_records_service(store, event_bus=bus, records_config=config)
+    receipt = service.register_records(
+        "kb-seg",
+        RecordSubmission(
+            feed_name="segmented_feed",
+            rows=[
+                {"CLM_ID": "CLM001", "SEGMENT": "1"},
+                {"CLM_ID": "CLM001", "SEGMENT": "2"},
+            ],
+            source_type="file_upload",
+            source_ref="seg.csv",
+        ),
+    )
+    assert receipt.accepted_count == 2
+    persisted = store.load_batch(knowledge_base_id="kb-seg", correlation_id=receipt.correlation_id)
+    record_ids = {r.record_id for r in persisted}
+    assert record_ids == {"CLM001:1", "CLM001:2"}
+
+
 def test_register_records_rejects_invalid_rows() -> None:
     service = create_records_service(
         InMemoryRawRecordStore(), event_bus=InMemoryEventBus(), records_config=_records_config()

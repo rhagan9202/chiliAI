@@ -37,16 +37,27 @@ class RecordsService:
         ingested_at = utc_now()
         raw_records: list[RawRecord] = []
         for row in coerced_rows:
-            raw_id = row.get(feed.id_field)
-            if raw_id is None:
-                raise RecordValidationError(
-                    f"Feed '{feed.name}' record is missing id field '{feed.id_field}'."
-                )
+            if feed.id_template is not None:
+                try:
+                    record_id = feed.id_template.format(
+                        **{k: str(v) for k, v in row.items()}
+                    )
+                except KeyError as exc:
+                    raise RecordValidationError(
+                        f"Feed '{feed.name}' id_template references missing field {exc}."
+                    ) from exc
+            else:
+                raw_id = row.get(feed.id_field)
+                if raw_id is None:
+                    raise RecordValidationError(
+                        f"Feed '{feed.name}' record is missing id field '{feed.id_field}'."
+                    )
+                record_id = str(raw_id)
             raw_records.append(
                 RawRecord(
                     knowledge_base_id=knowledge_base_id,
                     record_type=feed.record_type,
-                    record_id=str(raw_id),
+                    record_id=record_id,
                     payload=row,
                     source_type=submission.source_type,
                     source_ref=submission.source_ref,

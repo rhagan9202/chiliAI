@@ -35,9 +35,11 @@ class CsvFileSource:
                 # Skip the sentinel key csv.DictReader uses for overflow values.
                 if key is None:
                     continue
-                # Skip columns whose value is None — the data row was shorter
-                # than the header; omitting the key lets validators detect it.
-                if value is None:
+                # Skip columns whose value is None (row shorter than header)
+                # or whose value is an empty string (blank cell in CSV).
+                # Omitting the key lets downstream validators detect missing
+                # fields rather than trying to coerce an empty string.
+                if value is None or value == "":
                     continue
                 row[str(key)] = str(value)
             rows.append(row)

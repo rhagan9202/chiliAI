@@ -313,7 +313,15 @@ class RecordFeedConfig(BaseModel):
     record_type: str
     source: Literal["file_upload", "api_push"]
     id_field: str
+    # id_template overrides id_field when composite row keys are needed.
+    # Use Python str.format() syntax referencing column names, e.g.
+    # ``"{CLM_ID}:{SEGMENT}"`` for CMS inpatient/outpatient claim segments.
+    id_template: str | None = None
     record_schema: dict[str, PropertyDefinition] = Field(default_factory=dict)
+    # When True, columns not listed in record_schema are stored in the raw
+    # payload but skipped during entity validation.  Required for wide
+    # real-world files where only a subset of fields need typed validation.
+    allow_extra_fields: bool = False
     entities: list[RecordEntityMapping] = Field(default_factory=lambda: [])
     relationships: list[RecordRelationshipMapping] = Field(default_factory=lambda: [])
     observations: list[RecordObservationMapping] = Field(default_factory=lambda: [])

@@ -1,0 +1,407 @@
+domain:
+  name: medicare_fraud
+  display_name: "Medicare Fraud Detection (CMS DE-SynPUF)"
+  description: "Fraud detection for Medicare using CMS DE-SynPUF synthetic claims data"
+
+entities:
+  - name: provider
+    display_label: "Provider"
+    icon: stethoscope
+    properties:
+      npi: { type: string, display: "NPI", required: true }
+
+  - name: beneficiary
+    display_label: "Beneficiary"
+    icon: person
+    properties:
+      hic_number: { type: string, display: "HIC Number", required: true }
+      birth_date: { type: date, display: "Date of Birth" }
+      sex_code: { type: string, display: "Sex Code" }
+      race_code: { type: string, display: "Race Code" }
+      state_code: { type: string, display: "State Code" }
+
+  - name: claim
+    display_label: "Claim"
+    icon: document
+    properties:
+      claim_id: { type: string, display: "Claim ID", required: true }
+      service_date: { type: date, display: "Date of Service" }
+      through_date: { type: date, display: "Through Date" }
+      amount: { type: decimal, display: "Payment Amount", min_value: 0 }
+
+  - name: facility
+    display_label: "Facility"
+    icon: building
+    properties:
+      facility_id: { type: string, display: "Facility ID", required: true }
+
+relationships:
+  - name: submitted_by
+    display_label: "Submitted By"
+    source: claim
+    target: provider
+
+  - name: billed_for
+    display_label: "Billed For"
+    source: claim
+    target: beneficiary
+
+  - name: performed_at
+    display_label: "Performed At"
+    source: claim
+    target: facility
+
+  - name: referred_by
+    display_label: "Referred By"
+    source: provider
+    target: provider
+
+capabilities:
+  timeseries: true
+  gnn: true
+  risk_scoring: true
+  rag_chat: true
+  explainability: true
+  structured_ingestion: true
+
+ingestion:
+  chunking:
+    strategy: recursive
+    chunk_size: 1000
+    chunk_overlap: 200
+    min_chunk_size: 50
+  sources:
+    - type: file_upload
+      formats: [csv]
+
+records:
+  feeds:
+    # ------------------------------------------------------------------
+    # Beneficiary Summary — one row per beneficiary per calendar year.
+    # Unique id: DESYNPUF_ID (16-char hex).
+    # ------------------------------------------------------------------
+    - name: beneficiary_2008
+      record_type: beneficiary_record
+      source: file_upload
+      id_field: DESYNPUF_ID
+      allow_extra_fields: true
+      record_schema:
+        DESYNPUF_ID: { type: string, display: "Beneficiary ID", required: true }
+        BENE_BIRTH_DT: { type: date, display: "Birth Date" }
+        BENE_DEATH_DT: { type: date, display: "Death Date" }
+        BENE_SEX_IDENT_CD: { type: string, display: "Sex Code" }
+        BENE_RACE_CD: { type: string, display: "Race Code" }
+        SP_STATE_CODE: { type: string, display: "State Code" }
+      entities:
+        - entity_type: beneficiary
+          id_field: DESYNPUF_ID
+          property_fields:
+            hic_number: DESYNPUF_ID
+            birth_date: BENE_BIRTH_DT
+            sex_code: BENE_SEX_IDENT_CD
+            race_code: BENE_RACE_CD
+            state_code: SP_STATE_CODE
+
+    - name: beneficiary_2009
+      record_type: beneficiary_record
+      source: file_upload
+      id_field: DESYNPUF_ID
+      allow_extra_fields: true
+      record_schema:
+        DESYNPUF_ID: { type: string, display: "Beneficiary ID", required: true }
+        BENE_BIRTH_DT: { type: date, display: "Birth Date" }
+        BENE_DEATH_DT: { type: date, display: "Death Date" }
+        BENE_SEX_IDENT_CD: { type: string, display: "Sex Code" }
+        BENE_RACE_CD: { type: string, display: "Race Code" }
+        SP_STATE_CODE: { type: string, display: "State Code" }
+      entities:
+        - entity_type: beneficiary
+          id_field: DESYNPUF_ID
+          property_fields:
+            hic_number: DESYNPUF_ID
+            birth_date: BENE_BIRTH_DT
+            sex_code: BENE_SEX_IDENT_CD
+            race_code: BENE_RACE_CD
+            state_code: SP_STATE_CODE
+
+    - name: beneficiary_2010
+      record_type: beneficiary_record
+      source: file_upload
+      id_field: DESYNPUF_ID
+      allow_extra_fields: true
+      record_schema:
+        DESYNPUF_ID: { type: string, display: "Beneficiary ID", required: true }
+        BENE_BIRTH_DT: { type: date, display: "Birth Date" }
+        BENE_DEATH_DT: { type: date, display: "Death Date" }
+        BENE_SEX_IDENT_CD: { type: string, display: "Sex Code" }
+        BENE_RACE_CD: { type: string, display: "Race Code" }
+        SP_STATE_CODE: { type: string, display: "State Code" }
+      entities:
+        - entity_type: beneficiary
+          id_field: DESYNPUF_ID
+          property_fields:
+            hic_number: DESYNPUF_ID
+            birth_date: BENE_BIRTH_DT
+            sex_code: BENE_SEX_IDENT_CD
+            race_code: BENE_RACE_CD
+            state_code: SP_STATE_CODE
+
+    # ------------------------------------------------------------------
+    # Carrier Claims — one row per claim line.
+    # Unique id: CLM_ID (15-digit string).
+    # Links: beneficiary via DESYNPUF_ID, provider via PRF_PHYSN_NPI_1.
+    # ------------------------------------------------------------------
+    - name: carrier_claims_a
+      record_type: carrier_claim_record
+      source: file_upload
+      id_field: CLM_ID
+      allow_extra_fields: true
+      record_schema:
+        DESYNPUF_ID: { type: string, display: "Beneficiary ID", required: true }
+        CLM_ID: { type: string, display: "Claim ID", required: true }
+        CLM_FROM_DT: { type: date, display: "Claim From Date" }
+        CLM_THRU_DT: { type: date, display: "Claim Through Date" }
+        PRF_PHYSN_NPI_1: { type: string, display: "Performing Physician NPI 1" }
+        LINE_NCH_PMT_AMT_1: { type: decimal, display: "Line Payment Amount 1", min_value: 0 }
+      entities:
+        - entity_type: claim
+          id_field: CLM_ID
+          property_fields:
+            claim_id: CLM_ID
+            service_date: CLM_FROM_DT
+            through_date: CLM_THRU_DT
+            amount: LINE_NCH_PMT_AMT_1
+        - entity_type: beneficiary
+          id_field: DESYNPUF_ID
+          property_fields:
+            hic_number: DESYNPUF_ID
+        - entity_type: provider
+          id_field: PRF_PHYSN_NPI_1
+          property_fields:
+            npi: PRF_PHYSN_NPI_1
+      relationships:
+        - relationship_type: billed_for
+          source_entity_type: claim
+          target_entity_type: beneficiary
+        - relationship_type: submitted_by
+          source_entity_type: claim
+          target_entity_type: provider
+
+    - name: carrier_claims_b
+      record_type: carrier_claim_record
+      source: file_upload
+      id_field: CLM_ID
+      allow_extra_fields: true
+      record_schema:
+        DESYNPUF_ID: { type: string, display: "Beneficiary ID", required: true }
+        CLM_ID: { type: string, display: "Claim ID", required: true }
+        CLM_FROM_DT: { type: date, display: "Claim From Date" }
+        CLM_THRU_DT: { type: date, display: "Claim Through Date" }
+        PRF_PHYSN_NPI_1: { type: string, display: "Performing Physician NPI 1" }
+        LINE_NCH_PMT_AMT_1: { type: decimal, display: "Line Payment Amount 1", min_value: 0 }
+      entities:
+        - entity_type: claim
+          id_field: CLM_ID
+          property_fields:
+            claim_id: CLM_ID
+            service_date: CLM_FROM_DT
+            through_date: CLM_THRU_DT
+            amount: LINE_NCH_PMT_AMT_1
+        - entity_type: beneficiary
+          id_field: DESYNPUF_ID
+          property_fields:
+            hic_number: DESYNPUF_ID
+        - entity_type: provider
+          id_field: PRF_PHYSN_NPI_1
+          property_fields:
+            npi: PRF_PHYSN_NPI_1
+      relationships:
+        - relationship_type: billed_for
+          source_entity_type: claim
+          target_entity_type: beneficiary
+        - relationship_type: submitted_by
+          source_entity_type: claim
+          target_entity_type: provider
+
+    # ------------------------------------------------------------------
+    # Inpatient Claims — multiple segment rows per claim (CLM_ID not unique).
+    # Composite record id: "{CLM_ID}:{SEGMENT}" ensures uniqueness in store.
+    # Entity id: CLM_ID (segments of the same claim merge into one node).
+    # Links: beneficiary via DESYNPUF_ID, facility via PRVDR_NUM.
+    # ------------------------------------------------------------------
+    - name: inpatient_claims
+      record_type: inpatient_claim_record
+      source: file_upload
+      id_field: CLM_ID
+      id_template: "{CLM_ID}:{SEGMENT}"
+      allow_extra_fields: true
+      record_schema:
+        DESYNPUF_ID: { type: string, display: "Beneficiary ID", required: true }
+        CLM_ID: { type: string, display: "Claim ID", required: true }
+        SEGMENT: { type: string, display: "Segment", required: true }
+        CLM_FROM_DT: { type: date, display: "Claim From Date" }
+        CLM_THRU_DT: { type: date, display: "Claim Through Date" }
+        PRVDR_NUM: { type: string, display: "Provider Number" }
+        CLM_PMT_AMT: { type: decimal, display: "Claim Payment Amount", min_value: 0 }
+        AT_PHYSN_NPI: { type: string, display: "Attending Physician NPI" }
+      entities:
+        - entity_type: claim
+          id_field: CLM_ID
+          property_fields:
+            claim_id: CLM_ID
+            service_date: CLM_FROM_DT
+            through_date: CLM_THRU_DT
+            amount: CLM_PMT_AMT
+        - entity_type: beneficiary
+          id_field: DESYNPUF_ID
+          property_fields:
+            hic_number: DESYNPUF_ID
+        - entity_type: facility
+          id_field: PRVDR_NUM
+          property_fields:
+            facility_id: PRVDR_NUM
+      relationships:
+        - relationship_type: billed_for
+          source_entity_type: claim
+          target_entity_type: beneficiary
+        - relationship_type: performed_at
+          source_entity_type: claim
+          target_entity_type: facility
+
+    # ------------------------------------------------------------------
+    # Outpatient Claims — same segment pattern as inpatient.
+    # ------------------------------------------------------------------
+    - name: outpatient_claims
+      record_type: outpatient_claim_record
+      source: file_upload
+      id_field: CLM_ID
+      id_template: "{CLM_ID}:{SEGMENT}"
+      allow_extra_fields: true
+      record_schema:
+        DESYNPUF_ID: { type: string, display: "Beneficiary ID", required: true }
+        CLM_ID: { type: string, display: "Claim ID", required: true }
+        SEGMENT: { type: string, display: "Segment", required: true }
+        CLM_FROM_DT: { type: date, display: "Claim From Date" }
+        CLM_THRU_DT: { type: date, display: "Claim Through Date" }
+        PRVDR_NUM: { type: string, display: "Provider Number" }
+        CLM_PMT_AMT: { type: decimal, display: "Claim Payment Amount", min_value: 0 }
+        AT_PHYSN_NPI: { type: string, display: "Attending Physician NPI" }
+      entities:
+        - entity_type: claim
+          id_field: CLM_ID
+          property_fields:
+            claim_id: CLM_ID
+            service_date: CLM_FROM_DT
+            through_date: CLM_THRU_DT
+            amount: CLM_PMT_AMT
+        - entity_type: beneficiary
+          id_field: DESYNPUF_ID
+          property_fields:
+            hic_number: DESYNPUF_ID
+        - entity_type: facility
+          id_field: PRVDR_NUM
+          property_fields:
+            facility_id: PRVDR_NUM
+      relationships:
+        - relationship_type: billed_for
+          source_entity_type: claim
+          target_entity_type: beneficiary
+        - relationship_type: performed_at
+          source_entity_type: claim
+          target_entity_type: facility
+
+    # ------------------------------------------------------------------
+    # Prescription Drug Events — one row per dispensing event.
+    # Unique id: PDE_ID (15-digit string).
+    # Links: beneficiary via DESYNPUF_ID.
+    # ------------------------------------------------------------------
+    - name: pde
+      record_type: pde_record
+      source: file_upload
+      id_field: PDE_ID
+      record_schema:
+        DESYNPUF_ID: { type: string, display: "Beneficiary ID", required: true }
+        PDE_ID: { type: string, display: "PDE ID", required: true }
+        SRVC_DT: { type: date, display: "Service Date" }
+        PROD_SRVC_ID: { type: string, display: "Product Service ID" }
+        QTY_DSPNSD_NUM: { type: decimal, display: "Quantity Dispensed", min_value: 0 }
+        DAYS_SUPLY_NUM: { type: integer, display: "Days Supply", min_value: 0 }
+        PTNT_PAY_AMT: { type: decimal, display: "Patient Pay Amount", min_value: 0 }
+        TOT_RX_CST_AMT: { type: decimal, display: "Total Rx Cost", min_value: 0 }
+      entities:
+        - entity_type: claim
+          id_field: PDE_ID
+          property_fields:
+            claim_id: PDE_ID
+            service_date: SRVC_DT
+            amount: TOT_RX_CST_AMT
+        - entity_type: beneficiary
+          id_field: DESYNPUF_ID
+          property_fields:
+            hic_number: DESYNPUF_ID
+      relationships:
+        - relationship_type: billed_for
+          source_entity_type: claim
+          target_entity_type: beneficiary
+
+rag:
+  top_k: 5
+  expansion_depth: 2
+  reranking_enabled: false
+  system_prompt_template: "You are an expert assistant for {domain_name}. Use the provided context to answer questions about {entity_types}."
+
+alerts:
+  thresholds:
+    provider:
+      risk_score: 0.75
+      anomaly_sigma: 2.5
+    beneficiary:
+      risk_score: 0.80
+    claim:
+      amount_percentile: 99
+
+ui:
+  default_entity_type: provider
+  navigation:
+    pages:
+      - id: dashboard
+        label: Dashboard
+        route: /dashboard
+        capability: risk_scoring
+      - id: alerts
+        label: Alert Feed
+        route: /alerts
+      - id: investigation
+        label: Investigation Workbench
+        route: /investigation
+        capability: gnn
+      - id: knowledge_bases
+        label: Knowledge Bases
+        route: /knowledge-bases
+      - id: rag_chat
+        label: RAG Chat
+        route: /rag-chat
+        capability: rag_chat
+      - id: configuration
+        label: Configuration
+        route: /configuration
+  display_fields:
+    provider:
+      title: npi
+    beneficiary:
+      title: hic_number
+      subtitle: birth_date
+    claim:
+      title: claim_id
+      subtitle: service_date
+    facility:
+      title: facility_id
+  roles:
+    analyst:
+      landing_page: alerts
+      pages: [alerts, investigation, knowledge_bases, rag_chat]
+      permissions: [alerts:read, feedback:write]
+    supervisor:
+      landing_page: dashboard
+      pages: [dashboard, alerts, investigation, knowledge_bases, configuration]
+      permissions: [alerts:read, cases:assign]

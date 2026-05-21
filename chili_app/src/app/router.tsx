@@ -4,7 +4,6 @@ import type { ReactElement } from 'react'
 import { AuthGuard } from '../components/AuthGuard'
 import { ErrorBoundary } from '../components/common/ErrorBoundary'
 import { AppShell } from '../components/layout/AppShell'
-import { DomainConfigProvider } from '../contexts/DomainConfigContext'
 import { AlertFeedPage } from '../pages/AlertFeedPage'
 import { CaseManagementPage } from '../pages/CaseManagementPage'
 import { ConfigurationPage } from '../pages/ConfigurationPage'
@@ -26,9 +25,7 @@ export const router = createBrowserRouter([
     path: '/',
     element: (
       <AuthGuard>
-        <DomainConfigProvider>
-          <AppShell />
-        </DomainConfigProvider>
+        <AppShell />
       </AuthGuard>
     ),
     children: [
