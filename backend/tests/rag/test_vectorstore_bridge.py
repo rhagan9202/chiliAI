@@ -89,7 +89,7 @@ def test_service_context_retriever_builds_request_and_maps_matches() -> None:
     assert forwarded.knowledge_base_ids == ["kb-42"]
     assert forwarded.query_vector == [0.1, 0.2, 0.3]
     assert forwarded.limit == 5
-    assert forwarded.filters == {"document_id": "doc-7"}
+    assert forwarded.filters == {"document_id": "doc-7", "embedding_channel": "text"}
 
 
 def test_service_context_retriever_returns_empty_list_when_no_matches() -> None:

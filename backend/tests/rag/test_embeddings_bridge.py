@@ -46,7 +46,7 @@ class _RecordingVectorService:
     def search(self, request: VectorSearchRequest) -> VectorSearchResponse:
         self.search_requests.append(request)
         return VectorSearchResponse(
-            knowledge_base_id=request.knowledge_base_id,
+            knowledge_base_ids=request.knowledge_base_ids,
             query_dimension=len(request.query_vector),
             matches=[
                 VectorSearchMatch(
