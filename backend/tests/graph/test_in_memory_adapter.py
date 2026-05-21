@@ -409,3 +409,44 @@ def test_in_memory_get_entity_returns_none_when_no_kb_in_scope_has_it() -> None:
     repo = InMemoryGraphRepository()
     result = repo.get_entity(["kb-a", "kb-b"], "entity-missing")
     assert result is None
+
+
+def test_in_memory_search_entities_spans_all_knowledge_bases() -> None:
+    """search_entities iterates every KB even when the first has matches."""
+    repo = InMemoryGraphRepository()
+
+    # Three matches in KB-a, two in KB-b. Search "alpha" with limit large enough for all.
+    repo.upsert_entities("kb-a", [
+        Entity(id="a-1", type="claim", properties={"name": "Alpha 1"}),
+        Entity(id="a-2", type="claim", properties={"name": "Alpha 2"}),
+        Entity(id="a-3", type="claim", properties={"name": "Alpha 3"}),
+    ])
+    repo.upsert_entities("kb-b", [
+        Entity(id="b-1", type="claim", properties={"name": "Alpha 4"}),
+        Entity(id="b-2", type="claim", properties={"name": "Alpha 5"}),
+    ])
+
+    results = repo.search_entities(["kb-a", "kb-b"], "alpha", limit=10)
+    result_ids = {entity.id for entity in results}
+
+    assert result_ids == {"a-1", "a-2", "a-3", "b-1", "b-2"}
+
+
+def test_in_memory_search_entities_limit_applies_across_combined_kb_results() -> None:
+    """The limit applies to the combined cross-KB result set, not per-KB."""
+    repo = InMemoryGraphRepository()
+
+    # KB-a alone has more matches than limit. KB-b also has matches.
+    repo.upsert_entities("kb-a", [
+        Entity(id=f"a-{i}", type="claim", properties={"name": f"Match {i}"})
+        for i in range(1, 7)  # 6 matches
+    ])
+    repo.upsert_entities("kb-b", [
+        Entity(id=f"b-{i}", type="claim", properties={"name": f"Match B{i}"})
+        for i in range(1, 4)  # 3 matches
+    ])
+
+    results = repo.search_entities(["kb-a", "kb-b"], "match", limit=4)
+
+    # Exactly limit=4 entities returned, drawn from the combined scope.
+    assert len(results) == 4

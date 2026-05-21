@@ -178,8 +178,6 @@ class InMemoryGraphRepository(GraphRepository):
                 ]
                 if any(normalized_query in haystack.lower() for haystack in haystacks):
                     matches.append(entity)
-            if len(matches) >= limit:
-                break
         return matches[:limit]
 
     def count_entities(self, knowledge_base_id: str) -> int:
