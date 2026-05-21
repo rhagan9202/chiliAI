@@ -109,8 +109,10 @@ class ServiceContextRetriever:
         limit: int,
         filters: dict[str, str | int | float | bool],
     ) -> list[RetrievedContextItem]:
+        # TODO(task-6): Replace [knowledge_base_id] with resolve_kb_scope() result
+        # once the resolver is wired into the API layer in Task 6.
         request = VectorSearchRequest(
-            knowledge_base_id=knowledge_base_id,
+            knowledge_base_ids=[knowledge_base_id],
             query_vector=list(query_vector),
             limit=limit,
             filters=dict(filters),

@@ -101,7 +101,7 @@ def test_vector_service_search_returns_best_match() -> None:
 
     response = service.search(
         VectorSearchRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             query_vector=[0.9, 0.1, 0.0],
             limit=1,
         )
@@ -240,7 +240,7 @@ def test_vector_search_wraps_value_error_as_dimension_mismatch() -> None:
     service = create_vector_service(_ValueErrorSearchStore(), event_bus=InMemoryEventBus())
     with pytest.raises(VectorDimensionMismatchError, match="dimension mismatch on search"):
         service.search(
-            VectorSearchRequest(knowledge_base_id="kb-1", query_vector=[0.1], limit=5)
+            VectorSearchRequest(knowledge_base_ids=["kb-1"], query_vector=[0.1], limit=5)
         )
 
 
@@ -248,5 +248,38 @@ def test_vector_search_wraps_generic_exception_as_store_error() -> None:
     service = create_vector_service(_GenericErrorSearchStore(), event_bus=InMemoryEventBus())
     with pytest.raises(VectorStoreError, match="Failed to search"):
         service.search(
-            VectorSearchRequest(knowledge_base_id="kb-1", query_vector=[0.1], limit=5)
+            VectorSearchRequest(knowledge_base_ids=["kb-1"], query_vector=[0.1], limit=5)
         )
+
+
+def test_vector_service_search_spans_multiple_knowledge_base_ids() -> None:
+    """Service merges and rank-orders results across multiple knowledge bases."""
+    event_bus = InMemoryEventBus()
+    service = create_vector_service(InMemoryVectorStore(), event_bus=event_bus)
+
+    # Index into two separate KBs with identical vectors so both should match.
+    for kb_id, content_id in [("kb-a", "content-a-1"), ("kb-b", "content-b-1")]:
+        service.index(
+            VectorIndexRequest(
+                knowledge_base_id=kb_id,
+                submissions=[
+                    VectorIndexSubmission(
+                        content_id=content_id,
+                        embedding=[1.0, 0.0, 0.0],
+                        metadata={},
+                    ),
+                ],
+            )
+        )
+
+    response = service.search(
+        VectorSearchRequest(
+            knowledge_base_ids=["kb-a", "kb-b"],
+            query_vector=[1.0, 0.0, 0.0],
+            limit=10,
+        )
+    )
+
+    content_ids = {match.content_id for match in response.matches}
+    assert content_ids == {"content-a-1", "content-b-1"}
+    assert response.knowledge_base_ids == ["kb-a", "kb-b"]

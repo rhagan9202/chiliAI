@@ -61,9 +61,9 @@ class VectorIndexReceipt(BaseModel):
 
 
 class VectorSearchRequest(BaseModel):
-    """A vector similarity-search request."""
+    """A vector similarity-search request across one or more knowledge bases."""
 
-    knowledge_base_id: str
+    knowledge_base_ids: list[str] = Field(min_length=1)
     query_vector: list[float] = Field(default_factory=_empty_embedding)
     limit: int = Field(default=5, gt=0)
     filters: dict[str, MetadataValue] = Field(default_factory=dict)
@@ -88,7 +88,7 @@ class VectorSearchMatch(BaseModel):
 class VectorSearchResponse(BaseModel):
     """Response returned by a vector similarity-search request."""
 
-    knowledge_base_id: str
+    knowledge_base_ids: list[str] = Field(min_length=1)
     query_dimension: int = Field(gt=0)
     matches: list[VectorSearchMatch] = Field(default_factory=_empty_matches)
 

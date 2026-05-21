@@ -32,11 +32,11 @@ class _RecordingVectorService:
 def _make_response(
     *,
     matches: list[VectorSearchMatch],
-    knowledge_base_id: str = "kb-1",
+    knowledge_base_ids: list[str] | None = None,
     query_dimension: int = 3,
 ) -> VectorSearchResponse:
     return VectorSearchResponse(
-        knowledge_base_id=knowledge_base_id,
+        knowledge_base_ids=knowledge_base_ids if knowledge_base_ids is not None else ["kb-1"],
         query_dimension=query_dimension,
         matches=matches,
     )
@@ -86,7 +86,7 @@ def test_service_context_retriever_builds_request_and_maps_matches() -> None:
 
     assert len(service.search_requests) == 1
     forwarded = service.search_requests[0]
-    assert forwarded.knowledge_base_id == "kb-42"
+    assert forwarded.knowledge_base_ids == ["kb-42"]
     assert forwarded.query_vector == [0.1, 0.2, 0.3]
     assert forwarded.limit == 5
     assert forwarded.filters == {"document_id": "doc-7"}

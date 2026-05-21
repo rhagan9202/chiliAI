@@ -29,7 +29,7 @@ def test_vector_index_request_requires_submissions() -> None:
 
 def test_vector_search_request_requires_query_vector() -> None:
     with pytest.raises(ValueError, match="query_vector"):
-        VectorSearchRequest(knowledge_base_id="kb-1", query_vector=[])
+        VectorSearchRequest(knowledge_base_ids=["kb-1"], query_vector=[])
 
 
 def test_vector_index_submission_accepts_metadata() -> None:

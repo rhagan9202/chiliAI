@@ -109,31 +109,38 @@ class VectorService:
         return receipts
 
     def search(self, request: VectorSearchRequest) -> VectorSearchResponse:
-        try:
-            matches = self._store.search(
-                request.knowledge_base_id,
-                request.query_vector,
-                request.limit,
-                request.filters,
-            )
-        except ValueError as exc:
-            raise VectorDimensionMismatchError(str(exc)) from exc
-        except Exception as exc:
-            raise VectorStoreError("Failed to search vector records.") from exc
-
-        return VectorSearchResponse(
-            knowledge_base_id=request.knowledge_base_id,
-            query_dimension=len(request.query_vector),
-            matches=[
-                VectorSearchMatch(
-                    record_id=match.record_id,
-                    content_id=match.content_id,
-                    score=match.score,
-                    content=match.content,
-                    metadata=dict(match.metadata),
+        all_matches: list[VectorSearchMatch] = []
+        for kb_id in request.knowledge_base_ids:
+            try:
+                raw_matches = self._store.search(
+                    kb_id,
+                    request.query_vector,
+                    request.limit,
+                    request.filters,
                 )
-                for match in matches
-            ],
+            except ValueError as exc:
+                raise VectorDimensionMismatchError(str(exc)) from exc
+            except Exception as exc:
+                raise VectorStoreError("Failed to search vector records.") from exc
+
+            for match in raw_matches:
+                all_matches.append(
+                    VectorSearchMatch(
+                        record_id=match.record_id,
+                        content_id=match.content_id,
+                        score=match.score,
+                        content=match.content,
+                        metadata=dict(match.metadata),
+                    )
+                )
+
+        # Merge and rank across KBs; return top `limit` by score descending.
+        all_matches.sort(key=lambda m: m.score, reverse=True)
+        top_matches = all_matches[: request.limit]
+        return VectorSearchResponse(
+            knowledge_base_ids=request.knowledge_base_ids,
+            query_dimension=len(request.query_vector),
+            matches=top_matches,
         )
 
 
