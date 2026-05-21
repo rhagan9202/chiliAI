@@ -15,7 +15,7 @@ def test_context_record_requires_embedding() -> None:
 
 def test_rag_query_request_requires_question() -> None:
     with pytest.raises(ValueError, match="must not be empty"):
-        RagQueryRequest(knowledge_base_id="kb-1", question=" ")
+        RagQueryRequest(knowledge_base_ids=["kb-1"], question=" ")
 
 
 def test_rag_generation_result_requires_answer() -> None:

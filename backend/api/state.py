@@ -442,7 +442,7 @@ class ApiState:
             record.messages.append(user_message)
             rag_response = self._rag_service.answer(
                 RagQueryRequest(
-                    knowledge_base_id=record.knowledge_base_id,
+                    knowledge_base_ids=[record.knowledge_base_id],  # TODO(task-6): Replace with resolve_kb_scope
                     question=request.content,
                     include_graph_context=request.include_graph_context,
                     filters=request.filters,

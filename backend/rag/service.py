@@ -78,7 +78,7 @@ class RagService:
         citations = _build_citations(state.context_items)
         response = RagQueryResponse(
             request_id=generation_result.request_id,
-            knowledge_base_id=state.knowledge_base_id,
+            knowledge_base_ids=state.knowledge_base_ids,
             answer=generation_result.answer,
             provider=generation_result.provider,
             model_name=generation_result.model_name,
@@ -91,12 +91,12 @@ class RagService:
     def answer_question(
         self,
         *,
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         question: str,
     ) -> RagAnswer:
         response = self.answer(
             RagQueryRequest(
-                knowledge_base_id=knowledge_base_id,
+                knowledge_base_ids=knowledge_base_ids,
                 question=question,
                 include_graph_context=False,
             )
@@ -127,19 +127,22 @@ class RagService:
         )
 
     def _prepare_state(self, request: RagQueryRequest) -> RagWorkflowState:
+        # Use the primary KB id (first in list) for single-KB adapter calls.
+        # Fan-out across multiple KBs is a Task-6 concern (resolve_kb_scope).
+        primary_kb_id = request.knowledge_base_ids[0]
         state = RagWorkflowState(
             request_id=generate_id(),
-            knowledge_base_id=request.knowledge_base_id,
+            knowledge_base_ids=request.knowledge_base_ids,
             question=request.question,
         )
         try:
             query_vector = self._query_embedder.embed_query(
-                knowledge_base_id=state.knowledge_base_id,
+                knowledge_base_id=primary_kb_id,
                 question=state.question,
             )
             state = state.model_copy(update={"query_vector": query_vector})
             context_items = self._context_retriever.retrieve(
-                knowledge_base_id=state.knowledge_base_id,
+                knowledge_base_id=primary_kb_id,
                 query_vector=query_vector,
                 limit=request.top_k,
                 filters=_string_filters(request.filters),
@@ -158,9 +161,11 @@ class RagService:
         graph_context: GraphContext | None,
     ) -> RagGenerationRequest:
         system_prompt = self._resolve_system_prompt(request)
+        # RagGenerationRequest carries a single primary KB id — generation
+        # adapters are single-KB consumers (by spec). Use knowledge_base_ids[0].
         return RagGenerationRequest(
             request_id=state.request_id,
-            knowledge_base_id=state.knowledge_base_id,
+            knowledge_base_id=state.knowledge_base_ids[0],
             question=state.question,
             context_items=state.context_items,
             graph_context=graph_context,
@@ -189,8 +194,10 @@ class RagService:
         if not request.include_graph_context or self._graph_context_expander is None:
             return None
         try:
+            # GraphContextExpanderProtocol is a single-KB consumer by spec.
+            # Pass the primary KB id (knowledge_base_ids[0]).
             return self._graph_context_expander.expand(
-                knowledge_base_id=state.knowledge_base_id,
+                knowledge_base_id=state.knowledge_base_ids[0],
                 context_items=state.context_items,
             )
         except ValueError as exc:
@@ -207,7 +214,9 @@ class RagService:
             RagCompletedEvent(
                 replies=[
                     RagCompletionReference(
-                        knowledge_base_id=response.knowledge_base_id,
+                        # RagCompletionReference.knowledge_base_id is scalar by spec
+                        # (events schema). Use the primary KB id (knowledge_base_ids[0]).
+                        knowledge_base_id=response.knowledge_base_ids[0],
                         request_id=response.request_id,
                         provider=response.provider,
                         model_name=response.model_name,

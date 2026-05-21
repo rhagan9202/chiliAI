@@ -148,10 +148,11 @@ class InMemoryRagService:
         self._canned_sources = list(canned_sources or [])
 
     def answer(self, request: RagQueryRequest) -> RagQueryResponse:
-        self._require_known_kb(request.knowledge_base_id)
+        for kb_id in request.knowledge_base_ids:
+            self._require_known_kb(kb_id)
         return RagQueryResponse(
             request_id="stub-request",
-            knowledge_base_id=request.knowledge_base_id,
+            knowledge_base_ids=request.knowledge_base_ids,
             answer=self._canned_answer,
             provider="in-memory",
             model_name="in-memory-chat-stub",
@@ -161,18 +162,20 @@ class InMemoryRagService:
     def answer_question(
         self,
         *,
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         question: str,
     ) -> RagAnswer:
         del question
-        self._require_known_kb(knowledge_base_id)
+        for kb_id in knowledge_base_ids:
+            self._require_known_kb(kb_id)
         return RagAnswer(
             content=self._canned_answer,
             sources=list(self._canned_sources),
         )
 
     def stream_answer(self, request: RagQueryRequest) -> Iterator[RagStreamChunk]:
-        self._require_known_kb(request.knowledge_base_id)
+        for kb_id in request.knowledge_base_ids:
+            self._require_known_kb(kb_id)
         tokens = self._canned_answer.split(" ")
         for index, token in enumerate(tokens):
             suffix = " " if index < len(tokens) - 1 else ""

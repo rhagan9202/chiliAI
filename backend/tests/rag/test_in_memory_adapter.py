@@ -80,7 +80,7 @@ def test_in_memory_rag_service_answer_question_returns_canned_payload() -> None:
         canned_sources=["doc-1"],
     )
 
-    answer = service.answer_question(knowledge_base_id="kb-1", question="hi?")
+    answer = service.answer_question(knowledge_base_ids=["kb-1"], question="hi?")
 
     assert answer.content == "Hello world."
     assert answer.sources == ["doc-1"]
@@ -93,18 +93,18 @@ def test_in_memory_rag_service_answer_returns_canned_response() -> None:
     )
 
     response = service.answer(
-        RagQueryRequest(knowledge_base_id="kb-1", question="hi?")
+        RagQueryRequest(knowledge_base_ids=["kb-1"], question="hi?")
     )
 
     assert response.answer == "Hello world."
-    assert response.knowledge_base_id == "kb-1"
+    assert response.knowledge_base_ids == ["kb-1"]
 
 
 def test_in_memory_rag_service_unknown_kb_raises() -> None:
     service = InMemoryRagService(known_knowledge_base_ids={"kb-1"})
 
     with pytest.raises(RagConfigurationError):
-        service.answer_question(knowledge_base_id="kb-missing", question="hi?")
+        service.answer_question(knowledge_base_ids=["kb-missing"], question="hi?")
 
 
 def test_in_memory_rag_service_stream_answer_yields_done_sentinel() -> None:
@@ -116,7 +116,7 @@ def test_in_memory_rag_service_stream_answer_yields_done_sentinel() -> None:
 
     chunks = list(
         service.stream_answer(
-            RagQueryRequest(knowledge_base_id="kb-1", question="hi?")
+            RagQueryRequest(knowledge_base_ids=["kb-1"], question="hi?")
         )
     )
 
@@ -132,7 +132,7 @@ def test_in_memory_rag_service_stream_answer_unknown_kb_raises() -> None:
     with pytest.raises(RagConfigurationError):
         list(
             service.stream_answer(
-                RagQueryRequest(knowledge_base_id="kb-missing", question="hi?")
+                RagQueryRequest(knowledge_base_ids=["kb-missing"], question="hi?")
             )
         )
 

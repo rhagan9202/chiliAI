@@ -104,7 +104,7 @@ async def _stream_sse(
     question: str,
 ) -> AsyncIterator[bytes]:
     query_request = RagQueryRequest(
-        knowledge_base_id=knowledge_base_id,
+        knowledge_base_ids=[knowledge_base_id],  # TODO(task-6): Replace with resolve_kb_scope
         question=question,
     )
     try:
