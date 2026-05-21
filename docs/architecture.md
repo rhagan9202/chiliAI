@@ -749,6 +749,11 @@ Each entity and relationship in the graph carries provenance metadata linking it
 
 ---
 
+
+### 7.4 Dual-Graph Reads
+
+The platform supports a dual-graph model: a domain-level reference ("policy") KB containing slow-changing reference data (codesets, exclusion lists, policy documents, provider directory) plus per-cycle transactional ("claims") KBs. Reads on the graph, vector store, and RAG layers span both via `knowledge_base_ids: list[str]` on the protocol surface. The API handler boundary resolves the primary KB into the full scope using `shared.kb_scope.resolve_kb_scope`, which honors the domain's optional `default_reference_kb_id`. Writes remain single-KB; the neighborhood traversal in the graph adapter (`query_neighborhood`) is also single-KB because cross-graph edges are not stored. Cross-KB property joining (e.g., matching providers by NPI across graphs) is deferred to consumer layers (RAG context builder, UI presentation).
+
 ## 8. Frontend Architecture
 
 ### 8.1 Technology stack
