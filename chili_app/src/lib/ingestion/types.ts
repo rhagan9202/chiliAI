@@ -13,10 +13,13 @@ export type IngestionStepId =
 export type ValidationSeverity = 'info' | 'warning' | 'error'
 export type ValidationSource = 'client' | 'backend'
 
+export type ValidationKind = 'prerequisite' | 'content'
+
 export type ValidationIssue = {
   id: string
   source: ValidationSource
   severity: ValidationSeverity
+  kind?: ValidationKind
   message: string
   rowIndex?: number
   field?: string
