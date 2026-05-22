@@ -409,6 +409,19 @@ records:
             enumeration_date: "Provider Enumeration Date"
             deactivation_date: "NPI Deactivation Date"
 
+llm:
+  provider: openai
+  model: gpt-4o-mini
+  api_key_env_var: OPENAI_API_KEY
+  temperature: 0.2
+  max_tokens: 4096
+  fallback:
+    provider: ollama
+    model: llama3.1:8b
+    base_url: http://localhost:11434
+    temperature: 0.2
+    max_tokens: 4096
+
 rag:
   top_k: 5
   expansion_depth: 2
