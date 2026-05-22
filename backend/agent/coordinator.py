@@ -1768,6 +1768,7 @@ def handle_knowledge_base_deleted(
 
     if not event.cleanup_pending:
         return
+    logger.info("retrying KB cleanup", extra={"knowledge_base_id": event.knowledge_base_id})
     # Best-effort retries — exceptions bubble to the coordinator's DLQ flow.
     graph_service.delete_knowledge_base(event.knowledge_base_id)
     vector_service.delete_knowledge_base(event.knowledge_base_id)
