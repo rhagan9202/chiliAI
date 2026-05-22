@@ -68,7 +68,14 @@ def map_batch(feed: RecordFeedConfig, records: list[RawRecord]) -> MappedGraph:
                 if record_field in row
             }
             entities[entity_id] = Entity(
-                id=entity_id, type=entity_mapping.entity_type, properties=properties
+                id=entity_id,
+                type=entity_mapping.entity_type,
+                properties=properties,
+                metadata={
+                    "source_kind": "record",
+                    "source_feed": feed.name,
+                    "source_raw_record_id": record.record_id,
+                },
             )
             row_entity_ids[entity_mapping.entity_type] = entity_id
         for relationship_mapping in feed.relationships:
@@ -88,6 +95,11 @@ def map_batch(feed: RecordFeedConfig, records: list[RawRecord]) -> MappedGraph:
                 type=relationship_mapping.relationship_type,
                 source_id=source_id,
                 target_id=target_id,
+                metadata={
+                    "source_kind": "record",
+                    "source_feed": feed.name,
+                    "source_raw_record_id": record.record_id,
+                },
             )
     return MappedGraph(
         entities=list(entities.values()),
