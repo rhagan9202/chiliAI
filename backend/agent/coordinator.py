@@ -122,7 +122,8 @@ from graph.protocols import GraphServiceProtocol
 from graph.service import GraphService, create_graph_service
 from graph.service_models import GraphBuildTask
 from ingestion.chunker import ChunkingResult, DocumentChunker, create_document_chunker
-from ingestion.extractor import PatternDocumentExtractor, create_document_extractor
+from ingestion.extractor import create_document_extractor
+from ingestion.protocols import DocumentExtractorProtocol
 from ingestion.models import ExtractionResult, ParsedDocument, ValidationReport
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
@@ -225,7 +226,7 @@ class WorkerDependencies:
     event_bus: EventBus
     ingestion_service: IngestionService
     document_chunker: DocumentChunker
-    document_extractor: PatternDocumentExtractor
+    document_extractor: DocumentExtractorProtocol
     extraction_validator: ExtractionResultValidator
     graph_service: GraphService
     embeddings_service: EmbeddingsServiceProtocol
@@ -797,7 +798,7 @@ def _build_chunks_storage_key(
 def handle_documents_chunked(
     event: DocumentsChunkedEvent,
     *,
-    document_extractor: PatternDocumentExtractor,
+    document_extractor: DocumentExtractorProtocol,
     object_store: ObjectStore,
     event_bus: EventBus,
 ) -> int:
@@ -2072,7 +2073,7 @@ def handle_event(
     ingestion_service: IngestionService,
     *,
     document_chunker: DocumentChunker,
-    document_extractor: PatternDocumentExtractor,
+    document_extractor: DocumentExtractorProtocol,
     extraction_validator: ExtractionResultValidator,
     graph_service: GraphService,
     object_store: ObjectStore,
@@ -2150,7 +2151,7 @@ def _dispatch_event(
     delivery: EventDelivery,
     ingestion_service: IngestionService,
     document_chunker: DocumentChunker,
-    document_extractor: PatternDocumentExtractor,
+    document_extractor: DocumentExtractorProtocol,
     extraction_validator: ExtractionResultValidator,
     graph_service: GraphService,
     object_store: ObjectStore,
@@ -2395,7 +2396,7 @@ async def drain_ingestion_events(
     event_bus: EventBus,
     ingestion_service: IngestionService,
     document_chunker: DocumentChunker,
-    document_extractor: PatternDocumentExtractor,
+    document_extractor: DocumentExtractorProtocol,
     extraction_validator: ExtractionResultValidator,
     graph_service: GraphService,
     object_store: ObjectStore,

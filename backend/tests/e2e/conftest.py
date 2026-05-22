@@ -64,10 +64,8 @@ from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.adapters.protocols import GraphRepository
 from graph.service import GraphService, create_graph_service
 from ingestion.chunker import DocumentChunker, create_document_chunker
-from ingestion.extractor import (
-    PatternDocumentExtractor,
-    create_document_extractor,
-)
+from ingestion.extractor import create_document_extractor
+from ingestion.protocols import DocumentExtractorProtocol
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
@@ -141,7 +139,7 @@ class E2EHarness:
     vector_store: VectorStoreProtocol
     ingestion_service: IngestionService
     document_chunker: DocumentChunker
-    document_extractor: PatternDocumentExtractor
+    document_extractor: DocumentExtractorProtocol
     extraction_validator: ExtractionResultValidator
     embeddings_service: EmbeddingsServiceProtocol
     gnn_service: GnnService
