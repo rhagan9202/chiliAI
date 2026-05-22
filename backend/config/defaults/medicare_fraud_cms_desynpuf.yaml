@@ -464,17 +464,23 @@ monitoring:
   grouping_window_seconds: 300
 
 llm:
-  provider: openai
-  model: gpt-4o-mini
-  api_key_env_var: OPENAI_API_KEY
+  provider: local
+  model: local-default
+  api_key_env_var: null
   temperature: 0.2
   max_tokens: 4096
   fallback:
-    provider: ollama
-    model: llama3.1:8b
-    base_url: http://localhost:11434
+    provider: openai
+    model: gpt-4o-mini
+    api_key_env_var: OPENAI_API_KEY
     temperature: 0.2
     max_tokens: 4096
+    fallback:
+      provider: ollama
+      model: llama3.1:8b
+      base_url: http://localhost:11434
+      temperature: 0.2
+      max_tokens: 4096
 
 rag:
   top_k: 5
