@@ -62,11 +62,27 @@ def _coerce_value(value: object, property_type: PropertyType) -> object:
 def coerce_row(
     row: Mapping[str, object], schema: dict[str, PropertyDefinition]
 ) -> dict[str, object]:
-    """Return a copy of ``row`` with values coerced to their declared types."""
+    """Return a copy of ``row`` with values coerced to their declared types.
+
+    Empty strings for non-required typed fields are treated as absent: the key
+    is dropped from the coerced row so downstream validators do not attempt to
+    parse ``""`` as a date, integer, or decimal.  Empty strings for required
+    fields are kept so that the required-field check in ``validate_entity``
+    fires correctly.
+    """
 
     coerced: dict[str, object] = {}
     for key, value in row.items():
         definition = schema.get(key)
+        if (
+            definition is not None
+            and isinstance(value, str)
+            and value.strip() == ""
+            and not definition.required
+        ):
+            # Drop absent optional typed fields — e.g. BENE_DEATH_DT="" for
+            # living beneficiaries in CMS DE-SynPUF exports.
+            continue
         coerced[key] = value if definition is None else _coerce_value(value, definition.type)
     return coerced
 
