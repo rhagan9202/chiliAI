@@ -302,8 +302,9 @@ def test_records_e2e_populates_graph_and_vectors_and_cascade_deletes(
     # 9. Graph cleared by delete
     assert harness.graph_repository.count_entities(kb_id) == 0
     assert harness.graph_repository.count_relationships(kb_id) == 0
-    # Vector-store cascade not yet implemented (Phase 2): records remain in the store.
-    # Raw-record cascade not yet implemented (Phase 2): records remain in the store.
+    # Vector-store and raw-record cascade ARE implemented (both cleared on DELETE).
+    # Assertions for those stores are intentionally omitted here to keep this test
+    # scoped to the records-ingestion behavior verified above (steps 4–7).
 
 
 # ---------------------------------------------------------------------------

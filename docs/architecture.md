@@ -735,7 +735,7 @@ Re-uploading a document with identical content bytes is idempotent (same `source
 
 **New NPPES and DE-SynPUF feeds (medicare_fraud config)**
 
-`config/defaults/medicare_fraud.yaml` now declares `nppes_providers`, `de_synpuf_inpatient`, and `de_synpuf_outpatient` feed definitions under `records.feeds`. These are config-only additions — the records pipeline code is unchanged. A Tennessee-provider subset materializer lives at `tools/sample_data/build_tennessee_subset.py` and is invoked by the `make demo-tn-subset` target.
+`config/defaults/medicare_fraud_cms_desynpuf.yaml` now declares eight feed definitions under `records.feeds`: `nppes_providers`, `beneficiary_2008`, `beneficiary_2009`, `beneficiary_2010`, `carrier_claims_a`, `carrier_claims_b`, `inpatient_claims`, and `outpatient_claims`. These are config-only additions — the records pipeline code is unchanged. A Tennessee-provider subset materializer lives at `tools/sample_data/build_tennessee_subset.py` and is invoked by the `make demo-tn-subset` target.
 
 `handle_records_ingested` in the worker now also embeds and indexes records-derived entities into the vector store so they are co-searchable with document-derived content in RAG queries.
 
