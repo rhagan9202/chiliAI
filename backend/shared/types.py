@@ -95,6 +95,7 @@ class Relationship(BaseModel):
     source_id: str
     target_id: str
     properties: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime | None = None
     version: int = 1
