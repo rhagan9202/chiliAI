@@ -154,6 +154,11 @@ from records.adapters.protocols import RawRecordStore
 from records.exceptions import RecordFeedNotFoundError
 from records.mappers.feed_mapper import map_batch, map_observations
 from shared.logging import bind_correlation_id, configure_logging, get_logger
+from shared.provenance import (
+    SOURCE_ID_KEY,
+    SOURCE_KIND_KEY,
+    SOURCE_KIND_RECORD,
+)
 from shared.tracing import setup_tracing, start_pipeline_span
 from shared.types import Entity
 from storage.adapters.in_memory import InMemoryObjectStore
@@ -1632,6 +1637,15 @@ def handle_alerts_created_for_graph(
     return len(records)
 
 
+def _entity_embedding_text(entity: Entity) -> str:
+    """Compose a deterministic embedding text from an entity's type + properties."""
+
+    parts = [entity.type]
+    for key in sorted(entity.properties.keys()):
+        parts.append(f"{key}={entity.properties[key]}")
+    return " ".join(parts)
+
+
 def handle_records_ingested(
     event: RecordsIngestedEvent,
     *,
@@ -1639,12 +1653,20 @@ def handle_records_ingested(
     raw_record_store: RawRecordStore,
     graph_service: GraphService,
     observation_writer: ObservationWriter,
+    embeddings_service: EmbeddingsServiceProtocol | None = None,
+    vector_store: VectorStoreProtocol | None = None,
 ) -> int:
     """Flow 1 — fan a structured-records batch out to the graph and observations.
 
     A single handler: map rows to graph entities/relationships and upsert them,
-    then derive observations and persist them. Every write is idempotent so the
-    worker's retry/DLQ wrapper can safely re-run this handler.
+    then derive observations and persist them.  When ``embeddings_service`` and
+    ``vector_store`` are both provided, each stored entity is also embedded and
+    indexed into the vector store so the KB becomes RAG-searchable.  Both
+    parameters default to ``None`` so the handler is backward-compatible with
+    callers that do not yet wire the embedding path.
+
+    Every write is idempotent so the worker's retry/DLQ wrapper can safely
+    re-run this handler.
     """
 
     feed = _resolve_records_feed(records_config, event.feed_name)
@@ -1662,9 +1684,42 @@ def handle_records_ingested(
         return 0
 
     mapped = map_batch(feed, records)
-    graph_service.upsert_records_graph(
+    stored_entities, _stored_relationships = graph_service.upsert_records_graph(
         event.knowledge_base_id, mapped.entities, mapped.relationships
     )
+
+    if embeddings_service is not None and vector_store is not None and stored_entities:
+        texts = [_entity_embedding_text(entity) for entity in stored_entities]
+        embed_response = embeddings_service.embed(
+            EmbedRequest(
+                knowledge_base_id=event.knowledge_base_id,
+                submissions=[
+                    EmbedSubmission(content_id=entity.id, content=text)
+                    for entity, text in zip(stored_entities, texts, strict=True)
+                ],
+            )
+        )
+        # Build a lookup so we can match vectors to their entity regardless of
+        # the order the embedder returns them.
+        vector_by_id = {item.content_id: item.vector for item in embed_response.items}
+        vector_records = [
+            VectorRecord(
+                id=f"record:{event.knowledge_base_id}:{entity.id}",
+                knowledge_base_id=event.knowledge_base_id,
+                content_id=entity.id,
+                embedding=vector_by_id[entity.id],
+                content=text,
+                metadata={
+                    SOURCE_KIND_KEY: SOURCE_KIND_RECORD,
+                    SOURCE_ID_KEY: entity.id,
+                    "entity_type": entity.type,
+                },
+            )
+            for entity, text in zip(stored_entities, texts, strict=True)
+            if entity.id in vector_by_id
+        ]
+        if vector_records:
+            vector_store.upsert_records(event.knowledge_base_id, vector_records)
 
     observations = map_observations(feed, records)
     if observations:
@@ -2267,6 +2322,8 @@ def _dispatch_event(
             raw_record_store=raw_record_store,
             graph_service=graph_service,
             observation_writer=observation_writer,
+            embeddings_service=embeddings_service,
+            vector_store=vector_store,
         )
     return 0
 
