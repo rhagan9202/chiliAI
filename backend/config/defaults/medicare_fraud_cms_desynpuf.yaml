@@ -9,6 +9,16 @@ entities:
     icon: stethoscope
     properties:
       npi: { type: string, display: "NPI", required: true }
+      entity_type_code: { type: string, display: "Entity Type Code" }       # 1=individual, 2=org
+      organization_name: { type: string, display: "Organization Name" }
+      last_name: { type: string, display: "Last Name" }
+      first_name: { type: string, display: "First Name" }
+      primary_taxonomy_code: { type: string, display: "Primary Taxonomy" }
+      practice_state: { type: string, display: "Practice State" }
+      practice_city: { type: string, display: "Practice City" }
+      practice_postal_code: { type: string, display: "Practice Postal Code" }
+      enumeration_date: { type: date, display: "Enumeration Date" }
+      deactivation_date: { type: date, display: "Deactivation Date" }
 
   - name: beneficiary
     display_label: "Beneficiary"
@@ -343,6 +353,44 @@ records:
         - relationship_type: billed_for
           source_entity_type: claim
           target_entity_type: beneficiary
+
+    # ------------------------------------------------------------------
+    # NPPES NPI Registry — one row per provider.
+    # Source: tools/sample_data/build_tennessee_subset.py output
+    # (nppes_providers_tn.csv).
+    # ------------------------------------------------------------------
+    - name: nppes_providers
+      record_type: provider_record
+      source: file_upload
+      id_field: NPI
+      allow_extra_fields: true
+      record_schema:
+        NPI: { type: string, display: "NPI", required: true }
+        Entity Type Code: { type: string, display: "Entity Type Code" }
+        Provider Organization Name (Legal Business Name): { type: string, display: "Organization Name" }
+        Provider Last Name (Legal Name): { type: string, display: "Last Name" }
+        Provider First Name: { type: string, display: "First Name" }
+        Healthcare Provider Taxonomy Code_1: { type: string, display: "Primary Taxonomy" }
+        Provider Business Practice Location Address State Name: { type: string, display: "Practice State" }
+        Provider Business Practice Location Address City Name: { type: string, display: "Practice City" }
+        Provider Business Practice Location Address Postal Code: { type: string, display: "Practice Postal Code" }
+        Provider Enumeration Date: { type: date, display: "Enumeration Date" }
+        NPI Deactivation Date: { type: date, display: "Deactivation Date" }
+      entities:
+        - entity_type: provider
+          id_field: NPI
+          property_fields:
+            npi: NPI
+            entity_type_code: "Entity Type Code"
+            organization_name: "Provider Organization Name (Legal Business Name)"
+            last_name: "Provider Last Name (Legal Name)"
+            first_name: "Provider First Name"
+            primary_taxonomy_code: "Healthcare Provider Taxonomy Code_1"
+            practice_state: "Provider Business Practice Location Address State Name"
+            practice_city: "Provider Business Practice Location Address City Name"
+            practice_postal_code: "Provider Business Practice Location Address Postal Code"
+            enumeration_date: "Provider Enumeration Date"
+            deactivation_date: "NPI Deactivation Date"
 
 rag:
   top_k: 5
