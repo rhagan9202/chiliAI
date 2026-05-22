@@ -182,10 +182,17 @@ async def delete_knowledge_base(
     event_bus: EventBus = Depends(get_event_bus),
 ) -> Response:
     """Cascade-delete a KB across graph, vector, raw_records, object store, and metadata."""
-    if repository.get(knowledge_base_id) is None:
+    existing_kb = repository.get(knowledge_base_id)
+    if existing_kb is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Knowledge base '{knowledge_base_id}' not found.",
+        )
+
+    if existing_kb.pending_cleanup:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Knowledge base '{knowledge_base_id}' has pending cleanup; cannot mutate until resolved.",
         )
 
     try:
@@ -314,10 +321,17 @@ async def delete_knowledge_base_document(
     workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
 ) -> None:
     """Delete a single document from a knowledge base and its stored artifacts."""
-    if repository.get(knowledge_base_id) is None:
+    existing_kb = repository.get(knowledge_base_id)
+    if existing_kb is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Knowledge base '{knowledge_base_id}' not found.",
+        )
+
+    if existing_kb.pending_cleanup:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Knowledge base '{knowledge_base_id}' has pending cleanup; cannot mutate until resolved.",
         )
 
     try:
@@ -358,14 +372,22 @@ async def register_knowledge_base_documents(
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
     graph_service: GraphServiceProtocol = Depends(get_graph_service),
     vector_service: VectorServiceProtocol = Depends(get_vector_service),
+    object_store: ObjectStore = Depends(get_object_store),
     config: DomainConfig = Depends(get_domain_config),
     workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
 ) -> DocumentRegistrationResponse:
     """Register uploaded documents and enqueue ingestion work."""
-    if repository.get(knowledge_base_id) is None:
+    existing_kb = repository.get(knowledge_base_id)
+    if existing_kb is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Knowledge base '{knowledge_base_id}' not found.",
+        )
+
+    if existing_kb.pending_cleanup:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Knowledge base '{knowledge_base_id}' has pending cleanup; cannot mutate until resolved.",
         )
 
     try:
@@ -410,6 +432,10 @@ async def register_knowledge_base_documents(
             graph_service.delete_by_source_document(knowledge_base_id, existing.id)
             vector_service.delete_by_source_document(knowledge_base_id, existing.id)
             repository.delete_document(knowledge_base_id, existing.id)
+            # Also drop the source object so register_documents re-publishes the event.
+            prefix = f"knowledgebases/{knowledge_base_id}/documents/{existing.id}/"
+            for key in object_store.list_keys(prefix):
+                object_store.delete(key)
             replaced_document_id = existing.id
 
         submissions.append(

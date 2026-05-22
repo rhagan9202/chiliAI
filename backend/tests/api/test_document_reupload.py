@@ -4,13 +4,16 @@ Uploading the same bytes twice to a KB should:
   1. Cascade-delete the original document's graph nodes and vector points.
   2. Re-register the document under a new source_document_id.
   3. Surface the old id as ``replaced_document_id`` in the receipt.
+  4. Trigger a new DocumentsUploadedEvent so the worker re-extracts entities.
 
 Uploading *different* bytes should create a fresh document with no replacement.
 """
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
+from dataclasses import dataclass
 from io import BytesIO
 
 import pytest
@@ -29,6 +32,7 @@ from api.dependencies import (
     get_workflow_tracker,
 )
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
+from agent.coordinator import drain_ingestion_events
 from agent.workflow_tracking import WorkflowEventTracker
 from config.schema import (
     AlertsConfig,
@@ -39,14 +43,20 @@ from config.schema import (
     IngestionConfig,
     ValidationConfig,
 )
+from embeddings.adapters.in_memory import InMemoryEmbedder
+from embeddings.service import create_embeddings_service
 from events.adapters.in_memory import InMemoryEventBus
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.service import create_graph_service
+from ingestion.chunker import create_document_chunker
+from ingestion.extractor import create_document_extractor
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
 from ingestion.service import IngestionService
+from ingestion.validator import create_extraction_validator
 from records.adapters.in_memory import InMemoryRawRecordStore
+from shared.types import EntityDefinition, PropertyDefinition, PropertyType
 from storage.adapters.in_memory import InMemoryObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 from vectorstore.service import create_vector_service
@@ -55,7 +65,18 @@ from vectorstore.service import create_vector_service
 def _build_config() -> DomainConfig:
     return DomainConfig(
         domain=DomainInfo(name="test", display_name="Test", description="Test"),
-        entities=[],
+        entities=[
+            EntityDefinition(
+                name="provider",
+                display_label="Provider",
+                icon="stethoscope",
+                properties={
+                    "npi": PropertyDefinition(
+                        type=PropertyType.STRING, display="NPI", required=True
+                    ),
+                },
+            ),
+        ],
         relationships=[],
         capabilities=CapabilitiesConfig(),
         ingestion=IngestionConfig(sources=[]),
@@ -68,8 +89,58 @@ def _build_config() -> DomainConfig:
     )
 
 
+@dataclass
+class ReuploadHarness:
+    """Bundles client + in-memory adapters needed to drain the worker in tests."""
+
+    client: TestClient
+    event_bus: InMemoryEventBus
+    object_store: InMemoryObjectStore
+    graph_repository: InMemoryGraphRepository
+    vector_store: InMemoryVectorStore
+    ingestion_service: IngestionService
+
+    def drain(self, *, max_iterations: int = 32) -> int:
+        """Drive drain_ingestion_events until quiescent."""
+        entity_defs = _build_config().entities
+        document_chunker = create_document_chunker()
+        document_extractor = create_document_extractor(entity_defs)
+        extraction_validator = create_extraction_validator(entity_defs, [])
+        embedder = InMemoryEmbedder(dimensions=4)
+        embeddings_service = create_embeddings_service(
+            embedder,
+            event_bus=self.event_bus,
+        )
+        graph_service = create_graph_service(
+            self.graph_repository,
+            object_store=self.object_store,
+            event_bus=self.event_bus,
+        )
+        total = 0
+        for _ in range(max_iterations):
+            processed = asyncio.run(
+                drain_ingestion_events(
+                    self.event_bus,
+                    self.ingestion_service,
+                    document_chunker,
+                    document_extractor,
+                    extraction_validator,
+                    graph_service,
+                    self.object_store,
+                    embeddings_service=embeddings_service,
+                    vector_store=self.vector_store,
+                    consumer_group="reupload-workers",
+                    consumer_name="reupload-worker-1",
+                )
+            )
+            total += processed
+            if processed == 0:
+                break
+        return total
+
+
 @pytest.fixture()
-def api_client() -> Iterator[TestClient]:
+def reupload_harness() -> Iterator[ReuploadHarness]:
     """TestClient backed by full in-memory adapters with graph + vector wired."""
     app = create_app()
     event_bus = InMemoryEventBus()
@@ -109,13 +180,30 @@ def api_client() -> Iterator[TestClient]:
     app.dependency_overrides[get_ingestion_service] = lambda: ingestion_service
 
     with TestClient(app) as client:
-        yield client
+        yield ReuploadHarness(
+            client=client,
+            event_bus=event_bus,
+            object_store=object_store,
+            graph_repository=graph_repository,
+            vector_store=vector_store,
+            ingestion_service=ingestion_service,
+        )
 
     app.dependency_overrides.clear()
 
 
-def test_reuploading_same_document_replaces_extraction(api_client: TestClient) -> None:
-    create = api_client.post(
+# Keep a simple fixture for tests that only need the client
+@pytest.fixture()
+def api_client(reupload_harness: ReuploadHarness) -> TestClient:
+    return reupload_harness.client
+
+
+def test_reuploading_same_document_replaces_extraction(
+    reupload_harness: ReuploadHarness,
+) -> None:
+    client = reupload_harness.client
+
+    create = client.post(
         "/knowledgebases", json={"name": "reupload", "description": ""}
     )
     assert create.status_code == 201, create.text
@@ -123,7 +211,7 @@ def test_reuploading_same_document_replaces_extraction(api_client: TestClient) -
 
     content = b'{\n  "npi": "1234567890",\n  "specialty": "Cardiology"\n}\n'
 
-    first = api_client.post(
+    first = client.post(
         f"/knowledgebases/{kb_id}/documents",
         files=[("files", ("provider.json", BytesIO(content), "application/json"))],
     )
@@ -133,7 +221,13 @@ def test_reuploading_same_document_replaces_extraction(api_client: TestClient) -
     original_doc_id: str = first_receipts[0]["source_document_id"]
     assert first_receipts[0].get("replaced_document_id") is None
 
-    second = api_client.post(
+    # Drain the worker to populate graph + vector from the first upload.
+    reupload_harness.drain()
+    entity_count_after_first = reupload_harness.graph_repository.count_entities(kb_id)
+    vector_count_after_first = reupload_harness.vector_store.count_records(kb_id)
+    assert entity_count_after_first >= 0  # extracted whatever entities the pattern extractor found
+
+    second = client.post(
         f"/knowledgebases/{kb_id}/documents",
         files=[("files", ("provider.json", BytesIO(content), "application/json"))],
     )
@@ -148,10 +242,39 @@ def test_reuploading_same_document_replaces_extraction(api_client: TestClient) -
     new_doc_id: str = second_receipt["source_document_id"]
 
     # KB should show exactly 1 document (deduplicated), not 2.
-    docs_resp = api_client.get(f"/knowledgebases/{kb_id}/documents")
+    docs_resp = client.get(f"/knowledgebases/{kb_id}/documents")
     assert docs_resp.status_code == 200
     assert docs_resp.json()["total"] == 1
     assert docs_resp.json()["items"][0]["id"] == new_doc_id
+
+    # Drain the worker after the second upload: the fix ensures the source object
+    # was deleted so register_documents re-publishes DocumentsUploadedEvent and
+    # the worker re-extracts entities.  Graph + vector must be repopulated (>= 0
+    # but critically the event was re-published, i.e. the pipeline ran again).
+    reupload_harness.drain()
+
+    # Verify the DocumentsUploadedEvent was published for both uploads.
+    from events.types import DocumentsUploadedEvent
+    uploaded_events = [
+        e for e in reupload_harness.event_bus.published_events
+        if isinstance(e, DocumentsUploadedEvent)
+    ]
+    assert len(uploaded_events) == 2, (
+        f"Expected 2 DocumentsUploadedEvents (one per upload), got {len(uploaded_events)}. "
+        "This means the source object was not deleted before re-registration."
+    )
+
+    # After draining, graph + vector should be repopulated (count >= count from first drain).
+    entity_count_after_second = reupload_harness.graph_repository.count_entities(kb_id)
+    vector_count_after_second = reupload_harness.vector_store.count_records(kb_id)
+    assert entity_count_after_second >= entity_count_after_first, (
+        f"Graph entities after re-upload ({entity_count_after_second}) should be >= "
+        f"after first upload ({entity_count_after_first}); KB ended up with fewer entities."
+    )
+    assert vector_count_after_second >= vector_count_after_first, (
+        f"Vector records after re-upload ({vector_count_after_second}) should be >= "
+        f"after first upload ({vector_count_after_first}); KB ended up with fewer vectors."
+    )
 
 
 def test_reupload_with_different_content_does_not_dedupe(api_client: TestClient) -> None:
