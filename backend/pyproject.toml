@@ -91,6 +91,7 @@ pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
+extraPaths = [".."]
 include = [
     "agent",
     "analytics/gnn",
@@ -148,5 +149,6 @@ include = [
     "tests/monitoring/test_postgres_observation_source.py",
     "tests/records",
     "tests/vectorstore",
+    "../tools",
 ]
 exclude = ["**/__pycache__", "chili_backend.egg-info"]
