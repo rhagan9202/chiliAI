@@ -805,7 +805,7 @@ def handle_documents_parsed(
             media_type="application/json",
             metadata={
                 "knowledge_base_id": document.knowledge_base_id,
-                "source_document_id": document.source_document_id,
+                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
                 "parsed_document_id": document.parsed_document_id,
                 "chunk_count": len(result.chunks),
             },
@@ -865,7 +865,7 @@ def handle_documents_chunked(
             media_type="application/json",
             metadata={
                 "knowledge_base_id": document.knowledge_base_id,
-                "source_document_id": document.source_document_id,
+                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
                 "parsed_document_id": document.parsed_document_id,
                 "extraction_result_id": extraction_result.id,
                 "entity_count": len(extraction_result.candidate_entities),
@@ -929,7 +929,7 @@ def handle_entities_extracted(
             media_type="application/json",
             metadata={
                 "knowledge_base_id": document.knowledge_base_id,
-                "source_document_id": document.source_document_id,
+                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
                 "parsed_document_id": document.parsed_document_id,
                 "extraction_result_id": extraction_result.id,
                 "validation_report_id": validation_report.id,
@@ -1097,7 +1097,7 @@ def handle_graph_updated(
             media_type="application/json",
             metadata={
                 "knowledge_base_id": document.knowledge_base_id,
-                "source_document_id": document.source_document_id,
+                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
                 "parsed_document_id": document.parsed_document_id,
                 "extraction_result_id": document.extraction_result_id,
                 "validation_report_id": document.validation_report_id,
