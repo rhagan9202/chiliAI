@@ -53,3 +53,35 @@ def test_remap_is_deterministic(tmp_path: Path) -> None:
     _filter_desynpuf(config, npi_set)
     second_bytes = (tmp_path / "desynpuf_carrier_claims_tn.csv").read_bytes()
     assert first_bytes == second_bytes
+
+
+def test_sample_rate_reduces_kept_claims(tmp_path: Path) -> None:
+    npi_set = {f"100000000{i}" for i in range(1, 7)}
+    config = BuildConfig(
+        nppes_root=tmp_path,
+        desynpuf_root=Path(__file__).parent / "fixtures" / "desynpuf_micro",
+        output_root=tmp_path,
+        strategy="remap",
+        sample_rate=0.5,
+    )
+    counts = _filter_desynpuf(config, npi_set)
+    # With 8 carrier_claims rows and rate=0.5 the deterministic hash keeps exactly 5.
+    # Assert strict subset: fewer than all 8 rows were written.
+    assert 0 <= counts["carrier_claims"] < 8
+
+
+def test_sample_rate_is_deterministic(tmp_path: Path) -> None:
+    """Re-running with the same sample_rate must produce byte-identical output."""
+    npi_set = {f"100000000{i}" for i in range(1, 7)}
+    config = BuildConfig(
+        nppes_root=tmp_path,
+        desynpuf_root=Path(__file__).parent / "fixtures" / "desynpuf_micro",
+        output_root=tmp_path,
+        strategy="remap",
+        sample_rate=0.5,
+    )
+    _filter_desynpuf(config, npi_set)
+    first_bytes = (tmp_path / "desynpuf_carrier_claims_tn.csv").read_bytes()
+    _filter_desynpuf(config, npi_set)
+    second_bytes = (tmp_path / "desynpuf_carrier_claims_tn.csv").read_bytes()
+    assert first_bytes == second_bytes

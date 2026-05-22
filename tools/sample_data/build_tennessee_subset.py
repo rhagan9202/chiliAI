@@ -124,6 +124,11 @@ def _filter_desynpuf(config: BuildConfig, npi_set: set[str]) -> dict[str, int]:
                         keep = _apply_strategy(row, npi_col, tn_npis, config.strategy, npi_set)
                         if not keep:
                             continue
+                        if config.sample_rate < 1.0:
+                            seed = row.get("CLM_ID", "") + npi_col
+                            score = int(hashlib.sha256(seed.encode("utf-8")).hexdigest()[:8], 16) / 0xFFFFFFFF
+                            if score >= config.sample_rate:
+                                continue
                         if bene_id := row.get("DESYNPUF_ID"):
                             kept_beneficiary_ids.add(bene_id)
                         writer.writerow(row)
@@ -143,6 +148,11 @@ def _apply_strategy(
     strategy: Strategy,
     npi_set: set[str],
 ) -> bool:
+    """Decide whether to keep `row`; for remap/synthetic, mutate `row[npi_col]` in place.
+
+    The mutated row is consumed immediately by the writer and then discarded, so the
+    mutation is intentional and contained.
+    """
     if strategy == "natural":
         return row.get(npi_col) in npi_set
     if strategy == "remap":
