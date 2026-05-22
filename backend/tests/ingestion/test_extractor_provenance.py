@@ -104,6 +104,8 @@ def test_built_entity_carries_document_provenance() -> None:
     assert entity.metadata[SOURCE_KIND_KEY] == SOURCE_KIND_DOCUMENT
     assert entity.metadata[SOURCE_DOCUMENT_ID_KEY] == "doc-1"
     assert entity.metadata[SOURCE_CHUNK_ID_KEY] == "chunk-7"
+    assert entity.metadata["confidence"] == 0.9
+    assert entity.metadata["extraction_method"] == "pattern_v1"
 
 
 def test_built_relationship_carries_document_provenance() -> None:
