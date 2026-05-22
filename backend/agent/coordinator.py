@@ -1706,13 +1706,14 @@ def handle_knowledge_base_deleted(
     vector_service: VectorServiceProtocol,
     raw_record_store: RawRecordStore,
     kb_repository: KnowledgeBaseRepository,
+    object_store: ObjectStore | None = None,
 ) -> None:
     """Retry residual KB cleanup steps when the API DELETE returned a partial cleanup.
 
     When the API DELETE endpoint returns 207 with ``cleanup_pending=True`` it
     means one or more downstream stores could not be cleaned up synchronously.
     The worker picks up the ``KnowledgeBaseDeletedEvent`` and retries each
-    store in order.  All four calls are idempotent; the coordinator's retry/DLQ
+    store in order.  All five calls are idempotent; the coordinator's retry/DLQ
     wrapper handles any exceptions that bubble up.
     """
 
@@ -1723,6 +1724,10 @@ def handle_knowledge_base_deleted(
     graph_service.delete_knowledge_base(event.knowledge_base_id)
     vector_service.delete_knowledge_base(event.knowledge_base_id)
     raw_record_store.delete_by_kb(event.knowledge_base_id)
+    if object_store is not None:
+        prefix = f"knowledgebases/{event.knowledge_base_id}/"
+        for key in object_store.list_keys(prefix):
+            object_store.delete(key)
     kb_repository.delete(event.knowledge_base_id)
 
 
@@ -2331,6 +2336,7 @@ def _dispatch_event(
             vector_service=vector_service,
             raw_record_store=raw_record_store,
             kb_repository=kb_repository,
+            object_store=object_store,
         )
         return 1
     return 0
