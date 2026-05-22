@@ -11,6 +11,12 @@ from config.schema import (
 )
 from records.mappers.feed_mapper import map_batch
 from records.models import RawRecord
+from shared.provenance import (
+    SOURCE_FEED_KEY,
+    SOURCE_KIND_KEY,
+    SOURCE_KIND_RECORD,
+    SOURCE_RAW_RECORD_ID_KEY,
+)
 from shared.types import PropertyDefinition, PropertyType
 
 
@@ -63,15 +69,20 @@ def test_entity_carries_source_provenance() -> None:
     result = map_batch(_feed(), [_record({"CLM_ID": "C1", "NPI": "1234567890"})])
 
     claim = next(e for e in result.entities if e.type == "claim")
-    assert claim.metadata["source_kind"] == "record"
-    assert claim.metadata["source_feed"] == "carrier_claims_a"
-    assert claim.metadata["source_raw_record_id"] == "r1"
+    assert claim.metadata[SOURCE_KIND_KEY] == SOURCE_KIND_RECORD
+    assert claim.metadata[SOURCE_FEED_KEY] == "carrier_claims_a"
+    assert claim.metadata[SOURCE_RAW_RECORD_ID_KEY] == "r1"
+
+    provider = next(e for e in result.entities if e.type == "provider")
+    assert provider.metadata[SOURCE_KIND_KEY] == SOURCE_KIND_RECORD
+    assert provider.metadata[SOURCE_FEED_KEY] == "carrier_claims_a"
+    assert provider.metadata[SOURCE_RAW_RECORD_ID_KEY] == "r1"
 
 
 def test_relationship_carries_source_provenance() -> None:
     result = map_batch(_feed(), [_record({"CLM_ID": "C1", "NPI": "1234567890"})])
 
     rel = result.relationships[0]
-    assert rel.metadata["source_kind"] == "record"
-    assert rel.metadata["source_feed"] == "carrier_claims_a"
-    assert rel.metadata["source_raw_record_id"] == "r1"
+    assert rel.metadata[SOURCE_KIND_KEY] == SOURCE_KIND_RECORD
+    assert rel.metadata[SOURCE_FEED_KEY] == "carrier_claims_a"
+    assert rel.metadata[SOURCE_RAW_RECORD_ID_KEY] == "r1"

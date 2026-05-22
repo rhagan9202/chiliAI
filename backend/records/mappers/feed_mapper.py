@@ -14,6 +14,12 @@ from config.schema import RecordFeedConfig
 from monitoring.models import MonitoringObservation
 from records.exceptions import RecordMappingError
 from records.models import RawRecord
+from shared.provenance import (
+    SOURCE_FEED_KEY,
+    SOURCE_KIND_KEY,
+    SOURCE_KIND_RECORD,
+    SOURCE_RAW_RECORD_ID_KEY,
+)
 from shared.types import Entity, Relationship
 
 
@@ -72,9 +78,9 @@ def map_batch(feed: RecordFeedConfig, records: list[RawRecord]) -> MappedGraph:
                 type=entity_mapping.entity_type,
                 properties=properties,
                 metadata={
-                    "source_kind": "record",
-                    "source_feed": feed.name,
-                    "source_raw_record_id": record.record_id,
+                    SOURCE_KIND_KEY: SOURCE_KIND_RECORD,
+                    SOURCE_FEED_KEY: feed.name,
+                    SOURCE_RAW_RECORD_ID_KEY: record.record_id,
                 },
             )
             row_entity_ids[entity_mapping.entity_type] = entity_id
@@ -96,9 +102,9 @@ def map_batch(feed: RecordFeedConfig, records: list[RawRecord]) -> MappedGraph:
                 source_id=source_id,
                 target_id=target_id,
                 metadata={
-                    "source_kind": "record",
-                    "source_feed": feed.name,
-                    "source_raw_record_id": record.record_id,
+                    SOURCE_KIND_KEY: SOURCE_KIND_RECORD,
+                    SOURCE_FEED_KEY: feed.name,
+                    SOURCE_RAW_RECORD_ID_KEY: record.record_id,
                 },
             )
     return MappedGraph(
