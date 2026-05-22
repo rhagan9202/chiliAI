@@ -103,6 +103,7 @@ from events.types import (
     EntitiesValidatedEvent,
     ExtractedDocumentReference,
     GraphUpdatedEvent,
+    KnowledgeBaseDeletedEvent,
     KnowledgeBaseReadyEvent,
     KnowledgeBaseReadyReference,
     RecordsIngestedEvent,
@@ -112,10 +113,12 @@ from events.types import (
     VectorsIndexedDocumentReference,
     VectorsIndexedEvent,
 )
+from api._kb_store import KnowledgeBaseRepository
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.adapters.protocols import GraphRepository
 from graph.auth import resolve_graph_auth
 from graph.models import GraphUpsertResult
+from graph.protocols import GraphServiceProtocol
 from graph.service import GraphService, create_graph_service
 from graph.service_models import GraphBuildTask
 from ingestion.chunker import ChunkingResult, DocumentChunker, create_document_chunker
@@ -168,6 +171,7 @@ from storage.protocols import ObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 from vectorstore.adapters.protocols import VectorStoreProtocol
 from vectorstore.models import VectorRecord
+from vectorstore.protocols import VectorServiceProtocol
 
 __all__ = [
     "WorkerDependencies",
@@ -197,6 +201,7 @@ __all__ = [
     "handle_event",
     "handle_graph_updated",
     "handle_graph_updated_for_analytics",
+    "handle_knowledge_base_deleted",
     "handle_records_ingested",
     "handle_risk_scored",
     "handle_risk_scored_for_graph",
@@ -1744,6 +1749,32 @@ def _resolve_records_feed(
     raise RecordFeedNotFoundError(feed_name)
 
 
+def handle_knowledge_base_deleted(
+    event: KnowledgeBaseDeletedEvent,
+    *,
+    graph_service: GraphServiceProtocol,
+    vector_service: VectorServiceProtocol,
+    raw_record_store: RawRecordStore,
+    kb_repository: KnowledgeBaseRepository,
+) -> None:
+    """Retry residual KB cleanup steps when the API DELETE returned a partial cleanup.
+
+    When the API DELETE endpoint returns 207 with ``cleanup_pending=True`` it
+    means one or more downstream stores could not be cleaned up synchronously.
+    The worker picks up the ``KnowledgeBaseDeletedEvent`` and retries each
+    store in order.  All four calls are idempotent; the coordinator's retry/DLQ
+    wrapper handles any exceptions that bubble up.
+    """
+
+    if not event.cleanup_pending:
+        return
+    # Best-effort retries — exceptions bubble to the coordinator's DLQ flow.
+    graph_service.delete_knowledge_base(event.knowledge_base_id)
+    vector_service.delete_knowledge_base(event.knowledge_base_id)
+    raw_record_store.delete_by_kb(event.knowledge_base_id)
+    kb_repository.delete(event.knowledge_base_id)
+
+
 def _publish_analysis_failed(
     *,
     event_bus: EventBus,
@@ -2112,6 +2143,8 @@ def handle_event(
     alert_history_writer: AlertHistoryWriter | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
     graph_embeddings_enabled: bool = False,
+    vector_service: VectorServiceProtocol | None = None,
+    kb_repository: KnowledgeBaseRepository | None = None,
 ) -> int:
     """Handle a single event and return the number of processed documents."""
 
@@ -2153,6 +2186,8 @@ def handle_event(
             risk_history_writer=risk_history_writer,
             alert_history_writer=alert_history_writer,
             graph_embeddings_enabled=graph_embeddings_enabled,
+            vector_service=vector_service,
+            kb_repository=kb_repository,
         )
         if workflow_tracker is not None:
             workflow_tracker.complete_event(event)
@@ -2185,6 +2220,8 @@ def _dispatch_event(
     risk_history_writer: RiskHistoryWriter | None,
     alert_history_writer: AlertHistoryWriter | None,
     graph_embeddings_enabled: bool,
+    vector_service: VectorServiceProtocol | None = None,
+    kb_repository: KnowledgeBaseRepository | None = None,
 ) -> int:
     del delivery  # reserved for future stream offsets / dlq metadata
     if isinstance(event, DocumentsUploadedEvent):
@@ -2327,6 +2364,24 @@ def _dispatch_event(
             embeddings_service=embeddings_service,
             vector_store=vector_store,
         )
+    if isinstance(event, KnowledgeBaseDeletedEvent):
+        if (
+            vector_service is None
+            or raw_record_store is None
+            or kb_repository is None
+        ):
+            logger.warning(
+                "KnowledgeBaseDeletedEvent received but KB cleanup dependencies are not wired."
+            )
+            return 0
+        handle_knowledge_base_deleted(
+            event,
+            graph_service=graph_service,
+            vector_service=vector_service,
+            raw_record_store=raw_record_store,
+            kb_repository=kb_repository,
+        )
+        return 1
     return 0
 
 
@@ -2417,6 +2472,8 @@ async def drain_ingestion_events(
     health_state: HealthState | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
     graph_embeddings_enabled: bool = False,
+    vector_service: VectorServiceProtocol | None = None,
+    kb_repository: KnowledgeBaseRepository | None = None,
     sleep: Callable[[float], "asyncio.Future[None] | object"] = asyncio.sleep,
 ) -> int:
     """Consume and process available ingestion events with retry/DLQ semantics."""
@@ -2435,6 +2492,7 @@ async def drain_ingestion_events(
         "risk.scored",
         "records.ingested",
         "alerts.created",
+        "kb.delete",
     ]
     event_bus.ensure_consumer_group(event_types, consumer_group=consumer_group)
     deliveries = event_bus.consume(
@@ -2473,6 +2531,8 @@ async def drain_ingestion_events(
                 alert_history_writer=alert_history_writer,
                 workflow_tracker=workflow_tracker,
                 graph_embeddings_enabled=graph_embeddings_enabled,
+                vector_service=vector_service,
+                kb_repository=kb_repository,
             )
 
         def _record_failure(
