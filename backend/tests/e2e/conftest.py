@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -34,9 +35,12 @@ from api.dependencies import (
     get_graph_service,
     get_ingestion_service,
     get_object_store,
+    get_raw_record_store,
+    get_records_service,
     get_vector_store,
     get_vectorstore_service,
 )
+from config.loader import load_config
 from config.schema import (
     AlertsConfig,
     AuthConfig,
@@ -44,6 +48,7 @@ from config.schema import (
     DomainConfig,
     DomainInfo,
     IngestionConfig,
+    RecordsConfig,
     ValidationConfig,
 )
 from embeddings.adapters.in_memory import InMemoryEmbedder
@@ -67,13 +72,25 @@ from ingestion.validator import (
     ExtractionResultValidator,
     create_extraction_validator,
 )
-from monitoring.adapters.in_memory import InMemoryObservationSource
+from monitoring.adapters.in_memory import (
+    InMemoryObservationSource,
+    InMemoryObservationWriter,
+)
 from monitoring.service import MonitoringService, create_monitoring_service
+from records.adapters.in_memory import InMemoryRawRecordStore
+from records.service import RecordsService, create_records_service
 from shared.types import EntityDefinition, PropertyDefinition, PropertyType
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.protocols import ObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 from vectorstore.adapters.protocols import VectorStoreProtocol
+
+_MEDICARE_FRAUD_CONFIG_PATH = (
+    Path(__file__).parent.parent.parent
+    / "config"
+    / "defaults"
+    / "medicare_fraud_cms_desynpuf.yaml"
+)
 
 
 def _build_config() -> DomainConfig:
@@ -127,6 +144,15 @@ class E2EHarness:
     risk_service: RiskService
     explainability_service: ExplainabilityService
     monitoring_service: MonitoringService
+    # Optional records-path extensions (populated by medicare_fraud_harness)
+    raw_record_store: InMemoryRawRecordStore | None = None
+    records_service: RecordsService | None = None
+    observation_writer: InMemoryObservationWriter | None = None
+    records_config: RecordsConfig | None = None
+    # Drain configuration (set by factory; defaults match the base harness)
+    drain_consumer_group: str = "e2e-workers"
+    drain_consumer_name: str = "e2e-worker-1"
+    drain_limit: int = 16
     received_kb_ready: list[KnowledgeBaseReadyEvent] = field(
         default_factory=lambda: list[KnowledgeBaseReadyEvent](),
     )
@@ -152,9 +178,12 @@ class E2EHarness:
                     risk_service=self.risk_service,
                     explainability_service=self.explainability_service,
                     monitoring_service=self.monitoring_service,
-                    consumer_group="e2e-workers",
-                    consumer_name="e2e-worker-1",
-                    limit=16,
+                    records_config=self.records_config,
+                    raw_record_store=self.raw_record_store,
+                    observation_writer=self.observation_writer,
+                    consumer_group=self.drain_consumer_group,
+                    consumer_name=self.drain_consumer_name,
+                    limit=self.drain_limit,
                 )
             )
             total += processed
@@ -168,13 +197,20 @@ class E2EHarness:
         return total
 
 
-@pytest.fixture
-def harness() -> Iterator[E2EHarness]:
-    """Build a fresh harness with a single shared in-memory event bus.
+def _build_harness(
+    domain_config: DomainConfig,
+    *,
+    consumer_group: str = "e2e-workers",
+    consumer_name: str = "e2e-worker-1",
+    drain_limit: int = 16,
+    with_records: bool = False,
+) -> Iterator[E2EHarness]:
+    """Core harness factory used by all e2e fixtures.
 
-    All FastAPI dependencies that touch shared state (event bus, object store,
-    graph, vector, ingestion service) are overridden so the worker coordinator
-    drains the same bus the API publishes to.
+    When ``with_records=True`` the harness additionally wires:
+    - ``InMemoryRawRecordStore`` / ``RecordsService`` / ``InMemoryObservationWriter``
+    - ``get_raw_record_store`` / ``get_records_service`` dependency overrides
+    and propagates ``records_config`` into the ``drain`` closure.
     """
 
     event_bus = InMemoryEventBus()
@@ -186,8 +222,6 @@ def harness() -> Iterator[E2EHarness]:
         event_bus=event_bus,
     )
     vector_store = InMemoryVectorStore()
-    vectorstore_service = create_embeddings_service  # avoid unused import lint
-    del vectorstore_service
     embedder = InMemoryEmbedder()
     embeddings_service = create_embeddings_service(embedder, event_bus=event_bus)
 
@@ -201,12 +235,14 @@ def harness() -> Iterator[E2EHarness]:
         object_store=object_store,
         event_bus=event_bus,
     )
-    document_chunker = create_document_chunker()
-    document_extractor = create_document_extractor(_E2E_ENTITY_DEFINITIONS)
-    extraction_validator = create_extraction_validator(
-        _E2E_ENTITY_DEFINITIONS,
-        [],
+
+    entity_defs = domain_config.entities if with_records else _E2E_ENTITY_DEFINITIONS
+    rel_defs = domain_config.relationships if with_records else []
+    document_chunker = create_document_chunker(
+        domain_config.ingestion.chunking if with_records else None
     )
+    document_extractor = create_document_extractor(entity_defs, rel_defs)
+    extraction_validator = create_extraction_validator(entity_defs, rel_defs)
 
     gnn_service = create_gnn_service(
         InMemoryGraphSnapshotSource(),
@@ -225,8 +261,24 @@ def harness() -> Iterator[E2EHarness]:
         event_bus=event_bus,
     )
 
+    # Optional records-path wiring
+    raw_record_store: InMemoryRawRecordStore | None = None
+    records_service: RecordsService | None = None
+    observation_writer: InMemoryObservationWriter | None = None
+    records_config: RecordsConfig | None = None
+
+    if with_records:
+        raw_record_store = InMemoryRawRecordStore()
+        observation_writer = InMemoryObservationWriter()
+        records_config = domain_config.records or RecordsConfig()
+        records_service = create_records_service(
+            raw_record_store,
+            event_bus=event_bus,
+            records_config=records_config,
+        )
+
     app = create_app()
-    app.dependency_overrides[get_domain_config] = _build_config
+    app.dependency_overrides[get_domain_config] = lambda: domain_config
     app.dependency_overrides[get_event_bus] = lambda: event_bus
     app.dependency_overrides[get_object_store] = lambda: object_store
     app.dependency_overrides[get_graph_repository] = lambda: graph_repository
@@ -236,6 +288,12 @@ def harness() -> Iterator[E2EHarness]:
         lambda: graph_service  # noqa: E731 - placeholder; not used by KB router
     )
     app.dependency_overrides[get_ingestion_service] = lambda: ingestion_service
+
+    if with_records and raw_record_store is not None and records_service is not None:
+        _rrs = raw_record_store
+        _rs = records_service
+        app.dependency_overrides[get_raw_record_store] = lambda: _rrs
+        app.dependency_overrides[get_records_service] = lambda: _rs
 
     with TestClient(app) as client:
         yield E2EHarness(
@@ -254,6 +312,42 @@ def harness() -> Iterator[E2EHarness]:
             risk_service=risk_service,
             explainability_service=explainability_service,
             monitoring_service=monitoring_service,
+            raw_record_store=raw_record_store,
+            records_service=records_service,
+            observation_writer=observation_writer,
+            records_config=records_config,
+            drain_consumer_group=consumer_group,
+            drain_consumer_name=consumer_name,
+            drain_limit=drain_limit,
         )
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def harness() -> Iterator[E2EHarness]:
+    """Build a fresh harness with a single shared in-memory event bus.
+
+    All FastAPI dependencies that touch shared state (event bus, object store,
+    graph, vector, ingestion service) are overridden so the worker coordinator
+    drains the same bus the API publishes to.
+    """
+    yield from _build_harness(_build_config())
+
+
+@pytest.fixture
+def medicare_fraud_harness() -> Iterator[E2EHarness]:
+    """Harness wired for the medicare_fraud_cms_desynpuf domain + records adapters.
+
+    Extends ``E2EHarness`` with ``raw_record_store``, ``records_service``,
+    ``observation_writer``, and ``records_config`` populated so the drain loop
+    can process records.ingested events.
+    """
+    domain_config = load_config(_MEDICARE_FRAUD_CONFIG_PATH)
+    yield from _build_harness(
+        domain_config,
+        consumer_group="e2e-records-workers",
+        consumer_name="e2e-records-worker-1",
+        drain_limit=32,
+        with_records=True,
+    )
