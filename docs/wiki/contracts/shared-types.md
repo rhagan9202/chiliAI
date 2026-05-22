@@ -1,6 +1,6 @@
 # Shared Types Contract
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-22
 **Source:** `backend/shared/types.py`, `backend/shared/protocols.py`
 
 These are the generic platform types. No domain-specific types (`Provider`, `Claim`, etc.) live here — those are configured via `DomainConfig` and flow at runtime as generic `Entity` instances.
@@ -45,6 +45,8 @@ class EntityDefinition(BaseModel):
     name: str
     display_label: str
     icon: str
+    natural_key: list[str] = []   # property names that uniquely identify an instance;
+                                   # used by LlmDocumentExtractor for intra-chunk dedup
     properties: dict[str, PropertyDefinition]
 ```
 

@@ -1,6 +1,6 @@
 # Redis Streams Event Payloads
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-22
 **Source:** `backend/events/types.py`, `backend/events/protocols.py`
 
 All events extend `EventBase`. The `AnyEvent` union type covers all concrete event types. Events are serialized/deserialized via `events/codec.py`.
@@ -157,6 +157,7 @@ knowledge_base_id: str
 ```python
 event_type: Literal["kb.delete"] = "kb.delete"
 knowledge_base_id: str
+cleanup_pending: bool = False   # True when one or more cascade steps failed (207 partial delete)
 ```
 
 ---

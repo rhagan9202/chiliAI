@@ -1,6 +1,6 @@
 # Module: llm
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-22
 **Source:** `backend/llm/`
 
 ## Purpose
@@ -63,8 +63,29 @@ class CompletionResponse(BaseModel):
 | In-memory (deterministic stub) | `adapters/in_memory.py` | `LlmConfig.provider = "local"` | None |
 | OpenAI | `adapters/openai_adapter.py` | `provider = "openai"`, `api_key_env_var` | `[openai]` |
 | Anthropic | `adapters/anthropic_adapter.py` | `provider = "anthropic"`, `api_key_env_var` | `[anthropic]` |
+| Ollama | `adapters/ollama_adapter.py` | `provider = "ollama"`, `base_url` (default `http://localhost:11434`) | None |
+| Fallback decorator | `adapters/fallback.py` | `LlmConfig.fallback: LlmConfig \| None` (recursive) | — |
 
 Inner adapter protocol: `adapters/protocols.py`.
+
+### `FallbackLlmClient`
+
+`FallbackLlmClient` wraps a primary `LlmClientProtocol` with an ordered list of fallback clients. On error from the primary, it tries each fallback in sequence and re-raises only after all are exhausted. Built automatically by `llm/factory.py::create_llm_client` when `LlmConfig.fallback` is set.
+
+```yaml
+llm:
+  provider: ollama
+  model: llama3.2
+  base_url: http://ollama:11434
+  fallback:
+    provider: openai
+    model: gpt-4o-mini
+    api_key_env_var: OPENAI_API_KEY
+```
+
+### `create_llm_client` (factory)
+
+`llm/factory.py::create_llm_client(config: LlmConfig) -> LlmClientProtocol` — builds the correct adapter from `LlmConfig`, wrapping with `FallbackLlmClient` if `config.fallback` is set. All adapter construction should go through this factory.
 
 ---
 
