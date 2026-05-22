@@ -286,4 +286,63 @@ describe('ingestion validation', () => {
 
     expect(issues).toEqual([])
   })
+
+  it('accepts DE-SynPUF YYYYMMDD dates without flagging them invalid', () => {
+    const issues = validateRecordRows(feed, [
+      {
+        claim_id: 'c1',
+        provider_npi: '1234567890',
+        billed_amount: '99.50',
+        service_date: '20100101',
+        anomaly_score: '0.8',
+      },
+    ])
+
+    expect(issues).toEqual([])
+  })
+
+  it('accepts NPPES MM/DD/YYYY dates including single-digit components', () => {
+    const issues = validateRecordRows(feed, [
+      {
+        claim_id: 'c1',
+        provider_npi: '1234567890',
+        billed_amount: '99.50',
+        service_date: '05/23/2005',
+        anomaly_score: '0.8',
+      },
+      {
+        claim_id: 'c2',
+        provider_npi: '1234567890',
+        billed_amount: '99.50',
+        service_date: '9/5/2008',
+        anomaly_score: '0.8',
+      },
+    ])
+
+    expect(issues).toEqual([])
+  })
+
+  it('still rejects calendar-invalid YYYYMMDD and MM/DD/YYYY dates', () => {
+    const issues = validateRecordRows(feed, [
+      {
+        claim_id: 'c1',
+        provider_npi: '1234567890',
+        billed_amount: '99.50',
+        service_date: '20251345',
+        anomaly_score: '0.8',
+      },
+      {
+        claim_id: 'c2',
+        provider_npi: '1234567890',
+        billed_amount: '99.50',
+        service_date: '13/45/2005',
+        anomaly_score: '0.8',
+      },
+    ])
+
+    expect(issues.map((issue) => issue.message)).toEqual([
+      'Row 1 field Date of Service must be a valid date.',
+      'Row 2 field Date of Service must be a valid date.',
+    ])
+  })
 })
