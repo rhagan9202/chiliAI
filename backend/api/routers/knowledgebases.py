@@ -311,6 +311,7 @@ async def delete_knowledge_base_document(
     document_id: str,
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
     object_store: ObjectStore = Depends(get_object_store),
+    workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
 ) -> None:
     """Delete a single document from a knowledge base and its stored artifacts."""
     if repository.get(knowledge_base_id) is None:
@@ -318,6 +319,14 @@ async def delete_knowledge_base_document(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Knowledge base '{knowledge_base_id}' not found.",
         )
+
+    try:
+        ensure_kb_idle(knowledge_base_id, tracker=workflow_tracker)
+    except KbBusyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
 
     record = repository.get_document(knowledge_base_id, document_id)
     if record is None:
@@ -350,6 +359,7 @@ async def register_knowledge_base_documents(
     graph_service: GraphServiceProtocol = Depends(get_graph_service),
     vector_service: VectorServiceProtocol = Depends(get_vector_service),
     config: DomainConfig = Depends(get_domain_config),
+    workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
 ) -> DocumentRegistrationResponse:
     """Register uploaded documents and enqueue ingestion work."""
     if repository.get(knowledge_base_id) is None:
@@ -357,6 +367,14 @@ async def register_knowledge_base_documents(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Knowledge base '{knowledge_base_id}' not found.",
         )
+
+    try:
+        ensure_kb_idle(knowledge_base_id, tracker=workflow_tracker)
+    except KbBusyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
 
     validation = config.validation or ValidationConfig()
     max_bytes = validation.max_file_size_mb * 1024 * 1024
