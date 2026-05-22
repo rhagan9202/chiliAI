@@ -9,7 +9,7 @@ from events.protocols import EventBus
 from events.types import GraphUpdatedDocumentReference, GraphUpdatedEvent
 from graph.adapters.protocols import GraphRepository
 from graph.exceptions import BatchUpsertError, GraphPersistenceError
-from graph.models import GraphMetrics, GraphUpsertResult, SubgraphResult
+from graph.models import GraphDeleteByProvenance, GraphMetrics, GraphUpsertResult, SubgraphResult
 from graph.service_models import (
     EntitySearchQuery,
     GraphBuildReceipt,
@@ -301,6 +301,15 @@ class GraphService:
         """Remove all graph objects scoped to a knowledge base."""
 
         self._repository.delete_knowledge_base(knowledge_base_id)
+
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> GraphDeleteByProvenance:
+        """Delete entities and relationships whose provenance points to a single document."""
+
+        return self._repository.delete_by_source_document(knowledge_base_id, source_document_id)
 
     @staticmethod
     def _build_graph_update_storage_key(

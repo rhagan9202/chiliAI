@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from graph.models import GraphMetrics, SubgraphResult
+from graph.models import GraphDeleteByProvenance, GraphMetrics, SubgraphResult
 from graph.service_models import GraphBuildReceipt, GraphBuildTask
 from shared.types import Entity
 
@@ -45,6 +45,12 @@ class GraphServiceProtocol(Protocol):
     def compute_metrics(self, knowledge_base_id: str) -> GraphMetrics: ...
 
     def delete_knowledge_base(self, knowledge_base_id: str) -> None: ...
+
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> GraphDeleteByProvenance: ...
 
 
 __all__ = [
