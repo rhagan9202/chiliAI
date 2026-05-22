@@ -57,8 +57,8 @@ from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import ParserRegistry, create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
 from ingestion.service import IngestionService
-from llm.adapters.in_memory import InMemoryLlmClient
 from llm.adapters.protocols import LlmClientProtocol
+from llm.factory import create_llm_client
 from llm.protocols import LlmServiceProtocol
 from llm.service import create_llm_service
 from monitoring.adapters.in_memory import InMemoryObservationSource
@@ -562,31 +562,13 @@ def get_embeddings_service() -> EmbeddingsServiceProtocol:
 @lru_cache(maxsize=1)
 def get_llm_client() -> LlmClientProtocol:
     """Return the llm client implementation selected by config."""
+    from llm.exceptions import LlmConfigurationError
+
     llm_config = get_domain_config().llm or LlmConfig()
-    provider = llm_config.provider
-    if provider == "local":
-        return InMemoryLlmClient(provider=provider)
-    if provider == "openai":
-        try:
-            from llm.adapters.openai_adapter import OpenAILlmClient
-            from llm.exceptions import LlmConfigurationError
-        except ImportError as exc:
-            raise ConfigurationError(str(exc)) from exc
-        try:
-            return OpenAILlmClient(llm_config)
-        except (ImportError, ValueError, LlmConfigurationError) as exc:
-            raise ConfigurationError(str(exc)) from exc
-    if provider == "anthropic":
-        try:
-            from llm.adapters.anthropic_adapter import AnthropicLlmClient
-            from llm.exceptions import LlmConfigurationError
-        except ImportError as exc:
-            raise ConfigurationError(str(exc)) from exc
-        try:
-            return AnthropicLlmClient(llm_config)
-        except (ImportError, ValueError, LlmConfigurationError) as exc:
-            raise ConfigurationError(str(exc)) from exc
-    _raise_unsupported_backend("llm", provider, ("local", "openai", "anthropic"))
+    try:
+        return create_llm_client(llm_config)
+    except LlmConfigurationError as exc:
+        raise ConfigurationError(str(exc)) from exc
 
 
 @lru_cache(maxsize=1)

@@ -129,8 +129,8 @@ from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
 from ingestion.service import IngestionService
 from ingestion.validator import ExtractionResultValidator, create_extraction_validator
-from llm.adapters.in_memory import InMemoryLlmClient
 from llm.adapters.protocols import LlmClientProtocol
+from llm.factory import create_llm_client as _create_llm_client
 from monitoring.adapters.in_memory import (
     InMemoryAlertHistoryWriter,
     InMemoryObservationSource,
@@ -258,7 +258,6 @@ _ObjectStoreFactory = Callable[[ObjectStoreConfig], ObjectStore]
 _GraphRepositoryFactory = Callable[[GraphDbConfig], GraphRepository]
 _VectorStoreFactory = Callable[[VectorStoreConfig], VectorStoreProtocol]
 _EmbedderFactory = Callable[[EmbeddingsConfig], EmbedderProtocol]
-_LlmClientFactory = Callable[[LlmConfig], LlmClientProtocol]
 
 
 def _build_in_memory_object_store(_: ObjectStoreConfig) -> ObjectStore:
@@ -416,55 +415,6 @@ _EMBEDDING_REGISTRY: dict[str, _EmbedderFactory] = {
 }
 
 
-def _build_in_memory_llm_client(config: LlmConfig) -> LlmClientProtocol:
-    return InMemoryLlmClient(provider=config.provider)
-
-
-def _build_openai_llm_client(config: LlmConfig) -> LlmClientProtocol:
-    try:
-        from llm.adapters.openai_adapter import OpenAILlmClient
-        from llm.exceptions import LlmConfigurationError
-    except ImportError as exc:
-        raise ConfigurationError(
-            subsystem="llm",
-            backend=config.provider,
-            message=str(exc),
-        ) from exc
-    try:
-        return OpenAILlmClient(config)
-    except (ImportError, ValueError, LlmConfigurationError) as exc:
-        raise ConfigurationError(
-            subsystem="llm",
-            backend=config.provider,
-            message=str(exc),
-        ) from exc
-
-
-def _build_anthropic_llm_client(config: LlmConfig) -> LlmClientProtocol:
-    try:
-        from llm.adapters.anthropic_adapter import AnthropicLlmClient
-        from llm.exceptions import LlmConfigurationError
-    except ImportError as exc:
-        raise ConfigurationError(
-            subsystem="llm",
-            backend=config.provider,
-            message=str(exc),
-        ) from exc
-    try:
-        return AnthropicLlmClient(config)
-    except (ImportError, ValueError, LlmConfigurationError) as exc:
-        raise ConfigurationError(
-            subsystem="llm",
-            backend=config.provider,
-            message=str(exc),
-        ) from exc
-
-
-_LLM_REGISTRY: dict[str, _LlmClientFactory] = {
-    "local": _build_in_memory_llm_client,
-    "openai": _build_openai_llm_client,
-    "anthropic": _build_anthropic_llm_client,
-}
 
 
 def build_graph_snapshot_source(
@@ -642,18 +592,17 @@ def build_embedder(config: DomainConfig) -> EmbedderProtocol:
 
 def build_llm_client(config: DomainConfig) -> LlmClientProtocol:
     """Select an LLM client adapter from the configured provider."""
+    from llm.exceptions import LlmConfigurationError
 
     llm_config = config.llm or LlmConfig()
-    if _section_is_default(llm_config, LlmConfig()):
-        return InMemoryLlmClient()
-    factory = _LLM_REGISTRY.get(llm_config.provider)
-    if factory is None:
+    try:
+        return _create_llm_client(llm_config)
+    except LlmConfigurationError as exc:
         raise ConfigurationError(
             subsystem="llm",
             backend=llm_config.provider,
-            message="Available backends: " + ", ".join(sorted(_LLM_REGISTRY)),
-        )
-    return factory(llm_config)
+            message=str(exc),
+        ) from exc
 
 
 def build_worker_dependencies() -> WorkerDependencies:
