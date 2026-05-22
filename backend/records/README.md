@@ -57,6 +57,21 @@ re-run the handler safely.
 | `POST` | `/records/{knowledge_base_id}/files` | analyst | Ingest a CSV or JSONL file upload into the named feed |
 | `POST` | `/records/{knowledge_base_id}/push` | analyst | Ingest a JSON array of record rows into the named feed |
 
+## NPPES and DE-SynPUF Feeds (medicare_fraud domain)
+
+`config/defaults/medicare_fraud.yaml` (and the dev variant) declares two built-in feed definitions that exercise the records pipeline end-to-end:
+
+- **`nppes_providers`** — NPPES National Provider Identifier file. Each row maps to a `provider` entity with NPI, taxonomy, name, address, and state. Used by the Tennessee demo subset.
+- **`de_synpuf_inpatient`** / **`de_synpuf_outpatient`** — CMS DE-SynPUF synthetic Medicare claims. Inpatient rows map to `claim → provider` and `claim → beneficiary` relationships; outpatient rows are analogous. Used by the Tennessee demo subset.
+
+These feeds are config-only additions — no application code was changed. To add a new feed for a different domain, declare it in the domain YAML under `records.feeds` following the same pattern.
+
+The Tennessee subset materializer at `tools/sample_data/build_tennessee_subset.py` filters the full NPPES CSV and DE-SynPUF JSONL down to Tennessee providers and their associated claims. Run `python -m tools.sample_data.build_tennessee_subset --help` to see options.
+
+## KB-Scoped Delete
+
+`RawRecordStore` exposes `delete_by_kb(kb_id)` which bulk-removes all `raw_records` rows belonging to the given knowledge base. This is the raw-records leg of the KB-delete cascade triggered by `DELETE /knowledgebases/{id}`. Both `InMemoryRawRecordStore` and `PostgresRawRecordStore` implement this method.
+
 ## Commands
 
 ```bash

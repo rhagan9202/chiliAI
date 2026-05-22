@@ -91,6 +91,10 @@ pytest --cov
 
 # Type checking (currently scoped in pyproject.toml while strict coverage expands)
 pyright
+
+# Demo: Tennessee Medicare subset (requires `make dev` stack running first)
+make demo-tn-subset                                         # build TN subset + create KB + upload
+python -m tools.sample_data.build_tennessee_subset --help  # subset builder options
 ```
 
 > These commands target the architecture described in `docs/architecture.md`. The codebase is under active hardening; keep Ruff, Pyright, and pytest clean for touched packages.
