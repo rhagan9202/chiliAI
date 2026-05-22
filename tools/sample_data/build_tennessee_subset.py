@@ -49,13 +49,13 @@ def main(argv: list[str] | None = None) -> int:
 
 def build(config: BuildConfig) -> int:
     config.output_root.mkdir(parents=True, exist_ok=True)
-    npi_set = _filter_nppes(config)
-    claim_counts = _filter_desynpuf(config, npi_set)
+    npi_set = filter_nppes(config)
+    claim_counts = filter_desynpuf(config, npi_set)
     _write_manifest(config, npi_set, claim_counts)
     return 0
 
 
-def _filter_nppes(config: BuildConfig) -> set[str]:
+def filter_nppes(config: BuildConfig) -> set[str]:
     """Stream-filter the NPPES master file to rows whose practice state matches."""
 
     npi_set: set[str] = set()
@@ -91,7 +91,7 @@ _DESYNPUF_FILES: dict[str, tuple[str, str]] = {
 }
 
 
-def _filter_desynpuf(config: BuildConfig, npi_set: set[str]) -> dict[str, int]:
+def filter_desynpuf(config: BuildConfig, npi_set: set[str]) -> dict[str, int]:
     """Filter DE-SynPUF claim files and cross-filter beneficiaries."""
 
     tn_npis = sorted(npi_set)

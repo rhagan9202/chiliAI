@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -12,7 +11,6 @@ from config.schema import LlmConfig
 from llm.adapters.fallback import FallbackLlmClient
 from llm.adapters.in_memory import InMemoryLlmClient
 from llm.adapters.ollama_adapter import OllamaLlmClient
-from llm.exceptions import LlmConfigurationError
 from llm.factory import create_llm_client
 
 

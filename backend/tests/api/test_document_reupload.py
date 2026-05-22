@@ -16,14 +16,12 @@ from io import BytesIO
 import pytest
 from fastapi.testclient import TestClient
 
-from api._kb_store import InMemoryKnowledgeBaseRepository
 from api.app import create_app
 from api.dependencies import (
     get_domain_config,
     get_event_bus,
     get_graph_service,
     get_ingestion_service,
-    get_knowledge_base_repository,
     get_object_store,
     get_raw_record_store,
     get_vector_service,

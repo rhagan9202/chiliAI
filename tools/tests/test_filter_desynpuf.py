@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tools.sample_data.build_tennessee_subset import BuildConfig, _filter_desynpuf
+from tools.sample_data.build_tennessee_subset import BuildConfig, filter_desynpuf
 
 
 def test_remap_strategy_keeps_all_claims_with_tn_npi(tmp_path: Path) -> None:
@@ -13,7 +13,7 @@ def test_remap_strategy_keeps_all_claims_with_tn_npi(tmp_path: Path) -> None:
         output_root=tmp_path,
         strategy="remap",
     )
-    counts = _filter_desynpuf(config, npi_set)
+    counts = filter_desynpuf(config, npi_set)
 
     # All carrier claims kept (remap assigns every claim to a TN NPI).
     assert counts["carrier_claims"] == 8
@@ -34,7 +34,7 @@ def test_natural_strategy_keeps_only_naturally_matching(tmp_path: Path) -> None:
         output_root=tmp_path,
         strategy="natural",
     )
-    counts = _filter_desynpuf(config, npi_set)
+    counts = filter_desynpuf(config, npi_set)
     # Whatever the fixture naturally overlaps — should be at LEAST one if you constructed
     # the fixture with some matching NPIs. If zero is acceptable, change the assertion.
     assert counts["carrier_claims"] <= 8
@@ -48,9 +48,9 @@ def test_remap_is_deterministic(tmp_path: Path) -> None:
         output_root=tmp_path,
         strategy="remap",
     )
-    _filter_desynpuf(config, npi_set)
+    filter_desynpuf(config, npi_set)
     first_bytes = (tmp_path / "desynpuf_carrier_claims_tn.csv").read_bytes()
-    _filter_desynpuf(config, npi_set)
+    filter_desynpuf(config, npi_set)
     second_bytes = (tmp_path / "desynpuf_carrier_claims_tn.csv").read_bytes()
     assert first_bytes == second_bytes
 
@@ -64,7 +64,7 @@ def test_sample_rate_reduces_kept_claims(tmp_path: Path) -> None:
         strategy="remap",
         sample_rate=0.5,
     )
-    counts = _filter_desynpuf(config, npi_set)
+    counts = filter_desynpuf(config, npi_set)
     # With 8 carrier_claims rows and rate=0.5 the deterministic hash keeps exactly 5.
     # Assert strict subset: fewer than all 8 rows were written.
     assert 0 <= counts["carrier_claims"] < 8
@@ -80,8 +80,8 @@ def test_sample_rate_is_deterministic(tmp_path: Path) -> None:
         strategy="remap",
         sample_rate=0.5,
     )
-    _filter_desynpuf(config, npi_set)
+    filter_desynpuf(config, npi_set)
     first_bytes = (tmp_path / "desynpuf_carrier_claims_tn.csv").read_bytes()
-    _filter_desynpuf(config, npi_set)
+    filter_desynpuf(config, npi_set)
     second_bytes = (tmp_path / "desynpuf_carrier_claims_tn.csv").read_bytes()
     assert first_bytes == second_bytes

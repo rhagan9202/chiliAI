@@ -17,15 +17,24 @@ from shared.types import EntityDefinition, PropertyDefinition, PropertyType
 pytestmark = pytest.mark.integration
 
 
-def _ollama_reachable() -> bool:
-    url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434") + "/api/tags"
+def _ollama_model_available() -> bool:
+    """Return True only when Ollama is reachable AND the target model is pulled."""
+    base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+    model = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
     try:
-        return httpx.get(url, timeout=2.0).status_code == 200
+        resp = httpx.get(base_url + "/api/tags", timeout=2.0)
+        if resp.status_code != 200:
+            return False
+        available = {m["name"] for m in resp.json().get("models", [])}
+        return model in available
     except Exception:
         return False
 
 
-@pytest.mark.skipif(not _ollama_reachable(), reason="Ollama not reachable")
+@pytest.mark.skipif(
+    not _ollama_model_available(),
+    reason="Ollama not reachable or target model not pulled (set OLLAMA_MODEL to an available model)",
+)
 def test_extract_policy_fixture_with_ollama() -> None:
     fixture = Path(__file__).parent / "fixtures" / "policies" / "policy_001_inpatient_billing.md"
     text = fixture.read_text()

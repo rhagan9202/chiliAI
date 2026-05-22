@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
-import pytest
 
 from agent.coordinator import handle_records_ingested
 from config.schema import (

@@ -38,7 +38,6 @@ from events.adapters.in_memory import InMemoryEventBus
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.service import create_graph_service
 from records.adapters.in_memory import InMemoryRawRecordStore
-from records.protocols import RecordsServiceProtocol
 from shared.utils import generate_id
 from storage.adapters.in_memory import InMemoryObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
