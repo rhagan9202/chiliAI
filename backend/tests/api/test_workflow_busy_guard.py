@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowStepState
 from agent.workflow_tracking import WorkflowEventTracker
-from api._kb_store import InMemoryKnowledgeBaseRepository
+from api._kb_store import InMemoryKnowledgeBaseRepository  # noqa: F401 (also used in pending_cleanup tests)
 from api.app import create_app
 from api.dependencies import (
     get_domain_config,
@@ -209,3 +209,134 @@ def test_document_upload_succeeds_when_idle(
         files=[("files", ("a.json", BytesIO(b"{}"), "application/json"))],
     )
     assert response.status_code == 202
+
+
+# ---------------------------------------------------------------------------
+# pending_cleanup guard tests
+# ---------------------------------------------------------------------------
+
+
+def _force_pending_cleanup(
+    kb_repository: InMemoryKnowledgeBaseRepository, knowledge_base_id: str
+) -> None:
+    """Mark the KB as pending cleanup so the guard should fire."""
+    kb_repository.mark_pending_cleanup(knowledge_base_id)
+
+
+def test_document_upload_returns_409_when_pending_cleanup(
+    busy_guard_harness: tuple[TestClient, WorkflowEventTracker],
+) -> None:
+    """POST /documents returns 409 when KB is in pending_cleanup state."""
+    client, _workflow_tracker = busy_guard_harness
+
+    create = client.post("/knowledgebases", json={"name": "cleanup-doc", "description": ""})
+    assert create.status_code == 201
+    kb_id: str = create.json()["id"]
+
+    # Force pending_cleanup — we need direct repo access; use the harness's kb_repository
+    # via a fresh InMemoryKnowledgeBaseRepository that we injected in the fixture.
+    # The fixture exposes kb_repository, so access it via the override.
+    from api.dependencies import get_knowledge_base_repository
+    from api.app import create_app as _unused_import  # noqa: F401
+
+    # Access the kb_repository used by the test client.
+    # The fixture binds it via dependency override and we stored the reference.
+    # We need to look up the correct kb_repository from the override.
+    # Since the fixture stores the kb_repository as a local var, we use the same
+    # approach as _force_busy: access internal state.
+    # Get the overridden kb_repository from the app's dependency overrides.
+    from fastapi.testclient import TestClient as _TC
+    assert isinstance(client, _TC)
+    app = client.app
+    override_fn = app.dependency_overrides.get(get_knowledge_base_repository)
+    assert override_fn is not None, "kb_repository override not found"
+    kb_repo = override_fn()
+    assert isinstance(kb_repo, InMemoryKnowledgeBaseRepository)
+    _force_pending_cleanup(kb_repo, kb_id)
+
+    response = client.post(
+        f"/knowledgebases/{kb_id}/documents",
+        files=[("files", ("a.json", BytesIO(b"{}"), "application/json"))],
+    )
+    assert response.status_code == 409
+    assert "pending cleanup" in response.json()["detail"]
+
+
+def test_records_upload_returns_409_when_pending_cleanup(
+    busy_guard_harness: tuple[TestClient, WorkflowEventTracker],
+) -> None:
+    """POST /records/{kb_id}/files returns 409 when KB is in pending_cleanup state."""
+    client, _workflow_tracker = busy_guard_harness
+
+    create = client.post("/knowledgebases", json={"name": "cleanup-records", "description": ""})
+    assert create.status_code == 201
+    kb_id: str = create.json()["id"]
+
+    from api.dependencies import get_knowledge_base_repository
+    app = client.app
+    override_fn = app.dependency_overrides.get(get_knowledge_base_repository)
+    assert override_fn is not None
+    kb_repo = override_fn()
+    assert isinstance(kb_repo, InMemoryKnowledgeBaseRepository)
+    _force_pending_cleanup(kb_repo, kb_id)
+
+    response = client.post(
+        f"/records/{kb_id}/files",
+        files={"file": ("tiny.csv", BytesIO(b"a\n1\n"), "text/csv")},
+        data={"feed": "carrier_claims_a"},
+    )
+    assert response.status_code == 409
+    assert "pending cleanup" in response.json()["detail"]
+
+
+def test_document_delete_returns_409_when_pending_cleanup(
+    busy_guard_harness: tuple[TestClient, WorkflowEventTracker],
+) -> None:
+    """DELETE /documents/{doc_id} returns 409 when KB is in pending_cleanup state."""
+    client, _workflow_tracker = busy_guard_harness
+
+    create = client.post("/knowledgebases", json={"name": "cleanup-del", "description": ""})
+    assert create.status_code == 201
+    kb_id: str = create.json()["id"]
+
+    upload = client.post(
+        f"/knowledgebases/{kb_id}/documents",
+        files=[("files", ("a.json", BytesIO(b"{}"), "application/json"))],
+    )
+    assert upload.status_code == 202
+    doc_id: str = upload.json()["documents"][0]["source_document_id"]
+
+    from api.dependencies import get_knowledge_base_repository
+    app = client.app
+    override_fn = app.dependency_overrides.get(get_knowledge_base_repository)
+    assert override_fn is not None
+    kb_repo = override_fn()
+    assert isinstance(kb_repo, InMemoryKnowledgeBaseRepository)
+    _force_pending_cleanup(kb_repo, kb_id)
+
+    response = client.delete(f"/knowledgebases/{kb_id}/documents/{doc_id}")
+    assert response.status_code == 409
+    assert "pending cleanup" in response.json()["detail"]
+
+
+def test_kb_delete_returns_409_when_pending_cleanup(
+    busy_guard_harness: tuple[TestClient, WorkflowEventTracker],
+) -> None:
+    """DELETE /knowledgebases/{id} returns 409 when KB is in pending_cleanup state."""
+    client, _workflow_tracker = busy_guard_harness
+
+    create = client.post("/knowledgebases", json={"name": "cleanup-kb-del", "description": ""})
+    assert create.status_code == 201
+    kb_id: str = create.json()["id"]
+
+    from api.dependencies import get_knowledge_base_repository
+    app = client.app
+    override_fn = app.dependency_overrides.get(get_knowledge_base_repository)
+    assert override_fn is not None
+    kb_repo = override_fn()
+    assert isinstance(kb_repo, InMemoryKnowledgeBaseRepository)
+    _force_pending_cleanup(kb_repo, kb_id)
+
+    response = client.delete(f"/knowledgebases/{kb_id}")
+    assert response.status_code == 409
+    assert "pending cleanup" in response.json()["detail"]
