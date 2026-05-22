@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import sys
 from dataclasses import dataclass
@@ -82,8 +83,106 @@ def _filter_nppes(config: BuildConfig) -> set[str]:
     return npi_set
 
 
+_DESYNPUF_FILES: dict[str, tuple[str, str]] = {
+    # output key -> (glob pattern, npi column name)
+    "carrier_claims": ("DE1_0_2008_to_2010_Carrier_Claims_Sample_*.csv", "PRF_PHYSN_NPI_1"),
+    "inpatient_claims": ("DE1_0_2008_to_2010_Inpatient_Claims_Sample_*.csv", "AT_PHYSN_NPI"),
+    "outpatient_claims": ("DE1_0_2008_to_2010_Outpatient_Claims_Sample_*.csv", "AT_PHYSN_NPI"),
+}
+
+
 def _filter_desynpuf(config: BuildConfig, npi_set: set[str]) -> dict[str, int]:
-    raise NotImplementedError("Implemented in Task 4.3")
+    """Filter DE-SynPUF claim files and cross-filter beneficiaries."""
+
+    tn_npis = sorted(npi_set)
+    if not tn_npis:
+        raise ValueError("Cannot filter DE-SynPUF without any TN NPIs.")
+
+    counts: dict[str, int] = {}
+    kept_beneficiary_ids: set[str] = set()
+
+    for output_key, (pattern, npi_col) in _DESYNPUF_FILES.items():
+        kept = 0
+        output_path = config.output_root / f"desynpuf_{output_key}_tn.csv"
+        files = sorted(glob(str(config.desynpuf_root / pattern)))
+        if not files:
+            counts[output_key] = 0
+            continue
+
+        writer: csv.DictWriter[str] | None = None
+        dst_handle = output_path.open("w", encoding="utf-8", newline="")
+        try:
+            for source in files:
+                with Path(source).open("r", encoding="utf-8", newline="") as src:
+                    reader = csv.DictReader(src)
+                    if reader.fieldnames is None:
+                        continue
+                    if writer is None:
+                        writer = csv.DictWriter(dst_handle, fieldnames=reader.fieldnames)
+                        writer.writeheader()
+                    for row in reader:
+                        keep = _apply_strategy(row, npi_col, tn_npis, config.strategy, npi_set)
+                        if not keep:
+                            continue
+                        if bene_id := row.get("DESYNPUF_ID"):
+                            kept_beneficiary_ids.add(bene_id)
+                        writer.writerow(row)
+                        kept += 1
+        finally:
+            dst_handle.close()
+        counts[output_key] = kept
+
+    counts["beneficiaries"] = _filter_beneficiaries(config, kept_beneficiary_ids)
+    return counts
+
+
+def _apply_strategy(
+    row: dict[str, str],
+    npi_col: str,
+    tn_npis: list[str],
+    strategy: Strategy,
+    npi_set: set[str],
+) -> bool:
+    if strategy == "natural":
+        return row.get(npi_col) in npi_set
+    if strategy == "remap":
+        original = row.get(npi_col, "")
+        idx = int(hashlib.sha256(original.encode("utf-8")).hexdigest(), 16) % len(tn_npis)
+        row[npi_col] = tn_npis[idx]
+        return True
+    if strategy == "synthetic":
+        seed = row.get("CLM_ID", "") + npi_col
+        idx = int(hashlib.sha256(seed.encode("utf-8")).hexdigest(), 16) % len(tn_npis)
+        row[npi_col] = tn_npis[idx]
+        return True
+    raise ValueError(f"Unknown strategy: {strategy}")
+
+
+def _filter_beneficiaries(config: BuildConfig, kept_ids: set[str]) -> int:
+    pattern = str(config.desynpuf_root / "DE1_0_*_Beneficiary_Summary_File_Sample_*.csv")
+    files = sorted(glob(pattern))
+    if not files:
+        return 0
+    output_path = config.output_root / "desynpuf_beneficiaries_tn.csv"
+    total_kept = 0
+    writer: csv.DictWriter[str] | None = None
+    dst_handle = output_path.open("w", encoding="utf-8", newline="")
+    try:
+        for source in files:
+            with Path(source).open("r", encoding="utf-8", newline="") as src:
+                reader = csv.DictReader(src)
+                if reader.fieldnames is None:
+                    continue
+                if writer is None:
+                    writer = csv.DictWriter(dst_handle, fieldnames=reader.fieldnames)
+                    writer.writeheader()
+                for row in reader:
+                    if row.get("DESYNPUF_ID") in kept_ids:
+                        writer.writerow(row)
+                        total_kept += 1
+    finally:
+        dst_handle.close()
+    return total_kept
 
 
 def _write_manifest(
