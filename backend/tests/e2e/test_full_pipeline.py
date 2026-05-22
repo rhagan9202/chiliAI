@@ -390,3 +390,176 @@ def test_e2e_records_and_documents_populate_one_kb(
     assert vector_count >= 7, (
         f"expected >=7 vector records, got {vector_count}"
     )
+
+
+# ---------------------------------------------------------------------------
+# DE-SynPUF per-feed E2E tests
+# ---------------------------------------------------------------------------
+# These tests verify each of the 5 DE-SynPUF record types can be ingested
+# end-to-end: CSV → records service → graph + vector store populated.
+# Each test is independent; each uses a fresh KB via the medicare_fraud_harness.
+# ---------------------------------------------------------------------------
+
+_FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _create_kb_named(harness: E2EHarness, name: str) -> str:
+    resp = harness.client.post(
+        "/knowledgebases", json={"name": name, "description": ""}
+    )
+    assert resp.status_code == 201, resp.text
+    kb_id = cast("dict[str, object]", resp.json())["id"]
+    assert isinstance(kb_id, str)
+    return kb_id
+
+
+def _upload_csv(
+    harness: E2EHarness,
+    kb_id: str,
+    fixture_path: Path,
+    feed_name: str,
+) -> None:
+    with fixture_path.open("rb") as fh:
+        resp = harness.client.post(
+            f"/records/{kb_id}/files",
+            files={"file": (fixture_path.name, fh, "text/csv")},
+            data={"feed": feed_name},
+        )
+    assert resp.status_code == 202, resp.text
+
+
+@pytest.mark.e2e
+def test_records_e2e_beneficiary_2010_ingests(
+    medicare_fraud_harness: E2EHarness,
+) -> None:
+    """Beneficiary Summary 2010: 3-row fixture → 3 beneficiary entities, 0 relationships.
+
+    Feed: beneficiary_2010.  Fixture: tiny_beneficiary_2010.csv.
+    Row B0003 has BENE_DEATH_DT="20100601"; rows B0001/B0002 have BENE_DEATH_DT=""
+    (empty optional date).  All three rows must pass validation.
+    """
+    harness = medicare_fraud_harness
+    kb_id = _create_kb_named(harness, "bene-2010-e2e")
+
+    _upload_csv(harness, kb_id, _FIXTURES / "tiny_beneficiary_2010.csv", "beneficiary_2010")
+    harness.drain()
+
+    entity_count = harness.graph_repository.count_entities(kb_id)
+    assert entity_count == 3, (
+        f"Expected 3 beneficiary entities, got {entity_count}"
+    )
+    # Beneficiary feed has no relationship mappings.
+    rel_count = harness.graph_repository.count_relationships(kb_id)
+    assert rel_count == 0, f"Expected 0 relationships, got {rel_count}"
+
+    vector_count = harness.vector_store.count_records(kb_id)
+    assert vector_count == 3, f"Expected 3 vector records, got {vector_count}"
+
+    assert harness.raw_record_store is not None
+    raw_count = harness.raw_record_store.count_for_kb(kb_id)
+    assert raw_count == 3, f"Expected 3 raw records, got {raw_count}"
+
+
+@pytest.mark.e2e
+def test_records_e2e_inpatient_claims_ingests(
+    medicare_fraud_harness: E2EHarness,
+) -> None:
+    """Inpatient Claims: 3-row fixture with SEGMENT column → entities + relationships.
+
+    Feed: inpatient_claims.  Fixture: tiny_inpatient_claims.csv.
+    3 rows: CLM_IP_001 (B0001/440001/1000000001), CLM_IP_002 (B0002/440002/1000000002),
+    CLM_IP_003 (B0001/440001/1000000001).
+    Unique entities: 3 claims + 2 beneficiaries + 2 providers + 2 facilities = 9.
+    Relationships: 3 billed_for + 3 submitted_by + 3 performed_at = 9.
+    """
+    harness = medicare_fraud_harness
+    kb_id = _create_kb_named(harness, "inpatient-e2e")
+
+    _upload_csv(harness, kb_id, _FIXTURES / "tiny_inpatient_claims.csv", "inpatient_claims")
+    harness.drain()
+
+    entity_count = harness.graph_repository.count_entities(kb_id)
+    assert entity_count == 9, (
+        f"Expected 9 entities (3 claims + 2 benes + 2 providers + 2 facilities), "
+        f"got {entity_count}"
+    )
+    rel_count = harness.graph_repository.count_relationships(kb_id)
+    assert rel_count == 9, (
+        f"Expected 9 relationships (3 billed_for + 3 submitted_by + 3 performed_at), "
+        f"got {rel_count}"
+    )
+    vector_count = harness.vector_store.count_records(kb_id)
+    assert vector_count == 9, f"Expected 9 vector records, got {vector_count}"
+
+    assert harness.raw_record_store is not None
+    raw_count = harness.raw_record_store.count_for_kb(kb_id)
+    assert raw_count == 3, f"Expected 3 raw records, got {raw_count}"
+
+
+@pytest.mark.e2e
+def test_records_e2e_outpatient_claims_ingests(
+    medicare_fraud_harness: E2EHarness,
+) -> None:
+    """Outpatient Claims: 3-row fixture with SEGMENT column → entities + relationships.
+
+    Feed: outpatient_claims.  Fixture: tiny_outpatient_claims.csv.
+    3 rows: CLM_OP_001 (B0001/440010/2000000001), CLM_OP_002 (B0002/440011/2000000002),
+    CLM_OP_003 (B0003/440010/2000000001).
+    Unique entities: 3 claims + 3 beneficiaries + 2 providers + 2 facilities = 10.
+    Relationships: 3 billed_for + 3 submitted_by + 3 performed_at = 9.
+    """
+    harness = medicare_fraud_harness
+    kb_id = _create_kb_named(harness, "outpatient-e2e")
+
+    _upload_csv(harness, kb_id, _FIXTURES / "tiny_outpatient_claims.csv", "outpatient_claims")
+    harness.drain()
+
+    entity_count = harness.graph_repository.count_entities(kb_id)
+    assert entity_count == 10, (
+        f"Expected 10 entities (3 claims + 3 benes + 2 providers + 2 facilities), "
+        f"got {entity_count}"
+    )
+    rel_count = harness.graph_repository.count_relationships(kb_id)
+    assert rel_count == 9, (
+        f"Expected 9 relationships (3 billed_for + 3 submitted_by + 3 performed_at), "
+        f"got {rel_count}"
+    )
+    vector_count = harness.vector_store.count_records(kb_id)
+    assert vector_count == 10, f"Expected 10 vector records, got {vector_count}"
+
+    assert harness.raw_record_store is not None
+    raw_count = harness.raw_record_store.count_for_kb(kb_id)
+    assert raw_count == 3, f"Expected 3 raw records, got {raw_count}"
+
+
+@pytest.mark.e2e
+def test_records_e2e_pde_ingests(
+    medicare_fraud_harness: E2EHarness,
+) -> None:
+    """Prescription Drug Events: 3-row fixture → claim + beneficiary entities.
+
+    Feed: pde.  Fixture: tiny_pde.csv.
+    3 rows: P00001 (B0001), P00002 (B0002), P00003 (B0001).
+    Unique entities: 3 claims + 2 beneficiaries = 5.
+    Relationships: 3 billed_for = 3.
+    """
+    harness = medicare_fraud_harness
+    kb_id = _create_kb_named(harness, "pde-e2e")
+
+    _upload_csv(harness, kb_id, _FIXTURES / "tiny_pde.csv", "pde")
+    harness.drain()
+
+    entity_count = harness.graph_repository.count_entities(kb_id)
+    assert entity_count == 5, (
+        f"Expected 5 entities (3 claims + 2 beneficiaries), got {entity_count}"
+    )
+    rel_count = harness.graph_repository.count_relationships(kb_id)
+    assert rel_count == 3, (
+        f"Expected 3 relationships (3 billed_for), got {rel_count}"
+    )
+    vector_count = harness.vector_store.count_records(kb_id)
+    assert vector_count == 5, f"Expected 5 vector records, got {vector_count}"
+
+    assert harness.raw_record_store is not None
+    raw_count = harness.raw_record_store.count_for_kb(kb_id)
+    assert raw_count == 3, f"Expected 3 raw records, got {raw_count}"
