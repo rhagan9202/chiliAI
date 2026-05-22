@@ -9,12 +9,11 @@ from ingestion.chunker import ChunkingResult
 from ingestion.extractor import LlmDocumentExtractor
 from ingestion.models import Chunk, ChunkMetadata
 from llm.models import CompletionMetadata, GenerationResult
-from shared.types import EntityDefinition, PropertyDefinition, PropertyType, RelationshipDefinition
+from shared.types import EntityDefinition, PropertyDefinition, PropertyType
 
 
 def _chunking_result() -> ChunkingResult:
     return ChunkingResult(
-        id="cr-1",
         source_document_id="doc-1",
         parsed_document_id="pd-1",
         strategy_used="FixedWindowChunkingStrategy",
@@ -104,7 +103,6 @@ def test_llm_extractor_dedupes_by_natural_key_across_chunks() -> None:
     )
 
     chunking = ChunkingResult(
-        id="cr-1",
         source_document_id="doc-1",
         parsed_document_id="pd-1",
         strategy_used="FixedWindowChunkingStrategy",
@@ -139,6 +137,43 @@ def test_llm_extractor_invalid_json_warns_and_continues() -> None:
     result = extractor.extract_document(_chunking_result())
     assert result.candidate_entities == []
     assert result.warnings  # non-empty
+
+
+def test_llm_extractor_records_warning_on_provider_error() -> None:
+    from llm.exceptions import LlmProviderError
+    llm_client = MagicMock()
+    llm_client.generate.side_effect = LlmProviderError("ollama down")
+
+    extractor = LlmDocumentExtractor(
+        entity_definitions=_entity_defs(),
+        relationship_definitions=[],
+        llm_client=llm_client,
+    )
+    result = extractor.extract_document(_chunking_result())
+
+    assert result.candidate_entities == []
+    assert any("LLM extraction failed" in w for w in result.warnings)
+
+
+def test_llm_extractor_strips_markdown_json_fences() -> None:
+    llm_client = MagicMock()
+    fenced = "```json\n" + json.dumps({
+        "entities": [{"type": "provider", "properties": {"npi": "1234567890"}}],
+        "relationships": [],
+    }) + "\n```"
+    llm_client.generate.return_value = GenerationResult(
+        request_id="r1",
+        completion=fenced,
+        metadata=CompletionMetadata(provider="openai", model_name="m", temperature=0.2, max_tokens=128),
+    )
+    extractor = LlmDocumentExtractor(
+        entity_definitions=_entity_defs(),
+        relationship_definitions=[],
+        llm_client=llm_client,
+    )
+    result = extractor.extract_document(_chunking_result())
+    assert len(result.candidate_entities) == 1
+    assert result.candidate_entities[0].properties["npi"] == "1234567890"
 
 
 def test_create_document_extractor_returns_pattern_when_no_llm_client() -> None:

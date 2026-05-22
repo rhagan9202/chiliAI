@@ -38,6 +38,18 @@ from shared.utils import generate_id
 _LOG = logging.getLogger(__name__)
 
 
+def _strip_json_fences(text: str) -> str:
+    """Remove markdown code fences (e.g. ```json ... ```) from LLM output."""
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        first_newline = stripped.find("\n")
+        if first_newline != -1:
+            stripped = stripped[first_newline + 1:]
+        if stripped.endswith("```"):
+            stripped = stripped[:-3]
+    return stripped.strip()
+
+
 class PatternDocumentExtractor:
 	"""Baseline config-driven extractor using property label matching patterns."""
 
@@ -269,7 +281,7 @@ class LlmDocumentExtractor:
 			return [], [f"LLM extraction failed for chunk {chunk.id}: {exc}"]
 
 		try:
-			parsed: object = json.loads(result.completion)
+			parsed: object = json.loads(_strip_json_fences(result.completion))
 		except json.JSONDecodeError as exc:
 			return [], [f"LLM returned non-JSON for chunk {chunk.id}: {exc}"]
 
