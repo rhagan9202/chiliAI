@@ -563,3 +563,40 @@ def test_records_e2e_pde_ingests(
     assert harness.raw_record_store is not None
     raw_count = harness.raw_record_store.count_for_kb(kb_id)
     assert raw_count == 3, f"Expected 3 raw records, got {raw_count}"
+
+
+@pytest.mark.e2e
+def test_records_e2e_nppes_providers_ingests(
+    medicare_fraud_harness: E2EHarness,
+) -> None:
+    """Upload a real-shape NPPES CSV (MM/DD/YYYY dates, empty deactivation) through the records API.
+
+    Feed: nppes_providers.  Fixture: tiny_nppes_providers.csv.
+    3 rows: 2 individual providers (rows 1-2 with empty deactivation dates) and
+    1 organisation (row 3 with single-digit date "9/5/2008" and a populated
+    deactivation date "01/15/2024").
+    All date fields use MM/DD/YYYY or M/D/YYYY — exercises the new coercion path.
+    Expected entities: 3 providers, 0 relationships (NPPES feed maps only provider).
+    """
+    harness = medicare_fraud_harness
+    kb_id = _create_kb_named(harness, "nppes-e2e")
+
+    fixture = _FIXTURES / "tiny_nppes_providers.csv"
+    _upload_csv(harness, kb_id, fixture, "nppes_providers")
+    harness.drain()
+
+    # 3 rows → 3 provider entities
+    entity_count = harness.graph_repository.count_entities(kb_id)
+    assert entity_count == 3, (
+        f"Expected 3 provider entities, got {entity_count}"
+    )
+    # NPPES feed has no relationship mappings
+    rel_count = harness.graph_repository.count_relationships(kb_id)
+    assert rel_count == 0, f"Expected 0 relationships, got {rel_count}"
+
+    vector_count = harness.vector_store.count_records(kb_id)
+    assert vector_count == 3, f"Expected 3 vector records, got {vector_count}"
+
+    assert harness.raw_record_store is not None
+    raw_count = harness.raw_record_store.count_for_kb(kb_id)
+    assert raw_count == 3, f"Expected 3 raw records, got {raw_count}"
