@@ -7,12 +7,24 @@ entities:
   - name: provider
     display_label: "Provider"
     icon: stethoscope
+    natural_key: [npi]
     properties:
       npi: { type: string, display: "NPI", required: true }
+      entity_type_code: { type: string, display: "Entity Type Code" }       # 1=individual, 2=org
+      organization_name: { type: string, display: "Organization Name" }
+      last_name: { type: string, display: "Last Name" }
+      first_name: { type: string, display: "First Name" }
+      primary_taxonomy_code: { type: string, display: "Primary Taxonomy" }
+      practice_state: { type: string, display: "Practice State" }
+      practice_city: { type: string, display: "Practice City" }
+      practice_postal_code: { type: string, display: "Practice Postal Code" }
+      enumeration_date: { type: date, display: "Enumeration Date" }
+      deactivation_date: { type: date, display: "Deactivation Date" }
 
   - name: beneficiary
     display_label: "Beneficiary"
     icon: person
+    natural_key: [hic_number]
     properties:
       hic_number: { type: string, display: "HIC Number", required: true }
       birth_date: { type: date, display: "Date of Birth" }
@@ -23,6 +35,7 @@ entities:
   - name: claim
     display_label: "Claim"
     icon: document
+    natural_key: [claim_id]
     properties:
       claim_id: { type: string, display: "Claim ID", required: true }
       service_date: { type: date, display: "Date of Service" }
@@ -32,6 +45,7 @@ entities:
   - name: facility
     display_label: "Facility"
     icon: building
+    natural_key: [facility_id]
     properties:
       facility_id: { type: string, display: "Facility ID", required: true }
 
@@ -227,7 +241,8 @@ records:
     # Inpatient Claims — multiple segment rows per claim (CLM_ID not unique).
     # Composite record id: "{CLM_ID}:{SEGMENT}" ensures uniqueness in store.
     # Entity id: CLM_ID (segments of the same claim merge into one node).
-    # Links: beneficiary via DESYNPUF_ID, facility via PRVDR_NUM.
+    # Links: beneficiary via DESYNPUF_ID, provider via AT_PHYSN_NPI,
+    #        facility via PRVDR_NUM.
     # ------------------------------------------------------------------
     - name: inpatient_claims
       record_type: inpatient_claim_record
@@ -242,8 +257,8 @@ records:
         CLM_FROM_DT: { type: date, display: "Claim From Date" }
         CLM_THRU_DT: { type: date, display: "Claim Through Date" }
         PRVDR_NUM: { type: string, display: "Provider Number" }
-        CLM_PMT_AMT: { type: decimal, display: "Claim Payment Amount", min_value: 0 }
         AT_PHYSN_NPI: { type: string, display: "Attending Physician NPI" }
+        CLM_PMT_AMT: { type: decimal, display: "Claim Payment Amount", min_value: 0 }
       entities:
         - entity_type: claim
           id_field: CLM_ID
@@ -256,6 +271,10 @@ records:
           id_field: DESYNPUF_ID
           property_fields:
             hic_number: DESYNPUF_ID
+        - entity_type: provider
+          id_field: AT_PHYSN_NPI
+          property_fields:
+            npi: AT_PHYSN_NPI
         - entity_type: facility
           id_field: PRVDR_NUM
           property_fields:
@@ -264,12 +283,17 @@ records:
         - relationship_type: billed_for
           source_entity_type: claim
           target_entity_type: beneficiary
+        - relationship_type: submitted_by
+          source_entity_type: claim
+          target_entity_type: provider
         - relationship_type: performed_at
           source_entity_type: claim
           target_entity_type: facility
 
     # ------------------------------------------------------------------
     # Outpatient Claims — same segment pattern as inpatient.
+    # Links: beneficiary via DESYNPUF_ID, provider via AT_PHYSN_NPI,
+    #        facility via PRVDR_NUM.
     # ------------------------------------------------------------------
     - name: outpatient_claims
       record_type: outpatient_claim_record
@@ -284,8 +308,8 @@ records:
         CLM_FROM_DT: { type: date, display: "Claim From Date" }
         CLM_THRU_DT: { type: date, display: "Claim Through Date" }
         PRVDR_NUM: { type: string, display: "Provider Number" }
-        CLM_PMT_AMT: { type: decimal, display: "Claim Payment Amount", min_value: 0 }
         AT_PHYSN_NPI: { type: string, display: "Attending Physician NPI" }
+        CLM_PMT_AMT: { type: decimal, display: "Claim Payment Amount", min_value: 0 }
       entities:
         - entity_type: claim
           id_field: CLM_ID
@@ -298,6 +322,10 @@ records:
           id_field: DESYNPUF_ID
           property_fields:
             hic_number: DESYNPUF_ID
+        - entity_type: provider
+          id_field: AT_PHYSN_NPI
+          property_fields:
+            npi: AT_PHYSN_NPI
         - entity_type: facility
           id_field: PRVDR_NUM
           property_fields:
@@ -306,6 +334,9 @@ records:
         - relationship_type: billed_for
           source_entity_type: claim
           target_entity_type: beneficiary
+        - relationship_type: submitted_by
+          source_entity_type: claim
+          target_entity_type: provider
         - relationship_type: performed_at
           source_entity_type: claim
           target_entity_type: facility
@@ -343,6 +374,57 @@ records:
         - relationship_type: billed_for
           source_entity_type: claim
           target_entity_type: beneficiary
+
+    # ------------------------------------------------------------------
+    # NPPES NPI Registry — one row per provider.
+    # Source: tools/sample_data/build_tennessee_subset.py output
+    # (nppes_providers_tn.csv).
+    # ------------------------------------------------------------------
+    - name: nppes_providers
+      record_type: provider_record
+      source: file_upload
+      id_field: NPI
+      allow_extra_fields: true
+      record_schema:
+        NPI: { type: string, display: "NPI", required: true }
+        Entity Type Code: { type: string, display: "Entity Type Code" }
+        Provider Organization Name (Legal Business Name): { type: string, display: "Organization Name" }
+        Provider Last Name (Legal Name): { type: string, display: "Last Name" }
+        Provider First Name: { type: string, display: "First Name" }
+        Healthcare Provider Taxonomy Code_1: { type: string, display: "Primary Taxonomy" }
+        Provider Business Practice Location Address State Name: { type: string, display: "Practice State" }
+        Provider Business Practice Location Address City Name: { type: string, display: "Practice City" }
+        Provider Business Practice Location Address Postal Code: { type: string, display: "Practice Postal Code" }
+        Provider Enumeration Date: { type: date, display: "Enumeration Date" }
+        NPI Deactivation Date: { type: date, display: "Deactivation Date" }
+      entities:
+        - entity_type: provider
+          id_field: NPI
+          property_fields:
+            npi: NPI
+            entity_type_code: "Entity Type Code"
+            organization_name: "Provider Organization Name (Legal Business Name)"
+            last_name: "Provider Last Name (Legal Name)"
+            first_name: "Provider First Name"
+            primary_taxonomy_code: "Healthcare Provider Taxonomy Code_1"
+            practice_state: "Provider Business Practice Location Address State Name"
+            practice_city: "Provider Business Practice Location Address City Name"
+            practice_postal_code: "Provider Business Practice Location Address Postal Code"
+            enumeration_date: "Provider Enumeration Date"
+            deactivation_date: "NPI Deactivation Date"
+
+llm:
+  provider: openai
+  model: gpt-4o-mini
+  api_key_env_var: OPENAI_API_KEY
+  temperature: 0.2
+  max_tokens: 4096
+  fallback:
+    provider: ollama
+    model: llama3.1:8b
+    base_url: http://localhost:11434
+    temperature: 0.2
+    max_tokens: 4096
 
 rag:
   top_k: 5

@@ -28,6 +28,7 @@ class KnowledgeBaseCreatedEvent(EventBase):
 class KnowledgeBaseDeletedEvent(EventBase):
     event_type: Literal["kb.delete"] = "kb.delete"
     knowledge_base_id: str
+    cleanup_pending: bool = False
 
 
 class DocumentReference(BaseModel):

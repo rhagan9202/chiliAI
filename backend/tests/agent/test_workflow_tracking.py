@@ -241,3 +241,77 @@ def test_tracker_skips_cancelled_workflow() -> None:
     run = run_store.get_run("workflow-1")
     assert run.status is WorkflowRunStatus.CANCELLED
     assert run.steps[0].status is WorkflowStepStatus.PENDING
+
+
+# ---------------------------------------------------------------------------
+# is_busy tests
+# ---------------------------------------------------------------------------
+
+
+def test_is_busy_returns_false_when_no_workflows_for_kb() -> None:
+    run_store = InMemoryWorkflowRunStore()
+    tracker = WorkflowEventTracker(run_store)
+
+    assert tracker.is_busy("kb-99") is False
+
+
+def test_is_busy_returns_true_when_queued_workflow_exists() -> None:
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-queued",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.QUEUED,
+                steps=[WorkflowStepState(step_name="parse")],
+                metadata={"correlation_id": "corr-queued"},
+            )
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+
+    assert tracker.is_busy("kb-1") is True
+
+
+def test_is_busy_returns_true_when_running_workflow_exists() -> None:
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-running",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                metadata={"correlation_id": "corr-running"},
+            )
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+
+    assert tracker.is_busy("kb-1") is True
+
+
+def test_is_busy_returns_false_when_only_terminal_workflows_exist() -> None:
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-completed",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.COMPLETED,
+                steps=[WorkflowStepState(step_name="ready")],
+                metadata={"correlation_id": "corr-completed"},
+            ),
+            WorkflowRun(
+                workflow_id="workflow-failed",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.FAILED,
+                steps=[WorkflowStepState(step_name="parse")],
+                metadata={"correlation_id": "corr-failed"},
+            ),
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+
+    assert tracker.is_busy("kb-1") is False

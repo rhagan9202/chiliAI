@@ -37,6 +37,12 @@ class VectorStoreProtocol(Protocol):
 
     def delete_namespace(self, knowledge_base_id: str) -> int: ...
 
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> int: ...
+
 
 __all__ = [
     "VectorStoreProtocol",

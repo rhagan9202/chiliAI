@@ -9,13 +9,12 @@ raising.
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only imports
     from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.trace import Span, Tracer
 
 __all__ = [
     "get_tracer",
@@ -25,7 +24,8 @@ __all__ = [
 ]
 
 
-_PROVIDER: object | None = None
+# Mutable container avoids reassigning a module-level uppercase name.
+_STATE: dict[str, object] = {"provider": None}
 
 
 def setup_tracing(
@@ -35,9 +35,8 @@ def setup_tracing(
 ) -> object | None:
     """Configure a global ``TracerProvider`` and return it (or ``None`` on miss)."""
 
-    global _PROVIDER
-    if _PROVIDER is not None:
-        return _PROVIDER
+    if _STATE["provider"] is not None:
+        return _STATE["provider"]
 
     try:
         from opentelemetry import trace
@@ -76,7 +75,7 @@ def setup_tracing(
         BatchSpanProcessor(exporter) if use_batch else SimpleSpanProcessor(exporter)
     )
     trace.set_tracer_provider(provider)
-    _PROVIDER = provider
+    _STATE["provider"] = provider
     return provider
 
 
@@ -84,10 +83,10 @@ def instrument_fastapi_app(app: object) -> bool:
     """Attach OpenTelemetry FastAPI instrumentation if available."""
 
     try:
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # type: ignore[import-untyped]
     except ImportError:  # pragma: no cover - optional extra
         return False
-    FastAPIInstrumentor.instrument_app(app)  # pyright: ignore[reportUnknownMemberType]
+    FastAPIInstrumentor.instrument_app(app)  # pyright: ignore[reportUnknownMemberType,reportArgumentType]
     return True
 
 
@@ -107,7 +106,7 @@ def start_pipeline_span(
     *,
     correlation_id: str | None = None,
     attributes: dict[str, str | int | float | bool] | None = None,
-) -> Iterator[object | None]:
+) -> Generator[object | None, None, None]:
     """Start a span as a child of the current context and yield it.
 
     Yields ``None`` when OpenTelemetry is unavailable so callers do not need
@@ -120,12 +119,11 @@ def start_pipeline_span(
         yield None
         return
 
-    tracer = cast("Tracer", trace.get_tracer("chili.pipeline"))
-    with tracer.start_as_current_span(name) as span:
-        typed_span = cast("Span", span)
+    tracer = trace.get_tracer("chili.pipeline")
+    with tracer.start_as_current_span(name) as span:  # type: ignore[union-attr]
         if correlation_id is not None:
-            typed_span.set_attribute("correlation_id", correlation_id)
+            span.set_attribute("correlation_id", correlation_id)  # type: ignore[union-attr]
         if attributes:
             for key, value in attributes.items():
-                typed_span.set_attribute(key, value)
+                span.set_attribute(key, value)  # type: ignore[union-attr]
         yield span

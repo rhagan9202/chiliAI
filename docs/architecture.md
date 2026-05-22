@@ -701,7 +701,45 @@ The following decisions were made during Plan C implementation and differ from t
 - **Entity-property snapshot instead of graph history nodes**: Flows 3 and 4 write a flat entity-property snapshot to the graph (e.g., `risk_score`, `active_alert_count`) alongside full history in SQL tables. Graph-native "history nodes" (linking graph entities to historical result nodes inside the graph DB) are deferred.
 - **Flow 2 throttled per-KB**: Metric recompute is rate-limited per knowledge-base to avoid redundant work on ingest bursts. The interval is configurable via `analytics.metrics_recompute_min_interval_seconds` (default 300 s) in the domain config.
 
-### 6.5 Self-reinforcing analysis loop
+### 6.5 Ingestion Pipeline Enhancements (2026-05-22)
+
+The following additions landed in `feature/ingestion-pipeline-e2e-demo`. See the full design at [`docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md`](superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md).
+
+**LLM extractor + Ollama adapter**
+
+`LlmDocumentExtractor` in `ingestion/extractor.py` drives entity/relationship extraction from schema-guided prompts derived from `DomainConfig.entities` / `DomainConfig.relationships`. It requests JSON-mode responses, strips markdown fences, validates required properties, and deduplicates entities by natural key within each chunk. When no LLM client is injected the ingestion service falls back to `PatternDocumentExtractor`.
+
+`OllamaLlmClient` in `llm/adapters/` is a new adapter implementing `LlmClientProtocol` via Ollama's OpenAI-compatible endpoint. It is selected by `LlmConfig.provider="ollama"` with `LlmConfig.base_url` pointing at the Ollama host. `FallbackLlmClient` wraps a primary client with an ordered list of fallback clients tried on error.
+
+**Provenance metadata on entities and relationships**
+
+Every `Entity` and `Relationship` produced by the document pipeline now carries provenance fields:
+
+| Field | Source |
+|-------|--------|
+| `source_kind` | `"document"` (ingestion) or `"record"` (records pipeline) |
+| `source_document_id` | SHA-256 of source content |
+| `source_chunk_id` | Chunk index within the document |
+| `source_feed` | Feed name (records-derived only) |
+| `source_raw_record_id` | Raw record ID (records-derived only) |
+
+**KB delete cascade (207 sequence) + workflow-busy 409 guard**
+
+`DELETE /knowledgebases/{id}` now executes a complete five-step cascade: graph namespace (`GraphService.delete_knowledge_base`), vector namespace (`VectorService.delete_knowledge_base`), raw records (`RawRecordStore.delete_by_kb`), object-store payloads, and KB repository metadata. If an active workflow run exists for the KB at delete time the API returns 409 to prevent mid-pipeline teardown.
+
+`GraphService` and `VectorService` additionally expose `delete_by_source_document(kb_id, doc_id)` for document-level (rather than KB-level) provenance cleanup.
+
+**Document re-upload semantics**
+
+Re-uploading a document with identical content bytes is idempotent (same `source_document_id`, no duplicate event). Re-uploading changed content produces a new `source_document_id`; the receipt includes a `replaced_document_id` field pointing at the superseded entry.
+
+**New NPPES and DE-SynPUF feeds (medicare_fraud config)**
+
+`config/defaults/medicare_fraud_cms_desynpuf.yaml` now declares eight feed definitions under `records.feeds`: `nppes_providers`, `beneficiary_2008`, `beneficiary_2009`, `beneficiary_2010`, `carrier_claims_a`, `carrier_claims_b`, `inpatient_claims`, and `outpatient_claims`. These are config-only additions — the records pipeline code is unchanged. A Tennessee-provider subset materializer lives at `tools/sample_data/build_tennessee_subset.py` and is invoked by the `make demo-tn-subset` target.
+
+`handle_records_ingested` in the worker now also embeds and indexes records-derived entities into the vector store so they are co-searchable with document-derived content in RAG queries.
+
+### 6.7 Self-reinforcing analysis loop
 
 The analytics pipeline is designed as a **feedback loop**: analysis results (risk scores, cluster memberships, anomaly flags) are written back to the knowledge graph, enriching it for subsequent analysis rounds. This means:
 
@@ -725,7 +763,7 @@ Knowledge bases are the core organizational unit for ingested content and their 
 | **View KB summary** | `GET /knowledgebases/{id}` | Read persisted metadata → merge live graph/object-store signals → persist projected status/counts | Returns document count, entity/relationship counts, and indexing status from the live KB projection |
 | **List documents** | `GET /knowledgebases/{id}/documents` | Read persisted document metadata → derive status from KB projection | Paginated list with persisted/derived ingestion status per document |
 | **Remove document** | `DELETE /knowledgebases/{id}/documents/{doc_id}` | Delete document metadata and object-store payloads | Graph/vector provenance-backed cleanup is planned |
-| **Delete KB** | `DELETE /knowledgebases/{id}` | Delete object-store payloads → clear graph namespace through `GraphServiceProtocol` → delete KB metadata → publish `kb.delete` | Vector namespace teardown remains planned |
+| **Delete KB** | `DELETE /knowledgebases/{id}` | Delete object-store payloads → clear graph namespace → clear vector namespace → delete raw records → delete KB metadata → publish `kb.delete` | Full 207 cascade implemented; workflow-busy 409 guard prevents deletion during active pipeline run |
 | **Rebuild RAG index** | Planned | Re-embed all content → replace vector index | No current public route |
 
 ### 7.2 Metadata projection and lifecycle boundaries
@@ -737,15 +775,17 @@ The API owns the lightweight KB/document metadata projection through the `Knowle
 
 Graph entities, relationships, and metrics remain owned by the `graph` module. KB list/detail/document reads call projection helpers that merge persisted KB metadata with live graph metrics and graph-build artifacts, then write changed status/count fields back through the repository. SSE workspace snapshots use the same projection path for `knowledge_base_statuses`, avoiding seeded demo state for live KB status.
 
-Deleting a KB removes its object-store payloads and invokes graph namespace cleanup through `GraphServiceProtocol.delete_knowledge_base()`. API code does not import concrete graph adapters; in-memory and Neo4j cleanup behavior is provided behind the graph repository protocol. Document-level graph/vector cleanup remains future work until provenance-backed delete semantics are implemented.
+Deleting a KB executes a full cascade through `GraphServiceProtocol.delete_knowledge_base()` (graph), `VectorServiceProtocol.delete_knowledge_base()` (vector), `RawRecordStore.delete_by_kb()` (structured records), object-store payload cleanup, and KB repository metadata deletion. A workflow-busy 409 guard prevents deletion while an active pipeline run is in progress. Document-level (single-document) graph/vector cleanup is supported via `delete_by_source_document(kb_id, doc_id)` on both graph and vector protocols.
 
 ### 7.3 Provenance tracking
 
 Each entity and relationship in the graph carries provenance metadata linking it back to the source document(s) and extraction step. This enables:
 
-- Cascading deletes when a document is removed
+- Cascading deletes when a document is removed (`delete_by_source_document` on graph and vector store)
 - Audit trail for explainability (which document contributed which evidence)
 - Incremental re-ingestion without full rebuild
+
+Provenance fields: `source_kind` (`"document"` or `"record"`), `source_document_id` (SHA-256 of content), `source_chunk_id`, `source_feed` (records only), `source_raw_record_id` (records only). See §6.5 for the full field table and cascade delete sequence.
 
 ---
 

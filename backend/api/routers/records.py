@@ -5,7 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 
-from api.dependencies import get_domain_config, get_records_service
+from api._kb_busy import KbBusyError, WorkflowBusyTracker, ensure_kb_idle
+from api._kb_store import KnowledgeBaseRepository
+from api.dependencies import get_domain_config, get_knowledge_base_repository, get_records_service, get_workflow_tracker
 from api.middleware.rbac import require_role
 from config.schema import DomainConfig, ValidationConfig
 from records.adapters.sources.file_source import CsvFileSource, JsonlFileSource
@@ -49,8 +51,25 @@ async def upload_record_file(
     file: UploadFile = File(...),
     service: RecordsServiceProtocol = Depends(get_records_service),
     config: DomainConfig = Depends(get_domain_config),
+    repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
+    workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
 ) -> RecordIngestReceipt:
     """Ingest a CSV or JSONL upload into the named feed."""
+    existing_kb = repository.get(knowledge_base_id)
+    if existing_kb is not None and existing_kb.pending_cleanup:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Knowledge base '{knowledge_base_id}' has pending cleanup; cannot mutate until resolved.",
+        )
+
+    try:
+        ensure_kb_idle(knowledge_base_id, tracker=workflow_tracker)
+    except KbBusyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
     filename = file.filename or "upload"
     source = _select_file_source(filename)
     content = await file.read()

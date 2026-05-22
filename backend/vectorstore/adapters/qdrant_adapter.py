@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 from uuid import NAMESPACE_URL, uuid5
 
 from config.schema import VectorStoreConfig
+from shared.provenance import SOURCE_DOCUMENT_ID_KEY
 from vectorstore.exceptions import VectorDimensionMismatchError, VectorStoreError
 from vectorstore.models import MetadataValue, VectorMatch, VectorRecord
 
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
         Distance,
         FieldCondition,
         Filter,
+        FilterSelector,
         MatchValue,
         PointIdsList,
         PointStruct,
@@ -61,7 +63,7 @@ class QdrantClientProtocol(Protocol):
     def delete(
         self,
         collection_name: str,
-        points_selector: PointIdsList,
+        points_selector: PointIdsList | FilterSelector,
         **kwargs: object,
     ) -> object: ...
 
@@ -78,6 +80,7 @@ class QdrantClientProtocol(Protocol):
         self,
         collection_name: str,
         exact: bool,
+        count_filter: Filter | None = None,
         **kwargs: object,
     ) -> CountResult: ...
 
@@ -92,6 +95,7 @@ class QdrantModelsProtocol(Protocol):
     FieldCondition: type[FieldCondition]
     MatchValue: type[MatchValue]
     PointIdsList: type[PointIdsList]
+    FilterSelector: type[FilterSelector]
     Range: type[Range]
 
 try:  # pragma: no cover - optional dependency
@@ -253,6 +257,46 @@ class QdrantVectorStore:
             raise VectorStoreError("Failed to delete Qdrant vector records.") from exc
 
         return len(record_ids)
+
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> int:
+        """Delete all vector records whose metadata matches the given source document ID."""
+
+        collection_name = self._collection_name(knowledge_base_id)
+        try:
+            if not self._client.collection_exists(collection_name):
+                return 0
+
+            models_module = _require_qdrant_models()
+            doc_filter = models_module.Filter(
+                must=[
+                    _field_condition_for_filter(SOURCE_DOCUMENT_ID_KEY, source_document_id),
+                ]
+            )
+            # Count before deleting so we can return an accurate count.
+            count_result = self._client.count(
+                collection_name=collection_name,
+                exact=True,
+                count_filter=doc_filter,
+            )
+            deleted_count = int(count_result.count)
+            if deleted_count == 0:
+                return 0
+
+            self._client.delete(
+                collection_name=collection_name,
+                points_selector=models_module.FilterSelector(filter=doc_filter),
+                wait=True,
+            )
+        except Exception as exc:
+            raise VectorStoreError(
+                "Failed to delete Qdrant vector records by source document."
+            ) from exc
+
+        return deleted_count
 
     def _validate_batch_dimensions(self, records: list[VectorRecord]) -> int:
         dimension = len(records[0].embedding)

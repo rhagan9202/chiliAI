@@ -91,6 +91,10 @@ pytest --cov
 
 # Type checking (currently scoped in pyproject.toml while strict coverage expands)
 pyright
+
+# Demo: Tennessee Medicare subset (requires `make dev` stack running first)
+make demo-tn-subset                                         # build TN subset + create KB + upload
+python -m tools.sample_data.build_tennessee_subset --help  # subset builder options
 ```
 
 > These commands target the architecture described in `docs/architecture.md`. The codebase is under active hardening; keep Ruff, Pyright, and pytest clean for touched packages.
@@ -167,7 +171,7 @@ cfg = load_config("config/defaults/medicare_fraud.yaml")
 - KB and document metadata are owned by the FastAPI gateway behind `KnowledgeBaseRepository`.
 - Graph entities, relationships, and graph metrics remain owned by `graph/` behind `GraphServiceProtocol` and `GraphRepository` adapters.
 - `GET /knowledgebases`, `GET /knowledgebases/{id}`, `GET /knowledgebases/{id}/documents`, and `GET /events/stream` use the same live projection helpers so visible status/counts stay aligned.
-- `DELETE /knowledgebases/{id}` deletes object-store payloads, clears the graph namespace through `GraphServiceProtocol.delete_knowledge_base()`, deletes KB metadata, and publishes `kb.delete`.
+- `DELETE /knowledgebases/{id}` performs a four-step cascade in order: graph (`GraphServiceProtocol.delete_knowledge_base()`), vector store (`VectorServiceProtocol.delete_knowledge_base()`), raw records (`RawRecordStore.delete_by_kb()`), object-store prefix (`knowledgebases/{id}/`), then KB metadata. If any step fails the endpoint returns 207 with `pending_cleanup=true`; the KB record is flagged and a `KnowledgeBaseDeletedEvent(cleanup_pending=True)` is published. The worker coordinator picks up that event and retries the full cascade (graph → vector → raw_records → object_store → metadata). All cleanup calls are idempotent.
 - The `object_store` KB repository is intended for local/dev single-writer durability. Add a dedicated production metadata adapter, optional dependency, and migration story before treating it as a high-concurrency production database.
 
 ## Ingestion Registration Notes

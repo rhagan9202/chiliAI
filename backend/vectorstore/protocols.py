@@ -36,6 +36,12 @@ class VectorServiceProtocol(Protocol):
 
     def delete_knowledge_base(self, knowledge_base_id: str) -> VectorDeleteResponse: ...
 
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> VectorDeleteResponse: ...
+
 
 __all__ = [
     "VectorServiceProtocol",

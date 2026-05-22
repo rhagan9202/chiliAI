@@ -46,7 +46,17 @@ class GraphMetrics(BaseModel):
     avg_degree: float = Field(ge=0.0)
 
 
+class GraphDeleteByProvenance(BaseModel):
+    """Counts returned from a provenance-scoped delete."""
+
+    knowledge_base_id: str
+    source_document_id: str
+    entity_count: int = Field(ge=0)
+    relationship_count: int = Field(ge=0)
+
+
 __all__ = [
+    "GraphDeleteByProvenance",
     "GraphMetrics",
     "GraphUpsertResult",
     "SubgraphResult",

@@ -15,7 +15,9 @@ into structured formats that align with the domain model.
 from __future__ import annotations
 
 import json
+import logging
 import re
+from typing import cast
 
 from ingestion.chunker import ChunkingResult
 from ingestion.models import (
@@ -26,8 +28,26 @@ from ingestion.models import (
 	ExtractionResult,
 	TextSpan,
 )
+from llm.adapters.protocols import LlmClientProtocol
+from llm.exceptions import LlmProviderError
+from llm.models import ChatMessage, GenerationRequest, MessageRole
 from shared.types import EntityDefinition, RelationshipDefinition
 from shared.utils import generate_id
+
+
+_LOG = logging.getLogger(__name__)
+
+
+def _strip_json_fences(text: str) -> str:
+    """Remove markdown code fences (e.g. ```json ... ```) from LLM output."""
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        first_newline = stripped.find("\n")
+        if first_newline != -1:
+            stripped = stripped[first_newline + 1:]
+        if stripped.endswith("```"):
+            stripped = stripped[:-3]
+    return stripped.strip()
 
 
 class PatternDocumentExtractor:
@@ -183,13 +203,269 @@ class PatternDocumentExtractor:
 		return candidates
 
 
+class LlmDocumentExtractor:
+	"""Extract entities and relationships per chunk via an LlmClient.
+
+	Reads entity and relationship definitions, generates per-chunk prompts,
+	parses JSON responses, validates each entity against required property
+	constraints, deduplicates within a document by configured natural key,
+	and runs an intra-chunk relationship pass.
+
+	Falls back to ``PatternDocumentExtractor`` when no LLM provider is
+	configured (via ``create_document_extractor`` below).
+	"""
+
+	def __init__(
+		self,
+		entity_definitions: list[EntityDefinition],
+		relationship_definitions: list[RelationshipDefinition] | None = None,
+		*,
+		llm_client: LlmClientProtocol,
+		natural_keys: dict[str, list[str]] | None = None,
+		extraction_method: str = "llm_v1",
+		model_name: str = "extractor-model",
+	) -> None:
+		self._entity_definitions = entity_definitions
+		self._relationship_definitions = relationship_definitions or []
+		self._client = llm_client
+		self._natural_keys = natural_keys or {}
+		self._extraction_method = extraction_method
+		self._model_name = model_name
+
+	@property
+	def natural_keys(self) -> dict[str, list[str]]:
+		"""Return the natural-key configuration used for entity deduplication."""
+		return dict(self._natural_keys)
+
+	def extract_document(self, chunking_result: ChunkingResult) -> ExtractionResult:
+		all_candidates: list[CandidateEntity] = []
+		warnings: list[str] = []
+		seen_natural_keys: dict[str, set[tuple[object, ...]]] = {}
+
+		for chunk in chunking_result.chunks:
+			chunk_candidates, chunk_warnings = self._extract_chunk(chunking_result, chunk)
+			warnings.extend(chunk_warnings)
+			for candidate in chunk_candidates:
+				if self._is_duplicate(candidate, seen_natural_keys):
+					continue
+				all_candidates.append(candidate)
+
+		all_relationships = self._extract_relationships(chunking_result, all_candidates)
+
+		return ExtractionResult(
+			id=generate_id(),
+			source_document_id=chunking_result.source_document_id,
+			parsed_document_id=chunking_result.parsed_document_id,
+			chunks=chunking_result.chunks,
+			candidate_entities=all_candidates,
+			candidate_relationships=all_relationships,
+			warnings=warnings,
+		)
+
+	def _extract_chunk(
+		self,
+		chunking_result: ChunkingResult,
+		chunk: Chunk,
+	) -> tuple[list[CandidateEntity], list[str]]:
+		prompt = self._build_prompt(chunk.content)
+		try:
+			result = self._client.generate(
+				GenerationRequest(
+					request_id=generate_id(),
+					knowledge_base_id=None,
+					messages=[
+						ChatMessage(role=MessageRole.SYSTEM, content=prompt["system"]),
+						ChatMessage(role=MessageRole.USER, content=prompt["user"]),
+					],
+					model_name=self._model_name,
+					temperature=0.1,
+					max_tokens=1024,
+				)
+			)
+		except LlmProviderError as exc:
+			return [], [f"LLM extraction failed for chunk {chunk.id}: {exc}"]
+
+		try:
+			parsed: object = json.loads(_strip_json_fences(result.completion))
+		except json.JSONDecodeError as exc:
+			return [], [f"LLM returned non-JSON for chunk {chunk.id}: {exc}"]
+
+		if not isinstance(parsed, dict):
+			return [], [f"LLM returned non-object JSON for chunk {chunk.id}."]
+
+		payload = cast(dict[str, object], parsed)
+		raw_entities_field = payload.get("entities")
+		if raw_entities_field is None:
+			return [], []
+		if not isinstance(raw_entities_field, list):
+			return [], [f"LLM 'entities' field is not a list for chunk {chunk.id}."]
+
+		entity_list = cast(list[object], raw_entities_field)
+		candidates: list[CandidateEntity] = []
+		chunk_warnings: list[str] = []
+		for raw_entity in entity_list:
+			if not isinstance(raw_entity, dict):
+				chunk_warnings.append(f"Skipping non-object entity in chunk {chunk.id}.")
+				continue
+			typed_entity = cast(dict[str, object], raw_entity)
+			entity, warning = self._build_candidate(chunking_result, chunk, typed_entity)
+			if entity is not None:
+				candidates.append(entity)
+			elif warning is not None:
+				chunk_warnings.append(warning)
+		return candidates, chunk_warnings
+
+	def _build_prompt(self, content: str) -> dict[str, str]:
+		entity_schemas = [
+			{
+				"type": d.name,
+				"properties": {
+					p: {"required": pdef.required, "type": pdef.type.value}
+					for p, pdef in d.properties.items()
+				},
+			}
+			for d in self._entity_definitions
+		]
+		relationship_schemas = [
+			{"type": r.name, "source": r.source, "target": r.target}
+			for r in self._relationship_definitions
+		]
+		system = (
+			"You extract structured entities and relationships from text. "
+			"Output strict JSON of the form "
+			'{"entities": [{"type": "...", "properties": {...}}], '
+			'"relationships": [{"type": "...", "source_index": 0, "target_index": 1}]}. '
+			"Use only entity types listed in the schema. Omit fields you cannot find."
+		)
+		user = (
+			f"Entity schemas: {json.dumps(entity_schemas)}\n"
+			f"Relationship schemas: {json.dumps(relationship_schemas)}\n\n"
+			f"Text:\n{content}\n\n"
+			"Return JSON only."
+		)
+		return {"system": system, "user": user}
+
+	def _build_candidate(
+		self,
+		chunking_result: ChunkingResult,
+		chunk: Chunk,
+		raw: dict[str, object],
+	) -> tuple[CandidateEntity | None, str | None]:
+		entity_type = raw.get("type")
+		raw_properties = raw.get("properties", {})
+		if not isinstance(entity_type, str) or not isinstance(raw_properties, dict):
+			return None, f"Skipping malformed entity in chunk {chunk.id}."
+		properties: dict[str, object] = cast(dict[str, object], raw_properties)
+
+		defn = next((d for d in self._entity_definitions if d.name == entity_type), None)
+		if defn is None:
+			return None, f"Unknown entity type '{entity_type}' in chunk {chunk.id}."
+
+		missing_required = [
+			name for name, pdef in defn.properties.items()
+			if pdef.required and name not in properties
+		]
+		if missing_required:
+			return None, (
+				f"Entity '{entity_type}' in chunk {chunk.id} is missing required "
+				f"properties: {missing_required}"
+			)
+
+		return CandidateEntity(
+			id=generate_id(),
+			source_document_id=chunking_result.source_document_id,
+			chunk_id=chunk.id,
+			type=entity_type,
+			properties=properties,
+			confidence=0.8,
+			extraction_method=self._extraction_method,
+			evidence=[],
+			metadata={"llm_model": self._model_name},
+		), None
+
+	def _is_duplicate(
+		self,
+		candidate: CandidateEntity,
+		seen: dict[str, set[tuple[object, ...]]],
+	) -> bool:
+		key_fields = self._natural_keys.get(candidate.type)
+		if not key_fields:
+			return False
+		try:
+			key = tuple(candidate.properties[f] for f in key_fields)
+		except KeyError:
+			return False
+		bucket = seen.setdefault(candidate.type, set())
+		if key in bucket:
+			return True
+		bucket.add(key)
+		return False
+
+	def _extract_relationships(
+		self,
+		chunking_result: ChunkingResult,
+		candidates: list[CandidateEntity],
+	) -> list[CandidateRelationship]:
+		"""Intra-chunk relationship pass — mirrors PatternDocumentExtractor's behavior."""
+
+		relationships: list[CandidateRelationship] = []
+		for chunk in chunking_result.chunks:
+			chunk_candidates = [c for c in candidates if c.chunk_id == chunk.id]
+			for rel_def in self._relationship_definitions:
+				sources = [c for c in chunk_candidates if c.type == rel_def.source]
+				targets = [c for c in chunk_candidates if c.type == rel_def.target]
+				for source in sources:
+					for target in targets:
+						if source.id == target.id:
+							continue
+						relationships.append(
+							CandidateRelationship(
+								id=generate_id(),
+								source_document_id=chunking_result.source_document_id,
+								chunk_id=chunk.id,
+								type=rel_def.name,
+								source_candidate_id=source.id,
+								target_candidate_id=target.id,
+								confidence=min(source.confidence, target.confidence),
+								extraction_method=self._extraction_method,
+								evidence=[],
+								metadata={},
+							)
+						)
+		return relationships
+
+
 def create_document_extractor(
 	entity_definitions: list[EntityDefinition],
 	relationship_definitions: list[RelationshipDefinition] | None = None,
-) -> PatternDocumentExtractor:
-	"""Create the default document extractor for ingestion workers."""
+	*,
+	llm_client: LlmClientProtocol | None = None,
+	natural_keys: dict[str, list[str]] | None = None,
+) -> PatternDocumentExtractor | LlmDocumentExtractor:
+	"""Create the default document extractor for ingestion workers.
 
-	return PatternDocumentExtractor(entity_definitions, relationship_definitions)
+	Returns ``LlmDocumentExtractor`` when an ``llm_client`` is provided,
+	otherwise falls back to ``PatternDocumentExtractor``.
+
+	When ``llm_client`` is provided and ``natural_keys`` is not explicitly
+	given, natural keys are automatically derived from
+	``EntityDefinition.natural_key`` for any entity that has them set.
+	Explicitly passed ``natural_keys`` always take precedence.
+	"""
+
+	if llm_client is None:
+		return PatternDocumentExtractor(entity_definitions, relationship_definitions)
+	derived_keys = natural_keys or {
+		defn.name: defn.natural_key
+		for defn in entity_definitions
+		if defn.natural_key
+	}
+	return LlmDocumentExtractor(
+		entity_definitions,
+		relationship_definitions,
+		llm_client=llm_client,
+		natural_keys=derived_keys,
+	)
 
 
 def _match_property_value(content: str, property_name: str) -> tuple[str, int, int] | None:
@@ -298,4 +574,4 @@ def _relationship_evidence(
 	]
 
 
-__all__ = ["PatternDocumentExtractor", "candidate_pairs", "create_document_extractor"]
+__all__ = ["LlmDocumentExtractor", "PatternDocumentExtractor", "candidate_pairs", "create_document_extractor"]

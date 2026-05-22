@@ -213,6 +213,24 @@ class VectorService:
         )
         return response
 
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> VectorDeleteResponse:
+        """Delete all vector records tagged with the given source document ID."""
+        try:
+            deleted_count = self._store.delete_by_source_document(
+                knowledge_base_id, source_document_id
+            )
+        except Exception as exc:
+            raise VectorStoreError("Failed to delete vectors by source document.") from exc
+
+        return VectorDeleteResponse(
+            knowledge_base_id=knowledge_base_id,
+            deleted_count=deleted_count,
+        )
+
     def _persist_audit_artifact(
         self,
         request_id: str,

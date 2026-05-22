@@ -60,6 +60,14 @@ class _DroppingVectorStore:
         del knowledge_base_id
         return 0
 
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> int:
+        del knowledge_base_id, source_document_id
+        return 0
+
 
 class _RecordingVectorStore(InMemoryVectorStore):
     def __init__(self) -> None:

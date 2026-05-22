@@ -116,11 +116,13 @@ class VectorStoreConfig(BaseModel):
 class LlmConfig(BaseModel):
     """Configuration for selecting the LLM provider and model."""
 
-    provider: Literal["openai", "anthropic", "local"] = "local"
+    provider: Literal["openai", "anthropic", "local", "ollama"] = "local"
     model: str = "local-default"
     api_key_env_var: str | None = None
+    base_url: str | None = None  # Used by ollama and any provider needing a custom endpoint.
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=4096, gt=0)
+    fallback: "LlmConfig | None" = None
 
 
 class EmbeddingsConfig(BaseModel):

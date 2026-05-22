@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import cast
 
 import pytest
 
@@ -12,7 +11,7 @@ pytest.importorskip("opentelemetry.sdk.trace.export.in_memory_span_exporter")
 
 from opentelemetry import trace  # noqa: E402
 from opentelemetry.sdk.resources import Resource  # noqa: E402
-from opentelemetry.sdk.trace import ReadableSpan, TracerProvider  # noqa: E402
+from opentelemetry.sdk.trace import TracerProvider  # noqa: E402
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor  # noqa: E402
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (  # noqa: E402
     InMemorySpanExporter,
@@ -31,14 +30,14 @@ def in_memory_provider() -> Iterator[InMemorySpanExporter]:
     trace._TRACER_PROVIDER_SET_ONCE._done = False  # pyright: ignore[reportPrivateUsage]
     trace._TRACER_PROVIDER = None  # pyright: ignore[reportPrivateUsage]
     trace.set_tracer_provider(provider)
-    tracing_module._PROVIDER = provider  # pyright: ignore[reportPrivateUsage]
+    tracing_module._STATE["provider"] = provider  # pyright: ignore[reportPrivateUsage]
     try:
         yield exporter
     finally:
         exporter.clear()
         trace._TRACER_PROVIDER_SET_ONCE._done = False  # pyright: ignore[reportPrivateUsage]
         trace._TRACER_PROVIDER = None  # pyright: ignore[reportPrivateUsage]
-        tracing_module._PROVIDER = None  # pyright: ignore[reportPrivateUsage]
+        tracing_module._STATE["provider"] = None  # pyright: ignore[reportPrivateUsage]
 
 
 class TestSpanCreation:
@@ -49,7 +48,7 @@ class TestSpanCreation:
             pass
         spans = in_memory_provider.get_finished_spans()
         assert spans, "Expected at least one span"
-        names = [cast(ReadableSpan, span).name for span in spans]
+        names = [span.name for span in spans]
         assert "ingest.parse" in names
 
     def test_span_records_correlation_id_attribute(
@@ -58,11 +57,7 @@ class TestSpanCreation:
         with start_pipeline_span("graph.upsert", correlation_id="corr-1"):
             pass
         spans = in_memory_provider.get_finished_spans()
-        target = next(
-            cast(ReadableSpan, s)
-            for s in spans
-            if cast(ReadableSpan, s).name == "graph.upsert"
-        )
+        target = next(s for s in spans if s.name == "graph.upsert")
         attributes = target.attributes or {}
         assert attributes.get("correlation_id") == "corr-1"
 
@@ -74,11 +69,7 @@ class TestSpanCreation:
         ):
             pass
         spans = in_memory_provider.get_finished_spans()
-        target = next(
-            cast(ReadableSpan, s)
-            for s in spans
-            if cast(ReadableSpan, s).name == "vector.upsert"
-        )
+        target = next(s for s in spans if s.name == "vector.upsert")
         attributes = target.attributes or {}
         assert attributes.get("document_count") == 3
 
@@ -93,8 +84,7 @@ class TestParentChildLinkage:
                 pass
 
         spans = in_memory_provider.get_finished_spans()
-        readable = [cast(ReadableSpan, s) for s in spans]
-        by_name = {span.name: span for span in readable}
+        by_name = {span.name: span for span in spans}
         assert "parent" in by_name
         assert "child" in by_name
 
@@ -111,3 +101,24 @@ class TestGetTracer:
     def test_returns_tracer_object(self) -> None:
         tracer = get_tracer("chili.test.tracer")
         assert tracer is not None
+
+
+class TestSetupTracingIdempotency:
+    """setup_tracing must be a no-op when a provider is already registered."""
+
+    def test_second_call_returns_same_provider_instance(self) -> None:
+        from shared.tracing import setup_tracing
+
+        # Ensure clean state before this test.
+        original_state = tracing_module._STATE["provider"]  # pyright: ignore[reportPrivateUsage]
+        tracing_module._STATE["provider"] = None  # pyright: ignore[reportPrivateUsage]
+        try:
+            first = setup_tracing(service_name="chili-idempotency-test")
+            second = setup_tracing(service_name="chili-idempotency-test")
+            assert first is not None, "Expected a provider on first call"
+            assert first is second, (
+                "Second call must return the cached provider, not create a new one"
+            )
+        finally:
+            # Restore module state so other tests are not affected.
+            tracing_module._STATE["provider"] = original_state  # pyright: ignore[reportPrivateUsage]

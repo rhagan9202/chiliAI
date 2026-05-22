@@ -33,6 +33,11 @@ _SELECT_SQL = """
     ORDER BY record_type, record_id
 """
 
+_DELETE_BY_KB_SQL = """
+    DELETE FROM raw_records
+    WHERE knowledge_base_id = %s
+"""
+
 
 class PostgresRawRecordStore:
     """A ``RawRecordStore`` backed by the ``raw_records`` table."""
@@ -78,6 +83,18 @@ class PostgresRawRecordStore:
         except Exception as exc:
             raise RecordPersistenceError("Failed to load raw records.") from exc
         return [_row_to_record(row) for row in rows]
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Delete all records for a knowledge base; return the count removed."""
+        try:
+            with self._provider.connection() as conn:
+                cursor = conn.execute(_DELETE_BY_KB_SQL, (knowledge_base_id,))
+                conn.commit()
+                return cursor.rowcount
+        except Exception as exc:
+            raise RecordPersistenceError(
+                "Failed to delete raw records for knowledge base."
+            ) from exc
 
 
 def _row_to_record(row: Row) -> RawRecord:

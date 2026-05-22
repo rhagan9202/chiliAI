@@ -23,6 +23,26 @@ Each statement uses `IF NOT EXISTS` so re-construction (multiple worker processe
 
 To verify the schema is in place against a running Neo4j, use `SHOW INDEXES` and `SHOW CONSTRAINTS` from `cypher-shell`.
 
+## Source-Document Provenance and Cascade Delete
+
+### Provenance metadata
+
+Every `Entity` and `Relationship` upserted through the document pipeline carries provenance metadata so the system knows which document produced it:
+
+| Field | Set by | Meaning |
+|-------|--------|---------|
+| `source_kind` | ingestion pipeline | `"document"` or `"record"` |
+| `source_document_id` | ingestion pipeline | ID of the originating document (SHA-256 of content) |
+| `source_chunk_id` | ingestion pipeline | Chunk index within the document |
+| `source_feed` | records pipeline | Feed name (records-derived entities only) |
+| `source_raw_record_id` | records pipeline | Raw record ID (records-derived entities only) |
+
+### `delete_by_source_document`
+
+`GraphService` and `GraphRepository` expose `delete_by_source_document(kb_id, doc_id)` which removes all entities and relationships whose `source_document_id` matches `doc_id` within the given KB namespace. This is the graph leg of the full KB-delete cascade described in the demo spec at [`docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md`](../../docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md).
+
+The full 207 cascade on `DELETE /knowledgebases/{id}` touches: graph (this method), vector store (`delete_by_source_document`), raw records (`delete_by_kb`), object store (payload delete), and the KB repository (metadata delete). A workflow-busy 409 guard prevents deletion while an active pipeline run is in progress.
+
 ## Dual-Graph Reads
 
 Read-side methods on `GraphServiceProtocol` (`get_entity`, `search_entities`) accept `knowledge_base_ids: list[str]` and span all listed KBs. The API handler boundary uses `shared.kb_scope.resolve_kb_scope(primary, domain_config, kb_repo)` to expand a single primary KB id into the full read scope, auto-attaching the domain's `default_reference_kb_id` (the "policy graph") when configured.

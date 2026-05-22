@@ -60,6 +60,10 @@ Vectorstore 1.0 requires live Qdrant integration tests:
 QDRANT_URL=http://localhost:6333 uv run --project backend pytest backend/tests/vectorstore/test_qdrant_adapter.py -m integration -v
 ```
 
+## Source-Document Delete
+
+`VectorService` and `VectorStoreProtocol` expose `delete_by_source_document(kb_id, doc_id)` which removes all indexed vectors whose metadata contains `source_document_id == doc_id` within the given KB namespace. This is the vector-store leg of the KB-delete cascade. Like the other delete methods it is idempotent — calling it when no matching vectors exist is a no-op. See the graph module README and the demo spec at [`docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md`](../../docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md) for the full cascade sequence.
+
 ## Non-Goals
 
 1.0 does not include async contracts, pgvector, Weaviate, hybrid search, advanced metadata filters, public API endpoint expansion, RAG behavior changes, or cross-module document provenance cleanup.

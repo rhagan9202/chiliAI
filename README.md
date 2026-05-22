@@ -10,7 +10,17 @@ A **domain-reconfigurable Graph RAG analytics platform**. Combines knowledge-gra
 
 - **Flexible, reconfigurable platform** — built around Graph RAG for analytics/exploration, ML, GNN, explainable AI, time-series analysis, and anomaly detection through loosely coupled, interchangeable capability modules in a Python 3.12 backend.
 - **Domain reconfigurability** — a single YAML/JSON configuration surface (or UI wizard) retargets the platform to different domains (entity names, relationships, display labels, enabled capabilities). Examples: Medicare fraud detection, food supply chain monitoring, financial crime.
-- **Vendor-agnostic boundaries** — external systems are accessed through abstract interface contracts. Currently selectable backends are graph (in-memory, Neo4j), vector store (in-memory, Qdrant), LLM (local, OpenAI, Anthropic), embeddings (local, OpenAI, sentence-transformers), and object storage (local FS, S3/MinIO-compatible). Memgraph, Neptune, pgvector, Weaviate, GCS, and Ollama/vLLM are roadmap adapters.
+- **Vendor-agnostic boundaries** — external systems are accessed through abstract interface contracts. Currently selectable backends are graph (in-memory, Neo4j), vector store (in-memory, Qdrant), LLM (local, OpenAI, Anthropic, Ollama), embeddings (local, OpenAI, sentence-transformers), and object storage (local FS, S3/MinIO-compatible). Memgraph, Neptune, pgvector, Weaviate, GCS, and vLLM are roadmap adapters.
+
+## Demo: Tennessee Medicare Subset
+
+A self-contained end-to-end demo uses a Tennessee-provider subset of the publicly available NPPES and CMS DE-SynPUF datasets. The demo builds a knowledge base, uploads policy documents with LLM extraction, and indexes records-derived entities into the vector store — all with one Make target.
+
+```bash
+make demo-tn-subset   # build TN subset + create KB + upload (requires `make dev` first)
+```
+
+See [`docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md`](docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md) for the full specification.
 
 ## Starting Exemplar: Medicare Fraud Detection
 

@@ -103,6 +103,7 @@ from events.types import (
     EntitiesValidatedEvent,
     ExtractedDocumentReference,
     GraphUpdatedEvent,
+    KnowledgeBaseDeletedEvent,
     KnowledgeBaseReadyEvent,
     KnowledgeBaseReadyReference,
     RecordsIngestedEvent,
@@ -112,22 +113,25 @@ from events.types import (
     VectorsIndexedDocumentReference,
     VectorsIndexedEvent,
 )
+from api._kb_store import KnowledgeBaseRepository
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.adapters.protocols import GraphRepository
 from graph.auth import resolve_graph_auth
 from graph.models import GraphUpsertResult
+from graph.protocols import GraphServiceProtocol
 from graph.service import GraphService, create_graph_service
 from graph.service_models import GraphBuildTask
 from ingestion.chunker import ChunkingResult, DocumentChunker, create_document_chunker
-from ingestion.extractor import PatternDocumentExtractor, create_document_extractor
+from ingestion.extractor import create_document_extractor
+from ingestion.protocols import DocumentExtractorProtocol
 from ingestion.models import ExtractionResult, ParsedDocument, ValidationReport
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
 from ingestion.service import IngestionService
 from ingestion.validator import ExtractionResultValidator, create_extraction_validator
-from llm.adapters.in_memory import InMemoryLlmClient
 from llm.adapters.protocols import LlmClientProtocol
+from llm.factory import create_llm_client as _create_llm_client
 from monitoring.adapters.in_memory import (
     InMemoryAlertHistoryWriter,
     InMemoryObservationSource,
@@ -154,6 +158,13 @@ from records.adapters.protocols import RawRecordStore
 from records.exceptions import RecordFeedNotFoundError
 from records.mappers.feed_mapper import map_batch, map_observations
 from shared.logging import bind_correlation_id, configure_logging, get_logger
+from shared.provenance import (
+    SOURCE_DOCUMENT_ID_KEY,
+    SOURCE_ID_KEY,
+    SOURCE_KIND_DOCUMENT,
+    SOURCE_KIND_KEY,
+    SOURCE_KIND_RECORD,
+)
 from shared.tracing import setup_tracing, start_pipeline_span
 from shared.types import Entity
 from storage.adapters.in_memory import InMemoryObjectStore
@@ -161,6 +172,7 @@ from storage.protocols import ObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 from vectorstore.adapters.protocols import VectorStoreProtocol
 from vectorstore.models import VectorRecord
+from vectorstore.protocols import VectorServiceProtocol
 
 __all__ = [
     "WorkerDependencies",
@@ -190,6 +202,7 @@ __all__ = [
     "handle_event",
     "handle_graph_updated",
     "handle_graph_updated_for_analytics",
+    "handle_knowledge_base_deleted",
     "handle_records_ingested",
     "handle_risk_scored",
     "handle_risk_scored_for_graph",
@@ -213,7 +226,7 @@ class WorkerDependencies:
     event_bus: EventBus
     ingestion_service: IngestionService
     document_chunker: DocumentChunker
-    document_extractor: PatternDocumentExtractor
+    document_extractor: DocumentExtractorProtocol
     extraction_validator: ExtractionResultValidator
     graph_service: GraphService
     embeddings_service: EmbeddingsServiceProtocol
@@ -246,7 +259,6 @@ _ObjectStoreFactory = Callable[[ObjectStoreConfig], ObjectStore]
 _GraphRepositoryFactory = Callable[[GraphDbConfig], GraphRepository]
 _VectorStoreFactory = Callable[[VectorStoreConfig], VectorStoreProtocol]
 _EmbedderFactory = Callable[[EmbeddingsConfig], EmbedderProtocol]
-_LlmClientFactory = Callable[[LlmConfig], LlmClientProtocol]
 
 
 def _build_in_memory_object_store(_: ObjectStoreConfig) -> ObjectStore:
@@ -404,55 +416,6 @@ _EMBEDDING_REGISTRY: dict[str, _EmbedderFactory] = {
 }
 
 
-def _build_in_memory_llm_client(config: LlmConfig) -> LlmClientProtocol:
-    return InMemoryLlmClient(provider=config.provider)
-
-
-def _build_openai_llm_client(config: LlmConfig) -> LlmClientProtocol:
-    try:
-        from llm.adapters.openai_adapter import OpenAILlmClient
-        from llm.exceptions import LlmConfigurationError
-    except ImportError as exc:
-        raise ConfigurationError(
-            subsystem="llm",
-            backend=config.provider,
-            message=str(exc),
-        ) from exc
-    try:
-        return OpenAILlmClient(config)
-    except (ImportError, ValueError, LlmConfigurationError) as exc:
-        raise ConfigurationError(
-            subsystem="llm",
-            backend=config.provider,
-            message=str(exc),
-        ) from exc
-
-
-def _build_anthropic_llm_client(config: LlmConfig) -> LlmClientProtocol:
-    try:
-        from llm.adapters.anthropic_adapter import AnthropicLlmClient
-        from llm.exceptions import LlmConfigurationError
-    except ImportError as exc:
-        raise ConfigurationError(
-            subsystem="llm",
-            backend=config.provider,
-            message=str(exc),
-        ) from exc
-    try:
-        return AnthropicLlmClient(config)
-    except (ImportError, ValueError, LlmConfigurationError) as exc:
-        raise ConfigurationError(
-            subsystem="llm",
-            backend=config.provider,
-            message=str(exc),
-        ) from exc
-
-
-_LLM_REGISTRY: dict[str, _LlmClientFactory] = {
-    "local": _build_in_memory_llm_client,
-    "openai": _build_openai_llm_client,
-    "anthropic": _build_anthropic_llm_client,
-}
 
 
 def build_graph_snapshot_source(
@@ -630,18 +593,17 @@ def build_embedder(config: DomainConfig) -> EmbedderProtocol:
 
 def build_llm_client(config: DomainConfig) -> LlmClientProtocol:
     """Select an LLM client adapter from the configured provider."""
+    from llm.exceptions import LlmConfigurationError
 
     llm_config = config.llm or LlmConfig()
-    if _section_is_default(llm_config, LlmConfig()):
-        return InMemoryLlmClient()
-    factory = _LLM_REGISTRY.get(llm_config.provider)
-    if factory is None:
+    try:
+        return _create_llm_client(llm_config)
+    except LlmConfigurationError as exc:
         raise ConfigurationError(
             subsystem="llm",
             backend=llm_config.provider,
-            message="Available backends: " + ", ".join(sorted(_LLM_REGISTRY)),
-        )
-    return factory(llm_config)
+            message=str(exc),
+        ) from exc
 
 
 def build_worker_dependencies() -> WorkerDependencies:
@@ -798,7 +760,7 @@ def handle_documents_parsed(
             media_type="application/json",
             metadata={
                 "knowledge_base_id": document.knowledge_base_id,
-                "source_document_id": document.source_document_id,
+                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
                 "parsed_document_id": document.parsed_document_id,
                 "chunk_count": len(result.chunks),
             },
@@ -836,7 +798,7 @@ def _build_chunks_storage_key(
 def handle_documents_chunked(
     event: DocumentsChunkedEvent,
     *,
-    document_extractor: PatternDocumentExtractor,
+    document_extractor: DocumentExtractorProtocol,
     object_store: ObjectStore,
     event_bus: EventBus,
 ) -> int:
@@ -858,7 +820,7 @@ def handle_documents_chunked(
             media_type="application/json",
             metadata={
                 "knowledge_base_id": document.knowledge_base_id,
-                "source_document_id": document.source_document_id,
+                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
                 "parsed_document_id": document.parsed_document_id,
                 "extraction_result_id": extraction_result.id,
                 "entity_count": len(extraction_result.candidate_entities),
@@ -922,7 +884,7 @@ def handle_entities_extracted(
             media_type="application/json",
             metadata={
                 "knowledge_base_id": document.knowledge_base_id,
-                "source_document_id": document.source_document_id,
+                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
                 "parsed_document_id": document.parsed_document_id,
                 "extraction_result_id": extraction_result.id,
                 "validation_report_id": validation_report.id,
@@ -1090,7 +1052,7 @@ def handle_graph_updated(
             media_type="application/json",
             metadata={
                 "knowledge_base_id": document.knowledge_base_id,
-                "source_document_id": document.source_document_id,
+                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
                 "parsed_document_id": document.parsed_document_id,
                 "extraction_result_id": document.extraction_result_id,
                 "validation_report_id": document.validation_report_id,
@@ -1639,12 +1601,20 @@ def handle_records_ingested(
     raw_record_store: RawRecordStore,
     graph_service: GraphService,
     observation_writer: ObservationWriter,
+    embeddings_service: EmbeddingsServiceProtocol | None = None,
+    vector_store: VectorStoreProtocol | None = None,
 ) -> int:
     """Flow 1 — fan a structured-records batch out to the graph and observations.
 
     A single handler: map rows to graph entities/relationships and upsert them,
-    then derive observations and persist them. Every write is idempotent so the
-    worker's retry/DLQ wrapper can safely re-run this handler.
+    then derive observations and persist them.  When ``embeddings_service`` and
+    ``vector_store`` are both provided, each stored entity is also embedded and
+    indexed into the vector store so the KB becomes RAG-searchable.  Both
+    parameters default to ``None`` so the handler is backward-compatible with
+    callers that do not yet wire the embedding path.
+
+    Every write is idempotent so the worker's retry/DLQ wrapper can safely
+    re-run this handler.
     """
 
     feed = _resolve_records_feed(records_config, event.feed_name)
@@ -1662,9 +1632,50 @@ def handle_records_ingested(
         return 0
 
     mapped = map_batch(feed, records)
-    graph_service.upsert_records_graph(
+    stored_entities, _stored_relationships = graph_service.upsert_records_graph(
         event.knowledge_base_id, mapped.entities, mapped.relationships
     )
+
+    if embeddings_service is not None and vector_store is not None and stored_entities:
+        texts = [_build_entity_embedding_text(entity) for entity in stored_entities]
+        embed_response = embeddings_service.embed(
+            EmbedRequest(
+                knowledge_base_id=event.knowledge_base_id,
+                submissions=[
+                    EmbedSubmission(content_id=entity.id, content=text)
+                    for entity, text in zip(stored_entities, texts, strict=True)
+                ],
+            )
+        )
+        # Build a lookup so we can match vectors to their entity regardless of
+        # the order the embedder returns them.
+        vector_by_id = {item.content_id: item.vector for item in embed_response.items}
+        missing = [e.id for e in stored_entities if e.id not in vector_by_id]
+        if missing:
+            logger.warning(
+                "embed response missing vectors for %d entity ids; skipping. ids=%s",
+                len(missing), missing,
+            )
+        vector_records = [
+            VectorRecord(
+                id=f"record:{event.knowledge_base_id}:{entity.id}",
+                knowledge_base_id=event.knowledge_base_id,
+                content_id=entity.id,
+                embedding=vector_by_id[entity.id],
+                content=text,
+                metadata={
+                    SOURCE_KIND_KEY: SOURCE_KIND_RECORD,
+                    SOURCE_ID_KEY: entity.id,
+                    "entity_type": entity.type,
+                },
+            )
+            for entity, text in zip(stored_entities, texts, strict=True)
+            if entity.id in vector_by_id
+        ]
+        if vector_records:
+            vector_store.upsert_records(event.knowledge_base_id, vector_records)
+            # We intentionally do not publish VectorsIndexedEvent here because
+            # handle_vectors_indexed is documents-only and would no-op for records.
 
     observations = map_observations(feed, records)
     if observations:
@@ -1686,6 +1697,38 @@ def _resolve_records_feed(
         if feed.name == feed_name:
             return feed
     raise RecordFeedNotFoundError(feed_name)
+
+
+def handle_knowledge_base_deleted(
+    event: KnowledgeBaseDeletedEvent,
+    *,
+    graph_service: GraphServiceProtocol,
+    vector_service: VectorServiceProtocol,
+    raw_record_store: RawRecordStore,
+    kb_repository: KnowledgeBaseRepository,
+    object_store: ObjectStore | None = None,
+) -> None:
+    """Retry residual KB cleanup steps when the API DELETE returned a partial cleanup.
+
+    When the API DELETE endpoint returns 207 with ``cleanup_pending=True`` it
+    means one or more downstream stores could not be cleaned up synchronously.
+    The worker picks up the ``KnowledgeBaseDeletedEvent`` and retries each
+    store in order.  All five calls are idempotent; the coordinator's retry/DLQ
+    wrapper handles any exceptions that bubble up.
+    """
+
+    if not event.cleanup_pending:
+        return
+    logger.info("retrying KB cleanup", extra={"knowledge_base_id": event.knowledge_base_id})
+    # Best-effort retries — exceptions bubble to the coordinator's DLQ flow.
+    graph_service.delete_knowledge_base(event.knowledge_base_id)
+    vector_service.delete_knowledge_base(event.knowledge_base_id)
+    raw_record_store.delete_by_kb(event.knowledge_base_id)
+    if object_store is not None:
+        prefix = f"knowledgebases/{event.knowledge_base_id}/"
+        for key in object_store.list_keys(prefix):
+            object_store.delete(key)
+    kb_repository.delete(event.knowledge_base_id)
 
 
 def _publish_analysis_failed(
@@ -1754,7 +1797,8 @@ def handle_embeddings_complete(
                 "embedding_model_name": embedding_item.model_name,
                 "embedding_provider": embedding_item.provider,
                 "embedding_dimensions": embedding_item.dimensions,
-                "source_document_id": document.source_document_id,
+                SOURCE_KIND_KEY: SOURCE_KIND_DOCUMENT,
+                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
                 "extraction_result_id": document.extraction_result_id,
                 "validation_report_id": document.validation_report_id,
             }
@@ -2034,7 +2078,7 @@ def handle_event(
     ingestion_service: IngestionService,
     *,
     document_chunker: DocumentChunker,
-    document_extractor: PatternDocumentExtractor,
+    document_extractor: DocumentExtractorProtocol,
     extraction_validator: ExtractionResultValidator,
     graph_service: GraphService,
     object_store: ObjectStore,
@@ -2055,6 +2099,8 @@ def handle_event(
     alert_history_writer: AlertHistoryWriter | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
     graph_embeddings_enabled: bool = False,
+    vector_service: VectorServiceProtocol | None = None,
+    kb_repository: KnowledgeBaseRepository | None = None,
 ) -> int:
     """Handle a single event and return the number of processed documents."""
 
@@ -2096,6 +2142,8 @@ def handle_event(
             risk_history_writer=risk_history_writer,
             alert_history_writer=alert_history_writer,
             graph_embeddings_enabled=graph_embeddings_enabled,
+            vector_service=vector_service,
+            kb_repository=kb_repository,
         )
         if workflow_tracker is not None:
             workflow_tracker.complete_event(event)
@@ -2108,7 +2156,7 @@ def _dispatch_event(
     delivery: EventDelivery,
     ingestion_service: IngestionService,
     document_chunker: DocumentChunker,
-    document_extractor: PatternDocumentExtractor,
+    document_extractor: DocumentExtractorProtocol,
     extraction_validator: ExtractionResultValidator,
     graph_service: GraphService,
     object_store: ObjectStore,
@@ -2128,6 +2176,8 @@ def _dispatch_event(
     risk_history_writer: RiskHistoryWriter | None,
     alert_history_writer: AlertHistoryWriter | None,
     graph_embeddings_enabled: bool,
+    vector_service: VectorServiceProtocol | None = None,
+    kb_repository: KnowledgeBaseRepository | None = None,
 ) -> int:
     del delivery  # reserved for future stream offsets / dlq metadata
     if isinstance(event, DocumentsUploadedEvent):
@@ -2267,7 +2317,28 @@ def _dispatch_event(
             raw_record_store=raw_record_store,
             graph_service=graph_service,
             observation_writer=observation_writer,
+            embeddings_service=embeddings_service,
+            vector_store=vector_store,
         )
+    if isinstance(event, KnowledgeBaseDeletedEvent):
+        if (
+            vector_service is None
+            or raw_record_store is None
+            or kb_repository is None
+        ):
+            logger.warning(
+                "KnowledgeBaseDeletedEvent received but KB cleanup dependencies are not wired."
+            )
+            return 0
+        handle_knowledge_base_deleted(
+            event,
+            graph_service=graph_service,
+            vector_service=vector_service,
+            raw_record_store=raw_record_store,
+            kb_repository=kb_repository,
+            object_store=object_store,
+        )
+        return 1
     return 0
 
 
@@ -2331,7 +2402,7 @@ async def drain_ingestion_events(
     event_bus: EventBus,
     ingestion_service: IngestionService,
     document_chunker: DocumentChunker,
-    document_extractor: PatternDocumentExtractor,
+    document_extractor: DocumentExtractorProtocol,
     extraction_validator: ExtractionResultValidator,
     graph_service: GraphService,
     object_store: ObjectStore,
@@ -2358,6 +2429,8 @@ async def drain_ingestion_events(
     health_state: HealthState | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
     graph_embeddings_enabled: bool = False,
+    vector_service: VectorServiceProtocol | None = None,
+    kb_repository: KnowledgeBaseRepository | None = None,
     sleep: Callable[[float], "asyncio.Future[None] | object"] = asyncio.sleep,
 ) -> int:
     """Consume and process available ingestion events with retry/DLQ semantics."""
@@ -2376,6 +2449,7 @@ async def drain_ingestion_events(
         "risk.scored",
         "records.ingested",
         "alerts.created",
+        "kb.delete",
     ]
     event_bus.ensure_consumer_group(event_types, consumer_group=consumer_group)
     deliveries = event_bus.consume(
@@ -2414,6 +2488,8 @@ async def drain_ingestion_events(
                 alert_history_writer=alert_history_writer,
                 workflow_tracker=workflow_tracker,
                 graph_embeddings_enabled=graph_embeddings_enabled,
+                vector_service=vector_service,
+                kb_repository=kb_repository,
             )
 
         def _record_failure(

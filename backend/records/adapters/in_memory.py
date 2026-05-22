@@ -33,3 +33,22 @@ class InMemoryRawRecordStore:
             and record.correlation_id == correlation_id
         ]
         return sorted(matches, key=lambda record: (record.record_type, record.record_id))
+
+    def count_for_kb(self, knowledge_base_id: str) -> int:
+        """Return the number of raw records stored for the given knowledge base."""
+        return sum(
+            1
+            for record in self._records.values()
+            if record.knowledge_base_id == knowledge_base_id
+        )
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Delete all records for a knowledge base; return the count removed."""
+        keys_to_remove = [
+            key
+            for key, record in self._records.items()
+            if record.knowledge_base_id == knowledge_base_id
+        ]
+        for key in keys_to_remove:
+            del self._records[key]
+        return len(keys_to_remove)
