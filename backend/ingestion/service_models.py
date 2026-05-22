@@ -37,6 +37,7 @@ class DocumentReceipt(BaseModel):
     storage_key: str | None = None
     uri: str | None = None
     document_format: DocumentFormat | None = None
+    replaced_document_id: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
 

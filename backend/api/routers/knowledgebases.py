@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from datetime import datetime
 
@@ -346,6 +347,8 @@ async def register_knowledge_base_documents(
     files: list[UploadFile] = File(...),
     ingestion_service: IngestionServiceProtocol = Depends(get_ingestion_service),
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
+    graph_service: GraphServiceProtocol = Depends(get_graph_service),
+    vector_service: VectorServiceProtocol = Depends(get_vector_service),
     config: DomainConfig = Depends(get_domain_config),
 ) -> DocumentRegistrationResponse:
     """Register uploaded documents and enqueue ingestion work."""
@@ -359,7 +362,7 @@ async def register_knowledge_base_documents(
     max_bytes = validation.max_file_size_mb * 1024 * 1024
     allowed_content_types = set(validation.allowed_content_types)
     submissions: list[DocumentSubmission] = []
-    raw_metadata: list[tuple[str, str | None, int]] = []
+    raw_metadata: list[tuple[str, str | None, int, str, str | None]] = []
     for upload in files:
         if not validate_content_type(upload.content_type, allowed_content_types):
             raise HTTPException(
@@ -378,6 +381,19 @@ async def register_knowledge_base_documents(
             )
 
         filename = sanitize_filename(upload.filename or "document")
+        content_hash = hashlib.sha256(content).hexdigest()
+
+        # Dedup: if a document with this content hash already exists, cascade-
+        # delete its graph nodes, vector points, and metadata record before
+        # re-ingesting, and surface the replaced id in the receipt.
+        replaced_document_id: str | None = None
+        existing = repository.get_document_by_content_hash(knowledge_base_id, content_hash)
+        if existing is not None:
+            graph_service.delete_by_source_document(knowledge_base_id, existing.id)
+            vector_service.delete_by_source_document(knowledge_base_id, existing.id)
+            repository.delete_document(knowledge_base_id, existing.id)
+            replaced_document_id = existing.id
+
         submissions.append(
             DocumentSubmission(
                 filename=filename,
@@ -386,26 +402,30 @@ async def register_knowledge_base_documents(
             )
         )
         raw_metadata.append(
-            (filename, upload.content_type, len(content))
+            (filename, upload.content_type, len(content), content_hash, replaced_document_id)
         )
 
     receipts = ingestion_service.register_documents(knowledge_base_id, submissions)
 
-    for receipt, (filename, content_type, size_bytes) in zip(
+    final_receipts: list[DocumentReceipt] = []
+    for receipt, (filename, content_type, size_bytes, content_hash, replaced_document_id) in zip(
         receipts, raw_metadata, strict=True
     ):
-        if repository.get_document(knowledge_base_id, receipt.source_document_id) is not None:
-            continue
-        repository.add_document(
-            DocumentRecord(
-                id=receipt.source_document_id,
-                knowledge_base_id=knowledge_base_id,
-                filename=filename,
-                content_type=content_type,
-                size_bytes=size_bytes,
-                status=receipt.status.value,
-                storage_key=receipt.storage_key,
+        if repository.get_document(knowledge_base_id, receipt.source_document_id) is None:
+            repository.add_document(
+                DocumentRecord(
+                    id=receipt.source_document_id,
+                    knowledge_base_id=knowledge_base_id,
+                    filename=filename,
+                    content_type=content_type,
+                    size_bytes=size_bytes,
+                    status=receipt.status.value,
+                    storage_key=receipt.storage_key,
+                    content_hash=content_hash,
+                )
             )
+        final_receipts.append(
+            receipt.model_copy(update={"replaced_document_id": replaced_document_id})
         )
 
-    return DocumentRegistrationResponse(documents=receipts)
+    return DocumentRegistrationResponse(documents=final_receipts)

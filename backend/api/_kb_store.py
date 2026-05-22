@@ -35,6 +35,7 @@ class DocumentRecord(BaseModel):
     size_bytes: int | None = None
     status: str = "registered"
     storage_key: str | None = None
+    content_hash: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
 
@@ -98,6 +99,12 @@ class KnowledgeBaseRepository(Protocol):
         knowledge_base_id: str,
         document_id: str,
     ) -> bool: ...
+
+    def get_document_by_content_hash(
+        self,
+        knowledge_base_id: str,
+        content_hash: str,
+    ) -> DocumentRecord | None: ...
 
 
 class InMemoryKnowledgeBaseRepository:
@@ -241,6 +248,16 @@ class InMemoryKnowledgeBaseRepository:
             order.remove(document_id)
         self._sync_document_count(knowledge_base_id)
         return True
+
+    def get_document_by_content_hash(
+        self,
+        knowledge_base_id: str,
+        content_hash: str,
+    ) -> DocumentRecord | None:
+        for record in self._documents.get(knowledge_base_id, {}).values():
+            if record.content_hash == content_hash:
+                return record
+        return None
 
     def _sync_document_count(self, knowledge_base_id: str) -> None:
         """Keep KB summary metadata aligned with registered documents."""
@@ -424,6 +441,17 @@ class ObjectStoreKnowledgeBaseRepository:
         self._sync_document_count(snapshot, knowledge_base_id)
         self._save_snapshot(snapshot)
         return True
+
+    def get_document_by_content_hash(
+        self,
+        knowledge_base_id: str,
+        content_hash: str,
+    ) -> DocumentRecord | None:
+        kb_documents = self._load_snapshot().documents.get(knowledge_base_id, {})
+        for record in kb_documents.values():
+            if record.content_hash == content_hash:
+                return record
+        return None
 
     def _load_snapshot(self) -> _KnowledgeBaseStoreSnapshot:
         if not self._object_store.exists(self._storage_key):
