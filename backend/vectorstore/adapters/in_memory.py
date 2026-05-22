@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 
+from shared.provenance import SOURCE_DOCUMENT_ID_KEY
 from vectorstore.exceptions import VectorDimensionMismatchError
 from vectorstore.models import MetadataValue, VectorMatch, VectorRecord
 
@@ -106,6 +107,24 @@ class InMemoryVectorStore:
         self._records.pop(knowledge_base_id, None)
         self._dimensions.pop(knowledge_base_id, None)
         return deleted_count
+
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> int:
+        namespace = self._records.get(knowledge_base_id, {})
+        to_delete = [
+            record_id
+            for record_id, record in namespace.items()
+            if record.metadata.get(SOURCE_DOCUMENT_ID_KEY) == source_document_id
+        ]
+        for record_id in to_delete:
+            namespace.pop(record_id, None)
+        if not namespace:
+            self._records.pop(knowledge_base_id, None)
+            self._dimensions.pop(knowledge_base_id, None)
+        return len(to_delete)
 
 
 def _matches_filters(record: VectorRecord, filters: dict[str, MetadataValue]) -> bool:

@@ -155,7 +155,9 @@ from records.exceptions import RecordFeedNotFoundError
 from records.mappers.feed_mapper import map_batch, map_observations
 from shared.logging import bind_correlation_id, configure_logging, get_logger
 from shared.provenance import (
+    SOURCE_DOCUMENT_ID_KEY,
     SOURCE_ID_KEY,
+    SOURCE_KIND_DOCUMENT,
     SOURCE_KIND_KEY,
     SOURCE_KIND_RECORD,
 )
@@ -1808,7 +1810,8 @@ def handle_embeddings_complete(
                 "embedding_model_name": embedding_item.model_name,
                 "embedding_provider": embedding_item.provider,
                 "embedding_dimensions": embedding_item.dimensions,
-                "source_document_id": document.source_document_id,
+                SOURCE_KIND_KEY: SOURCE_KIND_DOCUMENT,
+                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
                 "extraction_result_id": document.extraction_result_id,
                 "validation_report_id": document.validation_report_id,
             }
