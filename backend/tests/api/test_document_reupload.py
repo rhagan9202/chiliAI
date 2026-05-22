@@ -163,10 +163,11 @@ def test_reupload_with_different_content_does_not_dedupe(api_client: TestClient)
     assert create.status_code == 201, create.text
     kb_id: str = create.json()["id"]
 
-    api_client.post(
+    first = api_client.post(
         f"/knowledgebases/{kb_id}/documents",
         files=[("files", ("a.json", BytesIO(b'{"npi": "1"}'), "application/json"))],
     )
+    assert first.status_code == 202
     second = api_client.post(
         f"/knowledgebases/{kb_id}/documents",
         files=[("files", ("a.json", BytesIO(b'{"npi": "2"}'), "application/json"))],

@@ -447,6 +447,9 @@ class ObjectStoreKnowledgeBaseRepository:
         knowledge_base_id: str,
         content_hash: str,
     ) -> DocumentRecord | None:
+        # TODO(production): This O(n) snapshot scan is acceptable for prototype scale
+        # but would not scale. Promote content_hash to an indexed metadata field
+        # (e.g. Postgres) before the object-store path moves to production.
         kb_documents = self._load_snapshot().documents.get(knowledge_base_id, {})
         for record in kb_documents.values():
             if record.content_hash == content_hash:
