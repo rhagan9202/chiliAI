@@ -190,3 +190,59 @@ def test_create_document_extractor_returns_llm_when_client_provided() -> None:
         llm_client=llm_client,
     )
     assert isinstance(extractor, LlmDocumentExtractor)
+
+
+def test_create_document_extractor_derives_natural_keys_from_entity_definitions() -> None:
+    """natural_keys from EntityDefinition.natural_key are picked up automatically."""
+    from ingestion.extractor import create_document_extractor
+    from shared.types import PropertyDefinition, PropertyType
+
+    entity_defs = [
+        EntityDefinition(
+            name="provider",
+            display_label="Provider",
+            icon="stethoscope",
+            properties={
+                "npi": PropertyDefinition(type=PropertyType.STRING, display="NPI", required=True),
+            },
+            natural_key=["npi"],
+        ),
+        EntityDefinition(
+            name="claim",
+            display_label="Claim",
+            icon="document",
+            properties={
+                "claim_id": PropertyDefinition(type=PropertyType.STRING, display="Claim ID", required=True),
+            },
+            # no natural_key — should be omitted from derived dict
+        ),
+    ]
+    llm_client = MagicMock()
+    extractor = create_document_extractor(entity_defs, llm_client=llm_client)
+    assert isinstance(extractor, LlmDocumentExtractor)
+    # Derived keys should include only entities that have natural_key set.
+    assert extractor.natural_keys == {"provider": ["npi"]}
+
+
+def test_create_document_extractor_explicit_natural_keys_take_precedence() -> None:
+    """Explicitly passed natural_keys override auto-derivation from entity definitions."""
+    from ingestion.extractor import create_document_extractor
+    from shared.types import PropertyDefinition, PropertyType
+
+    entity_defs = [
+        EntityDefinition(
+            name="provider",
+            display_label="Provider",
+            icon="stethoscope",
+            properties={
+                "npi": PropertyDefinition(type=PropertyType.STRING, display="NPI", required=True),
+            },
+            natural_key=["npi"],
+        ),
+    ]
+    explicit_keys = {"provider": ["npi", "last_name"]}
+    llm_client = MagicMock()
+    extractor = create_document_extractor(entity_defs, llm_client=llm_client, natural_keys=explicit_keys)
+    assert isinstance(extractor, LlmDocumentExtractor)
+    # Explicit keys take precedence over auto-derived ones.
+    assert extractor.natural_keys == explicit_keys

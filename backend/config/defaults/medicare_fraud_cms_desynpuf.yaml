@@ -7,6 +7,7 @@ entities:
   - name: provider
     display_label: "Provider"
     icon: stethoscope
+    natural_key: [npi]
     properties:
       npi: { type: string, display: "NPI", required: true }
       entity_type_code: { type: string, display: "Entity Type Code" }       # 1=individual, 2=org
@@ -23,6 +24,7 @@ entities:
   - name: beneficiary
     display_label: "Beneficiary"
     icon: person
+    natural_key: [hic_number]
     properties:
       hic_number: { type: string, display: "HIC Number", required: true }
       birth_date: { type: date, display: "Date of Birth" }
@@ -33,6 +35,7 @@ entities:
   - name: claim
     display_label: "Claim"
     icon: document
+    natural_key: [claim_id]
     properties:
       claim_id: { type: string, display: "Claim ID", required: true }
       service_date: { type: date, display: "Date of Service" }
@@ -42,6 +45,7 @@ entities:
   - name: facility
     display_label: "Facility"
     icon: building
+    natural_key: [facility_id]
     properties:
       facility_id: { type: string, display: "Facility ID", required: true }
 

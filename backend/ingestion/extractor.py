@@ -232,6 +232,11 @@ class LlmDocumentExtractor:
 		self._extraction_method = extraction_method
 		self._model_name = model_name
 
+	@property
+	def natural_keys(self) -> dict[str, list[str]]:
+		"""Return the natural-key configuration used for entity deduplication."""
+		return dict(self._natural_keys)
+
 	def extract_document(self, chunking_result: ChunkingResult) -> ExtractionResult:
 		all_candidates: list[CandidateEntity] = []
 		warnings: list[str] = []
@@ -441,15 +446,25 @@ def create_document_extractor(
 
 	Returns ``LlmDocumentExtractor`` when an ``llm_client`` is provided,
 	otherwise falls back to ``PatternDocumentExtractor``.
+
+	When ``llm_client`` is provided and ``natural_keys`` is not explicitly
+	given, natural keys are automatically derived from
+	``EntityDefinition.natural_key`` for any entity that has them set.
+	Explicitly passed ``natural_keys`` always take precedence.
 	"""
 
 	if llm_client is None:
 		return PatternDocumentExtractor(entity_definitions, relationship_definitions)
+	derived_keys = natural_keys or {
+		defn.name: defn.natural_key
+		for defn in entity_definitions
+		if defn.natural_key
+	}
 	return LlmDocumentExtractor(
 		entity_definitions,
 		relationship_definitions,
 		llm_client=llm_client,
-		natural_keys=natural_keys,
+		natural_keys=derived_keys,
 	)
 
 

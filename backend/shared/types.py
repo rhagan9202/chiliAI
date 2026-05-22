@@ -59,6 +59,7 @@ class EntityDefinition(BaseModel):
     display_label: str
     icon: str
     properties: dict[str, PropertyDefinition]
+    natural_key: list[str] = Field(default_factory=list)
 
 
 class RelationshipDefinition(BaseModel):
