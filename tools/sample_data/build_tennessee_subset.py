@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import sys
 from dataclasses import dataclass
+from glob import glob
 from pathlib import Path
 from typing import Literal
 
@@ -53,7 +55,31 @@ def build(config: BuildConfig) -> int:
 
 
 def _filter_nppes(config: BuildConfig) -> set[str]:
-    raise NotImplementedError("Implemented in Task 4.2")
+    """Stream-filter the NPPES master file to rows whose practice state matches."""
+
+    npi_set: set[str] = set()
+    state_field = "Provider Business Practice Location Address State Name"
+    output_path = config.output_root / "nppes_providers_tn.csv"
+
+    pattern = str(config.nppes_root / "npidata_pfile_*.csv")
+    files = sorted(glob(pattern))
+    if not files:
+        raise FileNotFoundError(f"No NPPES file matched {pattern}")
+    source_path = Path(files[0])
+
+    with source_path.open("r", encoding="utf-8", newline="") as src, \
+         output_path.open("w", encoding="utf-8", newline="") as dst:
+        reader = csv.DictReader(src)
+        if reader.fieldnames is None:
+            raise ValueError("NPPES file is missing a header row.")
+        writer = csv.DictWriter(dst, fieldnames=reader.fieldnames)
+        writer.writeheader()
+        for row in reader:
+            if row.get(state_field) == config.state_code:
+                writer.writerow(row)
+                npi_set.add(row["NPI"])
+
+    return npi_set
 
 
 def _filter_desynpuf(config: BuildConfig, npi_set: set[str]) -> dict[str, int]:
