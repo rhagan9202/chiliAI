@@ -14,7 +14,8 @@ from typing import Literal, Protocol, cast
 from config.schema import GraphDbConfig
 from graph.adapters.protocols import GraphRepository
 from graph.exceptions import GraphPersistenceError
-from graph.models import SubgraphResult
+from graph.models import GraphDeleteByProvenance, SubgraphResult
+from shared.provenance import SOURCE_DOCUMENT_ID_KEY
 from shared.types import Entity, Relationship
 
 
@@ -469,6 +470,68 @@ class Neo4jGraphRepository(GraphRepository):
             query,
             knowledge_base_id=knowledge_base_id,
             relationship_id=relationship_id,
+        )
+
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> GraphDeleteByProvenance:
+        # NOTE: metadata is stored as a JSON-serialized string (metadata_json) rather than as
+        # flattened node properties — this is Pattern B.  We filter by checking that the
+        # metadata_json string contains the expected key-value pair encoded exactly as it would
+        # be by json.dumps with sort_keys=True.  The filter may over-match if a value contains
+        # the literal substring, but in practice source_document_id values are UUIDs or slugs
+        # that make false positives negligible.  A future schema migration that promotes
+        # source_document_id to a first-class indexed node/relationship property would make
+        # this query exact and efficient (add an index on e.source_document_id to support it).
+        doc_id_fragment = f'"{SOURCE_DOCUMENT_ID_KEY}": "{source_document_id}"'
+
+        # Using a two-step approach: count before delete, then delete.
+        rel_count_fetch = f"""
+        MATCH ()-[r:{_RELATIONSHIP_LABEL} {{knowledge_base_id: $knowledge_base_id}}]->()
+        WHERE r.metadata_json CONTAINS $doc_id_fragment
+        RETURN count(r) AS count
+        """
+        entity_count_fetch = f"""
+        MATCH (e:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id}})
+        WHERE e.metadata_json CONTAINS $doc_id_fragment
+        RETURN count(e) AS count
+        """
+        del_rels_query = f"""
+        MATCH ()-[r:{_RELATIONSHIP_LABEL} {{knowledge_base_id: $knowledge_base_id}}]->()
+        WHERE r.metadata_json CONTAINS $doc_id_fragment
+        DELETE r
+        """
+        del_entities_query = f"""
+        MATCH (e:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id}})
+        WHERE e.metadata_json CONTAINS $doc_id_fragment
+        DETACH DELETE e
+        """
+
+        try:
+            rel_count = self._query_count(
+                rel_count_fetch,
+                knowledge_base_id=knowledge_base_id,
+                doc_id_fragment=doc_id_fragment,
+            )
+            entity_count = self._query_count(
+                entity_count_fetch,
+                knowledge_base_id=knowledge_base_id,
+                doc_id_fragment=doc_id_fragment,
+            )
+            self._run_write(del_rels_query, knowledge_base_id=knowledge_base_id, doc_id_fragment=doc_id_fragment)
+            self._run_write(del_entities_query, knowledge_base_id=knowledge_base_id, doc_id_fragment=doc_id_fragment)
+        except Neo4jError as exc:
+            raise GraphPersistenceError(
+                "Failed to delete Neo4j nodes/relationships by source document."
+            ) from exc
+
+        return GraphDeleteByProvenance(
+            knowledge_base_id=knowledge_base_id,
+            source_document_id=source_document_id,
+            entity_count=entity_count,
+            relationship_count=rel_count,
         )
 
     def _execute_write(self, query: str, **parameters: object) -> None:
