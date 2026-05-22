@@ -1,6 +1,6 @@
 # Ingestion Flow: Document Upload → Index
 
-**Verified against codebase:** 2026-05-20 (Pass 3 update)
+**Verified against codebase:** 2026-05-22 (Pass 5 update)
 **Sources:** `api/routers/knowledgebases.py`, `ingestion/protocols.py`, `events/types.py`, `agent/coordinator.py`, `records/service.py`
 
 ---
@@ -40,13 +40,20 @@ Document ingestion is an event-driven pipeline. The API registers documents sync
 
 4. Worker consumes "documents.chunked"
    ├── Calls DocumentExtractorProtocol.extract_document(chunking_result)
-   │     └── Uses LlmServiceProtocol to extract entity/relationship candidates from chunks
+   │     └── Two implementations (selected by create_document_extractor factory):
+   │         a. PatternDocumentExtractor — regex property-label matching per chunk
+   │         b. LlmDocumentExtractor — schema-driven LLM prompts per chunk;
+   │              JSON-mode output, markdown-fence stripped, required-property
+   │              validation, natural-key dedup across chunks, intra-chunk
+   │              relationship pass. Used when llm_client is wired.
    │         Returns ExtractionResult {entity_candidates, relationship_candidates}
    └── Publishes EntitiesExtractedEvent
 
 5. Worker consumes "entities.extracted"
    ├── Calls DocumentValidatorProtocol.validate_extraction(extraction_result)
    │     └── Validates each entity/relationship against DomainConfig (EntityDefinitions, RelationshipDefinitions)
+   │         Stamps provenance metadata on each valid Entity/Relationship:
+   │           source_kind="document", source_document_id, source_chunk_id
    │         Returns ValidationReport {valid_entities, valid_relationships, errors}
    └── Publishes EntitiesValidatedEvent
 
@@ -73,6 +80,23 @@ Document ingestion is an event-driven pipeline. The API registers documents sync
    ├── Updates KB status → "ready"
    └── Publishes KnowledgeBaseReadyEvent
 ```
+
+---
+
+## Idempotent Re-upload (content-hash dedup, updated 2026-05-22)
+
+Before registering a new document, `POST /knowledgebases/{kb_id}/documents` computes a SHA-256 content hash and checks for an existing `DocumentRecord` with the same `(kb_id, content_hash)` pair. If found:
+
+```
+1. graph_service.delete_by_source_document(kb_id, existing.id) → GraphDeleteByProvenance
+2. vector_service.delete_by_source_document(kb_id, existing.id) → VectorDeleteResponse
+3. repository.delete_document(kb_id, existing.id)
+4. object_store: delete all keys under knowledgebases/{kb_id}/documents/{existing.id}/
+5. Normal ingest resumes from step 1 above
+DocumentReceipt.replaced_document_id = existing.id
+```
+
+The KB must not be busy or `pending_cleanup` (409 guard applies).
 
 ---
 
@@ -146,13 +170,15 @@ For the full records flow (including the mapper), see: [flows/records-ingestion-
 
 ## Relevant Source Files
 
-- `backend/api/routers/knowledgebases.py` — step 1 (document upload)
+- `backend/api/routers/knowledgebases.py` — step 1 (document upload + idempotent re-upload)
 - `backend/api/routers/records.py` — records ingestion API
+- `backend/api/_kb_busy.py` — `ensure_kb_idle`, `WorkflowBusyTracker` protocol
 - `backend/ingestion/service.py` — register + parse orchestration
 - `backend/ingestion/chunker.py` — step 3
-- `backend/ingestion/extractor.py` — step 4
-- `backend/ingestion/validator.py` — step 5
+- `backend/ingestion/extractor.py` — step 4: `PatternDocumentExtractor`, `LlmDocumentExtractor`, `create_document_extractor`
+- `backend/ingestion/validator.py` — step 5 + provenance stamping
 - `backend/agent/coordinator.py` — worker dispatch logic
 - `backend/events/types.py` — all event payload shapes
 - `backend/records/service.py` — structured records ingestion
 - `backend/records/mappers/feed_mapper.py` — record → entity/observation mapping
+- `backend/shared/provenance.py` — provenance key/value constants

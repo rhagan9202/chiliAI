@@ -1,6 +1,6 @@
 # Records Ingestion Flow: Structured Data → Graph + Observations
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-22
 **Sources:** `records/service.py`, `records/mappers/feed_mapper.py`, `records/models.py`, `records/service_models.py`, `api/routers/records.py`, `events/types.py`
 
 ---
@@ -60,10 +60,14 @@ Worker consumes "records.ingested"
    ├── map_batch(feed, records) → MappedGraph {entities: list[Entity], relationships: list[Relationship]}
    │     ├── For each entity_mapping in feed.entities:
    │     │     entity_id = "{entity_type}:{raw_id}"   ← deterministic, idempotent
-   │     │     Builds Entity {id, type, properties (from property_fields map)}
+   │     │     Builds Entity {id, type, properties (from property_fields map),
+   │     │       metadata: {source_kind="record", source_feed=feed.name,
+   │     │                  source_raw_record_id=record.record_id}}   ← provenance
    │     └── For each relationship_mapping in feed.relationships:
    │           relationship_id = "{rel_type}:{source_id}->{target_id}"
-   │           Builds Relationship {id, type, source_id, target_id}
+   │           Builds Relationship {id, type, source_id, target_id,
+   │             metadata: {source_kind="record", source_feed=feed.name,
+   │                        source_raw_record_id=record.record_id}}   ← provenance
    │
    ├── map_observations(feed, records) → list[MonitoringObservation]
    │     ├── For each observation_mapping in feed.observations:
@@ -74,10 +78,20 @@ Worker consumes "records.ingested"
    │     │       rationale=observation_mapping.rationale}
    │     └── Raises RecordMappingError if score_field value is non-numeric or entity type missing
    │
-   ├── GraphServiceProtocol.upsert_task(GraphBuildTask) → GraphBuildReceipt
+   ├── GraphServiceProtocol.upsert_task / graph_service.upsert_records_graph
    │     (entities + relationships from MappedGraph)
+   │     → stored_entities: list[Entity]
    │
-   └── MonitoringServiceProtocol.evaluate(MonitoringEvaluationRequest)
+   ├── [optional] Embed-and-index step (when embeddings_service + vector_store are wired):
+   │     ├── EmbeddingsServiceProtocol.embed(EmbedRequest) → embed_response
+   │     │     texts built via _build_entity_embedding_text(entity) ← shared with documents path
+   │     ├── Builds VectorRecord per entity:
+   │     │     id = "record:{kb_id}:{entity.id}"
+   │     │     metadata: {source_kind="record", source_id=entity.id, entity_type=entity.type}
+   │     └── VectorStoreProtocol.upsert_records(kb_id, vector_records)
+   │           ← No VectorsIndexedEvent published from this path (documents-only)
+   │
+   └── ObservationWriter.write_observations(MonitoringBatch)
          (MonitoringObservation list fed into monitoring service)
 ```
 
@@ -114,7 +128,8 @@ Records ingest behavior is fully driven by `DomainConfig.records.feeds: list[Rec
 | Trigger | Multipart file upload via `/knowledgebases/{kb_id}/documents` | CSV/JSONL file or JSON push via `/records/{kb_id}/files` or `/push` |
 | Synchrony | Asynchronous (API registers, worker processes) | Synchronous registration; async mapping step in worker |
 | Parsing/chunking | Full parse → chunk → extract → validate pipeline | No parsing; rows are validated against feed schema directly |
-| Embedding | Entities are embedded and indexed in vector store | No embedding step for records |
+| Embedding | Entities are embedded and indexed in vector store (always) | Embed-and-index when `embeddings_service` + `vector_store` wired (optional) |
+| Provenance | `source_kind=document`, `source_document_id`, `source_chunk_id` | `source_kind=record`, `source_feed`, `source_raw_record_id` |
 | Configuration | Fixed pipeline, format-detected | Fully driven by `RecordFeedConfig` in `DomainConfig` |
 | Event emitted | `DocumentsUploadedEvent` (→ long pipeline chain) | `RecordsIngestedEvent` (→ worker mapping only) |
 
@@ -125,11 +140,13 @@ Records ingest behavior is fully driven by `DomainConfig.records.feeds: list[Rec
 - `backend/records/service.py` — `RecordsService.register_records()`, `create_records_service()`
 - `backend/records/service_models.py` — `RecordSubmission`, `RecordIngestReceipt`
 - `backend/records/models.py` — `RawRecord`
-- `backend/records/mappers/feed_mapper.py` — `map_batch()`, `map_observations()`, `MappedGraph`
+- `backend/records/mappers/feed_mapper.py` — `map_batch()`, `map_observations()`, `MappedGraph` + provenance stamping
 - `backend/records/validation.py` — `validate_rows()`
-- `backend/records/adapters/protocols.py` — `RawRecordStore`
+- `backend/records/adapters/protocols.py` — `RawRecordStore` (includes `delete_by_kb`)
 - `backend/records/adapters/in_memory.py` — `InMemoryRawRecordStore`
 - `backend/records/adapters/postgres.py` — `PostgresRawRecordStore`
 - `backend/api/routers/records.py` — HTTP entry points
 - `backend/events/types.py` — `RecordsIngestedEvent`
 - `backend/config/schema.py` — `RecordFeedConfig`, `RecordsConfig`
+- `backend/agent/coordinator.py` — `handle_records_ingested` (embed-and-index step)
+- `backend/shared/provenance.py` — provenance key/value constants

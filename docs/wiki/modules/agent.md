@@ -1,6 +1,6 @@
 # Module: agent
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-22
 **Source:** `backend/agent/`
 
 ## Purpose
@@ -84,14 +84,48 @@ class WorkflowRunUpdate(BaseModel):
 
 ## Coordinator (`agent/coordinator.py`)
 
+Last verified: 2026-05-22
+
 The `coordinator.py` is the worker entry point. It:
 1. Loads `DomainConfig` from env.
 2. Wires all adapters (graph, vectorstore, embeddings, llm, storage, events, database, analytics, monitoring).
 3. Creates `WorkflowRunStoreProtocol` via `create_workflow_run_store_from_env()`.
-4. Registers event handlers for each event type.
-5. Starts an optional health-check HTTP endpoint.
-6. Runs an event loop: `event_bus.consume()` → dispatch handler → `event_bus.ack()` or dead-letter.
-7. Handles SIGTERM/SIGINT for graceful shutdown.
+4. Constructs `LlmClientProtocol` via `llm.factory.create_llm_client(config)` (replaces previously-inlined construction logic).
+5. Registers event handlers for each event type, including `"kb.delete"` → `handle_knowledge_base_deleted`.
+6. Starts an optional health-check HTTP endpoint.
+7. Runs an event loop: `event_bus.consume()` → dispatch handler → `event_bus.ack()` or dead-letter.
+8. Handles SIGTERM/SIGINT for graceful shutdown.
+
+### Key handlers (updated 2026-05-22)
+
+**`handle_records_ingested`** — extended to optionally embed-and-index records-derived entities into the vector store. When `embeddings_service` and `vector_store` are both passed (wired in production), stored entities are embedded using `_build_entity_embedding_text` (shared with the documents path), then indexed as `VectorRecord` objects with `source_kind=record` metadata. No `VectorsIndexedEvent` is published from this path (the event is documents-only).
+
+```python
+def handle_records_ingested(
+    event: RecordsIngestedEvent,
+    *,
+    records_config: RecordsConfig,
+    raw_record_store: RawRecordStore,
+    graph_service: GraphService,
+    observation_writer: ObservationWriter,
+    embeddings_service: EmbeddingsServiceProtocol | None = None,
+    vector_store: VectorStoreProtocol | None = None,
+) -> int:
+```
+
+**`handle_knowledge_base_deleted`** — new handler. Subscribes to `"kb.delete"` events. When `event.cleanup_pending=True`, retries the 5-step cascade: `graph.delete_knowledge_base` → `vector.delete_knowledge_base` → `raw_record_store.delete_by_kb` → object_store prefix-delete → `kb_repository.delete`. All calls are idempotent; exceptions bubble to the DLQ wrapper.
+
+```python
+def handle_knowledge_base_deleted(
+    event: KnowledgeBaseDeletedEvent,
+    *,
+    graph_service: GraphServiceProtocol,
+    vector_service: VectorServiceProtocol,
+    raw_record_store: RawRecordStore,
+    kb_repository: KnowledgeBaseRepository,
+    object_store: ObjectStore | None = None,
+) -> None:
+```
 
 ---
 
@@ -146,7 +180,15 @@ class WorkflowRunStoreProtocol(Protocol):
 
 ## `WorkflowEventTracker` (`agent/workflow_tracking.py`)
 
-Tracks workflow run state transitions during coordinator dispatch. Writes to `WorkflowRunStoreProtocol`.
+Last verified: 2026-05-22
+
+Tracks workflow run state transitions during coordinator dispatch. Writes to `WorkflowRunStoreProtocol`. Implements the `WorkflowBusyTracker` protocol used by the API layer.
+
+Public methods:
+- `begin_event(event: AnyEvent) -> bool` — marks step RUNNING; returns `False` if the run is already terminal (coordinator skips cancelled workflows).
+- `complete_event(event: AnyEvent) -> None` — marks step COMPLETED or FAILED; terminal events also move the run to COMPLETED/FAILED.
+- `fail_event(event: AnyEvent, error: BaseException) -> None` — marks step + run FAILED after retry exhaustion.
+- `is_busy(knowledge_base_id: str) -> bool` — returns `True` when the KB has at least one non-terminal (QUEUED or RUNNING) workflow run. Queries `list_runs` for each non-terminal status; returns as soon as a run is found.
 
 ---
 

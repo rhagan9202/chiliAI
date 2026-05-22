@@ -1,6 +1,6 @@
 # Module: graph
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-22
 **Source:** `backend/graph/`
 
 ## Purpose
@@ -14,7 +14,7 @@ Graph database access abstraction. Owns graph CRUD (upsert entities/relationship
 ```python
 class GraphServiceProtocol(Protocol):
     def upsert_task(self, task: GraphBuildTask) -> GraphBuildReceipt: ...
-    def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None: ...
+    def get_entity(self, knowledge_base_ids: list[str], entity_id: str) -> Entity | None: ...
     def update_entity_properties(
         self,
         knowledge_base_id: str,
@@ -29,13 +29,18 @@ class GraphServiceProtocol(Protocol):
     ) -> SubgraphResult: ...
     def search_entities(
         self,
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         query: str,
         limit: int,
         offset: int,
     ) -> list[Entity]: ...
     def compute_metrics(self, knowledge_base_id: str) -> GraphMetrics: ...
     def delete_knowledge_base(self, knowledge_base_id: str) -> None: ...
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> GraphDeleteByProvenance: ...
 ```
 
 ---
@@ -98,7 +103,7 @@ Also used internally: `EntitySearchQuery`, `NeighborhoodQuery` (worker-level que
 
 ## Models (`graph/models.py`)
 
-Last verified: 2026-05-20
+Last verified: 2026-05-22
 
 ```python
 class GraphUpsertResult(BaseModel):
@@ -119,7 +124,16 @@ class GraphMetrics(BaseModel):
     entity_count: int          # >= 0
     relationship_count: int    # >= 0
     avg_degree: float          # >= 0.0
+
+class GraphDeleteByProvenance(BaseModel):
+    """Counts returned from a provenance-scoped delete."""
+    knowledge_base_id: str
+    source_document_id: str
+    entity_count: int          # >= 0
+    relationship_count: int    # >= 0
 ```
+
+`GraphDeleteByProvenance` is returned by `delete_by_source_document`. The Neo4j adapter uses `CONTAINS` on serialized `metadata_json` for the cascade-delete query; a migration to a dedicated indexed column is noted in the code as a production path.
 
 ---
 

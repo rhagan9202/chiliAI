@@ -1,6 +1,6 @@
 # Module: ingestion
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-22
 **Source:** `backend/ingestion/`
 
 ## Purpose
@@ -79,6 +79,7 @@ class DocumentReceipt(BaseModel):
     uri: str | None
     document_format: DocumentFormat | None
     created_at: datetime
+    replaced_document_id: str | None = None  # set when content-hash idempotent re-upload replaced a prior doc
 ```
 
 ### `IngestionTask`
@@ -104,6 +105,95 @@ Key types:
 
 ---
 
+## Extractor Classes (`ingestion/extractor.py`)
+
+Last verified: 2026-05-22
+
+Two concrete implementations of `DocumentExtractorProtocol`:
+
+### `PatternDocumentExtractor`
+Baseline config-driven extractor using property label matching patterns (regex). Iterates chunks, matches property names in text, builds `CandidateEntity` and `CandidateRelationship` objects based on co-occurrence.
+
+Constructor:
+```python
+PatternDocumentExtractor(
+    entity_definitions: list[EntityDefinition],
+    relationship_definitions: list[RelationshipDefinition] | None = None,
+    *,
+    extraction_method: str = "pattern_v1",
+)
+```
+
+### `LlmDocumentExtractor`
+Schema-driven LLM extractor. Generates per-chunk prompts from `EntityDefinition`/`RelationshipDefinition` schemas, calls `LlmClientProtocol.generate()` requesting JSON output, strips markdown fences, validates required properties, and deduplicates entities across chunks using configured natural keys. Runs an intra-chunk relationship pass after dedup.
+
+Constructor:
+```python
+LlmDocumentExtractor(
+    entity_definitions: list[EntityDefinition],
+    relationship_definitions: list[RelationshipDefinition] | None = None,
+    *,
+    llm_client: LlmClientProtocol,
+    natural_keys: dict[str, list[str]] | None = None,
+    extraction_method: str = "llm_v1",
+    model_name: str = "extractor-model",
+)
+```
+
+- `natural_keys`: maps entity type name → list of property names that form the dedup key. When two chunks produce entities with the same natural key values, the second is silently dropped.
+- LLM failures (4xx, transport errors) are caught as `LlmProviderError` and surfaced as `ExtractionResult.warnings` — no exception is raised to the caller.
+- Malformed or unknown-type entities from the LLM are similarly warned and skipped.
+
+### `create_document_extractor` factory
+
+```python
+def create_document_extractor(
+    entity_definitions: list[EntityDefinition],
+    relationship_definitions: list[RelationshipDefinition] | None = None,
+    *,
+    llm_client: LlmClientProtocol | None = None,
+    natural_keys: dict[str, list[str]] | None = None,
+) -> PatternDocumentExtractor | LlmDocumentExtractor:
+```
+
+Returns `LlmDocumentExtractor` when `llm_client` is provided; otherwise returns `PatternDocumentExtractor`. When `llm_client` is provided and `natural_keys` is `None`, auto-derives natural keys from `EntityDefinition.natural_key` for any entity definition that has them set. Explicit `natural_keys` always take precedence.
+
+---
+
+## Provenance Stamping (`ingestion/validator.py`)
+
+Last verified: 2026-05-22
+
+`_entity_from_candidate` and `_relationship_from_candidate` helpers (called by `ExtractionResultValidator`) stamp the following provenance metadata on every validated `Entity` and `Relationship` using constants from [`shared/provenance.py`](shared.md#provenancepy):
+
+| Key | Value |
+|-----|-------|
+| `SOURCE_KIND_KEY` | `SOURCE_KIND_DOCUMENT` (`"document"`) |
+| `SOURCE_DOCUMENT_ID_KEY` | `candidate.source_document_id` |
+| `SOURCE_CHUNK_ID_KEY` | `candidate.chunk_id` |
+
+---
+
+## Service Models (`ingestion/service_models.py`)
+
+### `DocumentReceipt` (updated 2026-05-22)
+```python
+class DocumentReceipt(BaseModel):
+    knowledge_base_id: str
+    source_document_id: str
+    filename: str | None
+    status: IngestionStatus
+    storage_key: str | None
+    uri: str | None
+    document_format: DocumentFormat | None
+    created_at: datetime
+    replaced_document_id: str | None = None  # set when a prior doc with same content hash was replaced
+```
+
+`replaced_document_id` is populated by the API router (`POST /knowledgebases/{id}/documents`) when a content-hash idempotent re-upload replaces an existing document.
+
+---
+
 ## Directory Structure
 
 ```
@@ -113,8 +203,8 @@ ingestion/
   protocols.py        # IngestionServiceProtocol + sub-protocols
   models.py           # DocumentFormat, ParsedDocument, ExtractionResult, etc.
   chunker.py          # ChunkingResult; implements DocumentChunkerProtocol
-  extractor.py        # Entity/relationship extraction (uses LLM adapter)
-  validator.py        # ValidationReport; implements DocumentValidatorProtocol
+  extractor.py        # PatternDocumentExtractor, LlmDocumentExtractor, create_document_extractor
+  validator.py        # ValidationReport + provenance stamping helpers
   orchestrators/      # Batch + source-document orchestration helpers
     protocols.py      # ParseResult, DocumentParseFailure
   parsers/
