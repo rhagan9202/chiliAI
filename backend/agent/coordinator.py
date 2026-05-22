@@ -1637,15 +1637,6 @@ def handle_alerts_created_for_graph(
     return len(records)
 
 
-def _entity_embedding_text(entity: Entity) -> str:
-    """Compose a deterministic embedding text from an entity's type + properties."""
-
-    parts = [entity.type]
-    for key in sorted(entity.properties.keys()):
-        parts.append(f"{key}={entity.properties[key]}")
-    return " ".join(parts)
-
-
 def handle_records_ingested(
     event: RecordsIngestedEvent,
     *,
@@ -1689,7 +1680,7 @@ def handle_records_ingested(
     )
 
     if embeddings_service is not None and vector_store is not None and stored_entities:
-        texts = [_entity_embedding_text(entity) for entity in stored_entities]
+        texts = [_build_entity_embedding_text(entity) for entity in stored_entities]
         embed_response = embeddings_service.embed(
             EmbedRequest(
                 knowledge_base_id=event.knowledge_base_id,
@@ -1702,6 +1693,12 @@ def handle_records_ingested(
         # Build a lookup so we can match vectors to their entity regardless of
         # the order the embedder returns them.
         vector_by_id = {item.content_id: item.vector for item in embed_response.items}
+        missing = [e.id for e in stored_entities if e.id not in vector_by_id]
+        if missing:
+            logger.warning(
+                "embed response missing vectors for %d entity ids; skipping. ids=%s",
+                len(missing), missing,
+            )
         vector_records = [
             VectorRecord(
                 id=f"record:{event.knowledge_base_id}:{entity.id}",
@@ -1720,6 +1717,8 @@ def handle_records_ingested(
         ]
         if vector_records:
             vector_store.upsert_records(event.knowledge_base_id, vector_records)
+            # We intentionally do not publish VectorsIndexedEvent here because
+            # handle_vectors_indexed is documents-only and would no-op for records.
 
     observations = map_observations(feed, records)
     if observations:
