@@ -68,6 +68,8 @@ class KnowledgeBaseRepository(Protocol):
 
     def delete(self, knowledge_base_id: str) -> bool: ...
 
+    def mark_pending_cleanup(self, knowledge_base_id: str) -> None: ...
+
     def add_document(self, document: DocumentRecord) -> DocumentRecord: ...
 
     def get_document(
@@ -158,6 +160,15 @@ class InMemoryKnowledgeBaseRepository:
         self._documents.pop(knowledge_base_id, None)
         self._document_order.pop(knowledge_base_id, None)
         return True
+
+    def mark_pending_cleanup(self, knowledge_base_id: str) -> None:
+        """Flag the knowledge base as requiring a cleanup retry."""
+        knowledge_base = self._knowledge_bases.get(knowledge_base_id)
+        if knowledge_base is None:
+            return
+        self._knowledge_bases[knowledge_base_id] = knowledge_base.model_copy(
+            update={"pending_cleanup": True, "updated_at": utc_now()}
+        )
 
     def add_document(self, document: DocumentRecord) -> DocumentRecord:
         kb_documents = self._documents.get(document.knowledge_base_id)
@@ -323,6 +334,17 @@ class ObjectStoreKnowledgeBaseRepository:
         snapshot.document_order.pop(knowledge_base_id, None)
         self._save_snapshot(snapshot)
         return True
+
+    def mark_pending_cleanup(self, knowledge_base_id: str) -> None:
+        """Flag the knowledge base as requiring a cleanup retry."""
+        snapshot = self._load_snapshot()
+        knowledge_base = snapshot.knowledge_bases.get(knowledge_base_id)
+        if knowledge_base is None:
+            return
+        snapshot.knowledge_bases[knowledge_base_id] = knowledge_base.model_copy(
+            update={"pending_cleanup": True, "updated_at": utc_now()}
+        )
+        self._save_snapshot(snapshot)
 
     def add_document(self, document: DocumentRecord) -> DocumentRecord:
         snapshot = self._load_snapshot()

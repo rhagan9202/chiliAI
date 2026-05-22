@@ -41,8 +41,9 @@ def _resolve_log_level(level: int | str | None) -> int:
     normalized = value.strip().upper()
     if normalized.isdigit():
         return int(normalized)
-    resolved = logging.getLevelName(normalized)
-    return resolved if isinstance(resolved, int) else logging.INFO
+    level_map = logging.getLevelNamesMapping()
+    resolved = level_map.get(normalized, logging.INFO)
+    return resolved
 
 
 def _correlation_id_processor(

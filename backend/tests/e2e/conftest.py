@@ -15,7 +15,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.coordinator import drain_ingestion_events
+from agent.workflow_tracking import WorkflowEventTracker
 from analytics.explainability.adapters.in_memory import (
     InMemoryExplainabilityContextSource,
 )
@@ -37,8 +39,10 @@ from api.dependencies import (
     get_object_store,
     get_raw_record_store,
     get_records_service,
+    get_vector_service,
     get_vector_store,
     get_vectorstore_service,
+    get_workflow_tracker,
 )
 from config.loader import load_config
 from config.schema import (
@@ -144,6 +148,7 @@ class E2EHarness:
     risk_service: RiskService
     explainability_service: ExplainabilityService
     monitoring_service: MonitoringService
+    workflow_tracker: WorkflowEventTracker
     # Optional records-path extensions (populated by medicare_fraud_harness)
     raw_record_store: InMemoryRawRecordStore | None = None
     records_service: RecordsService | None = None
@@ -222,6 +227,8 @@ def _build_harness(
         event_bus=event_bus,
     )
     vector_store = InMemoryVectorStore()
+    workflow_run_store = InMemoryWorkflowRunStore()
+    workflow_tracker = WorkflowEventTracker(workflow_run_store)
     embedder = InMemoryEmbedder()
     embeddings_service = create_embeddings_service(embedder, event_bus=event_bus)
 
@@ -277,6 +284,14 @@ def _build_harness(
             records_config=records_config,
         )
 
+    from vectorstore.service import create_vector_service as _create_vs
+
+    vector_service = _create_vs(
+        vector_store,
+        event_bus=event_bus,
+        object_store=object_store,
+    )
+
     app = create_app()
     app.dependency_overrides[get_domain_config] = lambda: domain_config
     app.dependency_overrides[get_event_bus] = lambda: event_bus
@@ -284,9 +299,9 @@ def _build_harness(
     app.dependency_overrides[get_graph_repository] = lambda: graph_repository
     app.dependency_overrides[get_graph_service] = lambda: graph_service
     app.dependency_overrides[get_vector_store] = lambda: vector_store
-    app.dependency_overrides[get_vectorstore_service] = (
-        lambda: graph_service  # noqa: E731 - placeholder; not used by KB router
-    )
+    app.dependency_overrides[get_vectorstore_service] = lambda: vector_service
+    app.dependency_overrides[get_vector_service] = lambda: vector_service
+    app.dependency_overrides[get_workflow_tracker] = lambda: workflow_tracker
     app.dependency_overrides[get_ingestion_service] = lambda: ingestion_service
 
     if with_records and raw_record_store is not None and records_service is not None:
@@ -303,6 +318,7 @@ def _build_harness(
             graph_repository=graph_repository,
             graph_service=graph_service,
             vector_store=vector_store,
+            workflow_tracker=workflow_tracker,
             ingestion_service=ingestion_service,
             document_chunker=document_chunker,
             document_extractor=document_extractor,

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from api._kb_busy import KbBusyError, WorkflowBusyTracker, ensure_kb_idle
 from api._kb_projection import (
     document_status_for_knowledge_base,
     project_knowledge_base,
@@ -19,6 +22,9 @@ from api.dependencies import (
     get_ingestion_service,
     get_knowledge_base_repository,
     get_object_store,
+    get_raw_record_store,
+    get_vector_service,
+    get_workflow_tracker,
 )
 from api.middleware.rbac import require_role
 from config.schema import DomainConfig, ValidationConfig
@@ -27,10 +33,12 @@ from events.types import KnowledgeBaseCreatedEvent, KnowledgeBaseDeletedEvent
 from graph.protocols import GraphServiceProtocol
 from ingestion.protocols import IngestionServiceProtocol
 from ingestion.service_models import DocumentReceipt, DocumentSubmission
+from records.adapters.protocols import RawRecordStore
 from shared.types import KnowledgeBase
 from shared.utils import generate_id, utc_now
 from shared.validation import sanitize_filename, validate_content_type
 from storage.protocols import ObjectStore
+from vectorstore.protocols import VectorServiceProtocol
 
 __all__ = [
     "CreateKbRequest",
@@ -160,32 +168,87 @@ async def read_knowledge_base(
 
 @router.delete(
     "/{knowledge_base_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_role("admin"))],
 )
 async def delete_knowledge_base(
     knowledge_base_id: str,
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
     graph_service: GraphServiceProtocol = Depends(get_graph_service),
+    vector_service: VectorServiceProtocol = Depends(get_vector_service),
+    raw_record_store: RawRecordStore = Depends(get_raw_record_store),
     object_store: ObjectStore = Depends(get_object_store),
+    workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
     event_bus: EventBus = Depends(get_event_bus),
-) -> None:
-    """Delete a knowledge base, its stored artifacts, and publish an event."""
+) -> Response:
+    """Cascade-delete a KB across graph, vector, raw_records, object store, and metadata."""
     if repository.get(knowledge_base_id) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Knowledge base '{knowledge_base_id}' not found.",
         )
 
+    try:
+        ensure_kb_idle(knowledge_base_id, tracker=workflow_tracker)
+    except KbBusyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    steps: list[dict[str, object]] = []
+    pending_cleanup = False
+
+    def _run(step_name: str, fn: Callable[[], object]) -> None:
+        nonlocal pending_cleanup
+        try:
+            fn()
+            steps.append({"step": step_name, "status": "succeeded"})
+        except Exception as exc:  # noqa: BLE001 — surface every failure in the 207 body
+            pending_cleanup = True
+            steps.append({"step": step_name, "status": "failed", "error": str(exc)})
+
+    _run("graph", lambda: graph_service.delete_knowledge_base(knowledge_base_id))
+    _run("vector", lambda: vector_service.delete_knowledge_base(knowledge_base_id))
+    _run("raw_records", lambda: raw_record_store.delete_by_kb(knowledge_base_id))
+    _run(
+        "object_store",
+        lambda: _delete_object_store_prefix(object_store, knowledge_base_id),
+    )
+
+    if pending_cleanup:
+        repository.mark_pending_cleanup(knowledge_base_id)
+        event_bus.publish(
+            KnowledgeBaseDeletedEvent(
+                knowledge_base_id=knowledge_base_id,
+                cleanup_pending=True,
+            )
+        )
+        return JSONResponse(
+            status_code=status.HTTP_207_MULTI_STATUS,
+            content={
+                "knowledge_base_id": knowledge_base_id,
+                "pending_cleanup": True,
+                "steps": steps,
+            },
+        )
+
+    repository.delete(knowledge_base_id)
+    event_bus.publish(
+        KnowledgeBaseDeletedEvent(
+            knowledge_base_id=knowledge_base_id,
+            cleanup_pending=False,
+        )
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _delete_object_store_prefix(
+    object_store: ObjectStore, knowledge_base_id: str
+) -> None:
+    """Remove all object-store keys under the KB prefix."""
     prefix = f"knowledgebases/{knowledge_base_id}/"
     for key in object_store.list_keys(prefix):
         object_store.delete(key)
-
-    graph_service.delete_knowledge_base(knowledge_base_id)
-    repository.delete(knowledge_base_id)
-    event_bus.publish(
-        KnowledgeBaseDeletedEvent(knowledge_base_id=knowledge_base_id)
-    )
 
 
 @router.get(

@@ -127,9 +127,11 @@ __all__ = [
     "get_risk_score_payload",
     "get_timeseries_payload",
     "get_session_store",
+    "get_vector_service",
     "get_vector_store",
     "get_vectorstore_service",
     "get_workflow_run_store",
+    "get_workflow_tracker",
 ]
 
 
@@ -508,6 +510,11 @@ def get_vectorstore_service() -> VectorServiceProtocol:
     )
 
 
+def get_vector_service() -> VectorServiceProtocol:
+    """Alias for ``get_vectorstore_service`` used by the KB delete cascade."""
+    return get_vectorstore_service()
+
+
 @lru_cache(maxsize=1)
 def get_embedder() -> EmbedderProtocol:
     """Return the embeddings adapter implementation selected by config."""
@@ -660,6 +667,7 @@ from agent.adapters.protocols import (  # noqa: E402  (intentional bottom-of-fil
 from agent.adapters.runtime import create_workflow_run_store_from_env  # noqa: E402
 from agent.protocols import AgentServiceProtocol  # noqa: E402
 from agent.service import create_agent_service  # noqa: E402
+from agent.workflow_tracking import WorkflowEventTracker  # noqa: E402
 from api._kb_store import (  # noqa: E402  (intentional bottom-of-file import)
     InMemoryKnowledgeBaseRepository,
     KnowledgeBaseRepository,
@@ -734,3 +742,10 @@ def get_agent_service(
 ) -> AgentServiceProtocol:
     """Return the agent workflow service assembled from configured dependencies."""
     return create_agent_service(run_store, event_bus=event_bus)
+
+
+def get_workflow_tracker(
+    run_store: WorkflowRunStoreProtocol = Depends(get_workflow_run_store),
+) -> WorkflowEventTracker:
+    """Return a WorkflowEventTracker that satisfies the WorkflowBusyTracker protocol."""
+    return WorkflowEventTracker(run_store)

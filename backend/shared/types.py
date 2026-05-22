@@ -159,6 +159,7 @@ class KnowledgeBase(BaseModel):
     status: Literal["active", "building", "ready", "error", "archived"] = "active"
     created_at: datetime
     updated_at: datetime | None = None
+    pending_cleanup: bool = False
     # TODO(production): Add domain_config_version: str | None to pin which config version was active.
     # Add owner: str | None and tags: dict[str, str] for organization.
 

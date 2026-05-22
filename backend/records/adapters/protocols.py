@@ -21,6 +21,10 @@ class RawRecordStore(Protocol):
         """Return all records landed under one ingest run, ordered deterministically."""
         ...
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Delete all records for a knowledge base; return the count removed."""
+        ...
+
 
 @runtime_checkable
 class RecordSourceProtocol(Protocol):
