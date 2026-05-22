@@ -42,3 +42,13 @@ prod: ## Start production stack
 
 prod-down: ## Stop production stack
 	$(COMPOSE_PROD) down
+
+# ---------- Demo ----------
+
+.PHONY: demo-tn-subset
+demo-tn-subset: ## Build TN subset and upload to the running API
+	python3 -m tools.sample_data.build_tennessee_subset \
+		--nppes-root sample_data \
+		--desynpuf-root sample_data/CMS \
+		--output-root sample_data/CMS/tn_subset
+	scripts/demo_ingest_tn_subset.sh
