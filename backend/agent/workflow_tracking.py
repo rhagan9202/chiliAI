@@ -164,6 +164,22 @@ class WorkflowEventTracker:
             ),
         )
 
+    def is_busy(self, knowledge_base_id: str) -> bool:
+        """Return True when the KB has at least one non-terminal workflow run.
+
+        Satisfies the ``WorkflowBusyTracker`` protocol in ``api._kb_busy`` so
+        this tracker can be passed directly to ``ensure_kb_idle``.
+        """
+        for status in (WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING):
+            runs = self._run_store.list_runs(
+                knowledge_base_id=knowledge_base_id,
+                status=status,
+                limit=1,
+            )
+            if runs:
+                return True
+        return False
+
     def _resolve_tracked_event(self, event: AnyEvent) -> _TrackedEvent | None:
         step_name = _STEP_BY_EVENT_TYPE.get(event.event_type)
         if step_name is None:
