@@ -237,7 +237,8 @@ records:
     # Inpatient Claims — multiple segment rows per claim (CLM_ID not unique).
     # Composite record id: "{CLM_ID}:{SEGMENT}" ensures uniqueness in store.
     # Entity id: CLM_ID (segments of the same claim merge into one node).
-    # Links: beneficiary via DESYNPUF_ID, facility via PRVDR_NUM.
+    # Links: beneficiary via DESYNPUF_ID, provider via AT_PHYSN_NPI,
+    #        facility via PRVDR_NUM.
     # ------------------------------------------------------------------
     - name: inpatient_claims
       record_type: inpatient_claim_record
@@ -252,8 +253,8 @@ records:
         CLM_FROM_DT: { type: date, display: "Claim From Date" }
         CLM_THRU_DT: { type: date, display: "Claim Through Date" }
         PRVDR_NUM: { type: string, display: "Provider Number" }
-        CLM_PMT_AMT: { type: decimal, display: "Claim Payment Amount", min_value: 0 }
         AT_PHYSN_NPI: { type: string, display: "Attending Physician NPI" }
+        CLM_PMT_AMT: { type: decimal, display: "Claim Payment Amount", min_value: 0 }
       entities:
         - entity_type: claim
           id_field: CLM_ID
@@ -266,6 +267,10 @@ records:
           id_field: DESYNPUF_ID
           property_fields:
             hic_number: DESYNPUF_ID
+        - entity_type: provider
+          id_field: AT_PHYSN_NPI
+          property_fields:
+            npi: AT_PHYSN_NPI
         - entity_type: facility
           id_field: PRVDR_NUM
           property_fields:
@@ -274,12 +279,17 @@ records:
         - relationship_type: billed_for
           source_entity_type: claim
           target_entity_type: beneficiary
+        - relationship_type: submitted_by
+          source_entity_type: claim
+          target_entity_type: provider
         - relationship_type: performed_at
           source_entity_type: claim
           target_entity_type: facility
 
     # ------------------------------------------------------------------
     # Outpatient Claims — same segment pattern as inpatient.
+    # Links: beneficiary via DESYNPUF_ID, provider via AT_PHYSN_NPI,
+    #        facility via PRVDR_NUM.
     # ------------------------------------------------------------------
     - name: outpatient_claims
       record_type: outpatient_claim_record
@@ -294,8 +304,8 @@ records:
         CLM_FROM_DT: { type: date, display: "Claim From Date" }
         CLM_THRU_DT: { type: date, display: "Claim Through Date" }
         PRVDR_NUM: { type: string, display: "Provider Number" }
-        CLM_PMT_AMT: { type: decimal, display: "Claim Payment Amount", min_value: 0 }
         AT_PHYSN_NPI: { type: string, display: "Attending Physician NPI" }
+        CLM_PMT_AMT: { type: decimal, display: "Claim Payment Amount", min_value: 0 }
       entities:
         - entity_type: claim
           id_field: CLM_ID
@@ -308,6 +318,10 @@ records:
           id_field: DESYNPUF_ID
           property_fields:
             hic_number: DESYNPUF_ID
+        - entity_type: provider
+          id_field: AT_PHYSN_NPI
+          property_fields:
+            npi: AT_PHYSN_NPI
         - entity_type: facility
           id_field: PRVDR_NUM
           property_fields:
@@ -316,6 +330,9 @@ records:
         - relationship_type: billed_for
           source_entity_type: claim
           target_entity_type: beneficiary
+        - relationship_type: submitted_by
+          source_entity_type: claim
+          target_entity_type: provider
         - relationship_type: performed_at
           source_entity_type: claim
           target_entity_type: facility
