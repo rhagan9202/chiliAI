@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from config.schema import RecordFeedConfig
-from monitoring.models import MonitoringObservation
+from shared.types import MonitoringObservation
 from records.exceptions import RecordMappingError
 from records.models import RawRecord
 from shared.provenance import (

@@ -353,12 +353,30 @@ def _matches_property_type(value: Any, definition: PropertyDefinition) -> bool:
     return False
 
 
+class MonitoringObservation(BaseModel):
+    """A scored observation produced by upstream monitoring inputs.
+
+    Lives in shared/ because both monitoring/ (consumer) and records/
+    (producer) need it, and the model has no business logic — just a
+    scored-observation envelope.
+    """
+
+    entity_id: str
+    entity_type: str
+    metric_name: str
+    score: float = Field(ge=0.0, le=1.0)
+    observed_at: datetime = Field(default_factory=utc_now)
+    rationale: str
+    evidence_pack_id: str | None = None
+
+
 __all__ = [
     "Alert",
     "Entity",
     "EntityDefinition",
     "EvidencePack",
     "KnowledgeBase",
+    "MonitoringObservation",
     "PropertyDefinition",
     "PropertyType",
     "Relationship",
