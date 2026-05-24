@@ -167,13 +167,23 @@ class DatabaseConfig(BaseModel):
 
 
 class MonitoringConfig(BaseModel):
-    """Configuration for alert deduplication and evaluation cadence."""
+    """Configuration for alert deduplication, evaluation cadence, and severity tiers."""
 
     evaluation_interval_seconds: int = Field(default=300, gt=0)
     dedup_window_seconds: int = Field(default=3600, gt=0)
     max_alerts_per_entity: int = Field(default=10, gt=0)
     max_alerts_per_evaluation: int = Field(default=100, gt=0)
     grouping_window_seconds: int = Field(default=300, gt=0)
+    medium_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
+    high_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _validate_thresholds(self) -> MonitoringConfig:
+        if self.high_threshold <= self.medium_threshold:
+            raise ValueError(
+                "MonitoringConfig high_threshold must exceed medium_threshold."
+            )
+        return self
 
 
 class AnalyticsConfig(BaseModel):
