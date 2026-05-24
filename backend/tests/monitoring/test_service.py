@@ -550,3 +550,27 @@ def test_evaluate_publishes_enriched_alert_references() -> None:
     assert ref.reasoning != ""
     assert ref.entity_type != ""
     assert ref.status == response.alerts[0].status
+
+
+def test_create_monitoring_service_stores_default_thresholds() -> None:
+    """Service factories must accept DomainConfig-derived thresholds so the
+    router does not have to pass them on every request."""
+    event_bus = InMemoryEventBus()
+    source = InMemoryObservationSource(batches=[])
+    service = create_monitoring_service(
+        source,
+        event_bus=event_bus,
+        default_medium_threshold=0.55,
+        default_high_threshold=0.9,
+    )
+    assert service.default_medium_threshold == 0.55
+    assert service.default_high_threshold == 0.9
+
+
+def test_create_monitoring_service_default_thresholds_fall_back_to_pydantic_defaults() -> None:
+    """Omitting the new params keeps the pre-config behavior."""
+    event_bus = InMemoryEventBus()
+    source = InMemoryObservationSource(batches=[])
+    service = create_monitoring_service(source, event_bus=event_bus)
+    assert service.default_medium_threshold == 0.6
+    assert service.default_high_threshold == 0.85

@@ -67,6 +67,8 @@ class MonitoringService:
         max_alerts_per_evaluation: int = 100,
         suppression_rules: list[SuppressionRule] | None = None,
         grouping_window_seconds: int = 300,
+        default_medium_threshold: float = 0.6,
+        default_high_threshold: float = 0.85,
     ) -> None:
         self._observation_source = observation_source
         self._event_bus = event_bus
@@ -75,6 +77,8 @@ class MonitoringService:
         self._suppression_rules: list[SuppressionRule] = list(suppression_rules or [])
         self._grouping_window_seconds = grouping_window_seconds
         self._dedup_index: dict[tuple[str, str], datetime] = {}
+        self.default_medium_threshold = default_medium_threshold
+        self.default_high_threshold = default_high_threshold
 
     @property
     def suppression_rules(self) -> list[SuppressionRule]:
@@ -228,6 +232,8 @@ def create_monitoring_service(
     max_alerts_per_evaluation: int = 100,
     suppression_rules: list[SuppressionRule] | None = None,
     grouping_window_seconds: int = 300,
+    default_medium_threshold: float = 0.6,
+    default_high_threshold: float = 0.85,
 ) -> MonitoringService:
     """Create the default monitoring service."""
 
@@ -238,6 +244,8 @@ def create_monitoring_service(
         max_alerts_per_evaluation=max_alerts_per_evaluation,
         suppression_rules=suppression_rules,
         grouping_window_seconds=grouping_window_seconds,
+        default_medium_threshold=default_medium_threshold,
+        default_high_threshold=default_high_threshold,
     )
 
 
