@@ -15,7 +15,7 @@ from api._kb_projection import (
     document_status_for_knowledge_base,
     project_knowledge_base,
 )
-from api._kb_store import DocumentRecord, KnowledgeBaseRepository
+from knowledgebases import DocumentRecord, KnowledgeBaseRepository
 from api.dependencies import (
     get_event_bus,
     get_domain_config,

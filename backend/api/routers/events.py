@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from agent.protocols import AgentServiceProtocol
 from agent.service_models import WorkflowRunStatus
 from api._alert_store import AlertProjectionRepository, count_active_alerts
-from api._kb_store import KnowledgeBaseRepository
+from knowledgebases import KnowledgeBaseRepository
 from api._workflow_projection import count_running_workflows
 from api.contracts import RealtimeSnapshotResponse
 from api.dependencies import (

@@ -904,7 +904,7 @@ def test_get_knowledge_base_repository_returns_object_store_repo(
     monkeypatch: pytest.MonkeyPatch,
     base_config: DomainConfig,
 ) -> None:
-    from api._kb_store import ObjectStoreKnowledgeBaseRepository
+    from knowledgebases import ObjectStoreKnowledgeBaseRepository
 
     monkeypatch.setenv("CHILI_KB_REPOSITORY_BACKEND", "object_store")
     _install_config(monkeypatch, base_config)
@@ -920,7 +920,7 @@ def test_get_knowledge_base_repository_accepts_all_object_store_aliases(
     base_config: DomainConfig,
     alias: str,
 ) -> None:
-    from api._kb_store import ObjectStoreKnowledgeBaseRepository
+    from knowledgebases import ObjectStoreKnowledgeBaseRepository
 
     monkeypatch.setenv("CHILI_KB_REPOSITORY_BACKEND", alias)
     _install_config(monkeypatch, base_config)

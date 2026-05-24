@@ -650,7 +650,7 @@ from agent.adapters.runtime import create_workflow_run_store_from_env  # noqa: E
 from agent.protocols import AgentServiceProtocol  # noqa: E402
 from agent.service import create_agent_service  # noqa: E402
 from agent.workflow_tracking import WorkflowEventTracker  # noqa: E402
-from api._kb_store import (  # noqa: E402  (intentional bottom-of-file import)
+from knowledgebases import (  # noqa: E402  (intentional bottom-of-file import)
     InMemoryKnowledgeBaseRepository,
     KnowledgeBaseRepository,
     ObjectStoreKnowledgeBaseRepository,
