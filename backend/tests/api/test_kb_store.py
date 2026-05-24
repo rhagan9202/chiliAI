@@ -1,4 +1,4 @@
-"""Tests for coverage gaps in api/_kb_store.py.
+"""Tests for coverage gaps in the knowledgebases adapters.
 
 Covers uncovered branches in both InMemoryKnowledgeBaseRepository and
 ObjectStoreKnowledgeBaseRepository that were missed in the inaugural pass.
@@ -10,12 +10,12 @@ from datetime import datetime, timezone
 
 import pytest
 
-import api._kb_store as _kb_store_module
-from api._kb_store import (
+from knowledgebases import (
     DocumentRecord,
     InMemoryKnowledgeBaseRepository,
     ObjectStoreKnowledgeBaseRepository,
 )
+from knowledgebases.snapshots import KnowledgeBaseStoreSnapshot
 from shared.types import KnowledgeBase
 from storage.adapters.in_memory import InMemoryObjectStore
 
@@ -392,9 +392,7 @@ def test_object_store_sync_document_count_is_noop_when_kb_missing() -> None:
     """ObjectStoreKnowledgeBaseRepository._sync_document_count is a no-op when
     the KB is not in the snapshot (line 429 defensive guard).
     """
-    # Access private class via the module reference to avoid reportPrivateUsage.
-    snapshot_cls = getattr(_kb_store_module, "_KnowledgeBaseStoreSnapshot")
-    snapshot = snapshot_cls()
+    snapshot = KnowledgeBaseStoreSnapshot()
     # Call the static method with an ID that has no matching KB entry.
     sync_fn = getattr(ObjectStoreKnowledgeBaseRepository, "_sync_document_count")
     sync_fn(snapshot, "phantom-kb")

@@ -8,7 +8,7 @@ from api._kb_projection import (
     document_status_for_knowledge_base,
     project_knowledge_base,
 )
-from api._kb_store import DocumentRecord, InMemoryKnowledgeBaseRepository
+from knowledgebases import DocumentRecord, InMemoryKnowledgeBaseRepository
 from graph.models import GraphMetrics
 from storage.adapters.in_memory import InMemoryObjectStore
 from shared.types import KnowledgeBase
