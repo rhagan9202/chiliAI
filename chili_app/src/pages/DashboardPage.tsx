@@ -10,7 +10,6 @@ import { Chip } from '../components/ui/Chip'
 import { ConfidenceBar } from '../components/ui/ConfidenceBar'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
-import { FilterBar } from '../components/ui/FilterBar'
 import { Card } from '../components/ui/Card'
 import { KpiCard } from '../components/ui/KpiCard'
 import { LoadingState } from '../components/ui/LoadingState'
@@ -25,15 +24,8 @@ const dashboardTabs = [
   { id: 'policy', label: 'Policy Signals' },
 ]
 
-const dashboardFilters = [
-  { id: 'all', label: 'All Programs' },
-  { id: 'medicare', label: 'Medicare FFS' },
-  { id: 'medicaid', label: 'Medicaid' },
-]
-
 export function DashboardPage() {
   const [activeTabId, setActiveTabId] = useState('overview')
-  const [activeFilterId, setActiveFilterId] = useState('all')
   const overviewQuery = useAnalyticsOverview()
   const alertsQuery = useAlerts()
   const workflowsQuery = useWorkflows()
@@ -70,7 +62,6 @@ export function DashboardPage() {
 
       <div className="page-toolbar">
         <Tabs activeTabId={activeTabId} onChange={setActiveTabId} tabs={dashboardTabs} />
-        <FilterBar activeFilterId={activeFilterId} filters={dashboardFilters} onChange={setActiveFilterId} />
       </div>
 
       <div className="dashboard-kpis">
