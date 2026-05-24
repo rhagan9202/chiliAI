@@ -99,6 +99,18 @@ class MonitoringService:
         observations = list(batch.observations)
         processed_count = len(observations)
 
+        # Evict dedup entries older than the dedup window. Without this,
+        # the dict grows unbounded in a long-running worker (one entry per
+        # unique (entity_id, metric_name) pair ever seen). Eviction runs
+        # at the start of each evaluate(), bounding the index by the
+        # number of in-window deduped alerts.
+        eviction_cutoff = now - timedelta(seconds=self._dedup_window_seconds)
+        self._dedup_index = {
+            key: timestamp
+            for key, timestamp in self._dedup_index.items()
+            if timestamp >= eviction_cutoff
+        }
+
         # Resolve per-request thresholds against the service-level defaults
         # (sourced from DomainConfig.monitoring by the router/DI helper).
         effective_medium = (

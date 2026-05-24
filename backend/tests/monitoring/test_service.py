@@ -609,3 +609,48 @@ def test_evaluate_resolves_thresholds_from_service_defaults_when_request_omits_t
         )
     )
     assert response.alert_count == 1
+
+
+def test_evaluate_evicts_dedup_entries_older_than_window() -> None:
+    """Regression guard: long-running workers must not accumulate dedup
+    entries beyond the dedup window. Without eviction, the index grows
+    unbounded — one entry per unique (entity_id, metric_name) ever seen.
+
+    Setup: pre-populate the index with 500 stale entries (timestamps
+    `dedup_window + buffer` in the past). Run evaluate() with an empty
+    batch. After: stale entries are evicted and the index is empty.
+    """
+    from datetime import timedelta
+
+    event_bus = InMemoryEventBus()
+    source = InMemoryObservationSource(
+        batches=[
+            MonitoringBatch(
+                knowledge_base_id="kb-1",
+                batch_id="batch-1",
+                observations=[_observation(score=0.0)],
+            )
+        ]
+    )
+    service = create_monitoring_service(
+        source,
+        event_bus=event_bus,
+        dedup_window_seconds=60,
+    )
+
+    stale_timestamp = utc_now() - timedelta(seconds=120)
+    for index in range(500):
+        service._dedup_index[(f"entity-{index}", "claim_volume")] = stale_timestamp
+    assert len(service._dedup_index) == 500
+
+    service.evaluate(
+        MonitoringEvaluationRequest(
+            knowledge_base_id="kb-1",
+            batch_id="batch-1",
+        )
+    )
+
+    assert len(service._dedup_index) == 0, (
+        "stale entries older than dedup_window_seconds must be evicted "
+        f"at the start of evaluate(); found {len(service._dedup_index)} remaining"
+    )
