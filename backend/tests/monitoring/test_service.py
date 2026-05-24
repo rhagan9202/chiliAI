@@ -574,3 +574,38 @@ def test_create_monitoring_service_default_thresholds_fall_back_to_pydantic_defa
     service = create_monitoring_service(source, event_bus=event_bus)
     assert service.default_medium_threshold == 0.6
     assert service.default_high_threshold == 0.85
+
+
+def test_evaluate_resolves_thresholds_from_service_defaults_when_request_omits_them() -> None:
+    """When the caller omits medium_threshold/high_threshold on the request,
+    the service falls back to its constructor-provided defaults (which the
+    router populates from DomainConfig).
+
+    Setup: service.default_medium_threshold=0.4 and one observation with
+    score=0.5. The Pydantic request default would be 0.6 (no alert). The
+    service default of 0.4 means the observation crosses the threshold
+    (one alert).
+    """
+    event_bus = InMemoryEventBus()
+    source = InMemoryObservationSource(
+        batches=[
+            MonitoringBatch(
+                knowledge_base_id="kb-1",
+                batch_id="batch-1",
+                observations=[_observation(score=0.5)],
+            )
+        ]
+    )
+    service = create_monitoring_service(
+        source,
+        event_bus=event_bus,
+        default_medium_threshold=0.4,
+        default_high_threshold=0.9,
+    )
+    response = service.evaluate(
+        MonitoringEvaluationRequest(
+            knowledge_base_id="kb-1",
+            batch_id="batch-1",
+        )
+    )
+    assert response.alert_count == 1

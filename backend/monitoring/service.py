@@ -99,6 +99,23 @@ class MonitoringService:
         observations = list(batch.observations)
         processed_count = len(observations)
 
+        # Resolve per-request thresholds against the service-level defaults
+        # (sourced from DomainConfig.monitoring by the router/DI helper).
+        effective_medium = (
+            request.medium_threshold
+            if request.medium_threshold is not None
+            else self.default_medium_threshold
+        )
+        effective_high = (
+            request.high_threshold
+            if request.high_threshold is not None
+            else self.default_high_threshold
+        )
+        if effective_high <= effective_medium:
+            raise MonitoringConfigurationError(
+                "Resolved thresholds invalid: high_threshold must exceed medium_threshold."
+            )
+
         # E8-S03: filter out observations matched by suppression rules.
         suppressed_by_rule_count = 0
         post_rule_observations: list[MonitoringObservation] = []
@@ -129,7 +146,7 @@ class MonitoringService:
             exceeders = [
                 observation
                 for observation in bucket
-                if observation.score >= request.medium_threshold
+                if observation.score >= effective_medium
             ]
             if len(exceeders) < request.min_observations_in_window:
                 continue
@@ -138,8 +155,8 @@ class MonitoringService:
             candidates.append(
                 _to_alert_candidate(
                     top,
-                    medium_threshold=request.medium_threshold,
-                    high_threshold=request.high_threshold,
+                    medium_threshold=effective_medium,
+                    high_threshold=effective_high,
                 )
             )
 

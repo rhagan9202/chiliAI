@@ -11,16 +11,24 @@ RiskTrend = Literal["increasing", "stable", "decreasing"]
 
 
 class RiskAssessmentRequest(BaseModel):
-    """A caller-supplied risk assessment request."""
+    """A caller-supplied risk assessment request.
+
+    Thresholds are optional. When omitted, the service falls back to its
+    constructor-provided defaults (sourced from DomainConfig.analytics).
+    """
 
     knowledge_base_id: str
     entity_id: str
-    medium_risk_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
-    high_risk_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
+    medium_risk_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    high_risk_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def _validate_thresholds(self) -> RiskAssessmentRequest:
-        if self.high_risk_threshold <= self.medium_risk_threshold:
+        if (
+            self.medium_risk_threshold is not None
+            and self.high_risk_threshold is not None
+            and self.high_risk_threshold <= self.medium_risk_threshold
+        ):
             raise ValueError("RiskAssessmentRequest high_risk_threshold must exceed medium_risk_threshold.")
         return self
 

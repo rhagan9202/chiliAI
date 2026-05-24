@@ -65,12 +65,29 @@ class RiskService:
                 "Risk profile requires at least two signals for assessment."
             )
 
+        # Resolve per-request thresholds against the service-level defaults
+        # (sourced from DomainConfig.analytics by the router/DI helper).
+        effective_medium = (
+            request.medium_risk_threshold
+            if request.medium_risk_threshold is not None
+            else self.default_medium_risk_threshold
+        )
+        effective_high = (
+            request.high_risk_threshold
+            if request.high_risk_threshold is not None
+            else self.default_high_risk_threshold
+        )
+        if effective_high <= effective_medium:
+            raise RiskConfigurationError(
+                "Resolved risk thresholds invalid: high_risk_threshold must exceed medium_risk_threshold."
+            )
+
         factors = self._scoring_strategy.score(profile.signals)
         overall_score = min(1.0, sum(factor.contribution for factor in factors))
         risk_level = _risk_level(
             overall_score,
-            medium_risk_threshold=request.medium_risk_threshold,
-            high_risk_threshold=request.high_risk_threshold,
+            medium_risk_threshold=effective_medium,
+            high_risk_threshold=effective_high,
         )
 
         previous_score = self._load_previous_score(

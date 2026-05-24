@@ -9,18 +9,26 @@ from shared.types import Alert
 
 
 class MonitoringEvaluationRequest(BaseModel):
-    """A caller-supplied monitoring evaluation request."""
+    """A caller-supplied monitoring evaluation request.
+
+    Thresholds are optional. When omitted, the service falls back to its
+    constructor-provided defaults (sourced from DomainConfig.monitoring).
+    """
 
     knowledge_base_id: str
     batch_id: str
-    medium_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
-    high_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
+    medium_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    high_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     window_minutes: int = Field(default=60, gt=0)
     min_observations_in_window: int = Field(default=1, gt=0)
 
     @model_validator(mode="after")
     def _validate_thresholds(self) -> MonitoringEvaluationRequest:
-        if self.high_threshold <= self.medium_threshold:
+        if (
+            self.medium_threshold is not None
+            and self.high_threshold is not None
+            and self.high_threshold <= self.medium_threshold
+        ):
             raise ValueError("MonitoringEvaluationRequest high_threshold must exceed medium_threshold.")
         return self
 
