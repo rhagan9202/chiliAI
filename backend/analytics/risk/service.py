@@ -37,6 +37,8 @@ class RiskService:
         event_bus: EventBus,
         scoring_strategy: RiskScoringStrategyProtocol | None = None,
         delta_threshold: float = DEFAULT_TREND_DELTA_THRESHOLD,
+        default_medium_risk_threshold: float = 0.5,
+        default_high_risk_threshold: float = 0.8,
     ) -> None:
         self._signal_source = signal_source
         self._event_bus = event_bus
@@ -44,6 +46,8 @@ class RiskService:
             scoring_strategy if scoring_strategy is not None else LinearScoringStrategy()
         )
         self._delta_threshold = delta_threshold
+        self.default_medium_risk_threshold = default_medium_risk_threshold
+        self.default_high_risk_threshold = default_high_risk_threshold
 
     def assess(self, request: RiskAssessmentRequest) -> RiskAssessmentResponse:
         try:
@@ -179,6 +183,8 @@ def create_risk_service(
     event_bus: EventBus,
     scoring_strategy: RiskScoringStrategyProtocol | None = None,
     delta_threshold: float = DEFAULT_TREND_DELTA_THRESHOLD,
+    default_medium_risk_threshold: float = 0.5,
+    default_high_risk_threshold: float = 0.8,
 ) -> RiskService:
     """Create the default risk service."""
 
@@ -187,6 +193,8 @@ def create_risk_service(
         event_bus=event_bus,
         scoring_strategy=scoring_strategy,
         delta_threshold=delta_threshold,
+        default_medium_risk_threshold=default_medium_risk_threshold,
+        default_high_risk_threshold=default_high_risk_threshold,
     )
 
 
