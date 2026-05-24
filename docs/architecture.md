@@ -339,6 +339,15 @@ backend/
 │       ├── in_memory.py
 │       ├── redis_store.py
 │       └── runtime.py          # create_workflow_run_store_from_env
+├── knowledgebases/             # KB and document metadata persistence
+│   ├── __init__.py             # Re-exports the public surface
+│   ├── protocols.py            # KnowledgeBaseRepository Protocol
+│   ├── models.py               # DocumentRecord
+│   ├── snapshots.py            # KnowledgeBaseStoreSnapshot (object-store serialization)
+│   ├── _helpers.py             # Shared internal helpers
+│   └── adapters/
+│       ├── in_memory.py        # InMemoryKnowledgeBaseRepository
+│       └── object_store.py     # ObjectStoreKnowledgeBaseRepository
 ├── monitoring/                 # Active monitoring service
 │   ├── __init__.py
 │   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
@@ -350,7 +359,8 @@ backend/
 ├── shared/                     # Lightweight shared contracts library
 │   ├── __init__.py
 │   ├── types.py                # Generic platform types: Entity (+ natural_key on EntityDefinition),
-│   │                           #   Relationship, Alert, EvidencePack, KnowledgeBase
+│   │                           #   Relationship, Alert, EvidencePack, KnowledgeBase,
+│   │                           #   MonitoringObservation (used by monitoring/ and records/)
 │   ├── protocols.py            # Cross-cutting protocol definitions
 │   ├── alerts.py               # Alert-domain helpers
 │   ├── exceptions.py           # Shared exception hierarchy
