@@ -189,13 +189,25 @@ def _score_nodes(nodes: list[GraphNodeSignal], edges: list[GraphEdgeSignal]) -> 
     for edge in edges:
         weights_by_node[edge.source_id] = weights_by_node.get(edge.source_id, 0.0) + edge.weight
         weights_by_node[edge.target_id] = weights_by_node.get(edge.target_id, 0.0) + edge.weight
+    raw_scores: list[tuple[GraphNodeSignal, float]] = [
+        (
+            node,
+            _feature_magnitude(node.feature_values) + weights_by_node.get(node.entity_id, 0.0),
+        )
+        for node in nodes
+    ]
+    # Normalize by max-divide so every node lands in [0.0, 1.0]. The
+    # transformation preserves relative ranking, which is what downstream
+    # consumers rely on.
+    max_raw = max((score for _, score in raw_scores), default=0.0)
+    divisor = max_raw if max_raw > 0.0 else 1.0
     return [
         ScoredNode(
             entity_id=node.entity_id,
-            score=_feature_magnitude(node.feature_values) + weights_by_node.get(node.entity_id, 0.0),
+            score=raw_score / divisor,
             cluster_id=_fallback_cluster_id(node),
         )
-        for node in nodes
+        for node, raw_score in raw_scores
     ]
 
 

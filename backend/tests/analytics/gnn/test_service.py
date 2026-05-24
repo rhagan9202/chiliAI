@@ -187,3 +187,46 @@ def test_gnn_service_list_clusters_translates_runtime_error() -> None:
 
     with pytest.raises(GnnSourceError, match="cluster summaries"):
         service.list_clusters(GnnClusterRequest(knowledge_base_id="kb-1"))
+
+
+def test_scored_nodes_are_clamped_to_unit_interval_for_dense_graphs() -> None:
+    """Regression guard: ScoredNode.score must be in [0.0, 1.0] regardless
+    of input feature magnitude or edge density.
+
+    Without normalization the raw score is `feature_magnitude + sum of
+    edge weights`, which grows unbounded. Downstream consumers that
+    treat the score as a probability (or compare it to anomaly_score
+    which IS in [0,1]) silently receive values >> 1.
+    """
+    nodes = [
+        GraphNodeSignal(
+            entity_id=f"entity-{i}",
+            feature_values=[1_000.0, 2_000.0, 3_000.0],
+        )
+        for i in range(10)
+    ]
+    edges = [
+        GraphEdgeSignal(source_id=f"entity-{i}", target_id=f"entity-{j}", weight=100.0)
+        for i in range(10)
+        for j in range(i + 1, 10)
+    ]
+    service = create_gnn_service(
+        InMemoryGraphSnapshotSource(
+            snapshots=[
+                GraphSnapshot(
+                    knowledge_base_id="kb-1",
+                    nodes=nodes,
+                    edges=edges,
+                )
+            ]
+        ),
+        event_bus=InMemoryEventBus(),
+    )
+
+    response = service.analyze(GnnAnalysisRequest(knowledge_base_id="kb-1"))
+
+    assert response.scored_nodes, "expected at least one scored node"
+    for scored in response.scored_nodes:
+        assert 0.0 <= scored.score <= 1.0, (
+            f"score {scored.score} for {scored.entity_id} is outside [0.0, 1.0]"
+        )
