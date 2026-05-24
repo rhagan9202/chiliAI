@@ -175,6 +175,7 @@ function matchesFullString(pattern: string, value: unknown): boolean {
 // Date formats accepted by the backend's `_coerce_value` in
 // `backend/records/validation.py`. Kept in lock-step here so a row that the UI
 // flags as invalid is the same row the API would reject.
+const ISO_YMD_RE = /^(\d{4})-(\d{2})-(\d{2})$/
 const YYYYMMDD_RE = /^(\d{4})(\d{2})(\d{2})$/
 const MM_DD_YYYY_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
 
@@ -188,18 +189,22 @@ function isValidCalendarDate(year: number, month: number, day: number): boolean 
   )
 }
 
-function isValidDateValue(value: unknown): boolean {
+export function isValidDateValue(value: unknown): boolean {
   if (value instanceof Date) {
     return !Number.isNaN(value.getTime())
   }
   if (typeof value !== 'string') {
-    return !Number.isNaN(Date.parse(String(value)))
+    return false
   }
   const text = value.trim()
   if (text.length === 0) {
     return false
   }
-  let match = YYYYMMDD_RE.exec(text)
+  let match = ISO_YMD_RE.exec(text)
+  if (match) {
+    return isValidCalendarDate(Number(match[1]), Number(match[2]), Number(match[3]))
+  }
+  match = YYYYMMDD_RE.exec(text)
   if (match) {
     return isValidCalendarDate(Number(match[1]), Number(match[2]), Number(match[3]))
   }
@@ -207,7 +212,7 @@ function isValidDateValue(value: unknown): boolean {
   if (match) {
     return isValidCalendarDate(Number(match[3]), Number(match[1]), Number(match[2]))
   }
-  return !Number.isNaN(Date.parse(text))
+  return false
 }
 
 function validatePrimitive(
