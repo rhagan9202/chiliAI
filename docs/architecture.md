@@ -1352,7 +1352,7 @@ Adapter selection is driven by environment configuration, not code changes.
 
 ### 14.3 Current state vs. target
 
-> **Last updated**: May 2026. For implementation status, verify the current code and tests first. Historical status reports and planning docs live under [`docs/archive/`](archive/); use [`todos_and_stubs_audit_2026-05-05.md`](todos_and_stubs_audit_2026-05-05.md) for the current TODO/stub inventory.
+> **Last updated**: May 2026. For implementation status, verify the current code and tests first. Historical status reports and planning docs live under [`docs/archive/`](archive/); see [`agent_backlog_05_17.md`](agent_backlog_05_17.md), [`graph_backlog_05_17.md`](graph_backlog_05_17.md), and [`ingestion_backlog_05_17.md`](ingestion_backlog_05_17.md) for module production-readiness gaps.
 
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
