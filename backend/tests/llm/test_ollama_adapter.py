@@ -70,3 +70,19 @@ def test_generate_raises_on_transport_error() -> None:
         client = OllamaLlmClient(base_url="http://localhost:11434")
         with pytest.raises(LlmProviderError):
             client.generate(_request())
+
+
+def test_generate_raises_on_non_json_body() -> None:
+    response = httpx.Response(status_code=200, text="<html>nginx 502</html>")
+    with patch.object(httpx.Client, "post", return_value=response):
+        client = OllamaLlmClient(base_url="http://localhost:11434")
+        with pytest.raises(LlmProviderError):
+            client.generate(_request())
+
+
+def test_generate_raises_on_partial_json_body() -> None:
+    response = httpx.Response(status_code=200, text='{"message": {"content": "hi"')
+    with patch.object(httpx.Client, "post", return_value=response):
+        client = OllamaLlmClient(base_url="http://localhost:11434")
+        with pytest.raises(LlmProviderError):
+            client.generate(_request())

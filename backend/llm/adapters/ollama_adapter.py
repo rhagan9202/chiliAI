@@ -51,7 +51,13 @@ class OllamaLlmClient:
                 f"Ollama rejected request ({response.status_code}): {response.text[:200]}"
             )
 
-        body = response.json()
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise LlmProviderError(
+                f"Ollama returned non-JSON body: {response.text[:200]}"
+            ) from exc
+
         completion = body.get("message", {}).get("content", "")
         if not completion.strip():
             raise LlmProviderError("Ollama returned an empty completion.")
