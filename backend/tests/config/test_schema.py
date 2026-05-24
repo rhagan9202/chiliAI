@@ -646,6 +646,24 @@ def test_analytics_config_rejects_non_positive_interval() -> None:
         AnalyticsConfig(metrics_recompute_min_interval_seconds=0)
 
 
+def test_analytics_config_risk_threshold_defaults() -> None:
+    config = AnalyticsConfig()
+    assert config.medium_risk_threshold == 0.5
+    assert config.high_risk_threshold == 0.8
+
+
+def test_analytics_config_high_risk_threshold_must_exceed_medium() -> None:
+    with pytest.raises(ValidationError):
+        AnalyticsConfig(medium_risk_threshold=0.7, high_risk_threshold=0.7)
+
+
+def test_analytics_config_risk_thresholds_must_be_in_unit_interval() -> None:
+    with pytest.raises(ValidationError):
+        AnalyticsConfig(medium_risk_threshold=-0.1, high_risk_threshold=0.5)
+    with pytest.raises(ValidationError):
+        AnalyticsConfig(medium_risk_threshold=0.5, high_risk_threshold=1.5)
+
+
 def test_domain_config_defaults_analytics_section() -> None:
     """A config that omits `analytics` gets the default AnalyticsConfig."""
     from pathlib import Path

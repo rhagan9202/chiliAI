@@ -187,9 +187,19 @@ class MonitoringConfig(BaseModel):
 
 
 class AnalyticsConfig(BaseModel):
-    """Configuration for analytics persistence and recompute behavior."""
+    """Configuration for analytics persistence, recompute behavior, and risk tiers."""
 
     metrics_recompute_min_interval_seconds: int = Field(default=300, gt=0)
+    medium_risk_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    high_risk_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _validate_risk_thresholds(self) -> AnalyticsConfig:
+        if self.high_risk_threshold <= self.medium_risk_threshold:
+            raise ValueError(
+                "AnalyticsConfig high_risk_threshold must exceed medium_risk_threshold."
+            )
+        return self
 
 
 class RagConfig(BaseModel):
