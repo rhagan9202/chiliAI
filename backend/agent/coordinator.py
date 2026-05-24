@@ -113,7 +113,7 @@ from events.types import (
     VectorsIndexedDocumentReference,
     VectorsIndexedEvent,
 )
-from api._kb_store import KnowledgeBaseRepository
+from knowledgebases import KnowledgeBaseRepository
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.adapters.protocols import GraphRepository
 from graph.auth import resolve_graph_auth
