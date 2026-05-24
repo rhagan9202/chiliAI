@@ -46,10 +46,11 @@ from embeddings.models import (
 )
 from embeddings.service import EmbeddingsService, create_embeddings_service
 from embeddings.service_models import EmbedRequest, EmbedResponse, EmbeddedItem
-from events.protocols import EventDelivery
+from events.protocols import DlqErrorInfo, EventDelivery
 from events.runtime import EventBusSettings
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import (
+    AnyEvent,
     ChunkedDocumentReference,
     DocumentsChunkedEvent,
     DocumentsParsedEvent,
@@ -1620,6 +1621,41 @@ def test_retry_policy_delay_for_attempt() -> None:
     assert policy.delay_for_attempt(1) == 1.0
     assert policy.delay_for_attempt(2) == 2.0
     assert policy.delay_for_attempt(3) == 4.0
+
+
+def test_run_handler_with_retry_propagates_dlq_publish_failure() -> None:
+    """ACK contract regression guard: when retries are exhausted AND
+    publish_to_dlq itself raises (e.g., Redis Streams unreachable), the
+    exception must propagate to the caller so the caller does NOT ACK
+    the delivery. The unconditional `ackable.append(delivery)` in
+    `drain_ingestion_events` is only reached when run_handler_with_retry
+    returns normally; this test pins the propagation behavior.
+    """
+
+    class _DlqFailingEventBus(InMemoryEventBus):
+        def publish_to_dlq(self, event: AnyEvent, error: DlqErrorInfo) -> None:  # type: ignore[override]
+            raise RuntimeError("simulated DLQ publish failure (Redis unreachable)")
+
+    event_bus = _DlqFailingEventBus()
+    handler = _FlakyHandler(fails=10)
+    event = KnowledgeBaseCreatedEvent(
+        correlation_id="corr-dlq-fails", knowledge_base_id="kb-1"
+    )
+
+    with pytest.raises(RuntimeError, match="DLQ publish failure"):
+        asyncio.run(
+            run_handler_with_retry(
+                handler,
+                event=event,
+                event_bus=event_bus,
+                retry_policy=RetryPolicy(max_retries=1, base_delay_seconds=0.0),
+                sleep=_instant_sleep,
+            )
+        )
+    # Handler ran twice (initial + 1 retry); after exhaustion the
+    # publish_to_dlq raised — and that exception escaped the function
+    # rather than being swallowed.
+    assert handler.calls == 2
 
 
 # ---------------------------------------------------------------------------
