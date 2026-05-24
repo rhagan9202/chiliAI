@@ -31,6 +31,7 @@ from api.contracts import (
 from api.state import ApiState, create_api_state
 from config.loader import load_config
 from config.schema import (
+    AnalyticsConfig,
     DatabaseConfig,
     DomainConfig,
     EmbeddingsConfig,
@@ -42,6 +43,18 @@ from config.schema import (
     RecordsConfig,
     VectorStoreConfig,
 )
+from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
+from analytics.gnn.adapters.protocols import GraphSnapshotSourceProtocol
+from analytics.gnn.protocols import GnnServiceProtocol
+from analytics.gnn.service import create_gnn_service
+from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
+from analytics.risk.adapters.protocols import RiskSignalSourceProtocol
+from analytics.risk.protocols import RiskServiceProtocol
+from analytics.risk.service import create_risk_service
+from analytics.timeseries.adapters.in_memory import InMemoryTimeSeriesHistorySource
+from analytics.timeseries.adapters.protocols import TimeSeriesHistorySourceProtocol
+from analytics.timeseries.protocols import TimeseriesServiceProtocol
+from analytics.timeseries.service import create_timeseries_service
 from embeddings.adapters.in_memory import InMemoryEmbedder
 from embeddings.adapters.protocols import EmbedderProtocol
 from embeddings.protocols import EmbeddingsServiceProtocol
@@ -596,6 +609,75 @@ def get_monitoring_service() -> MonitoringServiceProtocol:
         dedup_window_seconds=monitoring_config.dedup_window_seconds,
         max_alerts_per_evaluation=monitoring_config.max_alerts_per_evaluation,
         grouping_window_seconds=monitoring_config.grouping_window_seconds,
+        default_medium_threshold=monitoring_config.medium_threshold,
+        default_high_threshold=monitoring_config.high_threshold,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Analytics services (risk / timeseries / GNN).
+#
+# Built from DomainConfig like monitoring is. Sources are in-memory by
+# default and empty; persistence is layered on by the worker once
+# Postgres-backed risk/timeseries history exists.
+# ---------------------------------------------------------------------------
+
+
+@lru_cache(maxsize=1)
+def get_risk_signal_source() -> RiskSignalSourceProtocol:
+    """Return the risk signal source. In-memory by default."""
+    return InMemoryRiskSignalSource()
+
+
+@lru_cache(maxsize=1)
+def get_risk_service() -> RiskServiceProtocol:
+    """Return the risk service assembled from DomainConfig."""
+    analytics_config = get_domain_config().analytics or AnalyticsConfig()
+    return create_risk_service(
+        get_risk_signal_source(),
+        event_bus=get_event_bus(),
+        default_medium_risk_threshold=analytics_config.medium_risk_threshold,
+        default_high_risk_threshold=analytics_config.high_risk_threshold,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_timeseries_history_source() -> TimeSeriesHistorySourceProtocol:
+    """Return the timeseries history source. In-memory by default."""
+    return InMemoryTimeSeriesHistorySource()
+
+
+@lru_cache(maxsize=1)
+def get_timeseries_service() -> TimeseriesServiceProtocol:
+    """Return the timeseries service assembled from DomainConfig."""
+    return create_timeseries_service(
+        get_timeseries_history_source(),
+        event_bus=get_event_bus(),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_graph_snapshot_source() -> GraphSnapshotSourceProtocol:
+    """Return the GNN graph snapshot source. In-memory by default."""
+    return InMemoryGraphSnapshotSource()
+
+
+def _gnn_capability_enabled() -> bool:
+    """Read the GNN capability flag from the active DomainConfig."""
+    return bool(get_domain_config().capabilities.gnn)
+
+
+@lru_cache(maxsize=1)
+def get_gnn_service() -> GnnServiceProtocol:
+    """Return the GNN service assembled from DomainConfig.
+
+    Honors the gnn capability flag — when disabled in config, the service
+    returns empty results on every endpoint.
+    """
+    return create_gnn_service(
+        get_graph_snapshot_source(),
+        event_bus=get_event_bus(),
+        gnn_enabled=_gnn_capability_enabled,
     )
 
 
