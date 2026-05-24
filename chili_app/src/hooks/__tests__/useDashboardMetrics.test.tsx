@@ -45,7 +45,10 @@ function makeFetch(): typeof globalThis.fetch {
     }
     if (url.includes('/alerts')) {
       return new Response(
-        JSON.stringify({ items: [], total: 4 }),
+        JSON.stringify({
+          items: [],
+          page: { page: 1, page_size: 20, total_items: 4 },
+        }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }

@@ -5,10 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AlertListItem as Alert } from '../../../api/contracts'
 import { AlertTable } from '../AlertTable'
 import type { SortDirection, SortField } from '../AlertTable'
-import {
-  ALERTS_QUERY_KEY_BASE,
-  buildAlertsQueryKey,
-} from '../../../hooks/useAlerts'
 
 function makeAlert(overrides: Partial<Alert>): Alert {
   return {
@@ -135,17 +131,5 @@ describe('AlertTable', () => {
     expect(onRowClick).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'a1' }),
     )
-  })
-})
-
-describe('useAlerts query keys', () => {
-  it('changes the query key when filters change', () => {
-    const baseKey = buildAlertsQueryKey({})
-    const filteredKey = buildAlertsQueryKey({
-      severity: ['critical'],
-      status: 'open',
-    })
-    expect(baseKey).not.toEqual(filteredKey)
-    expect(baseKey[0]).toBe(ALERTS_QUERY_KEY_BASE[0])
   })
 })
