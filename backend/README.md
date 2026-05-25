@@ -8,6 +8,8 @@ Python 3.12 backend for the chiliAI platform — a domain-reconfigurable Graph R
 
 Working FastAPI gateway and pipeline-worker prototype with domain configuration, event-driven orchestration, ingestion, graph/vector/embedding/LLM/RAG service boundaries, analytics modules, monitoring, storage adapters, config-driven adapter selection, auth/RBAC middleware, route-level policy enforcement, live KB metadata projection, API-owned alert projection, service-backed workflow summaries, worker-updated workflow lifecycle tracking, repository-backed SSE KB/active-alert/workflow status, graph namespace cleanup, and extensive pytest coverage. Initial production-facing adapters now exist for Neo4j, Qdrant, OpenAI, Anthropic, sentence-transformers, S3-compatible storage, and Redis-backed shared workflow state; remaining production work is mainly tenant/resource-level authorization, observability, audit-grade workflow history, production-grade projection metadata persistence, vector/document provenance cleanup, and live adapter deployment profiles.
 
+For the live, dependency-ordered list of production-readiness work per backend module, see [`../docs/backlog/README.md`](../docs/backlog/README.md) and the per-module files (`../docs/backlog/agent.md`, `../docs/backlog/graph.md`, `../docs/backlog/ingestion.md`, etc.).
+
 ### What's functional
 
 - **`shared/`** — Generic platform types (`Entity`, `Relationship`, `Alert`, `EvidencePack`, `KnowledgeBase`), config-definition types (`EntityDefinition`, `PropertyDefinition`, `PropertyType`, `RelationshipDefinition`), protocols (`Configurable`), and utilities. **No hardcoded domain-specific types** — all domain entities use `Entity(type, properties)` validated against config.

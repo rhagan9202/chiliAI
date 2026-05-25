@@ -29,7 +29,7 @@
 
 ## Current Implementation Map
 
-- `backend/` is a Python 3.12 FastAPI/API + worker prototype with service/protocol modules, routers, adapters, and tests. See `backend/README.md` for current status and the module backlog docs (`docs/agent_backlog_05_17.md`, `docs/graph_backlog_05_17.md`, `docs/ingestion_backlog_05_17.md`) for production-readiness gaps.
+- `backend/` is a Python 3.12 FastAPI/API + worker prototype with service/protocol modules, routers, adapters, and tests. See `backend/README.md` for current status and `docs/backlog/README.md` (with per-module files under `docs/backlog/`) for production-readiness gaps and dependency-ordered work items.
 - Backend modules include `api/`, `ingestion/`, `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/`, `analytics/` (timeseries, gnn, risk, explainability, metrics), `agent/`, `monitoring/`, `shared/`, `config/`, `events/`, `storage/`, `database/` (Postgres + TimescaleDB connection provider, Alembic migrations), and `records/` (structured/tabular ingestion: CSV/JSONL/api-push, raw_records landing — parallel to `ingestion/` for documents).
 - `chili_app/` is a routed analyst workbench, not a Vite placeholder. Implemented routes include Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration.
 - Known frontend prototype gaps include persisted evidence packs, config save, and production UX/performance hardening. See `chili_app/README.md` for route status.

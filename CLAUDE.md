@@ -104,7 +104,7 @@ Modules typically expose: `protocols.py` (abstract contract), `models.py` (inter
 
 `api/` (FastAPI gateway, no business logic) · `ingestion/` (PDF/DOCX/HTML/JSON/TXT parsing, chunking, entity extraction) · `graph/` (graph DB protocol + adapters) · `vectorstore/` (vector store protocol + adapters) · `embeddings/` (embedder protocol + adapters) · `rag/` (query → embed → search → graph expand → LLM) · `llm/` (LLM client protocol + adapters) · `analytics/{timeseries,gnn,risk,explainability,metrics}/` · `agent/` (workflow coordinator) · `monitoring/` (claim stream consumer, alert generation) · `shared/` · `config/` · `events/` (Redis Streams) · `storage/` (object storage adapters) · `database/` (Postgres + TimescaleDB connection provider, Alembic migrations) · `records/` (structured/tabular ingestion: CSV/JSONL/api-push, raw_records landing — parallel to `ingestion/` for documents).
 
-Implementation status varies by module. Verify behavior by reading the code and tests, and use `backend/README.md` § Current State plus the module backlog docs (`docs/agent_backlog_05_17.md`, `docs/graph_backlog_05_17.md`, `docs/ingestion_backlog_05_17.md`) for production-readiness gaps.
+Implementation status varies by module. Verify behavior by reading the code and tests, and use `backend/README.md` § Current State plus `docs/backlog/README.md` (and the per-module files it links) for production-readiness gaps and dependency-ordered work items.
 
 ## Container Topology
 

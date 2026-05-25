@@ -67,6 +67,8 @@ domain-configured page id that doesn't yet have a built component.
 - RAG chat may use stubbed/local responses depending on backend configuration.
 - Production bundle size should be revisited with route-level code splitting as the UI grows.
 
+For the live, dependency-ordered list of production-readiness work for the SPA, see [`../docs/backlog/frontend.md`](../docs/backlog/frontend.md) (rolled up in [`../docs/backlog/README.md`](../docs/backlog/README.md)).
+
 ## Development Commands
 
 ```bash

@@ -128,6 +128,6 @@ pytest --cov                                        # Run tests with coverage
 | [`docs/architecture.md`](docs/architecture.md) | Full high-level architecture and design (source of truth) |
 | [`docs/system_architecture_diagram.md`](docs/system_architecture_diagram.md) | Detailed Mermaid system diagram, request flows, and deployment mapping |
 | [`docs/onboarding.md`](docs/onboarding.md) | New developer onboarding guide, environment setup, conventions, and how-to examples |
-| [`docs/agent_backlog_05_17.md`](docs/agent_backlog_05_17.md) / [`graph_backlog_05_17.md`](docs/graph_backlog_05_17.md) / [`ingestion_backlog_05_17.md`](docs/ingestion_backlog_05_17.md) | Module production-readiness backlogs |
+| [`docs/backlog/README.md`](docs/backlog/README.md) | Live, dependency-ordered platform backlog (planned/in-progress/done across all modules and cross-cutting concerns). Per-module files under `docs/backlog/`. |
 | [`backend/README.md`](backend/README.md) | Backend setup, module overview, development commands |
 | [`chili_app/README.md`](chili_app/README.md) | Frontend setup, page structure, development commands |
