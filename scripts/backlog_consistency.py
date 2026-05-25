@@ -12,7 +12,9 @@ Python 3.12 standard library only.
 """
 from __future__ import annotations
 
+import argparse
 import re
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -449,3 +451,80 @@ def parse_all(backlog_dir: Path) -> dict[str, Story]:
                 )
             result[story.id] = story
     return result
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point.
+
+    Default mode rewrites Unblocks lines and README marker sections in place.
+    ``--check`` is read-only: never writes, exits 1 on any drift or error.
+    ``--strict`` promotes XL warnings to errors.
+
+    Exit codes:
+    - 0: clean (or non-check rewrites applied successfully)
+    - 1: validation errors, drift in --check mode, or XL in --strict mode
+    - 2: bad invocation (missing README)
+    """
+    parser = argparse.ArgumentParser(description="chiliAI backlog consistency pass")
+    parser.add_argument(
+        "--backlog-dir",
+        default="docs/backlog",
+        help="Directory containing backlog files",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Read-only mode: exit non-zero on any drift; never write",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Upgrade XL warnings to errors",
+    )
+    args = parser.parse_args(argv)
+
+    backlog_dir = Path(args.backlog_dir)
+    readme = backlog_dir / "README.md"
+    if not readme.exists():
+        print(f"error: {readme} does not exist", file=sys.stderr)
+        return 2
+
+    stories = parse_all(backlog_dir)
+    errors: list[str] = []
+    errors.extend(validate_prereq_references(stories))
+    cycles = detect_cycles(stories)
+    for c in cycles:
+        errors.append(f"Cycle detected: {' -> '.join(c)} -> {c[0]}")
+    errors.extend(validate_status_invariants(stories))
+    xl_warnings = warn_xl_size(stories)
+    if args.strict:
+        errors.extend(xl_warnings)
+
+    computed = compute_unblocks(stories)
+    unblocks_changes = rewrite_unblocks(stories, computed, check_only=args.check)
+    readme_changes = rewrite_readme(readme, stories, check_only=args.check)
+
+    for e in errors:
+        print(f"error: {e}", file=sys.stderr)
+    for w in xl_warnings:
+        if not args.strict:
+            print(f"warning: {w}", file=sys.stderr)
+    if args.check:
+        for ch in unblocks_changes:
+            print(f"drift: {ch}", file=sys.stderr)
+        for name in readme_changes:
+            print(f"drift: README section {name}", file=sys.stderr)
+        if errors or unblocks_changes or readme_changes:
+            return 1
+    else:
+        if errors:
+            return 1
+        for ch in unblocks_changes:
+            print(f"rewrote: {ch}")
+        for name in readme_changes:
+            print(f"rewrote: README section {name}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -11,6 +11,7 @@ from scripts.backlog_consistency import (
     compute_ready_set,
     compute_unblocks,
     detect_cycles,
+    main,
     parse_all,
     parse_file,
     rewrite_readme,
@@ -240,6 +241,116 @@ def test_rewrite_readme_missing_marker_raises(tmp_path: Path) -> None:
     stories = parse_all(tmp_path)
     with pytest.raises(RuntimeError, match="status-rollup"):
         rewrite_readme(readme, stories, check_only=True)
+
+
+def _write_clean_backlog(tmp_path: Path) -> Path:
+    backlog = tmp_path / "backlog"
+    backlog.mkdir()
+    # Pre-correct simple.md so foo.01.Unblocks = [foo.02] (no drift).
+    src = (FIXTURES / "simple.md").read_text().replace(
+        "**Unblocks:** []\n**Estimated size:** S",
+        "**Unblocks:** [foo.02]\n**Estimated size:** S",
+        1,
+    )
+    (backlog / "a.md").write_text(src)
+    readme = backlog / "README.md"
+    readme.write_text(
+        "<!-- BEGIN: status-rollup -->\n\n<!-- END: status-rollup -->\n"
+        "<!-- BEGIN: ready-set -->\n\n<!-- END: ready-set -->\n"
+        "<!-- BEGIN: critical-path -->\n\n<!-- END: critical-path -->\n"
+    )
+    return backlog
+
+
+def test_main_passes_on_clean_fixture(tmp_path: Path) -> None:
+    backlog = tmp_path / "backlog"
+    backlog.mkdir()
+    (backlog / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    readme = backlog / "README.md"
+    readme.write_text(
+        "<!-- BEGIN: status-rollup -->\n\n<!-- END: status-rollup -->\n"
+        "<!-- BEGIN: ready-set -->\n\n<!-- END: ready-set -->\n"
+        "<!-- BEGIN: critical-path -->\n\n<!-- END: critical-path -->\n"
+    )
+    rc = main(["--backlog-dir", str(backlog)])
+    assert rc == 0
+
+
+def test_main_check_flag_fails_on_drift(tmp_path: Path) -> None:
+    backlog = tmp_path / "backlog"
+    backlog.mkdir()
+    (backlog / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    readme = backlog / "README.md"
+    readme.write_text(
+        "<!-- BEGIN: status-rollup -->\n\n<!-- END: status-rollup -->\n"
+        "<!-- BEGIN: ready-set -->\n\n<!-- END: ready-set -->\n"
+        "<!-- BEGIN: critical-path -->\n\n<!-- END: critical-path -->\n"
+    )
+    rc = main(["--backlog-dir", str(backlog), "--check"])
+    assert rc != 0  # drift: stories file has Unblocks=[] but should be [foo.02]
+
+
+def test_main_check_passes_when_no_drift(tmp_path: Path) -> None:
+    backlog = _write_clean_backlog(tmp_path)
+    # First, write the README sections to a clean state.
+    rc = main(["--backlog-dir", str(backlog)])
+    assert rc == 0
+    # Second call in --check mode against the same dir should now report no drift.
+    rc = main(["--backlog-dir", str(backlog), "--check"])
+    assert rc == 0
+
+
+def test_main_missing_readme_returns_2(tmp_path: Path) -> None:
+    backlog = tmp_path / "backlog"
+    backlog.mkdir()
+    (backlog / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    rc = main(["--backlog-dir", str(backlog)])
+    assert rc == 2
+
+
+def test_main_strict_promotes_xl_to_error(tmp_path: Path) -> None:
+    backlog = tmp_path / "backlog"
+    backlog.mkdir()
+    (backlog / "a.md").write_text((FIXTURES / "xl_story.md").read_text())
+    readme = backlog / "README.md"
+    readme.write_text(
+        "<!-- BEGIN: status-rollup -->\n\n<!-- END: status-rollup -->\n"
+        "<!-- BEGIN: ready-set -->\n\n<!-- END: ready-set -->\n"
+        "<!-- BEGIN: critical-path -->\n\n<!-- END: critical-path -->\n"
+    )
+    rc_warn = main(["--backlog-dir", str(backlog)])
+    assert rc_warn == 0  # XL is a warning by default
+    rc_strict = main(["--backlog-dir", str(backlog), "--strict"])
+    assert rc_strict == 1  # --strict promotes to error
+
+
+def test_main_reports_unresolved_prereq(tmp_path: Path) -> None:
+    backlog = tmp_path / "backlog"
+    backlog.mkdir()
+    bad = (FIXTURES / "simple.md").read_text().replace("[foo.01]", "[foo.99]")
+    (backlog / "a.md").write_text(bad)
+    readme = backlog / "README.md"
+    readme.write_text(
+        "<!-- BEGIN: status-rollup -->\n\n<!-- END: status-rollup -->\n"
+        "<!-- BEGIN: ready-set -->\n\n<!-- END: ready-set -->\n"
+        "<!-- BEGIN: critical-path -->\n\n<!-- END: critical-path -->\n"
+    )
+    rc = main(["--backlog-dir", str(backlog)])
+    assert rc == 1
+
+
+def test_main_reports_cycle(tmp_path: Path) -> None:
+    backlog = tmp_path / "backlog"
+    backlog.mkdir()
+    (backlog / "a.md").write_text((FIXTURES / "cycle.md").read_text())
+    readme = backlog / "README.md"
+    readme.write_text(
+        "<!-- BEGIN: status-rollup -->\n\n<!-- END: status-rollup -->\n"
+        "<!-- BEGIN: ready-set -->\n\n<!-- END: ready-set -->\n"
+        "<!-- BEGIN: critical-path -->\n\n<!-- END: critical-path -->\n"
+    )
+    rc = main(["--backlog-dir", str(backlog)])
+    assert rc == 1
 
 
 def test_rewrite_unblocks_no_change_when_correct(tmp_path: Path) -> None:
