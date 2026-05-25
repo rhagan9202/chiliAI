@@ -11,6 +11,7 @@ from scripts.backlog_consistency import (
     parse_all,
     parse_file,
     validate_prereq_references,
+    validate_status_invariants,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -100,3 +101,29 @@ def test_detect_cycles_clean(tmp_path: Path) -> None:
     (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
     stories = parse_all(tmp_path)
     assert detect_cycles(stories) == []
+
+
+def test_status_done_must_have_done_line(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "done_missing_done_line.md").read_text())
+    errors = validate_status_invariants(parse_all(tmp_path))
+    assert any("Done line" in e for e in errors)
+
+
+def test_status_done_must_have_all_ac_checked(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "done_unchecked_ac.md").read_text())
+    errors = validate_status_invariants(parse_all(tmp_path))
+    assert any("unchecked acceptance criteria" in e for e in errors)
+
+
+def test_status_in_progress_needs_done_prereqs(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text(
+        (FIXTURES / "in_progress_with_planned_prereq.md").read_text()
+    )
+    errors = validate_status_invariants(parse_all(tmp_path))
+    assert any("not all prerequisites are done" in e for e in errors)
+
+
+def test_status_invariants_clean(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    errors = validate_status_invariants(parse_all(tmp_path))
+    assert errors == []

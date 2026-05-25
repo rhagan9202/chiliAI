@@ -182,6 +182,36 @@ def validate_prereq_references(stories: dict[str, Story]) -> list[str]:
     return errors
 
 
+def validate_status_invariants(stories: dict[str, Story]) -> list[str]:
+    """Enforce status invariants.
+
+    - ``done`` requires a Done line and all AC boxes checked.
+    - ``in-progress`` requires all (resolved) prerequisites to be ``done``.
+    - Status must be one of planned/in-progress/done/dropped.
+    """
+    errors: list[str] = []
+    for s in stories.values():
+        if s.status == "done":
+            if not s.done_line:
+                errors.append(f"Story {s.id}: Status=done but Done line is missing")
+            if s.acceptance_total > 0 and s.acceptance_checked < s.acceptance_total:
+                missing = s.acceptance_total - s.acceptance_checked
+                errors.append(
+                    f"Story {s.id}: Status=done but {missing} unchecked acceptance criteria"
+                )
+        if s.status == "in-progress":
+            unmet = [
+                p for p in s.prerequisites if p in stories and stories[p].status != "done"
+            ]
+            if unmet:
+                errors.append(
+                    f"Story {s.id}: Status=in-progress but not all prerequisites are done: {unmet}"
+                )
+        if s.status not in ("planned", "in-progress", "done", "dropped"):
+            errors.append(f"Story {s.id}: invalid Status {s.status!r}")
+    return errors
+
+
 def parse_all(backlog_dir: Path) -> dict[str, Story]:
     """Parse every ``*.md`` file in ``backlog_dir`` into an ID-keyed map.
 
