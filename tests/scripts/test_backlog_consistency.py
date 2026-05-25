@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.backlog_consistency import Story, parse_file
+from scripts.backlog_consistency import Story, parse_all, parse_file
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -42,3 +42,25 @@ def test_parse_file_missing_field_raises() -> None:
 def test_parse_file_bad_id_raises() -> None:
     with pytest.raises(ValueError, match="ID"):
         parse_file(FIXTURES / "bad_id.md")
+
+
+def test_parse_all_loads_directory(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    (tmp_path / "b.md").write_text("# empty\n")  # no stories
+    stories = parse_all(tmp_path)
+    assert set(stories.keys()) == {"foo.01", "foo.02"}
+
+
+def test_parse_all_duplicate_id_raises(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    (tmp_path / "b.md").write_text((FIXTURES / "simple.md").read_text())
+    with pytest.raises(ValueError, match="Duplicate ID foo.01"):
+        parse_all(tmp_path)
+
+
+def test_parse_all_skips_readme(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    # README.md must not be parsed as a backlog file even if it has "## Story" lines.
+    (tmp_path / "README.md").write_text("## Story foo.99: Should not be parsed\n")
+    stories = parse_all(tmp_path)
+    assert "foo.99" not in stories

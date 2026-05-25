@@ -102,3 +102,21 @@ def parse_file(path: Path) -> list[Story]:
             )
         )
     return stories
+
+
+def parse_all(backlog_dir: Path) -> dict[str, Story]:
+    """Parse every ``*.md`` file in ``backlog_dir`` into an ID-keyed map.
+
+    ``README.md`` is skipped. Duplicate IDs across files raise ``ValueError``.
+    """
+    result: dict[str, Story] = {}
+    for path in sorted(backlog_dir.glob("*.md")):
+        if path.name == "README.md":
+            continue
+        for story in parse_file(path):
+            if story.id in result:
+                raise ValueError(
+                    f"Duplicate ID {story.id} in {path} (also in {result[story.id].file})"
+                )
+            result[story.id] = story
+    return result
