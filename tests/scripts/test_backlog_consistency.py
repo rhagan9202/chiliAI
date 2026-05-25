@@ -12,6 +12,7 @@ from scripts.backlog_consistency import (
     parse_file,
     validate_prereq_references,
     validate_status_invariants,
+    warn_xl_size,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -127,3 +128,16 @@ def test_status_invariants_clean(tmp_path: Path) -> None:
     (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
     errors = validate_status_invariants(parse_all(tmp_path))
     assert errors == []
+
+
+def test_warn_xl_size_returns_warnings(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "xl_story.md").read_text())
+    stories = parse_all(tmp_path)
+    warnings = warn_xl_size(stories)
+    assert len(warnings) == 1
+    assert "XL" in warnings[0]
+
+
+def test_warn_xl_size_clean(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    assert warn_xl_size(parse_all(tmp_path)) == []

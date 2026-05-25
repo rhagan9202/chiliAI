@@ -212,6 +212,15 @@ def validate_status_invariants(stories: dict[str, Story]) -> list[str]:
     return errors
 
 
+def warn_xl_size(stories: dict[str, Story]) -> list[str]:
+    """Return one warning per XL story — XL should be split before merge."""
+    return [
+        f"Story {s.id}: Estimated size XL — split before merge"
+        for s in stories.values()
+        if s.estimated_size == "XL"
+    ]
+
+
 def parse_all(backlog_dir: Path) -> dict[str, Story]:
     """Parse every ``*.md`` file in ``backlog_dir`` into an ID-keyed map.
 
