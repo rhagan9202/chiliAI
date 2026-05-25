@@ -13,6 +13,7 @@ from scripts.backlog_consistency import (
     detect_cycles,
     parse_all,
     parse_file,
+    rewrite_readme,
     rewrite_unblocks,
     validate_prereq_references,
     validate_status_invariants,
@@ -198,6 +199,47 @@ def test_critical_path_empty_on_cycle(tmp_path: Path) -> None:
     (tmp_path / "a.md").write_text((FIXTURES / "cycle.md").read_text())
     stories = parse_all(tmp_path)
     assert compute_critical_path(stories) == []
+
+
+def test_rewrite_readme_replaces_marker_sections(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "# X\n\n"
+        "<!-- BEGIN: status-rollup -->\nOLD\n<!-- END: status-rollup -->\n\n"
+        "<!-- BEGIN: ready-set -->\nOLD\n<!-- END: ready-set -->\n\n"
+        "<!-- BEGIN: critical-path -->\nOLD\n<!-- END: critical-path -->\n"
+    )
+    stories = parse_all(tmp_path)
+    changes = rewrite_readme(readme, stories, check_only=False)
+    assert len(changes) == 3
+    new_text = readme.read_text()
+    assert "OLD" not in new_text
+    assert "foo.01" in new_text  # ready set rendered
+
+
+def test_rewrite_readme_check_only_does_not_write(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    readme = tmp_path / "README.md"
+    initial = (
+        "<!-- BEGIN: status-rollup -->\nOLD\n<!-- END: status-rollup -->\n"
+        "<!-- BEGIN: ready-set -->\nOLD\n<!-- END: ready-set -->\n"
+        "<!-- BEGIN: critical-path -->\nOLD\n<!-- END: critical-path -->\n"
+    )
+    readme.write_text(initial)
+    stories = parse_all(tmp_path)
+    changes = rewrite_readme(readme, stories, check_only=True)
+    assert len(changes) == 3
+    assert readme.read_text() == initial
+
+
+def test_rewrite_readme_missing_marker_raises(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    readme = tmp_path / "README.md"
+    readme.write_text("# no markers here\n")
+    stories = parse_all(tmp_path)
+    with pytest.raises(RuntimeError, match="status-rollup"):
+        rewrite_readme(readme, stories, check_only=True)
 
 
 def test_rewrite_unblocks_no_change_when_correct(tmp_path: Path) -> None:

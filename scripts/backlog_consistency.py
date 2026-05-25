@@ -220,6 +220,110 @@ def validate_status_invariants(stories: dict[str, Story]) -> list[str]:
 SIZE_ORDER: dict[str, int] = {"S": 1, "M": 2, "L": 3, "XL": 4}
 SIZE_WEIGHT: dict[str, int] = {"S": 1, "M": 2, "L": 5, "XL": 10}
 
+MARKER_RE: dict[str, re.Pattern[str]] = {
+    "status-rollup": re.compile(
+        r"<!-- BEGIN: status-rollup -->.*?<!-- END: status-rollup -->", re.DOTALL
+    ),
+    "ready-set": re.compile(
+        r"<!-- BEGIN: ready-set -->.*?<!-- END: ready-set -->", re.DOTALL
+    ),
+    "critical-path": re.compile(
+        r"<!-- BEGIN: critical-path -->.*?<!-- END: critical-path -->", re.DOTALL
+    ),
+}
+
+
+def render_status_rollup(stories: dict[str, Story]) -> str:
+    """Render the per-file status rollup table."""
+    by_file: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"planned": 0, "in-progress": 0, "done": 0, "dropped": 0}
+    )
+    for s in stories.values():
+        by_file[s.file.name][s.status] += 1
+    lines = [
+        "| File | Planned | In-progress | Done | Total | % done |",
+        "|------|---------|-------------|------|-------|--------|",
+    ]
+    grand = {"planned": 0, "in-progress": 0, "done": 0, "dropped": 0}
+    for fname in sorted(by_file):
+        counts = by_file[fname]
+        total = sum(counts.values())
+        pct = (counts["done"] * 100 // total) if total else 0
+        lines.append(
+            f"| {fname} | {counts['planned']} | {counts['in-progress']} | "
+            f"{counts['done']} | {total} | {pct}% |"
+        )
+        for k, v in counts.items():
+            grand[k] += v
+    gtotal = sum(grand.values())
+    gpct = (grand["done"] * 100 // gtotal) if gtotal else 0
+    lines.append(
+        f"| **Total** | {grand['planned']} | {grand['in-progress']} | "
+        f"{grand['done']} | {gtotal} | {gpct}% |"
+    )
+    return "\n".join(lines)
+
+
+def render_ready_set(ready: list[Story]) -> str:
+    """Render the ready set as a bullet list, capped at 30 entries."""
+    capped = ready[:30]
+    lines = [
+        f"- [{s.id}] {s.file.stem} — size {s.estimated_size} — prereqs done"
+        for s in capped
+    ]
+    if len(ready) > 30:
+        lines.append(f"- …{len(ready) - 30} more")
+    return "\n".join(lines) if lines else "- (no ready stories)"
+
+
+def render_critical_path(path: list[Story]) -> str:
+    """Render the critical path with per-step weights and total."""
+    if not path:
+        return "- (no path — DAG empty or contains a cycle)"
+    total = sum(SIZE_WEIGHT.get(s.estimated_size, 1) for s in path)
+    lines = [
+        "> Longest dependency chain by weighted size (S=1, M=2, L=5, XL=10)."
+    ]
+    for i, s in enumerate(path, 1):
+        w = SIZE_WEIGHT.get(s.estimated_size, 1)
+        arrow = " → " if i < len(path) else ""
+        lines.append(f"{i}. {s.id} ({s.estimated_size}={w}){arrow}")
+    lines.append(f"\n**Total weight: {total}**")
+    return "\n".join(lines)
+
+
+def rewrite_readme(
+    readme_path: Path,
+    stories: dict[str, Story],
+    check_only: bool,
+) -> list[str]:
+    """Rewrite the three auto-generated marker sections in the README.
+
+    Returns the list of section names that changed.
+    """
+    text = readme_path.read_text(encoding="utf-8")
+    ready = compute_ready_set(stories)
+    crit = compute_critical_path(stories)
+    sections = {
+        "status-rollup": render_status_rollup(stories),
+        "ready-set": render_ready_set(ready),
+        "critical-path": render_critical_path(crit),
+    }
+    changes: list[str] = []
+    new_text = text
+    for name, body in sections.items():
+        pat = MARKER_RE[name]
+        if not pat.search(new_text):
+            raise RuntimeError(f"README missing marker for {name}")
+        replacement = f"<!-- BEGIN: {name} -->\n{body}\n<!-- END: {name} -->"
+        patched = pat.sub(replacement, new_text)
+        if patched != new_text:
+            changes.append(name)
+            new_text = patched
+    if not check_only and new_text != text:
+        readme_path.write_text(new_text, encoding="utf-8")
+    return changes
+
 
 def compute_critical_path(stories: dict[str, Story]) -> list[Story]:
     """Longest dependency chain by weighted size. Returns [] if a cycle is present."""
