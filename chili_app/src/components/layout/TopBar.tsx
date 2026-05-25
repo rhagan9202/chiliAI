@@ -1,4 +1,4 @@
-import { PanelRightOpen, Search } from 'lucide-react'
+import { PanelRightOpen } from 'lucide-react'
 
 import { getDefaultRole } from '../../app/access'
 import type { DomainConfig, DomainFeatures } from '../../api/contracts'
@@ -24,15 +24,9 @@ export function TopBar({ domainConfig, domainFeatures, loading, unavailable }: T
   return (
     <header className="app-topbar">
       <div>
-        <div className="app-topbar__eyebrow">Production UI foundation</div>
         <h1 className="app-topbar__title">{title}</h1>
       </div>
       <div className="app-topbar__actions">
-        <label className="app-topbar__search">
-          <Search size={14} />
-          <span className="app-topbar__search-label">Global search</span>
-          <input placeholder="Entity, case, or document ID" type="search" />
-        </label>
         {roleOptions.length > 0 ? (
           <label className="app-topbar__select-wrap">
             <span className="app-topbar__search-label">Active role</span>

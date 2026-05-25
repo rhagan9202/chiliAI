@@ -1,6 +1,6 @@
 import type { ChangeEvent } from 'react'
 
-import type { AlertSeverity, AlertStatus } from '../../types/api'
+import type { AlertSeverity, AlertStatus } from '../../api/contracts'
 
 import styles from './AlertTable.module.css'
 

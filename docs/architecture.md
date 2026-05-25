@@ -294,10 +294,13 @@ backend/
 ├── llm/                        # LLM client abstraction
 │   ├── __init__.py
 │   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
+│   ├── factory.py              # create_llm_client() — builds adapter + FallbackLlmClient chain
 │   └── adapters/
 │       ├── in_memory.py
 │       ├── openai_adapter.py
-│       └── anthropic_adapter.py
+│       ├── anthropic_adapter.py
+│       ├── ollama_adapter.py   # OllamaLlmClient (provider="ollama", LlmConfig.base_url)
+│       └── fallback.py         # FallbackLlmClient — wraps primary + ordered fallback list
 ├── analytics/                  # ML / AI capability modules
 │   ├── __init__.py
 │   ├── timeseries/             # Time-series anomaly detection (standard module shape)
@@ -336,6 +339,15 @@ backend/
 │       ├── in_memory.py
 │       ├── redis_store.py
 │       └── runtime.py          # create_workflow_run_store_from_env
+├── knowledgebases/             # KB and document metadata persistence
+│   ├── __init__.py             # Re-exports the public surface
+│   ├── protocols.py            # KnowledgeBaseRepository Protocol
+│   ├── models.py               # DocumentRecord
+│   ├── snapshots.py            # KnowledgeBaseStoreSnapshot (object-store serialization)
+│   ├── _helpers.py             # Shared internal helpers
+│   └── adapters/
+│       ├── in_memory.py        # InMemoryKnowledgeBaseRepository
+│       └── object_store.py     # ObjectStoreKnowledgeBaseRepository
 ├── monitoring/                 # Active monitoring service
 │   ├── __init__.py
 │   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
@@ -346,15 +358,17 @@ backend/
 │       └── postgres.py         # PostgresAlertHistoryStore + observation adapters
 ├── shared/                     # Lightweight shared contracts library
 │   ├── __init__.py
-│   ├── types.py                # Generic platform types: Entity, Relationship,
-│   │                           #   Alert, EvidencePack, KnowledgeBase
+│   ├── types.py                # Generic platform types: Entity (+ natural_key on EntityDefinition),
+│   │                           #   Relationship, Alert, EvidencePack, KnowledgeBase,
+│   │                           #   MonitoringObservation (used by monitoring/ and records/)
 │   ├── protocols.py            # Cross-cutting protocol definitions
 │   ├── alerts.py               # Alert-domain helpers
 │   ├── exceptions.py           # Shared exception hierarchy
 │   ├── logging.py              # structlog setup
 │   ├── tracing.py              # OpenTelemetry helpers
 │   ├── validation.py
-│   └── utils.py
+│   ├── utils.py
+│   └── provenance.py           # Canonical metadata-key constants for provenance fields
 ├── config/                     # Domain configuration
 │   ├── __init__.py
 │   ├── loader.py               # Reads YAML/JSON domain config
@@ -362,6 +376,7 @@ backend/
 │   └── defaults/               # Example domain configs
 │       ├── medicare_fraud.yaml
 │       ├── medicare_fraud_dev.yaml
+│       ├── medicare_fraud_cms_desynpuf.yaml  # CMS DE-SynPUF + NPPES feeds (9 feeds)
 │       └── food_supply_chain.yaml
 ├── events/                     # Event bus abstraction
 │   ├── __init__.py
@@ -762,7 +777,7 @@ Knowledge bases are the core organizational unit for ingested content and their 
 | **Add documents** | `POST /knowledgebases/{id}/documents` | Upload to object store → parse → chunk → extract entities → upsert graph → embed → index | Incremental — merges with existing graph |
 | **View KB summary** | `GET /knowledgebases/{id}` | Read persisted metadata → merge live graph/object-store signals → persist projected status/counts | Returns document count, entity/relationship counts, and indexing status from the live KB projection |
 | **List documents** | `GET /knowledgebases/{id}/documents` | Read persisted document metadata → derive status from KB projection | Paginated list with persisted/derived ingestion status per document |
-| **Remove document** | `DELETE /knowledgebases/{id}/documents/{doc_id}` | Delete document metadata and object-store payloads | Graph/vector provenance-backed cleanup is planned |
+| **Remove document** | `DELETE /knowledgebases/{id}/documents/{doc_id}` | Delete document metadata and object-store payloads | Graph/vector cascade cleanup via `delete_by_source_document` is called on the re-upload (changed-content) path; it is not yet wired to the document-delete endpoint |
 | **Delete KB** | `DELETE /knowledgebases/{id}` | Delete object-store payloads → clear graph namespace → clear vector namespace → delete raw records → delete KB metadata → publish `kb.delete` | Full 207 cascade implemented; workflow-busy 409 guard prevents deletion during active pipeline run |
 | **Rebuild RAG index** | Planned | Re-embed all content → replace vector index | No current public route |
 
@@ -1347,11 +1362,11 @@ Adapter selection is driven by environment configuration, not code changes.
 
 ### 14.3 Current state vs. target
 
-> **Last updated**: May 2026. For implementation status, verify the current code and tests first. Historical status reports and planning docs live under [`docs/archive/`](archive/); use [`todos_and_stubs_audit_2026-05-05.md`](todos_and_stubs_audit_2026-05-05.md) for the current TODO/stub inventory.
+> **Last updated**: May 2026. For implementation status, verify the current code and tests first. Historical status reports and planning docs live under [`docs/archive/`](archive/); see [`agent_backlog_05_17.md`](agent_backlog_05_17.md), [`graph_backlog_05_17.md`](graph_backlog_05_17.md), and [`ingestion_backlog_05_17.md`](ingestion_backlog_05_17.md) for module production-readiness gaps.
 
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
-| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion, graph/vector/embedding/LLM/RAG services, analytics modules (timeseries/gnn/risk/explainability/metrics), monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, `database/` (psycopg 3 + Alembic + TimescaleDB) connection provider, `records/` structured-ingestion pipeline (raw_records landing + `RecordsIngestedEvent`), and Plan C per-consumer Postgres adapters with write-back flows in `agent/coordinator.py` (`handle_records_ingested`, `handle_graph_updated_for_analytics`, `handle_risk_scored_for_graph`, `handle_alerts_created_for_graph`) | Add a production-grade KB metadata adapter/migration path, complete vector/document provenance cleanup, add production-mode adapter guardrails, add audit-grade workflow history, and register an HTML parser for `DocumentFormat.HTML` |
+| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion (LLM-driven `LlmDocumentExtractor` + Ollama adapter + `FallbackLlmClient`), graph/vector/embedding/LLM/RAG services, analytics modules (timeseries/gnn/risk/explainability/metrics), monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, `database/` (psycopg 3 + Alembic + TimescaleDB) connection provider, `records/` structured-ingestion pipeline (raw_records + embed+index step + NPPES/DE-SynPUF feeds), KB delete 5-step cascade with 207 partial-failure + worker retry, document re-upload idempotency with `replaced_document_id`, `delete_by_source_document` on graph and vector protocols, `delete_by_kb` on raw records, provenance metadata constants (`shared/provenance.py`), Tennessee subset tooling (`tools/sample_data/build_tennessee_subset.py`), and Plan C per-consumer Postgres adapters with write-back flows in `agent/coordinator.py` | Add a production-grade KB metadata adapter/migration path, wire `delete_by_source_document` to the document-delete endpoint, add production-mode adapter guardrails, add audit-grade workflow history, and register an HTML parser for `DocumentFormat.HTML` |
 | `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, live KB-scoped Investigation Workbench, RAG Chat, Configuration Editor, and realtime SSE hook | Complete persisted evidence-pack surface, config save endpoint integration, migrate remaining seeded read models to live projections, and production UX/performance polish |
 | `docs/` | Architecture, onboarding guide, security checklist, current TODO/stub audit, and archived historical planning/status material | Keep active docs synchronized with implementation and archive stale snapshots |
 | `infra/` | Docker Compose, flat Kubernetes manifests, and Helm chart | Add cloud-provider Terraform/Pulumi and production hardening as needed |

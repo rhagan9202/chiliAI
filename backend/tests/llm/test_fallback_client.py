@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from llm.adapters.fallback import FallbackLlmClient
+from llm.adapters.ollama_adapter import OllamaLlmClient
 from llm.exceptions import LlmProviderError
 from llm.models import (
     ChatMessage,
@@ -83,3 +85,26 @@ def test_two_fallbacks_tried_in_order() -> None:
     primary.generate.assert_called_once()
     fb1.generate.assert_called_once()
     fb2.generate.assert_called_once()
+
+
+def test_fallback_used_when_ollama_primary_returns_non_json() -> None:
+    """The fallback chain must tolerate adapter-level decode failures.
+
+    Regression guard for the bug where Ollama's `response.json()` raised
+    `ValueError` outside any try/except, causing `FallbackLlmClient` (which
+    only catches `LlmProviderError`) to abort the chain instead of falling
+    through.
+    """
+    bad_response = httpx.Response(status_code=200, text="<html>nginx 502</html>")
+    primary = OllamaLlmClient(base_url="http://localhost:11434")
+
+    fallback = MagicMock()
+    fallback.generate.return_value = _result("fallback-1")
+
+    client = FallbackLlmClient(primary=primary, fallbacks=[fallback])
+
+    with patch.object(httpx.Client, "post", return_value=bad_response):
+        result = client.generate(_request())
+
+    assert result.metadata.provider == "fallback-1"
+    fallback.generate.assert_called_once()

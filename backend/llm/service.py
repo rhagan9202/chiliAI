@@ -20,8 +20,8 @@ class LlmService:
     # and rate limits. Add provider-native token streaming once adapters expose
     # stream_generate. Add pre-flight token budget checking. Add model capability
     # registry to select models by feature (vision, tool use, context length).
-    # Add fallback model support: if primary model fails, try a configured
-    # secondary.
+    # Fallback model support is implemented at the adapter layer via
+    # FallbackLlmClient (llm/adapters/fallback.py) and wired in llm/factory.py.
 
     def __init__(self, client: LlmClientProtocol, *, event_bus: EventBus) -> None:
         self._client = client

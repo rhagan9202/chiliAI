@@ -230,7 +230,10 @@ def test_neo4j_repository_reads_searches_counts_and_deletes(
     repository.delete_entity("kb-1", "entity-2")
     repository.delete_relationship("kb-1", "relationship-2")
 
-    assert any("entity.properties_json" in entry[0] for entry in driver.queries)
+    assert any(
+        "db.index.fulltext.queryNodes('entity_properties_fulltext'" in entry[0]
+        for entry in driver.queries
+    )
     assert "DETACH DELETE entity" in driver.queries[-3][0]
     assert "DELETE relationship" in driver.queries[-1][0]
 
@@ -509,9 +512,10 @@ def test_neo4j_repository_tolerates_schema_failure(
 
     driver = _FlakyDatabase.driver_instance
     assert driver is not None
-    # All four schema statements were attempted (the loop continued past the first failure).
-    assert driver.execute_write_calls == 4
-    assert len(driver.queries) == 4
+    # All five schema statements were attempted (the loop continued past the
+    # first failure): one constraint + three indexes + one fulltext index.
+    assert driver.execute_write_calls == 5
+    assert len(driver.queries) == 5
     # Exactly one WARNING was logged — only the first statement failed, the rest succeeded.
     warning_messages = [
         record.getMessage()
@@ -548,9 +552,10 @@ def test_neo4j_repository_schema_ensure_is_idempotent(
     assert second_driver is not None
 
     # Each construction creates a new fake driver, so the second driver's query
-    # log captures its own four schema statements (independent of the first).
+    # log captures its own five schema statements (independent of the first):
+    # one constraint + three indexes + one fulltext index.
     assert len(first_driver.queries) == first_query_count  # first driver unchanged
-    assert len(second_driver.queries) == 4
+    assert len(second_driver.queries) == 5
     second_schema_text = "\n".join(entry[0] for entry in second_driver.queries)
     assert "CREATE CONSTRAINT entity_kb_id_unique IF NOT EXISTS" in second_schema_text
 
@@ -700,3 +705,54 @@ def test_neo4j_repository_transaction_rolls_back_changes(
             raise RuntimeError("rollback")
 
     assert repository.get_entity([knowledge_base_id], "rollback-entity") is None
+
+
+def test_neo4j_repository_ensures_fulltext_index_for_entity_properties(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Schema setup must create a fulltext index for entity_properties so
+    search_entities can use db.index.fulltext.queryNodes instead of a
+    sequential CONTAINS scan over properties_json.
+    """
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    schema_text = "\n".join(entry[0] for entry in driver.queries)
+
+    assert "CREATE FULLTEXT INDEX entity_properties_fulltext IF NOT EXISTS" in schema_text
+    assert "FOR (e:Entity)" in schema_text
+    assert "ON EACH [e.properties_json]" in schema_text
+
+
+def test_neo4j_search_entities_uses_fulltext_index_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """search_entities must call db.index.fulltext.queryNodes against the
+    entity_properties_fulltext index — not a CONTAINS scan over
+    properties_json.
+    """
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    driver.results = [[]]
+
+    repository.search_entities(["kb-1"], "acme", limit=10)
+
+    search_queries = [
+        entry[0]
+        for entry in driver.queries
+        if "CREATE" not in entry[0]
+    ]
+    assert any(
+        "db.index.fulltext.queryNodes('entity_properties_fulltext'" in query
+        for query in search_queries
+    ), f"search_entities must use the fulltext index; got queries: {search_queries}"

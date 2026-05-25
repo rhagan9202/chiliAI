@@ -113,7 +113,7 @@ from events.types import (
     VectorsIndexedDocumentReference,
     VectorsIndexedEvent,
 )
-from api._kb_store import KnowledgeBaseRepository
+from knowledgebases import KnowledgeBaseRepository
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.adapters.protocols import GraphRepository
 from graph.auth import resolve_graph_auth
@@ -2354,6 +2354,21 @@ async def run_handler_with_retry(
     """Run ``handler`` with exponential-backoff retry and DLQ on exhaustion.
 
     ``sleep`` is injected so unit tests can avoid waiting on the event loop.
+
+    ACK contract
+    ------------
+    This function returns the handler's processed-count when the handler
+    succeeded OR when retries are exhausted AND ``publish_to_dlq``
+    succeeded (returning ``0``). If ``publish_to_dlq`` itself raises
+    (e.g., the event bus is unreachable), the exception propagates to
+    the caller — the caller therefore does NOT ACK the delivery and the
+    event remains pending in the underlying stream for the next
+    delivery attempt.
+
+    Callers that unconditionally ACK after this function returns are
+    safe. Callers that ACK inside a broad ``except`` MUST NOT catch and
+    swallow DLQ publish failures; doing so would silently drop events.
+    See ``drain_ingestion_events`` for the canonical caller pattern.
     """
 
     last_exc: BaseException | None = None

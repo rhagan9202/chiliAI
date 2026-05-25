@@ -15,7 +15,7 @@ from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowStepState
 from agent.protocols import AgentServiceProtocol
 from agent.service import create_agent_service
 from api._alert_store import AlertProjectionRecord, InMemoryAlertProjectionRepository
-from api._kb_store import DocumentRecord, InMemoryKnowledgeBaseRepository
+from knowledgebases import DocumentRecord, InMemoryKnowledgeBaseRepository
 from api.dependencies import (
     get_agent_service,
     get_alert_repository,

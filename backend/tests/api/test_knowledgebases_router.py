@@ -8,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api._kb_store import (
+from knowledgebases import (
     DocumentRecord,
     InMemoryKnowledgeBaseRepository,
     ObjectStoreKnowledgeBaseRepository,

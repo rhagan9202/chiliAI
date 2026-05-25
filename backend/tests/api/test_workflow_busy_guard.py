@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowStepState
 from agent.workflow_tracking import WorkflowEventTracker
-from api._kb_store import InMemoryKnowledgeBaseRepository  # noqa: F401 (also used in pending_cleanup tests)
+from knowledgebases import InMemoryKnowledgeBaseRepository  # noqa: F401 (also used in pending_cleanup tests)
 from api.app import create_app
 from api.dependencies import (
     get_domain_config,

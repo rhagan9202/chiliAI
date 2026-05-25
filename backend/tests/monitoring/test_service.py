@@ -550,3 +550,107 @@ def test_evaluate_publishes_enriched_alert_references() -> None:
     assert ref.reasoning != ""
     assert ref.entity_type != ""
     assert ref.status == response.alerts[0].status
+
+
+def test_create_monitoring_service_stores_default_thresholds() -> None:
+    """Service factories must accept DomainConfig-derived thresholds so the
+    router does not have to pass them on every request."""
+    event_bus = InMemoryEventBus()
+    source = InMemoryObservationSource(batches=[])
+    service = create_monitoring_service(
+        source,
+        event_bus=event_bus,
+        default_medium_threshold=0.55,
+        default_high_threshold=0.9,
+    )
+    assert service.default_medium_threshold == 0.55
+    assert service.default_high_threshold == 0.9
+
+
+def test_create_monitoring_service_default_thresholds_fall_back_to_pydantic_defaults() -> None:
+    """Omitting the new params keeps the pre-config behavior."""
+    event_bus = InMemoryEventBus()
+    source = InMemoryObservationSource(batches=[])
+    service = create_monitoring_service(source, event_bus=event_bus)
+    assert service.default_medium_threshold == 0.6
+    assert service.default_high_threshold == 0.85
+
+
+def test_evaluate_resolves_thresholds_from_service_defaults_when_request_omits_them() -> None:
+    """When the caller omits medium_threshold/high_threshold on the request,
+    the service falls back to its constructor-provided defaults (which the
+    router populates from DomainConfig).
+
+    Setup: service.default_medium_threshold=0.4 and one observation with
+    score=0.5. The Pydantic request default would be 0.6 (no alert). The
+    service default of 0.4 means the observation crosses the threshold
+    (one alert).
+    """
+    event_bus = InMemoryEventBus()
+    source = InMemoryObservationSource(
+        batches=[
+            MonitoringBatch(
+                knowledge_base_id="kb-1",
+                batch_id="batch-1",
+                observations=[_observation(score=0.5)],
+            )
+        ]
+    )
+    service = create_monitoring_service(
+        source,
+        event_bus=event_bus,
+        default_medium_threshold=0.4,
+        default_high_threshold=0.9,
+    )
+    response = service.evaluate(
+        MonitoringEvaluationRequest(
+            knowledge_base_id="kb-1",
+            batch_id="batch-1",
+        )
+    )
+    assert response.alert_count == 1
+
+
+def test_evaluate_evicts_dedup_entries_older_than_window() -> None:
+    """Regression guard: long-running workers must not accumulate dedup
+    entries beyond the dedup window. Without eviction, the index grows
+    unbounded — one entry per unique (entity_id, metric_name) ever seen.
+
+    Setup: pre-populate the index with 500 stale entries (timestamps
+    `dedup_window + buffer` in the past). Run evaluate() with an empty
+    batch. After: stale entries are evicted and the index is empty.
+    """
+    from datetime import timedelta
+
+    event_bus = InMemoryEventBus()
+    source = InMemoryObservationSource(
+        batches=[
+            MonitoringBatch(
+                knowledge_base_id="kb-1",
+                batch_id="batch-1",
+                observations=[_observation(score=0.0)],
+            )
+        ]
+    )
+    service = create_monitoring_service(
+        source,
+        event_bus=event_bus,
+        dedup_window_seconds=60,
+    )
+
+    stale_timestamp = utc_now() - timedelta(seconds=120)
+    for index in range(500):
+        service._dedup_index[(f"entity-{index}", "claim_volume")] = stale_timestamp
+    assert len(service._dedup_index) == 500
+
+    service.evaluate(
+        MonitoringEvaluationRequest(
+            knowledge_base_id="kb-1",
+            batch_id="batch-1",
+        )
+    )
+
+    assert len(service._dedup_index) == 0, (
+        "stale entries older than dedup_window_seconds must be evicted "
+        f"at the start of evaluate(); found {len(service._dedup_index)} remaining"
+    )

@@ -1,6 +1,6 @@
 # Domain Configuration Contract
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-22
 **Source:** `backend/config/schema.py`, `backend/config/loader.py`
 **Frontend mirror:** `chili_app/src/types/domainConfig.ts`
 
@@ -110,15 +110,19 @@ class VectorStoreConfig(BaseModel):
     distance_metric: Literal["cosine", "dot", "euclidean"] = "cosine"
 ```
 
-### `LlmConfig`
+### `LlmConfig` (updated 2026-05-22)
 ```python
 class LlmConfig(BaseModel):
-    provider: Literal["openai", "anthropic", "local"] = "local"
+    provider: Literal["openai", "anthropic", "local", "ollama"] = "local"
     model: str = "local-default"
     api_key_env_var: str | None = None
+    base_url: str | None = None        # used by ollama and any provider needing a custom endpoint
     temperature: float = 0.7           # [0.0, 2.0]
     max_tokens: int = 4096             # > 0
+    fallback: "LlmConfig | None" = None  # self-referential; enables fallback chains
 ```
+
+`"ollama"` provider uses `base_url` (defaults to `http://localhost:11434` in the factory when unset). `fallback` enables ordered fallback chains: `create_llm_client` wraps the primary in `FallbackLlmClient` when `fallback` is set; chains are resolved recursively. See [modules/llm.md](../modules/llm.md) for adapter details.
 
 ### `EmbeddingsConfig`
 ```python
@@ -275,8 +279,42 @@ class UiConfig(BaseModel):
 
 Located in `backend/config/defaults/`:
 - `medicare_fraud.yaml` — full Medicare fraud detection domain
+- `medicare_fraud_cms_desynpuf.yaml` — DE-SynPUF / NPPES exemplar (updated 2026-05-22; see below)
 - `medicare_fraud_dev.yaml` — dev/test variant
 - `food_supply_chain.yaml` — food supply chain domain example
+
+### `medicare_fraud_cms_desynpuf.yaml` feed inventory (2026-05-22)
+
+The exemplar config now defines 3+ feeds and populates `natural_key` for all four entity types:
+
+| Entity | `natural_key` fields |
+|--------|---------------------|
+| `provider` | `[npi]` |
+| `beneficiary` | `[hic_number]` |
+| `claim` | `[claim_id]` |
+| `facility` | `[facility_id]` |
+
+Feeds defined in `records.feeds`:
+
+| Feed name | `record_type` | Source |
+|-----------|--------------|--------|
+| `inpatient_claims` | `inpatient_claim_record` | `file_upload` |
+| `outpatient_claims` | `outpatient_claim_record` | `file_upload` |
+| `nppes_providers` | (NPPES provider records) | `file_upload` |
+
+The `provider` entity in this config also gains 11 NPPES properties (NPI, provider name fields, taxonomy codes, practice address, etc.) sourced from the NPPES public use file.
+
+The `llm:` section sets OpenAI as the primary provider with an Ollama fallback:
+```yaml
+llm:
+  provider: openai
+  model: gpt-4o-mini
+  api_key_env_var: OPENAI_API_KEY
+  fallback:
+    provider: ollama
+    model: llama3
+    base_url: http://ollama:11434
+```
 
 ---
 

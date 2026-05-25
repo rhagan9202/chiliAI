@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowStepState
 from agent.workflow_tracking import WorkflowEventTracker
-from api._kb_store import InMemoryKnowledgeBaseRepository
+from knowledgebases import InMemoryKnowledgeBaseRepository
 from api.app import create_app
 from api.dependencies import (
     get_event_bus,

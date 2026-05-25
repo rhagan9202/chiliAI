@@ -350,6 +350,7 @@ records:
       record_type: pde_record
       source: file_upload
       id_field: PDE_ID
+      allow_extra_fields: true
       record_schema:
         DESYNPUF_ID: { type: string, display: "Beneficiary ID", required: true }
         PDE_ID: { type: string, display: "PDE ID", required: true }
@@ -413,18 +414,73 @@ records:
             enumeration_date: "Provider Enumeration Date"
             deactivation_date: "NPI Deactivation Date"
 
+graph:
+  backend: neo4j
+  uri: bolt://neo4j:7687
+  pool_size: 10
+  auth_env_var: null
+
+vectorstore:
+  backend: qdrant
+  uri: http://qdrant:6333
+  dimensions: 384
+  distance_metric: cosine
+
+embeddings:
+  provider: local
+  model: local-default
+  dimensions: 384
+  batch_size: 32
+  api_key_env_var: null
+
+storage:
+  backend: local
+  endpoint_url: null
+  bucket: null
+  base_path: /app/data/objects
+  credentials_env_var: null
+
+events:
+  backend: redis
+  uri: redis://redis:6379
+  stream_prefix: chili
+  consumer_group: chili-workers
+
+database:
+  backend: postgres
+  dsn_env_var: DATABASE_URL
+  pool_size: 10
+  pool_max_overflow: 5
+  statement_timeout_ms: 30000
+
+analytics:
+  metrics_recompute_min_interval_seconds: 300
+
+monitoring:
+  evaluation_interval_seconds: 300
+  dedup_window_seconds: 3600
+  max_alerts_per_entity: 10
+  max_alerts_per_evaluation: 100
+  grouping_window_seconds: 300
+
 llm:
-  provider: openai
-  model: gpt-4o-mini
-  api_key_env_var: OPENAI_API_KEY
+  provider: local
+  model: local-default
+  api_key_env_var: null
   temperature: 0.2
   max_tokens: 4096
   fallback:
-    provider: ollama
-    model: llama3.1:8b
-    base_url: http://localhost:11434
+    provider: openai
+    model: gpt-4o-mini
+    api_key_env_var: OPENAI_API_KEY
     temperature: 0.2
     max_tokens: 4096
+    fallback:
+      provider: ollama
+      model: llama3.1:8b
+      base_url: http://localhost:11434
+      temperature: 0.2
+      max_tokens: 4096
 
 rag:
   top_k: 5

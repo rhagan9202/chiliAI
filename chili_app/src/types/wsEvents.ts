@@ -2,11 +2,11 @@
 // Discriminated union on `event_type`. Mirrors backend events emitted by
 // `backend/api/routers/ws.py` and `backend/events/types.py`.
 
-import type { Alert } from './api'
+import type { AlertListItem } from '../api/contracts'
 
 export interface WsAlertCreated {
   event_type: 'alert.created'
-  alert: Alert
+  alert: AlertListItem
 }
 
 export interface WsPipelineProgress {

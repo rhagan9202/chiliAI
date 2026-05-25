@@ -2,6 +2,62 @@
 
 ---
 
+## 2026-05-22 — Pass 5: Refresh 10 Backlog Pages (Dev-Wiki-Curator)
+
+### Changes
+
+**Code files read:** `backend/shared/provenance.py`, `backend/ingestion/extractor.py`, `backend/ingestion/validator.py`, `backend/ingestion/service_models.py`, `backend/graph/protocols.py`, `backend/graph/models.py`, `backend/vectorstore/protocols.py`, `backend/vectorstore/service_models.py`, `backend/records/adapters/protocols.py`, `backend/records/mappers/feed_mapper.py`, `backend/agent/coordinator.py`, `backend/agent/workflow_tracking.py`, `backend/llm/factory.py`, `backend/llm/adapters/ollama_adapter.py`, `backend/llm/adapters/fallback.py`, `backend/api/routers/knowledgebases.py`, `backend/api/_kb_busy.py`, `backend/config/schema.py`, `backend/config/defaults/medicare_fraud_cms_desynpuf.yaml`, `backend/shared/types.py`
+
+**Wiki pages updated:**
+
+| Page | Gap closed |
+|------|-----------|
+| `modules/shared.md` | Added `shared/provenance.py` section with all 6 key constants and 2 value constants; documented usage pattern in document and records paths |
+| `modules/graph.md` | Added `delete_by_source_document` to `GraphServiceProtocol`; fixed `get_entity`/`search_entities` to use `list[str]` KB IDs; added `GraphDeleteByProvenance` model; bumped date |
+| `modules/vectorstore.md` | Added full `VectorServiceProtocol` surface (batch_search, get_record, count, delete_record, delete_knowledge_base, delete_by_source_document); added `VectorDeleteResponse` model; fixed `VectorSearchRequest.knowledge_base_ids` (now list); bumped date |
+| `modules/records.md` | Added `RawRecordStore` adapter protocol section with `delete_by_kb`; updated `map_batch` docstring to note provenance stamping; added provenance table; bumped date |
+| `modules/ingestion.md` | Added full `PatternDocumentExtractor` and `LlmDocumentExtractor` class docs with constructors; added `create_document_extractor` factory; added provenance stamping section; updated `DocumentReceipt` with `replaced_document_id`; bumped date |
+| `modules/agent.md` | Expanded coordinator section with `create_llm_client` factory usage and `"kb.delete"` subscription; documented `handle_records_ingested` (embed-and-index step) and new `handle_knowledge_base_deleted` handler with full signatures; expanded `WorkflowEventTracker` with `is_busy` method; bumped date |
+| `contracts/api-routes.md` | Updated `DELETE /knowledgebases/{kb_id}` to document 207/409 semantics and per-step body; documented idempotent re-upload flow and `replaced_document_id`; documented busy/pending_cleanup 409 guard and `api/_kb_busy.py`; bumped date |
+| `contracts/domain-config.md` | Updated `LlmConfig` with `provider="ollama"`, `base_url`, `fallback`; added `medicare_fraud_cms_desynpuf.yaml` feed inventory, natural_key table, and llm section example; bumped date |
+| `flows/ingestion-flow.md` | Updated step 4 to document `LlmDocumentExtractor` alongside `PatternDocumentExtractor`; updated step 5 to document provenance stamping; added "Idempotent Re-upload" section; updated source files list; bumped date |
+| `flows/records-ingestion-flow.md` | Updated mapping phase to show provenance metadata on entities/relationships; added optional embed-and-index step in worker handler; updated Key Differences table with new Embedding and Provenance rows; updated source files list; bumped date |
+
+---
+
+## 2026-05-22 — Pass 4: Ingestion Pipeline E2E Demo Merge (feature/ingestion-pipeline-e2e-demo)
+
+### Changes
+
+**Code changes merged:** 47 commits covering LLM extractor, Ollama adapter, FallbackLlmClient, KB delete 5-step cascade, document re-upload idempotency, `delete_by_source_document` on graph+vector, `delete_by_kb` on raw records, provenance constants, NPPES/DE-SynPUF feed configs, vector embed+index in `handle_records_ingested`, and Tennessee subset tooling.
+
+**Wiki pages updated:**
+
+| Page | Changes |
+|------|---------|
+| `modules/llm.md` | Added Ollama adapter row to adapters table; added `FallbackLlmClient` and `create_llm_client` factory sections; updated verification date |
+| `contracts/events.md` | Added `cleanup_pending: bool = False` field to `KnowledgeBaseDeletedEvent`; updated verification date |
+| `contracts/shared-types.md` | Added `natural_key: list[str] = []` field to `EntityDefinition` with usage note; updated verification date |
+
+**Ledger created:** `docs/ledger/` — module map, protocol contracts, event catalog, HTTP routes, config schema, tooling inventory.
+
+### Deferred wiki updates (for next pass)
+
+The following wiki pages are now stale against the 2026-05-22 merge and should be updated in a dedicated wiki-curator pass:
+
+- `modules/ingestion.md` — should document `LlmDocumentExtractor`, `create_document_extractor` dispatcher, natural-key dedup
+- `modules/agent.md` — should document enhanced `handle_records_ingested` (embed+index step) and `handle_knowledge_base_deleted` retry handler
+- `modules/graph.md` — should document `delete_by_source_document` on service + adapter protocols
+- `modules/vectorstore.md` — should document `delete_by_source_document` on service + adapter protocols
+- `modules/records.md` — should document `delete_by_kb` on `RawRecordStore` + the 9-feed DE-SynPUF/NPPES config
+- `modules/shared.md` — should document `shared/provenance.py` constants
+- `contracts/api-routes.md` — should document 207 partial-failure semantics on `DELETE /knowledgebases/{id}`, `replaced_document_id` on document upload, `pending_cleanup` 409 guard
+- `contracts/domain-config.md` — should document `LlmConfig.fallback`, `LlmConfig.base_url`, `LlmConfig.provider="ollama"`, `EntityDefinition.natural_key`
+- `flows/ingestion-flow.md` — should add LLM extractor path and provenance metadata section
+- `flows/records-ingestion-flow.md` — should add embed+index step to the handler description
+
+---
+
 ## 2026-05-20 — Pass 3: Flow Refresh, AlertGroup, Risk Models, API Contracts, Frontend Drift
 
 ### Changes

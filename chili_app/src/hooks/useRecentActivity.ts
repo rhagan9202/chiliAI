@@ -1,11 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
 
+import type { AlertListResponse } from '../api/contracts'
 import { apiRequest } from '../lib/apiClient'
-import type {
-  AlertListResponse,
-  KnowledgeBaseListResponse,
-} from '../types/api'
+import type { KnowledgeBaseListResponse } from '../types/api'
 import type { ActivityEvent } from '../types/dashboard'
 
 export const recentActivityQueryKey = ['dashboard', 'recent-activity'] as const

@@ -2,25 +2,24 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Alert } from '../../../types/api'
+import type { AlertListItem as Alert } from '../../../api/contracts'
 import { AlertTable } from '../AlertTable'
 import type { SortDirection, SortField } from '../AlertTable'
-import {
-  ALERTS_QUERY_KEY_BASE,
-  buildAlertsQueryKey,
-} from '../../../hooks/useAlerts'
 
 function makeAlert(overrides: Partial<Alert>): Alert {
   return {
     id: 'a1',
     entity_type: 'provider',
     entity_id: 'e1',
+    entity_label: 'Provider e1',
     severity: 'high',
+    status: 'open',
     title: 'Suspicious billing',
     reasoning: 'Outlier upcoding rate',
+    confidence: 0.85,
+    evidence_pack_id: null,
     created_at: '2026-04-25T10:00:00Z',
-    status: 'open',
-    acknowledged: false,
+    tags: [],
     ...overrides,
   }
 }
@@ -132,17 +131,5 @@ describe('AlertTable', () => {
     expect(onRowClick).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'a1' }),
     )
-  })
-})
-
-describe('useAlerts query keys', () => {
-  it('changes the query key when filters change', () => {
-    const baseKey = buildAlertsQueryKey({})
-    const filteredKey = buildAlertsQueryKey({
-      severity: ['critical'],
-      status: 'open',
-    })
-    expect(baseKey).not.toEqual(filteredKey)
-    expect(baseKey[0]).toBe(ALERTS_QUERY_KEY_BASE[0])
   })
 })

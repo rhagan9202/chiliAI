@@ -20,12 +20,12 @@ from analytics.timeseries.adapters.in_memory import InMemoryTimeSeriesHistorySou
 from analytics.timeseries.models import TimeSeriesObservation
 from analytics.timeseries.protocols import TimeseriesServiceProtocol
 from analytics.timeseries.service import create_timeseries_service
-from api.routers.analytics import (
+from api.dependencies import (
     get_gnn_service,
     get_risk_service,
     get_timeseries_service,
-    router,
 )
+from api.routers.analytics import router
 from events.adapters.in_memory import InMemoryEventBus
 
 
@@ -232,6 +232,48 @@ def test_default_di_factories_return_runtime_checkable_protocols() -> None:
     assert isinstance(risk_service, RiskServiceProtocol)
     assert isinstance(timeseries_service, TimeseriesServiceProtocol)
     assert isinstance(gnn_service, GnnServiceProtocol)
+
+
+def test_default_router_returns_empty_results_with_no_seed_data() -> None:
+    """Without dependency_overrides, the router resolves its services
+    through api/dependencies — which returns empty in-memory sources.
+
+    Regression guard against the previous behavior where the router's
+    local @lru_cache `_stub_*` factories pre-seeded Medicare fixture data
+    (kb-demo / provider-1 / claim-9). Production endpoints must not
+    surface that domain-specific demo data; they must return empty when
+    nothing has been written for the active domain.
+    """
+    from api import dependencies
+
+    # The DI lru_caches may be populated from earlier tests — clear them
+    # so we observe a truly empty default for this assertion.
+    dependencies.get_risk_service.cache_clear()
+    dependencies.get_timeseries_service.cache_clear()
+    dependencies.get_gnn_service.cache_clear()
+    dependencies.get_risk_signal_source.cache_clear()
+    dependencies.get_timeseries_history_source.cache_clear()
+    dependencies.get_graph_snapshot_source.cache_clear()
+
+    app = FastAPI()
+    app.include_router(router)
+    test_client = TestClient(app)
+
+    risk_response = test_client.get(
+        "/analytics/risk-scores", params={"kb_id": "kb-demo"}
+    )
+    assert risk_response.status_code == 200
+    risk_payload = risk_response.json()
+    assert risk_payload["knowledge_base_id"] == "kb-demo"
+    assert risk_payload["items"] == []
+    assert risk_payload["total"] == 0
+
+    gnn_response = test_client.get(
+        "/analytics/gnn/clusters", params={"kb_id": "kb-demo"}
+    )
+    assert gnn_response.status_code == 200
+    gnn_payload = gnn_response.json()
+    assert gnn_payload["clusters"] == []
 
 
 def test_analytics_risk_scores_requires_viewer_when_auth_enabled(monkeypatch: pytest.MonkeyPatch) -> None:

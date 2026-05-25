@@ -6,19 +6,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, model_validator
 
+# MonitoringObservation now lives in shared/types.py so producers
+# (records/) and consumers (monitoring/) can both depend on it without
+# crossing module boundaries. Re-exported here for backward compatibility
+# with code that still imports it from monitoring.models.
+from shared.types import MonitoringObservation
 from shared.utils import utc_now
-
-
-class MonitoringObservation(BaseModel):
-    """A scored observation produced by upstream monitoring inputs."""
-
-    entity_id: str
-    entity_type: str
-    metric_name: str
-    score: float = Field(ge=0.0, le=1.0)
-    observed_at: datetime = Field(default_factory=utc_now)
-    rationale: str
-    evidence_pack_id: str | None = None
 
 
 class MonitoringBatch(BaseModel):

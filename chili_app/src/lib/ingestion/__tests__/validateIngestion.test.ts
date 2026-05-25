@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { RecordFeedConfig, ValidationConfig } from '../../../api/contracts'
 import {
+  isValidDateValue,
   validateDocumentFiles,
   validateRecordFile,
   validateRecordRows,
@@ -285,5 +286,115 @@ describe('ingestion validation', () => {
     ])
 
     expect(issues).toEqual([])
+  })
+
+  it('accepts DE-SynPUF YYYYMMDD dates without flagging them invalid', () => {
+    const issues = validateRecordRows(feed, [
+      {
+        claim_id: 'c1',
+        provider_npi: '1234567890',
+        billed_amount: '99.50',
+        service_date: '20100101',
+        anomaly_score: '0.8',
+      },
+    ])
+
+    expect(issues).toEqual([])
+  })
+
+  it('accepts NPPES MM/DD/YYYY dates including single-digit components', () => {
+    const issues = validateRecordRows(feed, [
+      {
+        claim_id: 'c1',
+        provider_npi: '1234567890',
+        billed_amount: '99.50',
+        service_date: '05/23/2005',
+        anomaly_score: '0.8',
+      },
+      {
+        claim_id: 'c2',
+        provider_npi: '1234567890',
+        billed_amount: '99.50',
+        service_date: '9/5/2008',
+        anomaly_score: '0.8',
+      },
+    ])
+
+    expect(issues).toEqual([])
+  })
+
+  it('still rejects calendar-invalid YYYYMMDD and MM/DD/YYYY dates', () => {
+    const issues = validateRecordRows(feed, [
+      {
+        claim_id: 'c1',
+        provider_npi: '1234567890',
+        billed_amount: '99.50',
+        service_date: '20251345',
+        anomaly_score: '0.8',
+      },
+      {
+        claim_id: 'c2',
+        provider_npi: '1234567890',
+        billed_amount: '99.50',
+        service_date: '13/45/2005',
+        anomaly_score: '0.8',
+      },
+    ])
+
+    expect(issues.map((issue) => issue.message)).toEqual([
+      'Row 1 field Date of Service must be a valid date.',
+      'Row 2 field Date of Service must be a valid date.',
+    ])
+  })
+})
+
+describe('isValidDateValue', () => {
+  it('accepts ISO YYYY-MM-DD', () => {
+    expect(isValidDateValue('2024-01-15')).toBe(true)
+  })
+
+  it('accepts compact YYYYMMDD', () => {
+    expect(isValidDateValue('20240115')).toBe(true)
+  })
+
+  it('accepts MM/DD/YYYY with single-digit month and day', () => {
+    expect(isValidDateValue('1/5/2024')).toBe(true)
+  })
+
+  it('accepts MM/DD/YYYY with leading zeros', () => {
+    expect(isValidDateValue('01/05/2024')).toBe(true)
+  })
+
+  it('rejects ambiguous year-only strings the backend would reject', () => {
+    expect(isValidDateValue('2024')).toBe(false)
+  })
+
+  it('rejects locale-dependent month-name strings', () => {
+    expect(isValidDateValue('Jan 1')).toBe(false)
+    expect(isValidDateValue('January 1, 2024')).toBe(false)
+  })
+
+  it('rejects ISO datetime strings with timezone suffixes the backend rejects', () => {
+    expect(isValidDateValue('2024-01-15T10:00:00Z')).toBe(false)
+  })
+
+  it('rejects empty and whitespace-only strings', () => {
+    expect(isValidDateValue('')).toBe(false)
+    expect(isValidDateValue('   ')).toBe(false)
+  })
+
+  it('rejects malformed digit groupings', () => {
+    expect(isValidDateValue('2024011')).toBe(false)
+    expect(isValidDateValue('13/40/2024')).toBe(false)
+  })
+
+  it('rejects non-string non-Date inputs', () => {
+    expect(isValidDateValue(20240115)).toBe(false)
+    expect(isValidDateValue(null)).toBe(false)
+    expect(isValidDateValue(undefined)).toBe(false)
+  })
+
+  it('accepts a valid Date object', () => {
+    expect(isValidDateValue(new Date('2024-01-15'))).toBe(true)
   })
 })

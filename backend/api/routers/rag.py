@@ -16,7 +16,7 @@ from typing import Union
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
-from api._kb_store import KnowledgeBaseRepository
+from knowledgebases import KnowledgeBaseRepository
 from api.contracts import ChatConversationResponse, ChatMessageCreateRequest
 from api.dependencies import (
     get_api_state,

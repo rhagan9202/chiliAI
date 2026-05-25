@@ -7,7 +7,9 @@ source of truth for property type / range / pattern checks.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
+from datetime import datetime
 
 from config.schema import RecordFeedConfig
 from records.exceptions import RecordValidationError
@@ -22,13 +24,19 @@ from shared.types import (
 _TRUE_TOKENS = frozenset({"true", "1", "yes"})
 _FALSE_TOKENS = frozenset({"false", "0", "no"})
 
+# Matches M/D/YYYY or MM/DD/YYYY (zero-padded or single-digit month/day).
+_MMDDYYYY_RE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
+
 
 def _coerce_value(value: object, property_type: PropertyType) -> object:
     """Coerce a string-encoded value to the declared property type.
 
     Non-string values pass through untouched (JSON sources are already typed).
-    For DATE fields, bare 8-digit YYYYMMDD strings are normalised to ISO-8601
-    (YYYY-MM-DD) so that downstream validators can accept them.
+    For DATE fields the following formats are normalised to ISO-8601
+    (YYYY-MM-DD) so that downstream validators can accept them:
+
+    * ``YYYYMMDD`` — 8-digit compact form used by CMS DE-SynPUF.
+    * ``MM/DD/YYYY`` or ``M/D/YYYY`` — slash-delimited form used by CMS NPPES.
     """
 
     if not isinstance(value, str):
@@ -38,6 +46,19 @@ def _coerce_value(value: object, property_type: PropertyType) -> object:
         # Accept YYYYMMDD (e.g. CMS DE-SynPUF) and convert to YYYY-MM-DD.
         if len(text) == 8 and text.isdigit():
             return f"{text[:4]}-{text[4:6]}-{text[6:8]}"
+        # Accept MM/DD/YYYY or M/D/YYYY (e.g. CMS NPPES) and convert to YYYY-MM-DD.
+        match = _MMDDYYYY_RE.match(text)
+        if match is not None:
+            month_str, day_str, year_str = match.groups()
+            try:
+                normalized = datetime(
+                    int(year_str), int(month_str), int(day_str)
+                ).date()
+            except ValueError as exc:
+                raise RecordValidationError(
+                    f"Value '{value}' is not a valid M/D/YYYY date."
+                ) from exc
+            return normalized.isoformat()
         return text
     if property_type is PropertyType.INTEGER:
         try:
@@ -62,11 +83,27 @@ def _coerce_value(value: object, property_type: PropertyType) -> object:
 def coerce_row(
     row: Mapping[str, object], schema: dict[str, PropertyDefinition]
 ) -> dict[str, object]:
-    """Return a copy of ``row`` with values coerced to their declared types."""
+    """Return a copy of ``row`` with values coerced to their declared types.
+
+    Empty strings for non-required typed fields are treated as absent: the key
+    is dropped from the coerced row so downstream validators do not attempt to
+    parse ``""`` as a date, integer, or decimal.  Empty strings for required
+    fields are kept so that the required-field check in ``validate_entity``
+    fires correctly.
+    """
 
     coerced: dict[str, object] = {}
     for key, value in row.items():
         definition = schema.get(key)
+        if (
+            definition is not None
+            and isinstance(value, str)
+            and value.strip() == ""
+            and not definition.required
+        ):
+            # Drop absent optional typed fields — e.g. BENE_DEATH_DT="" for
+            # living beneficiaries in CMS DE-SynPUF exports.
+            continue
         coerced[key] = value if definition is None else _coerce_value(value, definition.type)
     return coerced
 

@@ -1,6 +1,6 @@
 # Module: records
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-22
 **Source:** `backend/records/`
 
 ## Purpose
@@ -19,6 +19,22 @@ class RecordsServiceProtocol(Protocol):
         submission: RecordSubmission,
     ) -> RecordIngestReceipt: ...
 ```
+
+## Adapter Protocol (`records/adapters/protocols.py`)
+
+```python
+class RawRecordStore(Protocol):
+    def persist(self, records: list[RawRecord]) -> int:
+        """Persist records idempotently; return the count of newly inserted rows."""
+
+    def load_batch(self, *, knowledge_base_id: str, correlation_id: str) -> list[RawRecord]:
+        """Return all records landed under one ingest run, ordered deterministically."""
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Delete all records for a knowledge base; return the count removed."""
+```
+
+`InMemoryRawRecordStore` additionally exposes `count_for_kb(kb_id) -> int` (test helper, not on the protocol). `PostgresRawRecordStore` also implements `delete_by_kb`.
 
 ---
 
@@ -67,7 +83,7 @@ Validates each row against `RecordFeedConfig.record_schema` (which uses `Propert
 
 ## Mappers (`records/mappers/feed_mapper.py`)
 
-Last verified: 2026-05-20
+Last verified: 2026-05-22
 
 Single mapper module; no plugin registration mechanism. Mapper functions consume `RecordFeedConfig` (from `DomainConfig`) and operate on `list[RawRecord]`.
 
@@ -82,7 +98,8 @@ def map_batch(feed: RecordFeedConfig, records: list[RawRecord]) -> MappedGraph:
     """Map a record batch to deduplicated entities and relationships.
     Entity IDs are deterministic: "{entity_type}:{raw_id}".
     Re-running the same feed is idempotent (upserts same node IDs).
-    Raises RecordMappingError if a required id_field is missing from a row."""
+    Raises RecordMappingError if a required id_field is missing from a row.
+    Stamps provenance metadata on every Entity and Relationship produced."""
 
 def map_observations(
     feed: RecordFeedConfig, records: list[RawRecord]
@@ -94,6 +111,14 @@ def map_observations(
 ```
 
 Entity ID format: `"{entity_type}:{raw_id}"` — e.g., `"provider:NPI-123"`. Relationship ID format: `"{relationship_type}:{source_id}->{target_id}"`. Deduplication is dict-keyed; last write wins within a batch.
+
+**Provenance stamping (2026-05-22):** `map_batch` now stamps the following metadata on every `Entity` and `Relationship` using constants from [`shared/provenance.py`](shared.md#provenancepy):
+
+| Key constant | Value |
+|---|---|
+| `SOURCE_KIND_KEY` | `SOURCE_KIND_RECORD` (`"record"`) |
+| `SOURCE_FEED_KEY` | `feed.name` |
+| `SOURCE_RAW_RECORD_ID_KEY` | `record.record_id` |
 
 ---
 

@@ -1,6 +1,6 @@
 # API Routes Reference
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-22
 **Source:** `backend/api/routers/`, `backend/api/app.py`, `backend/api/contracts.py`
 
 All routes are registered in `api/app.py::create_app()`. RBAC roles follow the hierarchy: `viewer(1) < analyst(2) = service(2) < admin(3)`. When `AuthConfig.enabled=False` (local/dev), all routes are open.
@@ -45,7 +45,7 @@ All routes are registered in `api/app.py::create_app()`. RBAC roles follow the h
 | `POST` | `/knowledgebases` | `CreateKbRequest` | `KnowledgeBase` 201 | analyst |
 | `GET` | `/knowledgebases` | `?limit=50&offset=0` | `KbListResponse` | viewer |
 | `GET` | `/knowledgebases/{kb_id}` | — | `KnowledgeBase` | viewer |
-| `DELETE` | `/knowledgebases/{kb_id}` | — | 204 | admin |
+| `DELETE` | `/knowledgebases/{kb_id}` | — | 204 / 207 / 409 | admin |
 | `GET` | `/knowledgebases/{kb_id}/documents` | `?limit=50&offset=0` | `DocumentListResponse` | viewer |
 | `DELETE` | `/knowledgebases/{kb_id}/documents/{doc_id}` | — | 204 | analyst |
 | `POST` | `/knowledgebases/{kb_id}/documents` | `multipart/form-data` files | `DocumentRegistrationResponse` 202 | analyst |
@@ -79,6 +79,44 @@ class DocumentRegistrationResponse(BaseModel):
 ```
 
 File upload validates: content type in `ValidationConfig.allowed_content_types`, size <= `max_file_size_mb`. After registration, publishes `DocumentsUploadedEvent`.
+
+### `DELETE /knowledgebases/{kb_id}` — cascade delete (updated 2026-05-22)
+
+5-step cascade: graph → vector → raw_records → object_store → kb_repository. Status codes:
+
+| Status | Condition |
+|--------|-----------|
+| `204 No Content` | All 5 steps succeeded; KB fully deleted. |
+| `207 Multi-Status` | One or more steps failed; `KnowledgeBase.pending_cleanup` set to `True`; `KnowledgeBaseDeletedEvent(cleanup_pending=True)` published so the worker can retry. |
+| `409 Conflict` | KB has an active workflow (`WorkflowBusyTracker.is_busy()=True`) OR `KnowledgeBase.pending_cleanup=True`. |
+
+207 response body:
+```json
+{
+  "knowledge_base_id": "...",
+  "pending_cleanup": true,
+  "steps": [
+    {"step": "graph", "status": "succeeded"},
+    {"step": "vector", "status": "failed", "error": "..."},
+    {"step": "raw_records", "status": "succeeded"},
+    {"step": "object_store", "status": "succeeded"}
+  ]
+}
+```
+
+### `POST /knowledgebases/{kb_id}/documents` — idempotent re-upload (updated 2026-05-22)
+
+Content-hash deduplication: if a document with the same SHA-256 content hash already exists in the KB, the router cascade-deletes the prior extraction (`graph_service.delete_by_source_document` + `vector_service.delete_by_source_document` + `repository.delete_document` + object_store source-prefix delete) before re-ingesting. The prior document's ID is surfaced in the receipt as `replaced_document_id`.
+
+`DocumentReceipt.replaced_document_id: str | None` — `None` for new uploads; the replaced doc's ID for re-uploads.
+
+### Mutating endpoint busy/pending_cleanup guard (updated 2026-05-22)
+
+All four mutating KB endpoints — `POST /documents`, `POST /records/{kb_id}/files`, `POST /records/{kb_id}/push`, `DELETE /documents/{doc_id}`, `DELETE /{kb_id}` — guard against:
+1. Active workflow: `ensure_kb_idle(kb_id, tracker=workflow_tracker)` → 409 if `is_busy=True`.
+2. Pending cleanup: explicit `pending_cleanup` check on `KnowledgeBase` → 409 if `True`.
+
+Helper: `api/_kb_busy.py` exports `KbBusyError`, `WorkflowBusyTracker` Protocol, `ensure_kb_idle`.
 
 ---
 

@@ -37,6 +37,8 @@ class RiskService:
         event_bus: EventBus,
         scoring_strategy: RiskScoringStrategyProtocol | None = None,
         delta_threshold: float = DEFAULT_TREND_DELTA_THRESHOLD,
+        default_medium_risk_threshold: float = 0.5,
+        default_high_risk_threshold: float = 0.8,
     ) -> None:
         self._signal_source = signal_source
         self._event_bus = event_bus
@@ -44,6 +46,8 @@ class RiskService:
             scoring_strategy if scoring_strategy is not None else LinearScoringStrategy()
         )
         self._delta_threshold = delta_threshold
+        self.default_medium_risk_threshold = default_medium_risk_threshold
+        self.default_high_risk_threshold = default_high_risk_threshold
 
     def assess(self, request: RiskAssessmentRequest) -> RiskAssessmentResponse:
         try:
@@ -61,12 +65,29 @@ class RiskService:
                 "Risk profile requires at least two signals for assessment."
             )
 
+        # Resolve per-request thresholds against the service-level defaults
+        # (sourced from DomainConfig.analytics by the router/DI helper).
+        effective_medium = (
+            request.medium_risk_threshold
+            if request.medium_risk_threshold is not None
+            else self.default_medium_risk_threshold
+        )
+        effective_high = (
+            request.high_risk_threshold
+            if request.high_risk_threshold is not None
+            else self.default_high_risk_threshold
+        )
+        if effective_high <= effective_medium:
+            raise RiskConfigurationError(
+                "Resolved risk thresholds invalid: high_risk_threshold must exceed medium_risk_threshold."
+            )
+
         factors = self._scoring_strategy.score(profile.signals)
         overall_score = min(1.0, sum(factor.contribution for factor in factors))
         risk_level = _risk_level(
             overall_score,
-            medium_risk_threshold=request.medium_risk_threshold,
-            high_risk_threshold=request.high_risk_threshold,
+            medium_risk_threshold=effective_medium,
+            high_risk_threshold=effective_high,
         )
 
         previous_score = self._load_previous_score(
@@ -179,6 +200,8 @@ def create_risk_service(
     event_bus: EventBus,
     scoring_strategy: RiskScoringStrategyProtocol | None = None,
     delta_threshold: float = DEFAULT_TREND_DELTA_THRESHOLD,
+    default_medium_risk_threshold: float = 0.5,
+    default_high_risk_threshold: float = 0.8,
 ) -> RiskService:
     """Create the default risk service."""
 
@@ -187,6 +210,8 @@ def create_risk_service(
         event_bus=event_bus,
         scoring_strategy=scoring_strategy,
         delta_threshold=delta_threshold,
+        default_medium_risk_threshold=default_medium_risk_threshold,
+        default_high_risk_threshold=default_high_risk_threshold,
     )
 
 

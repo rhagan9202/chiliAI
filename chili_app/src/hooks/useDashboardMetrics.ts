@@ -1,11 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
 
+import type { AlertListResponse } from '../api/contracts'
 import { apiRequest } from '../lib/apiClient'
-import type {
-  AlertListResponse,
-  KnowledgeBaseListResponse,
-} from '../types/api'
+import type { KnowledgeBaseListResponse } from '../types/api'
 import type { DashboardMetrics } from '../types/dashboard'
 
 export const dashboardMetricsQueryKey = ['dashboard', 'metrics'] as const
@@ -30,7 +28,7 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
   return {
     totalEntities,
     totalRelationships,
-    openAlerts: alertsResponse.total,
+    openAlerts: alertsResponse.page.total_items,
     activeKnowledgeBases,
   }
 }

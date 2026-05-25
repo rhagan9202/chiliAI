@@ -406,3 +406,26 @@ def test_in_memory_source_put_historical_score_updates_lookup() -> None:
         source.load_historical_score(knowledge_base_id="kb-1", entity_id="provider-7")
         == 0.42
     )
+
+
+def test_create_risk_service_stores_default_thresholds() -> None:
+    """Risk service factory accepts DomainConfig-derived thresholds so the
+    router does not have to pass them on every request."""
+    service = create_risk_service(
+        InMemoryRiskSignalSource(),
+        event_bus=InMemoryEventBus(),
+        default_medium_risk_threshold=0.55,
+        default_high_risk_threshold=0.82,
+    )
+    assert service.default_medium_risk_threshold == 0.55
+    assert service.default_high_risk_threshold == 0.82
+
+
+def test_create_risk_service_default_thresholds_fall_back_to_pydantic_defaults() -> None:
+    """Omitting the new params keeps the pre-config behavior."""
+    service = create_risk_service(
+        InMemoryRiskSignalSource(),
+        event_bus=InMemoryEventBus(),
+    )
+    assert service.default_medium_risk_threshold == 0.5
+    assert service.default_high_risk_threshold == 0.8

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from pydantic import BaseModel, Field
 
 from api._kb_busy import KbBusyError, WorkflowBusyTracker, ensure_kb_idle
-from api._kb_store import KnowledgeBaseRepository
+from knowledgebases import KnowledgeBaseRepository
 from api.dependencies import get_domain_config, get_knowledge_base_repository, get_records_service, get_workflow_tracker
 from api.middleware.rbac import require_role
 from config.schema import DomainConfig, ValidationConfig

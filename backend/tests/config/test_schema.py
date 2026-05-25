@@ -515,6 +515,22 @@ class TestMonitoringConfig:
         assert config.dedup_window_seconds == 3600
         assert config.max_alerts_per_entity == 10
 
+    def test_severity_threshold_defaults(self) -> None:
+        config = MonitoringConfig()
+
+        assert config.medium_threshold == 0.6
+        assert config.high_threshold == 0.85
+
+    def test_high_threshold_must_exceed_medium(self) -> None:
+        with pytest.raises(ValidationError):
+            MonitoringConfig(medium_threshold=0.8, high_threshold=0.8)
+
+    def test_severity_thresholds_must_be_in_unit_interval(self) -> None:
+        with pytest.raises(ValidationError):
+            MonitoringConfig(medium_threshold=-0.1, high_threshold=0.5)
+        with pytest.raises(ValidationError):
+            MonitoringConfig(medium_threshold=0.5, high_threshold=1.5)
+
 
 class TestRagConfig:
     def test_defaults(self) -> None:
@@ -628,6 +644,24 @@ def test_analytics_config_defaults() -> None:
 def test_analytics_config_rejects_non_positive_interval() -> None:
     with pytest.raises(ValidationError):
         AnalyticsConfig(metrics_recompute_min_interval_seconds=0)
+
+
+def test_analytics_config_risk_threshold_defaults() -> None:
+    config = AnalyticsConfig()
+    assert config.medium_risk_threshold == 0.5
+    assert config.high_risk_threshold == 0.8
+
+
+def test_analytics_config_high_risk_threshold_must_exceed_medium() -> None:
+    with pytest.raises(ValidationError):
+        AnalyticsConfig(medium_risk_threshold=0.7, high_risk_threshold=0.7)
+
+
+def test_analytics_config_risk_thresholds_must_be_in_unit_interval() -> None:
+    with pytest.raises(ValidationError):
+        AnalyticsConfig(medium_risk_threshold=-0.1, high_risk_threshold=0.5)
+    with pytest.raises(ValidationError):
+        AnalyticsConfig(medium_risk_threshold=0.5, high_risk_threshold=1.5)
 
 
 def test_domain_config_defaults_analytics_section() -> None:

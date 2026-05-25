@@ -45,10 +45,15 @@ class GraphSnapshot(BaseModel):
 
 
 class ScoredNode(BaseModel):
-    """A node score and inferred cluster assignment."""
+    """A node score and inferred cluster assignment.
+
+    `score` is normalized to [0.0, 1.0] by `_score_nodes` so it can be
+    consumed alongside other unit-interval values (e.g. anomaly_score,
+    PredictedLink.confidence) without callers having to renormalize.
+    """
 
     entity_id: str
-    score: float = Field(ge=0.0)
+    score: float = Field(ge=0.0, le=1.0)
     cluster_id: str
 
 

@@ -39,41 +39,8 @@ export interface DocumentListResponse {
   total: number
 }
 
-export type AlertSeverity = 'low' | 'medium' | 'high' | 'critical'
-
-export type AlertStatus =
-  | 'open'
-  | 'acknowledged'
-  | 'investigating'
-  | 'resolved'
-  | 'dismissed'
-
-export interface Alert {
-  id: string
-  entity_type: string
-  entity_id: string
-  severity: AlertSeverity | string
-  title: string
-  reasoning: string
-  evidence_pack_id?: string | null
-  created_at: string
-  status: AlertStatus
-  updated_at?: string | null
-  acknowledged: boolean
-  resolved_by?: string | null
-  resolution_notes?: string | null
-  // Optional fields surfaced by future backend revisions; coordinated with
-  // E9-S08 Alert Feed.
-  kb_id?: string | null
-  message?: string | null
-  acknowledged_by?: string | null
-  properties?: Record<string, unknown> | null
-}
-
-export interface AlertListResponse {
-  items: Alert[]
-  total: number
-}
+// Alert types have been consolidated in src/api/contracts.ts (AlertListItem,
+// AlertSeverity, AlertStatus, AlertListResponse). Import from there.
 
 export interface CreateKnowledgeBaseRequest {
   name: string

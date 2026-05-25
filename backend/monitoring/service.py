@@ -67,6 +67,8 @@ class MonitoringService:
         max_alerts_per_evaluation: int = 100,
         suppression_rules: list[SuppressionRule] | None = None,
         grouping_window_seconds: int = 300,
+        default_medium_threshold: float = 0.6,
+        default_high_threshold: float = 0.85,
     ) -> None:
         self._observation_source = observation_source
         self._event_bus = event_bus
@@ -75,6 +77,8 @@ class MonitoringService:
         self._suppression_rules: list[SuppressionRule] = list(suppression_rules or [])
         self._grouping_window_seconds = grouping_window_seconds
         self._dedup_index: dict[tuple[str, str], datetime] = {}
+        self.default_medium_threshold = default_medium_threshold
+        self.default_high_threshold = default_high_threshold
 
     @property
     def suppression_rules(self) -> list[SuppressionRule]:
@@ -94,6 +98,35 @@ class MonitoringService:
         now = utc_now()
         observations = list(batch.observations)
         processed_count = len(observations)
+
+        # Evict dedup entries older than the dedup window. Without this,
+        # the dict grows unbounded in a long-running worker (one entry per
+        # unique (entity_id, metric_name) pair ever seen). Eviction runs
+        # at the start of each evaluate(), bounding the index by the
+        # number of in-window deduped alerts.
+        eviction_cutoff = now - timedelta(seconds=self._dedup_window_seconds)
+        self._dedup_index = {
+            key: timestamp
+            for key, timestamp in self._dedup_index.items()
+            if timestamp >= eviction_cutoff
+        }
+
+        # Resolve per-request thresholds against the service-level defaults
+        # (sourced from DomainConfig.monitoring by the router/DI helper).
+        effective_medium = (
+            request.medium_threshold
+            if request.medium_threshold is not None
+            else self.default_medium_threshold
+        )
+        effective_high = (
+            request.high_threshold
+            if request.high_threshold is not None
+            else self.default_high_threshold
+        )
+        if effective_high <= effective_medium:
+            raise MonitoringConfigurationError(
+                "Resolved thresholds invalid: high_threshold must exceed medium_threshold."
+            )
 
         # E8-S03: filter out observations matched by suppression rules.
         suppressed_by_rule_count = 0
@@ -125,7 +158,7 @@ class MonitoringService:
             exceeders = [
                 observation
                 for observation in bucket
-                if observation.score >= request.medium_threshold
+                if observation.score >= effective_medium
             ]
             if len(exceeders) < request.min_observations_in_window:
                 continue
@@ -134,8 +167,8 @@ class MonitoringService:
             candidates.append(
                 _to_alert_candidate(
                     top,
-                    medium_threshold=request.medium_threshold,
-                    high_threshold=request.high_threshold,
+                    medium_threshold=effective_medium,
+                    high_threshold=effective_high,
                 )
             )
 
@@ -228,6 +261,8 @@ def create_monitoring_service(
     max_alerts_per_evaluation: int = 100,
     suppression_rules: list[SuppressionRule] | None = None,
     grouping_window_seconds: int = 300,
+    default_medium_threshold: float = 0.6,
+    default_high_threshold: float = 0.85,
 ) -> MonitoringService:
     """Create the default monitoring service."""
 
@@ -238,6 +273,8 @@ def create_monitoring_service(
         max_alerts_per_evaluation=max_alerts_per_evaluation,
         suppression_rules=suppression_rules,
         grouping_window_seconds=grouping_window_seconds,
+        default_medium_threshold=default_medium_threshold,
+        default_high_threshold=default_high_threshold,
     )
 
 

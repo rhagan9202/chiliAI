@@ -150,6 +150,9 @@ class Neo4jGraphRepository(GraphRepository):
             "CREATE INDEX rel_kb_id IF NOT EXISTS "
             "FOR ()-[r:RELATES]-() "
             "ON (r.knowledge_base_id)",
+            "CREATE FULLTEXT INDEX entity_properties_fulltext IF NOT EXISTS "
+            "FOR (e:Entity) "
+            "ON EACH [e.properties_json]",
         ]
         for stmt in statements:
             try:
@@ -411,16 +414,21 @@ class Neo4jGraphRepository(GraphRepository):
         query: str,
         limit: int,
     ) -> list[Entity]:
-        normalized_query = query.strip().lower()
+        normalized_query = query.strip()
         if normalized_query == "":
             return []
 
-        cypher = f"""
-        MATCH (entity:{_ENTITY_LABEL})
-        WHERE entity.knowledge_base_id IN $knowledge_base_ids
-          AND toLower(coalesce(entity.properties_json, "")) CONTAINS $normalized_query
-        RETURN entity
-        ORDER BY entity.entity_id
+        # Use the entity_properties_fulltext index created in _ensure_schema
+        # so the lookup is an indexed seek rather than a sequential
+        # CONTAINS scan over properties_json. The kb-id WHERE clause is a
+        # cheap predicate on the already-seeked rows. Results are ordered
+        # by Lucene relevance, then by entity_id for stable ties.
+        cypher = """
+        CALL db.index.fulltext.queryNodes('entity_properties_fulltext', $normalized_query)
+        YIELD node, score
+        WHERE node.knowledge_base_id IN $knowledge_base_ids
+        RETURN node AS entity
+        ORDER BY score DESC, node.entity_id
         LIMIT $limit
         """
         return self._query_entities(

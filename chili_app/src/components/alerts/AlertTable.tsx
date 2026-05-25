@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import type { Alert } from '../../types/api'
+import type { AlertListItem as Alert } from '../../api/contracts'
 
 import styles from './AlertTable.module.css'
 

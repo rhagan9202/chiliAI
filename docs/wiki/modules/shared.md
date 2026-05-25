@@ -1,6 +1,6 @@
 # Module: shared
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-22
 **Source:** `backend/shared/`
 
 ## Purpose
@@ -74,6 +74,29 @@ def normalize_severity(raw_severity: str, confidence: float) -> AlertSeverity:
     Falls back to confidence-based mapping if raw_severity is not a known literal:
     confidence >= 0.9 → "critical"; >= 0.75 → "high"; >= 0.5 → "medium"; else "low"."""
 ```
+
+### `provenance.py`
+
+Exports canonical metadata-key constants and `source_kind` value constants used by every write and read site that stamps or filters on provenance. All sites must import from here — never use bare string literals.
+
+```python
+# Metadata keys (type: Final)
+SOURCE_KIND_KEY: Final          # "source_kind"
+SOURCE_FEED_KEY: Final          # "source_feed"
+SOURCE_RAW_RECORD_ID_KEY: Final # "source_raw_record_id"
+SOURCE_DOCUMENT_ID_KEY: Final   # "source_document_id"
+SOURCE_CHUNK_ID_KEY: Final      # "source_chunk_id"
+SOURCE_ID_KEY: Final            # "source_id"
+
+# source_kind values (type: Final)
+SOURCE_KIND_RECORD: Final       # "record"
+SOURCE_KIND_DOCUMENT: Final     # "document"
+```
+
+**Usage pattern:**
+- Document path (`ingestion/validator.py`): stamps `SOURCE_KIND_DOCUMENT`, `SOURCE_DOCUMENT_ID_KEY`, `SOURCE_CHUNK_ID_KEY` onto validated `Entity` and `Relationship` objects.
+- Records path (`records/mappers/feed_mapper.py`): stamps `SOURCE_KIND_RECORD`, `SOURCE_FEED_KEY`, `SOURCE_RAW_RECORD_ID_KEY` onto mapped `Entity` and `Relationship` objects.
+- Vector indexing (`agent/coordinator.py`): uses `SOURCE_KIND_KEY`, `SOURCE_DOCUMENT_ID_KEY`, `SOURCE_ID_KEY` in `VectorRecord.metadata`.
 
 ### `validation.py`
 
