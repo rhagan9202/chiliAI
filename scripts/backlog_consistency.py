@@ -21,6 +21,7 @@ STORY_HEADING = re.compile(r"^## Story (\S+):", re.MULTILINE)
 FIELD = re.compile(r"^\*\*(?P<key>[^:*]+):\*\*\s*(?P<value>.*?)\s*$", re.MULTILINE)
 AC_BOX = re.compile(r"^- \[(?P<mark>[ xX])\]", re.MULTILINE)
 ID_LIST = re.compile(r"\[(?P<inner>[^\]]*)\]")
+ID_RE = re.compile(r"^_?[a-z]+\.\d+$")
 
 
 @dataclass
@@ -82,9 +83,13 @@ def parse_file(path: Path) -> list[Story]:
         spec_raw = fields.get("Spec", "")
         spec_list = [s.strip() for s in spec_raw.split(",") if s.strip()] if spec_raw else []
 
+        story_id = fields["ID"]
+        if not ID_RE.match(story_id):
+            raise ValueError(f"Invalid ID format in {path}: {story_id!r}")
+
         stories.append(
             Story(
-                id=fields["ID"],
+                id=story_id,
                 file=path,
                 status=fields["Status"],
                 prerequisites=_parse_id_list(fields.get("Prerequisites", "[]")),

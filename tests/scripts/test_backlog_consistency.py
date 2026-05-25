@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from scripts.backlog_consistency import Story, parse_file
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -30,3 +32,13 @@ def test_parse_file_simple() -> None:
     assert second.acceptance_checked == 2
     # Story dataclass sanity
     assert isinstance(first, Story)
+
+
+def test_parse_file_missing_field_raises() -> None:
+    with pytest.raises(KeyError, match="Status"):
+        parse_file(FIXTURES / "missing_field.md")
+
+
+def test_parse_file_bad_id_raises() -> None:
+    with pytest.raises(ValueError, match="ID"):
+        parse_file(FIXTURES / "bad_id.md")
