@@ -1,4 +1,6 @@
-# Graph Module — Epic Drafts
+## File: docs/backlog/graph.md
+
+**Scope:** Graph DB protocol + adapters (in-memory, Neo4j; Memgraph/Neptune roadmap), dual-graph contract, schema/index lifecycle, subgraph queries.
 
 Source-of-truth audit of `backend/graph/` against `docs/architecture.md` §5.2 (graph row), §6 (KB / graph flows), §7.4 (dual-graph reads), §14.2 (future capabilities) and the live specs `2026-05-21-dual-graph-contract-design.md` and `2026-05-21-neo4j-graph-indexes-design.md`. Historical backlog `docs/graph_backlog_05_17.md` informed scope; done items skipped, intent carried forward where still unmet.
 
