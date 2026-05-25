@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
+from collections.abc import Sequence
+
 import pytest
 
 from agent.coordinator import (
@@ -19,8 +21,10 @@ from agent.coordinator import (
     handle_vectors_indexed,
     run_handler_with_retry,
 )
+from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.exceptions import ConfigurationError
-from agent.models import RetryPolicy
+from agent.models import RetryPolicy, WorkflowRunStatus
+from agent.workflow_tracking import WorkflowEventTracker
 from config.loader import load_config
 from config.schema import (
     DomainConfig,
@@ -28,11 +32,19 @@ from config.schema import (
     GraphDbConfig,
     LlmConfig,
     ObjectStoreConfig,
+    RecordsConfig,
     VectorStoreConfig,
 )
+from monitoring.adapters.in_memory import InMemoryObservationWriter
+from records.adapters.in_memory import InMemoryRawRecordStore
 from embeddings.adapters.in_memory import InMemoryEmbedder
-from embeddings.models import EmbeddingMetadata, EmbeddingResult
-from embeddings.service import EmbeddingsService
+from embeddings.models import (
+    EmbeddingMetadata,
+    EmbeddingResult,
+    EmbeddingVector,
+    GraphEmbeddingBatch,
+)
+from embeddings.service import EmbeddingsService, create_embeddings_service
 from embeddings.service_models import EmbedRequest, EmbedResponse, EmbeddedItem
 from events.protocols import EventDelivery
 from events.runtime import EventBusSettings
@@ -51,6 +63,7 @@ from events.types import (
     KnowledgeBaseCreatedEvent,
     KnowledgeBaseReadyEvent,
     ParsedDocumentReference,
+    RecordsIngestedEvent,
     RiskScoredEvent as _RiskScoredEvent,
     ValidatedDocumentReference,
     VectorsIndexedDocumentReference,
@@ -96,6 +109,87 @@ class _FakeEmbeddingsService:
                 for index, submission in enumerate(request.submissions, start=1)
             ],
         )
+
+
+class _StaticGraphProvider:
+    def __init__(self, vectors: dict[str, list[float]], *, dimensions: int) -> None:
+        self._vectors = vectors
+        self._dimensions = dimensions
+        self.calls: list[tuple[str, list[str], int]] = []
+
+    def get_node_embeddings(
+        self,
+        *,
+        knowledge_base_id: str,
+        content_ids: Sequence[str],
+        dimensions: int,
+    ) -> GraphEmbeddingBatch:
+        self.calls.append((knowledge_base_id, list(content_ids), dimensions))
+        return GraphEmbeddingBatch(
+            vectors={
+                key: value for key, value in self._vectors.items() if key in content_ids
+            },
+            model_name="gnn-spectral",
+            provider="test-gnn",
+            dimensions=self._dimensions,
+        )
+
+
+def _graph_updated_event_with_valid_entity(
+    *,
+    knowledge_base_id: str,
+    entity_id: str,
+    object_store: InMemoryObjectStore,
+) -> GraphUpdatedEvent:
+    graph_update_storage_key = (
+        f"knowledgebases/{knowledge_base_id}/graph_updates/extract-1.json"
+    )
+    validation_storage_key = (
+        f"knowledgebases/{knowledge_base_id}/validations/extract-1.json"
+    )
+    object_store.put_bytes(
+        graph_update_storage_key,
+        GraphUpsertResult(
+            knowledge_base_id=knowledge_base_id,
+            source_document_id="doc-1",
+            parsed_document_id="parsed-1",
+            extraction_result_id="extract-1",
+            validation_report_id="validate-1",
+            upserted_entity_ids=[entity_id],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    object_store.put_bytes(
+        validation_storage_key,
+        ValidationReport(
+            id="validate-1",
+            extraction_result_id="extract-1",
+            source_document_id="doc-1",
+            valid_entities=[
+                Entity(
+                    id=entity_id,
+                    type="provider",
+                    properties={"name": "Alpha Clinic"},
+                ),
+            ],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    return GraphUpdatedEvent(
+        documents=[
+            GraphUpdatedDocumentReference(
+                knowledge_base_id=knowledge_base_id,
+                source_document_id="doc-1",
+                parsed_document_id="parsed-1",
+                extraction_result_id="extract-1",
+                validation_report_id="validate-1",
+                upserted_entity_count=1,
+                upserted_relationship_count=0,
+                validation_storage_key=validation_storage_key,
+                graph_update_storage_key=graph_update_storage_key,
+            )
+        ],
+    )
 
 
 def test_build_worker_dependencies_assembles_ingestion_pipeline(
@@ -674,9 +768,10 @@ def test_handle_graph_updated_publishes_embeddings_complete_event() -> None:
         'id=provider-1\ntype=provider\nalpha="first"\nzeta="last"'
     )
     assert request.submissions[1].content == "Beta Clinic"
+    assert request.include_graph_embeddings is False
 
-    assert isinstance(event_bus.published_events[-1], EmbeddingsCompleteEvent)
     complete_event = event_bus.published_events[-1]
+    assert isinstance(complete_event, EmbeddingsCompleteEvent)
     assert complete_event.correlation_id == "corr-embeddings-123"
     complete_reference = complete_event.documents[0]
     assert complete_reference.entity_count == 2
@@ -689,7 +784,48 @@ def test_handle_graph_updated_publishes_embeddings_complete_event() -> None:
     embeddings_result = EmbeddingResult.model_validate_json(stored_embeddings.content)
     assert embeddings_result.request_id == "embed-request-1"
     assert list(embeddings_result.vectors) == ["provider-1", "provider-2"]
+    assert embeddings_result.graph_status is None
     assert stored_embeddings.metadata["graph_update_storage_key"] == graph_update_storage_key
+
+
+def test_handle_graph_updated_persists_text_and_graph_embedding_channels() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    graph_provider = _StaticGraphProvider(
+        {"entity-1": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]},
+        dimensions=8,
+    )
+    embeddings_service = create_embeddings_service(
+        InMemoryEmbedder(dimensions=4),
+        event_bus=event_bus,
+        graph_embedding_provider=graph_provider,
+    )
+    event = _graph_updated_event_with_valid_entity(
+        knowledge_base_id="kb-1",
+        entity_id="entity-1",
+        object_store=object_store,
+    )
+
+    handled = handle_graph_updated(
+        event,
+        embeddings_service=embeddings_service,
+        object_store=object_store,
+        event_bus=event_bus,
+        include_graph_embeddings=True,
+    )
+
+    assert handled == 1
+    complete_event = event_bus.published_events[-1]
+    assert isinstance(complete_event, EmbeddingsCompleteEvent)
+    storage_key = complete_event.documents[0].embeddings_storage_key
+    artifact = EmbeddingResult.model_validate_json(
+        object_store.get_bytes(storage_key).content
+    )
+    assert [(item.content_id, item.channel) for item in artifact.items] == [
+        ("entity-1", "text"),
+        ("entity-1", "graph"),
+    ]
+    assert graph_provider.calls == [("kb-1", ["entity-1"], 8)]
 
 
 def test_handle_graph_updated_publishes_kb_ready_for_zero_entities() -> None:
@@ -1026,6 +1162,49 @@ def _seed_validation_and_graph(
     )
 
 
+def _embeddings_complete_event_with_artifacts(
+    *,
+    object_store: InMemoryObjectStore,
+    embeddings_result: EmbeddingResult,
+    knowledge_base_id: str,
+) -> EmbeddingsCompleteEvent:
+    graph_update_storage_key = (
+        f"knowledgebases/{knowledge_base_id}/graph_updates/extract-1.json"
+    )
+    validation_storage_key = (
+        f"knowledgebases/{knowledge_base_id}/validations/extract-1.json"
+    )
+    embeddings_storage_key = (
+        f"knowledgebases/{knowledge_base_id}/embeddings/extract-1.embeddings.json"
+    )
+    _seed_validation_and_graph(
+        object_store,
+        knowledge_base_id=knowledge_base_id,
+        graph_update_storage_key=graph_update_storage_key,
+        validation_storage_key=validation_storage_key,
+    )
+    object_store.put_bytes(
+        embeddings_storage_key,
+        embeddings_result.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    return EmbeddingsCompleteEvent(
+        correlation_id="corr-embeddings-1",
+        documents=[
+            EmbeddingsCompleteDocumentReference(
+                knowledge_base_id=knowledge_base_id,
+                source_document_id="doc-1",
+                parsed_document_id="parsed-1",
+                extraction_result_id="extract-1",
+                validation_report_id="validate-1",
+                entity_count=1,
+                graph_update_storage_key=graph_update_storage_key,
+                embeddings_storage_key=embeddings_storage_key,
+            )
+        ],
+    )
+
+
 def test_handle_embeddings_complete_indexes_vectors_and_publishes_event() -> None:
     event_bus = InMemoryEventBus()
     object_store = InMemoryObjectStore()
@@ -1074,8 +1253,74 @@ def test_handle_embeddings_complete_indexes_vectors_and_publishes_event() -> Non
     )
     assert indexed_event.correlation_id == "corr-vec-1"
     assert indexed_event.documents[0].vector_count == 1
-    assert indexed_event.documents[0].record_ids == ["kb-1:entity-1"]
+    assert indexed_event.documents[0].record_ids == ["kb-1:entity-1:text"]
     assert indexed_event.records[0].dimension == 3
+
+
+def test_handle_embeddings_complete_indexes_text_and_graph_channels_separately() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    vector_store = InMemoryVectorStore()
+    embeddings_result = EmbeddingResult(
+        request_id="embed-1",
+        vectors={"entity-1": [0.1, 0.2, 0.3, 0.4]},
+        metadata=EmbeddingMetadata(
+            model_name="text-model",
+            dimensions=4,
+            provider="test",
+        ),
+        items=[
+            EmbeddingVector(
+                content_id="entity-1",
+                channel="text",
+                vector=[0.1, 0.2, 0.3, 0.4],
+                model_name="text-model",
+                provider="test",
+                dimensions=4,
+            ),
+            EmbeddingVector(
+                content_id="entity-1",
+                channel="graph",
+                vector=[0.8, 0.1],
+                model_name="gnn-spectral",
+                provider="test-gnn",
+                dimensions=2,
+            ),
+        ],
+    )
+    event = _embeddings_complete_event_with_artifacts(
+        object_store=object_store,
+        embeddings_result=embeddings_result,
+        knowledge_base_id="kb-1",
+    )
+
+    count = handle_embeddings_complete(
+        event,
+        vector_store=vector_store,
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    assert count == 1
+    text_matches = vector_store.search(
+        "kb-1",
+        [0.1, 0.2, 0.3, 0.4],
+        5,
+        {"embedding_channel": "text"},
+    )
+    graph_matches = vector_store.search(
+        "kb-1__graph",
+        [0.8, 0.1],
+        5,
+        {"embedding_channel": "graph"},
+    )
+    assert text_matches[0].record_id == "kb-1:entity-1:text"
+    assert graph_matches[0].record_id == "kb-1:entity-1:graph"
+    assert graph_matches[0].metadata["knowledge_base_id"] == "kb-1"
+    indexed_event = next(
+        event for event in event_bus.published_events if isinstance(event, VectorsIndexedEvent)
+    )
+    assert indexed_event.documents[0].vector_count == 2
 
 
 def test_handle_embeddings_complete_skips_when_no_vectors() -> None:
@@ -1437,6 +1682,61 @@ def test_drain_ingestion_events_routes_failing_event_to_dlq() -> None:
     assert dlq_entry.error.retry_count == 1
 
 
+def test_drain_ingestion_events_marks_records_workflow_failed_after_retry_exhaustion() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    workflow_run_store = InMemoryWorkflowRunStore()
+    workflow_tracker = WorkflowEventTracker(workflow_run_store)
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    event_bus.publish(
+        RecordsIngestedEvent(
+            correlation_id="corr-records-fail",
+            knowledge_base_id="kb-1",
+            feed_name="missing_feed",
+            record_type="claim_record",
+            record_count=1,
+        )
+    )
+
+    processed = asyncio.run(drain_ingestion_events(
+        event_bus,
+        IngestionService(
+            DocumentParsingOrchestrator(
+                create_default_registry(),
+                fetcher=HttpxRemoteDocumentFetcher(),
+            ),
+            object_store=object_store,
+            event_bus=event_bus,
+        ),
+        create_document_chunker(),
+        create_document_extractor([]),
+        create_extraction_validator([], []),
+        graph_service,
+        object_store,
+        records_config=RecordsConfig(),
+        raw_record_store=InMemoryRawRecordStore(),
+        observation_writer=InMemoryObservationWriter(),
+        consumer_group="test-workers",
+        consumer_name="worker-1",
+        retry_policy=RetryPolicy(max_retries=0, base_delay_seconds=0.0),
+        workflow_tracker=workflow_tracker,
+        sleep=_instant_sleep,
+    ))
+
+    runs = workflow_run_store.list_runs()
+    assert processed == 0
+    assert len(event_bus.dlq_entries) == 1
+    assert len(runs) == 1
+    assert runs[0].status is WorkflowRunStatus.FAILED
+    assert runs[0].metadata["correlation_id"] == "corr-records-fail"
+    assert "missing_feed" in str(runs[0].metadata["last_error"])
+
+
 # ---------------------------------------------------------------------------
 # E4-S06 — graceful shutdown
 # ---------------------------------------------------------------------------
@@ -1495,6 +1795,11 @@ def test_graceful_shutdown_finishes_in_flight_event(
     from monitoring.adapters.in_memory import InMemoryObservationSource
     from monitoring.service import create_monitoring_service
 
+    from analytics.metrics.adapters.in_memory import InMemoryEntityMetricRepository
+    from analytics.metrics.throttle import MetricsRecomputeThrottle
+    from analytics.risk.adapters.in_memory import InMemoryRiskHistoryWriter
+    from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter
+
     fake_deps = WorkerDependencies(
         event_bus=event_bus,
         ingestion_service=ingestion_service,
@@ -1520,6 +1825,13 @@ def test_graceful_shutdown_finishes_in_flight_event(
         monitoring_service=create_monitoring_service(
             InMemoryObservationSource(), event_bus=event_bus
         ),
+        records_config=RecordsConfig(),
+        raw_record_store=InMemoryRawRecordStore(),
+        observation_writer=InMemoryObservationWriter(),
+        entity_metric_repository=InMemoryEntityMetricRepository(),
+        metrics_throttle=MetricsRecomputeThrottle(min_interval_seconds=300),
+        risk_history_writer=InMemoryRiskHistoryWriter(),
+        alert_history_writer=InMemoryAlertHistoryWriter(),
         event_settings=EventBusSettings(backend="in-memory"),
         workflow_run_store=workflow_run_store,
         workflow_tracker=WorkflowEventTracker(workflow_run_store),
@@ -2188,7 +2500,7 @@ def test_handle_event_dispatches_analytics_pipeline_for_graph_updated() -> None:
     assert len(alert_events) == 1
     assert alert_events[0].alerts[0].entity_id == "provider-1"
     # Risk + GNN properties were written back to the graph (E7-S11 self-loop).
-    updated = graph_repository.get_entity("kb-1", "provider-1")
+    updated = graph_repository.get_entity(["kb-1"], "provider-1")
     assert updated is not None
     assert "risk_score" in updated.properties
     assert "risk_level" in updated.properties
@@ -2292,8 +2604,8 @@ def test_analytics_handler_emits_analysis_failed_when_risk_profile_missing() -> 
     assert failures[0].entity_id == "provider-1"
 
 
-def test_analytics_handler_failure_does_not_abort_flow_a() -> None:
-    """Even when the analytics chain fails, embeddings (Flow A) still publishes."""
+def test_analytics_handler_skips_missing_gnn_snapshot_without_failing_flow_a() -> None:
+    """Missing GNN snapshots are controlled skips while Flow A still publishes."""
 
     from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
     from analytics.gnn.service import create_gnn_service
@@ -2339,7 +2651,8 @@ def test_analytics_handler_failure_does_not_abort_flow_a() -> None:
         media_type="application/json",
     )
 
-    # Empty analytics adapters cause GNN to raise (no snapshot).
+    # Empty analytics adapters do not have a GNN snapshot yet. Fresh KBs should
+    # skip Flow B quietly instead of emitting a misleading analysis.failed event.
     gnn_service = create_gnn_service(
         InMemoryGraphSnapshotSource(), event_bus=event_bus
     )
@@ -2403,8 +2716,7 @@ def test_analytics_handler_failure_does_not_abort_flow_a() -> None:
     failures = [
         e for e in event_bus.published_events if isinstance(e, AnalysisFailedEvent)
     ]
-    assert len(failures) >= 1
-    assert any(failure.stage == "gnn" for failure in failures)
+    assert failures == []
 
 
 # ---------------------------------------------------------------------------
@@ -2651,4 +2963,3 @@ def test_handle_event_absorbs_unexpected_monitoring_exception() -> None:
     )
 
     assert processed == 0
-

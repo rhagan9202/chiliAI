@@ -6,6 +6,10 @@ from pydantic import BaseModel, Field, model_validator
 
 from agent.models import MetadataValue, WorkflowRunStatus
 
+# Re-export so API routers can import WorkflowRunStatus from the service boundary
+# instead of reaching into the internal models layer.
+__all__ = ["WorkflowRunStatus", "WorkflowSubmissionRequest", "WorkflowSubmissionResponse"]
+
 
 class WorkflowSubmissionRequest(BaseModel):
     """A caller-supplied workflow submission request."""
@@ -34,6 +38,3 @@ class WorkflowSubmissionResponse(BaseModel):
     status: WorkflowRunStatus
     step_count: int = Field(ge=1)
     queued_steps: list[str] = Field(default_factory=list)
-
-
-__all__ = ["WorkflowSubmissionRequest", "WorkflowSubmissionResponse"]

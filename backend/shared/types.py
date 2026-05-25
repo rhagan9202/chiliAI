@@ -59,6 +59,7 @@ class EntityDefinition(BaseModel):
     display_label: str
     icon: str
     properties: dict[str, PropertyDefinition]
+    natural_key: list[str] = Field(default_factory=list)
 
 
 class RelationshipDefinition(BaseModel):
@@ -95,6 +96,7 @@ class Relationship(BaseModel):
     source_id: str
     target_id: str
     properties: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime | None = None
     version: int = 1
@@ -158,6 +160,7 @@ class KnowledgeBase(BaseModel):
     status: Literal["active", "building", "ready", "error", "archived"] = "active"
     created_at: datetime
     updated_at: datetime | None = None
+    pending_cleanup: bool = False
     # TODO(production): Add domain_config_version: str | None to pin which config version was active.
     # Add owner: str | None and tags: dict[str, str] for organization.
 

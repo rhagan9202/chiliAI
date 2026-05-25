@@ -31,6 +31,7 @@ from api.contracts import (
 from api.state import ApiState, create_api_state
 from config.loader import load_config
 from config.schema import (
+    DatabaseConfig,
     DomainConfig,
     EmbeddingsConfig,
     EventBusConfig,
@@ -38,6 +39,7 @@ from config.schema import (
     LlmConfig,
     MonitoringConfig,
     ObjectStoreConfig,
+    RecordsConfig,
     VectorStoreConfig,
 )
 from embeddings.adapters.in_memory import InMemoryEmbedder
@@ -55,14 +57,22 @@ from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import ParserRegistry, create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
 from ingestion.service import IngestionService
-from llm.adapters.in_memory import InMemoryLlmClient
 from llm.adapters.protocols import LlmClientProtocol
+from llm.factory import create_llm_client
 from llm.protocols import LlmServiceProtocol
 from llm.service import create_llm_service
 from monitoring.adapters.in_memory import InMemoryObservationSource
+from monitoring.adapters.postgres import PostgresObservationSource
 from monitoring.adapters.protocols import ObservationSourceProtocol
 from monitoring.protocols import MonitoringServiceProtocol
 from monitoring.service import create_monitoring_service
+from database.protocols import ConnectionProvider
+from database.runtime import create_connection_provider
+from records.adapters.in_memory import InMemoryRawRecordStore
+from records.adapters.postgres import PostgresRawRecordStore
+from records.adapters.protocols import RawRecordStore
+from records.protocols import RecordsServiceProtocol
+from records.service import create_records_service
 from shared.exceptions import ConfigurationError
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.adapters.local_fs_adapter import LocalFsObjectStore
@@ -98,7 +108,9 @@ __all__ = [
     "get_ingestion_service",
     "get_graph_repository",
     "get_graph_service",
-    "get_ingestion_service",
+    "get_connection_provider",
+    "get_raw_record_store",
+    "get_records_service",
     "get_knowledge_base_repository",
     "get_llm_client",
     "get_llm_service",
@@ -115,9 +127,11 @@ __all__ = [
     "get_risk_score_payload",
     "get_timeseries_payload",
     "get_session_store",
+    "get_vector_service",
     "get_vector_store",
     "get_vectorstore_service",
     "get_workflow_run_store",
+    "get_workflow_tracker",
 ]
 
 
@@ -224,7 +238,8 @@ def get_chat_message_payload(
     state: ApiState = Depends(get_api_state),
 ) -> ChatConversationResponse:
     """Append a message and return the updated conversation."""
-    return state.add_message(conversation_id, payload)
+    kb_repository = get_knowledge_base_repository()
+    return state.add_message(conversation_id, payload, kb_repository=kb_repository)
 
 
 def get_policy_gap_list_payload(
@@ -488,7 +503,16 @@ def get_vector_store() -> VectorStoreProtocol:
 @lru_cache(maxsize=1)
 def get_vectorstore_service() -> VectorServiceProtocol:
     """Return the vectorstore service assembled from configured dependencies."""
-    return create_vector_service(get_vector_store(), event_bus=get_event_bus())
+    return create_vector_service(
+        get_vector_store(),
+        event_bus=get_event_bus(),
+        object_store=get_object_store(),
+    )
+
+
+def get_vector_service() -> VectorServiceProtocol:
+    """Alias for ``get_vectorstore_service`` used by the KB delete cascade."""
+    return get_vectorstore_service()
 
 
 @lru_cache(maxsize=1)
@@ -538,31 +562,13 @@ def get_embeddings_service() -> EmbeddingsServiceProtocol:
 @lru_cache(maxsize=1)
 def get_llm_client() -> LlmClientProtocol:
     """Return the llm client implementation selected by config."""
+    from llm.exceptions import LlmConfigurationError
+
     llm_config = get_domain_config().llm or LlmConfig()
-    provider = llm_config.provider
-    if provider == "local":
-        return InMemoryLlmClient(provider=provider)
-    if provider == "openai":
-        try:
-            from llm.adapters.openai_adapter import OpenAILlmClient
-            from llm.exceptions import LlmConfigurationError
-        except ImportError as exc:
-            raise ConfigurationError(str(exc)) from exc
-        try:
-            return OpenAILlmClient(llm_config)
-        except (ImportError, ValueError, LlmConfigurationError) as exc:
-            raise ConfigurationError(str(exc)) from exc
-    if provider == "anthropic":
-        try:
-            from llm.adapters.anthropic_adapter import AnthropicLlmClient
-            from llm.exceptions import LlmConfigurationError
-        except ImportError as exc:
-            raise ConfigurationError(str(exc)) from exc
-        try:
-            return AnthropicLlmClient(llm_config)
-        except (ImportError, ValueError, LlmConfigurationError) as exc:
-            raise ConfigurationError(str(exc)) from exc
-    _raise_unsupported_backend("llm", provider, ("local", "openai", "anthropic"))
+    try:
+        return create_llm_client(llm_config)
+    except LlmConfigurationError as exc:
+        raise ConfigurationError(str(exc)) from exc
 
 
 @lru_cache(maxsize=1)
@@ -573,8 +579,11 @@ def get_llm_service() -> LlmServiceProtocol:
 
 @lru_cache(maxsize=1)
 def get_monitoring_source() -> ObservationSourceProtocol:
-    """Return the monitoring observation source selected by config."""
-    return InMemoryObservationSource()
+    """Return the monitoring observation source selected by the database backend."""
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemoryObservationSource()
+    return PostgresObservationSource(provider)
 
 
 @lru_cache(maxsize=1)
@@ -599,6 +608,36 @@ def get_ingestion_service() -> IngestionService:
         event_bus=get_event_bus(),
     )
 
+
+@lru_cache(maxsize=1)
+def get_connection_provider() -> ConnectionProvider | None:
+    """Return the database connection provider, or None for the in-memory backend."""
+    config = get_domain_config()
+    return create_connection_provider(config.database or DatabaseConfig())
+
+
+@lru_cache(maxsize=1)
+def get_raw_record_store() -> RawRecordStore:
+    """Return the raw record store selected by the configured database backend."""
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemoryRawRecordStore()
+    return PostgresRawRecordStore(provider)
+
+
+def get_records_service(
+    event_bus: EventBus = Depends(get_event_bus),
+    store: RawRecordStore = Depends(get_raw_record_store),
+    config: DomainConfig = Depends(get_domain_config),
+) -> RecordsServiceProtocol:
+    """Return the records ingestion service assembled from configured dependencies."""
+    return create_records_service(
+        store,
+        event_bus=event_bus,
+        records_config=config.records or RecordsConfig(),
+    )
+
+
 from api._alert_store import (  # noqa: E402  (intentional bottom-of-file import)
     AlertProjectionRepository,
     InMemoryAlertProjectionRepository,
@@ -610,6 +649,7 @@ from agent.adapters.protocols import (  # noqa: E402  (intentional bottom-of-fil
 from agent.adapters.runtime import create_workflow_run_store_from_env  # noqa: E402
 from agent.protocols import AgentServiceProtocol  # noqa: E402
 from agent.service import create_agent_service  # noqa: E402
+from agent.workflow_tracking import WorkflowEventTracker  # noqa: E402
 from api._kb_store import (  # noqa: E402  (intentional bottom-of-file import)
     InMemoryKnowledgeBaseRepository,
     KnowledgeBaseRepository,
@@ -684,3 +724,10 @@ def get_agent_service(
 ) -> AgentServiceProtocol:
     """Return the agent workflow service assembled from configured dependencies."""
     return create_agent_service(run_store, event_bus=event_bus)
+
+
+def get_workflow_tracker(
+    run_store: WorkflowRunStoreProtocol = Depends(get_workflow_run_store),
+) -> WorkflowEventTracker:
+    """Return a WorkflowEventTracker that satisfies the WorkflowBusyTracker protocol."""
+    return WorkflowEventTracker(run_store)

@@ -61,6 +61,7 @@ capabilities:
   risk_scoring: true
   rag_chat: true
   explainability: false
+  structured_ingestion: true
 
 ingestion:
   chunking:
@@ -74,6 +75,37 @@ ingestion:
     - type: api_push
       format: json
       endpoint: /ingest/shipments
+
+records:
+  feeds:
+    - name: shipments_feed
+      record_type: shipment_record
+      source: file_upload
+      id_field: tracking_id
+      record_schema:
+        tracking_id: { type: string, display: "Tracking ID", required: true }
+        supplier_id: { type: string, display: "Supplier ID", required: true }
+        ship_date: { type: date, display: "Ship Date", required: true }
+        spoilage_score: { type: decimal, display: "Spoilage Score", required: true, min_value: 0, max_value: 1 }
+      entities:
+        - entity_type: shipment
+          id_field: tracking_id
+          property_fields:
+            tracking_id: tracking_id
+            ship_date: ship_date
+        - entity_type: supplier
+          id_field: supplier_id
+          property_fields:
+            supplier_id: supplier_id
+      relationships:
+        - relationship_type: shipped_by
+          source_entity_type: shipment
+          target_entity_type: supplier
+      observations:
+        - metric_name: shipment_spoilage
+          entity_type: shipment
+          score_field: spoilage_score
+          rationale: "Spoilage score derived from the structured shipments feed."
 
 # graph:
 #   backend: in_memory  # use neo4j for external graph databases

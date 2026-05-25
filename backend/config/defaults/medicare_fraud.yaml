@@ -64,6 +64,7 @@ capabilities:
   risk_scoring: true
   rag_chat: true
   explainability: true
+  structured_ingestion: true
 
 ingestion:
   chunking:
@@ -77,6 +78,39 @@ ingestion:
     - type: api_push
       format: json
       endpoint: /ingest/claims
+
+records:
+  feeds:
+    - name: claims_feed
+      record_type: claim_record
+      source: file_upload
+      id_field: claim_id
+      record_schema:
+        claim_id: { type: string, display: "Claim ID", required: true }
+        provider_npi: { type: string, display: "Provider NPI", required: true, pattern: "^[0-9]{10}$" }
+        billed_amount: { type: decimal, display: "Billed Amount", required: true, min_value: 0 }
+        service_date: { type: date, display: "Date of Service", required: true }
+        anomaly_score: { type: decimal, display: "Anomaly Score", required: true, min_value: 0, max_value: 1 }
+      entities:
+        - entity_type: claim
+          id_field: claim_id
+          property_fields:
+            claim_id: claim_id
+            amount: billed_amount
+            service_date: service_date
+        - entity_type: provider
+          id_field: provider_npi
+          property_fields:
+            npi: provider_npi
+      relationships:
+        - relationship_type: submitted_by
+          source_entity_type: claim
+          target_entity_type: provider
+      observations:
+        - metric_name: claim_anomaly
+          entity_type: claim
+          score_field: anomaly_score
+          rationale: "Anomaly score derived from the structured claims feed."
 
 # graph:
 #   backend: in_memory  # use neo4j for external graph databases

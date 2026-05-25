@@ -151,14 +151,14 @@ def test_rag_service_answers_and_publishes_event() -> None:
 
     response = service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="Why was claim 42 denied?",
             top_k=1,
             filters={"category": "claims"},
         )
     )
 
-    assert response.knowledge_base_id == "kb-1"
+    assert response.knowledge_base_ids == ["kb-1"]
     assert len(response.citations) == 1
     assert response.graph_summary is not None
     assert isinstance(event_bus.published_events[-1], RagCompletedEvent)
@@ -177,7 +177,7 @@ def test_rag_service_skips_graph_expansion_when_disabled() -> None:
 
     response = service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="Summarize provider risk",
             include_graph_context=False,
         )
@@ -197,7 +197,7 @@ def test_rag_service_answer_question_returns_simplified_answer() -> None:
     )
 
     answer = service.answer_question(
-        knowledge_base_id="kb-1",
+        knowledge_base_ids=["kb-1"],
         question="Why was claim 42 denied?",
     )
 
@@ -216,7 +216,7 @@ def test_rag_service_retrieval_failure_raises_rag_retrieval_error() -> None:
 
     with pytest.raises(RagRetrievalError):
         service.answer(
-            RagQueryRequest(knowledge_base_id="kb-1", question="anything?")
+            RagQueryRequest(knowledge_base_ids=["kb-1"], question="anything?")
         )
 
 
@@ -231,7 +231,7 @@ def test_rag_service_generation_failure_raises_rag_generation_error() -> None:
 
     with pytest.raises(RagGenerationError):
         service.answer(
-            RagQueryRequest(knowledge_base_id="kb-1", question="anything?")
+            RagQueryRequest(knowledge_base_ids=["kb-1"], question="anything?")
         )
 
 
@@ -252,7 +252,7 @@ def test_request_system_prompt_overrides_domain_template() -> None:
 
     service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="Why?",
             include_graph_context=False,
             system_prompt="caller-supplied prompt",
@@ -278,7 +278,7 @@ def test_falls_back_to_domain_template_when_request_omits_prompt() -> None:
 
     service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="Why?",
             include_graph_context=False,
         )
@@ -302,7 +302,7 @@ def test_unknown_placeholder_in_template_is_preserved() -> None:
 
     service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="Why?",
             include_graph_context=False,
         )
@@ -325,7 +325,7 @@ def test_system_prompt_is_none_when_no_domain_config_provided() -> None:
 
     service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="Why?",
             include_graph_context=False,
         )
@@ -351,7 +351,7 @@ def test_stream_answer_yields_final_chunk_with_citations() -> None:
     chunks = list(
         service.stream_answer(
             RagQueryRequest(
-                knowledge_base_id="kb-1",
+                knowledge_base_ids=["kb-1"],
                 question="Why was claim 42 denied?",
                 include_graph_context=False,
             )
@@ -385,7 +385,7 @@ def test_stream_answer_propagates_generation_failure() -> None:
         list(
             service.stream_answer(
                 RagQueryRequest(
-                    knowledge_base_id="kb-1",
+                    knowledge_base_ids=["kb-1"],
                     question="Why?",
                     include_graph_context=False,
                 )
@@ -422,7 +422,7 @@ def test_citations_are_ordered_by_descending_score() -> None:
 
     response = service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="claim 42",
             top_k=2,
             include_graph_context=False,
@@ -456,7 +456,7 @@ def test_citation_metadata_is_mapped_when_present() -> None:
 
     response = service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="anything",
             include_graph_context=False,
         )
@@ -487,7 +487,7 @@ def test_citation_falls_back_to_text_metadata_for_highlight() -> None:
 
     response = service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="anything",
             include_graph_context=False,
         )
@@ -515,7 +515,7 @@ def test_citation_metadata_missing_results_in_none_fields() -> None:
 
     response = service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="anything",
             include_graph_context=False,
         )
@@ -546,7 +546,7 @@ def test_citation_ignores_non_matching_metadata_types() -> None:
 
     response = service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="anything",
             include_graph_context=False,
         )
@@ -670,7 +670,7 @@ def test_answer_value_error_in_embedder_raises_rag_configuration_error() -> None
     )
 
     with pytest.raises(RagConfigurationError, match="invalid embedding"):
-        service.answer(RagQueryRequest(knowledge_base_id="kb-1", question="q?"))
+        service.answer(RagQueryRequest(knowledge_base_ids=["kb-1"], question="q?"))
 
 
 def test_answer_value_error_in_retriever_raises_rag_configuration_error() -> None:
@@ -682,7 +682,7 @@ def test_answer_value_error_in_retriever_raises_rag_configuration_error() -> Non
     )
 
     with pytest.raises(RagConfigurationError, match="retrieval configuration"):
-        service.answer(RagQueryRequest(knowledge_base_id="kb-1", question="q?"))
+        service.answer(RagQueryRequest(knowledge_base_ids=["kb-1"], question="q?"))
 
 
 def test_answer_value_error_in_generator_raises_rag_configuration_error() -> None:
@@ -694,7 +694,7 @@ def test_answer_value_error_in_generator_raises_rag_configuration_error() -> Non
     )
 
     with pytest.raises(RagConfigurationError, match="generator configuration"):
-        service.answer(RagQueryRequest(knowledge_base_id="kb-1", question="q?"))
+        service.answer(RagQueryRequest(knowledge_base_ids=["kb-1"], question="q?"))
 
 
 def test_answer_with_empty_context_still_returns_response_without_citations() -> None:
@@ -708,7 +708,7 @@ def test_answer_with_empty_context_still_returns_response_without_citations() ->
 
     response = service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="Why?",
             include_graph_context=False,
         )
@@ -734,7 +734,7 @@ def test_graph_expansion_runtime_failure_raises_rag_retrieval_error() -> None:
     with pytest.raises(RagRetrievalError, match="expand graph context"):
         service.answer(
             RagQueryRequest(
-                knowledge_base_id="kb-1",
+                knowledge_base_ids=["kb-1"],
                 question="Why?",
                 include_graph_context=True,
             )
@@ -753,7 +753,7 @@ def test_graph_expansion_value_error_raises_rag_configuration_error() -> None:
     with pytest.raises(RagConfigurationError, match="graph expander configuration"):
         service.answer(
             RagQueryRequest(
-                knowledge_base_id="kb-1",
+                knowledge_base_ids=["kb-1"],
                 question="Why?",
                 include_graph_context=True,
             )
@@ -772,7 +772,7 @@ def test_stream_answer_value_error_in_generator_raises_rag_configuration_error()
         list(
             service.stream_answer(
                 RagQueryRequest(
-                    knowledge_base_id="kb-1",
+                    knowledge_base_ids=["kb-1"],
                     question="q?",
                     include_graph_context=False,
                 )
@@ -790,7 +790,7 @@ def test_stream_answer_partial_failure_yields_then_raises() -> None:
 
     iterator = service.stream_answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="Why?",
             include_graph_context=False,
         )
@@ -818,7 +818,7 @@ def test_domain_config_with_no_rag_section_yields_no_system_prompt() -> None:
 
     service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="Why?",
             include_graph_context=False,
         )
@@ -839,7 +839,7 @@ def test_domain_config_with_rag_but_no_template_yields_no_system_prompt() -> Non
 
     service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="Why?",
             include_graph_context=False,
         )
@@ -862,13 +862,32 @@ def test_malformed_template_falls_back_to_raw_text() -> None:
 
     service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="Why?",
             include_graph_context=False,
         )
     )
 
     assert generator.requests[-1].system_prompt == "prefix {0} suffix"
+
+
+def test_rag_service_answer_question_accepts_list_of_knowledge_base_ids() -> None:
+    """answer_question takes knowledge_base_ids: list[str] post-dual-graph."""
+    event_bus = InMemoryEventBus()
+    service = create_rag_service(
+        InMemoryQueryEmbedder(),
+        InMemoryContextRetriever(_records()),
+        InMemoryAnswerGenerator(),
+        event_bus=event_bus,
+    )
+
+    answer = service.answer_question(
+        knowledge_base_ids=["kb-claims", "kb-policy"],
+        question="What providers are excluded?",
+    )
+
+    assert "providers" in answer.content.lower() or len(answer.content) > 0
+    assert answer.sources == ["record-1"]
 
 
 def test_long_content_snippet_is_truncated_with_ellipsis() -> None:
@@ -890,7 +909,7 @@ def test_long_content_snippet_is_truncated_with_ellipsis() -> None:
 
     response = service.answer(
         RagQueryRequest(
-            knowledge_base_id="kb-1",
+            knowledge_base_ids=["kb-1"],
             question="anything",
             include_graph_context=False,
         )

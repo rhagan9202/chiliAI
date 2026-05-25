@@ -39,6 +39,7 @@ from events.types import (
     TimeseriesAnalyzedReference,
     ValidatedDocumentReference,
     VectorIndexedReference,
+    VectorsDeletedEvent,
     VectorsIndexedEvent,
 )
 
@@ -246,6 +247,16 @@ def test_event_codec_round_trips_vectors_indexed_event() -> None:
     assert decoded.event_type == "vectors.indexed"
 
 
+def test_event_codec_round_trips_vectors_deleted_event() -> None:
+    event = VectorsDeletedEvent(knowledge_base_id="kb-1", deleted_count=2)
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "vectors.deleted"
+
+
 def test_event_codec_round_trips_llm_completed_event() -> None:
     event = LlmCompletedEvent(
         completions=[
@@ -412,3 +423,49 @@ def test_event_codec_round_trips_explainability_generated_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "explainability.generated"
+
+
+# ---------------------------------------------------------------------------
+# Error-path tests — cover the raise/branch lines missed in codec.py
+# ---------------------------------------------------------------------------
+
+
+def test_decode_event_rejects_missing_event_type() -> None:
+    with pytest.raises(ValueError, match="missing 'event_type'"):
+        decode_event({"event_body": '{"event_type": "kb.create", "knowledge_base_id": "kb-1"}'})
+
+
+def test_decode_event_rejects_missing_event_body() -> None:
+    with pytest.raises(ValueError, match="missing 'event_body'"):
+        decode_event({"event_type": "kb.create"})
+
+
+def test_decode_event_rejects_unknown_event_type() -> None:
+    with pytest.raises(ValueError, match="Unsupported event type"):
+        decode_event(
+            {
+                "event_type": "not.a.real.event",
+                "event_body": '{"event_type": "not.a.real.event"}',
+            }
+        )
+
+
+def test_decode_event_rejects_non_object_body() -> None:
+    with pytest.raises(ValueError, match="must be a JSON object"):
+        decode_event(
+            {
+                "event_type": "kb.create",
+                "event_body": '"just a string"',
+            }
+        )
+
+
+def test_decode_event_handles_bytes_keyed_payload() -> None:
+    """Redis Streams returns bytes keys/values; decode_event must handle them."""
+    event = KnowledgeBaseCreatedEvent(knowledge_base_id="kb-bytes")
+    encoded = encode_event(event)
+    bytes_payload: dict[bytes, bytes] = {
+        k.encode("utf-8"): v.encode("utf-8") for k, v in encoded.items()
+    }
+    decoded = decode_event(bytes_payload)
+    assert decoded == event

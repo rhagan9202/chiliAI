@@ -4,7 +4,7 @@
 COMPOSE_DEV  = docker compose -f docker-compose.dev.yaml
 COMPOSE_PROD = docker compose
 
-.PHONY: dev down build logs clean prod prod-down api-shell test help
+.PHONY: dev down build logs clean prod prod-down api-shell migrate test help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -29,6 +29,9 @@ clean: ## Stop dev stack and remove volumes
 api-shell: ## Open a shell in the API container
 	$(COMPOSE_DEV) exec api /bin/bash
 
+migrate: ## Run database migrations inside the API container
+	$(COMPOSE_DEV) exec api alembic upgrade head
+
 test: ## Run backend tests inside the API container
 	$(COMPOSE_DEV) exec api pytest --cov
 
@@ -39,3 +42,13 @@ prod: ## Start production stack
 
 prod-down: ## Stop production stack
 	$(COMPOSE_PROD) down
+
+# ---------- Demo ----------
+
+.PHONY: demo-tn-subset
+demo-tn-subset: ## Build TN subset and upload to the running API
+	python3 -m tools.sample_data.build_tennessee_subset \
+		--nppes-root sample_data \
+		--desynpuf-root sample_data/CMS \
+		--output-root sample_data/CMS/tn_subset
+	scripts/demo_ingest_tn_subset.sh

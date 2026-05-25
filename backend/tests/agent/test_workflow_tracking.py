@@ -15,8 +15,11 @@ from events.adapters.in_memory import InMemoryEventBus
 from agent.workflow_tracking import WorkflowEventTracker
 from events.types import (
     AgentWorkflowStartedEvent,
+    DocumentFailureReference,
     DocumentReference,
+    DocumentsFailedEvent,
     DocumentsUploadedEvent,
+    RecordsIngestedEvent,
     VectorsIndexedDocumentReference,
     VectorsIndexedEvent,
 )
@@ -139,6 +142,63 @@ def test_tracker_marks_terminal_success_for_vector_indexed_event() -> None:
     assert run.steps[0].status is WorkflowStepStatus.COMPLETED
 
 
+def test_tracker_marks_document_failure_event_terminal() -> None:
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-1",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                metadata={"correlation_id": "corr-1"},
+            )
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+    event = DocumentsFailedEvent(
+        correlation_id="corr-1",
+        documents=[
+            DocumentFailureReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-1",
+                error_message="Could not parse document.",
+            )
+        ],
+    )
+
+    assert tracker.begin_event(event) is True
+    tracker.complete_event(event)
+
+    run = run_store.get_run("workflow-1")
+    assert run.status is WorkflowRunStatus.FAILED
+    assert run.steps[0].status is WorkflowStepStatus.FAILED
+    assert run.metadata["last_event_type"] == "documents.failed"
+
+
+def test_tracker_creates_completed_records_workflow_for_untracked_event() -> None:
+    run_store = InMemoryWorkflowRunStore()
+    tracker = WorkflowEventTracker(run_store)
+    event = RecordsIngestedEvent(
+        correlation_id="records-corr-1",
+        knowledge_base_id="kb-1",
+        feed_name="claims",
+        record_type="Claim",
+        record_count=2,
+    )
+
+    assert tracker.begin_event(event) is True
+    tracker.complete_event(event)
+
+    [run] = run_store.list_runs()
+    assert run.knowledge_base_id == "kb-1"
+    assert run.status is WorkflowRunStatus.COMPLETED
+    assert run.trigger_event_type == "records.ingested"
+    assert run.metadata["correlation_id"] == "records-corr-1"
+    assert run.steps[0].step_name == "records_ingest"
+    assert run.steps[0].status is WorkflowStepStatus.COMPLETED
+
+
 def test_tracker_marks_run_failed_after_retry_exhaustion() -> None:
     run_store = InMemoryWorkflowRunStore(
         runs=[
@@ -181,3 +241,77 @@ def test_tracker_skips_cancelled_workflow() -> None:
     run = run_store.get_run("workflow-1")
     assert run.status is WorkflowRunStatus.CANCELLED
     assert run.steps[0].status is WorkflowStepStatus.PENDING
+
+
+# ---------------------------------------------------------------------------
+# is_busy tests
+# ---------------------------------------------------------------------------
+
+
+def test_is_busy_returns_false_when_no_workflows_for_kb() -> None:
+    run_store = InMemoryWorkflowRunStore()
+    tracker = WorkflowEventTracker(run_store)
+
+    assert tracker.is_busy("kb-99") is False
+
+
+def test_is_busy_returns_true_when_queued_workflow_exists() -> None:
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-queued",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.QUEUED,
+                steps=[WorkflowStepState(step_name="parse")],
+                metadata={"correlation_id": "corr-queued"},
+            )
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+
+    assert tracker.is_busy("kb-1") is True
+
+
+def test_is_busy_returns_true_when_running_workflow_exists() -> None:
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-running",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                metadata={"correlation_id": "corr-running"},
+            )
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+
+    assert tracker.is_busy("kb-1") is True
+
+
+def test_is_busy_returns_false_when_only_terminal_workflows_exist() -> None:
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-completed",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.COMPLETED,
+                steps=[WorkflowStepState(step_name="ready")],
+                metadata={"correlation_id": "corr-completed"},
+            ),
+            WorkflowRun(
+                workflow_id="workflow-failed",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.FAILED,
+                steps=[WorkflowStepState(step_name="parse")],
+                metadata={"correlation_id": "corr-failed"},
+            ),
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+
+    assert tracker.is_busy("kb-1") is False

@@ -22,7 +22,7 @@ def _empty_sources() -> list[str]:
 class RagQueryRequest(BaseModel):
     """A caller-supplied rag query."""
 
-    knowledge_base_id: str
+    knowledge_base_ids: list[str] = Field(min_length=1)
     question: str
     top_k: int = Field(default=5, gt=0)
     include_graph_context: bool = True
@@ -52,7 +52,7 @@ class RagQueryResponse(BaseModel):
     """A generated answer plus supporting citations."""
 
     request_id: str
-    knowledge_base_id: str
+    knowledge_base_ids: list[str]
     answer: str
     provider: str
     model_name: str

@@ -6,7 +6,13 @@ import pytest
 
 from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
 from analytics.gnn.adapters.protocols import GraphSnapshotSourceProtocol
-from analytics.gnn.exceptions import GnnConfigurationError, GnnInsufficientGraphError, GnnSourceError
+from analytics.gnn.exceptions import (
+    GnnConfigurationError,
+    GnnDisabledError,
+    GnnInsufficientGraphError,
+    GnnSnapshotUnavailableError,
+    GnnSourceError,
+)
 from analytics.gnn.models import (
     ClusterSummary,
     GraphEdgeSignal,
@@ -61,6 +67,27 @@ def test_gnn_service_requires_at_least_two_nodes() -> None:
     )
 
     with pytest.raises(GnnInsufficientGraphError, match="at least two nodes"):
+        service.analyze(GnnAnalysisRequest(knowledge_base_id="kb-1"))
+
+
+def test_gnn_service_skips_missing_snapshot_as_unavailable() -> None:
+    service = create_gnn_service(
+        InMemoryGraphSnapshotSource(),
+        event_bus=InMemoryEventBus(),
+    )
+
+    with pytest.raises(GnnSnapshotUnavailableError, match="No graph snapshot"):
+        service.analyze(GnnAnalysisRequest(knowledge_base_id="kb-1"))
+
+
+def test_gnn_service_analyze_honors_disabled_capability() -> None:
+    service = create_gnn_service(
+        InMemoryGraphSnapshotSource(),
+        event_bus=InMemoryEventBus(),
+        gnn_enabled=lambda: False,
+    )
+
+    with pytest.raises(GnnDisabledError, match="disabled"):
         service.analyze(GnnAnalysisRequest(knowledge_base_id="kb-1"))
 
 

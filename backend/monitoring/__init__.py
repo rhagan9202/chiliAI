@@ -2,8 +2,17 @@
 
 from __future__ import annotations
 
-from monitoring.adapters.in_memory import InMemoryAlertRepository, InMemoryObservationSource
-from monitoring.adapters.protocols import ObservationSourceProtocol
+from monitoring.adapters.in_memory import (
+    InMemoryAlertRepository,
+    InMemoryObservationSource,
+    InMemoryObservationWriter,
+)
+from monitoring.adapters.postgres import (
+    PostgresAlertHistoryStore,
+    PostgresObservationSource,
+    PostgresObservationStore,
+)
+from monitoring.adapters.protocols import ObservationSourceProtocol, ObservationWriter
 from monitoring.exceptions import (
     AlertAlreadyResolvedError,
     AlertNotFoundError,
@@ -39,6 +48,7 @@ __all__ = [
     "AlertsServiceProtocol",
     "InMemoryAlertRepository",
     "InMemoryObservationSource",
+    "InMemoryObservationWriter",
     "MonitoringBatch",
     "MonitoringConfigurationError",
     "MonitoringError",
@@ -49,6 +59,10 @@ __all__ = [
     "MonitoringServiceProtocol",
     "MonitoringSourceError",
     "ObservationSourceProtocol",
+    "ObservationWriter",
+    "PostgresAlertHistoryStore",
+    "PostgresObservationSource",
+    "PostgresObservationStore",
     "ResolutionRequest",
     "create_alerts_service",
     "create_monitoring_service",

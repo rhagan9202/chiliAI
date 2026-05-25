@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from monitoring.models import MonitoringBatch
+from monitoring.models import AlertHistoryRecord, MonitoringBatch
 from shared.types import Alert
 
 
@@ -23,6 +23,36 @@ class ObservationSourceProtocol(Protocol):
 
 
 @runtime_checkable
+class ObservationWriter(Protocol):
+    """Persist scored observations to the analytics-facing observations store.
+
+    The read-side ``ObservationSourceProtocol`` adapter is added in Plan C;
+    this write-side protocol is what the worker's Flow 1 handler depends on.
+    """
+
+    def write_observations(
+        self, batch: MonitoringBatch, *, correlation_id: str
+    ) -> int:
+        """Persist a batch's observations idempotently; return the row count written."""
+        ...
+
+
+@runtime_checkable
+class AlertHistoryWriter(Protocol):
+    """Persist alerts to the analytics-facing ``alert_history`` log."""
+
+    def write_alerts(self, records: list[AlertHistoryRecord]) -> int:
+        """Persist alert rows idempotently; return the count of newly written rows."""
+        ...
+
+    def count_open_alerts(
+        self, *, knowledge_base_id: str, entity_id: str
+    ) -> int:
+        """Return how many ``open`` alerts the log holds for one entity."""
+        ...
+
+
+@runtime_checkable
 class AlertRepositoryProtocol(Protocol):
     """Persist and list alert read models for alert lifecycle operations."""
 
@@ -34,6 +64,8 @@ class AlertRepositoryProtocol(Protocol):
 
 
 __all__ = [
+    "AlertHistoryWriter",
     "AlertRepositoryProtocol",
     "ObservationSourceProtocol",
+    "ObservationWriter",
 ]

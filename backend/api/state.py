@@ -74,6 +74,7 @@ from rag.models import ContextRecord
 from rag.protocols import RagServiceProtocol
 from rag.service import create_rag_service
 from rag.service_models import RagQueryRequest
+from shared.kb_scope import KnowledgeBaseExistenceCheck, resolve_kb_scope
 from shared.types import Alert, Entity, EntityDefinition, Relationship
 from shared.utils import generate_id
 from shared.alerts import normalize_severity
@@ -219,7 +220,7 @@ class ApiState:
         return self._to_alert_item(alert_id)
 
     def get_graph_entity_detail(self, entity_id: str) -> GraphEntityDetailResponse:
-        entity = self._graph_service.get_entity(self._knowledge_base_id, entity_id)
+        entity = self._graph_service.get_entity([self._knowledge_base_id], entity_id)
         if entity is None:
             raise KeyError(entity_id)
         neighbors, relationships = self._graph_service.get_neighbors(self._knowledge_base_id, entity_id)
@@ -430,7 +431,12 @@ class ApiState:
             messages=list(record.messages),
         )
 
-    def add_message(self, conversation_id: str, request: ChatMessageCreateRequest) -> ChatConversationResponse:
+    def add_message(
+        self,
+        conversation_id: str,
+        request: ChatMessageCreateRequest,
+        kb_repository: KnowledgeBaseExistenceCheck | None = None,
+    ) -> ChatConversationResponse:
         with self._lock:
             record = self._conversations[conversation_id]
             user_message = ChatMessageResponse(
@@ -440,9 +446,11 @@ class ApiState:
                 created_at=self._now(),
             )
             record.messages.append(user_message)
+            kb_repo: KnowledgeBaseExistenceCheck = kb_repository if kb_repository is not None else _NoopKbRepository()
+            kb_ids = resolve_kb_scope(record.knowledge_base_id, self._domain_config, kb_repo)
             rag_response = self._rag_service.answer(
                 RagQueryRequest(
-                    knowledge_base_id=record.knowledge_base_id,
+                    knowledge_base_ids=kb_ids,
                     question=request.content,
                     include_graph_context=request.include_graph_context,
                     filters=request.filters,
@@ -976,6 +984,19 @@ class ApiState:
         if isinstance(display_name, str) and display_name.strip():
             return f"{label} entity named {display_name} in the active knowledge base."
         return f"{label} entity in the active knowledge base."
+
+
+class _NoopKbRepository:
+    """Fallback KB existence check that reports every KB as absent.
+
+    Used when no real repository is available (e.g. tests that don't wire up a
+    KB store).  ``resolve_kb_scope`` will treat the reference KB as missing and
+    fall back to primary-only scope — the safe degraded behaviour.
+    """
+
+    def get(self, knowledge_base_id: str) -> object | None:
+        del knowledge_base_id
+        return None
 
 
 def create_api_state(domain_config: DomainConfig | None = None) -> ApiState:

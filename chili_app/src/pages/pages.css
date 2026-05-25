@@ -260,6 +260,21 @@
   border-radius: 10px;
 }
 
+.ingestion-studio-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(280px, 340px);
+  gap: 16px;
+  align-items: start;
+}
+
+.ingestion-studio-main,
+.ingestion-studio-context,
+.ingestion-studio-summary,
+.ingestion-studio-documents {
+  display: grid;
+  gap: 16px;
+}
+
 .policy-layout {
   display: grid;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
@@ -297,6 +312,7 @@
   .investigation-layout,
   .case-layout,
   .knowledge-base-layout,
+  .ingestion-studio-layout,
   .knowledge-base-stats,
   .knowledge-base-detail-grid,
   .policy-layout,
@@ -306,12 +322,19 @@
   }
 }
 
+@media (max-width: 1100px) {
+  .ingestion-studio-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 760px) {
   .dashboard-kpis,
   .dashboard-panels,
   .investigation-layout,
   .case-layout,
   .knowledge-base-layout,
+  .ingestion-studio-layout,
   .knowledge-base-stats,
   .knowledge-base-detail-grid,
   .policy-layout,

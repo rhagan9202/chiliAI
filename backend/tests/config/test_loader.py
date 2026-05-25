@@ -21,6 +21,24 @@ FOOD_YAML = DEFAULTS_DIR / "food_supply_chain.yaml"
 
 
 # ---------------------------------------------------------------------------
+# Round-trip test: every YAML in config/defaults/ must load without error.
+# This guards against schema drift whenever a new config block is added.
+# ---------------------------------------------------------------------------
+
+
+def _all_default_yamls() -> list[Path]:
+    return sorted(DEFAULTS_DIR.glob("*.yaml"))
+
+
+@pytest.mark.parametrize("yaml_path", _all_default_yamls(), ids=lambda p: p.name)
+def test_all_defaults_load_successfully(yaml_path: Path) -> None:
+    cfg = load_config(yaml_path)
+    assert isinstance(cfg, DomainConfig), f"{yaml_path.name} did not produce a DomainConfig"
+    assert cfg.domain.name, f"{yaml_path.name}: domain.name must be non-empty"
+    assert cfg.entities, f"{yaml_path.name}: entities list must be non-empty"
+
+
+# ---------------------------------------------------------------------------
 # load_config from explicit path
 # ---------------------------------------------------------------------------
 

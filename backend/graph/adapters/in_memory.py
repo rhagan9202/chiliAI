@@ -7,8 +7,9 @@ from copy import deepcopy
 from typing import Generator
 from typing import Literal
 
-from graph.models import SubgraphResult
+from graph.models import GraphDeleteByProvenance, SubgraphResult
 from graph.adapters.protocols import GraphRepository
+from shared.provenance import SOURCE_DOCUMENT_ID_KEY
 from shared.types import Entity, Relationship
 
 __all__ = ["InMemoryGraphRepository"]
@@ -54,8 +55,12 @@ class InMemoryGraphRepository(GraphRepository):
     def get_relationships(self, knowledge_base_id: str) -> list[Relationship]:
         return list(self._relationships.get(knowledge_base_id, {}).values())
 
-    def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None:
-        return self._entities.get(knowledge_base_id, {}).get(entity_id)
+    def get_entity(self, knowledge_base_ids: list[str], entity_id: str) -> Entity | None:
+        for kb_id in knowledge_base_ids:
+            entity = self._entities.get(kb_id, {}).get(entity_id)
+            if entity is not None:
+                return entity
+        return None
 
     def update_entity_properties(
         self,
@@ -153,7 +158,7 @@ class InMemoryGraphRepository(GraphRepository):
 
     def search_entities(
         self,
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         query: str,
         limit: int,
     ) -> list[Entity]:
@@ -165,17 +170,16 @@ class InMemoryGraphRepository(GraphRepository):
             return []
 
         matches: list[Entity] = []
-        for entity in self.get_entities(knowledge_base_id):
-            haystacks = [
-                property_value
-                for property_value in entity.properties.values()
-                if isinstance(property_value, str)
-            ]
-            if any(normalized_query in haystack.lower() for haystack in haystacks):
-                matches.append(entity)
-            if len(matches) >= limit:
-                break
-        return matches
+        for kb_id in knowledge_base_ids:
+            for entity in self.get_entities(kb_id):
+                haystacks = [
+                    property_value
+                    for property_value in entity.properties.values()
+                    if isinstance(property_value, str)
+                ]
+                if any(normalized_query in haystack.lower() for haystack in haystacks):
+                    matches.append(entity)
+        return matches[:limit]
 
     def count_entities(self, knowledge_base_id: str) -> int:
         return len(self._entities.get(knowledge_base_id, {}))
@@ -208,6 +212,45 @@ class InMemoryGraphRepository(GraphRepository):
     def delete_relationship(self, knowledge_base_id: str, relationship_id: str) -> None:
         self._relationships.get(knowledge_base_id, {}).pop(relationship_id, None)
         self._adjacency_is_stale.add(knowledge_base_id)
+
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> GraphDeleteByProvenance:
+        entity_bucket = self._entities.get(knowledge_base_id)
+        relationship_bucket = self._relationships.get(knowledge_base_id)
+
+        entity_count = 0
+        if entity_bucket is not None:
+            entity_ids_to_remove = [
+                entity_id
+                for entity_id, entity in entity_bucket.items()
+                if entity.metadata.get(SOURCE_DOCUMENT_ID_KEY) == source_document_id
+            ]
+            for entity_id in entity_ids_to_remove:
+                del entity_bucket[entity_id]
+            entity_count = len(entity_ids_to_remove)
+
+        relationship_count = 0
+        if relationship_bucket is not None:
+            relationship_ids_to_remove = [
+                relationship_id
+                for relationship_id, relationship in relationship_bucket.items()
+                if relationship.metadata.get(SOURCE_DOCUMENT_ID_KEY) == source_document_id
+            ]
+            for relationship_id in relationship_ids_to_remove:
+                del relationship_bucket[relationship_id]
+            relationship_count = len(relationship_ids_to_remove)
+            if relationship_count > 0:
+                self._adjacency_is_stale.add(knowledge_base_id)
+
+        return GraphDeleteByProvenance(
+            knowledge_base_id=knowledge_base_id,
+            source_document_id=source_document_id,
+            entity_count=entity_count,
+            relationship_count=relationship_count,
+        )
 
     @contextmanager
     def _transaction_scope(self, knowledge_base_id: str) -> Generator[None, None, None]:

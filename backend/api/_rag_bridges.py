@@ -87,7 +87,13 @@ class ServiceQueryEmbedder:
                 "Embeddings service returned no items for the query embedding request."
             )
 
-        vector = list(items[0].vector)
+        text_item = next((item for item in items if item.channel == "text"), None)
+        if text_item is None:
+            raise RagConfigurationError(
+                "Embeddings service returned no text item for the query embedding request."
+            )
+
+        vector = list(text_item.vector)
         if not vector:
             raise RagConfigurationError(
                 "Embeddings service returned an empty vector for the query embedding request."
@@ -109,11 +115,14 @@ class ServiceContextRetriever:
         limit: int,
         filters: dict[str, str | int | float | bool],
     ) -> list[RetrievedContextItem]:
+        search_filters: dict[str, str | int | float | bool] = dict(filters)
+        search_filters["embedding_channel"] = "text"
+
         request = VectorSearchRequest(
-            knowledge_base_id=knowledge_base_id,
+            knowledge_base_ids=[knowledge_base_id],
             query_vector=list(query_vector),
             limit=limit,
-            filters=dict(filters),
+            filters=search_filters,
         )
         response = self._service.search(request)
 

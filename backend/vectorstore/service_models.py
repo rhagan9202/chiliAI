@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 from shared.utils import utc_now
 from vectorstore.models import MetadataValue
@@ -60,10 +60,36 @@ class VectorIndexReceipt(BaseModel):
     created_at: datetime = Field(default_factory=utc_now)
 
 
-class VectorSearchRequest(BaseModel):
-    """A vector similarity-search request."""
+def _empty_receipts() -> list[VectorIndexReceipt]:
+    return []
+
+
+class VectorAuditArtifact(BaseModel):
+    """Audit artifact persisted after successful vector indexing."""
+
+    request_id: str
+    knowledge_base_id: str
+    receipts: list[VectorIndexReceipt] = Field(default_factory=_empty_receipts)
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @computed_field
+    @property
+    def receipt_count(self) -> int:
+        return len(self.receipts)
+
+
+class VectorDeleteResponse(BaseModel):
+    """Response returned after deleting a vector namespace."""
 
     knowledge_base_id: str
+    deleted_count: int = Field(ge=0)
+    deleted_at: datetime = Field(default_factory=utc_now)
+
+
+class VectorSearchRequest(BaseModel):
+    """A vector similarity-search request across one or more knowledge bases."""
+
+    knowledge_base_ids: list[str] = Field(min_length=1)
     query_vector: list[float] = Field(default_factory=_empty_embedding)
     limit: int = Field(default=5, gt=0)
     filters: dict[str, MetadataValue] = Field(default_factory=dict)
@@ -88,12 +114,14 @@ class VectorSearchMatch(BaseModel):
 class VectorSearchResponse(BaseModel):
     """Response returned by a vector similarity-search request."""
 
-    knowledge_base_id: str
+    knowledge_base_ids: list[str] = Field(min_length=1)
     query_dimension: int = Field(gt=0)
     matches: list[VectorSearchMatch] = Field(default_factory=_empty_matches)
 
 
 __all__ = [
+    "VectorAuditArtifact",
+    "VectorDeleteResponse",
     "VectorIndexReceipt",
     "VectorIndexRequest",
     "VectorIndexSubmission",

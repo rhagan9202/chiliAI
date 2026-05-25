@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import pytest
 
-from embeddings.adapters.protocols import EmbedderProtocol
+from embeddings.adapters.protocols import (
+    EmbedderProtocol,
+    GraphEmbeddingProviderProtocol,
+)
 from embeddings.adapters.in_memory import InMemoryEmbedder
-from embeddings.exceptions import EmbeddingProviderError
-from embeddings.models import EmbeddingMetadata, EmbeddingRequest, EmbeddingResult
+from embeddings.exceptions import EmbeddingConfigurationError, EmbeddingProviderError
+from embeddings.models import (
+    EmbeddingMetadata,
+    EmbeddingRequest,
+    EmbeddingResult,
+    GraphEmbeddingBatch,
+)
 from embeddings.service import create_embeddings_service
 from embeddings.service_models import EmbedRequest, EmbedSubmission
 from events.adapters.in_memory import InMemoryEventBus
@@ -24,6 +34,46 @@ class _PartialEmbedder(EmbedderProtocol):
                 dimensions=2,
                 provider="partial",
             ),
+        )
+
+
+class _ExplodingEmbedder(EmbedderProtocol):
+    def __init__(self, exc: Exception) -> None:
+        self._exc = exc
+
+    def embed(self, request: EmbeddingRequest) -> EmbeddingResult:
+        del request
+        raise self._exc
+
+
+class _GraphProvider(GraphEmbeddingProviderProtocol):
+    def __init__(
+        self,
+        *,
+        vectors: dict[str, list[float]],
+        dimensions: int = 3,
+        exc: Exception | None = None,
+    ) -> None:
+        self._vectors = vectors
+        self._dimensions = dimensions
+        self._exc = exc
+        self.calls: list[tuple[str, list[str], int]] = []
+
+    def get_node_embeddings(
+        self,
+        *,
+        knowledge_base_id: str,
+        content_ids: Sequence[str],
+        dimensions: int,
+    ) -> GraphEmbeddingBatch:
+        self.calls.append((knowledge_base_id, list(content_ids), dimensions))
+        if self._exc is not None:
+            raise self._exc
+        return GraphEmbeddingBatch(
+            vectors={key: list(value) for key, value in self._vectors.items()},
+            model_name="gnn-spectral",
+            provider="gnn",
+            dimensions=self._dimensions,
         )
 
 
@@ -64,6 +114,40 @@ def test_embeddings_service_rejects_partial_provider_results() -> None:
     assert event_bus.published_events == []
 
 
+def test_embeddings_service_maps_provider_value_error_to_configuration_error() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_embeddings_service(
+        _ExplodingEmbedder(ValueError("bad config")),
+        event_bus=event_bus,
+    )
+
+    with pytest.raises(EmbeddingConfigurationError, match="bad config"):
+        service.embed(
+            EmbedRequest(
+                submissions=[EmbedSubmission(content_id="content-1", content="Alpha")]
+            )
+        )
+
+    assert event_bus.published_events == []
+
+
+def test_embeddings_service_maps_provider_exception_to_provider_error() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_embeddings_service(
+        _ExplodingEmbedder(RuntimeError("backend down")),
+        event_bus=event_bus,
+    )
+
+    with pytest.raises(EmbeddingProviderError, match="Failed to generate embeddings"):
+        service.embed(
+            EmbedRequest(
+                submissions=[EmbedSubmission(content_id="content-1", content="Alpha")]
+            )
+        )
+
+    assert event_bus.published_events == []
+
+
 def test_embeddings_service_preserves_submission_order() -> None:
     event_bus = InMemoryEventBus()
     service = create_embeddings_service(InMemoryEmbedder(), event_bus=event_bus)
@@ -78,3 +162,250 @@ def test_embeddings_service_preserves_submission_order() -> None:
     )
 
     assert [item.content_id for item in response.items] == ["content-1", "content-2"]
+
+
+def test_embeddings_service_adds_graph_channel_when_requested() -> None:
+    event_bus = InMemoryEventBus()
+    graph_provider = _GraphProvider(vectors={"content-1": [0.3, 0.4, 0.5]})
+    service = create_embeddings_service(
+        InMemoryEmbedder(dimensions=4),
+        event_bus=event_bus,
+        graph_embedding_provider=graph_provider,
+    )
+
+    response = service.embed(
+        EmbedRequest(
+            knowledge_base_id="kb-1",
+            include_graph_embeddings=True,
+            graph_embedding_dimension=3,
+            submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+        )
+    )
+
+    assert [(item.content_id, item.channel) for item in response.items] == [
+        ("content-1", "text"),
+        ("content-1", "graph"),
+    ]
+    assert response.items[0].dimensions == 4
+    assert response.items[1].dimensions == 3
+    assert graph_provider.calls == [("kb-1", ["content-1"], 3)]
+    assert response.graph_status is not None
+    assert response.graph_status.missing_content_ids == []
+
+
+def test_embeddings_service_omits_missing_graph_vectors_by_default() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_embeddings_service(
+        InMemoryEmbedder(dimensions=4),
+        event_bus=event_bus,
+        graph_embedding_provider=_GraphProvider(vectors={}),
+    )
+
+    response = service.embed(
+        EmbedRequest(
+            knowledge_base_id="kb-1",
+            include_graph_embeddings=True,
+            submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+        )
+    )
+
+    assert [item.channel for item in response.items] == ["text"]
+    assert response.graph_status is not None
+    assert response.graph_status.missing_content_ids == ["content-1"]
+
+
+def test_embeddings_service_requires_graph_vectors_when_requested() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_embeddings_service(
+        InMemoryEmbedder(dimensions=4),
+        event_bus=event_bus,
+        graph_embedding_provider=_GraphProvider(vectors={}),
+    )
+
+    with pytest.raises(EmbeddingProviderError, match="missing graph embeddings"):
+        service.embed(
+            EmbedRequest(
+                knowledge_base_id="kb-1",
+                include_graph_embeddings=True,
+                require_graph_embeddings=True,
+                submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+            )
+        )
+
+
+def test_embeddings_service_requires_graph_channel_even_when_not_included() -> None:
+    event_bus = InMemoryEventBus()
+    graph_provider = _GraphProvider(vectors={"content-1": [0.3, 0.4, 0.5]})
+    service = create_embeddings_service(
+        InMemoryEmbedder(dimensions=4),
+        event_bus=event_bus,
+        graph_embedding_provider=graph_provider,
+    )
+
+    response = service.embed(
+        EmbedRequest(
+            knowledge_base_id="kb-1",
+            include_graph_embeddings=False,
+            require_graph_embeddings=True,
+            graph_embedding_dimension=3,
+            submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+        )
+    )
+
+    assert [(item.content_id, item.channel) for item in response.items] == [
+        ("content-1", "text"),
+        ("content-1", "graph"),
+    ]
+    assert graph_provider.calls == [("kb-1", ["content-1"], 3)]
+    assert response.graph_status is not None
+    assert response.graph_status.missing_content_ids == []
+
+
+def test_embeddings_service_records_graph_provider_failure_when_not_required() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_embeddings_service(
+        InMemoryEmbedder(dimensions=4),
+        event_bus=event_bus,
+        graph_embedding_provider=_GraphProvider(
+            vectors={},
+            exc=RuntimeError("gnn unavailable"),
+        ),
+    )
+
+    response = service.embed(
+        EmbedRequest(
+            knowledge_base_id="kb-1",
+            include_graph_embeddings=True,
+            submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+        )
+    )
+
+    assert [item.channel for item in response.items] == ["text"]
+    assert response.graph_status is not None
+    assert response.graph_status.failure_message == "gnn unavailable"
+
+
+def test_embeddings_service_reports_missing_knowledge_base_for_optional_graph() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_embeddings_service(
+        InMemoryEmbedder(dimensions=4),
+        event_bus=event_bus,
+    )
+
+    response = service.embed(
+        EmbedRequest(
+            include_graph_embeddings=True,
+            submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+        )
+    )
+
+    assert [item.channel for item in response.items] == ["text"]
+    assert response.graph_status is not None
+    assert response.graph_status.provider_configured is False
+    assert response.graph_status.missing_content_ids == ["content-1"]
+    assert response.graph_status.failure_message is not None
+
+
+def test_embeddings_service_requires_knowledge_base_for_required_graph() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_embeddings_service(
+        InMemoryEmbedder(dimensions=4),
+        event_bus=event_bus,
+    )
+
+    with pytest.raises(EmbeddingProviderError, match="knowledge_base_id"):
+        service.embed(
+            EmbedRequest(
+                include_graph_embeddings=True,
+                require_graph_embeddings=True,
+                submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+            )
+        )
+
+
+def test_embeddings_service_requires_graph_provider_when_required() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_embeddings_service(
+        InMemoryEmbedder(dimensions=4),
+        event_bus=event_bus,
+    )
+
+    with pytest.raises(EmbeddingProviderError, match="graph provider"):
+        service.embed(
+            EmbedRequest(
+                knowledge_base_id="kb-1",
+                include_graph_embeddings=True,
+                require_graph_embeddings=True,
+                submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+            )
+        )
+
+
+def test_embeddings_service_omits_dimension_mismatch_when_graph_not_required() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_embeddings_service(
+        InMemoryEmbedder(dimensions=4),
+        event_bus=event_bus,
+        graph_embedding_provider=_GraphProvider(
+            vectors={"content-1": [0.1, 0.2]},
+            dimensions=2,
+        ),
+    )
+
+    response = service.embed(
+        EmbedRequest(
+            knowledge_base_id="kb-1",
+            include_graph_embeddings=True,
+            graph_embedding_dimension=3,
+            submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+        )
+    )
+
+    assert [item.channel for item in response.items] == ["text"]
+    assert response.graph_status is not None
+    assert response.graph_status.missing_content_ids == ["content-1"]
+
+
+def test_embeddings_service_wraps_required_graph_provider_failure() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_embeddings_service(
+        InMemoryEmbedder(dimensions=4),
+        event_bus=event_bus,
+        graph_embedding_provider=_GraphProvider(
+            vectors={},
+            exc=RuntimeError("gnn unavailable"),
+        ),
+    )
+
+    with pytest.raises(EmbeddingProviderError, match="Failed to generate graph"):
+        service.embed(
+            EmbedRequest(
+                knowledge_base_id="kb-1",
+                include_graph_embeddings=True,
+                require_graph_embeddings=True,
+                submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+            )
+        )
+
+
+def test_embeddings_service_rejects_graph_dimension_mismatch_when_required() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_embeddings_service(
+        InMemoryEmbedder(dimensions=4),
+        event_bus=event_bus,
+        graph_embedding_provider=_GraphProvider(
+            vectors={"content-1": [0.1, 0.2]},
+            dimensions=2,
+        ),
+    )
+
+    with pytest.raises(EmbeddingProviderError, match="graph embedding dimension"):
+        service.embed(
+            EmbedRequest(
+                knowledge_base_id="kb-1",
+                include_graph_embeddings=True,
+                require_graph_embeddings=True,
+                graph_embedding_dimension=3,
+                submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+            )
+        )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from analytics.risk.models import RankedRiskEntry as RankedRiskEntry
 from pydantic import BaseModel, Field, model_validator
 
 RiskTrend = Literal["increasing", "stable", "decreasing"]
@@ -43,7 +44,7 @@ class RiskAssessmentResponse(BaseModel):
     overall_score: float = Field(ge=0.0, le=1.0)
     risk_level: str
     factor_count: int = Field(ge=0)
-    factors: list[RiskFactorScore] = Field(default_factory=list)
+    factors: list[RiskFactorScore] = Field(default_factory=list[RiskFactorScore])
     trend: RiskTrend | None = None
     previous_score: float | None = Field(default=None, ge=0.0, le=1.0)
 
@@ -72,8 +73,8 @@ class RiskScoreListResponse(BaseModel):
     items: list[RiskScore] = Field(default_factory=list[RiskScore])
     total: int = Field(ge=0)
 
-
 __all__ = [
+    "RankedRiskEntry",
     "RiskAssessmentRequest",
     "RiskAssessmentResponse",
     "RiskFactorScore",

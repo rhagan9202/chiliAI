@@ -21,6 +21,7 @@ _CONTENT_TYPE_MAP: dict[str, DocumentFormat] = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": DocumentFormat.XLSX,
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": DocumentFormat.DOCX,
     "text/csv": DocumentFormat.CSV,
+    "text/html": DocumentFormat.HTML,
     "text/plain": DocumentFormat.TXT,
 }
 

@@ -17,12 +17,14 @@ from agent.models import (
 from events.types import (
     AnyEvent,
     DocumentsChunkedEvent,
+    DocumentsFailedEvent,
     DocumentsParsedEvent,
     DocumentsUploadedEvent,
     EmbeddingsCompleteEvent,
     EntitiesExtractedEvent,
     EntitiesValidatedEvent,
     GraphUpdatedEvent,
+    RecordsIngestedEvent,
     RiskScoredEvent,
     VectorsIndexedEvent,
 )
@@ -33,6 +35,8 @@ __all__ = ["WorkflowEventTracker"]
 _STEP_BY_EVENT_TYPE: dict[str, str] = {
     "documents.uploaded": "parse",
     "documents.parsed": "chunk",
+    "documents.failed": "parse",
+    "records.ingested": "records_ingest",
     "documents.chunked": "extract",
     "entities.extracted": "validate",
     "entities.validated": "graph_build",
@@ -52,7 +56,10 @@ _DEFAULT_STEP_SEQUENCE: tuple[str, ...] = (
     "ready",
     "monitoring",
 )
-_TERMINAL_SUCCESS_EVENT_TYPES: frozenset[str] = frozenset({"vectors.indexed", "risk.scored"})
+_TERMINAL_SUCCESS_EVENT_TYPES: frozenset[str] = frozenset(
+    {"vectors.indexed", "risk.scored", "records.ingested"}
+)
+_TERMINAL_FAILURE_EVENT_TYPES: frozenset[str] = frozenset({"documents.failed"})
 _SYSTEM_METADATA_KEYS: frozenset[str] = frozenset(
     {"correlation_id", "source_event_type", "last_event_type", "last_error"}
 )
@@ -109,15 +116,20 @@ class WorkflowEventTracker:
         updated_steps = _steps_with_status(
             tracked.run.steps,
             tracked.step_name,
-            WorkflowStepStatus.COMPLETED,
+            (
+                WorkflowStepStatus.FAILED
+                if event.event_type in _TERMINAL_FAILURE_EVENT_TYPES
+                else WorkflowStepStatus.COMPLETED
+            ),
         )
         metadata = dict(tracked.run.metadata)
         metadata["last_event_type"] = event.event_type
-        status = (
-            WorkflowRunStatus.COMPLETED
-            if event.event_type in _TERMINAL_SUCCESS_EVENT_TYPES
-            else WorkflowRunStatus.RUNNING
-        )
+        if event.event_type in _TERMINAL_FAILURE_EVENT_TYPES:
+            status = WorkflowRunStatus.FAILED
+        elif event.event_type in _TERMINAL_SUCCESS_EVENT_TYPES:
+            status = WorkflowRunStatus.COMPLETED
+        else:
+            status = WorkflowRunStatus.RUNNING
         self._run_store.update_run(
             tracked.run.workflow_id,
             WorkflowRunUpdate(
@@ -151,6 +163,22 @@ class WorkflowEventTracker:
                 updated_at=utc_now(),
             ),
         )
+
+    def is_busy(self, knowledge_base_id: str) -> bool:
+        """Return True when the KB has at least one non-terminal workflow run.
+
+        Satisfies the ``WorkflowBusyTracker`` protocol in ``api._kb_busy`` so
+        this tracker can be passed directly to ``ensure_kb_idle``.
+        """
+        for status in (WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING):
+            runs = self._run_store.list_runs(
+                knowledge_base_id=knowledge_base_id,
+                status=status,
+                limit=1,
+            )
+            if runs:
+                return True
+        return False
 
     def _resolve_tracked_event(self, event: AnyEvent) -> _TrackedEvent | None:
         step_name = _STEP_BY_EVENT_TYPE.get(event.event_type)
@@ -213,6 +241,13 @@ def _steps_with_status(
 
 
 def _fallback_steps(current_step: str) -> list[WorkflowStepState]:
+    if current_step not in _DEFAULT_STEP_SEQUENCE:
+        return [
+            WorkflowStepState(
+                step_name=current_step,
+                status=WorkflowStepStatus.RUNNING,
+            )
+        ]
     steps: list[WorkflowStepState] = []
     for step_name in _DEFAULT_STEP_SEQUENCE:
         status = WorkflowStepStatus.PENDING
@@ -236,11 +271,14 @@ def _knowledge_base_id_for_event(event: AnyEvent) -> str | None:
             GraphUpdatedEvent,
             EmbeddingsCompleteEvent,
             VectorsIndexedEvent,
+            DocumentsFailedEvent,
         ),
     ):
         references = event.documents
         if references:
             return references[0].knowledge_base_id
+    if isinstance(event, RecordsIngestedEvent):
+        return event.knowledge_base_id
     if isinstance(event, RiskScoredEvent) and event.assessments:
         return event.assessments[0].knowledge_base_id
     return None

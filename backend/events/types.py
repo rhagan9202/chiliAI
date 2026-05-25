@@ -28,6 +28,7 @@ class KnowledgeBaseCreatedEvent(EventBase):
 class KnowledgeBaseDeletedEvent(EventBase):
     event_type: Literal["kb.delete"] = "kb.delete"
     knowledge_base_id: str
+    cleanup_pending: bool = False
 
 
 class DocumentReference(BaseModel):
@@ -38,6 +39,7 @@ class DocumentReference(BaseModel):
     storage_key: str | None = None
     uri: str | None = None
     document_format: str | None = None
+    source_type: str | None = None
     size_bytes: int | None = None
 
 
@@ -179,6 +181,12 @@ class VectorsIndexedEvent(EventBase):
     )
 
 
+class VectorsDeletedEvent(EventBase):
+    event_type: Literal["vectors.deleted"] = "vectors.deleted"
+    knowledge_base_id: str
+    deleted_count: int = Field(ge=0)
+
+
 class KnowledgeBaseReadyReference(BaseModel):
     knowledge_base_id: str
     entity_count: int = Field(ge=0)
@@ -261,6 +269,16 @@ class GnnAnalyzedEvent(EventBase):
     analyses: list[GnnAnalyzedReference]
 
 
+class RiskFactorReference(BaseModel):
+    """A single weighted risk factor carried on a RiskScoredReference."""
+
+    factor_name: str
+    raw_value: float = Field(ge=0.0, le=1.0)
+    weight: float = Field(gt=0.0)
+    contribution: float = Field(ge=0.0, le=1.0)
+    rationale: str | None = None
+
+
 class RiskScoredReference(BaseModel):
     knowledge_base_id: str
     request_id: str
@@ -268,6 +286,9 @@ class RiskScoredReference(BaseModel):
     overall_score: float = Field(ge=0.0, le=1.0)
     risk_level: str
     factor_count: int = Field(ge=0)
+    factors: list[RiskFactorReference] = Field(
+        default_factory=lambda: list[RiskFactorReference]()
+    )
 
 
 class RiskScoredEvent(EventBase):
@@ -309,6 +330,11 @@ class AlertCreatedReference(BaseModel):
     entity_id: str
     severity: str
     evidence_pack_id: str | None = None
+    entity_type: str = ""
+    status: str = "open"
+    title: str = ""
+    reasoning: str = ""
+    metric_name: str = ""
 
 
 class AlertsCreatedEvent(EventBase):
@@ -367,6 +393,20 @@ class ClaimsIngestedEvent(EventBase):
     record_count: int = Field(ge=0)
 
 
+class RecordsIngestedEvent(EventBase):
+    """Published when a structured-records batch has landed in ``raw_records``.
+
+    Carries enough context for the worker's Flow 1 handler to resolve the
+    feed config and read the persisted rows back by ``correlation_id``.
+    """
+
+    event_type: Literal["records.ingested"] = "records.ingested"
+    knowledge_base_id: str
+    feed_name: str
+    record_type: str
+    record_count: int = Field(ge=0)
+
+
 AnyEvent = (
     KnowledgeBaseCreatedEvent
     | KnowledgeBaseDeletedEvent
@@ -378,6 +418,7 @@ AnyEvent = (
     | GraphUpdatedEvent
     | EmbeddingsCompleteEvent
     | VectorsIndexedEvent
+    | VectorsDeletedEvent
     | KnowledgeBaseReadyEvent
     | LlmCompletedEvent
     | EmbeddingsGeneratedEvent
@@ -394,6 +435,7 @@ AnyEvent = (
     | DocumentsFailedEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent
+    | RecordsIngestedEvent
 )
 
 
@@ -438,12 +480,15 @@ __all__ = [
     "PipelineProgressEvent",
     "RagCompletedEvent",
     "RagCompletionReference",
+    "RecordsIngestedEvent",
+    "RiskFactorReference",
     "RiskScoredEvent",
     "RiskScoredReference",
     "TimeseriesAnalyzedEvent",
     "TimeseriesAnalyzedReference",
     "ValidatedDocumentReference",
     "VectorIndexedReference",
+    "VectorsDeletedEvent",
     "VectorsIndexedDocumentReference",
     "VectorsIndexedEvent",
 ]

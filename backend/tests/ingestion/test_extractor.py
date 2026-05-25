@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ingestion.chunker import ChunkingResult
-from ingestion.extractor import PatternDocumentExtractor, _candidate_pairs
+from ingestion.extractor import PatternDocumentExtractor, candidate_pairs
 from ingestion.models import CandidateEntity, Chunk, ChunkMetadata, ExtractionEvidence, TextSpan
 from shared.types import (
     EntityDefinition,
@@ -123,7 +123,7 @@ def test_candidate_pairs_prefers_nearest_targets() -> None:
         content="claim 1 npi 111 claim 2 npi 222",
         metadata=ChunkMetadata(source_document_id="doc-1", chunk_index=0),
     )
-    pairs = _candidate_pairs(
+    pairs = candidate_pairs(
         [
             CandidateEntity(
                 id="claim-1",

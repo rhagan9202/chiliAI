@@ -22,19 +22,26 @@ from typing import cast
 
 from agent.adapters.protocols import WorkflowRunStoreProtocol
 from agent.adapters.runtime import create_workflow_run_store_from_env
+from agent.embeddings_graph_bridge import GnnGraphEmbeddingProvider
 from agent.exceptions import ConfigurationError
 from agent.health import HealthState, start_health_server
 from agent.models import HealthSettings, RetryPolicy
 from agent.workflow_tracking import WorkflowEventTracker
 from config.loader import load_config
 from config.schema import (
+    AnalyticsConfig,
+    DatabaseConfig,
     DomainConfig,
     EmbeddingsConfig,
     GraphDbConfig,
     LlmConfig,
     ObjectStoreConfig,
+    RecordFeedConfig,
+    RecordsConfig,
     VectorStoreConfig,
 )
+from database.protocols import ConnectionProvider
+from database.runtime import create_connection_provider
 from analytics.explainability.adapters.in_memory import (
     InMemoryExplainabilityContextSource,
 )
@@ -49,12 +56,25 @@ from analytics.explainability.service import (
 from analytics.explainability.service_models import ExplainabilityRequest
 from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
 from analytics.gnn.adapters.protocols import GraphSnapshotSourceProtocol
-from analytics.gnn.exceptions import GnnError
+from analytics.gnn.exceptions import GnnDisabledError, GnnError, GnnSnapshotUnavailableError
 from analytics.gnn.service import GnnService, create_gnn_service
 from analytics.gnn.service_models import GnnAnalysisRequest, GnnAnalysisResponse
-from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
-from analytics.risk.adapters.protocols import RiskSignalSourceProtocol
+from analytics.metrics.adapters.in_memory import InMemoryEntityMetricRepository
+from analytics.metrics.adapters.postgres import PostgresEntityMetricRepository
+from analytics.metrics.adapters.protocols import EntityMetricRepository
+from analytics.metrics.models import (
+    GRAPH_SCOPE_ENTITY_ID,
+    METRIC_AVG_DEGREE,
+    METRIC_ENTITY_COUNT,
+    METRIC_RELATIONSHIP_COUNT,
+    EntityMetricSample,
+)
+from analytics.metrics.throttle import MetricsRecomputeThrottle
+from analytics.risk.adapters.in_memory import InMemoryRiskHistoryWriter, InMemoryRiskSignalSource
+from analytics.risk.adapters.postgres import PostgresRiskHistoryStore
+from analytics.risk.adapters.protocols import RiskHistoryWriter, RiskSignalSourceProtocol
 from analytics.risk.exceptions import RiskError
+from analytics.risk.models import RiskAssessmentRecord, RiskFactor
 from analytics.risk.service import RiskService, create_risk_service
 from analytics.risk.service_models import (
     RiskAssessmentRequest,
@@ -62,7 +82,7 @@ from analytics.risk.service_models import (
 )
 from embeddings.adapters.in_memory import InMemoryEmbedder
 from embeddings.adapters.protocols import EmbedderProtocol
-from embeddings.models import EmbeddingMetadata, EmbeddingResult
+from embeddings.models import EmbeddingMetadata, EmbeddingResult, EmbeddingVector
 from embeddings.protocols import EmbeddingsServiceProtocol
 from embeddings.service import create_embeddings_service
 from embeddings.service_models import EmbedRequest, EmbedSubmission
@@ -83,37 +103,68 @@ from events.types import (
     EntitiesValidatedEvent,
     ExtractedDocumentReference,
     GraphUpdatedEvent,
+    KnowledgeBaseDeletedEvent,
     KnowledgeBaseReadyEvent,
     KnowledgeBaseReadyReference,
+    RecordsIngestedEvent,
     RiskScoredEvent,
     ValidatedDocumentReference,
     VectorIndexedReference,
     VectorsIndexedDocumentReference,
     VectorsIndexedEvent,
 )
+from api._kb_store import KnowledgeBaseRepository
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.adapters.protocols import GraphRepository
 from graph.auth import resolve_graph_auth
 from graph.models import GraphUpsertResult
+from graph.protocols import GraphServiceProtocol
 from graph.service import GraphService, create_graph_service
 from graph.service_models import GraphBuildTask
 from ingestion.chunker import ChunkingResult, DocumentChunker, create_document_chunker
-from ingestion.extractor import PatternDocumentExtractor, create_document_extractor
+from ingestion.extractor import create_document_extractor
+from ingestion.protocols import DocumentExtractorProtocol
 from ingestion.models import ExtractionResult, ParsedDocument, ValidationReport
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
 from ingestion.service import IngestionService
 from ingestion.validator import ExtractionResultValidator, create_extraction_validator
-from llm.adapters.in_memory import InMemoryLlmClient
 from llm.adapters.protocols import LlmClientProtocol
-from monitoring.adapters.in_memory import InMemoryObservationSource
-from monitoring.adapters.protocols import ObservationSourceProtocol
+from llm.factory import create_llm_client as _create_llm_client
+from monitoring.adapters.in_memory import (
+    InMemoryAlertHistoryWriter,
+    InMemoryObservationSource,
+    InMemoryObservationWriter,
+)
+from monitoring.adapters.postgres import (
+    PostgresAlertHistoryStore,
+    PostgresObservationSource,
+    PostgresObservationStore,
+)
+from monitoring.adapters.protocols import (
+    AlertHistoryWriter,
+    ObservationSourceProtocol,
+    ObservationWriter,
+)
 from monitoring.exceptions import MonitoringError
+from monitoring.models import AlertHistoryRecord, MonitoringBatch
 from monitoring.service import MonitoringService, create_monitoring_service
 from monitoring.service_models import MonitoringEvaluationRequest
 from monitoring.metrics import observe_pipeline_stage
+from records.adapters.in_memory import InMemoryRawRecordStore
+from records.adapters.postgres import PostgresRawRecordStore
+from records.adapters.protocols import RawRecordStore
+from records.exceptions import RecordFeedNotFoundError
+from records.mappers.feed_mapper import map_batch, map_observations
 from shared.logging import bind_correlation_id, configure_logging, get_logger
+from shared.provenance import (
+    SOURCE_DOCUMENT_ID_KEY,
+    SOURCE_ID_KEY,
+    SOURCE_KIND_DOCUMENT,
+    SOURCE_KIND_KEY,
+    SOURCE_KIND_RECORD,
+)
 from shared.tracing import setup_tracing, start_pipeline_span
 from shared.types import Entity
 from storage.adapters.in_memory import InMemoryObjectStore
@@ -121,20 +172,28 @@ from storage.protocols import ObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 from vectorstore.adapters.protocols import VectorStoreProtocol
 from vectorstore.models import VectorRecord
+from vectorstore.protocols import VectorServiceProtocol
 
 __all__ = [
     "WorkerDependencies",
+    "build_alert_history_writer",
+    "build_connection_provider",
     "build_embedder",
+    "build_entity_metric_repository",
     "build_explainability_context_source",
     "build_graph_repository",
     "build_graph_snapshot_source",
     "build_llm_client",
     "build_monitoring_observation_source",
     "build_object_store",
+    "build_observation_writer",
+    "build_raw_record_store",
+    "build_risk_history_writer",
     "build_risk_signal_source",
     "build_vector_store",
     "build_worker_dependencies",
     "drain_ingestion_events",
+    "handle_alerts_created_for_graph",
     "handle_documents_chunked",
     "handle_documents_parsed",
     "handle_embeddings_complete",
@@ -143,7 +202,10 @@ __all__ = [
     "handle_event",
     "handle_graph_updated",
     "handle_graph_updated_for_analytics",
+    "handle_knowledge_base_deleted",
+    "handle_records_ingested",
     "handle_risk_scored",
+    "handle_risk_scored_for_graph",
     "handle_vectors_indexed",
     "main",
     "run_handler_with_retry",
@@ -164,7 +226,7 @@ class WorkerDependencies:
     event_bus: EventBus
     ingestion_service: IngestionService
     document_chunker: DocumentChunker
-    document_extractor: PatternDocumentExtractor
+    document_extractor: DocumentExtractorProtocol
     extraction_validator: ExtractionResultValidator
     graph_service: GraphService
     embeddings_service: EmbeddingsServiceProtocol
@@ -175,9 +237,17 @@ class WorkerDependencies:
     risk_service: RiskService
     explainability_service: ExplainabilityService
     monitoring_service: MonitoringService
+    records_config: RecordsConfig
+    raw_record_store: RawRecordStore
+    observation_writer: ObservationWriter
+    entity_metric_repository: EntityMetricRepository
+    metrics_throttle: MetricsRecomputeThrottle
+    risk_history_writer: RiskHistoryWriter
+    alert_history_writer: AlertHistoryWriter
     event_settings: EventBusSettings
     workflow_run_store: WorkflowRunStoreProtocol
     workflow_tracker: WorkflowEventTracker
+    graph_embeddings_enabled: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +259,6 @@ _ObjectStoreFactory = Callable[[ObjectStoreConfig], ObjectStore]
 _GraphRepositoryFactory = Callable[[GraphDbConfig], GraphRepository]
 _VectorStoreFactory = Callable[[VectorStoreConfig], VectorStoreProtocol]
 _EmbedderFactory = Callable[[EmbeddingsConfig], EmbedderProtocol]
-_LlmClientFactory = Callable[[LlmConfig], LlmClientProtocol]
 
 
 def _build_in_memory_object_store(_: ObjectStoreConfig) -> ObjectStore:
@@ -347,55 +416,6 @@ _EMBEDDING_REGISTRY: dict[str, _EmbedderFactory] = {
 }
 
 
-def _build_in_memory_llm_client(config: LlmConfig) -> LlmClientProtocol:
-    return InMemoryLlmClient(provider=config.provider)
-
-
-def _build_openai_llm_client(config: LlmConfig) -> LlmClientProtocol:
-    try:
-        from llm.adapters.openai_adapter import OpenAILlmClient
-        from llm.exceptions import LlmConfigurationError
-    except ImportError as exc:
-        raise ConfigurationError(
-            subsystem="llm",
-            backend=config.provider,
-            message=str(exc),
-        ) from exc
-    try:
-        return OpenAILlmClient(config)
-    except (ImportError, ValueError, LlmConfigurationError) as exc:
-        raise ConfigurationError(
-            subsystem="llm",
-            backend=config.provider,
-            message=str(exc),
-        ) from exc
-
-
-def _build_anthropic_llm_client(config: LlmConfig) -> LlmClientProtocol:
-    try:
-        from llm.adapters.anthropic_adapter import AnthropicLlmClient
-        from llm.exceptions import LlmConfigurationError
-    except ImportError as exc:
-        raise ConfigurationError(
-            subsystem="llm",
-            backend=config.provider,
-            message=str(exc),
-        ) from exc
-    try:
-        return AnthropicLlmClient(config)
-    except (ImportError, ValueError, LlmConfigurationError) as exc:
-        raise ConfigurationError(
-            subsystem="llm",
-            backend=config.provider,
-            message=str(exc),
-        ) from exc
-
-
-_LLM_REGISTRY: dict[str, _LlmClientFactory] = {
-    "local": _build_in_memory_llm_client,
-    "openai": _build_openai_llm_client,
-    "anthropic": _build_anthropic_llm_client,
-}
 
 
 def build_graph_snapshot_source(
@@ -426,11 +446,69 @@ def build_explainability_context_source(
 
 
 def build_monitoring_observation_source(
-    _config: DomainConfig,
+    provider: ConnectionProvider | None,
 ) -> ObservationSourceProtocol:
-    """Return the configured monitoring observation source adapter."""
+    """Select a monitoring observation source: Postgres when a provider exists."""
 
-    return InMemoryObservationSource()
+    if provider is None:
+        return InMemoryObservationSource()
+    return PostgresObservationSource(provider)
+
+
+def build_connection_provider(config: DomainConfig) -> ConnectionProvider | None:
+    """Return a database connection provider, or None for the in-memory backend."""
+
+    return create_connection_provider(config.database or DatabaseConfig())
+
+
+def build_raw_record_store(
+    provider: ConnectionProvider | None,
+) -> RawRecordStore:
+    """Select a raw record store: Postgres when a provider exists, else in-memory."""
+
+    if provider is None:
+        return InMemoryRawRecordStore()
+    return PostgresRawRecordStore(provider)
+
+
+def build_observation_writer(
+    provider: ConnectionProvider | None,
+) -> ObservationWriter:
+    """Select an observation writer: Postgres when a provider exists, else in-memory."""
+
+    if provider is None:
+        return InMemoryObservationWriter()
+    return PostgresObservationStore(provider)
+
+
+def build_entity_metric_repository(
+    provider: ConnectionProvider | None,
+) -> EntityMetricRepository:
+    """Select an entity-metric repository: Postgres when a provider exists."""
+
+    if provider is None:
+        return InMemoryEntityMetricRepository()
+    return PostgresEntityMetricRepository(provider)
+
+
+def build_risk_history_writer(
+    provider: ConnectionProvider | None,
+) -> RiskHistoryWriter:
+    """Select a risk-history writer: Postgres when a provider exists."""
+
+    if provider is None:
+        return InMemoryRiskHistoryWriter()
+    return PostgresRiskHistoryStore(provider)
+
+
+def build_alert_history_writer(
+    provider: ConnectionProvider | None,
+) -> AlertHistoryWriter:
+    """Select an alert-history writer: Postgres when a provider exists."""
+
+    if provider is None:
+        return InMemoryAlertHistoryWriter()
+    return PostgresAlertHistoryStore(provider)
 
 
 def _section_is_default(value: object, default: object) -> bool:
@@ -515,18 +593,17 @@ def build_embedder(config: DomainConfig) -> EmbedderProtocol:
 
 def build_llm_client(config: DomainConfig) -> LlmClientProtocol:
     """Select an LLM client adapter from the configured provider."""
+    from llm.exceptions import LlmConfigurationError
 
     llm_config = config.llm or LlmConfig()
-    if _section_is_default(llm_config, LlmConfig()):
-        return InMemoryLlmClient()
-    factory = _LLM_REGISTRY.get(llm_config.provider)
-    if factory is None:
+    try:
+        return _create_llm_client(llm_config)
+    except LlmConfigurationError as exc:
         raise ConfigurationError(
             subsystem="llm",
             backend=llm_config.provider,
-            message="Available backends: " + ", ".join(sorted(_LLM_REGISTRY)),
-        )
-    return factory(llm_config)
+            message=str(exc),
+        ) from exc
 
 
 def build_worker_dependencies() -> WorkerDependencies:
@@ -565,10 +642,19 @@ def build_worker_dependencies() -> WorkerDependencies:
         object_store=object_store,
         event_bus=event_bus,
     )
-    embeddings_service = create_embeddings_service(embedder, event_bus=event_bus)
     gnn_service = create_gnn_service(
         build_graph_snapshot_source(config),
         event_bus=event_bus,
+        gnn_enabled=lambda: config.capabilities.gnn,
+    )
+    embeddings_service = create_embeddings_service(
+        embedder,
+        event_bus=event_bus,
+        graph_embedding_provider=(
+            GnnGraphEmbeddingProvider(gnn_service)
+            if config.capabilities.gnn
+            else None
+        ),
     )
     risk_service = create_risk_service(
         build_risk_signal_source(config),
@@ -578,9 +664,10 @@ def build_worker_dependencies() -> WorkerDependencies:
         build_explainability_context_source(config),
         event_bus=event_bus,
     )
+    connection_provider = build_connection_provider(config)
     monitoring_config = config.monitoring
     monitoring_service = create_monitoring_service(
-        build_monitoring_observation_source(config),
+        build_monitoring_observation_source(connection_provider),
         event_bus=event_bus,
         dedup_window_seconds=(
             monitoring_config.dedup_window_seconds
@@ -598,6 +685,16 @@ def build_worker_dependencies() -> WorkerDependencies:
             else 300
         ),
     )
+    raw_record_store = build_raw_record_store(connection_provider)
+    observation_writer = build_observation_writer(connection_provider)
+    entity_metric_repository = build_entity_metric_repository(connection_provider)
+    risk_history_writer = build_risk_history_writer(connection_provider)
+    alert_history_writer = build_alert_history_writer(connection_provider)
+    analytics_config = config.analytics or AnalyticsConfig()
+    metrics_throttle = MetricsRecomputeThrottle(
+        min_interval_seconds=analytics_config.metrics_recompute_min_interval_seconds
+    )
+    records_config = config.records or RecordsConfig()
 
     return WorkerDependencies(
         event_bus=event_bus,
@@ -614,9 +711,17 @@ def build_worker_dependencies() -> WorkerDependencies:
         risk_service=risk_service,
         explainability_service=explainability_service,
         monitoring_service=monitoring_service,
+        records_config=records_config,
+        raw_record_store=raw_record_store,
+        observation_writer=observation_writer,
+        entity_metric_repository=entity_metric_repository,
+        metrics_throttle=metrics_throttle,
+        risk_history_writer=risk_history_writer,
+        alert_history_writer=alert_history_writer,
         event_settings=event_settings,
         workflow_run_store=workflow_run_store,
         workflow_tracker=workflow_tracker,
+        graph_embeddings_enabled=config.capabilities.gnn,
     )
 
 
@@ -655,7 +760,7 @@ def handle_documents_parsed(
             media_type="application/json",
             metadata={
                 "knowledge_base_id": document.knowledge_base_id,
-                "source_document_id": document.source_document_id,
+                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
                 "parsed_document_id": document.parsed_document_id,
                 "chunk_count": len(result.chunks),
             },
@@ -693,7 +798,7 @@ def _build_chunks_storage_key(
 def handle_documents_chunked(
     event: DocumentsChunkedEvent,
     *,
-    document_extractor: PatternDocumentExtractor,
+    document_extractor: DocumentExtractorProtocol,
     object_store: ObjectStore,
     event_bus: EventBus,
 ) -> int:
@@ -715,7 +820,7 @@ def handle_documents_chunked(
             media_type="application/json",
             metadata={
                 "knowledge_base_id": document.knowledge_base_id,
-                "source_document_id": document.source_document_id,
+                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
                 "parsed_document_id": document.parsed_document_id,
                 "extraction_result_id": extraction_result.id,
                 "entity_count": len(extraction_result.candidate_entities),
@@ -779,7 +884,7 @@ def handle_entities_extracted(
             media_type="application/json",
             metadata={
                 "knowledge_base_id": document.knowledge_base_id,
-                "source_document_id": document.source_document_id,
+                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
                 "parsed_document_id": document.parsed_document_id,
                 "extraction_result_id": extraction_result.id,
                 "validation_report_id": validation_report.id,
@@ -861,6 +966,7 @@ def handle_graph_updated(
     embeddings_service: EmbeddingsServiceProtocol,
     object_store: ObjectStore,
     event_bus: EventBus,
+    include_graph_embeddings: bool = False,
 ) -> int:
     """Generate and persist embeddings for entities upserted into the graph."""
     references: list[EmbeddingsCompleteDocumentReference] = []
@@ -902,6 +1008,7 @@ def handle_graph_updated(
         response = embeddings_service.embed(
             EmbedRequest(
                 knowledge_base_id=document.knowledge_base_id,
+                include_graph_embeddings=include_graph_embeddings,
                 submissions=[
                     EmbedSubmission(
                         content_id=entity.id,
@@ -913,12 +1020,28 @@ def handle_graph_updated(
         )
         embeddings_result = EmbeddingResult(
             request_id=response.request_id,
-            vectors={item.content_id: item.vector for item in response.items},
+            vectors={
+                item.content_id: item.vector
+                for item in response.items
+                if item.channel == "text"
+            },
             metadata=EmbeddingMetadata(
                 model_name=response.model_name,
                 dimensions=response.dimensions,
                 provider="embeddings-service",
             ),
+            items=[
+                EmbeddingVector(
+                    content_id=item.content_id,
+                    channel=item.channel,
+                    vector=list(item.vector),
+                    model_name=item.model_name or response.model_name,
+                    provider=item.provider or "embeddings-service",
+                    dimensions=item.dimensions or len(item.vector),
+                )
+                for item in response.items
+            ],
+            graph_status=response.graph_status,
         )
         embeddings_storage_key = _build_embeddings_storage_key(
             document.graph_update_storage_key,
@@ -929,7 +1052,7 @@ def handle_graph_updated(
             media_type="application/json",
             metadata={
                 "knowledge_base_id": document.knowledge_base_id,
-                "source_document_id": document.source_document_id,
+                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
                 "parsed_document_id": document.parsed_document_id,
                 "extraction_result_id": document.extraction_result_id,
                 "validation_report_id": document.validation_report_id,
@@ -979,6 +1102,8 @@ def handle_graph_updated_for_analytics(
     graph_service: GraphService,
     event_bus: EventBus,
     object_store: ObjectStore | None = None,
+    entity_metric_repository: EntityMetricRepository | None = None,
+    metrics_throttle: MetricsRecomputeThrottle | None = None,
 ) -> int:
     """Run Flow B (GNN -> risk -> explainability -> alerts.created).
 
@@ -1036,6 +1161,13 @@ def handle_graph_updated_for_analytics(
             if alert_reference is not None:
                 alerts.append(alert_reference)
 
+    _persist_graph_metrics_for_event(
+        event=event,
+        graph_service=graph_service,
+        entity_metric_repository=entity_metric_repository,
+        metrics_throttle=metrics_throttle,
+    )
+
     if alerts:
         event_bus.publish(
             AlertsCreatedEvent(
@@ -1080,6 +1212,20 @@ def _run_gnn_stage(
         return gnn_service.analyze(
             GnnAnalysisRequest(knowledge_base_id=knowledge_base_id),
         )
+    except GnnDisabledError:
+        logger.info(
+            "Skipping GNN analytics because the capability is disabled. kb=%s",
+            knowledge_base_id,
+        )
+        return None
+    except GnnSnapshotUnavailableError as exc:
+        logger.info(
+            "Skipping GNN analytics because no graph snapshot is available yet. "
+            "kb=%s error=%s",
+            knowledge_base_id,
+            exc,
+        )
+        return None
     except GnnError as exc:
         _publish_analysis_failed(
             event_bus=event_bus,
@@ -1152,7 +1298,77 @@ def _run_explainability_stage(
         entity_id=entity_id,
         severity=risk_response.risk_level,
         evidence_pack_id=response.evidence_pack.id,
+        status="open",
+        title=f"{risk_response.risk_level.title()} risk: {entity_id}",
+        reasoning=response.evidence_pack.reasoning,
     )
+
+
+def _persist_graph_metrics_for_event(
+    *,
+    event: GraphUpdatedEvent,
+    graph_service: GraphService,
+    entity_metric_repository: EntityMetricRepository | None,
+    metrics_throttle: MetricsRecomputeThrottle | None,
+) -> None:
+    """Flow 2 — persist graph metrics per KB, throttled to avoid recompute storms.
+
+    Best-effort: a failure here is logged but never aborts Flow B. The throttle
+    drops recomputes that arrive within the configured per-KB interval so a
+    burst of graph updates cannot thrash the system.
+    """
+
+    if entity_metric_repository is None or metrics_throttle is None:
+        return
+    now = __datetime__.now(tz=__timezone__.utc)
+    seen: set[str] = set()
+    for document in event.documents:
+        knowledge_base_id = document.knowledge_base_id
+        if knowledge_base_id in seen:
+            continue
+        seen.add(knowledge_base_id)
+        if not metrics_throttle.should_recompute(knowledge_base_id, now=now):
+            logger.debug(
+                "Skipping throttled graph-metric recompute for kb=%s",
+                knowledge_base_id,
+            )
+            continue
+        try:
+            metrics = graph_service.compute_metrics(knowledge_base_id)
+            entity_metric_repository.record_metrics(
+                [
+                    EntityMetricSample(
+                        knowledge_base_id=knowledge_base_id,
+                        entity_id=GRAPH_SCOPE_ENTITY_ID,
+                        metric_name=METRIC_ENTITY_COUNT,
+                        value=float(metrics.entity_count),
+                        observed_at=now,
+                        correlation_id=event.correlation_id,
+                    ),
+                    EntityMetricSample(
+                        knowledge_base_id=knowledge_base_id,
+                        entity_id=GRAPH_SCOPE_ENTITY_ID,
+                        metric_name=METRIC_RELATIONSHIP_COUNT,
+                        value=float(metrics.relationship_count),
+                        observed_at=now,
+                        correlation_id=event.correlation_id,
+                    ),
+                    EntityMetricSample(
+                        knowledge_base_id=knowledge_base_id,
+                        entity_id=GRAPH_SCOPE_ENTITY_ID,
+                        metric_name=METRIC_AVG_DEGREE,
+                        value=metrics.avg_degree,
+                        observed_at=now,
+                        correlation_id=event.correlation_id,
+                    ),
+                ]
+            )
+        except Exception as exc:  # noqa: BLE001 - metrics must not block Flow B
+            logger.warning(
+                "Failed to persist graph metrics for kb=%s: %s",
+                knowledge_base_id,
+                exc,
+            )
 
 
 def _write_analytics_properties_to_graph(
@@ -1259,6 +1475,262 @@ def handle_risk_scored(
     return processed
 
 
+def handle_risk_scored_for_graph(
+    event: RiskScoredEvent,
+    *,
+    risk_history_writer: RiskHistoryWriter,
+    graph_service: GraphService,
+) -> int:
+    """Flow 3 — persist risk assessments and snapshot risk onto the graph entity.
+
+    Idempotent: ``risk_score_history`` is keyed by request_id and
+    ``update_entity_properties`` is a property merge, so the worker's retry/DLQ
+    wrapper can safely re-run this handler. The graph write publishes no event,
+    so it cannot re-trigger the analytics pipeline.
+    """
+
+    assessed_at = __datetime__.now(tz=__timezone__.utc)
+    processed = 0
+    for assessment in event.assessments:
+        record = RiskAssessmentRecord(
+            knowledge_base_id=assessment.knowledge_base_id,
+            entity_id=assessment.entity_id,
+            request_id=assessment.request_id,
+            overall_score=assessment.overall_score,
+            risk_level=assessment.risk_level,
+            factors=[
+                RiskFactor(
+                    factor_name=factor.factor_name,
+                    raw_value=factor.raw_value,
+                    weight=factor.weight,
+                    contribution=factor.contribution,
+                    rationale=factor.rationale,
+                )
+                for factor in assessment.factors
+            ],
+            assessed_at=assessed_at,
+        )
+        risk_history_writer.write_assessment(record)
+        try:
+            graph_service.update_entity_properties(
+                assessment.knowledge_base_id,
+                assessment.entity_id,
+                {
+                    "risk_score": float(assessment.overall_score),
+                    "risk_level": assessment.risk_level,
+                    "risk_assessed_at": assessed_at.isoformat(),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 - graph backend may be unavailable
+            logger.warning(
+                "Failed to snapshot risk to graph kb=%s entity=%s: %s",
+                assessment.knowledge_base_id,
+                assessment.entity_id,
+                exc,
+            )
+        processed += 1
+    return processed
+
+
+def handle_alerts_created_for_graph(
+    event: AlertsCreatedEvent,
+    *,
+    alert_history_writer: AlertHistoryWriter,
+    graph_service: GraphService,
+) -> int:
+    """Flow 4 — persist alerts to the alert-history log and snapshot onto the graph.
+
+    Idempotent: ``alert_history`` is keyed by alert_id; the entity's
+    ``active_alert_count`` is derived from a count of open alerts (never blindly
+    incremented), so retry/DLQ replay is safe. The graph write publishes no
+    event, so it cannot re-trigger the analytics pipeline.
+    """
+
+    created_at = __datetime__.now(tz=__timezone__.utc)
+    records: list[AlertHistoryRecord] = []
+    severity_by_entity: dict[tuple[str, str], str] = {}
+    for alert in event.alerts:
+        records.append(
+            AlertHistoryRecord(
+                knowledge_base_id=alert.knowledge_base_id,
+                alert_id=alert.alert_id,
+                entity_id=alert.entity_id,
+                entity_type=alert.entity_type,
+                severity=alert.severity,
+                status=alert.status,
+                title=alert.title,
+                reasoning=alert.reasoning,
+                metric_name=alert.metric_name,
+                evidence_pack_id=alert.evidence_pack_id,
+                created_at=created_at,
+                updated_at=created_at,
+            )
+        )
+        severity_by_entity[(alert.knowledge_base_id, alert.entity_id)] = alert.severity
+
+    alert_history_writer.write_alerts(records)
+
+    for (knowledge_base_id, entity_id), severity in severity_by_entity.items():
+        try:
+            open_count = alert_history_writer.count_open_alerts(
+                knowledge_base_id=knowledge_base_id, entity_id=entity_id
+            )
+            graph_service.update_entity_properties(
+                knowledge_base_id,
+                entity_id,
+                {
+                    "active_alert_count": open_count,
+                    "last_alert_at": created_at.isoformat(),
+                    "last_alert_severity": severity,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 - graph backend may be unavailable
+            logger.warning(
+                "Failed to snapshot alerts to graph kb=%s entity=%s: %s",
+                knowledge_base_id,
+                entity_id,
+                exc,
+            )
+    return len(records)
+
+
+def handle_records_ingested(
+    event: RecordsIngestedEvent,
+    *,
+    records_config: RecordsConfig,
+    raw_record_store: RawRecordStore,
+    graph_service: GraphService,
+    observation_writer: ObservationWriter,
+    embeddings_service: EmbeddingsServiceProtocol | None = None,
+    vector_store: VectorStoreProtocol | None = None,
+) -> int:
+    """Flow 1 — fan a structured-records batch out to the graph and observations.
+
+    A single handler: map rows to graph entities/relationships and upsert them,
+    then derive observations and persist them.  When ``embeddings_service`` and
+    ``vector_store`` are both provided, each stored entity is also embedded and
+    indexed into the vector store so the KB becomes RAG-searchable.  Both
+    parameters default to ``None`` so the handler is backward-compatible with
+    callers that do not yet wire the embedding path.
+
+    Every write is idempotent so the worker's retry/DLQ wrapper can safely
+    re-run this handler.
+    """
+
+    feed = _resolve_records_feed(records_config, event.feed_name)
+    records = raw_record_store.load_batch(
+        knowledge_base_id=event.knowledge_base_id,
+        correlation_id=event.correlation_id,
+    )
+    if not records:
+        logger.info(
+            "No raw records found for feed=%s kb=%s correlation=%s",
+            event.feed_name,
+            event.knowledge_base_id,
+            event.correlation_id,
+        )
+        return 0
+
+    mapped = map_batch(feed, records)
+    stored_entities, _stored_relationships = graph_service.upsert_records_graph(
+        event.knowledge_base_id, mapped.entities, mapped.relationships
+    )
+
+    if embeddings_service is not None and vector_store is not None and stored_entities:
+        texts = [_build_entity_embedding_text(entity) for entity in stored_entities]
+        embed_response = embeddings_service.embed(
+            EmbedRequest(
+                knowledge_base_id=event.knowledge_base_id,
+                submissions=[
+                    EmbedSubmission(content_id=entity.id, content=text)
+                    for entity, text in zip(stored_entities, texts, strict=True)
+                ],
+            )
+        )
+        # Build a lookup so we can match vectors to their entity regardless of
+        # the order the embedder returns them.
+        vector_by_id = {item.content_id: item.vector for item in embed_response.items}
+        missing = [e.id for e in stored_entities if e.id not in vector_by_id]
+        if missing:
+            logger.warning(
+                "embed response missing vectors for %d entity ids; skipping. ids=%s",
+                len(missing), missing,
+            )
+        vector_records = [
+            VectorRecord(
+                id=f"record:{event.knowledge_base_id}:{entity.id}",
+                knowledge_base_id=event.knowledge_base_id,
+                content_id=entity.id,
+                embedding=vector_by_id[entity.id],
+                content=text,
+                metadata={
+                    SOURCE_KIND_KEY: SOURCE_KIND_RECORD,
+                    SOURCE_ID_KEY: entity.id,
+                    "entity_type": entity.type,
+                },
+            )
+            for entity, text in zip(stored_entities, texts, strict=True)
+            if entity.id in vector_by_id
+        ]
+        if vector_records:
+            vector_store.upsert_records(event.knowledge_base_id, vector_records)
+            # We intentionally do not publish VectorsIndexedEvent here because
+            # handle_vectors_indexed is documents-only and would no-op for records.
+
+    observations = map_observations(feed, records)
+    if observations:
+        observation_writer.write_observations(
+            MonitoringBatch(
+                knowledge_base_id=event.knowledge_base_id,
+                batch_id=event.correlation_id,
+                observations=observations,
+            ),
+            correlation_id=event.correlation_id,
+        )
+    return len(records)
+
+
+def _resolve_records_feed(
+    records_config: RecordsConfig, feed_name: str
+) -> RecordFeedConfig:
+    for feed in records_config.feeds:
+        if feed.name == feed_name:
+            return feed
+    raise RecordFeedNotFoundError(feed_name)
+
+
+def handle_knowledge_base_deleted(
+    event: KnowledgeBaseDeletedEvent,
+    *,
+    graph_service: GraphServiceProtocol,
+    vector_service: VectorServiceProtocol,
+    raw_record_store: RawRecordStore,
+    kb_repository: KnowledgeBaseRepository,
+    object_store: ObjectStore | None = None,
+) -> None:
+    """Retry residual KB cleanup steps when the API DELETE returned a partial cleanup.
+
+    When the API DELETE endpoint returns 207 with ``cleanup_pending=True`` it
+    means one or more downstream stores could not be cleaned up synchronously.
+    The worker picks up the ``KnowledgeBaseDeletedEvent`` and retries each
+    store in order.  All five calls are idempotent; the coordinator's retry/DLQ
+    wrapper handles any exceptions that bubble up.
+    """
+
+    if not event.cleanup_pending:
+        return
+    logger.info("retrying KB cleanup", extra={"knowledge_base_id": event.knowledge_base_id})
+    # Best-effort retries — exceptions bubble to the coordinator's DLQ flow.
+    graph_service.delete_knowledge_base(event.knowledge_base_id)
+    vector_service.delete_knowledge_base(event.knowledge_base_id)
+    raw_record_store.delete_by_kb(event.knowledge_base_id)
+    if object_store is not None:
+        prefix = f"knowledgebases/{event.knowledge_base_id}/"
+        for key in object_store.list_keys(prefix):
+            object_store.delete(key)
+    kb_repository.delete(event.knowledge_base_id)
+
+
 def _publish_analysis_failed(
     *,
     event_bus: EventBus,
@@ -1309,36 +1781,55 @@ def handle_embeddings_complete(
         )
         entities_by_id = {entity.id: entity for entity in validation_report.valid_entities}
 
-        records: list[VectorRecord] = []
-        for content_id in sorted(embeddings_result.vectors):
-            embedding = embeddings_result.vectors[content_id]
+        records_by_namespace: dict[str, list[VectorRecord]] = {}
+        embedding_items = _embedding_items_for_indexing(embeddings_result)
+        for embedding_item in sorted(
+            embedding_items,
+            key=lambda item: (item.channel, item.content_id),
+        ):
+            content_id = embedding_item.content_id
+            channel = embedding_item.channel
             entity = entities_by_id.get(content_id)
             metadata: dict[str, str | int | float | bool] = {
                 "knowledge_base_id": document.knowledge_base_id,
                 "entity_id": content_id,
-                "source_document_id": document.source_document_id,
+                "embedding_channel": channel,
+                "embedding_model_name": embedding_item.model_name,
+                "embedding_provider": embedding_item.provider,
+                "embedding_dimensions": embedding_item.dimensions,
+                SOURCE_KIND_KEY: SOURCE_KIND_DOCUMENT,
+                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
                 "extraction_result_id": document.extraction_result_id,
                 "validation_report_id": document.validation_report_id,
             }
             if entity is not None:
                 metadata["entity_type"] = entity.type
-            records.append(
+            namespace = _embedding_namespace(document.knowledge_base_id, channel)
+            records_by_namespace.setdefault(namespace, []).append(
                 VectorRecord(
-                    id=f"{document.knowledge_base_id}:{content_id}",
+                    id=_embedding_record_id(
+                        document.knowledge_base_id,
+                        content_id,
+                        channel,
+                    ),
                     knowledge_base_id=document.knowledge_base_id,
                     content_id=content_id,
-                    embedding=list(embedding),
+                    embedding=list(embedding_item.vector),
                     metadata=metadata,
                 )
             )
 
-        if not records:
+        if not records_by_namespace:
             continue
 
-        stored_records = vector_store.upsert_records(
-            document.knowledge_base_id,
-            records,
-        )
+        stored_records: list[VectorRecord] = []
+        for namespace in sorted(records_by_namespace):
+            stored_records.extend(
+                vector_store.upsert_records(
+                    namespace,
+                    records_by_namespace[namespace],
+                )
+            )
 
         document_references.append(
             VectorsIndexedDocumentReference(
@@ -1354,7 +1845,7 @@ def handle_embeddings_complete(
         )
         record_references.extend(
             VectorIndexedReference(
-                knowledge_base_id=record.knowledge_base_id,
+                knowledge_base_id=document.knowledge_base_id,
                 record_id=record.id,
                 content_id=record.content_id,
                 dimension=len(record.embedding),
@@ -1371,6 +1862,36 @@ def handle_embeddings_complete(
             )
         )
     return len(document_references)
+
+
+def _embedding_namespace(knowledge_base_id: str, channel: str) -> str:
+    if channel == "graph":
+        return f"{knowledge_base_id}__graph"
+    return knowledge_base_id
+
+
+def _embedding_record_id(knowledge_base_id: str, content_id: str, channel: str) -> str:
+    return f"{knowledge_base_id}:{content_id}:{channel}"
+
+
+def _embedding_items_for_indexing(
+    embeddings_result: EmbeddingResult,
+) -> list[EmbeddingVector]:
+    if embeddings_result.items:
+        return list(embeddings_result.items)
+
+    return [
+        EmbeddingVector(
+            content_id=content_id,
+            channel="text",
+            vector=list(vector),
+            model_name=embeddings_result.metadata.model_name,
+            provider=embeddings_result.metadata.provider,
+            dimensions=embeddings_result.metadata.dimensions,
+            created_at=embeddings_result.metadata.created_at,
+        )
+        for content_id, vector in embeddings_result.vectors.items()
+    ]
 
 
 def handle_vectors_indexed(
@@ -1557,7 +2078,7 @@ def handle_event(
     ingestion_service: IngestionService,
     *,
     document_chunker: DocumentChunker,
-    document_extractor: PatternDocumentExtractor,
+    document_extractor: DocumentExtractorProtocol,
     extraction_validator: ExtractionResultValidator,
     graph_service: GraphService,
     object_store: ObjectStore,
@@ -1569,7 +2090,17 @@ def handle_event(
     risk_service: RiskService | None = None,
     explainability_service: ExplainabilityService | None = None,
     monitoring_service: MonitoringService | None = None,
+    records_config: RecordsConfig | None = None,
+    raw_record_store: RawRecordStore | None = None,
+    observation_writer: ObservationWriter | None = None,
+    entity_metric_repository: EntityMetricRepository | None = None,
+    metrics_throttle: MetricsRecomputeThrottle | None = None,
+    risk_history_writer: RiskHistoryWriter | None = None,
+    alert_history_writer: AlertHistoryWriter | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
+    graph_embeddings_enabled: bool = False,
+    vector_service: VectorServiceProtocol | None = None,
+    kb_repository: KnowledgeBaseRepository | None = None,
 ) -> int:
     """Handle a single event and return the number of processed documents."""
 
@@ -1603,6 +2134,16 @@ def handle_event(
             risk_service=risk_service,
             explainability_service=explainability_service,
             monitoring_service=monitoring_service,
+            records_config=records_config,
+            raw_record_store=raw_record_store,
+            observation_writer=observation_writer,
+            entity_metric_repository=entity_metric_repository,
+            metrics_throttle=metrics_throttle,
+            risk_history_writer=risk_history_writer,
+            alert_history_writer=alert_history_writer,
+            graph_embeddings_enabled=graph_embeddings_enabled,
+            vector_service=vector_service,
+            kb_repository=kb_repository,
         )
         if workflow_tracker is not None:
             workflow_tracker.complete_event(event)
@@ -1615,7 +2156,7 @@ def _dispatch_event(
     delivery: EventDelivery,
     ingestion_service: IngestionService,
     document_chunker: DocumentChunker,
-    document_extractor: PatternDocumentExtractor,
+    document_extractor: DocumentExtractorProtocol,
     extraction_validator: ExtractionResultValidator,
     graph_service: GraphService,
     object_store: ObjectStore,
@@ -1627,6 +2168,16 @@ def _dispatch_event(
     risk_service: RiskService | None,
     explainability_service: ExplainabilityService | None,
     monitoring_service: MonitoringService | None,
+    records_config: RecordsConfig | None,
+    raw_record_store: RawRecordStore | None,
+    observation_writer: ObservationWriter | None,
+    entity_metric_repository: EntityMetricRepository | None,
+    metrics_throttle: MetricsRecomputeThrottle | None,
+    risk_history_writer: RiskHistoryWriter | None,
+    alert_history_writer: AlertHistoryWriter | None,
+    graph_embeddings_enabled: bool,
+    vector_service: VectorServiceProtocol | None = None,
+    kb_repository: KnowledgeBaseRepository | None = None,
 ) -> int:
     del delivery  # reserved for future stream offsets / dlq metadata
     if isinstance(event, DocumentsUploadedEvent):
@@ -1666,6 +2217,7 @@ def _dispatch_event(
             embeddings_service=embeddings_service,
             object_store=object_store,
             event_bus=event_bus,
+            include_graph_embeddings=graph_embeddings_enabled,
         )
         if (
             gnn_service is not None
@@ -1681,6 +2233,8 @@ def _dispatch_event(
                     graph_service=graph_service,
                     event_bus=event_bus,
                     object_store=object_store,
+                    entity_metric_repository=entity_metric_repository,
+                    metrics_throttle=metrics_throttle,
                 )
             except Exception as exc:  # noqa: BLE001 - analytics must not block Flow A
                 logger.warning(
@@ -1706,20 +2260,85 @@ def _dispatch_event(
             event_bus=event_bus,
         )
     if isinstance(event, RiskScoredEvent):
-        if monitoring_service is None:
+        processed = 0
+        if monitoring_service is not None:
+            try:
+                processed = handle_risk_scored(
+                    event,
+                    monitoring_service=monitoring_service,
+                    event_bus=event_bus,
+                )
+            except Exception as exc:  # noqa: BLE001 - monitoring must not abort pipeline
+                logger.warning(
+                    "Monitoring stream consumer raised; continuing. error=%s",
+                    exc,
+                )
+        if risk_history_writer is not None:
+            try:
+                handle_risk_scored_for_graph(
+                    event,
+                    risk_history_writer=risk_history_writer,
+                    graph_service=graph_service,
+                )
+            except Exception as exc:  # noqa: BLE001 - write-back must not abort pipeline
+                logger.warning(
+                    "Risk graph write-back raised; continuing. error=%s",
+                    exc,
+                )
+        return processed
+    if isinstance(event, AlertsCreatedEvent):
+        if alert_history_writer is None:
             return 0
         try:
-            return handle_risk_scored(
+            return handle_alerts_created_for_graph(
                 event,
-                monitoring_service=monitoring_service,
-                event_bus=event_bus,
+                alert_history_writer=alert_history_writer,
+                graph_service=graph_service,
             )
-        except Exception as exc:  # noqa: BLE001 - monitoring must not abort pipeline
+        except Exception as exc:  # noqa: BLE001 - write-back must not abort pipeline
             logger.warning(
-                "Monitoring stream consumer raised; continuing. error=%s",
+                "Alert graph write-back raised; continuing. error=%s",
                 exc,
             )
             return 0
+    if isinstance(event, RecordsIngestedEvent):
+        if (
+            records_config is None
+            or raw_record_store is None
+            or observation_writer is None
+        ):
+            logger.warning(
+                "RecordsIngestedEvent received but records dependencies are not wired."
+            )
+            return 0
+        return handle_records_ingested(
+            event,
+            records_config=records_config,
+            raw_record_store=raw_record_store,
+            graph_service=graph_service,
+            observation_writer=observation_writer,
+            embeddings_service=embeddings_service,
+            vector_store=vector_store,
+        )
+    if isinstance(event, KnowledgeBaseDeletedEvent):
+        if (
+            vector_service is None
+            or raw_record_store is None
+            or kb_repository is None
+        ):
+            logger.warning(
+                "KnowledgeBaseDeletedEvent received but KB cleanup dependencies are not wired."
+            )
+            return 0
+        handle_knowledge_base_deleted(
+            event,
+            graph_service=graph_service,
+            vector_service=vector_service,
+            raw_record_store=raw_record_store,
+            kb_repository=kb_repository,
+            object_store=object_store,
+        )
+        return 1
     return 0
 
 
@@ -1783,7 +2402,7 @@ async def drain_ingestion_events(
     event_bus: EventBus,
     ingestion_service: IngestionService,
     document_chunker: DocumentChunker,
-    document_extractor: PatternDocumentExtractor,
+    document_extractor: DocumentExtractorProtocol,
     extraction_validator: ExtractionResultValidator,
     graph_service: GraphService,
     object_store: ObjectStore,
@@ -1795,6 +2414,13 @@ async def drain_ingestion_events(
     risk_service: RiskService | None = None,
     explainability_service: ExplainabilityService | None = None,
     monitoring_service: MonitoringService | None = None,
+    records_config: RecordsConfig | None = None,
+    raw_record_store: RawRecordStore | None = None,
+    observation_writer: ObservationWriter | None = None,
+    entity_metric_repository: EntityMetricRepository | None = None,
+    metrics_throttle: MetricsRecomputeThrottle | None = None,
+    risk_history_writer: RiskHistoryWriter | None = None,
+    alert_history_writer: AlertHistoryWriter | None = None,
     consumer_group: str,
     consumer_name: str,
     limit: int = 10,
@@ -1802,6 +2428,9 @@ async def drain_ingestion_events(
     retry_policy: RetryPolicy | None = None,
     health_state: HealthState | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
+    graph_embeddings_enabled: bool = False,
+    vector_service: VectorServiceProtocol | None = None,
+    kb_repository: KnowledgeBaseRepository | None = None,
     sleep: Callable[[float], "asyncio.Future[None] | object"] = asyncio.sleep,
 ) -> int:
     """Consume and process available ingestion events with retry/DLQ semantics."""
@@ -1818,6 +2447,9 @@ async def drain_ingestion_events(
         "embeddings.complete",
         "vectors.indexed",
         "risk.scored",
+        "records.ingested",
+        "alerts.created",
+        "kb.delete",
     ]
     event_bus.ensure_consumer_group(event_types, consumer_group=consumer_group)
     deliveries = event_bus.consume(
@@ -1847,7 +2479,17 @@ async def drain_ingestion_events(
                 risk_service=risk_service,
                 explainability_service=explainability_service,
                 monitoring_service=monitoring_service,
+                records_config=records_config,
+                raw_record_store=raw_record_store,
+                observation_writer=observation_writer,
+                entity_metric_repository=entity_metric_repository,
+                metrics_throttle=metrics_throttle,
+                risk_history_writer=risk_history_writer,
+                alert_history_writer=alert_history_writer,
                 workflow_tracker=workflow_tracker,
+                graph_embeddings_enabled=graph_embeddings_enabled,
+                vector_service=vector_service,
+                kb_repository=kb_repository,
             )
 
         def _record_failure(
@@ -1950,6 +2592,13 @@ async def run_worker(
                 risk_service=deps.risk_service,
                 explainability_service=deps.explainability_service,
                 monitoring_service=deps.monitoring_service,
+                records_config=deps.records_config,
+                raw_record_store=deps.raw_record_store,
+                observation_writer=deps.observation_writer,
+                entity_metric_repository=deps.entity_metric_repository,
+                metrics_throttle=deps.metrics_throttle,
+                risk_history_writer=deps.risk_history_writer,
+                alert_history_writer=deps.alert_history_writer,
                 consumer_group=deps.event_settings.consumer_group,
                 consumer_name=deps.event_settings.consumer_name(),
                 limit=deps.event_settings.batch_size,
@@ -1957,6 +2606,7 @@ async def run_worker(
                 retry_policy=policy,
                 health_state=health_state,
                 workflow_tracker=deps.workflow_tracker,
+                graph_embeddings_enabled=deps.graph_embeddings_enabled,
             )
             if processed:
                 logger.info("Processed %s ingestion document(s)", processed)

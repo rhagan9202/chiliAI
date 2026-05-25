@@ -13,13 +13,13 @@ from analytics.gnn.protocols import GnnServiceProtocol
 from analytics.gnn.service import create_gnn_service
 from analytics.gnn.service_models import GnnClusterRequest, GnnClusterResponse
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
-from analytics.risk.models import RankedRiskEntry
 from analytics.risk.protocols import RiskServiceProtocol
+from analytics.risk.service_models import RankedRiskEntry
 from analytics.risk.service import create_risk_service
 from analytics.risk.service_models import RiskScoreListRequest, RiskScoreListResponse
 from analytics.timeseries.adapters.in_memory import InMemoryTimeSeriesHistorySource
-from analytics.timeseries.models import TimeSeriesObservation
 from analytics.timeseries.protocols import TimeseriesServiceProtocol
+from analytics.timeseries.service_models import TimeSeriesObservation
 from analytics.timeseries.service import create_timeseries_service
 from analytics.timeseries.service_models import MetricTimeseriesResponse, TimeseriesQueryRequest
 from api.contracts import (

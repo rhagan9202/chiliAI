@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import AbstractContextManager
 from typing import Literal, Protocol, runtime_checkable
 
-from graph.models import SubgraphResult
+from graph.models import GraphDeleteByProvenance, SubgraphResult
 from shared.types import Entity, Relationship
 
 
@@ -35,7 +35,7 @@ class GraphRepository(Protocol):
 
     def get_relationships(self, knowledge_base_id: str) -> list[Relationship]: ...
 
-    def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None: ...
+    def get_entity(self, knowledge_base_ids: list[str], entity_id: str) -> Entity | None: ...
 
     def update_entity_properties(
         self,
@@ -62,7 +62,7 @@ class GraphRepository(Protocol):
 
     def search_entities(
         self,
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         query: str,
         limit: int,
     ) -> list[Entity]: ...
@@ -76,6 +76,12 @@ class GraphRepository(Protocol):
     def delete_entity(self, knowledge_base_id: str, entity_id: str) -> None: ...
 
     def delete_relationship(self, knowledge_base_id: str, relationship_id: str) -> None: ...
+
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> GraphDeleteByProvenance: ...
 
 
 __all__ = [

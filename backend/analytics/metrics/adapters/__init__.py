@@ -1,0 +1,1 @@
+"""Entity-metric repository adapters."""

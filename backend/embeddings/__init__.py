@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from embeddings.adapters.in_memory import InMemoryEmbedder
 from embeddings.adapters.openai_adapter import OpenAIEmbedder
-from embeddings.adapters.protocols import EmbedderProtocol
+from embeddings.adapters.protocols import (
+    EmbedderProtocol,
+    GraphEmbeddingProviderProtocol,
+)
 from embeddings.adapters.sentence_transformers_adapter import (
     SentenceTransformersEmbedder,
 )
@@ -14,10 +17,14 @@ from embeddings.exceptions import (
     EmbeddingProviderError,
 )
 from embeddings.models import (
+    EmbeddingChannel,
     EmbeddingItem,
     EmbeddingMetadata,
     EmbeddingRequest,
     EmbeddingResult,
+    EmbeddingVector,
+    GraphEmbeddingBatch,
+    GraphEmbeddingStatus,
 )
 from embeddings.protocols import EmbeddingsServiceProtocol
 from embeddings.service import EmbeddingsService, create_embeddings_service
@@ -34,6 +41,7 @@ __all__ = [
     "EmbedSubmission",
     "EmbedderProtocol",
     "EmbeddedItem",
+    "EmbeddingChannel",
     "EmbeddingConfigurationError",
     "EmbeddingError",
     "EmbeddingItem",
@@ -41,8 +49,12 @@ __all__ = [
     "EmbeddingProviderError",
     "EmbeddingRequest",
     "EmbeddingResult",
+    "EmbeddingVector",
     "EmbeddingsService",
     "EmbeddingsServiceProtocol",
+    "GraphEmbeddingBatch",
+    "GraphEmbeddingProviderProtocol",
+    "GraphEmbeddingStatus",
     "InMemoryEmbedder",
     "OpenAIEmbedder",
     "SentenceTransformersEmbedder",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 from collections.abc import Sequence
 from typing import cast
 
@@ -85,6 +86,22 @@ def test_sentence_transformers_embedder_batches_and_normalizes_vectors() -> None
     assert result.metadata.provider == "sentence-transformers"
     assert result.metadata.model_name == config.model
     assert result.metadata.dimensions == config.dimensions
+    assert [(item.content_id, item.channel) for item in result.items] == [
+        ("item-1", "text"),
+        ("item-2", "text"),
+        ("item-3", "text"),
+        ("item-4", "text"),
+        ("item-5", "text"),
+    ]
+    assert [item.model_name for item in result.items] == [config.model] * 5
+    assert [item.dimensions for item in result.items] == [config.dimensions] * 5
+    assert [item.vector for item in result.items] == [
+        result.vectors["item-1"],
+        result.vectors["item-2"],
+        result.vectors["item-3"],
+        result.vectors["item-4"],
+        result.vectors["item-5"],
+    ]
     assert list(result.vectors) == [
         "item-1",
         "item-2",
@@ -181,3 +198,32 @@ def test_sentence_transformers_embedder_rejects_zero_vectors() -> None:
                 items=[EmbeddingItem(id="item-1", content="zero")],
             )
         )
+
+
+@pytest.mark.integration
+def test_sentence_transformers_embedder_local_smoke() -> None:
+    model_name = os.getenv("SENTENCE_TRANSFORMERS_SMOKE_MODEL")
+    if model_name is None or model_name.strip() == "":
+        pytest.skip("SENTENCE_TRANSFORMERS_SMOKE_MODEL is required for local smoke.")
+
+    pytest.importorskip("sentence_transformers")
+    embedder = SentenceTransformersEmbedder(
+        EmbeddingsConfig(
+            provider="sentence_transformers",
+            model=model_name,
+            dimensions=int(os.getenv("SENTENCE_TRANSFORMERS_SMOKE_DIMENSIONS", "384")),
+            batch_size=2,
+        )
+    )
+
+    result = embedder.embed(
+        EmbeddingRequest(
+            request_id="live-sentence-transformers",
+            model_name="ignored",
+            items=[EmbeddingItem(id="probe", content="local embedding smoke test")],
+        )
+    )
+
+    assert len(result.vectors["probe"]) == result.metadata.dimensions
+    assert result.items[0].channel == "text"
+    assert result.items[0].vector == result.vectors["probe"]

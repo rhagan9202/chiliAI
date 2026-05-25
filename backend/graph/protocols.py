@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from graph.models import GraphMetrics, SubgraphResult
+from graph.models import GraphDeleteByProvenance, GraphMetrics, SubgraphResult
 from graph.service_models import GraphBuildReceipt, GraphBuildTask
 from shared.types import Entity
 
@@ -18,7 +18,7 @@ class GraphServiceProtocol(Protocol):
 
     def upsert_task(self, task: GraphBuildTask) -> GraphBuildReceipt: ...
 
-    def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None: ...
+    def get_entity(self, knowledge_base_ids: list[str], entity_id: str) -> Entity | None: ...
 
     def update_entity_properties(
         self,
@@ -36,7 +36,7 @@ class GraphServiceProtocol(Protocol):
 
     def search_entities(
         self,
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         query: str,
         limit: int,
         offset: int,
@@ -45,6 +45,12 @@ class GraphServiceProtocol(Protocol):
     def compute_metrics(self, knowledge_base_id: str) -> GraphMetrics: ...
 
     def delete_knowledge_base(self, knowledge_base_id: str) -> None: ...
+
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> GraphDeleteByProvenance: ...
 
 
 __all__ = [

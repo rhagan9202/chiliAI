@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 
 from pydantic import BaseModel, Field
 
@@ -27,8 +27,10 @@ class DocumentParseFailure(BaseModel):
 class BatchParseResult(BaseModel):
     """Aggregated result for batch parsing helpers."""
 
-    successes: list[ParseResult] = Field(default_factory=list)
-    failures: list[DocumentParseFailure] = Field(default_factory=list)
+    successes: list[ParseResult] = Field(default_factory=lambda: cast(list[ParseResult], []))
+    failures: list[DocumentParseFailure] = Field(
+        default_factory=lambda: cast(list[DocumentParseFailure], [])
+    )
 
 
 @runtime_checkable

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable, Generator, Iterable, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from datetime import datetime
@@ -13,7 +14,8 @@ from typing import Literal, Protocol, cast
 from config.schema import GraphDbConfig
 from graph.adapters.protocols import GraphRepository
 from graph.exceptions import GraphPersistenceError
-from graph.models import SubgraphResult
+from graph.models import GraphDeleteByProvenance, SubgraphResult
+from shared.provenance import SOURCE_DOCUMENT_ID_KEY
 from shared.types import Entity, Relationship
 
 
@@ -97,6 +99,8 @@ else:
 
 __all__ = ["Neo4jGraphRepository"]
 
+logger = logging.getLogger(__name__)
+
 _MAX_NEIGHBOR_DEPTH = 5
 _ENTITY_LABEL = "Entity"
 _RELATIONSHIP_LABEL = "RELATES"
@@ -127,9 +131,32 @@ class Neo4jGraphRepository(GraphRepository):
         )
         self._active_transaction: Neo4jTransactionProtocol | None = None
         self._active_session: Neo4jSessionProtocol | None = None
+        self._ensure_schema()
 
     def close(self) -> None:
         self._driver.close()
+
+    def _ensure_schema(self) -> None:
+        statements = [
+            "CREATE CONSTRAINT entity_kb_id_unique IF NOT EXISTS "
+            "FOR (e:Entity) "
+            "REQUIRE (e.knowledge_base_id, e.entity_id) IS UNIQUE",
+            "CREATE INDEX entity_kb_id IF NOT EXISTS "
+            "FOR (e:Entity) "
+            "ON (e.knowledge_base_id)",
+            "CREATE INDEX rel_kb_id_relationship_id IF NOT EXISTS "
+            "FOR ()-[r:RELATES]-() "
+            "ON (r.knowledge_base_id, r.relationship_id)",
+            "CREATE INDEX rel_kb_id IF NOT EXISTS "
+            "FOR ()-[r:RELATES]-() "
+            "ON (r.knowledge_base_id)",
+        ]
+        for stmt in statements:
+            try:
+                with self._session() as session:
+                    session.execute_write(self._run_query, stmt)
+            except Neo4jError as exc:
+                logger.warning("Failed to ensure Neo4j schema: %s — %s", stmt, exc)
 
     def transaction(self, knowledge_base_id: str) -> AbstractContextManager[None]:
         return self._transaction_scope()
@@ -241,15 +268,16 @@ class Neo4jGraphRepository(GraphRepository):
         """
         return self._query_relationships(query, knowledge_base_id=knowledge_base_id)
 
-    def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None:
+    def get_entity(self, knowledge_base_ids: list[str], entity_id: str) -> Entity | None:
         query = f"""
-        MATCH (entity:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: $entity_id}})
+        MATCH (entity:{_ENTITY_LABEL} {{entity_id: $entity_id}})
+        WHERE entity.knowledge_base_id IN $knowledge_base_ids
         RETURN entity
         LIMIT 1
         """
         entities = self._query_entities(
             query,
-            knowledge_base_id=knowledge_base_id,
+            knowledge_base_ids=knowledge_base_ids,
             entity_id=entity_id,
         )
         return entities[0] if entities else None
@@ -260,7 +288,7 @@ class Neo4jGraphRepository(GraphRepository):
         entity_id: str,
         properties: dict[str, object],
     ) -> Entity:
-        existing = self.get_entity(knowledge_base_id, entity_id)
+        existing = self.get_entity([knowledge_base_id], entity_id)
         if existing is None:
             raise KeyError(
                 f"Entity '{entity_id}' not found in knowledge base '{knowledge_base_id}'."
@@ -283,7 +311,7 @@ class Neo4jGraphRepository(GraphRepository):
             msg = "direction must be one of 'in', 'out', or 'both'"
             raise ValueError(msg)
 
-        root_entity = self.get_entity(knowledge_base_id, entity_id)
+        root_entity = self.get_entity([knowledge_base_id], entity_id)
         if root_entity is None:
             return SubgraphResult()
         if depth == 0:
@@ -379,7 +407,7 @@ class Neo4jGraphRepository(GraphRepository):
 
     def search_entities(
         self,
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         query: str,
         limit: int,
     ) -> list[Entity]:
@@ -388,15 +416,16 @@ class Neo4jGraphRepository(GraphRepository):
             return []
 
         cypher = f"""
-        MATCH (entity:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id}})
-                WHERE toLower(coalesce(entity.properties_json, "")) CONTAINS $normalized_query
+        MATCH (entity:{_ENTITY_LABEL})
+        WHERE entity.knowledge_base_id IN $knowledge_base_ids
+          AND toLower(coalesce(entity.properties_json, "")) CONTAINS $normalized_query
         RETURN entity
         ORDER BY entity.entity_id
         LIMIT $limit
         """
         return self._query_entities(
             cypher,
-            knowledge_base_id=knowledge_base_id,
+            knowledge_base_ids=knowledge_base_ids,
             normalized_query=normalized_query,
             limit=limit,
         )
@@ -441,6 +470,68 @@ class Neo4jGraphRepository(GraphRepository):
             query,
             knowledge_base_id=knowledge_base_id,
             relationship_id=relationship_id,
+        )
+
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> GraphDeleteByProvenance:
+        # NOTE: metadata is stored as a JSON-serialized string (metadata_json) rather than as
+        # flattened node properties — this is Pattern B.  We filter by checking that the
+        # metadata_json string contains the expected key-value pair encoded exactly as it would
+        # be by json.dumps with sort_keys=True.  The filter may over-match if a value contains
+        # the literal substring, but in practice source_document_id values are UUIDs or slugs
+        # that make false positives negligible.  A future schema migration that promotes
+        # source_document_id to a first-class indexed node/relationship property would make
+        # this query exact and efficient (add an index on e.source_document_id to support it).
+        doc_id_fragment = f'"{SOURCE_DOCUMENT_ID_KEY}": "{source_document_id}"'
+
+        # Using a two-step approach: count before delete, then delete.
+        rel_count_fetch = f"""
+        MATCH ()-[r:{_RELATIONSHIP_LABEL} {{knowledge_base_id: $knowledge_base_id}}]->()
+        WHERE r.metadata_json CONTAINS $doc_id_fragment
+        RETURN count(r) AS count
+        """
+        entity_count_fetch = f"""
+        MATCH (e:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id}})
+        WHERE e.metadata_json CONTAINS $doc_id_fragment
+        RETURN count(e) AS count
+        """
+        del_rels_query = f"""
+        MATCH ()-[r:{_RELATIONSHIP_LABEL} {{knowledge_base_id: $knowledge_base_id}}]->()
+        WHERE r.metadata_json CONTAINS $doc_id_fragment
+        DELETE r
+        """
+        del_entities_query = f"""
+        MATCH (e:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id}})
+        WHERE e.metadata_json CONTAINS $doc_id_fragment
+        DETACH DELETE e
+        """
+
+        try:
+            rel_count = self._query_count(
+                rel_count_fetch,
+                knowledge_base_id=knowledge_base_id,
+                doc_id_fragment=doc_id_fragment,
+            )
+            entity_count = self._query_count(
+                entity_count_fetch,
+                knowledge_base_id=knowledge_base_id,
+                doc_id_fragment=doc_id_fragment,
+            )
+            self._run_write(del_rels_query, knowledge_base_id=knowledge_base_id, doc_id_fragment=doc_id_fragment)
+            self._run_write(del_entities_query, knowledge_base_id=knowledge_base_id, doc_id_fragment=doc_id_fragment)
+        except Neo4jError as exc:
+            raise GraphPersistenceError(
+                "Failed to delete Neo4j nodes/relationships by source document."
+            ) from exc
+
+        return GraphDeleteByProvenance(
+            knowledge_base_id=knowledge_base_id,
+            source_document_id=source_document_id,
+            entity_count=entity_count,
+            relationship_count=rel_count,
         )
 
     def _execute_write(self, query: str, **parameters: object) -> None:

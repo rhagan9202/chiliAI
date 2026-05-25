@@ -95,6 +95,8 @@ class _FakeTransaction:
         self._driver = driver
 
     def run(self, query: str, **parameters: object) -> list[FakeRecord]:
+        if not self._driver.results:
+            return []
         return self._driver.results.pop(0)
 
 
@@ -196,8 +198,8 @@ def test_neo4j_repository_upserts_entities_and_relationships_with_merge(
 
     assert entities[0].id == "entity-1"
     assert relationships[0].id == "relationship-1"
-    assert "MERGE (entity:Entity" in driver.queries[0][0]
-    assert "MERGE (source)-[relationship:RELATES" in driver.queries[1][0]
+    assert any("MERGE (entity:Entity" in entry[0] for entry in driver.queries)
+    assert any("MERGE (source)-[relationship:RELATES" in entry[0] for entry in driver.queries)
 
 
 def test_neo4j_repository_reads_searches_counts_and_deletes(
@@ -220,15 +222,15 @@ def test_neo4j_repository_reads_searches_counts_and_deletes(
         [],
     ]
 
-    assert repository.get_entity("kb-1", "entity-1") is not None
-    assert repository.search_entities("kb-1", "alice", limit=10)[0].id == "entity-2"
+    assert repository.get_entity(["kb-1"], "entity-1") is not None
+    assert repository.search_entities(["kb-1"], "alice", limit=10)[0].id == "entity-2"
     assert repository.count_entities("kb-1") == 3
     assert repository.count_relationships("kb-1") == 2
     repository.delete_knowledge_base("kb-1")
     repository.delete_entity("kb-1", "entity-2")
     repository.delete_relationship("kb-1", "relationship-2")
 
-    assert "entity.properties_json" in driver.queries[1][0]
+    assert any("entity.properties_json" in entry[0] for entry in driver.queries)
     assert "DETACH DELETE entity" in driver.queries[-3][0]
     assert "DELETE relationship" in driver.queries[-1][0]
 
@@ -289,7 +291,7 @@ def test_neo4j_repository_get_neighbors_uses_variable_length_path_pattern(
     assert {entity.id for entity in result.entities} == {"entity-1", "entity-2"}
     assert [relationship.id for relationship in result.relationships] == ["relationship-1"]
     assert [entity.id for entity in zero_depth_result.entities] == ["entity-1"]
-    assert "*1..2" in driver.queries[1][0]
+    assert any("*1..2" in entry[0] for entry in driver.queries)
 
 
 def test_neo4j_repository_get_neighbors_preserves_inbound_relationship_direction(
@@ -424,6 +426,135 @@ def test_neo4j_repository_transaction_rolls_back_on_failure(
     assert driver.last_transaction.committed is False
 
 
+def test_neo4j_repository_ensures_schema_statements_on_init(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+
+    schema_queries = [entry[0] for entry in driver.queries]
+    schema_text = "\n".join(schema_queries)
+
+    assert "CREATE CONSTRAINT entity_kb_id_unique IF NOT EXISTS" in schema_text
+    assert "FOR (e:Entity)" in schema_text
+    assert "REQUIRE (e.knowledge_base_id, e.entity_id) IS UNIQUE" in schema_text
+
+    assert "CREATE INDEX entity_kb_id IF NOT EXISTS" in schema_text
+    assert "ON (e.knowledge_base_id)" in schema_text
+
+    assert "CREATE INDEX rel_kb_id_relationship_id IF NOT EXISTS" in schema_text
+    assert "FOR ()-[r:RELATES]-()" in schema_text
+    assert "ON (r.knowledge_base_id, r.relationship_id)" in schema_text
+
+    assert "CREATE INDEX rel_kb_id IF NOT EXISTS" in schema_text
+    assert "ON (r.knowledge_base_id)" in schema_text
+
+
+def test_neo4j_repository_tolerates_schema_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """If a single CREATE statement fails, init logs a warning and the rest still run."""
+
+    class _FlakySession(_FakeSession):
+        def execute_write(
+            self,
+            callback: Callable[..., list[FakeRecord]],
+            query: str,
+            **parameters: object,
+        ) -> list[FakeRecord]:
+            assert isinstance(self._driver, _FlakyDriver)
+            self._driver.execute_write_calls += 1
+            self._driver.queries.append((query, parameters, "write"))
+            if self._driver.execute_write_calls == 1:
+                raise neo4j_adapter.Neo4jError("simulated DDL permission denied")
+            return callback(_FakeTransaction(self._driver), query, **parameters)
+
+    class _FlakyDriver(_FakeDriver):
+        def __init__(self) -> None:
+            super().__init__()
+            self.execute_write_calls = 0
+
+        def session(self, **kwargs: object) -> _FlakySession:
+            self.session_kwargs.append(kwargs)
+            return _FlakySession(self)
+
+    class _FlakyDatabase:
+        driver_instance: _FlakyDriver | None = None
+
+        @classmethod
+        def driver(
+            cls,
+            uri: str,
+            *,
+            auth: tuple[str, str] | None,
+            max_connection_pool_size: int,
+        ) -> _FlakyDriver:
+            cls.driver_instance = _FlakyDriver()
+            return cls.driver_instance
+
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FlakyDatabase)
+
+    with caplog.at_level("WARNING", logger="graph.adapters.neo4j_adapter"):
+        Neo4jGraphRepository(
+            GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+            auth=("neo4j", "password"),
+        )
+
+    driver = _FlakyDatabase.driver_instance
+    assert driver is not None
+    # All four schema statements were attempted (the loop continued past the first failure).
+    assert driver.execute_write_calls == 4
+    assert len(driver.queries) == 4
+    # Exactly one WARNING was logged — only the first statement failed, the rest succeeded.
+    warning_messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelname == "WARNING"
+        and record.name == "graph.adapters.neo4j_adapter"
+    ]
+    assert len(warning_messages) == 1, warning_messages
+    assert "Failed to ensure Neo4j schema" in warning_messages[0]
+    assert "simulated DDL permission denied" in warning_messages[0]
+
+
+
+def test_neo4j_repository_schema_ensure_is_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Constructing the repository twice issues the schema statements both times."""
+    _FakeGraphDatabase.captured = []
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+
+    Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    first_driver = _FakeGraphDatabase.driver_instance
+    assert first_driver is not None
+    first_query_count = len(first_driver.queries)
+
+    Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    second_driver = _FakeGraphDatabase.driver_instance
+    assert second_driver is not None
+
+    # Each construction creates a new fake driver, so the second driver's query
+    # log captures its own four schema statements (independent of the first).
+    assert len(first_driver.queries) == first_query_count  # first driver unchanged
+    assert len(second_driver.queries) == 4
+    second_schema_text = "\n".join(entry[0] for entry in second_driver.queries)
+    assert "CREATE CONSTRAINT entity_kb_id_unique IF NOT EXISTS" in second_schema_text
+
+
 @pytest.fixture()
 def neo4j_repository() -> Generator[tuple[Neo4jGraphRepository, str], None, None]:
     pytest.importorskip("neo4j")
@@ -506,7 +637,7 @@ def test_neo4j_repository_round_trip_crud(
         "relationship-1",
         "relationship-2",
     ]
-    assert repository.get_entity(knowledge_base_id, "entity-2") is not None
+    assert repository.get_entity([knowledge_base_id], "entity-2") is not None
     assert repository.count_entities(knowledge_base_id) == 3
     assert repository.count_relationships(knowledge_base_id) == 2
     assert [
@@ -518,7 +649,7 @@ def test_neo4j_repository_round_trip_crud(
             offset=0,
         )
     ] == ["entity-2", "entity-3"]
-    assert [entity.id for entity in repository.search_entities(knowledge_base_id, "alice", limit=10)] == [
+    assert [entity.id for entity in repository.search_entities([knowledge_base_id], "alice", limit=10)] == [
         "entity-2"
     ]
 
@@ -545,7 +676,7 @@ def test_neo4j_repository_round_trip_crud(
     )
     repository.delete_entity(knowledge_base_id, "entity-2")
 
-    assert repository.get_entity(knowledge_base_id, "entity-2") is None
+    assert repository.get_entity([knowledge_base_id], "entity-2") is None
     assert repository.count_entities(knowledge_base_id) == 2
     assert repository.count_relationships(knowledge_base_id) == 0
 
@@ -568,4 +699,4 @@ def test_neo4j_repository_transaction_rolls_back_changes(
             )
             raise RuntimeError("rollback")
 
-    assert repository.get_entity(knowledge_base_id, "rollback-entity") is None
+    assert repository.get_entity([knowledge_base_id], "rollback-entity") is None

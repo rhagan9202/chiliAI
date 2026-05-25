@@ -118,7 +118,7 @@ class RagWorkflowState(BaseModel):
     """Mutable-by-copy workflow state for the rag pipeline."""
 
     request_id: str
-    knowledge_base_id: str
+    knowledge_base_ids: list[str]
     question: str
     query_vector: list[float] | None = None
     context_items: list[RetrievedContextItem] = Field(default_factory=_empty_retrieved_context_items)

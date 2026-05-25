@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from config.schema import (
     AlertsConfig,
+    AnalyticsConfig,
     AuthConfig,
     CapabilitiesConfig,
     ChunkingConfig,
@@ -65,6 +66,7 @@ def _make_config(
     monitoring: MonitoringConfig | None = None,
     rag: RagConfig | None = None,
     schema_version: str = "1.0",
+    default_reference_kb_id: str | None = None,
 ) -> DomainConfig:
     """Build a minimal valid DomainConfig, optionally overriding parts."""
     ents = entities if entities is not None else [_minimal_entity("alpha")]
@@ -111,6 +113,7 @@ def _make_config(
                 )
             },
         ),
+        default_reference_kb_id=default_reference_kb_id,
     )
 
 
@@ -610,3 +613,47 @@ class TestPropertyTypeValues:
         )
         cfg = _make_config(entities=[entity])
         assert cfg.entities[0].properties["field"].type is ptype
+
+
+# ---------------------------------------------------------------------------
+# AnalyticsConfig
+# ---------------------------------------------------------------------------
+
+
+def test_analytics_config_defaults() -> None:
+    config = AnalyticsConfig()
+    assert config.metrics_recompute_min_interval_seconds == 300
+
+
+def test_analytics_config_rejects_non_positive_interval() -> None:
+    with pytest.raises(ValidationError):
+        AnalyticsConfig(metrics_recompute_min_interval_seconds=0)
+
+
+def test_domain_config_defaults_analytics_section() -> None:
+    """A config that omits `analytics` gets the default AnalyticsConfig."""
+    from pathlib import Path
+
+    from config.loader import load_config
+
+    config = load_config(
+        Path(__file__).resolve().parents[2]
+        / "config" / "defaults" / "medicare_fraud.yaml"
+    )
+    assert config.analytics is not None
+    assert config.analytics.metrics_recompute_min_interval_seconds == 300
+
+
+# ---------------------------------------------------------------------------
+# default_reference_kb_id
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultReferenceKbId:
+    def test_domain_config_default_reference_kb_id_is_none_by_default(self) -> None:
+        cfg = _make_config()
+        assert cfg.default_reference_kb_id is None
+
+    def test_domain_config_default_reference_kb_id_accepts_string(self) -> None:
+        cfg = _make_config(default_reference_kb_id="kb-policy-v1")
+        assert cfg.default_reference_kb_id == "kb-policy-v1"

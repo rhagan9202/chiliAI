@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field, model_validator
+
+from shared.utils import utc_now
 
 
 class RiskSignal(BaseModel):
@@ -19,7 +23,7 @@ class RiskProfile(BaseModel):
 
     knowledge_base_id: str
     entity_id: str
-    signals: list[RiskSignal] = Field(default_factory=list)
+    signals: list[RiskSignal] = Field(default_factory=list[RiskSignal])
 
     @model_validator(mode="after")
     def _validate_signals(self) -> RiskProfile:
@@ -50,7 +54,7 @@ class RiskAssessmentResult(BaseModel):
     overall_score: float = Field(ge=0.0, le=1.0)
     risk_level: str
     factor_count: int = Field(ge=0)
-    factors: list[RiskFactor] = Field(default_factory=list)
+    factors: list[RiskFactor] = Field(default_factory=list[RiskFactor])
 
 
 class RankedRiskEntry(BaseModel):
@@ -63,8 +67,21 @@ class RankedRiskEntry(BaseModel):
     risk_level: str
 
 
+class RiskAssessmentRecord(BaseModel):
+    """A row destined for the analytics-facing ``risk_score_history`` log."""
+
+    knowledge_base_id: str
+    entity_id: str
+    request_id: str
+    overall_score: float = Field(ge=0.0, le=1.0)
+    risk_level: str
+    factors: list[RiskFactor] = Field(default_factory=list[RiskFactor])
+    assessed_at: datetime = Field(default_factory=utc_now)
+
+
 __all__ = [
     "RankedRiskEntry",
+    "RiskAssessmentRecord",
     "RiskAssessmentResult",
     "RiskFactor",
     "RiskProfile",

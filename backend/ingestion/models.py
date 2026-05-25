@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import cast
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -82,7 +83,9 @@ class ParsedDocument(BaseModel):
     id: str
     source_document_id: str
     text_content: str | None = None
-    records: list[StructuredRecord] = Field(default_factory=list)
+    records: list[StructuredRecord] = Field(
+        default_factory=lambda: cast(list[StructuredRecord], [])
+    )
     parser_name: str
     parser_version: str | None = None
     parsed_at: datetime = Field(default_factory=utc_now)
@@ -161,7 +164,9 @@ class CandidateEntity(BaseModel):
     properties: dict[str, object] = Field(default_factory=dict)
     confidence: float = Field(ge=0.0, le=1.0)
     extraction_method: str
-    evidence: list[ExtractionEvidence] = Field(default_factory=list)
+    evidence: list[ExtractionEvidence] = Field(
+        default_factory=lambda: cast(list[ExtractionEvidence], [])
+    )
     metadata: dict[str, object] = Field(default_factory=dict)
 
 
@@ -177,7 +182,9 @@ class CandidateRelationship(BaseModel):
     properties: dict[str, object] = Field(default_factory=dict)
     confidence: float = Field(ge=0.0, le=1.0)
     extraction_method: str
-    evidence: list[ExtractionEvidence] = Field(default_factory=list)
+    evidence: list[ExtractionEvidence] = Field(
+        default_factory=lambda: cast(list[ExtractionEvidence], [])
+    )
     metadata: dict[str, object] = Field(default_factory=dict)
 
 
@@ -187,9 +194,13 @@ class ExtractionResult(BaseModel):
     id: str
     source_document_id: str
     parsed_document_id: str | None = None
-    chunks: list[Chunk] = Field(default_factory=list)
-    candidate_entities: list[CandidateEntity] = Field(default_factory=list)
-    candidate_relationships: list[CandidateRelationship] = Field(default_factory=list)
+    chunks: list[Chunk] = Field(default_factory=lambda: cast(list[Chunk], []))
+    candidate_entities: list[CandidateEntity] = Field(
+        default_factory=lambda: cast(list[CandidateEntity], [])
+    )
+    candidate_relationships: list[CandidateRelationship] = Field(
+        default_factory=lambda: cast(list[CandidateRelationship], [])
+    )
     worker_id: str | None = None
     warnings: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
@@ -201,8 +212,10 @@ class ValidationReport(BaseModel):
     id: str
     extraction_result_id: str
     source_document_id: str
-    valid_entities: list[Entity] = Field(default_factory=list)
-    valid_relationships: list[Relationship] = Field(default_factory=list)
+    valid_entities: list[Entity] = Field(default_factory=lambda: cast(list[Entity], []))
+    valid_relationships: list[Relationship] = Field(
+        default_factory=lambda: cast(list[Relationship], [])
+    )
     entity_errors: dict[str, list[str]] = Field(default_factory=dict)
     relationship_errors: dict[str, list[str]] = Field(default_factory=dict)
     validated_at: datetime = Field(default_factory=utc_now)
@@ -224,4 +237,3 @@ __all__ = [
     "TextSpan",
     "ValidationReport",
 ]
-

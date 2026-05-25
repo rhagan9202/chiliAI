@@ -19,9 +19,14 @@ class RiskSourceError(RiskError):
     """Raised when the configured signal source cannot return risk data."""
 
 
+class RiskHistoryError(RiskError):
+    """Raised when the risk-history store cannot read or write assessments."""
+
+
 __all__ = [
     "RiskConfigurationError",
     "RiskError",
+    "RiskHistoryError",
     "RiskInsufficientSignalsError",
     "RiskSourceError",
 ]

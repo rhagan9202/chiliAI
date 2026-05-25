@@ -114,3 +114,13 @@ class TestCorrelationIdPropagation:
         # Second call must be a no-op (no exception, no reset).
         configure_logging(log_format="console")
         assert logging_module._configured is True  # pyright: ignore[reportPrivateUsage]
+
+    def test_log_level_can_come_from_environment(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("LOG_LEVEL", "WARNING")
+
+        configure_logging(log_format="json")
+
+        assert logging.getLogger().level == logging.WARNING

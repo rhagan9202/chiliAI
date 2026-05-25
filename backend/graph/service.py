@@ -9,7 +9,7 @@ from events.protocols import EventBus
 from events.types import GraphUpdatedDocumentReference, GraphUpdatedEvent
 from graph.adapters.protocols import GraphRepository
 from graph.exceptions import BatchUpsertError, GraphPersistenceError
-from graph.models import GraphMetrics, GraphUpsertResult, SubgraphResult
+from graph.models import GraphDeleteByProvenance, GraphMetrics, GraphUpsertResult, SubgraphResult
 from graph.service_models import (
     EntitySearchQuery,
     GraphBuildReceipt,
@@ -167,8 +167,8 @@ class GraphService:
         for start in range(0, len(items), self._batch_size):
             yield items[start : start + self._batch_size]
 
-    def get_entity(self, knowledge_base_id: str, entity_id: str) -> Entity | None:
-        return self._repository.get_entity(knowledge_base_id, entity_id)
+    def get_entity(self, knowledge_base_ids: list[str], entity_id: str) -> Entity | None:
+        return self._repository.get_entity(knowledge_base_ids, entity_id)
 
     def update_entity_properties(
         self,
@@ -181,6 +181,48 @@ class GraphService:
         return self._repository.update_entity_properties(
             knowledge_base_id, entity_id, properties
         )
+
+    def upsert_records_graph(
+        self,
+        knowledge_base_id: str,
+        entities: list[Entity],
+        relationships: list[Relationship],
+    ) -> tuple[list[Entity], list[Relationship]]:
+        """Upsert entities and relationships from a structured-records feed.
+
+        Unlike :meth:`upsert_task`, this writes no document-pipeline artifacts
+        and publishes no ``GraphUpdatedEvent`` — structured records have no
+        parsed-document lineage. Both writes are idempotent upserts, so the
+        worker's Flow 1 handler is safely replayable.
+        """
+
+        stored_entities: list[Entity] = []
+        for entity_batch in self._chunk_items(entities):
+            try:
+                with self._repository.transaction(knowledge_base_id):
+                    stored_entities.extend(
+                        self._repository.upsert_entities(knowledge_base_id, entity_batch)
+                    )
+            except Exception as exc:
+                raise BatchUpsertError(
+                    successful_entity_count=len(stored_entities),
+                    successful_relationship_count=0,
+                ) from exc
+
+        stored_relationships: list[Relationship] = []
+        for relationship_batch in self._chunk_items(relationships):
+            try:
+                with self._repository.transaction(knowledge_base_id):
+                    stored_relationships.extend(
+                        self._repository.upsert_relationships(knowledge_base_id, relationship_batch)
+                    )
+            except Exception as exc:
+                raise BatchUpsertError(
+                    successful_entity_count=len(stored_entities),
+                    successful_relationship_count=len(stored_relationships),
+                ) from exc
+
+        return stored_entities, stored_relationships
 
     def query_neighborhood(
         self,
@@ -217,19 +259,22 @@ class GraphService:
 
     def search_entities(
         self,
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         query: str,
         limit: int,
         offset: int,
     ) -> list[Entity]:
+        # EntitySearchQuery.knowledge_base_id is a validation shim only — routing
+        # uses knowledge_base_ids passed directly to the repository. The "__multi__"
+        # placeholder satisfies the model's non-empty-string constraint.
         search_query = EntitySearchQuery(
-            knowledge_base_id=knowledge_base_id,
+            knowledge_base_id="__multi__",
             query=query,
             limit=limit,
             offset=offset,
         )
         repository_results = self._repository.search_entities(
-            search_query.knowledge_base_id,
+            knowledge_base_ids,
             search_query.query,
             search_query.limit + search_query.offset,
         )
@@ -256,6 +301,15 @@ class GraphService:
         """Remove all graph objects scoped to a knowledge base."""
 
         self._repository.delete_knowledge_base(knowledge_base_id)
+
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> GraphDeleteByProvenance:
+        """Delete entities and relationships whose provenance points to a single document."""
+
+        return self._repository.delete_by_source_document(knowledge_base_id, source_document_id)
 
     @staticmethod
     def _build_graph_update_storage_key(

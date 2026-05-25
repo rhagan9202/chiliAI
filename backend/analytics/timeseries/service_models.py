@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
+from analytics.timeseries.models import TimeSeriesObservation as TimeSeriesObservation
 from pydantic import BaseModel, Field, model_validator
 
 DetectionStrategy = Literal["z_score", "stl_decomposition", "isolation_forest"]
@@ -85,10 +86,10 @@ class MetricTimeseriesResponse(BaseModel):
     end: datetime
     points: list[TimeseriesPoint] = Field(default_factory=list[TimeseriesPoint])
 
-
 __all__ = [
     "DetectionStrategy",
     "MetricTimeseriesResponse",
+    "TimeSeriesObservation",
     "TimeseriesAnalysisRequest",
     "TimeseriesAnalysisResponse",
     "TimeseriesAnomaly",

@@ -228,6 +228,12 @@
   text-transform: uppercase;
 }
 
+.feedback-state__action {
+  margin-top: 8px;
+  display: flex;
+  gap: 10px;
+}
+
 .feedback-state--loading {
   grid-auto-flow: column;
   align-items: center;

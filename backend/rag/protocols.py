@@ -22,7 +22,7 @@ class RagServiceProtocol(Protocol):
     def answer_question(
         self,
         *,
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         question: str,
     ) -> RagAnswer: ...
 

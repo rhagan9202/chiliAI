@@ -181,8 +181,13 @@ class MonitoringService:
                             entity_id=alert.entity_id,
                             severity=alert.severity,
                             evidence_pack_id=alert.evidence_pack_id,
+                            entity_type=alert.entity_type,
+                            status=alert.status,
+                            title=alert.title,
+                            reasoning=alert.reasoning,
+                            metric_name=candidate.metric_name,
                         )
-                        for alert in alerts
+                        for candidate, alert in zip(deduped, alerts, strict=True)
                     ]
                 )
             )

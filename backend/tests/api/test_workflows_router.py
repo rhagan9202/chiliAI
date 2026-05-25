@@ -45,13 +45,16 @@ def _save_session(
     )
 
 
-def _app_with_workflows_and_auth() -> FastAPI:
+def _app_with_workflows_and_auth(
+    runs: list[WorkflowRun] | None = None,
+) -> FastAPI:
     app = create_app()
     store = InMemorySessionStore()
     _save_session(store, session_id="sid-viewer", roles=["viewer"])
     _save_session(store, session_id="sid-no-role", roles=[])
     run_store = InMemoryWorkflowRunStore(
-        runs=[
+        runs=runs
+        or [
             WorkflowRun(
                 workflow_id="workflow-1",
                 knowledge_base_id="kb-1",
@@ -95,3 +98,46 @@ def test_user_without_roles_cannot_list_workflows_when_auth_enabled() -> None:
         response = client.get("/workflows")
 
     assert response.status_code == 403
+
+
+def test_list_workflows_applies_query_filters_when_auth_enabled() -> None:
+    app = _app_with_workflows_and_auth(
+        runs=[
+            WorkflowRun(
+                workflow_id="target",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.COMPLETED,
+                steps=[WorkflowStepState(step_name="ready")],
+            ),
+            WorkflowRun(
+                workflow_id="other-kb",
+                knowledge_base_id="kb-2",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.COMPLETED,
+                steps=[WorkflowStepState(step_name="ready")],
+            ),
+            WorkflowRun(
+                workflow_id="other-status",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+            ),
+        ]
+    )
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-viewer")
+        response = client.get(
+            "/workflows",
+            params={
+                "knowledge_base_id": "kb-1",
+                "status": "completed",
+                "limit": 10,
+                "offset": 0,
+            },
+        )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["items"]] == ["target"]

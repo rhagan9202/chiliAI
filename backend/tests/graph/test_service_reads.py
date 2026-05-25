@@ -24,7 +24,7 @@ def test_graph_service_returns_entity_and_neighbors() -> None:
     )
     service = create_graph_service(repository, object_store=InMemoryObjectStore(), event_bus=InMemoryEventBus())
 
-    entity = service.get_entity("kb-1", "provider-1")
+    entity = service.get_entity(["kb-1"], "provider-1")
     neighbors, relationships = service.get_neighbors("kb-1", "provider-1")
 
     assert entity is not None

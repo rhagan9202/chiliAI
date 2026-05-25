@@ -26,6 +26,12 @@ def test_default_registry_dispatches_to_text_parser() -> None:
     assert parsed.text_content == "hello"
 
 
+def test_default_registry_supports_html() -> None:
+    registry = create_default_registry()
+
+    assert registry.supports(DocumentFormat.HTML)
+
+
 def test_registry_rejects_missing_format() -> None:
     registry = ParserRegistry([TextParser()])
     with pytest.raises(UnsupportedFormatError, match="not resolved"):

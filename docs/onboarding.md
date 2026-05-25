@@ -94,7 +94,7 @@ The full stack (API, worker, Redis, Neo4j, Qdrant, MinIO) runs inside Docker, so
 
 ```bash
 # 1. Clone
-git clone https://github.com/Fed-Incubator/Crushing-Fraud-XAI.git chiliAI
+git clone https://github.com/rhagan9202/chiliAI.git chiliAI
 cd chiliAI
 
 # 2. Create local environment file (gitignored)
@@ -169,6 +169,16 @@ All service URLs when the dev stack is running:
 | MinIO console | http://localhost:9001 (admin: `minioadmin` / `minioadmin`) |
 | Redis | localhost:6379 (no browser UI; use `redis-cli`) |
 
+Dev-stack notes:
+
+- The dev stack starts Neo4j with `NEO4J_AUTH=none`, while the production compose file uses `NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}`. When a domain config selects `graph.backend: neo4j`, the API/worker use `graph.auth_env_var` if configured; otherwise they fall back to `NEO4J_USER`/`NEO4J_PASSWORD`. Keep those values aligned with the Neo4j service on fresh machines.
+- The API container uses explicit Uvicorn `--reload-dir` entries for backend source packages and keeps mutable runtime data such as `/app/data` outside the watch set. Do not revert dev compose to a bare repository-wide reload watcher; runtime artifact writes can otherwise trigger reload loops.
+- Uvicorn excludes common generated/cache paths (`*.pyc`, `__pycache__/*`, `*.egg-info/*`) from reload watches.
+- API and worker Redis Streams polling defaults to `CHILI_EVENT_BLOCK_MS=500` in dev compose to reduce idle wakeups while preserving responsive local event handling.
+- The browser opens `/events/stream` for realtime workspace status. This SSE heartbeat intentionally reads cached API projections only and must not perform live graph metric recomputation; use the KB list/detail APIs for explicit graph-backed projection refreshes.
+- `make dev` attaches to Docker Compose logs. In the interactive Compose log UI, press `d` to detach while leaving containers running.
+- Browser tests or manual Playwright checks should avoid waiting for `networkidle` on pages that open `/events/stream`; the SSE connection is intentionally long-lived.
+
 ### 4.2 Running services individually (without Docker)
 
 You will need Redis, Neo4j, Qdrant, and MinIO running separately. The easiest way is to start just the infrastructure containers:
@@ -223,6 +233,9 @@ The key environment variables consumed by the backend:
 | `MINIO_ACCESS_KEY` | `minioadmin` | MinIO access key |
 | `MINIO_SECRET_KEY` | `minioadmin` | MinIO secret key |
 | `ALLOWED_ORIGINS` | localhost origins in dev | Comma-separated CORS origin list |
+| `CHILI_EVENT_BLOCK_MS` | `500` in dev compose | Redis Streams blocking read timeout; increase to reduce idle wakeups, decrease only if local event latency requires it |
+| `LOG_LEVEL` | `INFO` | Backend log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, or numeric level) |
+| `LOG_FORMAT` | `console` | Backend log renderer; use `json` for structured log aggregation |
 
 ---
 
@@ -241,12 +254,13 @@ chili-app (React SPA)  →  chili-api (FastAPI)  ↔  chili-worker (pipeline run
 
 The API never does long-running computation. It validates input, publishes events to Redis, and returns `202 Accepted`. Workers consume those events and do the real work.
 
-### 5.2 Sixteen backend modules
+### 5.2 Backend modules
 
 ```
 backend/
   api/          FastAPI gateway — thin routing only, no business logic
   ingestion/    Document parsing, chunking, entity extraction
+  records/      Structured/tabular ingestion (CSV / JSONL / API push) — raw_records landing
   graph/        Knowledge graph CRUD (in-memory / Neo4j; other adapters are roadmap)
   vectorstore/  Embedding storage and similarity search (in-memory / Qdrant; other adapters are roadmap)
   embeddings/   Text and graph-metric embedding generation
@@ -263,6 +277,7 @@ backend/
   config/       YAML/JSON domain config loading and validation
   events/       Redis Streams event bus abstraction
   storage/      Object/file storage abstraction (S3 / MinIO / local FS)
+  database/     Postgres + TimescaleDB ConnectionProvider, Alembic migrations
 ```
 
 ### 5.3 Cross-module interaction rules (strictly enforced)
@@ -1012,11 +1027,11 @@ Before opening a PR:
 
 ```bash
 # Check existing issues
-gh issue list --repo Fed-Incubator/Crushing-Fraud-XAI
+gh issue list --repo rhagan9202/chiliAI
 
 # Create an issue from an archived story prompt, if it is still relevant
 gh issue create \
-  --repo Fed-Incubator/Crushing-Fraud-XAI \
+  --repo rhagan9202/chiliAI \
   --title "Story E14-S02: EmbeddingsService — graph-metric hybrid embedding flow" \
   --body-file docs/archive/planning/story_prompts/SP_E14_S02_prompt.md
 

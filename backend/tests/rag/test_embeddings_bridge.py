@@ -9,9 +9,16 @@ from embeddings.service_models import (
     EmbedRequest,
     EmbedResponse,
 )
-from api._rag_bridges import ServiceQueryEmbedder
+from api._rag_bridges import ServiceContextRetriever, ServiceQueryEmbedder
 from rag.adapters.protocols import QueryEmbedderProtocol
 from rag.exceptions import RagConfigurationError
+from vectorstore.service_models import (
+    VectorIndexReceipt,
+    VectorIndexRequest,
+    VectorSearchMatch,
+    VectorSearchRequest,
+    VectorSearchResponse,
+)
 
 
 class _RecordingEmbeddingsService:
@@ -24,6 +31,33 @@ class _RecordingEmbeddingsService:
     def embed(self, request: EmbedRequest) -> EmbedResponse:
         self.requests.append(request)
         return self._response
+
+
+class _RecordingVectorService:
+    """In-memory fake conforming to `VectorServiceProtocol`."""
+
+    def __init__(self) -> None:
+        self.search_requests: list[VectorSearchRequest] = []
+
+    def index(self, request: VectorIndexRequest) -> list[VectorIndexReceipt]:
+        del request
+        return []
+
+    def search(self, request: VectorSearchRequest) -> VectorSearchResponse:
+        self.search_requests.append(request)
+        return VectorSearchResponse(
+            knowledge_base_ids=request.knowledge_base_ids,
+            query_dimension=len(request.query_vector),
+            matches=[
+                VectorSearchMatch(
+                    record_id="record-1",
+                    content_id="content-1",
+                    score=1.0,
+                    content="content",
+                    metadata={},
+                )
+            ],
+        )
 
 
 def _make_response(
@@ -66,6 +100,66 @@ def test_service_query_embedder_forwards_call_and_returns_vector() -> None:
     assert len(forwarded.submissions) == 1
     assert forwarded.submissions[0].content == "What is fraud?"
     assert forwarded.submissions[0].content_id == "rag-query"
+
+
+def test_service_query_embedder_selects_text_channel_item() -> None:
+    service = _RecordingEmbeddingsService(
+        _make_response(
+            items=[
+                EmbeddedItem(
+                    content_id="rag-query",
+                    vector=[9.0, 9.0],
+                    channel="graph",
+                    dimensions=2,
+                ),
+                EmbeddedItem(
+                    content_id="rag-query",
+                    vector=[0.1, 0.2, 0.3],
+                    channel="text",
+                    dimensions=3,
+                ),
+            ],
+            dimensions=3,
+        )
+    )
+    embedder = ServiceQueryEmbedder(service)
+
+    assert embedder.embed_query(knowledge_base_id="kb-1", question="hello") == [
+        0.1,
+        0.2,
+        0.3,
+    ]
+
+
+def test_service_context_retriever_defaults_to_text_embedding_channel() -> None:
+    service = _RecordingVectorService()
+    retriever = ServiceContextRetriever(service)
+
+    retriever.retrieve(
+        knowledge_base_id="kb-1",
+        query_vector=[0.1, 0.2, 0.3],
+        limit=5,
+        filters={"document_id": "doc-1"},
+    )
+
+    assert service.search_requests[0].filters == {
+        "embedding_channel": "text",
+        "document_id": "doc-1",
+    }
+
+
+def test_service_context_retriever_enforces_text_embedding_channel() -> None:
+    service = _RecordingVectorService()
+    retriever = ServiceContextRetriever(service)
+
+    retriever.retrieve(
+        knowledge_base_id="kb-1",
+        query_vector=[0.1, 0.2],
+        limit=5,
+        filters={"embedding_channel": "graph"},
+    )
+
+    assert service.search_requests[0].filters == {"embedding_channel": "text"}
 
 
 def test_service_query_embedder_uses_configured_model_name() -> None:

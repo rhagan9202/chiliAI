@@ -75,3 +75,55 @@ class TestDocumentsParsedEvent:
         assert restored.correlation_id == "corr-123"
         assert restored.source == "chili-worker"
         assert restored.schema_version == 2
+
+
+def test_risk_scored_reference_carries_factors() -> None:
+    from events.types import RiskFactorReference, RiskScoredReference
+
+    reference = RiskScoredReference(
+        knowledge_base_id="kb-1",
+        request_id="req-1",
+        entity_id="claim:c1",
+        overall_score=0.8,
+        risk_level="high",
+        factor_count=1,
+        factors=[
+            RiskFactorReference(
+                factor_name="anomaly",
+                raw_value=0.9,
+                weight=1.0,
+                contribution=0.8,
+            )
+        ],
+    )
+    assert reference.factors[0].factor_name == "anomaly"
+
+
+def test_risk_scored_reference_factors_default_empty() -> None:
+    from events.types import RiskScoredReference
+
+    reference = RiskScoredReference(
+        knowledge_base_id="kb-1",
+        request_id="req-1",
+        entity_id="claim:c1",
+        overall_score=0.8,
+        risk_level="high",
+        factor_count=0,
+    )
+    assert reference.factors == []
+
+
+def test_alert_created_reference_new_fields_default() -> None:
+    from events.types import AlertCreatedReference
+
+    reference = AlertCreatedReference(
+        knowledge_base_id="kb-1",
+        alert_id="a-1",
+        entity_id="claim:c1",
+        severity="high",
+    )
+    assert reference.entity_type == ""
+    assert reference.status == "open"
+    assert reference.title == ""
+    assert reference.reasoning == ""
+    assert reference.metric_name == ""

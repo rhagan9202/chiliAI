@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useKnowledgeBases } from '../api/knowledgebases'
 import { useAddMessage, useConversation, useCreateConversation } from '../api/rag'
@@ -11,11 +12,16 @@ import { SectionHeader } from '../components/ui/SectionHeader'
 import './pages.css'
 
 export function RagChatPage() {
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const knowledgeBasesQuery = useKnowledgeBases()
   const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
-  const selectedKnowledgeBaseId = knowledgeBases[0]?.id ?? null
+  const requestedKbId = searchParams.get('kb')
+  const selectedKnowledgeBaseId = knowledgeBases.some((kb) => kb.id === requestedKbId)
+    ? requestedKbId
+    : knowledgeBases[0]?.id ?? null
   const conversationQuery = useConversation(conversationId)
   const createConversationMutation = useCreateConversation()
   const addMessageMutation = useAddMessage(conversationId)
@@ -43,7 +49,16 @@ export function RagChatPage() {
         />
         <Card>
           <EmptyState
-            description="RAG conversations need at least one knowledge base for retrieval context."
+            action={
+              <button
+                className="page-button"
+                onClick={() => navigate('/knowledge-bases')}
+                type="button"
+              >
+                + Create Knowledge Base
+              </button>
+            }
+            description="RAG conversations need at least one knowledge base for retrieval context. Create one and return here to start a thread."
             title="No knowledge base available"
           />
         </Card>
@@ -61,6 +76,35 @@ export function RagChatPage() {
         subtitle="Conversation creation and message submission now exercise the backend chat endpoints and seeded RAG service."
         title="RAG Chat"
       />
+
+      <Card>
+        <div className="metric-stack">
+          <div className="metric-row">
+            <label className="metric-row__label" htmlFor="rag-kb-select">
+              Knowledge base
+            </label>
+            <select
+              className="page-input"
+              id="rag-kb-select"
+              onChange={(event) => {
+                // setSearchParams (not navigate) because RAG Chat has no entity sub-path to reset.
+                const next = new URLSearchParams(searchParams)
+                next.set('kb', event.target.value)
+                setSearchParams(next)
+                setConversationId(null)
+                setDraft('')
+              }}
+              value={selectedKnowledgeBaseId}
+            >
+              {knowledgeBases.map((kb) => (
+                <option key={kb.id} value={kb.id}>
+                  {kb.name} · {kb.status}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </Card>
 
       <div className="page-actions-inline">
         <button
@@ -89,7 +133,14 @@ export function RagChatPage() {
         {conversation ? (
           <div className="chat-thread">
             {conversation.messages.map((message) => (
-              <div className={message.role === 'assistant' ? 'chat-bubble chat-bubble--assistant' : 'chat-bubble'} key={message.id}>
+              <div
+                className={
+                  message.role === 'assistant'
+                    ? 'chat-bubble chat-bubble--assistant'
+                    : 'chat-bubble'
+                }
+                key={message.id}
+              >
                 <strong>{message.role}</strong>
                 <p>{message.content}</p>
                 {message.citation_ids.length > 0 ? (
@@ -122,7 +173,11 @@ export function RagChatPage() {
             className="page-button"
             disabled={!conversationId || draft.trim().length === 0 || addMessageMutation.isPending}
             onClick={() => {
-              addMessageMutation.mutate({ content: draft, include_graph_context: true, filters: {} })
+              addMessageMutation.mutate({
+                content: draft,
+                include_graph_context: true,
+                filters: {},
+              })
               setDraft('')
             }}
             type="button"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 from ingestion.models import DocumentFormat, ParsedDocument, SourceDocument, StructuredRecord
 from ingestion.parsers.exceptions import ParserError
@@ -21,7 +22,7 @@ class JsonParser:
     def parse(self, source: SourceDocument, content: bytes) -> ParsedDocument:
         text, encoding = decode_text_content(content)
         try:
-            payload = json.loads(text)
+            payload = cast(object, json.loads(text))
         except json.JSONDecodeError as exc:
             raise ParserError(f"Invalid JSON content: {exc}") from exc
 
@@ -30,12 +31,22 @@ class JsonParser:
         root_type = type(payload).__name__
 
         if isinstance(payload, dict):
-            records = [StructuredRecord(id=f"{source.id}-record-0", fields=payload, row_number=0)]
-        elif isinstance(payload, list) and all(isinstance(item, dict) for item in payload):
-            records = [
-                StructuredRecord(id=f"{source.id}-record-{index}", fields=item, row_number=index)
-                for index, item in enumerate(payload)
-            ]
+            fields = cast(dict[str, object], payload)
+            records = [StructuredRecord(id=f"{source.id}-record-0", fields=fields, row_number=0)]
+        elif isinstance(payload, list):
+            items = cast(list[object], payload)
+            if all(isinstance(item, dict) for item in items):
+                object_records = [cast(dict[str, object], item) for item in items]
+                records = [
+                    StructuredRecord(
+                        id=f"{source.id}-record-{index}",
+                        fields=record,
+                        row_number=index,
+                    )
+                    for index, record in enumerate(object_records)
+                ]
+            else:
+                text_content = json.dumps(payload, indent=2, sort_keys=True)
         else:
             text_content = json.dumps(payload, indent=2, sort_keys=True)
 
