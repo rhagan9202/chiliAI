@@ -123,3 +123,24 @@ jobs:
 
       - name: Run npm audit (fail on HIGH/CRITICAL)
         run: npm audit --audit-level=high
+
+  backlog:
+    name: Backlog consistency (DAG + status invariants)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run consistency pass in check mode
+        run: python scripts/backlog_consistency.py --check
+
+      - name: Run script unit tests with coverage gate
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov
+          pytest tests/scripts/test_backlog_consistency.py --cov=scripts.backlog_consistency --cov-fail-under=85
