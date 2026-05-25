@@ -217,6 +217,21 @@ def validate_status_invariants(stories: dict[str, Story]) -> list[str]:
     return errors
 
 
+SIZE_ORDER: dict[str, int] = {"S": 1, "M": 2, "L": 3, "XL": 4}
+
+
+def compute_ready_set(stories: dict[str, Story]) -> list[Story]:
+    """Return planned stories whose every prereq is done, sorted by size then ID."""
+    ready: list[Story] = []
+    for s in stories.values():
+        if s.status != "planned":
+            continue
+        if all(p in stories and stories[p].status == "done" for p in s.prerequisites):
+            ready.append(s)
+    ready.sort(key=lambda s: (SIZE_ORDER.get(s.estimated_size, 99), s.id))
+    return ready
+
+
 def rewrite_unblocks(
     stories: dict[str, Story],
     computed: dict[str, list[str]],

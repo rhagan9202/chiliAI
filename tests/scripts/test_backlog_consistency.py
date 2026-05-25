@@ -7,6 +7,7 @@ import pytest
 
 from scripts.backlog_consistency import (
     Story,
+    compute_ready_set,
     compute_unblocks,
     detect_cycles,
     parse_all,
@@ -174,6 +175,14 @@ def test_rewrite_unblocks_check_only_reports_no_write(tmp_path: Path) -> None:
     changes = rewrite_unblocks(stories, computed, check_only=True)
     assert len(changes) == 1
     assert target.read_text() == src
+
+
+def test_ready_set(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    stories = parse_all(tmp_path)
+    ready = compute_ready_set(stories)
+    # foo.01 is planned with no prereqs -> ready. foo.02 is done -> not in ready.
+    assert [s.id for s in ready] == ["foo.01"]
 
 
 def test_rewrite_unblocks_no_change_when_correct(tmp_path: Path) -> None:
