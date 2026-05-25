@@ -8,7 +8,7 @@
 **ID:** _infra.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_infra.03, _infra.07, _infra.10, _security.05, llm.05, vectorstore.04, vectorstore.06]
 **Estimated size:** L
 
 **As a** platform engineer,
@@ -58,7 +58,7 @@
 **ID:** _infra.02
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_infra.03, _infra.04, _infra.05, _infra.06, _infra.07, _infra.08, _infra.11, _infra.12, _infra.14]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -149,7 +149,7 @@
 **ID:** _infra.04
 **Status:** planned
 **Prerequisites:** [_infra.02]
-**Unblocks:** []
+**Unblocks:** [graph.14, rag.15]
 **Estimated size:** L
 
 **As a** security-focused operator,
@@ -191,7 +191,7 @@
 **ID:** _infra.05
 **Status:** planned
 **Prerequisites:** [_infra.02]
-**Unblocks:** []
+**Unblocks:** [_cicd.07, _cicd.08, _cicd.10, _infra.11, _infra.14, embeddings.02, llm.12]
 **Estimated size:** M
 
 **As a** release engineer,
@@ -231,7 +231,7 @@
 **ID:** _infra.06
 **Status:** planned
 **Prerequisites:** [_infra.02]
-**Unblocks:** []
+**Unblocks:** [_infra.12, _infra.13, database.06, events.12]
 **Estimated size:** L
 
 **As a** platform engineer,
@@ -274,7 +274,7 @@
 **ID:** _infra.07
 **Status:** planned
 **Prerequisites:** [_infra.01, _infra.02]
-**Unblocks:** []
+**Unblocks:** [api.06]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -321,7 +321,7 @@
 **ID:** _infra.08
 **Status:** planned
 **Prerequisites:** [_infra.02]
-**Unblocks:** []
+**Unblocks:** [_security.04, api.18]
 **Estimated size:** L
 
 **As a** platform engineer,
@@ -367,7 +367,7 @@
 **ID:** _infra.09
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [api.19, storage.13]
 **Estimated size:** XL
 
 **As a** platform engineer,
@@ -413,7 +413,7 @@
 **ID:** _infra.10
 **Status:** planned
 **Prerequisites:** [_infra.01]
-**Unblocks:** []
+**Unblocks:** [_cicd.05, api.23]
 **Estimated size:** L
 
 **As a** release engineer,
@@ -549,7 +549,7 @@
 **ID:** _infra.13
 **Status:** planned
 **Prerequisites:** [_infra.06]
-**Unblocks:** []
+**Unblocks:** [database.12, storage.13]
 **Estimated size:** L
 
 **As a** platform operator,
@@ -604,7 +604,7 @@
 **ID:** _infra.14
 **Status:** planned
 **Prerequisites:** [_infra.02, _infra.05]
-**Unblocks:** []
+**Unblocks:** [_observability.07]
 **Estimated size:** L
 
 **As a** platform operator,

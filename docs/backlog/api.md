@@ -10,7 +10,7 @@
 **ID:** api.01
 **Status:** planned
 **Prerequisites:** [graph.01, analytics.01, monitoring.01, database.01]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.03, _plugins.02, analytics.28, api.02, api.03, api.04, graph.12, rag.01, vectorstore.09]
 **Estimated size:** XL
 
 **As a** platform engineer,
@@ -57,7 +57,7 @@
 **ID:** api.02
 **Status:** planned
 **Prerequisites:** [api.01, database.02, _security.05, _multitenancy.04]
-**Unblocks:** []
+**Unblocks:** [_plugins.04]
 **Estimated size:** L
 
 **As a** platform engineer,
@@ -101,7 +101,7 @@
 **ID:** api.03
 **Status:** planned
 **Prerequisites:** [api.01, database.02, rag.10, _multitenancy.04]
-**Unblocks:** []
+**Unblocks:** [rag.05]
 **Estimated size:** L
 
 **As a** platform engineer,
@@ -187,7 +187,7 @@
 **ID:** api.05
 **Status:** planned
 **Prerequisites:** [events.01, events.05, monitoring.07, agent.17]
-**Unblocks:** []
+**Unblocks:** [agent.19, api.06, frontend.18]
 **Estimated size:** L
 
 **As a** SPA user,
@@ -227,7 +227,7 @@
 **ID:** api.06
 **Status:** planned
 **Prerequisites:** [api.05, _observability.04, _infra.07]
-**Unblocks:** []
+**Unblocks:** [monitoring.01, monitoring.02, monitoring.04, monitoring.05]
 **Estimated size:** M
 
 **As a** platform operator,
@@ -265,7 +265,7 @@
 **ID:** api.07
 **Status:** planned
 **Prerequisites:** [events.02, _observability.04]
-**Unblocks:** []
+**Unblocks:** [frontend.01, frontend.15, rag.06]
 **Estimated size:** M
 
 **As a** SPA user,
@@ -303,7 +303,7 @@
 **ID:** api.08
 **Status:** planned
 **Prerequisites:** [shared.07, _observability.03, frontend.06]
-**Unblocks:** []
+**Unblocks:** [api.12]
 **Estimated size:** M
 
 **As a** frontend (and external) API consumer,
@@ -343,8 +343,8 @@
 
 **ID:** api.09
 **Status:** planned
-**Prerequisites:** [shared.07, rag.11, graph.10, records.06, frontend.07]
-**Unblocks:** []
+**Prerequisites:** [shared.07, rag.11, graph.10, records.06]
+**Unblocks:** [api.10, api.12, frontend.07, ingestion.16]
 **Estimated size:** M
 
 **As a** API maintainer,
@@ -384,7 +384,7 @@
 **ID:** api.10
 **Status:** planned
 **Prerequisites:** [api.09]
-**Unblocks:** []
+**Unblocks:** [analytics.15, analytics.17, api.11, api.12, frontend.16, ingestion.22, records.04, records.10, records.13]
 **Estimated size:** M
 
 **As a** API consumer,
@@ -425,7 +425,7 @@
 **ID:** api.11
 **Status:** planned
 **Prerequisites:** [api.10]
-**Unblocks:** []
+**Unblocks:** [frontend.16]
 **Estimated size:** M
 
 **As a** API consumer,
@@ -466,7 +466,7 @@
 **ID:** api.12
 **Status:** planned
 **Prerequisites:** [api.08, api.09, api.10]
-**Unblocks:** []
+**Unblocks:** [api.13, frontend.16]
 **Estimated size:** M
 
 **As a** API consumer (frontend codegen + external integrator),
@@ -505,7 +505,7 @@
 **ID:** api.13
 **Status:** planned
 **Prerequisites:** [api.12, _cicd.04]
-**Unblocks:** []
+**Unblocks:** [api.14, api.15, api.16, api.27, frontend.02]
 **Estimated size:** S
 
 **As a** API maintainer,
@@ -541,7 +541,7 @@
 **ID:** api.14
 **Status:** planned
 **Prerequisites:** [api.13, _cicd.05, frontend.08]
-**Unblocks:** []
+**Unblocks:** [api.27]
 **Estimated size:** M
 
 **As a** API maintainer,
@@ -649,7 +649,7 @@
 **ID:** api.17
 **Status:** planned
 **Prerequisites:** [_security.06, _observability.05, agent.16]
-**Unblocks:** []
+**Unblocks:** [analytics.27, api.25, rag.09]
 **Estimated size:** M
 
 **As a** platform operator,
@@ -688,7 +688,7 @@
 **ID:** api.18
 **Status:** planned
 **Prerequisites:** [_security.07, _infra.08, _observability.06]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.16, _security.10, api.22, frontend.03, rag.15]
 **Estimated size:** M
 
 **As a** platform operator,
@@ -765,7 +765,7 @@
 **ID:** api.20
 **Status:** planned
 **Prerequisites:** [events.05, _observability.03, agent.17]
-**Unblocks:** []
+**Unblocks:** [frontend.23, knowledgebases.06]
 **Estimated size:** M
 
 **As a** platform operator,
@@ -802,8 +802,8 @@
 
 **ID:** api.21
 **Status:** planned
-**Prerequisites:** [_multitenancy.01, _multitenancy.02, _multitenancy.03, _security.08]
-**Unblocks:** []
+**Prerequisites:** [_multitenancy.01, _multitenancy.02, _multitenancy.03]
+**Unblocks:** [_multitenancy.04, _security.03, rag.17]
 **Estimated size:** L
 
 **As a** multi-tenant platform operator,
@@ -879,7 +879,7 @@
 **ID:** api.23
 **Status:** planned
 **Prerequisites:** [_security.11, _infra.10, _observability.08]
-**Unblocks:** []
+**Unblocks:** [_security.08]
 **Estimated size:** M
 
 **As a** production operator,

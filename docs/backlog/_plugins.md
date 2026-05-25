@@ -10,7 +10,7 @@
 **ID:** _plugins.01
 **Status:** planned
 **Prerequisites:** [shared.01, analytics.01, rag.01, records.01, monitoring.01]
-**Unblocks:** []
+**Unblocks:** [_plugins.02, _plugins.03, _plugins.06, _plugins.12, config.12]
 **Estimated size:** L
 
 **As a** chiliAI platform architect,
@@ -52,7 +52,7 @@
 **ID:** _plugins.02
 **Status:** planned
 **Prerequisites:** [_plugins.01, config.01, api.01, agent.01]
-**Unblocks:** []
+**Unblocks:** [_plugins.03, _plugins.04, _plugins.07, _plugins.09, _plugins.10, _plugins.11]
 **Estimated size:** XL
 
 **As a** chiliAI platform operator,
@@ -97,7 +97,7 @@
 **ID:** _plugins.03
 **Status:** planned
 **Prerequisites:** [_plugins.01, _plugins.02, shared.02]
-**Unblocks:** []
+**Unblocks:** [_plugins.04, _plugins.05, _plugins.06, _plugins.07, _plugins.11, config.12]
 **Estimated size:** L
 
 **As a** plugin author,
@@ -139,7 +139,7 @@
 **ID:** _plugins.04
 **Status:** planned
 **Prerequisites:** [_plugins.02, _plugins.03, _security.07, api.02]
-**Unblocks:** []
+**Unblocks:** [_plugins.05, _plugins.09, _plugins.10]
 **Estimated size:** L
 
 **As a** platform admin,
@@ -182,7 +182,7 @@
 **ID:** _plugins.05
 **Status:** planned
 **Prerequisites:** [_plugins.03, _plugins.04, _security.08]
-**Unblocks:** []
+**Unblocks:** [_plugins.07, _plugins.09]
 **Estimated size:** XL
 
 **As a** security-conscious operator,
@@ -276,7 +276,7 @@
 **ID:** _plugins.07
 **Status:** planned
 **Prerequisites:** [_plugins.02, _plugins.03, _plugins.05, shared.03]
-**Unblocks:** []
+**Unblocks:** [_plugins.08, _plugins.09]
 **Estimated size:** L
 
 **As a** third-party plugin author,

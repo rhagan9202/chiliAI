@@ -10,7 +10,7 @@
 **ID:** ingestion.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [ingestion.02]
 **Estimated size:** S
 
 **As a** platform maintainer,
@@ -160,7 +160,7 @@
 **ID:** ingestion.05
 **Status:** planned
 **Prerequisites:** [events.02, database.04]
-**Unblocks:** []
+**Unblocks:** [config.13, ingestion.06]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md
 
@@ -202,7 +202,7 @@
 **ID:** ingestion.06
 **Status:** planned
 **Prerequisites:** [ingestion.05, storage.05]
-**Unblocks:** []
+**Unblocks:** [ingestion.07, ingestion.22, ingestion.23]
 **Estimated size:** XL
 
 **As a** worker handling large uploads and remote fetches under load,
@@ -317,7 +317,7 @@
 **ID:** ingestion.09
 **Status:** planned
 **Prerequisites:** [config.04]
-**Unblocks:** []
+**Unblocks:** [ingestion.10, ingestion.21]
 **Estimated size:** M
 
 **As a** prompt engineer iterating on extraction quality,
@@ -357,7 +357,7 @@
 **ID:** ingestion.10
 **Status:** planned
 **Prerequisites:** [ingestion.09, llm.06]
-**Unblocks:** []
+**Unblocks:** [ingestion.11]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md
 
@@ -393,7 +393,7 @@
 **ID:** ingestion.11
 **Status:** planned
 **Prerequisites:** [ingestion.10, llm.04, llm.07]
-**Unblocks:** []
+**Unblocks:** [ingestion.12, ingestion.19]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md
 
@@ -620,7 +620,7 @@
 **ID:** ingestion.17
 **Status:** planned
 **Prerequisites:** [_observability.03, _observability.05, _observability.07]
-**Unblocks:** []
+**Unblocks:** [ingestion.25]
 **Estimated size:** L
 
 **As an** SRE operating the ingestion pipeline,
@@ -663,7 +663,7 @@
 **ID:** ingestion.18
 **Status:** planned
 **Prerequisites:** [database.04, events.04]
-**Unblocks:** []
+**Unblocks:** [ingestion.23]
 **Estimated size:** L
 
 **As a** Ingestion Studio user,
@@ -703,7 +703,7 @@
 **ID:** ingestion.19
 **Status:** planned
 **Prerequisites:** [ingestion.11, analytics.07, _observability.08]
-**Unblocks:** []
+**Unblocks:** [ingestion.25]
 **Estimated size:** L
 
 **As a** extraction-quality steward,
@@ -946,7 +946,7 @@
 **ID:** ingestion.25
 **Status:** planned
 **Prerequisites:** [ingestion.17, ingestion.19, _cicd.06, _observability.08]
-**Unblocks:** []
+**Unblocks:** [ingestion.04]
 **Estimated size:** L
 
 **As a** release manager,

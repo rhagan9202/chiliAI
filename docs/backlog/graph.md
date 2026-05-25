@@ -10,7 +10,7 @@
 **ID:** graph.01
 **Status:** planned
 **Prerequisites:** [shared.01, _observability.02]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.07, api.01, graph.04, graph.11, rag.01]
 **Estimated size:** M
 
 **As a** platform engineer responsible for graph correctness,
@@ -51,7 +51,7 @@
 **ID:** graph.02
 **Status:** planned
 **Prerequisites:** [shared.01]
-**Unblocks:** []
+**Unblocks:** [analytics.12, analytics.24, analytics.25, graph.03, rag.02]
 **Estimated size:** M
 
 **As a** records-pipeline maintainer,
@@ -93,7 +93,7 @@
 **ID:** graph.03
 **Status:** planned
 **Prerequisites:** [graph.02, events.02]
-**Unblocks:** []
+**Unblocks:** [_observability.09, rag.08]
 **Estimated size:** L
 
 **As a** downstream consumer (embeddings, analytics, monitoring),
@@ -134,7 +134,7 @@
 **ID:** graph.04
 **Status:** planned
 **Prerequisites:** [graph.01]
-**Unblocks:** []
+**Unblocks:** [graph.08, graph.11, monitoring.03]
 **Estimated size:** L
 
 **As a** worker maintainer,
@@ -174,7 +174,7 @@
 **ID:** graph.05
 **Status:** planned
 **Prerequisites:** [shared.01]
-**Unblocks:** []
+**Unblocks:** [agent.09, analytics.10, analytics.16, frontend.01, frontend.15, graph.11, graph.12, monitoring.06]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-21-dual-graph-contract-design.md, docs/superpowers/specs/2026-05-21-neo4j-graph-indexes-design.md
 
@@ -217,7 +217,7 @@
 **ID:** graph.06
 **Status:** planned
 **Prerequisites:** [shared.01]
-**Unblocks:** []
+**Unblocks:** [analytics.03, analytics.04, graph.11, graph.12]
 **Estimated size:** L
 
 **As a** Investigation Workbench user paging through a large KB,
@@ -257,7 +257,7 @@
 **ID:** graph.07
 **Status:** planned
 **Prerequisites:** [_observability.02]
-**Unblocks:** []
+**Unblocks:** [graph.11, graph.12, ingestion.16, monitoring.02, monitoring.14]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-21-neo4j-graph-indexes-design.md
 
@@ -298,7 +298,7 @@
 **ID:** graph.08
 **Status:** planned
 **Prerequisites:** [graph.04]
-**Unblocks:** []
+**Unblocks:** [vectorstore.08]
 **Estimated size:** M
 
 **As a** records-pipeline operator running NPPES / DE-SynPUF loads,
@@ -337,7 +337,7 @@
 **ID:** graph.09
 **Status:** planned
 **Prerequisites:** [graph.10]
-**Unblocks:** []
+**Unblocks:** [graph.14]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-21-neo4j-graph-indexes-design.md
 
@@ -378,7 +378,7 @@
 **ID:** graph.10
 **Status:** planned
 **Prerequisites:** [_observability.02]
-**Unblocks:** []
+**Unblocks:** [api.09, graph.09]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-21-neo4j-graph-indexes-design.md
 
@@ -418,7 +418,7 @@
 **ID:** graph.11
 **Status:** planned
 **Prerequisites:** [graph.01, graph.04, graph.05, graph.06, graph.07]
-**Unblocks:** []
+**Unblocks:** [api.19, knowledgebases.11]
 **Estimated size:** XL
 
 **As a** deployment engineer evaluating cloud-managed graph backends,
@@ -553,7 +553,7 @@
 **ID:** graph.14
 **Status:** planned
 **Prerequisites:** [graph.09, _infra.04, _observability.05]
-**Unblocks:** []
+**Unblocks:** [knowledgebases.09, knowledgebases.10]
 **Estimated size:** L
 
 **As a** platform operator preparing for disaster recovery,
@@ -642,7 +642,7 @@
 **ID:** graph.16
 **Status:** planned
 **Prerequisites:** [analytics.01, _observability.02]
-**Unblocks:** []
+**Unblocks:** [analytics.18]
 **Estimated size:** L
 
 **As a** Dashboard and analytics consumer,

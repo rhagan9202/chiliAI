@@ -10,7 +10,7 @@
 **ID:** shared.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_multitenancy.01, _plugins.01, graph.01, graph.02, graph.05, graph.06, shared.02]
 **Estimated size:** S
 
 **As a** platform contracts owner,
@@ -48,7 +48,7 @@
 **ID:** shared.02
 **Status:** planned
 **Prerequisites:** [shared.01]
-**Unblocks:** []
+**Unblocks:** [_plugins.03, embeddings.02, llm.01, llm.10, llm.11]
 **Estimated size:** S
 
 **As a** contracts owner,
@@ -84,7 +84,7 @@
 **ID:** shared.03
 **Status:** planned
 **Prerequisites:** [shared.09]
-**Unblocks:** []
+**Unblocks:** [_plugins.07, llm.05]
 **Estimated size:** M
 
 **As an** analyst workbench consumer,
@@ -123,7 +123,7 @@
 **ID:** shared.04
 **Status:** planned
 **Prerequisites:** [shared.09]
-**Unblocks:** []
+**Unblocks:** [monitoring.03, shared.16]
 **Estimated size:** M
 
 **As a** contracts owner,
@@ -160,7 +160,7 @@
 **ID:** shared.05
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [embeddings.03, llm.14, rag.14]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -202,7 +202,7 @@
 **ID:** shared.06
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [ingestion.14, shared.08, shared.16]
 **Estimated size:** M
 
 **As a** FastAPI exception-handler author,
@@ -238,7 +238,7 @@
 **ID:** shared.07
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [api.08, api.09, ingestion.12]
 **Estimated size:** M
 
 **As an** API author,
@@ -316,7 +316,7 @@
 **ID:** shared.09
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [shared.03, shared.04, shared.14]
 **Estimated size:** M
 
 **As a** services author,
@@ -358,7 +358,7 @@
 **ID:** shared.10
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [shared.11]
 **Estimated size:** M
 
 **As a** multitenancy architect,
@@ -470,11 +470,10 @@
 ## Story shared.13: Document MonitoringObservation placement and export it from shared/__init__
 
 **ID:** shared.13
-**Status:** done
+**Status:** planned
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** S
-**Done:** 2026-05-24 · 0c2c5e2 · n/a
 
 **As a** contracts owner,
 **I need** `MonitoringObservation` to live in `backend/shared/types.py` so that `records/` can produce it without importing from `monitoring/`,
@@ -627,7 +626,7 @@
 **ID:** shared.17
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [shared.18]
 **Estimated size:** S
 
 **As a** new contributor (or future Claude/Codex agent),

@@ -8,7 +8,7 @@
 **ID:** _observability.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_observability.02, _observability.03, _observability.04, _observability.10, _observability.13, _security.07, rag.13, records.06, vectorstore.12]
 **Estimated size:** M
 
 **As a** backend developer,
@@ -48,7 +48,7 @@
 **ID:** _observability.02
 **Status:** planned
 **Prerequisites:** [_observability.01]
-**Unblocks:** []
+**Unblocks:** [_observability.03, _observability.10, _observability.11, agent.17, graph.01, graph.07, graph.10, graph.13, graph.16, llm.09, llm.10, records.06]
 **Estimated size:** S
 
 **As an** API operator,
@@ -87,7 +87,7 @@
 **ID:** _observability.03
 **Status:** planned
 **Prerequisites:** [_observability.01, _observability.02]
-**Unblocks:** []
+**Unblocks:** [_observability.06, _plugins.10, agent.17, api.08, api.20, embeddings.04, events.05, graph.13, ingestion.17, knowledgebases.12, llm.09, monitoring.09]
 **Estimated size:** M
 
 **As a** platform operator,
@@ -127,7 +127,7 @@
 **ID:** _observability.04
 **Status:** planned
 **Prerequisites:** [_observability.01]
-**Unblocks:** []
+**Unblocks:** [_observability.05, _observability.07, _observability.08, _observability.12, _observability.13, agent.14, analytics.04, analytics.26, api.06, api.07, database.10, llm.08, monitoring.10, rag.11, rag.13, storage.09]
 **Estimated size:** M
 
 **As an** operator,
@@ -167,7 +167,7 @@
 **ID:** _observability.05
 **Status:** planned
 **Prerequisites:** [_observability.04]
-**Unblocks:** []
+**Unblocks:** [_cicd.14, _observability.08, _plugins.10, analytics.26, api.17, embeddings.04, graph.14, ingestion.17, vectorstore.13, vectorstore.14]
 **Estimated size:** M
 
 **As an** SRE,
@@ -211,7 +211,7 @@
 **ID:** _observability.06
 **Status:** planned
 **Prerequisites:** [_observability.03]
-**Unblocks:** []
+**Unblocks:** [_observability.12, api.18, embeddings.05, monitoring.07]
 **Estimated size:** M
 
 **As an** analyst debugging a slow RAG response,
@@ -252,7 +252,7 @@
 **ID:** _observability.07
 **Status:** planned
 **Prerequisites:** [_observability.04, _infra.14]
-**Unblocks:** []
+**Unblocks:** [_observability.08, _plugins.10, analytics.19, api.19, ingestion.17]
 **Estimated size:** M
 
 **As a** developer,
@@ -294,7 +294,7 @@
 **ID:** _observability.08
 **Status:** planned
 **Prerequisites:** [_observability.04, _observability.05, _observability.07, _cicd.06]
-**Unblocks:** []
+**Unblocks:** [api.23, frontend.09, frontend.17, ingestion.19, ingestion.25, monitoring.08, storage.13]
 **Estimated size:** L
 
 **As an** SRE,
@@ -336,7 +336,7 @@
 **ID:** _observability.09
 **Status:** planned
 **Prerequisites:** [database.02, graph.03, vectorstore.02, events.02]
-**Unblocks:** []
+**Unblocks:** [frontend.17]
 **Estimated size:** M
 
 **As a** Kubernetes operator,
@@ -380,7 +380,7 @@
 **ID:** _observability.10
 **Status:** planned
 **Prerequisites:** [_observability.01, _observability.02, _security.05, database.05]
-**Unblocks:** []
+**Unblocks:** [storage.09]
 **Estimated size:** L
 
 **As a** compliance officer,

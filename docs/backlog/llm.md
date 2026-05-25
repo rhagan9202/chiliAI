@@ -10,7 +10,7 @@
 **ID:** llm.01
 **Status:** planned
 **Prerequisites:** [shared.02]
-**Unblocks:** []
+**Unblocks:** [rag.01]
 **Estimated size:** L
 
 **As a** RAG chat consumer (frontend or downstream agent),
@@ -59,7 +59,7 @@
 **ID:** llm.02
 **Status:** planned
 **Prerequisites:** [llm.04]
-**Unblocks:** []
+**Unblocks:** [llm.03, rag.04, rag.05, rag.07]
 **Estimated size:** L
 
 **As an** ingestion or RAG caller that needs deterministic JSON output (entity extraction, structured citations),
@@ -105,7 +105,7 @@
 **ID:** llm.03
 **Status:** planned
 **Prerequisites:** [llm.02, agent.01]
-**Unblocks:** []
+**Unblocks:** [rag.06]
 **Estimated size:** XL
 
 **As an** agent author who needs the LLM to call typed tools (graph query, KB lookup, calculator) and receive structured tool-result messages,
@@ -156,7 +156,7 @@
 **ID:** llm.04
 **Status:** planned
 **Prerequisites:** [config.01, _security.01]
-**Unblocks:** []
+**Unblocks:** [ingestion.11, llm.02, llm.13, rag.10]
 **Estimated size:** L
 
 **As an** operator who needs reproducibility and compliance for LLM outputs,
@@ -203,7 +203,7 @@
 **ID:** llm.05
 **Status:** planned
 **Prerequisites:** [shared.03, _infra.01, embeddings.05]
-**Unblocks:** []
+**Unblocks:** [llm.07, rag.11]
 **Estimated size:** M
 
 **As an** operator paying per-token costs,
@@ -245,7 +245,7 @@
 **ID:** llm.06
 **Status:** planned
 **Prerequisites:** [llm.13]
-**Unblocks:** []
+**Unblocks:** [analytics.13, ingestion.10, llm.07, rag.12]
 **Estimated size:** L
 
 **As a** RAG caller that retrieves variable-size context,
@@ -292,7 +292,7 @@
 **ID:** llm.07
 **Status:** planned
 **Prerequisites:** [llm.05, llm.06, rag.01]
-**Unblocks:** []
+**Unblocks:** [ingestion.11, rag.14]
 **Estimated size:** L
 
 **As a** RAG caller with a corpus that often exceeds a single model's context window,
@@ -330,7 +330,7 @@
 **ID:** llm.08
 **Status:** planned
 **Prerequisites:** [database.01, _observability.04, embeddings.05]
-**Unblocks:** []
+**Unblocks:** [rag.16]
 **Estimated size:** L
 
 **As an** operator who needs to attribute LLM spend to tenant / KB / model / pipeline,
@@ -375,7 +375,7 @@
 **ID:** llm.09
 **Status:** planned
 **Prerequisites:** [_observability.02, _observability.03]
-**Unblocks:** []
+**Unblocks:** [embeddings.02]
 **Estimated size:** M
 
 **As an** SRE debugging a slow / flapping LLM call path,
@@ -543,7 +543,7 @@
 **ID:** llm.13
 **Status:** planned
 **Prerequisites:** [llm.04, config.02]
-**Unblocks:** []
+**Unblocks:** [llm.06]
 **Estimated size:** L
 
 **As a** caller that wants the cheapest model that meets a task's capability needs (context length, JSON mode, tool-use, vision),

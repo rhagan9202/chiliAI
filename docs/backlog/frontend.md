@@ -10,7 +10,7 @@
 **ID:** frontend.01
 **Status:** planned
 **Prerequisites:** [api.07, graph.05]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.14, frontend.15]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-21-kb-contextual-entry-points-design.md
 
@@ -92,7 +92,7 @@
 **ID:** frontend.03
 **Status:** planned
 **Prerequisites:** [api.18, config.08, _security.04]
-**Unblocks:** []
+**Unblocks:** [_observability.11]
 **Estimated size:** XL
 
 **As a** platform administrator,
@@ -135,7 +135,7 @@
 **ID:** frontend.04
 **Status:** planned
 **Prerequisites:** [analytics.06, rag.07]
-**Unblocks:** []
+**Unblocks:** [analytics.28]
 **Estimated size:** M
 
 **As a** fraud analyst,
@@ -211,7 +211,7 @@
 **ID:** frontend.06
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [api.08]
 **Estimated size:** M
 
 **As a** frontend developer,
@@ -249,7 +249,7 @@
 **ID:** frontend.07
 **Status:** planned
 **Prerequisites:** [api.09, events.06]
-**Unblocks:** []
+**Unblocks:** [api.15, frontend.08, frontend.24]
 **Estimated size:** L
 
 **As a** fraud analyst,
@@ -285,7 +285,7 @@
 **ID:** frontend.08
 **Status:** planned
 **Prerequisites:** [frontend.07]
-**Unblocks:** []
+**Unblocks:** [api.14]
 **Estimated size:** S
 
 **As a** frontend developer,
@@ -320,7 +320,7 @@
 **ID:** frontend.09
 **Status:** planned
 **Prerequisites:** [_observability.08]
-**Unblocks:** []
+**Unblocks:** [api.24]
 **Estimated size:** M
 
 **As a** fraud analyst,
@@ -355,7 +355,7 @@
 **ID:** frontend.10
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [api.27, frontend.11]
 **Estimated size:** M
 
 **As a** keyboard-only user,
@@ -398,7 +398,7 @@
 **ID:** frontend.11
 **Status:** planned
 **Prerequisites:** [frontend.10, _cicd.05]
-**Unblocks:** []
+**Unblocks:** [ingestion.22]
 **Estimated size:** M
 
 **As a** platform owner,
@@ -715,7 +715,7 @@
 **ID:** frontend.19
 **Status:** planned
 **Prerequisites:** [_multitenancy.04, _multitenancy.06, _security.07]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.14]
 **Estimated size:** L
 
 **As a** multi-tenant administrator,
@@ -855,7 +855,7 @@
 
 **ID:** frontend.23
 **Status:** planned
-**Prerequisites:** [api.20, api.21]
+**Prerequisites:** [api.20]
 **Unblocks:** []
 **Estimated size:** L
 

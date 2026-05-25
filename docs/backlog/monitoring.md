@@ -10,7 +10,7 @@
 **ID:** monitoring.01
 **Status:** planned
 **Prerequisites:** [events.02, events.05, api.06]
-**Unblocks:** []
+**Unblocks:** [_plugins.01, api.01]
 **Estimated size:** M
 
 **As a** fraud analyst,
@@ -52,7 +52,7 @@
 **ID:** monitoring.02
 **Status:** planned
 **Prerequisites:** [events.02, api.06, graph.07]
-**Unblocks:** []
+**Unblocks:** [analytics.06, monitoring.09]
 **Estimated size:** M
 
 **As a** fraud analyst,
@@ -133,7 +133,7 @@
 **ID:** monitoring.04
 **Status:** planned
 **Prerequisites:** [api.06, _security.06, database.07]
-**Unblocks:** []
+**Unblocks:** [monitoring.09, monitoring.14]
 **Estimated size:** L
 
 **As a** fraud analyst,
@@ -262,8 +262,8 @@
 
 **ID:** monitoring.07
 **Status:** planned
-**Prerequisites:** [monitoring.01, config.08, _security.07, _observability.06]
-**Unblocks:** []
+**Prerequisites:** [config.08, _security.07, _observability.06]
+**Unblocks:** [api.04, api.05]
 **Estimated size:** XL
 
 > Split into 07a (protocol + dispatcher + InApp adapter + per-domain rules) and 07b (Email/Slack/Webhook adapters + DLQ + per-channel rate-limit) before merge.
@@ -346,7 +346,7 @@
 **ID:** monitoring.09
 **Status:** planned
 **Prerequisites:** [monitoring.02, monitoring.04, _observability.03]
-**Unblocks:** []
+**Unblocks:** [monitoring.10]
 **Estimated size:** M
 
 **As a** platform operator,

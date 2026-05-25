@@ -10,7 +10,7 @@
 **ID:** rag.01
 **Status:** planned
 **Prerequisites:** [vectorstore.01, embeddings.01, llm.01, graph.01, api.01]
-**Unblocks:** []
+**Unblocks:** [_plugins.01, analytics.16, llm.07, rag.02, rag.03, rag.04, rag.05, rag.06, rag.08, rag.09, rag.10, rag.11, rag.12, rag.13, rag.14, rag.16]
 **Estimated size:** L
 
 **As a** chiliAI analyst,
@@ -98,7 +98,7 @@
 **ID:** rag.03
 **Status:** planned
 **Prerequisites:** [rag.01, config.01]
-**Unblocks:** []
+**Unblocks:** [rag.07]
 **Estimated size:** M
 
 **As a** chiliAI domain operator tuning retrieval for Medicare vs. food-supply,
@@ -258,7 +258,7 @@
 **ID:** rag.07
 **Status:** planned
 **Prerequisites:** [rag.03, llm.02, embeddings.03]
-**Unblocks:** []
+**Unblocks:** [frontend.04, frontend.05]
 **Estimated size:** L
 
 **As a** chiliAI domain operator,
@@ -340,7 +340,7 @@
 **ID:** rag.09
 **Status:** planned
 **Prerequisites:** [rag.01, knowledgebases.01, api.17, _security.01]
-**Unblocks:** []
+**Unblocks:** [rag.17]
 **Estimated size:** M
 
 **As a** chiliAI platform operator,
@@ -379,7 +379,7 @@
 **ID:** rag.10
 **Status:** planned
 **Prerequisites:** [rag.01, embeddings.11, llm.04, _cicd.01]
-**Unblocks:** []
+**Unblocks:** [api.03, frontend.02]
 **Estimated size:** L
 
 **As a** chiliAI maintainer changing embeddings, prompts, or rerankers,
@@ -421,7 +421,7 @@
 **ID:** rag.11
 **Status:** planned
 **Prerequisites:** [rag.01, rag.12, llm.05, embeddings.05, _observability.04, _multitenancy.04]
-**Unblocks:** []
+**Unblocks:** [api.09, rag.15]
 **Estimated size:** L
 
 **As a** chiliAI platform operator,
@@ -463,7 +463,7 @@
 **ID:** rag.12
 **Status:** planned
 **Prerequisites:** [rag.01, llm.06]
-**Unblocks:** []
+**Unblocks:** [rag.11]
 **Estimated size:** L
 
 **As a** chiliAI analyst querying with long histories or large context,
@@ -506,7 +506,7 @@
 **ID:** rag.13
 **Status:** planned
 **Prerequisites:** [rag.01, _observability.01, _observability.04, events.05]
-**Unblocks:** []
+**Unblocks:** [rag.14]
 **Estimated size:** M
 
 **As a** chiliAI on-call engineer,
@@ -663,7 +663,7 @@
 **ID:** rag.17
 **Status:** planned
 **Prerequisites:** [rag.09, api.21, knowledgebases.05, _multitenancy.01, _multitenancy.02, _multitenancy.03, _security.05]
-**Unblocks:** []
+**Unblocks:** [rag.15]
 **Estimated size:** L
 
 **As a** chiliAI multi-tenant platform operator,

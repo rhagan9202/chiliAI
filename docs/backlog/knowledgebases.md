@@ -10,7 +10,7 @@
 **ID:** knowledgebases.01
 **Status:** planned
 **Prerequisites:** [database.02]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.10, _security.02, knowledgebases.05, knowledgebases.06, knowledgebases.07, knowledgebases.08, knowledgebases.09, knowledgebases.13, rag.09]
 **Estimated size:** L
 
 **As a** platform operator running chiliAI in staging or production,
@@ -56,7 +56,7 @@
 **ID:** knowledgebases.02
 **Status:** planned
 **Prerequisites:** [knowledgebases.03]
-**Unblocks:** []
+**Unblocks:** [knowledgebases.09, knowledgebases.13, storage.07]
 **Estimated size:** M
 
 **As an** analyst who deletes a single document from a KB,
@@ -96,7 +96,7 @@
 **ID:** knowledgebases.03
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [knowledgebases.02, knowledgebases.10]
 **Estimated size:** M
 
 **As a** platform engineer relying on `delete_by_source_document` for cascade correctness,
@@ -181,7 +181,7 @@
 **ID:** knowledgebases.05
 **Status:** planned
 **Prerequisites:** [knowledgebases.01]
-**Unblocks:** []
+**Unblocks:** [rag.17]
 **Estimated size:** M
 
 **As an** analyst landing on the Dashboard,
@@ -226,7 +226,7 @@
 **ID:** knowledgebases.06
 **Status:** planned
 **Prerequisites:** [knowledgebases.01, _security.06, api.20]
-**Unblocks:** []
+**Unblocks:** [embeddings.09, knowledgebases.04]
 **Estimated size:** L
 
 **As a** compliance officer reviewing analyst activity on a KB,
@@ -357,7 +357,7 @@
 **ID:** knowledgebases.09
 **Status:** planned
 **Prerequisites:** [knowledgebases.01, knowledgebases.02, graph.14, vectorstore.04]
-**Unblocks:** []
+**Unblocks:** [knowledgebases.10]
 **Estimated size:** L
 
 **As an** analyst reviewing an alert that fired against a KB last week,

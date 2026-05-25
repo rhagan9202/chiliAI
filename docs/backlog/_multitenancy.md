@@ -10,7 +10,7 @@
 **ID:** _multitenancy.01
 **Status:** planned
 **Prerequisites:** [shared.01]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.02, _multitenancy.03, _multitenancy.05, _multitenancy.10, _security.03, api.21, events.11, graph.15, rag.17]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -50,7 +50,7 @@
 **ID:** _multitenancy.02
 **Status:** planned
 **Prerequisites:** [_multitenancy.01, config.01]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.13, _security.03, api.21, config.11, graph.15, rag.17]
 **Estimated size:** L
 
 **As a** platform operator,
@@ -87,7 +87,7 @@
 **ID:** _multitenancy.03
 **Status:** planned
 **Prerequisites:** [_multitenancy.01, _security.04, api.01]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.04, _multitenancy.14, _observability.12, _security.03, agent.16, api.21, ingestion.20, monitoring.12, rag.17, records.09]
 **Estimated size:** M
 
 **As an** authenticated user,
@@ -124,7 +124,7 @@
 **ID:** _multitenancy.04
 **Status:** planned
 **Prerequisites:** [_multitenancy.03, api.21]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.06, _multitenancy.07, _multitenancy.08, _multitenancy.09, _multitenancy.10, _multitenancy.11, _multitenancy.12, _multitenancy.13, _multitenancy.16, api.02, api.03, config.11, frontend.19, knowledgebases.08, rag.11, rag.15]
 **Estimated size:** M
 
 **As a** backend developer,
@@ -161,7 +161,7 @@
 **ID:** _multitenancy.05
 **Status:** planned
 **Prerequisites:** [_multitenancy.01, database.01, database.08]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.06, ingestion.20, monitoring.12, records.09]
 **Estimated size:** L
 
 **As a** platform engineer,
@@ -197,7 +197,7 @@
 **ID:** _multitenancy.06
 **Status:** planned
 **Prerequisites:** [_multitenancy.04, _multitenancy.05, database.02]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.15, frontend.19]
 **Estimated size:** L
 
 **As a** backend developer,
@@ -234,7 +234,7 @@
 **ID:** _multitenancy.07
 **Status:** planned
 **Prerequisites:** [_multitenancy.04, graph.01]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.15]
 **Estimated size:** L
 
 **As a** platform engineer,
@@ -274,7 +274,7 @@
 **ID:** _multitenancy.08
 **Status:** planned
 **Prerequisites:** [_multitenancy.04, vectorstore.01]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.15, vectorstore.10, vectorstore.14]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -313,7 +313,7 @@
 **ID:** _multitenancy.09
 **Status:** planned
 **Prerequisites:** [_multitenancy.04, storage.01]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.15, storage.03, storage.06]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -352,7 +352,7 @@
 **ID:** _multitenancy.10
 **Status:** planned
 **Prerequisites:** [_multitenancy.01, _multitenancy.04, knowledgebases.01]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.14, _multitenancy.15, knowledgebases.08, records.09]
 **Estimated size:** M
 
 **As an** analyst,
@@ -391,7 +391,7 @@
 **ID:** _multitenancy.11
 **Status:** planned
 **Prerequisites:** [_multitenancy.04, events.01, events.11]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.12, _multitenancy.15]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -432,7 +432,7 @@
 **ID:** _multitenancy.12
 **Status:** planned
 **Prerequisites:** [_multitenancy.04, _multitenancy.11, agent.01]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.15]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -582,7 +582,7 @@
 **ID:** _multitenancy.16
 **Status:** planned
 **Prerequisites:** [_multitenancy.04, api.18]
-**Unblocks:** []
+**Unblocks:** [storage.10]
 **Estimated size:** L
 
 **As a** platform operator,

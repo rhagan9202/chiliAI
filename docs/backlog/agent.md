@@ -10,7 +10,7 @@
 **ID:** agent.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_multitenancy.12, _plugins.02, llm.03, vectorstore.04]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -122,7 +122,7 @@
 **ID:** agent.04
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [agent.02, storage.05]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -164,7 +164,7 @@
 **ID:** agent.05
 **Status:** planned
 **Prerequisites:** [config.04]
-**Unblocks:** []
+**Unblocks:** [agent.20]
 **Estimated size:** M
 
 **As an** operator,
@@ -246,7 +246,7 @@
 **ID:** agent.07
 **Status:** planned
 **Prerequisites:** [events.06]
-**Unblocks:** []
+**Unblocks:** [agent.20, ingestion.23]
 **Estimated size:** L
 
 **As a** platform engineer,
@@ -288,7 +288,7 @@
 **ID:** agent.08
 **Status:** planned
 **Prerequisites:** [events.07]
-**Unblocks:** []
+**Unblocks:** [agent.19, agent.20]
 **Estimated size:** L
 
 **As an** operator,
@@ -326,7 +326,7 @@
 **ID:** agent.09
 **Status:** planned
 **Prerequisites:** [graph.05, vectorstore.04, embeddings.05, storage.04, database.04, events.05]
-**Unblocks:** []
+**Unblocks:** [embeddings.10]
 **Estimated size:** M
 
 **As a** Kubernetes operator,
@@ -363,7 +363,7 @@
 **ID:** agent.10
 **Status:** planned
 **Prerequisites:** [config.04]
-**Unblocks:** []
+**Unblocks:** [records.07, records.12]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -401,7 +401,7 @@
 **ID:** agent.11
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [embeddings.07]
 **Estimated size:** M
 
 **As an** API consumer,
@@ -441,7 +441,7 @@
 **ID:** agent.12
 **Status:** planned
 **Prerequisites:** [events.04]
-**Unblocks:** []
+**Unblocks:** [analytics.24, analytics.25]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -479,7 +479,7 @@
 **ID:** agent.13
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [analytics.12, analytics.21, api.24, embeddings.12]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -517,7 +517,7 @@
 **ID:** agent.14
 **Status:** planned
 **Prerequisites:** [_observability.04]
-**Unblocks:** []
+**Unblocks:** [analytics.21, analytics.22]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -589,7 +589,7 @@
 **ID:** agent.16
 **Status:** planned
 **Prerequisites:** [_security.04, _multitenancy.03]
-**Unblocks:** []
+**Unblocks:** [api.17]
 **Estimated size:** M
 
 **As a** security engineer,
@@ -628,7 +628,7 @@
 **ID:** agent.17
 **Status:** planned
 **Prerequisites:** [_observability.02, _observability.03]
-**Unblocks:** []
+**Unblocks:** [api.05, api.20]
 **Estimated size:** M
 
 **As an** SRE,
@@ -665,7 +665,7 @@
 **ID:** agent.18
 **Status:** planned
 **Prerequisites:** [database.03, database.07]
-**Unblocks:** []
+**Unblocks:** [agent.06, agent.20]
 **Estimated size:** L
 
 **As a** platform engineer,
@@ -703,7 +703,7 @@
 **ID:** agent.19
 **Status:** planned
 **Prerequisites:** [agent.08, api.05]
-**Unblocks:** []
+**Unblocks:** [api.25]
 **Estimated size:** M
 
 **As an** analyst,

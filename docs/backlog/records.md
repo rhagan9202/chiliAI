@@ -10,7 +10,7 @@
 **ID:** records.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_plugins.01]
 **Estimated size:** M
 
 **As a** domain operator,
@@ -51,7 +51,7 @@
 **ID:** records.02
 **Status:** planned
 **Prerequisites:** [database.01]
-**Unblocks:** []
+**Unblocks:** [config.13, records.05]
 **Estimated size:** M
 
 **As a** worker operator,
@@ -136,7 +136,7 @@
 **ID:** records.04
 **Status:** planned
 **Prerequisites:** [api.10]
-**Unblocks:** []
+**Unblocks:** [records.05]
 **Estimated size:** L
 
 **As an** analyst,
@@ -224,7 +224,7 @@
 **ID:** records.06
 **Status:** planned
 **Prerequisites:** [_observability.01, _observability.02]
-**Unblocks:** []
+**Unblocks:** [api.09, records.07]
 **Estimated size:** M
 
 **As a** worker operator,
@@ -264,7 +264,7 @@
 **ID:** records.07
 **Status:** planned
 **Prerequisites:** [records.06, agent.10]
-**Unblocks:** []
+**Unblocks:** [analytics.06]
 **Estimated size:** L
 
 **As a** domain operator,

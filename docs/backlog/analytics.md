@@ -7,7 +7,7 @@
 **ID:** analytics.01
 **Status:** planned
 **Prerequisites:** [analytics.02, analytics.03, analytics.23]
-**Unblocks:** []
+**Unblocks:** [_plugins.01, api.01, graph.16]
 **Estimated size:** XL
 **As a** fraud-analytics engineer,
 **I need** real GNN-based node scoring and link prediction (PyG/DGL) wired behind the existing `GnnServiceProtocol`,
@@ -47,7 +47,7 @@
 **ID:** analytics.02
 **Status:** planned
 **Prerequisites:** [analytics.23, storage.01]
-**Unblocks:** []
+**Unblocks:** [analytics.01]
 **Estimated size:** L
 **As a** fraud-analytics engineer,
 **I need** `GnnService` to load trained model artifacts (weights, scaler, label maps) from the model registry instead of recomputing Louvain/spectral embeddings per `analyze()` call,
@@ -84,7 +84,7 @@
 **ID:** analytics.03
 **Status:** planned
 **Prerequisites:** [graph.06]
-**Unblocks:** []
+**Unblocks:** [analytics.01, analytics.04]
 **Estimated size:** L
 **As a** fraud-analytics engineer,
 **I need** a graph-DB-backed `GraphSnapshotSource` that loads nodes + edges from Neo4j (and the in-memory backend) for a knowledge base,
@@ -120,7 +120,7 @@
 **ID:** analytics.04
 **Status:** planned
 **Prerequisites:** [analytics.03, graph.06, _observability.04]
-**Unblocks:** []
+**Unblocks:** [_plugins.09]
 **Estimated size:** L
 **As a** worker operator,
 **I need** GNN analysis to stay within bounded memory on production-sized KBs (no full Laplacian, no O(n²) link prediction),
@@ -184,7 +184,7 @@
 **ID:** analytics.06
 **Status:** planned
 **Prerequisites:** [monitoring.02, records.07]
-**Unblocks:** []
+**Unblocks:** [frontend.04]
 **Estimated size:** M
 **As a** fraud-analytics engineer,
 **I need** `TimeSeriesHistorySource.load_series` to return per-entity series populated by the monitoring/records `observations` write path, not only graph-scope metrics keyed on the `__graph__` sentinel,
@@ -218,7 +218,7 @@
 **ID:** analytics.07
 **Status:** planned
 **Prerequisites:** [database.05]
-**Unblocks:** []
+**Unblocks:** [analytics.08, ingestion.19]
 **Estimated size:** S
 **As a** API developer,
 **I need** `get_timeseries_history_source()` to select the Postgres adapter when `DomainConfig.database.backend == "postgres"`,
@@ -317,7 +317,7 @@
 **ID:** analytics.10
 **Status:** planned
 **Prerequisites:** [graph.05, vectorstore.07]
-**Unblocks:** []
+**Unblocks:** [analytics.11, analytics.12]
 **Estimated size:** L
 **As a** fraud-analytics engineer,
 **I need** production `RiskSignalSource` adapters that derive signals from the graph (degree, centrality, neighborhood risk) and the vectorstore (similarity to known-bad clusters),
@@ -353,7 +353,7 @@
 **ID:** analytics.11
 **Status:** planned
 **Prerequisites:** [analytics.10, database.05]
-**Unblocks:** []
+**Unblocks:** [analytics.16]
 **Estimated size:** M
 **As a** fraud-analytics engineer,
 **I need** `RiskSignalSourceProtocol.load_historical_score` to read the Postgres `risk_score_history` table via the existing `PostgresRiskHistoryStore` instead of an in-memory dict,
@@ -385,7 +385,7 @@
 **ID:** analytics.12
 **Status:** planned
 **Prerequisites:** [analytics.10, graph.02, agent.13]
-**Unblocks:** []
+**Unblocks:** [monitoring.06]
 **Estimated size:** L
 **As a** investigator,
 **I need** historical risk assessments to appear as graph-native nodes (linked to entities by a typed relationship) in addition to the flat `risk_score`/`risk_level`/`risk_assessed_at` properties,
@@ -454,7 +454,7 @@
 **ID:** analytics.14
 **Status:** planned
 **Prerequisites:** [config.01]
-**Unblocks:** []
+**Unblocks:** [analytics.15, analytics.30]
 **Estimated size:** M
 **As a** fraud-analytics engineer,
 **I need** `ExplainabilityContextSourceProtocol` to be selectable between in-memory, SHAP, and LIME/permutation-importance adapters via DI and `DomainConfig`,
@@ -489,7 +489,7 @@
 **ID:** analytics.15
 **Status:** planned
 **Prerequisites:** [analytics.14, api.10]
-**Unblocks:** []
+**Unblocks:** [api.04]
 **Estimated size:** M
 **As a** investigator,
 **I need** a `GET /analytics/explainability/{alert_id}` endpoint that returns the evidence pack assembled by `ExplainabilityService`,
@@ -521,7 +521,7 @@
 **ID:** analytics.16
 **Status:** planned
 **Prerequisites:** [graph.05, rag.01, analytics.11]
-**Unblocks:** []
+**Unblocks:** [analytics.13]
 **Estimated size:** L
 **As a** fraud-analytics engineer,
 **I need** a production `ExplainabilityContextSource` that assembles an alert's neighborhood (graph), top-k vector hits (RAG retrieval), and top risk factors into one `ExplanationContext`,
@@ -587,7 +587,7 @@
 **ID:** analytics.18
 **Status:** planned
 **Prerequisites:** [graph.16]
-**Unblocks:** []
+**Unblocks:** [analytics.20, embeddings.11, monitoring.11]
 **Estimated size:** M
 **As a** investigator,
 **I need** richer graph-scope metrics (betweenness, PageRank, community quality, per-entity-type breakdowns) collected by Flow 2,
@@ -619,7 +619,7 @@
 **ID:** analytics.19
 **Status:** planned
 **Prerequisites:** [_observability.07]
-**Unblocks:** []
+**Unblocks:** [analytics.26]
 **Estimated size:** M
 **As a** ops engineer,
 **I need** analytics throughput/latency/error counters exposed via the platform's `/metrics` endpoint (location and label conventions owned by the observability epic),
@@ -656,7 +656,7 @@
 **ID:** analytics.20
 **Status:** planned
 **Prerequisites:** [analytics.18, database.04]
-**Unblocks:** []
+**Unblocks:** [monitoring.13]
 **Estimated size:** M
 **As a** investigator,
 **I need** per-entity-type rollup queries (avg/p50/p95 of a metric across all entities of a type) and metric provenance via `correlation_id`,
@@ -724,7 +724,7 @@
 **ID:** analytics.22
 **Status:** planned
 **Prerequisites:** [embeddings.10, analytics.23, agent.14]
-**Unblocks:** []
+**Unblocks:** [monitoring.14]
 **Estimated size:** L
 **As a** fraud-analytics engineer,
 **I need** an analytics-owned `embedding_finetune` job that exports labeled pairs (from explainability + risk feedback) and triggers embedding fine-tuning (embeddings.10),
@@ -758,7 +758,7 @@
 **ID:** analytics.23
 **Status:** planned
 **Prerequisites:** [database.03, storage.01, config.01]
-**Unblocks:** []
+**Unblocks:** [analytics.01, analytics.02, analytics.09, analytics.21, analytics.22]
 **Estimated size:** L
 **As a** platform engineer,
 **I need** a `ModelRegistryProtocol` backed by Postgres metadata + object-store blobs that tracks trained model artifacts (SHAP background, GNN weights, scoring strategy parameters, fine-tuned embeddings) with semantic versioning,
@@ -798,7 +798,7 @@
 **ID:** analytics.24
 **Status:** planned
 **Prerequisites:** [agent.12, events.04, graph.02]
-**Unblocks:** []
+**Unblocks:** [analytics.05]
 **Estimated size:** M
 **As a** fraud-analytics engineer,
 **I need** a worker handler that consumes `GnnAnalyzedEvent` and writes `cluster_id`, `predicted_neighbor_ids`, and `anomaly_score` back onto graph entities,

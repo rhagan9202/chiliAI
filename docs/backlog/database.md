@@ -10,7 +10,7 @@
 **ID:** database.01
 **Status:** planned
 **Prerequisites:** [database.03, database.04]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.05, _security.02, _security.06, api.01, llm.08, records.02, records.05, vectorstore.02]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-14-backend-persistence-design.md
 
@@ -53,7 +53,7 @@
 **ID:** database.02
 **Status:** planned
 **Prerequisites:** [database.03, database.04]
-**Unblocks:** []
+**Unblocks:** [_multitenancy.06, _observability.09, api.02, api.03, api.04, config.06, knowledgebases.01]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-14-backend-persistence-design.md
 
@@ -96,7 +96,7 @@
 **ID:** database.03
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [agent.18, analytics.17, analytics.23, database.01, database.02, database.08, database.09, database.11, database.13]
 **Estimated size:** M
 
 **As a** developer adding any future schema change,
@@ -133,8 +133,8 @@
 
 **ID:** database.04
 **Status:** planned
-**Prerequisites:** [_cicd.12]
-**Unblocks:** []
+**Prerequisites:** []
+**Unblocks:** [_cicd.12, agent.09, analytics.20, database.01, database.02, database.08, database.09, ingestion.05, ingestion.18]
 **Estimated size:** M
 
 **As a** developer merging schema-touching PRs,
@@ -173,7 +173,7 @@
 **ID:** database.05
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_observability.10, analytics.07, analytics.11, api.19, database.06, database.10, storage.10]
 **Estimated size:** M
 
 **As a** worker / API operator under production concurrency,
@@ -216,7 +216,7 @@
 **ID:** database.06
 **Status:** planned
 **Prerequisites:** [database.05, _infra.06]
-**Unblocks:** []
+**Unblocks:** [monitoring.11]
 **Estimated size:** L
 
 **As a** developer of an analytics read endpoint,
@@ -260,8 +260,8 @@
 
 **ID:** database.07
 **Status:** planned
-**Prerequisites:** [_security.05]
-**Unblocks:** []
+**Prerequisites:** []
+**Unblocks:** [_security.05, agent.06, agent.18, monitoring.04]
 **Estimated size:** M
 
 **As a** security reviewer signing off on a staging/production deploy,
@@ -302,8 +302,8 @@
 
 **ID:** database.08
 **Status:** planned
-**Prerequisites:** [database.03, database.04, _multitenancy.05]
-**Unblocks:** []
+**Prerequisites:** [database.03, database.04]
+**Unblocks:** [_multitenancy.05, knowledgebases.08]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-14-backend-persistence-design.md
 
@@ -348,7 +348,7 @@
 **ID:** database.09
 **Status:** planned
 **Prerequisites:** [database.03, database.04]
-**Unblocks:** []
+**Unblocks:** [database.12, monitoring.12]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-14-backend-persistence-design.md
 

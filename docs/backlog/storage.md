@@ -10,7 +10,7 @@
 **ID:** storage.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_multitenancy.09, analytics.02, analytics.23, storage.02, storage.03, storage.04, storage.05, storage.06, storage.07, storage.08, storage.09, storage.11, storage.12, vectorstore.04, vectorstore.13]
 **Estimated size:** L
 
 **As a** backend engineer wiring ingestion and KB code against the storage layer,
@@ -141,7 +141,7 @@
 **ID:** storage.04
 **Status:** planned
 **Prerequisites:** [storage.01, _security.04]
-**Unblocks:** []
+**Unblocks:** [agent.09, embeddings.12, storage.13]
 **Estimated size:** M
 
 **As a** compliance owner for Medicare-PII data,
@@ -182,7 +182,7 @@
 **ID:** storage.05
 **Status:** planned
 **Prerequisites:** [storage.01, agent.04]
-**Unblocks:** []
+**Unblocks:** [api.19, ingestion.06, ingestion.22, storage.10]
 **Estimated size:** L
 
 **As a** platform operator,
@@ -227,7 +227,7 @@
 **ID:** storage.06
 **Status:** planned
 **Prerequisites:** [storage.01, _multitenancy.09, _security.03]
-**Unblocks:** []
+**Unblocks:** [ingestion.20, monitoring.06, storage.11]
 **Estimated size:** M
 
 **As a** multi-tenant platform owner,
@@ -267,7 +267,7 @@
 **ID:** storage.07
 **Status:** planned
 **Prerequisites:** [storage.01, knowledgebases.02]
-**Unblocks:** []
+**Unblocks:** [embeddings.11, storage.11]
 **Estimated size:** L
 
 **As an** operator ingesting policy documents that are frequently re-uploaded,
@@ -309,7 +309,7 @@
 **ID:** storage.08
 **Status:** planned
 **Prerequisites:** [storage.01]
-**Unblocks:** []
+**Unblocks:** [storage.11, storage.12]
 **Estimated size:** M
 
 **As a** caller of the object-store from ingestion / KB / agent code,
@@ -351,7 +351,7 @@
 **ID:** storage.09
 **Status:** planned
 **Prerequisites:** [storage.01, _observability.04, _observability.10]
-**Unblocks:** []
+**Unblocks:** [storage.10, storage.13]
 **Estimated size:** M
 
 **As an** SRE on call,
@@ -436,7 +436,7 @@
 **ID:** storage.11
 **Status:** planned
 **Prerequisites:** [storage.01, storage.06, storage.07, storage.08]
-**Unblocks:** []
+**Unblocks:** [storage.12]
 **Estimated size:** M
 
 **As a** maintainer adding the GCS adapter (`storage.12`) or modifying any existing adapter,

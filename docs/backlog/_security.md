@@ -8,7 +8,7 @@
 **ID:** _security.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [llm.04, rag.09, vectorstore.10]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-08-auth-rbac-enforcement-design.md
 
@@ -60,7 +60,7 @@
 **ID:** _security.02
 **Status:** planned
 **Prerequisites:** [_security.03, knowledgebases.01, database.01]
-**Unblocks:** []
+**Unblocks:** [graph.12, knowledgebases.07, llm.14, storage.03]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-08-auth-rbac-enforcement-design.md
 
@@ -109,7 +109,7 @@
 **ID:** _security.03
 **Status:** planned
 **Prerequisites:** [_multitenancy.01, _multitenancy.02, _multitenancy.03, api.21]
-**Unblocks:** []
+**Unblocks:** [_security.02, _security.06, storage.06]
 **Estimated size:** L
 
 **As a** platform operator running multi-tenant chiliAI,
@@ -159,7 +159,7 @@
 **ID:** _security.04
 **Status:** planned
 **Prerequisites:** [_infra.08, config.02]
-**Unblocks:** []
+**Unblocks:** [_cicd.16, _multitenancy.03, agent.16, frontend.03, graph.15, monitoring.12, rag.15, storage.04]
 **Estimated size:** L
 
 **As a** platform operator,
@@ -211,7 +211,7 @@
 **ID:** _security.05
 **Status:** planned
 **Prerequisites:** [_infra.01, database.07, events.01]
-**Unblocks:** []
+**Unblocks:** [_observability.10, api.02, frontend.18, graph.13, monitoring.05, rag.17]
 **Estimated size:** L
 
 **As a** platform operator,
@@ -262,7 +262,7 @@
 **ID:** _security.06
 **Status:** planned
 **Prerequisites:** [_security.03, database.01, events.01]
-**Unblocks:** []
+**Unblocks:** [_security.08, analytics.27, api.17, config.09, frontend.18, ingestion.07, knowledgebases.06, monitoring.04]
 **Estimated size:** L
 
 **As a** compliance owner,
@@ -315,7 +315,7 @@
 **ID:** _security.07
 **Status:** planned
 **Prerequisites:** [_observability.01]
-**Unblocks:** []
+**Unblocks:** [_cicd.06, _plugins.04, api.18, frontend.19, monitoring.07]
 **Estimated size:** M
 
 **As an** operator reviewing structured logs,
@@ -357,7 +357,7 @@
 **ID:** _security.08
 **Status:** planned
 **Prerequisites:** [_security.06, api.23]
-**Unblocks:** []
+**Unblocks:** [_plugins.05]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-08-auth-rbac-enforcement-design.md
 
@@ -403,7 +403,7 @@
 **ID:** _security.09
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [api.22]
 **Estimated size:** M
 
 **As a** security reviewer,
@@ -448,7 +448,7 @@
 **ID:** _security.10
 **Status:** planned
 **Prerequisites:** [api.18]
-**Unblocks:** []
+**Unblocks:** [analytics.29, api.22, records.10]
 **Estimated size:** M
 
 **As a** platform operator exposing chiliAI on the open internet,
@@ -489,7 +489,7 @@
 **ID:** _security.11
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [api.23, config.07, events.10]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-08-auth-rbac-enforcement-design.md
 
@@ -536,7 +536,7 @@
 **ID:** _security.12
 **Status:** planned
 **Prerequisites:** [_cicd.01]
-**Unblocks:** []
+**Unblocks:** [api.25]
 **Estimated size:** S
 
 **As a** Platform Security owner,

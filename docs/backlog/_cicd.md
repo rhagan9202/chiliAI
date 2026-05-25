@@ -10,7 +10,7 @@
 **ID:** _cicd.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_security.12, rag.10]
 **Estimated size:** S
 
 **As a** platform engineer,
@@ -125,7 +125,7 @@
 **ID:** _cicd.04
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_cicd.17, _plugins.06, api.13, llm.15]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -162,7 +162,7 @@
 **ID:** _cicd.05
 **Status:** planned
 **Prerequisites:** [_infra.10]
-**Unblocks:** []
+**Unblocks:** [_cicd.06, _cicd.07, _cicd.08, _cicd.10, _cicd.13, agent.20, api.14, frontend.11, frontend.21]
 **Estimated size:** L
 
 **As a** release engineer,
@@ -200,7 +200,7 @@
 **ID:** _cicd.06
 **Status:** planned
 **Prerequisites:** [_cicd.05, _security.07]
-**Unblocks:** []
+**Unblocks:** [_observability.08, api.15, frontend.20, ingestion.25]
 **Estimated size:** M
 
 **As a** security-conscious release engineer,
@@ -237,7 +237,7 @@
 **ID:** _cicd.07
 **Status:** planned
 **Prerequisites:** [_cicd.05, _infra.05]
-**Unblocks:** []
+**Unblocks:** [_cicd.08, _cicd.15, api.16]
 **Estimated size:** L
 
 **As a** release engineer,
@@ -275,7 +275,7 @@
 **ID:** _cicd.08
 **Status:** planned
 **Prerequisites:** [_cicd.05, _cicd.07, _infra.05]
-**Unblocks:** []
+**Unblocks:** [_cicd.15, api.27]
 **Estimated size:** L
 
 **As a** release manager,
@@ -398,7 +398,7 @@
 **ID:** _cicd.11
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [events.08]
 **Estimated size:** S
 **Spec:** docs/superpowers/specs/2026-05-24-complete-backlog-design.md
 

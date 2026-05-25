@@ -10,7 +10,7 @@
 **ID:** events.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_multitenancy.11, _security.05, _security.06, api.05, events.07, vectorstore.09]
 **Estimated size:** L
 
 **As a** platform operator,
@@ -52,7 +52,7 @@
 **ID:** events.02
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_observability.09, api.07, graph.03, ingestion.05, monitoring.01, monitoring.02, rag.02]
 **Estimated size:** M
 
 **As a** platform operator,
@@ -93,7 +93,7 @@
 **ID:** events.03
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [events.04, events.14]
 **Estimated size:** L
 
 **As a** backend engineer modifying an event payload,
@@ -135,7 +135,7 @@
 **ID:** events.04
 **Status:** planned
 **Prerequisites:** [events.03]
-**Unblocks:** []
+**Unblocks:** [agent.12, analytics.21, analytics.24, analytics.25, config.05, events.08, ingestion.18]
 **Estimated size:** M
 
 **As a** backend engineer adding a new event type,
@@ -174,7 +174,7 @@
 **ID:** events.05
 **Status:** planned
 **Prerequisites:** [_observability.03]
-**Unblocks:** []
+**Unblocks:** [agent.09, api.05, api.20, monitoring.01, rag.13]
 **Estimated size:** L
 
 **As a** platform operator triaging a slow ingestion pipeline,
@@ -219,7 +219,7 @@
 **ID:** events.06
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [agent.07, api.19, events.09, events.10, events.13, frontend.07]
 **Estimated size:** L
 
 **As a** backend engineer publishing events from an API route,
@@ -260,7 +260,7 @@
 **ID:** events.07
 **Status:** planned
 **Prerequisites:** [events.01]
-**Unblocks:** []
+**Unblocks:** [agent.08, monitoring.08]
 **Estimated size:** M
 
 **As a** backend engineer writing integration tests for consumer-group behaviour,
@@ -380,7 +380,7 @@
 **ID:** events.10
 **Status:** planned
 **Prerequisites:** [events.06, _security.11]
-**Unblocks:** []
+**Unblocks:** [api.25]
 **Estimated size:** XL
 
 **As a** platform operator,
@@ -426,8 +426,8 @@
 
 **ID:** events.11
 **Status:** planned
-**Prerequisites:** [_multitenancy.01, _multitenancy.11]
-**Unblocks:** []
+**Prerequisites:** [_multitenancy.01]
+**Unblocks:** [_multitenancy.11]
 **Estimated size:** L
 
 **As a** platform engineer enabling multi-tenancy,

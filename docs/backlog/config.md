@@ -10,7 +10,7 @@
 **ID:** config.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_multitenancy.02, _plugins.02, analytics.08, analytics.09, analytics.14, analytics.23, llm.04, rag.03, records.08]
 **Estimated size:** L
 
 **As a** platform engineer,
@@ -56,7 +56,7 @@
 **ID:** config.02
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_plugins.11, _security.04, llm.13, rag.16]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -96,7 +96,7 @@
 **ID:** config.03
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [config.04]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -139,7 +139,7 @@
 **ID:** config.04
 **Status:** planned
 **Prerequisites:** [config.03]
-**Unblocks:** []
+**Unblocks:** [agent.05, agent.10, ingestion.08, ingestion.09, ingestion.13, ingestion.15]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -180,7 +180,7 @@
 **ID:** config.05
 **Status:** planned
 **Prerequisites:** [config.07, events.04]
-**Unblocks:** []
+**Unblocks:** [_plugins.11, analytics.29, ingestion.21, monitoring.03]
 **Estimated size:** L
 
 **As a** platform admin,
@@ -224,7 +224,7 @@
 **ID:** config.06
 **Status:** planned
 **Prerequisites:** [database.02]
-**Unblocks:** []
+**Unblocks:** [config.07, config.09, config.10, config.11, config.13, monitoring.13]
 **Estimated size:** L
 
 **As a** platform engineer,
@@ -268,8 +268,8 @@
 
 **ID:** config.07
 **Status:** planned
-**Prerequisites:** [config.06, _security.11, api.25]
-**Unblocks:** []
+**Prerequisites:** [config.06, _security.11]
+**Unblocks:** [api.25, config.05, config.08, config.09, config.13, monitoring.05]
 **Estimated size:** M
 
 **As a** platform admin,
@@ -309,8 +309,8 @@
 
 **ID:** config.08
 **Status:** planned
-**Prerequisites:** [config.07, frontend.03, frontend.23]
-**Unblocks:** []
+**Prerequisites:** [config.07]
+**Unblocks:** [frontend.03, monitoring.07]
 **Estimated size:** XL
 
 **As a** platform admin,
@@ -437,8 +437,8 @@
 
 **ID:** config.11
 **Status:** planned
-**Prerequisites:** [config.06, _multitenancy.02, _multitenancy.13, _multitenancy.04]
-**Unblocks:** []
+**Prerequisites:** [config.06, _multitenancy.02, _multitenancy.04]
+**Unblocks:** [_multitenancy.13]
 **Estimated size:** L
 
 **As a** platform operator,
@@ -514,7 +514,7 @@
 **ID:** config.13
 **Status:** planned
 **Prerequisites:** [config.06, config.07, ingestion.05, records.02]
-**Unblocks:** []
+**Unblocks:** [knowledgebases.10]
 **Estimated size:** L
 
 **As a** domain author,

@@ -10,7 +10,7 @@
 **ID:** embeddings.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [embeddings.08, embeddings.09, rag.01, vectorstore.11]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-19-embeddings-1-0-design.md
 
@@ -53,7 +53,7 @@
 **ID:** embeddings.02
 **Status:** planned
 **Prerequisites:** [shared.02, _infra.05, llm.09]
-**Unblocks:** []
+**Unblocks:** [rag.02, rag.08, rag.16]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-19-embeddings-1-0-design.md
 
@@ -96,7 +96,7 @@
 **ID:** embeddings.03
 **Status:** planned
 **Prerequisites:** [shared.05]
-**Unblocks:** []
+**Unblocks:** [rag.07]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-19-embeddings-1-0-design.md
 
@@ -136,7 +136,7 @@
 **ID:** embeddings.04
 **Status:** planned
 **Prerequisites:** [_observability.03, _observability.05]
-**Unblocks:** []
+**Unblocks:** [embeddings.05]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-19-embeddings-1-0-design.md
 
@@ -176,7 +176,7 @@
 **ID:** embeddings.05
 **Status:** planned
 **Prerequisites:** [_observability.06, embeddings.04]
-**Unblocks:** []
+**Unblocks:** [agent.09, api.19, llm.05, llm.08, rag.11]
 **Estimated size:** M
 
 **As a** finance / platform owner,
@@ -216,7 +216,7 @@
 **ID:** embeddings.06
 **Status:** planned
 **Prerequisites:** [vectorstore.06]
-**Unblocks:** []
+**Unblocks:** [embeddings.07]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-19-embeddings-1-0-design.md
 
@@ -296,7 +296,7 @@
 **ID:** embeddings.08
 **Status:** planned
 **Prerequisites:** [embeddings.01, vectorstore.05]
-**Unblocks:** []
+**Unblocks:** [embeddings.09]
 **Estimated size:** S
 **Spec:** docs/superpowers/specs/2026-05-19-embeddings-1-0-design.md
 
@@ -376,7 +376,7 @@
 **ID:** embeddings.10
 **Status:** planned
 **Prerequisites:** [agent.09]
-**Unblocks:** []
+**Unblocks:** [analytics.22]
 **Estimated size:** M
 
 **As a** worker operator,
@@ -415,7 +415,7 @@
 **ID:** embeddings.11
 **Status:** planned
 **Prerequisites:** [analytics.18, storage.07]
-**Unblocks:** []
+**Unblocks:** [rag.10]
 **Estimated size:** L
 
 **As a** ML/analytics owner,
