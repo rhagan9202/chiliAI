@@ -7,6 +7,7 @@ import pytest
 
 from scripts.backlog_consistency import (
     Story,
+    detect_cycles,
     parse_all,
     parse_file,
     validate_prereq_references,
@@ -85,3 +86,17 @@ def test_validate_prereq_references_unresolved(tmp_path: Path) -> None:
     errors = validate_prereq_references(stories)
     assert len(errors) == 1
     assert "foo.02" in errors[0] and "foo.99" in errors[0]
+
+
+def test_detect_cycles_finds_pair(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "cycle.md").read_text())
+    stories = parse_all(tmp_path)
+    cycles = detect_cycles(stories)
+    assert len(cycles) >= 1
+    assert set(cycles[0]) == {"foo.01", "foo.02"}
+
+
+def test_detect_cycles_clean(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    stories = parse_all(tmp_path)
+    assert detect_cycles(stories) == []

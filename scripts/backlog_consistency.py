@@ -13,6 +13,7 @@ Python 3.12 standard library only.
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -102,6 +103,70 @@ def parse_file(path: Path) -> list[Story]:
             )
         )
     return stories
+
+
+def _find_cycle(cyclic: list[str], stories: dict[str, Story]) -> list[str]:
+    """Return one representative cycle within ``cyclic``.
+
+    Uses an iterative DFS so we never blow the stack on deep graphs.
+    """
+    start = cyclic[0]
+    path: list[str] = []
+    on_path: set[str] = set()
+    # Stack frames: (node, iterator-over-prereqs-still-in-cyclic)
+    stack: list[tuple[str, list[str]]] = []
+    cyclic_set = set(cyclic)
+
+    def push(node: str) -> None:
+        path.append(node)
+        on_path.add(node)
+        children = [p for p in stories[node].prerequisites if p in cyclic_set]
+        stack.append((node, children))
+
+    push(start)
+    while stack:
+        node, children = stack[-1]
+        if not children:
+            stack.pop()
+            on_path.discard(node)
+            path.pop()
+            continue
+        nxt = children.pop()
+        if nxt in on_path:
+            i = path.index(nxt)
+            return path[i:]
+        push(nxt)
+    return [start]
+
+
+def detect_cycles(stories: dict[str, Story]) -> list[list[str]]:
+    """Return one representative cycle per disconnected cyclic component, or []."""
+    in_deg: dict[str, int] = {sid: len(s.prerequisites) for sid, s in stories.items()}
+    reverse: dict[str, list[str]] = defaultdict(list)
+    for sid, story in stories.items():
+        for p in story.prerequisites:
+            if p in stories:
+                reverse[p].append(sid)
+    # Recompute in_deg to skip unresolved prereqs (otherwise everything is "cyclic")
+    in_deg = {sid: 0 for sid in stories}
+    for sid, story in stories.items():
+        for p in story.prerequisites:
+            if p in stories:
+                in_deg[sid] += 1
+    ready = [sid for sid, d in in_deg.items() if d == 0]
+    visited: set[str] = set()
+    while ready:
+        sid = ready.pop()
+        visited.add(sid)
+        for child in reverse[sid]:
+            in_deg[child] -= 1
+            if in_deg[child] == 0:
+                ready.append(child)
+    cyclic = [sid for sid in stories if sid not in visited]
+    if not cyclic:
+        return []
+    cycle = _find_cycle(cyclic, stories)
+    return [cycle]
 
 
 def validate_prereq_references(stories: dict[str, Story]) -> list[str]:
