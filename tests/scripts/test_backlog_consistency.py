@@ -7,6 +7,7 @@ import pytest
 
 from scripts.backlog_consistency import (
     Story,
+    compute_critical_path,
     compute_ready_set,
     compute_unblocks,
     detect_cycles,
@@ -183,6 +184,20 @@ def test_ready_set(tmp_path: Path) -> None:
     ready = compute_ready_set(stories)
     # foo.01 is planned with no prereqs -> ready. foo.02 is done -> not in ready.
     assert [s.id for s in ready] == ["foo.01"]
+
+
+def test_critical_path(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    stories = parse_all(tmp_path)
+    path = compute_critical_path(stories)
+    # foo.01 (S=1) -> foo.02 (M=2) — total 3
+    assert [s.id for s in path] == ["foo.01", "foo.02"]
+
+
+def test_critical_path_empty_on_cycle(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "cycle.md").read_text())
+    stories = parse_all(tmp_path)
+    assert compute_critical_path(stories) == []
 
 
 def test_rewrite_unblocks_no_change_when_correct(tmp_path: Path) -> None:

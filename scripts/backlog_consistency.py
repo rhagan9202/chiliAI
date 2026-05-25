@@ -218,6 +218,45 @@ def validate_status_invariants(stories: dict[str, Story]) -> list[str]:
 
 
 SIZE_ORDER: dict[str, int] = {"S": 1, "M": 2, "L": 3, "XL": 4}
+SIZE_WEIGHT: dict[str, int] = {"S": 1, "M": 2, "L": 5, "XL": 10}
+
+
+def compute_critical_path(stories: dict[str, Story]) -> list[Story]:
+    """Longest dependency chain by weighted size. Returns [] if a cycle is present."""
+    in_deg: dict[str, int] = {sid: 0 for sid in stories}
+    for s in stories.values():
+        for p in s.prerequisites:
+            if p in stories:
+                in_deg[s.id] += 1
+    reverse: dict[str, list[str]] = defaultdict(list)
+    for s in stories.values():
+        for p in s.prerequisites:
+            if p in stories:
+                reverse[p].append(s.id)
+    order: list[str] = []
+    ready = [sid for sid, d in in_deg.items() if d == 0]
+    while ready:
+        sid = ready.pop()
+        order.append(sid)
+        for child in reverse[sid]:
+            in_deg[child] -= 1
+            if in_deg[child] == 0:
+                ready.append(child)
+    if len(order) != len(stories):
+        return []  # cycle present; caller should run detect_cycles separately
+    best: dict[str, tuple[int, list[str]]] = {}
+    for sid in order:
+        s = stories[sid]
+        w = SIZE_WEIGHT.get(s.estimated_size, 1)
+        best_pred: tuple[int, list[str]] = (0, [])
+        for p in s.prerequisites:
+            if p in best and best[p][0] > best_pred[0]:
+                best_pred = best[p]
+        best[sid] = (best_pred[0] + w, best_pred[1] + [sid])
+    if not best:
+        return []
+    _, path_ids = max(best.values(), key=lambda x: x[0])
+    return [stories[i] for i in path_ids]
 
 
 def compute_ready_set(stories: dict[str, Story]) -> list[Story]:
