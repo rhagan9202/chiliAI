@@ -23,6 +23,11 @@ FIELD = re.compile(r"^\*\*(?P<key>[^:*]+):\*\*\s*(?P<value>.*?)\s*$", re.MULTILI
 AC_BOX = re.compile(r"^- \[(?P<mark>[ xX])\]", re.MULTILINE)
 ID_LIST = re.compile(r"\[(?P<inner>[^\]]*)\]")
 ID_RE = re.compile(r"^_?[a-z]+\.\d+$")
+UNBLOCKS_LINE = re.compile(r"^\*\*Unblocks:\*\* \[[^\]]*\]\s*$", re.MULTILINE)
+
+
+def _format_id_list(ids: list[str]) -> str:
+    return "[" + ", ".join(ids) + "]"
 
 
 @dataclass
@@ -210,6 +215,43 @@ def validate_status_invariants(stories: dict[str, Story]) -> list[str]:
         if s.status not in ("planned", "in-progress", "done", "dropped"):
             errors.append(f"Story {s.id}: invalid Status {s.status!r}")
     return errors
+
+
+def rewrite_unblocks(
+    stories: dict[str, Story],
+    computed: dict[str, list[str]],
+    check_only: bool,
+) -> list[str]:
+    """Patch ``**Unblocks:** [...]`` lines to match ``computed``.
+
+    Returns a list of human-readable change descriptions. If ``check_only`` is
+    True, no file is written even when changes are detected.
+    """
+    changes: list[str] = []
+    by_file: dict[Path, list[Story]] = defaultdict(list)
+    for s in stories.values():
+        by_file[s.file].append(s)
+    for path, file_stories in by_file.items():
+        text = path.read_text(encoding="utf-8")
+        new_text = text
+        for s in file_stories:
+            expected = computed.get(s.id, [])
+            if sorted(s.unblocks) == sorted(expected):
+                continue
+            heading = f"## Story {s.id}:"
+            h_pos = new_text.find(heading)
+            if h_pos == -1:
+                raise RuntimeError(f"Could not find heading for {s.id} in {path}")
+            ub_match = UNBLOCKS_LINE.search(new_text, h_pos)
+            if not ub_match:
+                raise RuntimeError(f"Could not find Unblocks line for {s.id} in {path}")
+            old_line = ub_match.group(0)
+            new_line = f"**Unblocks:** {_format_id_list(expected)}"
+            new_text = new_text[: ub_match.start()] + new_line + new_text[ub_match.end():]
+            changes.append(f"{path.name}:{s.id} {old_line.strip()} -> {new_line}")
+        if new_text != text and not check_only:
+            path.write_text(new_text, encoding="utf-8")
+    return changes
 
 
 def compute_unblocks(stories: dict[str, Story]) -> dict[str, list[str]]:

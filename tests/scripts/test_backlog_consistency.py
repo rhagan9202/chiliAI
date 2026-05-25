@@ -11,6 +11,7 @@ from scripts.backlog_consistency import (
     detect_cycles,
     parse_all,
     parse_file,
+    rewrite_unblocks,
     validate_prereq_references,
     validate_status_invariants,
     warn_xl_size,
@@ -150,3 +151,41 @@ def test_compute_unblocks_inverts(tmp_path: Path) -> None:
     result = compute_unblocks(stories)
     assert result["foo.01"] == ["foo.02"]
     assert result["foo.02"] == []
+
+
+def test_rewrite_unblocks_updates_file(tmp_path: Path) -> None:
+    src = (FIXTURES / "simple.md").read_text()
+    target = tmp_path / "a.md"
+    target.write_text(src)
+    stories = parse_all(tmp_path)
+    computed = compute_unblocks(stories)
+    changes = rewrite_unblocks(stories, computed, check_only=False)
+    assert len(changes) == 1
+    new_text = target.read_text()
+    assert "**Unblocks:** [foo.02]" in new_text
+
+
+def test_rewrite_unblocks_check_only_reports_no_write(tmp_path: Path) -> None:
+    src = (FIXTURES / "simple.md").read_text()
+    target = tmp_path / "a.md"
+    target.write_text(src)
+    stories = parse_all(tmp_path)
+    computed = compute_unblocks(stories)
+    changes = rewrite_unblocks(stories, computed, check_only=True)
+    assert len(changes) == 1
+    assert target.read_text() == src
+
+
+def test_rewrite_unblocks_no_change_when_correct(tmp_path: Path) -> None:
+    # Pre-populate the Unblocks line correctly and verify zero changes reported.
+    src = (FIXTURES / "simple.md").read_text().replace(
+        "**Unblocks:** []\n**Estimated size:** S",
+        "**Unblocks:** [foo.02]\n**Estimated size:** S",
+        1,
+    )
+    target = tmp_path / "a.md"
+    target.write_text(src)
+    stories = parse_all(tmp_path)
+    computed = compute_unblocks(stories)
+    changes = rewrite_unblocks(stories, computed, check_only=False)
+    assert changes == []
