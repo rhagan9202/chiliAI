@@ -212,6 +212,18 @@ def validate_status_invariants(stories: dict[str, Story]) -> list[str]:
     return errors
 
 
+def compute_unblocks(stories: dict[str, Story]) -> dict[str, list[str]]:
+    """Compute the inverse of Prerequisites: which stories does each story unblock?"""
+    result: dict[str, list[str]] = {sid: [] for sid in stories}
+    for s in stories.values():
+        for p in s.prerequisites:
+            if p in result:
+                result[p].append(s.id)
+    for k in result:
+        result[k].sort()
+    return result
+
+
 def warn_xl_size(stories: dict[str, Story]) -> list[str]:
     """Return one warning per XL story — XL should be split before merge."""
     return [

@@ -7,6 +7,7 @@ import pytest
 
 from scripts.backlog_consistency import (
     Story,
+    compute_unblocks,
     detect_cycles,
     parse_all,
     parse_file,
@@ -141,3 +142,11 @@ def test_warn_xl_size_returns_warnings(tmp_path: Path) -> None:
 def test_warn_xl_size_clean(tmp_path: Path) -> None:
     (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
     assert warn_xl_size(parse_all(tmp_path)) == []
+
+
+def test_compute_unblocks_inverts(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    stories = parse_all(tmp_path)
+    result = compute_unblocks(stories)
+    assert result["foo.01"] == ["foo.02"]
+    assert result["foo.02"] == []
