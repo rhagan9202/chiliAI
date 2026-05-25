@@ -104,6 +104,19 @@ def parse_file(path: Path) -> list[Story]:
     return stories
 
 
+def validate_prereq_references(stories: dict[str, Story]) -> list[str]:
+    """Return one error string per unresolved Prerequisites ID."""
+    errors: list[str] = []
+    for story in stories.values():
+        for pid in story.prerequisites:
+            if pid not in stories:
+                errors.append(
+                    f"Story {story.id} ({story.file.name}) cites prerequisite "
+                    f"{pid!r} that does not exist"
+                )
+    return errors
+
+
 def parse_all(backlog_dir: Path) -> dict[str, Story]:
     """Parse every ``*.md`` file in ``backlog_dir`` into an ID-keyed map.
 

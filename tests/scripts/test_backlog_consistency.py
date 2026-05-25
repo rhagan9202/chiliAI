@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from scripts.backlog_consistency import Story, parse_all, parse_file
+from scripts.backlog_consistency import (
+    Story,
+    parse_all,
+    parse_file,
+    validate_prereq_references,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -64,3 +69,19 @@ def test_parse_all_skips_readme(tmp_path: Path) -> None:
     (tmp_path / "README.md").write_text("## Story foo.99: Should not be parsed\n")
     stories = parse_all(tmp_path)
     assert "foo.99" not in stories
+
+
+def test_validate_prereq_references_passes(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text((FIXTURES / "simple.md").read_text())
+    stories = parse_all(tmp_path)
+    errors = validate_prereq_references(stories)
+    assert errors == []
+
+
+def test_validate_prereq_references_unresolved(tmp_path: Path) -> None:
+    bad = (FIXTURES / "simple.md").read_text().replace("[foo.01]", "[foo.99]")
+    (tmp_path / "a.md").write_text(bad)
+    stories = parse_all(tmp_path)
+    errors = validate_prereq_references(stories)
+    assert len(errors) == 1
+    assert "foo.02" in errors[0] and "foo.99" in errors[0]
