@@ -81,8 +81,16 @@ npm run test:run       # Vitest unit tests (single run, for CI)
 npm run test:e2e       # Playwright e2e tests (starts Vite automatically if not running)
 npm run test:e2e:ui    # Playwright UI mode for interactive test debugging
 npm run preview        # Preview production build
-npm run codegen:api    # Regenerate API client types from the backend OpenAPI schema
+npm run codegen:api    # Regenerate API types from checked-in openapi.json
 npm run render:architecture  # Render docs/architecture.md diagrams
+```
+
+`npm run codegen:api` reads `chili_app/openapi.json`; it does not call a live backend. When backend HTTP contracts change, regenerate the snapshot from the repo root first:
+
+```bash
+uv run --project backend python -m tools.export_openapi --output chili_app/openapi.json
+cd chili_app
+npm run codegen:api
 ```
 
 ## E2E Tests

@@ -94,6 +94,9 @@ pytest --cov
 # Type checking (currently scoped in pyproject.toml while strict coverage expands)
 pyright
 
+# Export backend OpenAPI for frontend contract codegen (from repo root)
+cd .. && uv run --project backend python -m tools.export_openapi --output chili_app/openapi.json
+
 # Demo: Tennessee Medicare subset (requires `make dev` stack running first)
 make demo-tn-subset                                         # build TN subset + create KB + upload
 python -m tools.sample_data.build_tennessee_subset --help  # subset builder options

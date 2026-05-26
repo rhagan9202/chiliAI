@@ -96,7 +96,10 @@ Modules typically expose: `protocols.py` (abstract contract), `models.py` (inter
 ### 4. Domain configuration drives everything
 `config/schema.py` defines `DomainConfig` (Pydantic). `config/loader.py` loads YAML/JSON. Defaults live in `config/defaults/*.yaml`. Path comes from `CHILI_CONFIG_PATH`. The frontend fetches `GET /config/domain` at startup and renders entity labels, icons, and feature gates dynamically — adding a domain should not require frontend code changes.
 
-### 5. Quality gates
+### 5. Frontend API contracts are generated from backend OpenAPI
+Backend FastAPI OpenAPI is the source of truth for HTTP request/response shapes. Frontend code must import API DTOs from `chili_app/src/api/contracts.ts`, which aliases generated types from `chili_app/src/lib/api/schema.ts`. Do not hand-write frontend wire DTOs, do not edit generated schema files, and do not patch type failures with `as any`. When a frontend-consumed backend route changes, update the Pydantic request/response model, export OpenAPI, run `npm run codegen:api`, then update UI adapters.
+
+### 6. Quality gates
 - Backend: `pyright --strict` clean, full annotations, no untyped `Any`. pytest coverage ≥ 85% per package — missing tests = incomplete work.
 - Frontend: TypeScript strict (`noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`). ESLint clean.
 

@@ -98,6 +98,18 @@ npm run build     # Production build
 npm run lint      # ESLint check
 ```
 
+### API Contract Codegen
+
+Backend OpenAPI is the source of truth for frontend API DTOs.
+
+```bash
+uv run --project backend python -m tools.export_openapi --output chili_app/openapi.json
+cd chili_app
+npm run codegen:api
+```
+
+Commit both `chili_app/openapi.json` and `chili_app/src/lib/api/schema.ts` when backend API contracts change.
+
 ### Backend
 
 ```bash

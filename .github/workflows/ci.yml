@@ -75,9 +75,49 @@ jobs:
             --ignore-vuln GHSA-0000-0000-0000 \
             || pip-audit --skip-editable
 
+  api-contracts:
+    name: API contracts (OpenAPI + frontend schema drift)
+    runs-on: ubuntu-latest
+    needs: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "backend[dev]"
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        working-directory: chili_app
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+
+      - name: Export OpenAPI and regenerate frontend schema
+        run: |
+          python -m tools.export_openapi --output chili_app/openapi.json
+          cd chili_app
+          npm run codegen:api
+
+      - name: Check generated contract drift
+        run: git diff --exit-code -- chili_app/openapi.json chili_app/src/lib/api/schema.ts chili_app/src/api/contracts.ts
+
+      - name: Run contract guardrails
+        run: python scripts/contract_guardrails.py
+
   frontend:
     name: Frontend (lint, typecheck, tests, build, audit)
     runs-on: ubuntu-latest
+    needs: api-contracts
     defaults:
       run:
         working-directory: chili_app
