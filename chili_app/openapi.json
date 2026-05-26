@@ -1,0 +1,5988 @@
+{
+  "components": {
+    "schemas": {
+      "AlertDetailResponse": {
+        "description": "Expanded alert record used by alert and investigation views.",
+        "properties": {
+          "alert": {
+            "$ref": "#/components/schemas/AlertListItem"
+          },
+          "policy_citations": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyCitation"
+            },
+            "title": "Policy Citations",
+            "type": "array"
+          },
+          "related_entity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Related Entity Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "alert"
+        ],
+        "title": "AlertDetailResponse",
+        "type": "object"
+      },
+      "AlertListItem": {
+        "description": "Summary alert row consumed by the analyst feed.",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "entity_label": {
+            "title": "Entity Label",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "evidence_pack_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Pack Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "reasoning": {
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "acknowledged",
+              "investigating",
+              "resolved",
+              "dismissed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "entity_id",
+          "entity_type",
+          "entity_label",
+          "severity",
+          "status",
+          "title",
+          "reasoning",
+          "confidence",
+          "created_at"
+        ],
+        "title": "AlertListItem",
+        "type": "object"
+      },
+      "AlertListResponse": {
+        "description": "Paginated alert feed response.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AlertListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "page"
+        ],
+        "title": "AlertListResponse",
+        "type": "object"
+      },
+      "AlertsConfig": {
+        "description": "Alert thresholds keyed by entity type, then metric name.",
+        "properties": {
+          "thresholds": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "title": "Thresholds",
+            "type": "object"
+          }
+        },
+        "required": [
+          "thresholds"
+        ],
+        "title": "AlertsConfig",
+        "type": "object"
+      },
+      "AnalystFeedbackResponse": {
+        "description": "Analyst feedback record attached to a case.",
+        "properties": {
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "evidence_adequacy": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Evidence Adequacy",
+            "type": "string"
+          },
+          "label": {
+            "enum": [
+              "suspicious",
+              "not_suspicious",
+              "insufficient_evidence"
+            ],
+            "title": "Label",
+            "type": "string"
+          },
+          "missing_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Evidence",
+            "type": "array"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "label",
+          "evidence_adequacy",
+          "notes",
+          "submitted_at"
+        ],
+        "title": "AnalystFeedbackResponse",
+        "type": "object"
+      },
+      "AnalyticsConfig": {
+        "description": "Configuration for analytics persistence, recompute behavior, and risk tiers.",
+        "properties": {
+          "high_risk_threshold": {
+            "default": 0.8,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "High Risk Threshold",
+            "type": "number"
+          },
+          "medium_risk_threshold": {
+            "default": 0.5,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Medium Risk Threshold",
+            "type": "number"
+          },
+          "metrics_recompute_min_interval_seconds": {
+            "default": 300,
+            "exclusiveMinimum": 0,
+            "title": "Metrics Recompute Min Interval Seconds",
+            "type": "integer"
+          }
+        },
+        "title": "AnalyticsConfig",
+        "type": "object"
+      },
+      "AnalyticsOverviewResponse": {
+        "description": "High-level analytics summary for dashboard widgets.",
+        "properties": {
+          "active_alerts": {
+            "minimum": 0.0,
+            "title": "Active Alerts",
+            "type": "integer"
+          },
+          "entities_monitored": {
+            "minimum": 0.0,
+            "title": "Entities Monitored",
+            "type": "integer"
+          },
+          "high_risk_entities": {
+            "minimum": 0.0,
+            "title": "High Risk Entities",
+            "type": "integer"
+          },
+          "open_cases": {
+            "minimum": 0.0,
+            "title": "Open Cases",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "active_alerts",
+          "open_cases",
+          "entities_monitored",
+          "high_risk_entities"
+        ],
+        "title": "AnalyticsOverviewResponse",
+        "type": "object"
+      },
+      "ApiEnvelope": {
+        "description": "Common status envelope for simple mutation responses.",
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "ok"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "ApiEnvelope",
+        "type": "object"
+      },
+      "AuthConfig": {
+        "description": "JWT/OIDC authentication configuration (E10-S06).",
+        "properties": {
+          "audience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Audience"
+          },
+          "authorize_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Authorize Endpoint"
+          },
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Client Id"
+          },
+          "client_secret_env_var": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Client Secret Env Var"
+          },
+          "cookie_domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cookie Domain"
+          },
+          "cookie_secure": {
+            "default": true,
+            "title": "Cookie Secure",
+            "type": "boolean"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "end_session_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End Session Endpoint"
+          },
+          "issuer_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Issuer Url"
+          },
+          "jwks_cache_seconds": {
+            "default": 3600,
+            "exclusiveMinimum": 0,
+            "title": "Jwks Cache Seconds",
+            "type": "integer"
+          },
+          "jwks_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Jwks Uri"
+          },
+          "redirect_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Redirect Uri"
+          },
+          "roles_claim": {
+            "default": "roles",
+            "title": "Roles Claim",
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "session_ttl_seconds": {
+            "default": 3600,
+            "exclusiveMinimum": 0,
+            "title": "Session Ttl Seconds",
+            "type": "integer"
+          },
+          "token_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Token Endpoint"
+          }
+        },
+        "title": "AuthConfig",
+        "type": "object"
+      },
+      "Body_register_knowledge_base_documents_knowledgebases__knowledge_base_id__documents_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "Body_register_knowledge_base_documents_knowledgebases__knowledge_base_id__documents_post",
+        "type": "object"
+      },
+      "Body_upload_record_file_records__knowledge_base_id__files_post": {
+        "properties": {
+          "feed": {
+            "title": "Feed",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "feed",
+          "file"
+        ],
+        "title": "Body_upload_record_file_records__knowledge_base_id__files_post",
+        "type": "object"
+      },
+      "CapabilitiesConfig": {
+        "description": "Feature toggles for optional analytics capabilities.",
+        "properties": {
+          "explainability": {
+            "default": false,
+            "title": "Explainability",
+            "type": "boolean"
+          },
+          "gnn": {
+            "default": false,
+            "title": "Gnn",
+            "type": "boolean"
+          },
+          "rag_chat": {
+            "default": false,
+            "title": "Rag Chat",
+            "type": "boolean"
+          },
+          "risk_scoring": {
+            "default": false,
+            "title": "Risk Scoring",
+            "type": "boolean"
+          },
+          "structured_ingestion": {
+            "default": false,
+            "title": "Structured Ingestion",
+            "type": "boolean"
+          },
+          "timeseries": {
+            "default": false,
+            "title": "Timeseries",
+            "type": "boolean"
+          }
+        },
+        "title": "CapabilitiesConfig",
+        "type": "object"
+      },
+      "CaseCreateRequest": {
+        "description": "Payload for creating a new case.",
+        "properties": {
+          "alert_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Alert Ids",
+            "type": "array"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "priority": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "title": "Priority",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "priority"
+        ],
+        "title": "CaseCreateRequest",
+        "type": "object"
+      },
+      "CaseDetailResponse": {
+        "description": "Expanded case detail payload.",
+        "properties": {
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertListItem"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "case": {
+            "$ref": "#/components/schemas/CaseSummaryResponse"
+          },
+          "feedback_history": {
+            "items": {
+              "$ref": "#/components/schemas/AnalystFeedbackResponse"
+            },
+            "title": "Feedback History",
+            "type": "array"
+          }
+        },
+        "required": [
+          "case"
+        ],
+        "title": "CaseDetailResponse",
+        "type": "object"
+      },
+      "CaseFeedbackCreateRequest": {
+        "description": "Payload for storing analyst feedback on a case.",
+        "properties": {
+          "evidence_adequacy": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Evidence Adequacy",
+            "type": "string"
+          },
+          "label": {
+            "enum": [
+              "suspicious",
+              "not_suspicious",
+              "insufficient_evidence"
+            ],
+            "title": "Label",
+            "type": "string"
+          },
+          "missing_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Evidence",
+            "type": "array"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "evidence_adequacy",
+          "notes"
+        ],
+        "title": "CaseFeedbackCreateRequest",
+        "type": "object"
+      },
+      "CaseListResponse": {
+        "description": "Case collection response.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CaseSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "page"
+        ],
+        "title": "CaseListResponse",
+        "type": "object"
+      },
+      "CaseSummaryResponse": {
+        "description": "Case list item for the human review workflow.",
+        "properties": {
+          "alert_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Alert Ids",
+            "type": "array"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "priority": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "title": "Priority",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "in_review",
+              "closed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "priority",
+          "updated_at"
+        ],
+        "title": "CaseSummaryResponse",
+        "type": "object"
+      },
+      "CaseUpdateRequest": {
+        "description": "Patch payload for updating a case.",
+        "properties": {
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "critical"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "open",
+                  "in_review",
+                  "closed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "CaseUpdateRequest",
+        "type": "object"
+      },
+      "ChatConversationCreateRequest": {
+        "description": "Payload for creating a new chat conversation.",
+        "properties": {
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "knowledge_base_id"
+        ],
+        "title": "ChatConversationCreateRequest",
+        "type": "object"
+      },
+      "ChatConversationResponse": {
+        "description": "Conversation state returned to the RAG chat UI.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessageResponse"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "knowledge_base_id"
+        ],
+        "title": "ChatConversationResponse",
+        "type": "object"
+      },
+      "ChatMessageCreateRequest": {
+        "description": "Payload for appending a message to an existing conversation.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "filters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "title": "Filters",
+            "type": "object"
+          },
+          "include_graph_context": {
+            "default": true,
+            "title": "Include Graph Context",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "ChatMessageCreateRequest",
+        "type": "object"
+      },
+      "ChatMessageResponse": {
+        "description": "One message in a RAG chat conversation.",
+        "properties": {
+          "citation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Citation Ids",
+            "type": "array"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant",
+              "system"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "content",
+          "created_at"
+        ],
+        "title": "ChatMessageResponse",
+        "type": "object"
+      },
+      "ChunkingConfig": {
+        "description": "Configuration for parsed document chunking.",
+        "properties": {
+          "chunk_overlap": {
+            "default": 200,
+            "minimum": 0,
+            "title": "Chunk Overlap",
+            "type": "integer"
+          },
+          "chunk_size": {
+            "default": 1000,
+            "exclusiveMinimum": 0,
+            "title": "Chunk Size",
+            "type": "integer"
+          },
+          "min_chunk_size": {
+            "default": 50,
+            "exclusiveMinimum": 0,
+            "title": "Min Chunk Size",
+            "type": "integer"
+          },
+          "record_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Record Template"
+          },
+          "strategy": {
+            "default": "recursive",
+            "enum": [
+              "recursive",
+              "fixed_size",
+              "sentence"
+            ],
+            "title": "Strategy",
+            "type": "string"
+          }
+        },
+        "title": "ChunkingConfig",
+        "type": "object"
+      },
+      "ClusterResult": {
+        "description": "A single cluster summary returned from GNN analysis.",
+        "properties": {
+          "anomaly_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Anomaly Score",
+            "type": "number"
+          },
+          "cluster_id": {
+            "title": "Cluster Id",
+            "type": "string"
+          },
+          "entity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entity Ids",
+            "type": "array"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "required": [
+          "cluster_id",
+          "anomaly_score"
+        ],
+        "title": "ClusterResult",
+        "type": "object"
+      },
+      "CreateKbRequest": {
+        "description": "Request payload for creating a new knowledge base.",
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateKbRequest",
+        "type": "object"
+      },
+      "DatabaseConfig": {
+        "description": "Configuration for selecting the relational / time-series database backend.",
+        "properties": {
+          "backend": {
+            "default": "in_memory",
+            "enum": [
+              "postgres",
+              "in_memory"
+            ],
+            "title": "Backend",
+            "type": "string"
+          },
+          "dsn_env_var": {
+            "default": "DATABASE_URL",
+            "title": "Dsn Env Var",
+            "type": "string"
+          },
+          "pool_max_overflow": {
+            "default": 5,
+            "minimum": 0,
+            "title": "Pool Max Overflow",
+            "type": "integer"
+          },
+          "pool_size": {
+            "default": 10,
+            "exclusiveMinimum": 0,
+            "title": "Pool Size",
+            "type": "integer"
+          },
+          "statement_timeout_ms": {
+            "default": 30000,
+            "exclusiveMinimum": 0,
+            "title": "Statement Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "title": "DatabaseConfig",
+        "type": "object"
+      },
+      "DocumentFormat": {
+        "description": "Supported source document formats.",
+        "enum": [
+          "pdf",
+          "docx",
+          "xlsx",
+          "txt",
+          "csv",
+          "json",
+          "html"
+        ],
+        "title": "DocumentFormat",
+        "type": "string"
+      },
+      "DocumentListResponse": {
+        "description": "Paginated knowledge base document list response.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "DocumentListResponse",
+        "type": "object"
+      },
+      "DocumentReceipt": {
+        "description": "Receipt returned after document registration.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "document_format": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentFormat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "replaced_document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced Document Id"
+          },
+          "source_document_id": {
+            "title": "Source Document Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IngestionStatus"
+          },
+          "storage_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage Key"
+          },
+          "uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uri"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "source_document_id",
+          "status"
+        ],
+        "title": "DocumentReceipt",
+        "type": "object"
+      },
+      "DocumentRegistrationResponse": {
+        "description": "Response model for document registration requests.",
+        "properties": {
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentReceipt"
+            },
+            "title": "Documents",
+            "type": "array"
+          }
+        },
+        "required": [
+          "documents"
+        ],
+        "title": "DocumentRegistrationResponse",
+        "type": "object"
+      },
+      "DocumentSummary": {
+        "description": "Summary projection of a registered document.",
+        "properties": {
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "knowledge_base_id",
+          "filename",
+          "status",
+          "created_at"
+        ],
+        "title": "DocumentSummary",
+        "type": "object"
+      },
+      "DomainConfig": {
+        "description": "Top-level domain configuration model.\n\nValidated from a YAML or JSON file at startup, then shared with all\nbackend modules via dependency injection.",
+        "properties": {
+          "alerts": {
+            "$ref": "#/components/schemas/AlertsConfig"
+          },
+          "analytics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyticsConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "auth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/CapabilitiesConfig"
+          },
+          "database": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DatabaseConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "default_reference_kb_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "ID of a knowledge base that is auto-attached to every read in this domain (the 'policy graph'). When None, dual-graph behavior is disabled and reads scope to the primary KB only.",
+            "title": "Default Reference Kb Id"
+          },
+          "domain": {
+            "$ref": "#/components/schemas/DomainInfo"
+          },
+          "embeddings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EmbeddingsConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/EntityDefinition"
+            },
+            "title": "Entities",
+            "type": "array"
+          },
+          "events": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EventBusConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "graph": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GraphDbConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "ingestion": {
+            "$ref": "#/components/schemas/IngestionConfig"
+          },
+          "llm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LlmConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "monitoring": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MonitoringConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "rag": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RagConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "records": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordsConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/RelationshipDefinition"
+            },
+            "title": "Relationships",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": "1.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "storage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObjectStoreConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "ui": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UiConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "validation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidationConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "vectorstore": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VectorStoreConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "domain",
+          "entities",
+          "relationships",
+          "capabilities",
+          "ingestion",
+          "alerts"
+        ],
+        "title": "DomainConfig",
+        "type": "object"
+      },
+      "DomainFeaturesResponse": {
+        "description": "Feature flags and role/navigation metadata derived from DomainConfig.",
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/CapabilitiesConfig"
+          },
+          "default_entity_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Entity Type"
+          },
+          "default_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Role"
+          },
+          "enabled_pages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Enabled Pages",
+            "type": "array"
+          },
+          "roles": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/UiRoleConfig"
+            },
+            "title": "Roles",
+            "type": "object"
+          }
+        },
+        "required": [
+          "capabilities"
+        ],
+        "title": "DomainFeaturesResponse",
+        "type": "object"
+      },
+      "DomainInfo": {
+        "description": "Metadata about the domain.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "display_name",
+          "description"
+        ],
+        "title": "DomainInfo",
+        "type": "object"
+      },
+      "EmbeddingsConfig": {
+        "description": "Configuration for selecting the embeddings provider and model.",
+        "properties": {
+          "api_key_env_var": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Api Key Env Var"
+          },
+          "batch_size": {
+            "default": 32,
+            "exclusiveMinimum": 0,
+            "title": "Batch Size",
+            "type": "integer"
+          },
+          "dimensions": {
+            "default": 384,
+            "exclusiveMinimum": 0,
+            "title": "Dimensions",
+            "type": "integer"
+          },
+          "model": {
+            "default": "all-MiniLM-L6-v2",
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "default": "sentence_transformers",
+            "enum": [
+              "openai",
+              "sentence_transformers",
+              "local"
+            ],
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "title": "EmbeddingsConfig",
+        "type": "object"
+      },
+      "Entity": {
+        "description": "A domain entity whose ``type`` matches an ``EntityDefinition.name``.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "properties": {
+            "additionalProperties": true,
+            "title": "Properties",
+            "type": "object"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ],
+        "title": "Entity",
+        "type": "object"
+      },
+      "EntityDefinition": {
+        "description": "Defines an entity type in the domain configuration.",
+        "properties": {
+          "display_label": {
+            "title": "Display Label",
+            "type": "string"
+          },
+          "icon": {
+            "title": "Icon",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "natural_key": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Natural Key",
+            "type": "array"
+          },
+          "properties": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PropertyDefinition"
+            },
+            "title": "Properties",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "display_label",
+          "icon",
+          "properties"
+        ],
+        "title": "EntityDefinition",
+        "type": "object"
+      },
+      "EntityDetailResponse": {
+        "description": "API-facing response wrapping a single resolved entity.",
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/Entity"
+          }
+        },
+        "required": [
+          "entity"
+        ],
+        "title": "EntityDetailResponse",
+        "type": "object"
+      },
+      "EntitySearchResponse": {
+        "description": "API-facing response for entity search queries.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Entity"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "title": "EntitySearchResponse",
+        "type": "object"
+      },
+      "EntityTimeseriesPointResponse": {
+        "description": "One point in an entity timeseries chart.",
+        "properties": {
+          "is_anomaly": {
+            "default": false,
+            "title": "Is Anomaly",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "timestamp",
+          "value",
+          "label"
+        ],
+        "title": "EntityTimeseriesPointResponse",
+        "type": "object"
+      },
+      "EntityTimeseriesResponse": {
+        "description": "Timeseries payload for entity trend charts.",
+        "properties": {
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "metric_name": {
+            "title": "Metric Name",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/EntityTimeseriesPointResponse"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entity_id",
+          "metric_name"
+        ],
+        "title": "EntityTimeseriesResponse",
+        "type": "object"
+      },
+      "EventBusConfig": {
+        "description": "Configuration for selecting the event transport backend.",
+        "properties": {
+          "backend": {
+            "default": "in_memory",
+            "enum": [
+              "redis",
+              "in_memory"
+            ],
+            "title": "Backend",
+            "type": "string"
+          },
+          "consumer_group": {
+            "default": "chili-workers",
+            "title": "Consumer Group",
+            "type": "string"
+          },
+          "stream_prefix": {
+            "default": "chili",
+            "title": "Stream Prefix",
+            "type": "string"
+          },
+          "uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Uri"
+          }
+        },
+        "title": "EventBusConfig",
+        "type": "object"
+      },
+      "EvidenceItemResponse": {
+        "description": "Individual evidence item shown inside an evidence pack.",
+        "properties": {
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "source_type",
+          "quote",
+          "rationale",
+          "score"
+        ],
+        "title": "EvidenceItemResponse",
+        "type": "object"
+      },
+      "EvidencePackResponse": {
+        "description": "Frontend-oriented evidence pack detail payload.",
+        "properties": {
+          "alert_id": {
+            "title": "Alert Id",
+            "type": "string"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "policy_citations": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyCitation"
+            },
+            "title": "Policy Citations",
+            "type": "array"
+          },
+          "reasoning": {
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "scores": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Scores",
+            "type": "object"
+          },
+          "subgraph_edge_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Subgraph Edge Ids",
+            "type": "array"
+          },
+          "subgraph_node_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Subgraph Node Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "alert_id",
+          "reasoning",
+          "confidence"
+        ],
+        "title": "EvidencePackResponse",
+        "type": "object"
+      },
+      "GnnClusterResponse": {
+        "description": "A list of clusters discovered for one knowledge base.",
+        "properties": {
+          "clusters": {
+            "items": {
+              "$ref": "#/components/schemas/ClusterResult"
+            },
+            "title": "Clusters",
+            "type": "array"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id"
+        ],
+        "title": "GnnClusterResponse",
+        "type": "object"
+      },
+      "GraphDbConfig": {
+        "description": "Configuration for selecting the graph database backend.",
+        "properties": {
+          "auth_env_var": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Auth Env Var"
+          },
+          "backend": {
+            "default": "in_memory",
+            "enum": [
+              "neo4j",
+              "in_memory"
+            ],
+            "title": "Backend",
+            "type": "string"
+          },
+          "pool_size": {
+            "default": 10,
+            "title": "Pool Size",
+            "type": "integer"
+          },
+          "uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Uri"
+          }
+        },
+        "title": "GraphDbConfig",
+        "type": "object"
+      },
+      "GraphEdgeResponse": {
+        "description": "Edge returned by graph investigation endpoints.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "source_id",
+          "target_id",
+          "summary"
+        ],
+        "title": "GraphEdgeResponse",
+        "type": "object"
+      },
+      "GraphEntityDetailResponse": {
+        "description": "Entity detail and neighboring graph context for investigation views.",
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/GraphNodeResponse"
+          },
+          "neighbors": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNodeResponse"
+            },
+            "title": "Neighbors",
+            "type": "array"
+          },
+          "related_alert_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Related Alert Ids",
+            "type": "array"
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEdgeResponse"
+            },
+            "title": "Relationships",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entity"
+        ],
+        "title": "GraphEntityDetailResponse",
+        "type": "object"
+      },
+      "GraphNodeResponse": {
+        "description": "Node returned by graph investigation endpoints.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "properties": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "title": "Properties",
+            "type": "object"
+          },
+          "risk_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Risk Score",
+            "type": "number"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "label",
+          "summary",
+          "risk_score"
+        ],
+        "title": "GraphNodeResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "IngestionConfig": {
+        "description": "Ingestion configuration.",
+        "properties": {
+          "chunking": {
+            "$ref": "#/components/schemas/ChunkingConfig"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionSourceConfig"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources"
+        ],
+        "title": "IngestionConfig",
+        "type": "object"
+      },
+      "IngestionSourceConfig": {
+        "description": "A single ingestion source definition.",
+        "properties": {
+          "endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Endpoint"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Format"
+          },
+          "formats": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Formats"
+          },
+          "type": {
+            "enum": [
+              "file_upload",
+              "api_push"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "IngestionSourceConfig",
+        "type": "object"
+      },
+      "IngestionStatus": {
+        "description": "Lifecycle states for a source document during ingestion.",
+        "enum": [
+          "pending",
+          "parsing",
+          "parsed",
+          "chunked",
+          "extracted",
+          "validated",
+          "failed"
+        ],
+        "title": "IngestionStatus",
+        "type": "string"
+      },
+      "KbListResponse": {
+        "description": "Paginated knowledge base list response.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeBase"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "KbListResponse",
+        "type": "object"
+      },
+      "KnowledgeBase": {
+        "description": "Metadata record for a knowledge base.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "document_count": {
+            "default": 0,
+            "title": "Document Count",
+            "type": "integer"
+          },
+          "entity_count": {
+            "default": 0,
+            "title": "Entity Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pending_cleanup": {
+            "default": false,
+            "title": "Pending Cleanup",
+            "type": "boolean"
+          },
+          "relationship_count": {
+            "default": 0,
+            "title": "Relationship Count",
+            "type": "integer"
+          },
+          "status": {
+            "default": "active",
+            "enum": [
+              "active",
+              "building",
+              "ready",
+              "error",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "created_at"
+        ],
+        "title": "KnowledgeBase",
+        "type": "object"
+      },
+      "LlmConfig": {
+        "description": "Configuration for selecting the LLM provider and model.",
+        "properties": {
+          "api_key_env_var": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Api Key Env Var"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Base Url"
+          },
+          "fallback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LlmConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "max_tokens": {
+            "default": 4096,
+            "exclusiveMinimum": 0,
+            "title": "Max Tokens",
+            "type": "integer"
+          },
+          "model": {
+            "default": "local-default",
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "default": "local",
+            "enum": [
+              "openai",
+              "anthropic",
+              "local",
+              "ollama"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "temperature": {
+            "default": 0.7,
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Temperature",
+            "type": "number"
+          }
+        },
+        "title": "LlmConfig",
+        "type": "object"
+      },
+      "MetricTimeseriesResponse": {
+        "description": "A range-bounded list of timeseries data points.",
+        "properties": {
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "metric_name": {
+            "title": "Metric Name",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/TimeseriesPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "metric_name",
+          "start",
+          "end"
+        ],
+        "title": "MetricTimeseriesResponse",
+        "type": "object"
+      },
+      "MonitoringConfig": {
+        "description": "Configuration for alert deduplication, evaluation cadence, and severity tiers.",
+        "properties": {
+          "dedup_window_seconds": {
+            "default": 3600,
+            "exclusiveMinimum": 0,
+            "title": "Dedup Window Seconds",
+            "type": "integer"
+          },
+          "evaluation_interval_seconds": {
+            "default": 300,
+            "exclusiveMinimum": 0,
+            "title": "Evaluation Interval Seconds",
+            "type": "integer"
+          },
+          "grouping_window_seconds": {
+            "default": 300,
+            "exclusiveMinimum": 0,
+            "title": "Grouping Window Seconds",
+            "type": "integer"
+          },
+          "high_threshold": {
+            "default": 0.85,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "High Threshold",
+            "type": "number"
+          },
+          "max_alerts_per_entity": {
+            "default": 10,
+            "exclusiveMinimum": 0,
+            "title": "Max Alerts Per Entity",
+            "type": "integer"
+          },
+          "max_alerts_per_evaluation": {
+            "default": 100,
+            "exclusiveMinimum": 0,
+            "title": "Max Alerts Per Evaluation",
+            "type": "integer"
+          },
+          "medium_threshold": {
+            "default": 0.6,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Medium Threshold",
+            "type": "number"
+          }
+        },
+        "title": "MonitoringConfig",
+        "type": "object"
+      },
+      "NeighborhoodResponse": {
+        "description": "API-facing response wrapping a neighborhood subgraph.",
+        "properties": {
+          "center_entity_id": {
+            "title": "Center Entity Id",
+            "type": "string"
+          },
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/Entity"
+            },
+            "title": "Entities",
+            "type": "array"
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/Relationship"
+            },
+            "title": "Relationships",
+            "type": "array"
+          }
+        },
+        "required": [
+          "center_entity_id"
+        ],
+        "title": "NeighborhoodResponse",
+        "type": "object"
+      },
+      "ObjectStoreConfig": {
+        "description": "Configuration for selecting the object store backend.",
+        "properties": {
+          "backend": {
+            "default": "local",
+            "enum": [
+              "s3",
+              "minio",
+              "local"
+            ],
+            "title": "Backend",
+            "type": "string"
+          },
+          "base_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Base Path"
+          },
+          "bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Bucket"
+          },
+          "credentials_env_var": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Credentials Env Var"
+          },
+          "endpoint_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Endpoint Url"
+          }
+        },
+        "title": "ObjectStoreConfig",
+        "type": "object"
+      },
+      "PageInfo": {
+        "description": "Pagination metadata for collection responses.",
+        "properties": {
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total_items": {
+            "minimum": 0.0,
+            "title": "Total Items",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page",
+          "page_size",
+          "total_items"
+        ],
+        "title": "PageInfo",
+        "type": "object"
+      },
+      "PolicyBriefCreateRequest": {
+        "description": "Payload for generating a policy brief from a gap.",
+        "properties": {
+          "audience": {
+            "title": "Audience",
+            "type": "string"
+          },
+          "gap_id": {
+            "title": "Gap Id",
+            "type": "string"
+          },
+          "objective": {
+            "title": "Objective",
+            "type": "string"
+          }
+        },
+        "required": [
+          "gap_id",
+          "audience",
+          "objective"
+        ],
+        "title": "PolicyBriefCreateRequest",
+        "type": "object"
+      },
+      "PolicyBriefResponse": {
+        "description": "Generated policy brief returned to the policy intelligence UI.",
+        "properties": {
+          "audience": {
+            "title": "Audience",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "gap_id": {
+            "title": "Gap Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "narrative": {
+            "title": "Narrative",
+            "type": "string"
+          },
+          "objective": {
+            "title": "Objective",
+            "type": "string"
+          },
+          "policy_citations": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyCitation"
+            },
+            "title": "Policy Citations",
+            "type": "array"
+          },
+          "recommendations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recommendations",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "gap_id",
+          "title",
+          "audience",
+          "objective",
+          "narrative",
+          "created_at"
+        ],
+        "title": "PolicyBriefResponse",
+        "type": "object"
+      },
+      "PolicyCitation": {
+        "description": "Policy reference surfaced with evidence or alerts.",
+        "properties": {
+          "citation_id": {
+            "title": "Citation Id",
+            "type": "string"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "source_document_id": {
+            "title": "Source Document Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "citation_id",
+          "title",
+          "excerpt",
+          "source_document_id"
+        ],
+        "title": "PolicyCitation",
+        "type": "object"
+      },
+      "PolicyGapCaseListResponse": {
+        "description": "Case list attached to one policy gap.",
+        "properties": {
+          "gap_id": {
+            "title": "Gap Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CaseSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "gap_id",
+          "page"
+        ],
+        "title": "PolicyGapCaseListResponse",
+        "type": "object"
+      },
+      "PolicyGapDetailResponse": {
+        "description": "Expanded policy gap detail payload.",
+        "properties": {
+          "gap": {
+            "$ref": "#/components/schemas/PolicyGapSummaryResponse"
+          },
+          "impact_statement": {
+            "title": "Impact Statement",
+            "type": "string"
+          },
+          "policy_citations": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyCitation"
+            },
+            "title": "Policy Citations",
+            "type": "array"
+          },
+          "recommendation": {
+            "title": "Recommendation",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "trend": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyTrendPointResponse"
+            },
+            "title": "Trend",
+            "type": "array"
+          }
+        },
+        "required": [
+          "gap",
+          "summary",
+          "impact_statement",
+          "recommendation"
+        ],
+        "title": "PolicyGapDetailResponse",
+        "type": "object"
+      },
+      "PolicyGapListResponse": {
+        "description": "Collection response for policy intelligence gaps.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyGapSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "page"
+        ],
+        "title": "PolicyGapListResponse",
+        "type": "object"
+      },
+      "PolicyGapSummaryResponse": {
+        "description": "Summary row for the policy intelligence gap queue.",
+        "properties": {
+          "affected_case_count": {
+            "minimum": 0.0,
+            "title": "Affected Case Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "impacted_entities": {
+            "minimum": 0.0,
+            "title": "Impacted Entities",
+            "type": "integer"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "medium",
+              "high",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "monitoring",
+              "drafting",
+              "recommended"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "severity",
+          "impacted_entities",
+          "affected_case_count",
+          "knowledge_base_id",
+          "updated_at"
+        ],
+        "title": "PolicyGapSummaryResponse",
+        "type": "object"
+      },
+      "PolicyTrendPointResponse": {
+        "description": "One point in a policy gap trend series.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "minimum": 0.0,
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "PolicyTrendPointResponse",
+        "type": "object"
+      },
+      "PropertyDefinition": {
+        "description": "Schema for a single property on an entity definition.",
+        "properties": {
+          "display": {
+            "title": "Display",
+            "type": "string"
+          },
+          "enum_values": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Enum Values"
+          },
+          "max_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Max Length"
+          },
+          "max_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Max Value"
+          },
+          "min_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Min Length"
+          },
+          "min_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Min Value"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pattern"
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "type": {
+            "$ref": "#/components/schemas/PropertyType"
+          }
+        },
+        "required": [
+          "type",
+          "display"
+        ],
+        "title": "PropertyDefinition",
+        "type": "object"
+      },
+      "PropertyType": {
+        "description": "Supported property value types in entity definitions.",
+        "enum": [
+          "string",
+          "integer",
+          "decimal",
+          "date",
+          "list",
+          "boolean",
+          "enum",
+          "nested"
+        ],
+        "title": "PropertyType",
+        "type": "string"
+      },
+      "RagConfig": {
+        "description": "Configuration for retrieval-augmented generation behavior.",
+        "properties": {
+          "expansion_depth": {
+            "default": 2,
+            "minimum": 0,
+            "title": "Expansion Depth",
+            "type": "integer"
+          },
+          "reranking_enabled": {
+            "default": false,
+            "title": "Reranking Enabled",
+            "type": "boolean"
+          },
+          "system_prompt_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "System Prompt Template"
+          },
+          "top_k": {
+            "default": 5,
+            "exclusiveMinimum": 0,
+            "title": "Top K",
+            "type": "integer"
+          }
+        },
+        "title": "RagConfig",
+        "type": "object"
+      },
+      "RecordEntityMapping": {
+        "description": "Maps fields of a record row onto one graph entity.",
+        "properties": {
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "id_field": {
+            "title": "Id Field",
+            "type": "string"
+          },
+          "property_fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Property Fields",
+            "type": "object"
+          }
+        },
+        "required": [
+          "entity_type",
+          "id_field"
+        ],
+        "title": "RecordEntityMapping",
+        "type": "object"
+      },
+      "RecordFeedConfig": {
+        "description": "A single structured-ingestion feed definition.",
+        "properties": {
+          "allow_extra_fields": {
+            "default": false,
+            "title": "Allow Extra Fields",
+            "type": "boolean"
+          },
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/RecordEntityMapping"
+            },
+            "title": "Entities",
+            "type": "array"
+          },
+          "id_field": {
+            "title": "Id Field",
+            "type": "string"
+          },
+          "id_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Id Template"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/RecordObservationMapping"
+            },
+            "title": "Observations",
+            "type": "array"
+          },
+          "record_schema": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PropertyDefinition"
+            },
+            "title": "Record Schema",
+            "type": "object"
+          },
+          "record_type": {
+            "title": "Record Type",
+            "type": "string"
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRelationshipMapping"
+            },
+            "title": "Relationships",
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "file_upload",
+              "api_push"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "record_type",
+          "source",
+          "id_field"
+        ],
+        "title": "RecordFeedConfig",
+        "type": "object"
+      },
+      "RecordIngestReceipt": {
+        "description": "Receipt returned after a record submission is registered.",
+        "properties": {
+          "accepted_count": {
+            "minimum": 0.0,
+            "title": "Accepted Count",
+            "type": "integer"
+          },
+          "correlation_id": {
+            "title": "Correlation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "feed_name": {
+            "title": "Feed Name",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "record_type": {
+            "title": "Record Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "feed_name",
+          "record_type",
+          "correlation_id",
+          "accepted_count"
+        ],
+        "title": "RecordIngestReceipt",
+        "type": "object"
+      },
+      "RecordObservationMapping": {
+        "description": "Maps a numeric record field onto a scored monitoring observation.",
+        "properties": {
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "metric_name": {
+            "title": "Metric Name",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "title": "Rationale",
+            "type": "string"
+          },
+          "score_field": {
+            "title": "Score Field",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric_name",
+          "entity_type",
+          "score_field"
+        ],
+        "title": "RecordObservationMapping",
+        "type": "object"
+      },
+      "RecordPushRequest": {
+        "description": "Request payload for the api-push records endpoint.",
+        "properties": {
+          "feed_name": {
+            "minLength": 1,
+            "title": "Feed Name",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "minItems": 1,
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "feed_name",
+          "rows"
+        ],
+        "title": "RecordPushRequest",
+        "type": "object"
+      },
+      "RecordRelationshipMapping": {
+        "description": "Maps a pair of a row's mapped entities onto one graph relationship.",
+        "properties": {
+          "relationship_type": {
+            "title": "Relationship Type",
+            "type": "string"
+          },
+          "source_entity_type": {
+            "title": "Source Entity Type",
+            "type": "string"
+          },
+          "target_entity_type": {
+            "title": "Target Entity Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relationship_type",
+          "source_entity_type",
+          "target_entity_type"
+        ],
+        "title": "RecordRelationshipMapping",
+        "type": "object"
+      },
+      "RecordsConfig": {
+        "description": "Structured-ingestion feed configuration for the domain.",
+        "properties": {
+          "feeds": {
+            "items": {
+              "$ref": "#/components/schemas/RecordFeedConfig"
+            },
+            "title": "Feeds",
+            "type": "array"
+          }
+        },
+        "title": "RecordsConfig",
+        "type": "object"
+      },
+      "Relationship": {
+        "description": "A relationship whose ``type`` matches a ``RelationshipDefinition.name``.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "properties": {
+            "additionalProperties": true,
+            "title": "Properties",
+            "type": "object"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "source_id",
+          "target_id"
+        ],
+        "title": "Relationship",
+        "type": "object"
+      },
+      "RelationshipDefinition": {
+        "description": "Defines a relationship type in the domain configuration.",
+        "properties": {
+          "display_label": {
+            "title": "Display Label",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "display_label",
+          "source",
+          "target"
+        ],
+        "title": "RelationshipDefinition",
+        "type": "object"
+      },
+      "RiskFactorResponse": {
+        "description": "Frontend risk-factor breakdown.",
+        "properties": {
+          "contribution": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Contribution",
+            "type": "number"
+          },
+          "factor_name": {
+            "title": "Factor Name",
+            "type": "string"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          }
+        },
+        "required": [
+          "factor_name",
+          "contribution"
+        ],
+        "title": "RiskFactorResponse",
+        "type": "object"
+      },
+      "RiskScore": {
+        "description": "A single ranked risk score entry.",
+        "properties": {
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "overall_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Overall Score",
+            "type": "number"
+          },
+          "risk_level": {
+            "title": "Risk Level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_id",
+          "entity_type",
+          "overall_score",
+          "risk_level"
+        ],
+        "title": "RiskScore",
+        "type": "object"
+      },
+      "RiskScoreListResponse": {
+        "description": "A paginated, ranked list of risk scores.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RiskScore"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "total"
+        ],
+        "title": "RiskScoreListResponse",
+        "type": "object"
+      },
+      "RiskScoreResponse": {
+        "description": "Risk summary for one entity.",
+        "properties": {
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "factors": {
+            "items": {
+              "$ref": "#/components/schemas/RiskFactorResponse"
+            },
+            "title": "Factors",
+            "type": "array"
+          },
+          "overall_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Overall Score",
+            "type": "number"
+          },
+          "risk_level": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "title": "Risk Level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_id",
+          "overall_score",
+          "risk_level"
+        ],
+        "title": "RiskScoreResponse",
+        "type": "object"
+      },
+      "TimeseriesPoint": {
+        "description": "A single data point in a returned time-series.",
+        "properties": {
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "observed_at",
+          "value"
+        ],
+        "title": "TimeseriesPoint",
+        "type": "object"
+      },
+      "UiConfig": {
+        "description": "Optional frontend UI metadata surfaced through the domain config.",
+        "properties": {
+          "default_entity_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Default Entity Type"
+          },
+          "display_fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/UiDisplayFieldsConfig"
+            },
+            "title": "Display Fields",
+            "type": "object"
+          },
+          "navigation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UiNavigationConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "roles": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/UiRoleConfig"
+            },
+            "title": "Roles",
+            "type": "object"
+          }
+        },
+        "title": "UiConfig",
+        "type": "object"
+      },
+      "UiDisplayFieldsConfig": {
+        "description": "Config-driven entity display field mapping for frontend rendering.",
+        "properties": {
+          "chips": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Chips",
+            "type": "array"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "UiDisplayFieldsConfig",
+        "type": "object"
+      },
+      "UiNavigationConfig": {
+        "description": "Frontend navigation structure.",
+        "properties": {
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/UiNavigationPageConfig"
+            },
+            "title": "Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pages"
+        ],
+        "title": "UiNavigationConfig",
+        "type": "object"
+      },
+      "UiNavigationPageConfig": {
+        "description": "A single frontend navigation page definition.",
+        "properties": {
+          "capability": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Capability"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "route": {
+            "title": "Route",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "route"
+        ],
+        "title": "UiNavigationPageConfig",
+        "type": "object"
+      },
+      "UiRoleConfig": {
+        "description": "Frontend role-driven navigation and permission hints.",
+        "properties": {
+          "landing_page": {
+            "title": "Landing Page",
+            "type": "string"
+          },
+          "pages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pages",
+            "type": "array"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "landing_page"
+        ],
+        "title": "UiRoleConfig",
+        "type": "object"
+      },
+      "User": {
+        "description": "Authenticated principal extracted from a validated JWT.",
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "User",
+        "type": "object"
+      },
+      "ValidationConfig": {
+        "description": "Inbound payload limits applied across the API gateway (E10-S10).",
+        "properties": {
+          "allowed_content_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Content Types",
+            "type": "array"
+          },
+          "max_file_size_mb": {
+            "default": 50,
+            "exclusiveMinimum": 0,
+            "title": "Max File Size Mb",
+            "type": "integer"
+          },
+          "max_query_length": {
+            "default": 10000,
+            "exclusiveMinimum": 0,
+            "title": "Max Query Length",
+            "type": "integer"
+          },
+          "max_rag_question_length": {
+            "default": 5000,
+            "exclusiveMinimum": 0,
+            "title": "Max Rag Question Length",
+            "type": "integer"
+          }
+        },
+        "title": "ValidationConfig",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VectorStoreConfig": {
+        "description": "Configuration for selecting the vector store backend.",
+        "properties": {
+          "backend": {
+            "default": "in_memory",
+            "enum": [
+              "qdrant",
+              "in_memory"
+            ],
+            "title": "Backend",
+            "type": "string"
+          },
+          "dimensions": {
+            "default": 384,
+            "exclusiveMinimum": 0,
+            "title": "Dimensions",
+            "type": "integer"
+          },
+          "distance_metric": {
+            "default": "cosine",
+            "enum": [
+              "cosine",
+              "dot",
+              "euclidean"
+            ],
+            "title": "Distance Metric",
+            "type": "string"
+          },
+          "uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Uri"
+          }
+        },
+        "title": "VectorStoreConfig",
+        "type": "object"
+      },
+      "WorkflowRunListResponse": {
+        "description": "Collection of workflow runs.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRunResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "WorkflowRunListResponse",
+        "type": "object"
+      },
+      "WorkflowRunResponse": {
+        "description": "Workflow run summary for pipeline status views.",
+        "properties": {
+          "current_step": {
+            "title": "Current Step",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workflow_type": {
+            "enum": [
+              "ingestion",
+              "graph_build",
+              "analytics",
+              "monitoring"
+            ],
+            "title": "Workflow Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workflow_type",
+          "status",
+          "knowledge_base_id",
+          "started_at",
+          "updated_at",
+          "current_step"
+        ],
+        "title": "WorkflowRunResponse",
+        "type": "object"
+      },
+      "WorkflowRunStatus": {
+        "description": "Lifecycle states for a workflow run.",
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "failed",
+          "cancelled"
+        ],
+        "title": "WorkflowRunStatus",
+        "type": "string"
+      }
+    }
+  },
+  "info": {
+    "description": "Backend API gateway for the chiliAI Graph RAG analytics platform.",
+    "title": "chiliAI API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/alerts": {
+      "get": {
+        "description": "Return the alert feed in the api.contracts shape (items + page).",
+        "operationId": "list_alerts_alerts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Alerts",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/alerts/{alert_id}": {
+      "get": {
+        "description": "Return one alert detail with related entities and policy citations.",
+        "operationId": "get_alert_alerts__alert_id__get",
+        "parameters": [
+          {
+            "description": "Alert identifier.",
+            "in": "path",
+            "name": "alert_id",
+            "required": true,
+            "schema": {
+              "description": "Alert identifier.",
+              "title": "Alert Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Alert",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/alerts/{alert_id}/acknowledge": {
+      "post": {
+        "description": "Acknowledge an alert; returns an ApiEnvelope status receipt.",
+        "operationId": "acknowledge_alert_alerts__alert_id__acknowledge_post",
+        "parameters": [
+          {
+            "description": "Alert identifier.",
+            "in": "path",
+            "name": "alert_id",
+            "required": true,
+            "schema": {
+              "description": "Alert identifier.",
+              "title": "Alert Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Acknowledge Alert",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/analytics/gnn/clusters": {
+      "get": {
+        "description": "Return GNN-derived clusters for a knowledge base.\n\nReturns an empty list when the GNN capability is disabled in config.",
+        "operationId": "list_gnn_clusters_analytics_gnn_clusters_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Kb Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GnnClusterResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Gnn Clusters",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/analytics/overview": {
+      "get": {
+        "description": "Return dashboard overview metrics for the analytics page.",
+        "operationId": "get_analytics_overview_analytics_overview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsOverviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Analytics Overview",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/analytics/risk-scores": {
+      "get": {
+        "description": "Return ranked risk scores for entities in a knowledge base.",
+        "operationId": "list_risk_scores_analytics_risk_scores_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Kb Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "exclusiveMinimum": 0,
+              "maximum": 500,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RiskScoreListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Risk Scores",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/analytics/risk-scores/{entity_id}": {
+      "get": {
+        "description": "Return the risk score breakdown for one entity.",
+        "operationId": "get_risk_score_analytics_risk_scores__entity_id__get",
+        "parameters": [
+          {
+            "description": "Entity identifier.",
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "description": "Entity identifier.",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RiskScoreResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Risk Score",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/analytics/timeseries": {
+      "get": {
+        "description": "Return data points for one metric over a bounded time range.",
+        "operationId": "query_timeseries_analytics_timeseries_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Kb Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metric",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Metric",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "End",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricTimeseriesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query Timeseries",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/analytics/timeseries/{entity_id}": {
+      "get": {
+        "description": "Return chartable time-series points for one entity.",
+        "operationId": "get_entity_timeseries_analytics_timeseries__entity_id__get",
+        "parameters": [
+          {
+            "description": "Entity identifier.",
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "description": "Entity identifier.",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityTimeseriesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Entity Timeseries",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/auth/callback": {
+      "get": {
+        "description": "Exchange the authorization code for tokens and mint a session.",
+        "operationId": "callback_auth_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": true,
+            "schema": {
+              "title": "State",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Callback",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/login": {
+      "get": {
+        "description": "Begin the OIDC authorization-code flow.",
+        "operationId": "login_auth_login_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "description": "Delete the server-side session, clear the cookie, and (optionally) bounce to IdP.",
+        "operationId": "logout_auth_logout_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "post_logout_redirect_uri",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Post Logout Redirect Uri"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "description": "Return the current authenticated user (or 401).",
+        "operationId": "me_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/cases": {
+      "get": {
+        "description": "Return the case management queue.",
+        "operationId": "list_cases_cases_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Cases",
+        "tags": [
+          "cases"
+        ]
+      },
+      "post": {
+        "description": "Create and return a new case.",
+        "operationId": "create_case_cases_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaseCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Case",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/cases/{case_id}": {
+      "get": {
+        "description": "Return one case detail payload.",
+        "operationId": "get_case_cases__case_id__get",
+        "parameters": [
+          {
+            "description": "Case identifier.",
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "description": "Case identifier.",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Case",
+        "tags": [
+          "cases"
+        ]
+      },
+      "patch": {
+        "description": "Patch and return a case.",
+        "operationId": "update_case_cases__case_id__patch",
+        "parameters": [
+          {
+            "description": "Case identifier.",
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "description": "Case identifier.",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaseUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Case",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/cases/{case_id}/feedback": {
+      "post": {
+        "description": "Append analyst feedback to a case and return the updated detail.",
+        "operationId": "add_feedback_cases__case_id__feedback_post",
+        "parameters": [
+          {
+            "description": "Case identifier.",
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "description": "Case identifier.",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaseFeedbackCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Feedback",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/chat/conversations": {
+      "post": {
+        "description": "Create and return a new conversation.",
+        "operationId": "create_conversation_chat_conversations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatConversationCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatConversationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Conversation",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/chat/conversations/{conversation_id}": {
+      "get": {
+        "description": "Return the current conversation state for the RAG assistant.",
+        "operationId": "get_conversation_chat_conversations__conversation_id__get",
+        "parameters": [
+          {
+            "description": "Conversation identifier.",
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "description": "Conversation identifier.",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatConversationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Conversation",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/chat/conversations/{conversation_id}/messages": {
+      "post": {
+        "description": "Append a message to a conversation; stream tokens with ``?stream=true``.",
+        "operationId": "add_message_chat_conversations__conversation_id__messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stream",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Stream",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatMessageCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatConversationResponse"
+                }
+              },
+              "text/event-stream": {
+                "description": "Server-sent events carrying token chunks and a final citation event.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Message",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/config/domain": {
+      "get": {
+        "description": "Return the active domain configuration.",
+        "operationId": "get_domain_config_domain_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Domain",
+        "tags": [
+          "configuration"
+        ]
+      }
+    },
+    "/config/domain/schema": {
+      "get": {
+        "description": "Return the JSON schema for the domain configuration model.",
+        "operationId": "get_domain_schema_config_domain_schema_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Domain Schema Config Domain Schema Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Domain Schema",
+        "tags": [
+          "configuration"
+        ]
+      }
+    },
+    "/config/features": {
+      "get": {
+        "description": "Return feature flags and enabled page metadata for the frontend.",
+        "operationId": "get_features_config_features_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainFeaturesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Features",
+        "tags": [
+          "configuration"
+        ]
+      }
+    },
+    "/events/stream": {
+      "get": {
+        "description": "Stream lightweight workspace updates for alerts, workflows, and KB status.\n\nThe heartbeat intentionally reads cached KB metadata only. Live graph/object\nstore reconciliation remains on explicit KB list/detail reads so an idle\nbrowser tab cannot repeatedly query Neo4j every five seconds.",
+        "operationId": "stream_workspace_updates_events_stream_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "max_events",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Events"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream Workspace Updates",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/evidence-packs/{evidence_pack_id}": {
+      "get": {
+        "description": "Return one evidence pack read model.",
+        "operationId": "get_evidence_pack_evidence_packs__evidence_pack_id__get",
+        "parameters": [
+          {
+            "description": "Evidence pack identifier.",
+            "in": "path",
+            "name": "evidence_pack_id",
+            "required": true,
+            "schema": {
+              "description": "Evidence pack identifier.",
+              "title": "Evidence Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Evidence Pack",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/graph/entities/{entity_id}": {
+      "get": {
+        "description": "Return investigation detail for one entity.",
+        "operationId": "get_entity_detail_graph_entities__entity_id__get",
+        "parameters": [
+          {
+            "description": "Entity identifier.",
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "description": "Entity identifier.",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphEntityDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Entity Detail",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/investigation/entities/{entity_id}": {
+      "get": {
+        "description": "Return a single entity from the knowledge base or 404 if unknown.",
+        "operationId": "read_entity_investigation_entities__entity_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Knowledge base identifier.",
+            "in": "query",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base identifier.",
+              "title": "Kb Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Entity",
+        "tags": [
+          "investigation"
+        ]
+      }
+    },
+    "/investigation/entities/{entity_id}/neighborhood": {
+      "get": {
+        "description": "Return the neighborhood subgraph around an entity up to ``depth`` hops.",
+        "operationId": "read_entity_neighborhood_investigation_entities__entity_id__neighborhood_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Knowledge base identifier.",
+            "in": "query",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base identifier.",
+              "title": "Kb Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Traversal depth (1-5).",
+            "in": "query",
+            "name": "depth",
+            "required": false,
+            "schema": {
+              "default": 2,
+              "description": "Traversal depth (1-5).",
+              "maximum": 5,
+              "minimum": 1,
+              "title": "Depth",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NeighborhoodResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Entity Neighborhood",
+        "tags": [
+          "investigation"
+        ]
+      }
+    },
+    "/investigation/search": {
+      "get": {
+        "description": "Return entities matching ``q`` paginated by ``limit`` and ``offset``.",
+        "operationId": "search_entities_investigation_search_get",
+        "parameters": [
+          {
+            "description": "Knowledge base identifier.",
+            "in": "query",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base identifier.",
+              "title": "Kb Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Property substring to match.",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Property substring to match.",
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum items returned.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "Maximum items returned.",
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of items to skip.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Number of items to skip.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitySearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Entities",
+        "tags": [
+          "investigation"
+        ]
+      }
+    },
+    "/knowledgebases": {
+      "get": {
+        "description": "Return a paginated listing of registered knowledge bases.",
+        "operationId": "list_knowledge_bases_knowledgebases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KbListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Knowledge Bases",
+        "tags": [
+          "knowledge-bases"
+        ]
+      },
+      "post": {
+        "description": "Create a new knowledge base and publish a creation event.",
+        "operationId": "create_knowledge_base_knowledgebases_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateKbRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBase"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Knowledge Base",
+        "tags": [
+          "knowledge-bases"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}": {
+      "delete": {
+        "description": "Cascade-delete a KB across graph, vector, raw_records, object store, and metadata.",
+        "operationId": "delete_knowledge_base_knowledgebases__knowledge_base_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Knowledge Base",
+        "tags": [
+          "knowledge-bases"
+        ]
+      },
+      "get": {
+        "description": "Return a single knowledge base by id or 404.",
+        "operationId": "read_knowledge_base_knowledgebases__knowledge_base_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeBase"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Knowledge Base",
+        "tags": [
+          "knowledge-bases"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/documents": {
+      "get": {
+        "description": "Return registered documents for a knowledge base.",
+        "operationId": "list_knowledge_base_documents_knowledgebases__knowledge_base_id__documents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Knowledge Base Documents",
+        "tags": [
+          "knowledge-bases"
+        ]
+      },
+      "post": {
+        "description": "Register uploaded documents and enqueue ingestion work.",
+        "operationId": "register_knowledge_base_documents_knowledgebases__knowledge_base_id__documents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_register_knowledge_base_documents_knowledgebases__knowledge_base_id__documents_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentRegistrationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Knowledge Base Documents",
+        "tags": [
+          "knowledge-bases"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/documents/{document_id}": {
+      "delete": {
+        "description": "Delete a single document from a knowledge base and its stored artifacts.",
+        "operationId": "delete_knowledge_base_document_knowledgebases__knowledge_base_id__documents__document_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Knowledge Base Document",
+        "tags": [
+          "knowledge-bases"
+        ]
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "metrics_endpoint_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Metrics Endpoint",
+        "tags": [
+          "observability"
+        ]
+      }
+    },
+    "/policy/briefs": {
+      "post": {
+        "description": "Generate a policy brief from one policy gap.",
+        "operationId": "create_policy_brief_policy_briefs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyBriefCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyBriefResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Policy Brief",
+        "tags": [
+          "policy"
+        ]
+      }
+    },
+    "/policy/gaps": {
+      "get": {
+        "description": "Return policy gaps for supervisor and policy-intelligence views.",
+        "operationId": "list_policy_gaps_policy_gaps_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyGapListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Policy Gaps",
+        "tags": [
+          "policy"
+        ]
+      }
+    },
+    "/policy/gaps/{gap_id}": {
+      "get": {
+        "description": "Return one policy gap detail payload.",
+        "operationId": "get_policy_gap_policy_gaps__gap_id__get",
+        "parameters": [
+          {
+            "description": "Policy gap identifier.",
+            "in": "path",
+            "name": "gap_id",
+            "required": true,
+            "schema": {
+              "description": "Policy gap identifier.",
+              "title": "Gap Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyGapDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Policy Gap",
+        "tags": [
+          "policy"
+        ]
+      }
+    },
+    "/policy/gaps/{gap_id}/cases": {
+      "get": {
+        "description": "Return affected cases for one policy gap.",
+        "operationId": "list_policy_gap_cases_policy_gaps__gap_id__cases_get",
+        "parameters": [
+          {
+            "description": "Policy gap identifier.",
+            "in": "path",
+            "name": "gap_id",
+            "required": true,
+            "schema": {
+              "description": "Policy gap identifier.",
+              "title": "Gap Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyGapCaseListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Policy Gap Cases",
+        "tags": [
+          "policy"
+        ]
+      }
+    },
+    "/records/{knowledge_base_id}/files": {
+      "post": {
+        "description": "Ingest a CSV or JSONL upload into the named feed.",
+        "operationId": "upload_record_file_records__knowledge_base_id__files_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_record_file_records__knowledge_base_id__files_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordIngestReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Record File",
+        "tags": [
+          "records"
+        ]
+      }
+    },
+    "/records/{knowledge_base_id}/push": {
+      "post": {
+        "description": "Ingest a JSON array of record rows into the named feed.",
+        "operationId": "push_records_records__knowledge_base_id__push_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordPushRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordIngestReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Push Records",
+        "tags": [
+          "records"
+        ]
+      }
+    },
+    "/workflows": {
+      "get": {
+        "description": "Return recent workflow runs for the pipeline status UI.",
+        "operationId": "list_workflows_workflows_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Knowledge Base Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkflowRunStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 0,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Workflows",
+        "tags": [
+          "workflows"
+        ]
+      }
+    }
+  }
+}
