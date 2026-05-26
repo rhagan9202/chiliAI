@@ -484,7 +484,7 @@ type DocumentInventoryProps = {
   documents: Array<{
     id: string
     filename: string
-    size_bytes: number | null
+    size_bytes?: number | null
     status: string
     created_at: string
   }>

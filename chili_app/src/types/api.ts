@@ -59,7 +59,7 @@ export interface Entity {
   id: string
   type: string
   properties: EntityProperties
-  metadata: EntityProperties
+  metadata?: EntityProperties
   created_at: string
   updated_at?: string | null
   version: number
@@ -71,6 +71,7 @@ export interface Relationship {
   source_id: string
   target_id: string
   properties: EntityProperties
+  metadata?: EntityProperties
   created_at: string
   updated_at?: string | null
   version: number

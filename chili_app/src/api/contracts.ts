@@ -1,131 +1,41 @@
-export type DomainPropertyDefinition = {
-  type: string
-  display: string
-  required?: boolean
-  pattern?: string
-  min_value?: number
-  max_value?: number
-  enum_values?: string[]
-}
+import type { components } from '../lib/api/schema'
 
-export type DomainEntityDefinition = {
-  name: string
-  display_label: string
-  icon?: string
-  properties: Record<string, DomainPropertyDefinition>
+type Schemas = components['schemas']
+type RequireFields<T, K extends keyof T> = T & {
+  [P in K]-?: NonNullable<T[P]>
 }
+type OptionalFields<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
 
-export type DomainRelationshipDefinition = {
-  name: string
-  display_label: string
-  source: string
-  target: string
-}
+export type ApiEnvelope = Schemas['ApiEnvelope']
+export type PageInfo = Schemas['PageInfo']
 
-export type DomainCapabilities = {
-  timeseries: boolean
-  gnn: boolean
-  risk_scoring: boolean
-  rag_chat: boolean
-  explainability: boolean
-  structured_ingestion?: boolean
-}
+export type AlertSeverity = Schemas['AlertListItem']['severity']
+export type AlertStatus = Schemas['AlertListItem']['status']
+export type AlertListItem = RequireFields<Schemas['AlertListItem'], 'tags'>
+export type AlertListResponse = RequireFields<Schemas['AlertListResponse'], 'items'>
+export type AlertDetailResponse = RequireFields<
+  Schemas['AlertDetailResponse'],
+  'policy_citations' | 'related_entity_ids'
+>
 
-export type RecordEntityMapping = {
-  entity_type: string
-  id_field: string
-  property_fields: Record<string, string>
-}
-
-export type RecordRelationshipMapping = {
-  relationship_type: string
-  source_entity_type: string
-  target_entity_type: string
-}
-
-export type RecordObservationMapping = {
-  metric_name: string
-  entity_type: string
-  score_field: string
-  rationale: string
-}
-
-export type RecordFeedConfig = {
-  name: string
-  record_type: string
-  source: 'file_upload' | 'api_push'
-  id_field: string
-  record_schema: Record<string, DomainPropertyDefinition>
-  entities: RecordEntityMapping[]
-  relationships: RecordRelationshipMapping[]
-  observations: RecordObservationMapping[]
-}
-
-export type RecordsConfig = {
-  feeds: RecordFeedConfig[]
-}
-
-export type ValidationConfig = {
-  max_file_size_mb: number
-  allowed_content_types: string[]
-  max_query_length: number
-  max_rag_question_length: number
-}
-
-export type DomainConfig = {
-  domain: {
-    name: string
-    display_name: string
-    description: string
-  }
-  entities: DomainEntityDefinition[]
-  relationships: DomainRelationshipDefinition[]
-  capabilities: DomainCapabilities
-  ingestion: Record<string, unknown>
-  validation?: ValidationConfig | null
-  records?: RecordsConfig | null
-  alerts: {
-    thresholds: Record<string, Record<string, number>>
-  }
-  ui?: DomainUiConfig
-}
-
-export type DomainRoleConfig = {
-  landing_page: string
-  pages: string[]
-  permissions: string[]
-}
-
-export type DomainUiConfig = {
-  default_entity_type?: string
-  navigation?: {
-    pages: DomainNavigationPage[]
-  }
-  display_fields?: Record<
-    string,
-    {
-      title: string
-      subtitle?: string
-      chips?: string[]
-    }
-  >
-  roles?: Record<string, DomainRoleConfig>
-}
-
-export type DomainNavigationPage = {
-  id: string
-  label: string
-  route: string
-  capability?: keyof DomainCapabilities | string
-}
-
-export type DomainFeatures = {
-  capabilities: DomainCapabilities
-  default_entity_type: string | null
-  default_role: string | null
-  enabled_pages: string[]
-  roles: Record<string, DomainRoleConfig>
-}
+export type PolicyCitation = Schemas['PolicyCitation']
+export type PolicyGapStatus = Schemas['PolicyGapSummaryResponse']['status']
+export type PolicyTrendPointResponse = Schemas['PolicyTrendPointResponse']
+export type PolicyGapSummaryResponse = Schemas['PolicyGapSummaryResponse']
+export type PolicyGapListResponse = RequireFields<Schemas['PolicyGapListResponse'], 'items'>
+export type PolicyGapDetailResponse = RequireFields<
+  Schemas['PolicyGapDetailResponse'],
+  'policy_citations' | 'trend'
+>
+export type PolicyGapCaseListResponse = RequireFields<
+  Schemas['PolicyGapCaseListResponse'],
+  'items'
+>
+export type PolicyBriefCreateRequest = Schemas['PolicyBriefCreateRequest']
+export type PolicyBriefResponse = RequireFields<
+  Schemas['PolicyBriefResponse'],
+  'policy_citations' | 'recommendations'
+>
 
 export type RealtimeSnapshotResponse = {
   sequence: number
@@ -135,389 +45,141 @@ export type RealtimeSnapshotResponse = {
   knowledge_base_statuses: Record<string, string>
 }
 
-export type DomainConfigSchema = {
-  title: string
-  properties: Record<string, unknown>
-  required?: string[]
-}
+export type GraphNodeResponse = Schemas['GraphNodeResponse']
+export type GraphEdgeResponse = Schemas['GraphEdgeResponse']
+export type GraphEntityDetailResponse = RequireFields<
+  Schemas['GraphEntityDetailResponse'],
+  'neighbors' | 'related_alert_ids' | 'relationships'
+>
 
-export type AlertSeverity = 'low' | 'medium' | 'high' | 'critical'
-export type AlertStatus = 'open' | 'acknowledged' | 'investigating' | 'resolved' | 'dismissed'
-export type CaseStatus = 'open' | 'in_review' | 'closed'
-export type CasePriority = 'low' | 'medium' | 'high' | 'critical'
-export type FeedbackLabel = 'suspicious' | 'not_suspicious' | 'insufficient_evidence'
-export type EvidenceAdequacy = 'low' | 'medium' | 'high'
-
-export type PageInfo = {
-  page: number
-  page_size: number
-  total_items: number
-}
-
-export type PolicyCitation = {
-  citation_id: string
-  title: string
-  excerpt: string
-  source_document_id: string
-}
-
-export type PolicyGapStatus = 'monitoring' | 'drafting' | 'recommended'
-
-export type PolicyTrendPointResponse = {
-  label: string
-  value: number
-}
-
-export type PolicyGapSummaryResponse = {
-  id: string
-  title: string
-  status: PolicyGapStatus
-  severity: 'medium' | 'high' | 'critical'
-  impacted_entities: number
-  affected_case_count: number
-  knowledge_base_id: string
-  updated_at: string
-}
-
-export type PolicyGapListResponse = {
-  items: PolicyGapSummaryResponse[]
-  page: PageInfo
-}
-
-export type PolicyGapDetailResponse = {
-  gap: PolicyGapSummaryResponse
-  summary: string
-  impact_statement: string
-  recommendation: string
-  policy_citations: PolicyCitation[]
-  trend: PolicyTrendPointResponse[]
-}
-
-export type PolicyGapCaseListResponse = {
-  gap_id: string
-  items: CaseSummaryResponse[]
-  page: PageInfo
-}
-
-export type PolicyBriefCreateRequest = {
-  gap_id: string
-  audience: string
-  objective: string
-}
-
-export type PolicyBriefResponse = {
-  id: string
-  gap_id: string
-  title: string
-  audience: string
-  objective: string
-  narrative: string
-  recommendations: string[]
-  policy_citations: PolicyCitation[]
-  created_at: string
-}
-
-export type AlertListItem = {
-  id: string
-  entity_id: string
-  entity_type: string
-  entity_label: string
-  severity: AlertSeverity
-  status: AlertStatus
-  title: string
-  reasoning: string
-  confidence: number
-  evidence_pack_id: string | null
-  created_at: string
-  tags: string[]
-}
-
-export type AlertListResponse = {
-  items: AlertListItem[]
-  page: PageInfo
-}
-
-export type AlertDetailResponse = {
-  alert: AlertListItem
-  related_entity_ids: string[]
-  policy_citations: PolicyCitation[]
-}
-
-export type ApiEnvelope = {
-  status: 'accepted' | 'ok'
-  message: string
-}
-
-export type GraphNodeResponse = {
-  id: string
-  type: string
-  label: string
-  summary: string
-  risk_score: number
-  properties: Record<string, string | number | boolean>
-}
-
-export type GraphEdgeResponse = {
-  id: string
-  type: string
-  source_id: string
-  target_id: string
-  summary: string
-}
-
-export type GraphEntityDetailResponse = {
-  entity: GraphNodeResponse
-  neighbors: GraphNodeResponse[]
-  relationships: GraphEdgeResponse[]
-  related_alert_ids: string[]
-}
-
-export type RuntimeEntity = {
-  id: string
-  type: string
-  properties: Record<string, unknown>
-  metadata: Record<string, unknown>
-  created_at: string
-  updated_at: string | null
-  version: number
-}
-
-export type RuntimeRelationship = {
-  id: string
-  type: string
-  source_id: string
-  target_id: string
-  properties: Record<string, unknown>
-  created_at: string
-  updated_at: string | null
-  version: number
-  weight: number | null
-}
-
-export type InvestigationEntityDetailResponse = {
+export type RuntimeEntity = RequireFields<
+  Schemas['Entity'],
+  'created_at' | 'metadata' | 'properties'
+>
+export type RuntimeRelationship = RequireFields<
+  Schemas['Relationship'],
+  'created_at' | 'metadata' | 'properties'
+>
+export type InvestigationEntityDetailResponse = Omit<Schemas['EntityDetailResponse'], 'entity'> & {
   entity: RuntimeEntity
 }
-
-export type InvestigationNeighborhoodResponse = {
-  center_entity_id: string
+export type InvestigationNeighborhoodResponse = Omit<
+  Schemas['NeighborhoodResponse'],
+  'entities' | 'relationships'
+> & {
   entities: RuntimeEntity[]
   relationships: RuntimeRelationship[]
 }
-
-export type InvestigationEntitySearchResponse = {
+export type InvestigationEntitySearchResponse = Omit<Schemas['EntitySearchResponse'], 'items'> & {
   items: RuntimeEntity[]
-  total: number
 }
 
-export type EvidenceItemResponse = {
-  source_id: string
-  source_type: string
-  quote: string
-  rationale: string
-  score: number
-}
+export type EvidenceItemResponse = Schemas['EvidenceItemResponse']
+export type EvidencePackResponse = RequireFields<
+  Schemas['EvidencePackResponse'],
+  'items' | 'policy_citations' | 'scores' | 'subgraph_edge_ids' | 'subgraph_node_ids'
+>
 
-export type EvidencePackResponse = {
-  id: string
-  alert_id: string
-  reasoning: string
-  confidence: number
-  scores: Record<string, number>
-  subgraph_node_ids: string[]
-  subgraph_edge_ids: string[]
-  items: EvidenceItemResponse[]
-  policy_citations: PolicyCitation[]
-}
+export type CaseStatus = Schemas['CaseSummaryResponse']['status']
+export type CasePriority = Schemas['CaseSummaryResponse']['priority']
+export type FeedbackLabel = Schemas['AnalystFeedbackResponse']['label']
+export type EvidenceAdequacy = Schemas['AnalystFeedbackResponse']['evidence_adequacy']
+export type CaseSummaryResponse = RequireFields<Schemas['CaseSummaryResponse'], 'alert_ids'>
+export type CaseListResponse = RequireFields<Schemas['CaseListResponse'], 'items'>
+export type AnalystFeedbackResponse = RequireFields<
+  Schemas['AnalystFeedbackResponse'],
+  'missing_evidence'
+>
+export type CaseDetailResponse = RequireFields<
+  Schemas['CaseDetailResponse'],
+  'alerts' | 'feedback_history'
+>
+export type CaseCreateRequest = Schemas['CaseCreateRequest']
+export type CaseUpdateRequest = Schemas['CaseUpdateRequest']
+export type CaseFeedbackCreateRequest = Schemas['CaseFeedbackCreateRequest']
 
-export type CaseSummaryResponse = {
-  id: string
-  title: string
-  status: CaseStatus
-  priority: CasePriority
-  assignee: string | null
-  alert_ids: string[]
-  updated_at: string
-}
+export type ChatMessageResponse = RequireFields<Schemas['ChatMessageResponse'], 'citation_ids'>
+export type ChatConversationResponse = RequireFields<
+  Schemas['ChatConversationResponse'],
+  'messages'
+>
+export type ChatConversationCreateRequest = Schemas['ChatConversationCreateRequest']
+export type ChatMessageCreateRequest = Schemas['ChatMessageCreateRequest']
 
-export type CaseListResponse = {
-  items: CaseSummaryResponse[]
-  page: PageInfo
-}
+export type KnowledgeBaseStatus = Schemas['KnowledgeBase']['status']
+export type KnowledgeBaseSummaryResponse = OptionalFields<Schemas['KnowledgeBase'], 'pending_cleanup'>
+export type KnowledgeBaseListResponse = Schemas['KbListResponse']
+export type KnowledgeBaseDocumentResponse = Schemas['DocumentSummary']
+export type KnowledgeBaseDocumentListResponse = Schemas['DocumentListResponse']
+export type KnowledgeBaseCreateRequest = Schemas['CreateKbRequest']
+export type DocumentReceiptResponse = Schemas['DocumentReceipt']
+export type DocumentRegistrationResponse = Schemas['DocumentRegistrationResponse']
+export type IngestionStatus = Schemas['DocumentSummary']['status']
 
-export type AnalystFeedbackResponse = {
-  case_id: string
-  label: FeedbackLabel
-  evidence_adequacy: EvidenceAdequacy
-  missing_evidence: string[]
-  notes: string
-  submitted_at: string
+export type DomainIngestionConfig = OptionalFields<Schemas['IngestionConfig'], 'sources'>
+export type DomainConfig = Partial<Omit<
+  Schemas['DomainConfig'],
+  'capabilities' | 'entities' | 'ingestion' | 'records' | 'relationships' | 'ui'
+>> & {
+  alerts: Schemas['AlertsConfig']
+  capabilities: DomainCapabilities
+  domain: Schemas['DomainInfo']
+  entities: DomainEntityDefinition[]
+  ingestion: DomainIngestionConfig
+  records?: RecordsConfig | null
+  relationships: DomainRelationshipDefinition[]
+  ui?: DomainUiConfig | null
 }
-
-export type CaseDetailResponse = {
-  case: CaseSummaryResponse
-  alerts: AlertListItem[]
-  feedback_history: AnalystFeedbackResponse[]
+export type DomainFeatures = RequireFields<
+  Omit<Schemas['DomainFeaturesResponse'], 'capabilities'>,
+  'enabled_pages' | 'roles'
+> & {
+  capabilities: DomainCapabilities
 }
-
-export type CaseCreateRequest = {
-  title: string
-  priority: CasePriority
-  assignee?: string | null
-  alert_ids: string[]
+export type DomainCapabilities = OptionalFields<
+  Schemas['CapabilitiesConfig'],
+  'structured_ingestion'
+>
+export type DomainPropertyDefinition = OptionalFields<
+  Schemas['PropertyDefinition'],
+  'enum_values' | 'max_length' | 'max_value' | 'min_length' | 'min_value' | 'pattern' | 'required'
+>
+export type DomainEntityDefinition = OptionalFields<
+  Omit<Schemas['EntityDefinition'], 'properties'>,
+  'icon'
+> & {
+  properties: Record<string, DomainPropertyDefinition>
 }
-
-export type CaseUpdateRequest = {
-  title?: string
-  status?: CaseStatus
-  priority?: CasePriority
-  assignee?: string | null
+export type DomainRelationshipDefinition = Schemas['RelationshipDefinition']
+export type DomainRoleConfig = Schemas['UiRoleConfig']
+export type DomainUiConfig = OptionalFields<Schemas['UiConfig'], 'default_entity_type' | 'navigation'>
+export type DomainNavigationPage = OptionalFields<Schemas['UiNavigationPageConfig'], 'capability'>
+export type ValidationConfig = Schemas['ValidationConfig']
+export type RecordFeedConfig = Omit<
+  OptionalFields<Schemas['RecordFeedConfig'], 'allow_extra_fields' | 'id_template'>,
+  'entities' | 'observations' | 'record_schema' | 'relationships'
+> & {
+  entities: RecordEntityMapping[]
+  observations: RecordObservationMapping[]
+  record_schema: Record<string, DomainPropertyDefinition>
+  relationships: RecordRelationshipMapping[]
 }
-
-export type CaseFeedbackCreateRequest = {
-  label: FeedbackLabel
-  evidence_adequacy: EvidenceAdequacy
-  missing_evidence: string[]
-  notes: string
+export type RecordEntityMapping = OptionalFields<Schemas['RecordEntityMapping'], 'property_fields'>
+export type RecordRelationshipMapping = Schemas['RecordRelationshipMapping']
+export type RecordObservationMapping = Schemas['RecordObservationMapping']
+export type RecordsConfig = RequireFields<Omit<Schemas['RecordsConfig'], 'feeds'>, never> & {
+  feeds: RecordFeedConfig[]
 }
+export type DomainConfigSchema = Record<string, unknown>
 
-export type ChatMessageResponse = {
-  id: string
-  role: 'user' | 'assistant' | 'system'
-  content: string
-  created_at: string
-  citation_ids: string[]
-}
+export type RecordPushRequest = Schemas['RecordPushRequest']
+export type RecordIngestReceipt = Schemas['RecordIngestReceipt']
 
-export type ChatConversationResponse = {
-  id: string
-  title: string
-  knowledge_base_id: string
-  messages: ChatMessageResponse[]
-}
+export type WorkflowRunResponse = Schemas['WorkflowRunResponse']
+export type WorkflowRunListResponse = RequireFields<Schemas['WorkflowRunListResponse'], 'items'>
 
-export type ChatConversationCreateRequest = {
-  knowledge_base_id: string
-  title?: string
-}
-
-export type ChatMessageCreateRequest = {
-  content: string
-  include_graph_context?: boolean
-  filters?: Record<string, string | number | boolean>
-}
-
-export type KnowledgeBaseStatus = 'active' | 'building' | 'ready' | 'error' | 'archived'
-export type IngestionStatus = 'pending' | 'registered' | 'building' | 'ready' | 'failed' | 'error'
-
-export type KnowledgeBaseSummaryResponse = {
-  id: string
-  name: string
-  description: string
-  status: KnowledgeBaseStatus
-  document_count: number
-  entity_count: number
-  relationship_count: number
-  created_at: string
-}
-
-export type KnowledgeBaseListResponse = {
-  items: KnowledgeBaseSummaryResponse[]
-  total: number
-}
-
-export type KnowledgeBaseDocumentResponse = {
-  id: string
-  knowledge_base_id: string
-  filename: string
-  content_type: string | null
-  size_bytes: number | null
-  status: IngestionStatus
-  created_at: string
-}
-
-export type KnowledgeBaseDocumentListResponse = {
-  items: KnowledgeBaseDocumentResponse[]
-  total: number
-}
-
-export type KnowledgeBaseCreateRequest = {
-  name: string
-  description: string
-}
-
-export type DocumentReceiptResponse = {
-  knowledge_base_id: string
-  source_document_id: string
-  filename: string | null
-  status: IngestionStatus
-  storage_key: string | null
-  uri: string | null
-  document_format: string | null
-  created_at: string
-}
-
-export type DocumentRegistrationResponse = {
-  documents: DocumentReceiptResponse[]
-}
-
-export type RecordPushRequest = {
-  feed_name: string
-  rows: Record<string, unknown>[]
-}
-
-export type RecordIngestReceipt = {
-  knowledge_base_id: string
-  feed_name: string
-  record_type: string
-  correlation_id: string
-  accepted_count: number
-  created_at: string
-}
-
-export type WorkflowRunResponse = {
-  id: string
-  workflow_type: 'ingestion' | 'graph_build' | 'analytics' | 'monitoring'
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
-  knowledge_base_id: string
-  started_at: string
-  updated_at: string
-  current_step: string
-  last_error: string | null
-}
-
-export type WorkflowRunListResponse = {
-  items: WorkflowRunResponse[]
-}
-
-export type RiskFactorResponse = {
-  factor_name: string
-  contribution: number
-  rationale: string | null
-}
-
-export type RiskScoreResponse = {
-  entity_id: string
-  overall_score: number
-  risk_level: 'low' | 'medium' | 'high' | 'critical'
-  factors: RiskFactorResponse[]
-}
-
-export type TimeseriesPointResponse = {
-  timestamp: string
-  value: number
-  label: string
-  is_anomaly: boolean
-}
-
-export type TimeseriesResponse = {
-  entity_id: string
-  metric_name: string
-  points: TimeseriesPointResponse[]
-}
-
-export type AnalyticsOverviewResponse = {
-  active_alerts: number
-  open_cases: number
-  entities_monitored: number
-  high_risk_entities: number
-}
+export type RiskFactorResponse = Schemas['RiskFactorResponse']
+export type RiskScoreResponse = RequireFields<Schemas['RiskScoreResponse'], 'factors'>
+export type TimeseriesPointResponse = Schemas['EntityTimeseriesPointResponse']
+export type TimeseriesResponse = RequireFields<Schemas['EntityTimeseriesResponse'], 'points'>
+export type AnalyticsOverviewResponse = Schemas['AnalyticsOverviewResponse']

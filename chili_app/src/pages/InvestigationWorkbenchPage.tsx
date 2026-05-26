@@ -13,6 +13,8 @@ import {
 } from '../api/investigation'
 import { useKnowledgeBases } from '../api/knowledgebases'
 import { TrendBars } from '../components/charts/TrendBars'
+import { GraphCanvas } from '../components/investigation/GraphCanvas'
+import type { Entity as ApiEntity, Relationship as ApiRelationship, SubgraphResult } from '../types/api'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
 import { ConfidenceBar } from '../components/ui/ConfidenceBar'
@@ -260,12 +262,30 @@ export function InvestigationWorkbenchPage() {
                   </select>
                 </div>
                 {neighborhood ? (
-                  <NeighborhoodList
-                    config={domainConfigQuery.data}
-                    centerEntityId={entity.id}
-                    entities={neighborhood.entities}
-                    relationships={neighborhood.relationships}
-                  />
+                  <>
+                    <div className="investigation-graph-canvas">
+                      <GraphCanvas
+                        subgraph={toSubgraphResult(neighborhood.entities, neighborhood.relationships)}
+                        selectedEntityId={entity.id}
+                        centerEntityId={entity.id}
+                        entityTypes={domainConfigQuery.data.entities.map((e) => e.name)}
+                        onSelectNode={(nextId) => {
+                          const nextSearch = new URLSearchParams(searchParams)
+                          if (activeKnowledgeBaseId) {
+                            nextSearch.set('kb', activeKnowledgeBaseId)
+                          }
+                          navigate({ pathname: `/investigation/${nextId}`, search: nextSearch.toString() })
+                        }}
+                        testId="investigation-graph-canvas"
+                      />
+                    </div>
+                    <NeighborhoodList
+                      config={domainConfigQuery.data}
+                      centerEntityId={entity.id}
+                      entities={neighborhood.entities}
+                      relationships={neighborhood.relationships}
+                    />
+                  </>
                 ) : (
                   <EmptyState description="Select an entity to load its graph neighborhood." title="No neighborhood loaded" />
                 )}
@@ -300,6 +320,40 @@ function depthFromSearchParams(searchParams: URLSearchParams): number {
     return 2
   }
   return Math.min(Math.max(value, 1), 5)
+}
+
+// Adapter: collapse RuntimeEntity/RuntimeRelationship (from the investigation
+// API contract) into the GraphCanvas SubgraphResult shape. The two surface
+// types are structurally compatible (same id/type/properties/metadata/version
+// fields), but TypeScript still requires an explicit conversion across the
+// nominal interface boundary.
+function toSubgraphResult(
+  entities: RuntimeEntity[],
+  relationships: RuntimeRelationship[],
+): SubgraphResult {
+  return {
+    nodes: entities.map((e): ApiEntity => ({
+      id: e.id,
+      type: e.type,
+      properties: e.properties,
+      metadata: e.metadata,
+      created_at: e.created_at,
+      updated_at: e.updated_at,
+      version: e.version,
+    })),
+    edges: relationships.map((r): ApiRelationship => ({
+      id: r.id,
+      type: r.type,
+      source_id: r.source_id,
+      target_id: r.target_id,
+      properties: r.properties,
+      metadata: r.metadata,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      version: r.version,
+      weight: r.weight,
+    })),
+  }
 }
 
 function NeighborhoodList({
