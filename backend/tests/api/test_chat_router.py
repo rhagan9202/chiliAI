@@ -84,6 +84,19 @@ def test_send_message_returns_full_conversation() -> None:
     assert payload["messages"][1]["role"] == "assistant"
 
 
+def test_send_message_rejects_configured_question_length() -> None:
+    client = TestClient(create_app())
+    conversation_id = _new_conversation_id(client)
+
+    response = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={"content": "x" * 5001},
+    )
+
+    assert response.status_code == 422
+    assert "exceeds maximum" in response.json()["detail"]
+
+
 def test_send_message_404_for_unknown_conversation() -> None:
     """Unknown conversation ids resolve to 404, not 500 from a bare KeyError."""
     client = TestClient(create_app())

@@ -27,11 +27,12 @@ from api.dependencies import (
 )
 from api.middleware.rbac import require_role
 from api.state import ApiState
-from config.schema import DomainConfig
+from config.schema import DomainConfig, ValidationConfig
 from rag.exceptions import RagConfigurationError
 from rag.protocols import RagServiceProtocol
 from rag.service_models import RagQueryRequest, RagStreamChunk
 from shared.kb_scope import resolve_kb_scope
+from shared.validation import validate_query_length
 
 __all__ = ["router"]
 
@@ -86,6 +87,19 @@ async def add_message(
     kb_repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
 ) -> Union[ChatConversationResponse, StreamingResponse]:
     """Append a message to a conversation; stream tokens with ``?stream=true``."""
+
+    validation = domain_config.validation or ValidationConfig()
+    try:
+        cleaned_content = validate_query_length(
+            payload.content,
+            validation.max_rag_question_length,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+    payload = payload.model_copy(update={"content": cleaned_content})
 
     if not stream:
         try:
