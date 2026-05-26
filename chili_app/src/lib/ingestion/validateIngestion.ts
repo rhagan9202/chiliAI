@@ -273,6 +273,102 @@ function validatePrimitive(
     )
   }
 
+  if (definition.type === 'enum') {
+    const values = definition.enum_values ?? []
+    if (!values.includes(String(value))) {
+      fieldIssues.push(
+        issue(
+          `row-${rowNumber}-${fieldName}-enum`,
+          `Row ${rowNumber} field ${display} must be one of ${values.join(', ')}.`,
+          rowIndex,
+          fieldName,
+        ),
+      )
+    }
+  }
+
+  if (definition.type === 'decimal' || definition.type === 'integer') {
+    const parsed = numericValue(value)
+    const numericTypeValid =
+      definition.type === 'decimal'
+        ? parsed !== null
+        : Number.isInteger(parsed)
+    if (numericTypeValid && parsed !== null) {
+      if (
+        definition.min_value !== undefined &&
+        definition.min_value !== null &&
+        parsed < definition.min_value
+      ) {
+        fieldIssues.push(
+          issue(
+            `row-${rowNumber}-${fieldName}-min`,
+            `Row ${rowNumber} field ${display} must be >= ${definition.min_value}.`,
+            rowIndex,
+            fieldName,
+          ),
+        )
+      }
+      if (
+        definition.max_value !== undefined &&
+        definition.max_value !== null &&
+        parsed > definition.max_value
+      ) {
+        fieldIssues.push(
+          issue(
+            `row-${rowNumber}-${fieldName}-max`,
+            `Row ${rowNumber} field ${display} must be <= ${definition.max_value}.`,
+            rowIndex,
+            fieldName,
+          ),
+        )
+      }
+    }
+  }
+
+  if (['string', 'list', 'nested'].includes(definition.type)) {
+    const length =
+      definition.type === 'string' && typeof value === 'string'
+        ? value.length
+        : definition.type === 'list' && Array.isArray(value)
+          ? value.length
+          : definition.type === 'nested' &&
+              value !== null &&
+              typeof value === 'object' &&
+              !Array.isArray(value)
+            ? Object.keys(value).length
+            : null
+    if (length !== null) {
+      if (
+        definition.min_length !== undefined &&
+        definition.min_length !== null &&
+        length < definition.min_length
+      ) {
+        fieldIssues.push(
+          issue(
+            `row-${rowNumber}-${fieldName}-min-length`,
+            `Row ${rowNumber} field ${display} must have length >= ${definition.min_length}.`,
+            rowIndex,
+            fieldName,
+          ),
+        )
+      }
+      if (
+        definition.max_length !== undefined &&
+        definition.max_length !== null &&
+        length > definition.max_length
+      ) {
+        fieldIssues.push(
+          issue(
+            `row-${rowNumber}-${fieldName}-max-length`,
+            `Row ${rowNumber} field ${display} must have length <= ${definition.max_length}.`,
+            rowIndex,
+            fieldName,
+          ),
+        )
+      }
+    }
+  }
+
   if (definition.pattern) {
     if (!matchesFullString(definition.pattern, value)) {
       fieldIssues.push(
