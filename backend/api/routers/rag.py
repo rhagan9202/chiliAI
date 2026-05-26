@@ -16,7 +16,7 @@ from typing import Union
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
-from knowledgebases import KnowledgeBaseRepository
+from knowledgebases.protocols import KnowledgeBaseRepository
 from api.contracts import ChatConversationResponse, ChatMessageCreateRequest
 from api.dependencies import (
     get_api_state,
@@ -64,7 +64,17 @@ async def create_conversation(
 
 @router.post(
     "/conversations/{conversation_id}/messages",
-    response_model=None,
+    response_model=ChatConversationResponse,
+    responses={
+        200: {
+            "content": {
+                "text/event-stream": {
+                    "schema": {"type": "string"},
+                    "description": "Server-sent events carrying token chunks and a final citation event.",
+                },
+            }
+        }
+    },
     dependencies=[Depends(require_role("analyst"))],
 )
 async def add_message(
