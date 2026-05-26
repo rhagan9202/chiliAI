@@ -9,15 +9,26 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Iterator
+from typing import cast
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.app import create_app
-from api.dependencies import get_domain_config, get_session_store
+from api.dependencies import get_api_state, get_domain_config, get_session_store
 from api.middleware.session_store import InMemorySessionStore, SessionRecord
+from api.state import ApiState
 from config.loader import load_config
 from config.schema import AuthConfig, DomainConfig
+from rag.protocols import RagServiceProtocol
+from rag.service_models import (
+    RagAnswer,
+    RagCitation,
+    RagQueryRequest,
+    RagQueryResponse,
+    RagStreamChunk,
+)
 
 
 def _domain_with_auth() -> DomainConfig:
@@ -64,6 +75,37 @@ def _new_conversation_id(client: TestClient) -> str:
     )
     assert created.status_code == 200
     return str(created.json()["id"])
+
+
+class _CitationRagService:
+    def answer(self, request: RagQueryRequest) -> RagQueryResponse:
+        raise NotImplementedError
+
+    def answer_question(
+        self,
+        *,
+        knowledge_base_ids: list[str],
+        question: str,
+    ) -> RagAnswer:
+        raise NotImplementedError
+
+    def stream_answer(self, request: RagQueryRequest) -> Iterator[RagStreamChunk]:
+        yield RagStreamChunk(chunk_text="answer", is_final=False)
+        yield RagStreamChunk(
+            chunk_text="",
+            is_final=True,
+            citations=[
+                RagCitation(
+                    record_id="record-1",
+                    content_id="content-1",
+                    score=0.9,
+                    snippet="Relevant excerpt",
+                    document_id="doc-1",
+                    chunk_index=1,
+                    highlight="Relevant",
+                )
+            ],
+        )
 
 
 def test_send_message_returns_full_conversation() -> None:
@@ -183,6 +225,49 @@ def test_stream_message_returns_sse_with_done_sentinel() -> None:
     assert len(events) >= 2  # at least one token chunk + final done sentinel
     assert events[-1]["done"] is True
     assert "sources" in events[-1]
+
+
+def test_stream_message_final_event_citations_match_contract() -> None:
+    app = create_app()
+    state = ApiState()
+    object.__setattr__(
+        state,
+        "_rag_service",
+        cast(RagServiceProtocol, _CitationRagService()),
+    )
+    app.dependency_overrides[get_api_state] = lambda: state
+    client = TestClient(app)
+    conversation_id = _new_conversation_id(client)
+
+    with client.stream(
+        "POST",
+        f"/chat/conversations/{conversation_id}/messages",
+        params={"stream": "true"},
+        json={"content": "Tell me more"},
+    ) as response:
+        assert response.status_code == 200
+        body = b"".join(response.iter_bytes()).decode("utf-8")
+
+    events = _parse_sse_events(body)
+    final_event = events[-1]
+    assert final_event["done"] is True
+    citations_raw = final_event["citations"]
+    assert isinstance(citations_raw, list)
+    citations = cast(list[object], citations_raw)
+    assert citations
+    for citation_raw in citations:
+        assert isinstance(citation_raw, dict)
+        citation = cast(dict[str, object], citation_raw)
+        assert {
+            "record_id",
+            "content_id",
+            "score",
+            "snippet",
+            "document_id",
+            "chunk_index",
+            "highlight",
+            "entity_id",
+        }.issubset(citation)
 
 
 def test_stream_message_404_for_unknown_conversation() -> None:

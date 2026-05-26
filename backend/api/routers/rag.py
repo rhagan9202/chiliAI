@@ -149,7 +149,23 @@ async def _stream_sse(
 def _chunk_to_payload(chunk: RagStreamChunk) -> dict[str, object]:
     payload: dict[str, object] = {"token": chunk.chunk_text, "done": chunk.is_final}
     if chunk.is_final:
+        # Legacy field: list of record_ids for backwards compatibility with older clients.
         payload["sources"] = [citation.record_id for citation in chunk.citations]
+        # BL-002: rich citation payload so the chat UI can render snippet,
+        # document anchor, score, and (when available) entity click-through.
+        payload["citations"] = [
+            {
+                "record_id": citation.record_id,
+                "content_id": citation.content_id,
+                "score": citation.score,
+                "snippet": citation.snippet,
+                "document_id": citation.document_id,
+                "chunk_index": citation.chunk_index,
+                "highlight": citation.highlight,
+                "entity_id": None,
+            }
+            for citation in chunk.citations
+        ]
     return payload
 
 
