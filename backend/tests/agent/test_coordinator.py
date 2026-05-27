@@ -90,6 +90,7 @@ from ingestion.models import ExtractionResult, ParsedDocument, ValidationReport
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
+from ingestion.recovery import InMemoryIngestionRecoveryStore
 from ingestion.service import IngestionService
 from ingestion.service_models import DocumentSubmission
 from ingestion.validator import create_extraction_validator
@@ -421,6 +422,7 @@ def test_build_worker_dependencies_assembles_ingestion_pipeline(
     assert isinstance(deps.embeddings_service, EmbeddingsService)
     assert deps.llm_client is not None
     assert deps.event_settings.backend == "in-memory"
+    assert isinstance(deps.ingestion_service._recovery_store, InMemoryIngestionRecoveryStore)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_worker_event_bus_explicit_config_preserves_env_recovery_and_trim_defaults(

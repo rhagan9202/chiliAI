@@ -69,6 +69,7 @@ from graph.service import create_graph_service
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import ParserRegistry, create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
+from ingestion.recovery import InMemoryIngestionRecoveryStore
 from ingestion.service import IngestionService
 from llm.adapters.protocols import LlmClientProtocol
 from llm.factory import create_llm_client
@@ -118,6 +119,7 @@ __all__ = [
     "get_event_bus",
     "get_event_bus_settings",
     "get_graph_entity_detail_payload",
+    "get_ingestion_recovery_store",
     "get_ingestion_service",
     "get_graph_repository",
     "get_graph_service",
@@ -690,12 +692,19 @@ def get_gnn_service() -> GnnServiceProtocol:
 
 
 @lru_cache(maxsize=1)
+def get_ingestion_recovery_store() -> InMemoryIngestionRecoveryStore:
+    """Return the recovery marker store for ingestion publish failures."""
+    return InMemoryIngestionRecoveryStore()
+
+
+@lru_cache(maxsize=1)
 def get_ingestion_service() -> IngestionService:
     """Return the ingestion service used by API routes and tests."""
     return IngestionService(
         get_parser_orchestrator(),
         object_store=get_object_store(),
         event_bus=get_event_bus(),
+        recovery_store=get_ingestion_recovery_store(),
     )
 
 

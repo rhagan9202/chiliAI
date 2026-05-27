@@ -180,6 +180,7 @@ class IngestionService:
                                 content_hash=content_hashes_by_source_document_id.get(
                                     reference.source_document_id
                                 ),
+                                correlation_id=event.correlation_id,
                                 event_type=event.event_type,
                                 failure_reason=str(exc),
                             )

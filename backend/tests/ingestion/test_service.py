@@ -183,6 +183,7 @@ def test_register_documents_records_recovery_marker_when_publish_fails() -> None
     assert marker.source_document_id.startswith("doc-sha256-")
     assert marker.storage_key == f"knowledgebases/kb-1/documents/{marker.source_document_id}/source"
     assert marker.content_hash == sha256(b"claim body").hexdigest()
+    assert marker.correlation_id is not None
     assert marker.event_type == "documents.uploaded"
     assert "redis unavailable" in marker.failure_reason
     assert marker.created_at is not None

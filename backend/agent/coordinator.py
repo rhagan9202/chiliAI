@@ -129,6 +129,7 @@ from ingestion.models import ExtractionResult, ParsedDocument, ValidationReport
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
+from ingestion.recovery import InMemoryIngestionRecoveryStore
 from ingestion.service import IngestionService
 from ingestion.validator import ExtractionResultValidator, create_extraction_validator
 from llm.adapters.protocols import LlmClientProtocol
@@ -676,6 +677,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         orchestrator,
         object_store=object_store,
         event_bus=event_bus,
+        recovery_store=InMemoryIngestionRecoveryStore(),
     )
     chunker = create_document_chunker(config.ingestion.chunking)
     extractor = create_document_extractor(config.entities, config.relationships)

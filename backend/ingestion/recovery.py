@@ -15,6 +15,7 @@ class IngestionRecoveryMarker(BaseModel):
     source_document_id: str
     storage_key: str | None
     content_hash: str | None
+    correlation_id: str
     event_type: str
     failure_reason: str
     created_at: datetime = Field(default_factory=utc_now)

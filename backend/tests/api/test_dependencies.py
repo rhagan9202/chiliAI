@@ -25,6 +25,7 @@ from embeddings.service import EmbeddingsService
 from events.adapters.in_memory import InMemoryEventBus
 from events.adapters.redis_streams import RedisStreamsEventBus
 from graph.service import GraphService
+from ingestion.recovery import InMemoryIngestionRecoveryStore
 from llm.service import LlmService
 from monitoring.adapters.in_memory import InMemoryObservationSource
 from monitoring.adapters.postgres import PostgresObservationSource
@@ -67,6 +68,7 @@ def clear_dependency_caches() -> None:
         dependencies.get_parser_registry,
         dependencies.get_remote_fetcher,
         dependencies.get_parser_orchestrator,
+        dependencies.get_ingestion_recovery_store,
     ]
     for factory in cacheable_factories:
         factory.cache_clear()
@@ -531,6 +533,17 @@ def test_get_ingestion_service_returns_an_ingestion_service(
     service = dependencies.get_ingestion_service()
 
     assert isinstance(service, IngestionService)
+
+
+def test_get_ingestion_service_wires_recovery_store(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    _install_config(monkeypatch, base_config)
+
+    service = dependencies.get_ingestion_service()
+
+    assert isinstance(service._recovery_store, InMemoryIngestionRecoveryStore)  # pyright: ignore[reportPrivateUsage]
 
 
 # ---------------------------------------------------------------------------
