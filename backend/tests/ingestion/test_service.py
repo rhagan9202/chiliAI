@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
+
+import pytest
+
 from ingestion.models import ParsedDocument
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import DocumentReference, DocumentsFailedEvent, DocumentsParsedEvent, DocumentsUploadedEvent
+from ingestion.recovery import InMemoryIngestionRecoveryStore
 from ingestion.models import DocumentFormat, SourceDocument, SourceType
 from ingestion.orchestrators.protocols import DocumentParseFailure, ParseResult
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
@@ -27,6 +32,23 @@ def _service() -> tuple[IngestionService, InMemoryEventBus, InMemoryObjectStore]
         event_bus=event_bus,
     )
     return service, event_bus, object_store
+
+
+class FailingPublishBus:
+    def publish(self, event):
+        raise RuntimeError("redis unavailable")
+
+    def ensure_consumer_group(self, event_types, *, consumer_group):
+        return None
+
+    def consume(self, event_types, *, consumer_group=None, consumer_name=None, limit=1, block_ms=None):
+        return []
+
+    def ack(self, deliveries):
+        return None
+
+    def publish_to_dlq(self, event, error_info):
+        return None
 
 
 def test_register_documents_stores_content_and_publishes_event() -> None:
@@ -100,6 +122,44 @@ def test_register_documents_deduplicates_repeated_content_with_different_filenam
     assert object_store.list_keys("knowledgebases/kb-1/documents/") == [
         first[0].storage_key
     ]
+
+
+def test_register_documents_records_recovery_marker_when_publish_fails() -> None:
+    recovery_store = InMemoryIngestionRecoveryStore()
+    object_store = InMemoryObjectStore()
+    service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(),
+            fetcher=HttpxRemoteDocumentFetcher(),
+        ),
+        object_store=object_store,
+        event_bus=FailingPublishBus(),
+        recovery_store=recovery_store,
+    )
+
+    with pytest.raises(RuntimeError, match="redis unavailable"):
+        service.register_documents(
+            "kb-1",
+            [
+                DocumentSubmission(
+                    filename="claim.txt",
+                    content=b"claim body",
+                    content_type="text/plain",
+                    document_format=DocumentFormat.TXT,
+                )
+            ],
+        )
+
+    markers = recovery_store.list_markers()
+    assert len(markers) == 1
+    marker = markers[0]
+    assert marker.knowledge_base_id == "kb-1"
+    assert marker.source_document_id.startswith("doc-sha256-")
+    assert marker.storage_key == f"knowledgebases/kb-1/documents/{marker.source_document_id}/source"
+    assert marker.content_hash == sha256(b"claim body").hexdigest()
+    assert marker.event_type == "documents.uploaded"
+    assert "redis unavailable" in marker.failure_reason
+    assert marker.created_at is not None
 
 
 def test_register_documents_deduplicates_repeated_remote_uri() -> None:
