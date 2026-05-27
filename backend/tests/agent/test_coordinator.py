@@ -208,6 +208,50 @@ class _StaticGraphProvider:
         )
 
 
+class _RecoveringEventBus(InMemoryEventBus):
+    def __init__(
+        self,
+        *,
+        reclaimed: list[EventDelivery],
+        consumed: list[EventDelivery],
+    ) -> None:
+        super().__init__()
+        self._reclaimed = reclaimed
+        self._consumed = consumed
+        self.calls: list[tuple[str, int]] = []
+        self.acked_deliveries: list[EventDelivery] = []
+
+    def reclaim_stale_pending(
+        self,
+        event_types: list[str],
+        *,
+        consumer_group: str,
+        consumer_name: str,
+        min_idle_ms: int,
+        limit: int = 10,
+    ) -> list[EventDelivery]:
+        del event_types, consumer_group, consumer_name, min_idle_ms
+        self.calls.append(("reclaim", limit))
+        return self._reclaimed[:limit]
+
+    def consume(
+        self,
+        event_types: list[str],
+        *,
+        consumer_group: str | None = None,
+        consumer_name: str | None = None,
+        limit: int = 1,
+        block_ms: int | None = None,
+    ) -> list[EventDelivery]:
+        del event_types, consumer_group, consumer_name, block_ms
+        self.calls.append(("consume", limit))
+        return self._consumed[:limit]
+
+    def ack(self, deliveries: list[EventDelivery]) -> None:
+        self.acked_deliveries.extend(deliveries)
+        super().ack(deliveries)
+
+
 def _graph_updated_event_with_valid_entity(
     *,
     knowledge_base_id: str,
@@ -263,6 +307,89 @@ def _graph_updated_event_with_valid_entity(
             )
         ],
     )
+
+
+def _parsed_delivery(
+    *,
+    event_id: str,
+    parsed_document_id: str,
+    object_store: InMemoryObjectStore,
+) -> EventDelivery:
+    storage_key = f"knowledgebases/kb-1/parsed/{parsed_document_id}.json"
+    object_store.put_bytes(
+        storage_key,
+        ParsedDocument(
+            id=parsed_document_id,
+            source_document_id=f"doc-{parsed_document_id}",
+            text_content=f"Claim content for {parsed_document_id}.",
+            parser_name="test-parser",
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    return EventDelivery(
+        event=DocumentsParsedEvent(
+            correlation_id=f"corr-{parsed_document_id}",
+            documents=[
+                ParsedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id=f"doc-{parsed_document_id}",
+                    parsed_document_id=parsed_document_id,
+                    parser_name="test-parser",
+                    storage_key=f"knowledgebases/kb-1/documents/{parsed_document_id}.txt",
+                    parsed_document_storage_key=storage_key,
+                )
+            ],
+        ),
+        event_id=event_id,
+        stream="chili.documents.parsed",
+        consumer_group="test-workers",
+    )
+
+
+def test_drain_ingestion_events_processes_reclaimed_pending_before_new_deliveries() -> None:
+    object_store = InMemoryObjectStore()
+    reclaimed = _parsed_delivery(
+        event_id="1-0",
+        parsed_document_id="parsed-stale",
+        object_store=object_store,
+    )
+    consumed = _parsed_delivery(
+        event_id="2-0",
+        parsed_document_id="parsed-new",
+        object_store=object_store,
+    )
+    event_bus = _RecoveringEventBus(reclaimed=[reclaimed], consumed=[consumed])
+    service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(),
+            fetcher=HttpxRemoteDocumentFetcher(),
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    processed = asyncio.run(drain_ingestion_events(
+        event_bus,
+        service,
+        create_document_chunker(),
+        create_document_extractor([]),
+        create_extraction_validator([], []),
+        graph_service,
+        object_store,
+        consumer_group="test-workers",
+        consumer_name="worker-1",
+        limit=2,
+        reclaim_min_idle_ms=30_000,
+    ))
+
+    assert processed == 2
+    assert event_bus.calls == [("reclaim", 2), ("consume", 1)]
+    assert event_bus.acked_deliveries == [reclaimed, consumed]
 
 
 def test_build_worker_dependencies_assembles_ingestion_pipeline(
@@ -1705,7 +1832,12 @@ def test_run_handler_with_retry_propagates_dlq_publish_failure() -> None:
     """
 
     class _DlqFailingEventBus(InMemoryEventBus):
-        def publish_to_dlq(self, event: AnyEvent, error: DlqErrorInfo) -> None:  # type: ignore[override]
+        def publish_to_dlq(
+            self,
+            event: AnyEvent,
+            error_info: DlqErrorInfo,
+        ) -> str | None:
+            del event, error_info
             raise RuntimeError("simulated DLQ publish failure (Redis unreachable)")
 
     event_bus = _DlqFailingEventBus()

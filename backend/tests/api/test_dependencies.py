@@ -188,6 +188,30 @@ def test_event_bus_uses_explicit_config_when_section_present(
     assert isinstance(dependencies.get_event_bus(), RedisStreamsEventBus)
 
 
+def test_event_bus_explicit_config_carries_recovery_and_trim_settings(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={
+            "events": EventBusConfig(
+                backend="redis",
+                uri="redis://localhost:6379/5",
+                stream_prefix="custom",
+                consumer_group="custom-workers",
+                stream_maxlen=5000,
+                reclaim_min_idle_ms=45_000,
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+
+    settings = dependencies._resolve_event_bus_settings(config)  # pyright: ignore[reportPrivateUsage]
+
+    assert settings.stream_maxlen == 5000
+    assert settings.reclaim_min_idle_ms == 45_000
+
+
 def test_explicit_local_storage_uses_shared_filesystem_adapter(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

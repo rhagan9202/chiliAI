@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from events.adapters.redis_streams import RedisStreamsEventBus
 from events.protocols import DlqErrorInfo
+from events.runtime import create_event_bus, load_event_bus_settings
 from events.types import (
     DocumentReference,
     DocumentsParsedEvent,
@@ -171,6 +174,34 @@ def test_redis_streams_event_bus_publishes_with_stream_maxlen() -> None:
 
     assert client.xadd_calls[0][0] == "chili.documents.uploaded"
     assert client.xadd_calls[0][2] == 1000
+    assert client.xadd_calls[0][3] is True
+
+
+def test_create_event_bus_passes_env_stream_maxlen_to_redis_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeRedis()
+
+    def _redis_from_url(redis_url: str) -> FakeRedis:
+        del redis_url
+        return client
+
+    monkeypatch.setenv("CHILI_EVENT_BUS_BACKEND", "redis")
+    monkeypatch.setenv("CHILI_EVENT_STREAM_MAXLEN", "2500")
+    monkeypatch.setattr(
+        "events.adapters.redis_streams.Redis.from_url",
+        _redis_from_url,
+    )
+    event = DocumentsUploadedEvent(
+        documents=[
+            DocumentReference(knowledge_base_id="kb-1", source_document_id="doc-1")
+        ]
+    )
+
+    event_bus = create_event_bus(load_event_bus_settings())
+    event_bus.publish(event)
+
+    assert client.xadd_calls[0][2] == 2500
     assert client.xadd_calls[0][3] is True
 
 

@@ -154,6 +154,8 @@ class EventBusConfig(BaseModel):
     uri: str | None = None
     stream_prefix: str = "chili"
     consumer_group: str = "chili-workers"
+    stream_maxlen: int | None = Field(default=None, gt=0)
+    reclaim_min_idle_ms: int | None = Field(default=None, gt=0)
 
 
 class DatabaseConfig(BaseModel):

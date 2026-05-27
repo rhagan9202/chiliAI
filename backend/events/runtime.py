@@ -22,6 +22,8 @@ class EventBusSettings:
     consumer_name_prefix: str = "worker"
     batch_size: int = 10
     block_ms: int = 1000
+    stream_maxlen: int | None = None
+    reclaim_min_idle_ms: int | None = None
 
     def consumer_name(self) -> str:
         """Return a unique consumer identifier for the running process."""
@@ -42,20 +44,33 @@ def load_event_bus_settings() -> EventBusSettings:
         consumer_name_prefix=os.environ.get("CHILI_EVENT_CONSUMER_NAME_PREFIX", "worker"),
         batch_size=int(os.environ.get("CHILI_EVENT_BATCH_SIZE", "10")),
         block_ms=int(os.environ.get("CHILI_EVENT_BLOCK_MS", "1000")),
+        stream_maxlen=_optional_positive_int_from_env("CHILI_EVENT_STREAM_MAXLEN"),
+        reclaim_min_idle_ms=_optional_positive_int_from_env(
+            "CHILI_EVENT_RECLAIM_MIN_IDLE_MS"
+        ),
     )
+
+
+def _optional_positive_int_from_env(name: str) -> int | None:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return None
+    value = int(raw)
+    return value if value > 0 else None
 
 
 def create_event_bus(settings: EventBusSettings | None = None) -> EventBus:
     """Create an event bus adapter for the configured runtime."""
-    # TODO(production): Wire event bus settings from DomainConfig YAML instead of
-    # env-only. Add connection health check (PING) on startup. Support TLS/auth
-    # for Redis connections (rediss:// URIs, password, client certs). Add connection
-    # pool configuration (max_connections, socket_timeout, retry_on_timeout).
+    # TODO(production): Add connection health check (PING) on startup. Support
+    # TLS/auth for Redis connections (rediss:// URIs, password, client certs).
+    # Add connection pool configuration (max_connections, socket_timeout,
+    # retry_on_timeout).
     resolved = settings or load_event_bus_settings()
     if resolved.backend == "redis":
         return RedisStreamsEventBus(
             redis_url=resolved.redis_url,
             stream_name_resolver=resolved.stream_name,
+            stream_maxlen=resolved.stream_maxlen,
         )
     return InMemoryEventBus()
 

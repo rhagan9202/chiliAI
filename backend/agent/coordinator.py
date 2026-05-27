@@ -33,6 +33,7 @@ from config.schema import (
     DatabaseConfig,
     DomainConfig,
     EmbeddingsConfig,
+    EventBusConfig,
     GraphDbConfig,
     LlmConfig,
     ObjectStoreConfig,
@@ -622,6 +623,28 @@ def build_llm_client(config: DomainConfig) -> LlmClientProtocol:
         ) from exc
 
 
+def _resolve_worker_event_bus_settings(config: DomainConfig) -> EventBusSettings:
+    env_settings = load_event_bus_settings()
+    if "events" not in config.model_fields_set:
+        return env_settings
+
+    event_config = config.events
+    if event_config is None or event_config == EventBusConfig():
+        return env_settings
+
+    return EventBusSettings(
+        backend="redis" if event_config.backend == "redis" else "in-memory",
+        redis_url=event_config.uri or env_settings.redis_url,
+        stream_prefix=event_config.stream_prefix,
+        consumer_group=event_config.consumer_group,
+        consumer_name_prefix=env_settings.consumer_name_prefix,
+        batch_size=env_settings.batch_size,
+        block_ms=env_settings.block_ms,
+        stream_maxlen=event_config.stream_maxlen,
+        reclaim_min_idle_ms=event_config.reclaim_min_idle_ms,
+    )
+
+
 def build_worker_dependencies() -> WorkerDependencies:
     """Assemble the worker's runtime dependencies from configuration.
 
@@ -630,7 +653,7 @@ def build_worker_dependencies() -> WorkerDependencies:
     """
 
     config = load_config()
-    event_settings = load_event_bus_settings()
+    event_settings = _resolve_worker_event_bus_settings(config)
     event_bus = create_event_bus(event_settings)
     workflow_run_store = create_workflow_run_store_from_env()
     workflow_tracker = WorkflowEventTracker(workflow_run_store)
@@ -2458,6 +2481,7 @@ async def drain_ingestion_events(
     consumer_name: str,
     limit: int = 10,
     block_ms: int | None = None,
+    reclaim_min_idle_ms: int | None = None,
     retry_policy: RetryPolicy | None = None,
     health_state: HealthState | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
@@ -2472,13 +2496,28 @@ async def drain_ingestion_events(
     processed = 0
     event_types = list(WORKER_EVENT_TYPES)
     event_bus.ensure_consumer_group(event_types, consumer_group=consumer_group)
-    deliveries = event_bus.consume(
-        event_types,
-        consumer_group=consumer_group,
-        consumer_name=consumer_name,
-        limit=limit,
-        block_ms=block_ms,
-    )
+    deliveries: list[EventDelivery] = []
+    if reclaim_min_idle_ms is not None and reclaim_min_idle_ms > 0 and limit > 0:
+        deliveries.extend(
+            event_bus.reclaim_stale_pending(
+                event_types,
+                consumer_group=consumer_group,
+                consumer_name=consumer_name,
+                min_idle_ms=reclaim_min_idle_ms,
+                limit=limit,
+            )
+        )
+    remaining_limit = limit - len(deliveries)
+    if remaining_limit > 0:
+        deliveries.extend(
+            event_bus.consume(
+                event_types,
+                consumer_group=consumer_group,
+                consumer_name=consumer_name,
+                limit=remaining_limit,
+                block_ms=block_ms,
+            )
+        )
     ackable: list[EventDelivery] = []
     for delivery in deliveries:
 
@@ -2623,6 +2662,7 @@ async def run_worker(
                 consumer_name=deps.event_settings.consumer_name(),
                 limit=deps.event_settings.batch_size,
                 block_ms=deps.event_settings.block_ms,
+                reclaim_min_idle_ms=deps.event_settings.reclaim_min_idle_ms,
                 retry_policy=policy,
                 health_state=health_state,
                 workflow_tracker=deps.workflow_tracker,

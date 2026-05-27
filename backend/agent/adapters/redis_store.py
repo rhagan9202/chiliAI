@@ -131,7 +131,7 @@ class RedisWorkflowRunStore:
     ) -> WorkflowRun | None:
         workflow_key = self._workflow_key(workflow_id)
         for _ in range(3):
-            pipe = self._client.pipeline()
+            pipe = self._client.pipeline()  # pyright: ignore[reportUnknownMemberType]
             try:
                 pipe.watch(workflow_key)
                 raw = pipe.get(workflow_key)

@@ -409,6 +409,8 @@ def _resolve_event_bus_settings(config: DomainConfig) -> EventBusSettings:
         consumer_name_prefix=env_settings.consumer_name_prefix,
         batch_size=env_settings.batch_size,
         block_ms=env_settings.block_ms,
+        stream_maxlen=event_config.stream_maxlen,
+        reclaim_min_idle_ms=event_config.reclaim_min_idle_ms,
     )
 
 
