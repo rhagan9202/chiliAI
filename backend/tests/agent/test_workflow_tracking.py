@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.models import (
     WorkflowRun,
@@ -19,10 +21,13 @@ from events.types import (
     DocumentReference,
     DocumentsFailedEvent,
     DocumentsUploadedEvent,
+    KnowledgeBaseReadyEvent,
+    KnowledgeBaseReadyReference,
     RecordsIngestedEvent,
     VectorsIndexedDocumentReference,
     VectorsIndexedEvent,
 )
+from shared.utils import utc_now
 
 
 def _uploaded_event(*, correlation_id: str = "corr-1") -> DocumentsUploadedEvent:
@@ -140,6 +145,46 @@ def test_tracker_marks_terminal_success_for_vector_indexed_event() -> None:
     run = run_store.get_run("workflow-1")
     assert run.status is WorkflowRunStatus.COMPLETED
     assert run.steps[0].status is WorkflowStepStatus.COMPLETED
+
+
+def test_tracker_marks_kb_ready_event_terminal_for_zero_vector_workflow() -> None:
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-ready",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[
+                    WorkflowStepState(step_name="ready"),
+                    WorkflowStepState(step_name="monitoring"),
+                ],
+                metadata={"correlation_id": "corr-ready"},
+            )
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+    event = KnowledgeBaseReadyEvent(
+        correlation_id="corr-ready",
+        knowledge_bases=[
+            KnowledgeBaseReadyReference(
+                knowledge_base_id="kb-1",
+                entity_count=0,
+                relationship_count=0,
+                vector_count=0,
+            )
+        ],
+    )
+
+    assert tracker.begin_event(event) is True
+    tracker.complete_event(event)
+
+    run = run_store.get_run("workflow-ready")
+    assert run.status is WorkflowRunStatus.COMPLETED
+    assert run.steps[0].status is WorkflowStepStatus.COMPLETED
+    assert run.metadata["last_event_type"] == "kb.ready"
+    assert run.metadata["entity_count"] == 0
+    assert run.metadata["vector_count"] == 0
 
 
 def test_tracker_marks_document_failure_event_terminal() -> None:
@@ -315,3 +360,33 @@ def test_is_busy_returns_false_when_only_terminal_workflows_exist() -> None:
     tracker = WorkflowEventTracker(run_store)
 
     assert tracker.is_busy("kb-1") is False
+
+
+def test_reconcile_stale_runs_marks_old_running_workflow_failed() -> None:
+    old_time = utc_now() - timedelta(hours=3)
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-stale",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[
+                    WorkflowStepState(
+                        step_name="vector_index",
+                        status=WorkflowStepStatus.RUNNING,
+                    )
+                ],
+                updated_at=old_time,
+                metadata={"correlation_id": "corr-stale"},
+            )
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+
+    reconciled = tracker.reconcile_stale_runs(max_age_seconds=3600)
+
+    assert reconciled == 1
+    run = run_store.get_run("workflow-stale")
+    assert run.status is WorkflowRunStatus.FAILED
+    assert run.metadata["reason"] == "stale_workflow_reconciled"
