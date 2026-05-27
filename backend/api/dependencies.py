@@ -6,7 +6,7 @@ import os
 from functools import lru_cache
 from typing import NoReturn, cast
 
-from fastapi import Depends, Path, Request
+from fastapi import Depends, Path, Query, Request
 
 from api.contracts import (
     AnalyticsOverviewResponse,
@@ -288,18 +288,20 @@ def get_policy_brief_payload(
 
 def get_risk_score_payload(
     entity_id: str = Path(..., description="Entity identifier."),
+    kb_id: str = Query(..., min_length=1, description="Knowledge base identifier."),
     state: ApiState = Depends(get_api_state),
 ) -> RiskScoreResponse:
-    """Return a deterministic risk-score payload."""
-    return state.get_risk_score(entity_id)
+    """Return a KB-scoped risk-score payload."""
+    return state.get_risk_score(entity_id, knowledge_base_id=kb_id)
 
 
 def get_timeseries_payload(
     entity_id: str = Path(..., description="Entity identifier."),
+    kb_id: str = Query(..., min_length=1, description="Knowledge base identifier."),
     state: ApiState = Depends(get_api_state),
 ) -> EntityTimeseriesResponse:
-    """Return a deterministic timeseries payload."""
-    return state.get_timeseries(entity_id)
+    """Return a KB-scoped timeseries payload."""
+    return state.get_timeseries(entity_id, knowledge_base_id=kb_id)
 
 
 def get_analytics_overview_payload(
