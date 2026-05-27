@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from events.adapters.redis_streams import RedisStreamsEventBus
 from events.protocols import DlqErrorInfo
-from events.types import DocumentReference, DocumentsUploadedEvent
+from events.types import (
+    DocumentReference,
+    DocumentsParsedEvent,
+    DocumentsUploadedEvent,
+    ParsedDocumentReference,
+)
 
 
 class FakeRedis:
@@ -15,6 +20,8 @@ class FakeRedis:
         self.xadd_calls: list[tuple[str, dict[str, str], int | None, bool]] = []
         self.pending_response: list[dict[str, str]] = []
         self.autoclaim_response: tuple[str, list[tuple[str, dict[str, str]]]] = ("0-0", [])
+        self.autoclaim_responses: dict[str, tuple[str, list[tuple[str, dict[str, str]]]]] = {}
+        self.xautoclaim_calls: list[tuple[str, str, str, int, str, int]] = []
 
     def xadd(
         self,
@@ -81,8 +88,10 @@ class FakeRedis:
         start_id: str,
         count: int,
     ) -> tuple[str, list[tuple[str, dict[str, str]]]]:
-        del stream, groupname, consumername, min_idle_time, start_id, count
-        return self.autoclaim_response
+        self.xautoclaim_calls.append(
+            (stream, groupname, consumername, min_idle_time, start_id, count)
+        )
+        return self.autoclaim_responses.get(stream, self.autoclaim_response)
 
 
 def test_redis_streams_event_bus_publishes_consumes_and_acks() -> None:
@@ -193,3 +202,49 @@ def test_redis_streams_event_bus_reclaims_stale_pending_deliveries() -> None:
     assert deliveries[0].event_id == "1-0"
     assert deliveries[0].stream == "chili.documents.uploaded"
     assert deliveries[0].consumer_group == "workers"
+
+
+def test_redis_streams_event_bus_reclaim_stale_pending_caps_limit_across_streams() -> None:
+    client = FakeRedis()
+    uploaded = DocumentsUploadedEvent(
+        documents=[
+            DocumentReference(knowledge_base_id="kb-1", source_document_id="doc-1")
+        ]
+    )
+    parsed = DocumentsParsedEvent(
+        documents=[
+            ParsedDocumentReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-1",
+                parsed_document_id="parsed-1",
+                parser_name="parser",
+            )
+        ]
+    )
+    event_bus = RedisStreamsEventBus(
+        redis_url="redis://unused",
+        stream_name_resolver=lambda event_type: f"chili.{event_type}",
+        client=client,  # pyright: ignore[reportArgumentType]
+    )
+    uploaded_id = event_bus.publish(uploaded)
+    uploaded_payload = client.streams["chili.documents.uploaded"][0][1]
+    parsed_id = event_bus.publish(parsed)
+    parsed_payload = client.streams["chili.documents.parsed"][0][1]
+    client.autoclaim_responses = {
+        "chili.documents.uploaded": ("0-0", [(uploaded_id or "1-0", uploaded_payload)]),
+        "chili.documents.parsed": ("0-0", [(parsed_id or "1-0", parsed_payload)]),
+    }
+
+    deliveries = event_bus.reclaim_stale_pending(
+        ["documents.uploaded", "documents.parsed"],
+        consumer_group="workers",
+        consumer_name="worker-1",
+        min_idle_ms=30_000,
+        limit=1,
+    )
+
+    assert len(deliveries) == 1
+    assert deliveries[0].event == uploaded
+    assert client.xautoclaim_calls == [
+        ("chili.documents.uploaded", "workers", "worker-1", 30_000, "0-0", 1)
+    ]

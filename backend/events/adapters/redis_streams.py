@@ -115,6 +115,9 @@ class RedisStreamsEventBus(EventBus):
     ) -> list[EventDelivery]:
         deliveries: list[EventDelivery] = []
         for event_type in event_types:
+            remaining = limit - len(deliveries)
+            if remaining <= 0:
+                break
             stream = self._stream_name_resolver(event_type)
             response = cast(
                 RedisAutoClaimResponse,
@@ -124,7 +127,7 @@ class RedisStreamsEventBus(EventBus):
                     consumer_name,
                     min_idle_ms,
                     "0-0",
-                    count=limit,
+                    count=remaining,
                 ),
             )
             claimed_messages = response[1]
@@ -137,6 +140,8 @@ class RedisStreamsEventBus(EventBus):
                         consumer_group=consumer_group,
                     )
                 )
+                if len(deliveries) >= limit:
+                    break
         return deliveries
 
     def ack(self, deliveries: list[EventDelivery]) -> None:

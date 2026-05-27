@@ -6,9 +6,11 @@ from hashlib import sha256
 
 import pytest
 
-from ingestion.models import ParsedDocument
 from events.adapters.in_memory import InMemoryEventBus
+from events.protocols import DlqErrorInfo, EventDelivery
+from events.types import AnyEvent
 from events.types import DocumentReference, DocumentsFailedEvent, DocumentsParsedEvent, DocumentsUploadedEvent
+from ingestion.models import ParsedDocument
 from ingestion.recovery import InMemoryIngestionRecoveryStore
 from ingestion.models import DocumentFormat, SourceDocument, SourceType
 from ingestion.orchestrators.protocols import DocumentParseFailure, ParseResult
@@ -35,19 +37,43 @@ def _service() -> tuple[IngestionService, InMemoryEventBus, InMemoryObjectStore]
 
 
 class FailingPublishBus:
-    def publish(self, event):
+    def publish(self, event: AnyEvent) -> str | None:
         raise RuntimeError("redis unavailable")
 
-    def ensure_consumer_group(self, event_types, *, consumer_group):
+    def ensure_consumer_group(
+        self,
+        event_types: list[str],
+        *,
+        consumer_group: str,
+    ) -> None:
         return None
 
-    def consume(self, event_types, *, consumer_group=None, consumer_name=None, limit=1, block_ms=None):
+    def consume(
+        self,
+        event_types: list[str],
+        *,
+        consumer_group: str | None = None,
+        consumer_name: str | None = None,
+        limit: int = 1,
+        block_ms: int | None = None,
+    ) -> list[EventDelivery]:
         return []
 
-    def ack(self, deliveries):
+    def reclaim_stale_pending(
+        self,
+        event_types: list[str],
+        *,
+        consumer_group: str,
+        consumer_name: str,
+        min_idle_ms: int,
+        limit: int = 10,
+    ) -> list[EventDelivery]:
+        return []
+
+    def ack(self, deliveries: list[EventDelivery]) -> None:
         return None
 
-    def publish_to_dlq(self, event, error_info):
+    def publish_to_dlq(self, event: AnyEvent, error_info: DlqErrorInfo) -> str | None:
         return None
 
 
