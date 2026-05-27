@@ -2467,6 +2467,9 @@ class _AcceptingExplainabilityContextSource:
 
 
 def test_handle_event_dispatches_analytics_pipeline_for_graph_updated() -> None:
+    pytest.importorskip("networkx")
+    pytest.importorskip("numpy")
+
     from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
     from analytics.gnn.models import (
         GraphEdgeSignal,
@@ -2618,6 +2621,9 @@ def test_handle_event_dispatches_analytics_pipeline_for_graph_updated() -> None:
 
 
 def test_analytics_handler_emits_analysis_failed_when_risk_profile_missing() -> None:
+    pytest.importorskip("networkx")
+    pytest.importorskip("numpy")
+
     from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
     from analytics.gnn.models import (
         GraphEdgeSignal,

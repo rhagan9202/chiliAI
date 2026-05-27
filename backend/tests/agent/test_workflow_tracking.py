@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.models import (
@@ -475,10 +475,6 @@ def test_reconcile_stale_runs_does_not_overwrite_completed_run_after_listing() -
         updated_at=old_time,
         metadata={"correlation_id": "corr-raced"},
     )
-    completed_run = listed_run.model_copy(
-        update={"status": WorkflowRunStatus.COMPLETED}
-    )
-
     class RaceWorkflowRunStore(InMemoryWorkflowRunStore):
         def list_runs(
             self,
@@ -494,7 +490,24 @@ def test_reconcile_stale_runs_does_not_overwrite_completed_run_after_listing() -
 
         def get_run(self, workflow_id: str) -> WorkflowRun:
             assert workflow_id == "workflow-raced"
-            return completed_run
+            return listed_run
+
+        def update_run_if_current(
+            self,
+            workflow_id: str,
+            update: WorkflowRunUpdate,
+            *,
+            expected_statuses: set[WorkflowRunStatus] | frozenset[WorkflowRunStatus],
+            updated_before: datetime,
+        ) -> WorkflowRun | None:
+            assert workflow_id == "workflow-raced"
+            assert expected_statuses == {
+                WorkflowRunStatus.QUEUED,
+                WorkflowRunStatus.RUNNING,
+            }
+            assert update.status is WorkflowRunStatus.FAILED
+            assert listed_run.updated_at < updated_before
+            return None
 
         def update_run(
             self,

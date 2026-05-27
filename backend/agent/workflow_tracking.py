@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 from agent.adapters.protocols import WorkflowRunStoreProtocol
+from agent.exceptions import WorkflowRunNotFoundError
 from agent.models import (
     TERMINAL_RUN_STATUSES,
     MetadataValue,
@@ -195,7 +197,7 @@ class WorkflowEventTracker:
         if batch_size <= 0:
             raise ValueError("batch_size must be greater than 0.")
         now = utc_now()
-        cutoff = now.timestamp() - max_age_seconds
+        cutoff = now - timedelta(seconds=max_age_seconds)
         candidates: list[str] = []
         for status in (WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING):
             offset = 0
@@ -212,22 +214,31 @@ class WorkflowEventTracker:
 
         reconciled = 0
         for workflow_id in candidates:
-            run = self._run_store.get_run(workflow_id)
+            try:
+                run = self._run_store.get_run(workflow_id)
+            except WorkflowRunNotFoundError:
+                continue
             if run.status not in (WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING):
                 continue
-            if run.updated_at.timestamp() >= cutoff:
+            if run.updated_at >= cutoff:
                 continue
             metadata = dict(run.metadata)
             metadata["reason"] = "stale_workflow_reconciled"
-            self._run_store.update_run(
+            updated = self._run_store.update_run_if_current(
                 run.workflow_id,
                 WorkflowRunUpdate(
                     status=WorkflowRunStatus.FAILED,
                     metadata=metadata,
                     updated_at=now,
                 ),
+                expected_statuses={
+                    WorkflowRunStatus.QUEUED,
+                    WorkflowRunStatus.RUNNING,
+                },
+                updated_before=cutoff,
             )
-            reconciled += 1
+            if updated is not None:
+                reconciled += 1
         return reconciled
 
     def _resolve_tracked_event(self, event: AnyEvent) -> _TrackedEvent | None:
