@@ -113,8 +113,8 @@ def test_graph_and_analytics_routes_are_service_backed() -> None:
     evidence_id = alerts[0]["evidence_pack_id"]
 
     graph_detail = client.get(f"/graph/entities/{entity_id}")
-    risk_score = client.get(f"/analytics/risk-scores/{entity_id}")
-    timeseries = client.get(f"/analytics/timeseries/{entity_id}")
+    risk_score = client.get(f"/analytics/risk-scores/{entity_id}", params={"kb_id": "kb-1"})
+    timeseries = client.get(f"/analytics/timeseries/{entity_id}", params={"kb_id": "kb-1"})
     evidence = client.get(f"/evidence-packs/{evidence_id}")
 
     assert graph_detail.status_code == 200

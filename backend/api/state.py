@@ -11,11 +11,13 @@ from analytics.explainability.adapters.in_memory import InMemoryExplainabilityCo
 from analytics.explainability.models import ExplanationContext, ExplanationItem, ExplanationSubgraph
 from analytics.explainability.service import create_explainability_service
 from analytics.explainability.service_models import ExplainabilityRequest, ExplainabilityResponse
+from analytics.risk.exceptions import RiskConfigurationError, RiskInsufficientSignalsError
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
 from analytics.risk.models import RiskProfile, RiskSignal
 from analytics.risk.service import create_risk_service
 from analytics.risk.service_models import RiskAssessmentRequest
 from analytics.timeseries.adapters.in_memory import InMemoryTimeSeriesHistorySource
+from analytics.timeseries.exceptions import TimeseriesConfigurationError, TimeseriesInsufficientHistoryError
 from analytics.timeseries.models import TimeSeriesObservation, TimeSeriesSeries
 from analytics.timeseries.service import create_timeseries_service
 from analytics.timeseries.service_models import TimeseriesAnalysisRequest
@@ -363,7 +365,7 @@ class ApiState:
             response = self._risk_service.assess(
                 RiskAssessmentRequest(knowledge_base_id=kb_id, entity_id=entity_id)
             )
-        except Exception:
+        except (RiskConfigurationError, RiskInsufficientSignalsError, ValueError):
             return RiskScoreResponse(
                 entity_id=entity_id,
                 overall_score=0.0,
@@ -406,7 +408,11 @@ class ApiState:
                     z_threshold=2.0,
                 )
             )
-        except Exception:
+        except (
+            TimeseriesConfigurationError,
+            TimeseriesInsufficientHistoryError,
+            ValueError,
+        ):
             return EntityTimeseriesResponse(
                 entity_id=entity_id,
                 metric_name="normalized_alert_pressure",
@@ -1035,4 +1041,3 @@ def _normalize_risk_level(risk_level: str, overall_score: float) -> Literal["low
     if risk_level in {"high", "medium", "low", "critical"}:
         return cast(Literal["low", "medium", "high", "critical"], risk_level)
     return "medium"
-
