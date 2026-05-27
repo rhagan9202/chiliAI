@@ -9,6 +9,7 @@ from collections.abc import Sequence
 import pytest
 
 from agent.coordinator import (
+    WORKER_EVENT_TYPES,
     build_worker_dependencies,
     drain_ingestion_events,
     handle_embeddings_complete,
@@ -23,7 +24,13 @@ from agent.coordinator import (
 )
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.exceptions import ConfigurationError
-from agent.models import RetryPolicy, WorkflowRunStatus
+from agent.models import (
+    RetryPolicy,
+    WorkflowRun,
+    WorkflowRunStatus,
+    WorkflowStepState,
+    WorkflowStepStatus,
+)
 from agent.workflow_tracking import WorkflowEventTracker
 from config.loader import load_config
 from config.schema import (
@@ -63,6 +70,7 @@ from events.types import (
     GraphUpdatedEvent,
     KnowledgeBaseCreatedEvent,
     KnowledgeBaseReadyEvent,
+    KnowledgeBaseReadyReference,
     ParsedDocumentReference,
     RecordsIngestedEvent,
     RiskScoredEvent as _RiskScoredEvent,
@@ -86,6 +94,70 @@ from ingestion.validator import create_extraction_validator
 from shared.types import Entity
 from storage.adapters.in_memory import InMemoryObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
+
+
+def test_worker_event_types_include_kb_ready_for_workflow_tracking() -> None:
+    assert "kb.ready" in WORKER_EVENT_TYPES
+
+
+def test_drain_ingestion_events_completes_kb_ready_workflow() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    workflow_run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-ready",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="ready")],
+                metadata={"correlation_id": "corr-ready"},
+            )
+        ]
+    )
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+    event_bus.publish(
+        KnowledgeBaseReadyEvent(
+            correlation_id="corr-ready",
+            knowledge_bases=[
+                KnowledgeBaseReadyReference(
+                    knowledge_base_id="kb-1",
+                    entity_count=0,
+                    relationship_count=0,
+                    vector_count=0,
+                )
+            ],
+        )
+    )
+
+    processed = asyncio.run(drain_ingestion_events(
+        event_bus,
+        IngestionService(
+            DocumentParsingOrchestrator(
+                create_default_registry(),
+                fetcher=HttpxRemoteDocumentFetcher(),
+            ),
+            object_store=object_store,
+            event_bus=event_bus,
+        ),
+        create_document_chunker(),
+        create_document_extractor([]),
+        create_extraction_validator([], []),
+        graph_service,
+        object_store,
+        consumer_group="test-workers",
+        consumer_name="worker-1",
+        workflow_tracker=WorkflowEventTracker(workflow_run_store),
+    ))
+
+    run = workflow_run_store.get_run("workflow-ready")
+    assert processed == 0
+    assert run.status is WorkflowRunStatus.COMPLETED
+    assert run.steps[0].status is WorkflowStepStatus.COMPLETED
 
 
 

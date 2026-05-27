@@ -175,6 +175,7 @@ from vectorstore.models import VectorRecord
 from vectorstore.protocols import VectorServiceProtocol
 
 __all__ = [
+    "WORKER_EVENT_TYPES",
     "WorkerDependencies",
     "build_alert_history_writer",
     "build_connection_provider",
@@ -217,6 +218,21 @@ logger = get_logger("chili.worker")
 
 SHUTDOWN_LOG_REQUESTED = "Shutdown requested, finishing current event..."
 SHUTDOWN_LOG_DONE = "Worker stopped gracefully."
+WORKER_EVENT_TYPES: tuple[str, ...] = (
+    "documents.uploaded",
+    "documents.parsed",
+    "documents.chunked",
+    "entities.extracted",
+    "entities.validated",
+    "graph.updated",
+    "embeddings.complete",
+    "vectors.indexed",
+    "kb.ready",
+    "risk.scored",
+    "records.ingested",
+    "alerts.created",
+    "kb.delete",
+)
 
 
 @dataclass(slots=True)
@@ -2259,6 +2275,8 @@ def _dispatch_event(
             graph_repository=graph_repository,
             event_bus=event_bus,
         )
+    if isinstance(event, KnowledgeBaseReadyEvent):
+        return 0
     if isinstance(event, RiskScoredEvent):
         processed = 0
         if monitoring_service is not None:
@@ -2452,20 +2470,7 @@ async def drain_ingestion_events(
 
     policy = retry_policy or RetryPolicy()
     processed = 0
-    event_types = [
-        "documents.uploaded",
-        "documents.parsed",
-        "documents.chunked",
-        "entities.extracted",
-        "entities.validated",
-        "graph.updated",
-        "embeddings.complete",
-        "vectors.indexed",
-        "risk.scored",
-        "records.ingested",
-        "alerts.created",
-        "kb.delete",
-    ]
+    event_types = list(WORKER_EVENT_TYPES)
     event_bus.ensure_consumer_group(event_types, consumer_group=consumer_group)
     deliveries = event_bus.consume(
         event_types,

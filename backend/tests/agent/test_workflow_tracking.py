@@ -8,6 +8,7 @@ from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.models import (
     WorkflowRun,
     WorkflowRunStatus,
+    WorkflowRunUpdate,
     WorkflowStepState,
     WorkflowStepStatus,
 )
@@ -390,3 +391,151 @@ def test_reconcile_stale_runs_marks_old_running_workflow_failed() -> None:
     run = run_store.get_run("workflow-stale")
     assert run.status is WorkflowRunStatus.FAILED
     assert run.metadata["reason"] == "stale_workflow_reconciled"
+
+
+def test_reconcile_stale_runs_keeps_recent_queued_and_running_workflows() -> None:
+    recent_time = utc_now()
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-recent-queued",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.QUEUED,
+                steps=[WorkflowStepState(step_name="parse")],
+                updated_at=recent_time,
+                metadata={"correlation_id": "corr-recent-queued"},
+            ),
+            WorkflowRun(
+                workflow_id="workflow-recent-running",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[
+                    WorkflowStepState(
+                        step_name="vector_index",
+                        status=WorkflowStepStatus.RUNNING,
+                    )
+                ],
+                updated_at=recent_time,
+                metadata={"correlation_id": "corr-recent-running"},
+            ),
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+
+    reconciled = tracker.reconcile_stale_runs(max_age_seconds=3600)
+
+    assert reconciled == 0
+    assert run_store.get_run("workflow-recent-queued").status is WorkflowRunStatus.QUEUED
+    assert (
+        run_store.get_run("workflow-recent-running").status
+        is WorkflowRunStatus.RUNNING
+    )
+
+
+def test_reconcile_stale_runs_keeps_terminal_workflows() -> None:
+    old_time = utc_now() - timedelta(hours=3)
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-completed-old",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.COMPLETED,
+                steps=[WorkflowStepState(step_name="ready")],
+                updated_at=old_time,
+                metadata={"correlation_id": "corr-completed-old"},
+            )
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+
+    reconciled = tracker.reconcile_stale_runs(max_age_seconds=3600)
+
+    assert reconciled == 0
+    run = run_store.get_run("workflow-completed-old")
+    assert run.status is WorkflowRunStatus.COMPLETED
+    assert "reason" not in run.metadata
+
+
+def test_reconcile_stale_runs_does_not_overwrite_completed_run_after_listing() -> None:
+    old_time = utc_now() - timedelta(hours=3)
+    listed_run = WorkflowRun(
+        workflow_id="workflow-raced",
+        knowledge_base_id="kb-1",
+        trigger_event_type="documents.uploaded",
+        status=WorkflowRunStatus.RUNNING,
+        steps=[
+            WorkflowStepState(
+                step_name="vector_index",
+                status=WorkflowStepStatus.RUNNING,
+            )
+        ],
+        updated_at=old_time,
+        metadata={"correlation_id": "corr-raced"},
+    )
+    completed_run = listed_run.model_copy(
+        update={"status": WorkflowRunStatus.COMPLETED}
+    )
+
+    class RaceWorkflowRunStore(InMemoryWorkflowRunStore):
+        def list_runs(
+            self,
+            *,
+            knowledge_base_id: str | None = None,
+            status: WorkflowRunStatus | None = None,
+            limit: int = 50,
+            offset: int = 0,
+        ) -> list[WorkflowRun]:
+            if status is WorkflowRunStatus.RUNNING and offset == 0:
+                return [listed_run]
+            return []
+
+        def get_run(self, workflow_id: str) -> WorkflowRun:
+            assert workflow_id == "workflow-raced"
+            return completed_run
+
+        def update_run(
+            self,
+            workflow_id: str,
+            update: WorkflowRunUpdate,
+        ) -> WorkflowRun:
+            raise AssertionError("completed workflow must not be overwritten")
+
+    tracker = WorkflowEventTracker(RaceWorkflowRunStore())
+
+    reconciled = tracker.reconcile_stale_runs(max_age_seconds=3600)
+
+    assert reconciled == 0
+
+
+def test_reconcile_stale_runs_pages_through_all_stale_workflows() -> None:
+    old_time = utc_now() - timedelta(hours=3)
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id=f"workflow-stale-{index}",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[
+                    WorkflowStepState(
+                        step_name="vector_index",
+                        status=WorkflowStepStatus.RUNNING,
+                    )
+                ],
+                updated_at=old_time,
+                metadata={"correlation_id": f"corr-stale-{index}"},
+            )
+            for index in range(3)
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+
+    reconciled = tracker.reconcile_stale_runs(max_age_seconds=3600, batch_size=2)
+
+    assert reconciled == 3
+    assert all(
+        run.status is WorkflowRunStatus.FAILED for run in run_store.list_runs(limit=10)
+    )

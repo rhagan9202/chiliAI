@@ -183,28 +183,51 @@ class WorkflowEventTracker:
                 return True
         return False
 
-    def reconcile_stale_runs(self, *, max_age_seconds: int) -> int:
+    def reconcile_stale_runs(
+        self,
+        *,
+        max_age_seconds: int,
+        batch_size: int = 1000,
+    ) -> int:
         """Mark old queued/running runs failed so UI and busy checks do not hang."""
         if max_age_seconds <= 0:
             raise ValueError("max_age_seconds must be greater than 0.")
+        if batch_size <= 0:
+            raise ValueError("batch_size must be greater than 0.")
         now = utc_now()
         cutoff = now.timestamp() - max_age_seconds
-        reconciled = 0
+        candidates: list[str] = []
         for status in (WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING):
-            for run in self._run_store.list_runs(status=status, limit=1000):
-                if run.updated_at.timestamp() >= cutoff:
-                    continue
-                metadata = dict(run.metadata)
-                metadata["reason"] = "stale_workflow_reconciled"
-                self._run_store.update_run(
-                    run.workflow_id,
-                    WorkflowRunUpdate(
-                        status=WorkflowRunStatus.FAILED,
-                        metadata=metadata,
-                        updated_at=now,
-                    ),
+            offset = 0
+            while True:
+                runs = self._run_store.list_runs(
+                    status=status,
+                    limit=batch_size,
+                    offset=offset,
                 )
-                reconciled += 1
+                if not runs:
+                    break
+                candidates.extend(run.workflow_id for run in runs)
+                offset += batch_size
+
+        reconciled = 0
+        for workflow_id in candidates:
+            run = self._run_store.get_run(workflow_id)
+            if run.status not in (WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING):
+                continue
+            if run.updated_at.timestamp() >= cutoff:
+                continue
+            metadata = dict(run.metadata)
+            metadata["reason"] = "stale_workflow_reconciled"
+            self._run_store.update_run(
+                run.workflow_id,
+                WorkflowRunUpdate(
+                    status=WorkflowRunStatus.FAILED,
+                    metadata=metadata,
+                    updated_at=now,
+                ),
+            )
+            reconciled += 1
         return reconciled
 
     def _resolve_tracked_event(self, event: AnyEvent) -> _TrackedEvent | None:
