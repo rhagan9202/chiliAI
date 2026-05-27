@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   selectedEntity: null as RuntimeEntity | null,
   navigate: vi.fn(),
   routeEntityId: null as string | null,
+  riskUnavailableReason: 'No risk profile has been generated for this entity.' as string | null,
   setSearchParams: vi.fn(),
   searchParams: new URLSearchParams(),
 }))
@@ -136,7 +137,7 @@ vi.mock('../../api/analytics', () => ({
         risk_level: 'low',
         factors: [],
         availability_status: 'unavailable',
-        unavailable_reason: 'No risk profile has been generated for this entity.',
+        unavailable_reason: mocks.riskUnavailableReason,
       },
     }
   },
@@ -167,8 +168,11 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.selectedEntity = null
     mocks.navigate.mockReset()
     mocks.routeEntityId = null
+    mocks.riskUnavailableReason = 'No risk profile has been generated for this entity.'
     mocks.setSearchParams.mockReset()
     mocks.searchParams = new URLSearchParams()
+    analyticsCalls.risk = []
+    analyticsCalls.timeseries = []
   })
 
   it('renders a live no-KB state instead of seeded graph data', () => {
@@ -260,13 +264,43 @@ describe('InvestigationWorkbenchPage', () => {
     ]
     mocks.selectedEntity = provider
     mocks.routeEntityId = 'provider-204'
-    analyticsCalls.risk = []
-    analyticsCalls.timeseries = []
 
     render(<InvestigationWorkbenchPage />)
 
     expect(analyticsCalls.risk.at(-1)).toEqual(['kb-live', 'provider-204'])
     expect(analyticsCalls.timeseries.at(-1)).toEqual(['kb-live', 'provider-204'])
     expect(screen.getByText(/No risk profile has been generated/i)).toBeInTheDocument()
+  })
+
+  it('renders unavailable risk analytics without a reason as the fallback empty state', () => {
+    const provider: RuntimeEntity = {
+      id: 'provider-204',
+      type: 'provider',
+      properties: { npi: '1234567890' },
+      metadata: {},
+      created_at: '2026-05-10T00:00:00Z',
+      updated_at: null,
+      version: 1,
+    }
+    mocks.knowledgeBases = [
+      {
+        id: 'kb-live',
+        name: 'Live Fraud KB',
+        description: 'Live KB',
+        status: 'ready',
+        document_count: 1,
+        entity_count: 1,
+        relationship_count: 0,
+        created_at: '2026-05-10T00:00:00Z',
+      },
+    ]
+    mocks.selectedEntity = provider
+    mocks.routeEntityId = 'provider-204'
+    mocks.riskUnavailableReason = null
+
+    render(<InvestigationWorkbenchPage />)
+
+    expect(screen.getByText(/Risk scoring is unavailable until an entity is selected and analytics respond/i)).toBeInTheDocument()
+    expect(screen.queryByText('Composite risk')).not.toBeInTheDocument()
   })
 })

@@ -6,11 +6,11 @@ import type { AnalyticsOverviewResponse, RiskScoreResponse, TimeseriesResponse }
 export const analyticsOverviewQueryKey = ['analytics', 'overview'] as const
 
 export function riskScoreQueryKey(knowledgeBaseId: string | null, entityId: string | null) {
-  return ['analytics', 'risk-score', knowledgeBaseId ?? 'missing', entityId ?? 'missing'] as const
+  return ['analytics', 'risk-score', knowledgeBaseId, entityId] as const
 }
 
 export function timeseriesQueryKey(knowledgeBaseId: string | null, entityId: string | null) {
-  return ['analytics', 'timeseries', knowledgeBaseId ?? 'missing', entityId ?? 'missing'] as const
+  return ['analytics', 'timeseries', knowledgeBaseId, entityId] as const
 }
 
 export function getAnalyticsOverview(): Promise<AnalyticsOverviewResponse> {

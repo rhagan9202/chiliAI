@@ -105,7 +105,7 @@ export function InvestigationWorkbenchPage() {
   const neighborhood = neighborhoodQuery.data ?? null
   const riskScore = riskQuery.data ?? null
   const timeseries = timeseriesQuery.data ?? null
-  const riskUnavailableReason = unavailableReason(riskScore)
+  const riskAvailability = analyticsAvailability(riskScore)
   const entityTitle = entity ? getEntityTitle(entity, domainConfigQuery.data) : 'Investigation Workbench'
   const entitySubtitle = entity ? getEntitySubtitle(entity, domainConfigQuery.data) : null
   const selectedTypeLabel = entity ? getEntityTypeLabel(entity.type, domainConfigQuery.data) : null
@@ -203,7 +203,7 @@ export function InvestigationWorkbenchPage() {
                   <span className="metric-row__label">Entity type</span>
                   <Chip label={selectedTypeLabel ?? entity.type} tone="network" />
                 </div>
-                {riskScore && !riskUnavailableReason ? (
+                {riskScore && !riskAvailability.unavailable ? (
                   <>
                     <div className="metric-row">
                       <span className="metric-row__label">Composite risk</span>
@@ -224,7 +224,7 @@ export function InvestigationWorkbenchPage() {
             <Card>
               <div className="metric-stack">
                 <strong>Risk factors</strong>
-                {riskScore && !riskUnavailableReason ? riskScore.factors.map((factor) => (
+                {riskScore && !riskAvailability.unavailable ? riskScore.factors.map((factor) => (
                   <div className="metric-row metric-row--stacked" key={factor.factor_name}>
                     <strong>{factor.factor_name.replace(/_/g, ' ')}</strong>
                     <span className="metric-row__label">{factor.rationale ?? 'No rationale provided.'}</span>
@@ -232,7 +232,7 @@ export function InvestigationWorkbenchPage() {
                   </div>
                 )) : (
                   <EmptyState
-                    description={riskUnavailableReason ?? 'Risk scoring is unavailable until an entity is selected and analytics respond.'}
+                    description={riskAvailability.reason ?? 'Risk scoring is unavailable until an entity is selected and analytics respond.'}
                     title="No risk score"
                   />
                 )}
@@ -331,12 +331,21 @@ type AnalyticsAvailability = {
   unavailable_reason?: string | null
 }
 
-function unavailableReason(payload: unknown): string | null {
-  if (!payload || typeof payload !== 'object') return null
+type AnalyticsAvailabilityState = {
+  unavailable: boolean
+  reason: string | null
+}
+
+function analyticsAvailability(payload: unknown): AnalyticsAvailabilityState {
+  if (!payload || typeof payload !== 'object') {
+    return { unavailable: false, reason: null }
+  }
   const availability = payload as AnalyticsAvailability
-  return availability.availability_status === 'unavailable'
-    ? availability.unavailable_reason ?? null
-    : null
+  const unavailable = availability.availability_status === 'unavailable'
+  return {
+    unavailable,
+    reason: unavailable ? availability.unavailable_reason ?? null : null,
+  }
 }
 
 // Adapter: collapse RuntimeEntity/RuntimeRelationship (from the investigation
