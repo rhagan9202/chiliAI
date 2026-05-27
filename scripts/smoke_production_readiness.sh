@@ -17,20 +17,106 @@ cleanup() {
 }
 trap cleanup EXIT
 
-json_field() {
-  local field="$1"
-  "$PYTHON_BIN" -c 'import json, sys; print(json.load(sys.stdin).get(sys.argv[1], ""))' "$field"
+is_2xx() {
+  case "$1" in
+    2??) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
-workflow_status() {
-  "$PYTHON_BIN" -c '
+http_request() {
+  local body_file="$1"
+  shift
+  local status_code
+
+  if ! status_code="$(curl -sS -o "$body_file" -w '%{http_code}' "$@")"; then
+    printf 'Request failed before receiving an HTTP response: curl %s\n' "$*" >&2
+    if [[ -s "$body_file" ]]; then
+      cat "$body_file" >&2
+      printf '\n' >&2
+    fi
+    return 1
+  fi
+
+  printf '%s' "$status_code"
+}
+
+print_response_failure() {
+  local message="$1"
+  local status_code="$2"
+  local body_file="$3"
+
+  printf '%s (%s).\n' "$message" "$status_code" >&2
+  if [[ -s "$body_file" ]]; then
+    cat "$body_file" >&2
+  else
+    printf '<empty response body>' >&2
+  fi
+  printf '\n' >&2
+}
+
+json_field_from_file() {
+  local body_file="$1"
+  local field="$2"
+  "$PYTHON_BIN" - "$body_file" "$field" <<'PY'
 import json
 import sys
 
-payload = json.load(sys.stdin)
+body_file = sys.argv[1]
+field = sys.argv[2]
+
+try:
+    with open(body_file, encoding="utf-8") as fh:
+        payload = json.load(fh)
+except (OSError, json.JSONDecodeError):
+    sys.exit(2)
+
+if not isinstance(payload, dict):
+    sys.exit(3)
+
+value = payload.get(field)
+if not isinstance(value, str) or not value:
+    sys.exit(4)
+
+print(value)
+PY
+}
+
+workflow_status_from_file() {
+  local body_file="$1"
+  "$PYTHON_BIN" - "$body_file" <<'PY'
+import json
+import sys
+
+body_file = sys.argv[1]
+
+try:
+    with open(body_file, encoding="utf-8") as fh:
+        payload = json.load(fh)
+except (OSError, json.JSONDecodeError):
+    sys.exit(2)
+
+if not isinstance(payload, dict):
+    sys.exit(3)
+
 items = payload.get("items", [])
-print(items[0].get("status", "") if items else "")
-'
+if not isinstance(items, list):
+    sys.exit(4)
+
+if not items:
+    print("")
+    sys.exit(0)
+
+first = items[0]
+if not isinstance(first, dict):
+    sys.exit(5)
+
+status = first.get("status")
+if not isinstance(status, str) or not status:
+    sys.exit(6)
+
+print(status)
+PY
 }
 
 request_ok() {
@@ -38,11 +124,9 @@ request_ok() {
   local body_file="$TMP_DIR/response-body.json"
   local status_code
 
-  status_code="$(curl -sS -o "$body_file" -w '%{http_code}' "$url")"
+  status_code="$(http_request "$body_file" "$url")"
   if [[ "$status_code" != "200" ]]; then
-    printf 'Request failed (%s): %s\n' "$status_code" "$url" >&2
-    cat "$body_file" >&2
-    printf '\n' >&2
+    print_response_failure "Request failed: $url" "$status_code" "$body_file"
     exit 1
   fi
   cat "$body_file"
@@ -69,12 +153,23 @@ printf 'Validating analytics timeseries detail...\n'
 request_ok "$API_BASE_URL/analytics/timeseries/$ENTITY_ID?kb_id=$KB_ID" >/dev/null
 
 printf 'Creating zero-entity knowledge base...\n'
-EMPTY_KB_ID="$(
-  curl -sS -X POST "$API_BASE_URL/knowledgebases" \
-    -H 'Content-Type: application/json' \
-    -d '{"name":"Zero Entity Production Smoke","description":"temporary zero-entity workflow smoke"}' \
-    | json_field id
-)"
+CREATE_KB_BODY="$TMP_DIR/create-empty-kb.json"
+CREATE_KB_STATUS="$(http_request "$CREATE_KB_BODY" \
+  -X POST "$API_BASE_URL/knowledgebases" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Zero Entity Production Smoke","description":"temporary zero-entity workflow smoke"}')"
+
+if ! is_2xx "$CREATE_KB_STATUS"; then
+  print_response_failure "Production smoke failed: zero-entity knowledge base creation failed" "$CREATE_KB_STATUS" "$CREATE_KB_BODY"
+  exit 1
+fi
+
+if ! EMPTY_KB_ID="$(json_field_from_file "$CREATE_KB_BODY" id)"; then
+  printf 'Production smoke failed: zero-entity knowledge base response did not include a valid id.\n' >&2
+  cat "$CREATE_KB_BODY" >&2
+  printf '\n' >&2
+  exit 1
+fi
 
 if [[ -z "$EMPTY_KB_ID" ]]; then
   printf 'Production smoke failed: zero-entity knowledge base was not created.\n' >&2
@@ -88,14 +183,33 @@ No configured extraction entity should be produced from this sentence-only docum
 TEXT
 
 printf 'Uploading zero-entity document...\n'
-curl -sS -X POST "$API_BASE_URL/knowledgebases/$EMPTY_KB_ID/documents" \
-  -F "files=@$EMPTY_DOC;type=text/plain" >/dev/null
+UPLOAD_BODY="$TMP_DIR/upload-empty-doc.json"
+UPLOAD_STATUS="$(http_request "$UPLOAD_BODY" \
+  -X POST "$API_BASE_URL/knowledgebases/$EMPTY_KB_ID/documents" \
+  -F "files=@$EMPTY_DOC;type=text/plain")"
+
+if ! is_2xx "$UPLOAD_STATUS"; then
+  print_response_failure "Production smoke failed: zero-entity document upload failed" "$UPLOAD_STATUS" "$UPLOAD_BODY"
+  exit 1
+fi
 
 printf 'Waiting for zero-entity workflow completion...\n'
 DEADLINE=$((SECONDS + TIMEOUT_SECONDS))
 while (( SECONDS < DEADLINE )); do
-  WORKFLOW_PAYLOAD="$(curl -sS "$API_BASE_URL/workflows?knowledge_base_id=$EMPTY_KB_ID&limit=10")"
-  STATUS="$(printf '%s' "$WORKFLOW_PAYLOAD" | workflow_status)"
+  WORKFLOW_BODY="$TMP_DIR/workflows-empty-kb.json"
+  WORKFLOW_STATUS_CODE="$(http_request "$WORKFLOW_BODY" "$API_BASE_URL/workflows?knowledge_base_id=$EMPTY_KB_ID&limit=10")"
+
+  if ! is_2xx "$WORKFLOW_STATUS_CODE"; then
+    print_response_failure "Production smoke failed: workflow polling request failed" "$WORKFLOW_STATUS_CODE" "$WORKFLOW_BODY"
+    exit 1
+  fi
+
+  if ! STATUS="$(workflow_status_from_file "$WORKFLOW_BODY")"; then
+    printf 'Production smoke failed: workflow polling response had an unexpected JSON shape.\n' >&2
+    cat "$WORKFLOW_BODY" >&2
+    printf '\n' >&2
+    exit 1
+  fi
 
   case "$STATUS" in
     completed)
@@ -104,7 +218,8 @@ while (( SECONDS < DEADLINE )); do
       ;;
     failed|cancelled)
       printf 'Production smoke failed: zero-entity workflow status is %s.\n' "$STATUS" >&2
-      printf '%s\n' "$WORKFLOW_PAYLOAD" >&2
+      cat "$WORKFLOW_BODY" >&2
+      printf '\n' >&2
       exit 1
       ;;
   esac
@@ -113,6 +228,9 @@ while (( SECONDS < DEADLINE )); do
 done
 
 printf 'Production smoke failed: zero-entity workflow did not complete within %ss.\n' "$TIMEOUT_SECONDS" >&2
-curl -sS "$API_BASE_URL/workflows?knowledge_base_id=$EMPTY_KB_ID&limit=10" >&2 || true
+TIMEOUT_BODY="$TMP_DIR/workflows-empty-kb-timeout.json"
+if TIMEOUT_STATUS="$(http_request "$TIMEOUT_BODY" "$API_BASE_URL/workflows?knowledge_base_id=$EMPTY_KB_ID&limit=10")"; then
+  print_response_failure "Last workflow polling response" "$TIMEOUT_STATUS" "$TIMEOUT_BODY"
+fi
 printf '\n' >&2
 exit 1
