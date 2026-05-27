@@ -99,7 +99,10 @@ except (OSError, json.JSONDecodeError):
 if not isinstance(payload, dict):
     sys.exit(3)
 
-items = payload.get("items", [])
+if "items" not in payload:
+    sys.exit(4)
+
+items = payload["items"]
 if not isinstance(items, list):
     sys.exit(4)
 
