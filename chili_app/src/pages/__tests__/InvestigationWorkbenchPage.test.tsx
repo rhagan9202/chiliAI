@@ -24,6 +24,11 @@ const mocks = vi.hoisted(() => ({
   searchParams: new URLSearchParams(),
 }))
 
+const analyticsCalls = vi.hoisted(() => ({
+  risk: [] as Array<[string | null, string | null]>,
+  timeseries: [] as Array<[string | null, string | null]>,
+}))
+
 const domainConfig: DomainConfig = {
   domain: {
     name: 'medicare_fraud',
@@ -120,8 +125,35 @@ vi.mock('../../api/alerts', () => ({
 }))
 
 vi.mock('../../api/analytics', () => ({
-  useRiskScore: () => ({ isLoading: false, isError: false, data: undefined }),
-  useTimeseries: () => ({ isLoading: false, isError: false, data: undefined }),
+  useRiskScore: (knowledgeBaseId: string | null, entityId: string | null) => {
+    analyticsCalls.risk.push([knowledgeBaseId, entityId])
+    return {
+      isLoading: false,
+      isError: false,
+      data: {
+        entity_id: entityId ?? '',
+        overall_score: 0,
+        risk_level: 'low',
+        factors: [],
+        availability_status: 'unavailable',
+        unavailable_reason: 'No risk profile has been generated for this entity.',
+      },
+    }
+  },
+  useTimeseries: (knowledgeBaseId: string | null, entityId: string | null) => {
+    analyticsCalls.timeseries.push([knowledgeBaseId, entityId])
+    return {
+      isLoading: false,
+      isError: false,
+      data: {
+        entity_id: entityId ?? '',
+        metric_name: 'normalized_alert_pressure',
+        points: [],
+        availability_status: 'unavailable',
+        unavailable_reason: 'No time series has been generated for this entity.',
+      },
+    }
+  },
 }))
 
 vi.mock('../../api/evidence', () => ({
@@ -202,5 +234,39 @@ describe('InvestigationWorkbenchPage', () => {
     expect(screen.getByText('Provider')).toBeInTheDocument()
     expect(screen.getByText('state: WA')).toBeInTheDocument()
     expect(screen.getByText('Pain Management')).toBeInTheDocument()
+  })
+
+  it('passes active knowledge base scope into analytics queries', () => {
+    const provider: RuntimeEntity = {
+      id: 'provider-204',
+      type: 'provider',
+      properties: { npi: '1234567890' },
+      metadata: {},
+      created_at: '2026-05-10T00:00:00Z',
+      updated_at: null,
+      version: 1,
+    }
+    mocks.knowledgeBases = [
+      {
+        id: 'kb-live',
+        name: 'Live Fraud KB',
+        description: 'Live KB',
+        status: 'ready',
+        document_count: 1,
+        entity_count: 1,
+        relationship_count: 0,
+        created_at: '2026-05-10T00:00:00Z',
+      },
+    ]
+    mocks.selectedEntity = provider
+    mocks.routeEntityId = 'provider-204'
+    analyticsCalls.risk = []
+    analyticsCalls.timeseries = []
+
+    render(<InvestigationWorkbenchPage />)
+
+    expect(analyticsCalls.risk.at(-1)).toEqual(['kb-live', 'provider-204'])
+    expect(analyticsCalls.timeseries.at(-1)).toEqual(['kb-live', 'provider-204'])
+    expect(screen.getByText(/No risk profile has been generated/i)).toBeInTheDocument()
   })
 })
