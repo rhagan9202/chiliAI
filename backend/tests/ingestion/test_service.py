@@ -37,7 +37,11 @@ def _service() -> tuple[IngestionService, InMemoryEventBus, InMemoryObjectStore]
 
 
 class FailingPublishBus:
+    def __init__(self) -> None:
+        self.events: list[AnyEvent] = []
+
     def publish(self, event: AnyEvent) -> str | None:
+        self.events.append(event)
         raise RuntimeError("redis unavailable")
 
     def ensure_consumer_group(
@@ -152,6 +156,7 @@ def test_register_documents_deduplicates_repeated_content_with_different_filenam
 
 def test_register_documents_records_recovery_marker_when_publish_fails() -> None:
     recovery_store = InMemoryIngestionRecoveryStore()
+    event_bus = FailingPublishBus()
     object_store = InMemoryObjectStore()
     service = IngestionService(
         DocumentParsingOrchestrator(
@@ -159,7 +164,7 @@ def test_register_documents_records_recovery_marker_when_publish_fails() -> None
             fetcher=HttpxRemoteDocumentFetcher(),
         ),
         object_store=object_store,
-        event_bus=FailingPublishBus(),
+        event_bus=event_bus,
         recovery_store=recovery_store,
     )
 
@@ -183,7 +188,7 @@ def test_register_documents_records_recovery_marker_when_publish_fails() -> None
     assert marker.source_document_id.startswith("doc-sha256-")
     assert marker.storage_key == f"knowledgebases/kb-1/documents/{marker.source_document_id}/source"
     assert marker.content_hash == sha256(b"claim body").hexdigest()
-    assert marker.correlation_id is not None
+    assert marker.correlation_id == event_bus.events[0].correlation_id
     assert marker.event_type == "documents.uploaded"
     assert "redis unavailable" in marker.failure_reason
     assert marker.created_at is not None
