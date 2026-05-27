@@ -135,9 +135,6 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Enable pnpm
-        run: corepack enable
-
       - name: Cache npm
         uses: actions/cache@v4
         with:
@@ -159,8 +156,7 @@ jobs:
         run: npm run test:run
 
       - name: Run production readiness focused frontend checks
-        working-directory: .
-        run: pnpm --dir chili_app test -- src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/app/__tests__/router-routes.test.tsx src/pages/__tests__/AnalystCopy.test.tsx --run
+        run: npm run test:run -- src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/app/__tests__/router-routes.test.tsx src/pages/__tests__/AnalystCopy.test.tsx
 
       - name: Build production bundle
         run: npm run build
