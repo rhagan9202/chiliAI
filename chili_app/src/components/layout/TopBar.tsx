@@ -31,6 +31,7 @@ export function TopBar({ domainConfig, domainFeatures, loading, unavailable }: T
       <div className="app-topbar__actions">
         {accessNotice ? (
           <button
+            aria-label="Dismiss access notice"
             className="app-topbar__notice"
             type="button"
             onClick={() => setAccessNotice(null)}
