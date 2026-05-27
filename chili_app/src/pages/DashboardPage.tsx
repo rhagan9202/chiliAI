@@ -67,7 +67,7 @@ export function DashboardPage() {
       <div className="dashboard-kpis">
         <KpiCard color="#00d4ff" icon={AlertTriangle} label="Active alerts" sublabel="Across triage queues and evidence review" value={String(overview.active_alerts)} />
         <KpiCard color="#f59e0b" icon={ShieldCheck} label="High-risk entities" sublabel="Entities currently above high-risk thresholds" value={String(overview.high_risk_entities)} />
-        <KpiCard color="#00e676" icon={Database} label="Entities monitored" sublabel="Entities available in the seeded investigation graph" value={String(overview.entities_monitored)} />
+        <KpiCard color="#00e676" icon={Database} label="Entities monitored" sublabel="Entities available in the active investigation graph" value={String(overview.entities_monitored)} />
         <KpiCard color="#a855f7" icon={Activity} label="Workflow runs" sublabel="Recent ingestion and analytics pipeline activity" value={String(workflows.length)} />
       </div>
 

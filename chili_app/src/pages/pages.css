@@ -329,6 +329,29 @@
 }
 
 @media (max-width: 760px) {
+  .page-grid,
+  .page-placeholder,
+  .dashboard-kpis,
+  .dashboard-panels,
+  .metric-stack,
+  .chart-shell,
+  .investigation-layout,
+  .case-layout,
+  .knowledge-base-layout,
+  .knowledge-base-main,
+  .knowledge-base-form,
+  .knowledge-base-workflows,
+  .knowledge-base-documents,
+  .knowledge-base-timeline,
+  .ingestion-studio-layout,
+  .policy-layout,
+  .policy-main,
+  .policy-copy-grid,
+  .policy-detail-grid {
+    min-width: 0;
+    max-width: 100%;
+  }
+
   .dashboard-kpis,
   .dashboard-panels,
   .investigation-layout,
@@ -343,10 +366,35 @@
     grid-template-columns: 1fr;
   }
 
+  .chart-shell,
+  .investigation-graph-canvas {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .investigation-graph-canvas {
+    height: 340px;
+  }
+
   .page-toolbar,
   .section-header,
-  .alert-row-card__header {
+  .alert-row-card__header,
+  .metric-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .metric-row {
+    flex-wrap: wrap;
+  }
+
+  .page-actions-inline {
+    width: 100%;
+  }
+
+  .page-actions-inline > * {
+    flex: 1 1 180px;
   }
 }

@@ -11,11 +11,13 @@ from analytics.explainability.adapters.in_memory import InMemoryExplainabilityCo
 from analytics.explainability.models import ExplanationContext, ExplanationItem, ExplanationSubgraph
 from analytics.explainability.service import create_explainability_service
 from analytics.explainability.service_models import ExplainabilityRequest, ExplainabilityResponse
+from analytics.risk.exceptions import RiskConfigurationError, RiskInsufficientSignalsError
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
 from analytics.risk.models import RiskProfile, RiskSignal
 from analytics.risk.service import create_risk_service
 from analytics.risk.service_models import RiskAssessmentRequest
 from analytics.timeseries.adapters.in_memory import InMemoryTimeSeriesHistorySource
+from analytics.timeseries.exceptions import TimeseriesConfigurationError, TimeseriesInsufficientHistoryError
 from analytics.timeseries.models import TimeSeriesObservation, TimeSeriesSeries
 from analytics.timeseries.service import create_timeseries_service
 from analytics.timeseries.service_models import TimeseriesAnalysisRequest
@@ -357,10 +359,21 @@ class ApiState:
             high_risk_entities=sum(1 for entity in self._graph_repository.get_entities(self._knowledge_base_id) if self._safe_risk_score(entity.id) >= 0.8),
         )
 
-    def get_risk_score(self, entity_id: str) -> RiskScoreResponse:
-        response = self._risk_service.assess(
-            RiskAssessmentRequest(knowledge_base_id=self._knowledge_base_id, entity_id=entity_id)
-        )
+    def get_risk_score(self, entity_id: str, *, knowledge_base_id: str | None = None) -> RiskScoreResponse:
+        kb_id = knowledge_base_id or self._knowledge_base_id
+        try:
+            response = self._risk_service.assess(
+                RiskAssessmentRequest(knowledge_base_id=kb_id, entity_id=entity_id)
+            )
+        except (RiskConfigurationError, RiskInsufficientSignalsError, ValueError):
+            return RiskScoreResponse(
+                entity_id=entity_id,
+                overall_score=0.0,
+                risk_level="low",
+                factors=[],
+                availability_status="unavailable",
+                unavailable_reason="No risk profile has been generated for this entity.",
+            )
         return RiskScoreResponse(
             entity_id=response.entity_id,
             overall_score=response.overall_score,
@@ -373,24 +386,40 @@ class ApiState:
                 )
                 for factor in response.factors
             ],
+            availability_status="available",
+            unavailable_reason=None,
         )
 
-    def get_timeseries(self, entity_id: str) -> EntityTimeseriesResponse:
-        series = self._timeseries_source.load_series(
-            knowledge_base_id=self._knowledge_base_id,
-            entity_id=entity_id,
-            metric_name="normalized_alert_pressure",
-        )
-        analysis = self._timeseries_service.analyze(
-            TimeseriesAnalysisRequest(
-                knowledge_base_id=self._knowledge_base_id,
+    def get_timeseries(self, entity_id: str, *, knowledge_base_id: str | None = None) -> EntityTimeseriesResponse:
+        kb_id = knowledge_base_id or self._knowledge_base_id
+        try:
+            series = self._timeseries_source.load_series(
+                knowledge_base_id=kb_id,
                 entity_id=entity_id,
-                metric_name=series.metric_name,
-                baseline_window=3,
-                min_history=5,
-                z_threshold=2.0,
+                metric_name="normalized_alert_pressure",
             )
-        )
+            analysis = self._timeseries_service.analyze(
+                TimeseriesAnalysisRequest(
+                    knowledge_base_id=kb_id,
+                    entity_id=entity_id,
+                    metric_name=series.metric_name,
+                    baseline_window=3,
+                    min_history=5,
+                    z_threshold=2.0,
+                )
+            )
+        except (
+            TimeseriesConfigurationError,
+            TimeseriesInsufficientHistoryError,
+            ValueError,
+        ):
+            return EntityTimeseriesResponse(
+                entity_id=entity_id,
+                metric_name="normalized_alert_pressure",
+                points=[],
+                availability_status="unavailable",
+                unavailable_reason="No time series has been generated for this entity.",
+            )
         anomaly_timestamps = {anomaly.observed_at for anomaly in analysis.anomalies}
         return EntityTimeseriesResponse(
             entity_id=entity_id,
@@ -404,6 +433,8 @@ class ApiState:
                 )
                 for observation in series.observations
             ],
+            availability_status="available",
+            unavailable_reason=None,
         )
 
     def create_conversation(self, request: ChatConversationCreateRequest) -> ChatConversationResponse:
@@ -1010,5 +1041,3 @@ def _normalize_risk_level(risk_level: str, overall_score: float) -> Literal["low
     if risk_level in {"high", "medium", "low", "critical"}:
         return cast(Literal["low", "medium", "high", "critical"], risk_level)
     return "medium"
-
-

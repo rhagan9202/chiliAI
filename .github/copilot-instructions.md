@@ -24,6 +24,7 @@
 - **Forbidden**: ad hoc cross-module imports, hidden shared state, and direct implementation coupling.
 - External systems must sit behind protocols/ABCs with concrete adapters: graph DB, vector store, LLM, object storage, embedding model, event bus, and relational DB (Postgres/TimescaleDB via the `database/` module's `ConnectionProvider` protocol).
 - Domain configuration is a single YAML/JSON surface. The frontend reads it at startup via API to render dynamic labels and feature gates. Do not hardcode domain entities in code.
+- Frontend HTTP DTOs are generated from backend OpenAPI. Use `chili_app/src/api/contracts.ts` aliases for API shapes; do not hand-write `*Request` or `*Response` wire types in frontend code. Domain configuration remains runtime data: do not hardcode domain entity names, relationship names, record fields, or capability values.
 - FastAPI and Redis Streams are mandatory architectural components; do not replace them without an explicit architecture update.
 - For new backend modules, follow the package tree and responsibility matrix in `docs/architecture.md` §5.
 

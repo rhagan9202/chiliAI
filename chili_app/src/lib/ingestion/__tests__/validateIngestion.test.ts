@@ -243,6 +243,150 @@ describe('ingestion validation', () => {
     ])
   })
 
+  it('validates enum values and numeric bounds from record schema', () => {
+    const boundedFeed: RecordFeedConfig = {
+      ...feed,
+      record_schema: {
+        ...feed.record_schema,
+        claim_type: {
+          type: 'enum',
+          display: 'Claim Type',
+          required: true,
+          enum_values: ['inpatient', 'outpatient'],
+        },
+        anomaly_score: {
+          type: 'decimal',
+          display: 'Anomaly Score',
+          required: true,
+          min_value: 0,
+          max_value: 1,
+        },
+      },
+    }
+
+    const issues = validateRecordRows(boundedFeed, [
+      {
+        claim_id: 'c1',
+        provider_npi: '1234567890',
+        billed_amount: '99.50',
+        service_date: '2026-01-15',
+        anomaly_score: '1.5',
+        claim_type: 'other',
+      },
+    ])
+
+    expect(issues.map((issue) => issue.message)).toEqual([
+      'Row 1 field Anomaly Score must be <= 1.',
+      'Row 1 field Claim Type must be one of inpatient, outpatient.',
+    ])
+  })
+
+  it('validates string min and max length from record schema', () => {
+    const lengthFeed: RecordFeedConfig = {
+      ...feed,
+      record_schema: {
+        ...feed.record_schema,
+        claim_id: {
+          type: 'string',
+          display: 'Claim ID',
+          required: true,
+          min_length: 3,
+          max_length: 6,
+        },
+      },
+    }
+
+    expect(
+      validateRecordRows(lengthFeed, [
+        {
+          claim_id: 'c',
+          provider_npi: '1234567890',
+          billed_amount: '1',
+          service_date: '2026-01-15',
+          anomaly_score: '0.1',
+        },
+      ]),
+    ).toMatchObject([
+      { message: 'Row 1 field Claim ID must have length >= 3.' },
+    ])
+
+    expect(
+      validateRecordRows(lengthFeed, [
+        {
+          claim_id: 'claim-100',
+          provider_npi: '1234567890',
+          billed_amount: '1',
+          service_date: '2026-01-15',
+          anomaly_score: '0.1',
+        },
+      ]),
+    ).toMatchObject([
+      { message: 'Row 1 field Claim ID must have length <= 6.' },
+    ])
+  })
+
+  it('does not add numeric bound issues when integer coercion fails', () => {
+    const boundedIntegerFeed: RecordFeedConfig = {
+      ...feed,
+      record_schema: {
+        ...feed.record_schema,
+        line_count: {
+          type: 'integer',
+          display: 'Line Count',
+          min_value: 2,
+        },
+      },
+    }
+
+    const issues = validateRecordRows(boundedIntegerFeed, [
+      {
+        claim_id: 'c1',
+        provider_npi: '1234567890',
+        billed_amount: '99.50',
+        line_count: '1.5',
+        service_date: '2026-01-15',
+        anomaly_score: '0.1',
+      },
+    ])
+
+    expect(issues.map((issue) => issue.message)).toEqual([
+      'Row 1 field Line Count must be an integer.',
+    ])
+  })
+
+  it('does not add length issues for values with the wrong declared shape', () => {
+    const lengthFeed: RecordFeedConfig = {
+      ...feed,
+      record_schema: {
+        ...feed.record_schema,
+        tags: {
+          type: 'list',
+          display: 'Tags',
+          max_length: 2,
+        },
+        details: {
+          type: 'nested',
+          display: 'Details',
+          max_length: 1,
+        },
+      },
+    }
+
+    const issues = validateRecordRows(lengthFeed, [
+      {
+        claim_id: 'c1',
+        provider_npi: '1234567890',
+        billed_amount: '99.50',
+        service_date: '2026-01-15',
+        anomaly_score: '0.1',
+        tags: 'not-a-list',
+        details: ['not', 'nested'],
+      },
+    ])
+
+    expect(issues).toEqual([])
+  })
+
   it('matches string patterns against the full field value', () => {
     const patternFeed: RecordFeedConfig = {
       ...feed,

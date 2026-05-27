@@ -249,6 +249,16 @@ def test_search_requires_q_to_be_non_empty(client: TestClient) -> None:
     assert response.status_code == 422
 
 
+def test_search_rejects_configured_query_length(client: TestClient) -> None:
+    response = client.get(
+        "/investigation/search",
+        params={"kb_id": "kb-1", "q": "x" * 10001},
+    )
+
+    assert response.status_code == 422
+    assert "exceeds maximum" in response.json()["detail"]
+
+
 def test_search_rejects_limit_above_max(client: TestClient) -> None:
     response = client.get(
         "/investigation/search",

@@ -20,12 +20,18 @@ from analytics.timeseries.adapters.in_memory import InMemoryTimeSeriesHistorySou
 from analytics.timeseries.models import TimeSeriesObservation
 from analytics.timeseries.protocols import TimeseriesServiceProtocol
 from analytics.timeseries.service import create_timeseries_service
+from api.contracts import AnalyticsOverviewResponse, EntityTimeseriesResponse, RiskScoreResponse
 from api.dependencies import (
+    get_analytics_overview_payload,
+    get_api_state,
     get_gnn_service,
+    get_risk_score_payload,
     get_risk_service,
+    get_timeseries_payload,
     get_timeseries_service,
 )
 from api.routers.analytics import router
+from api.state import ApiState
 from events.adapters.in_memory import InMemoryEventBus
 
 
@@ -149,6 +155,98 @@ def test_list_risk_scores_requires_kb_id(client: TestClient) -> None:
     assert response.status_code == 422
 
 
+def test_detail_risk_score_requires_kb_id(client: TestClient) -> None:
+    response = client.get("/analytics/risk-scores/provider-1")
+
+    assert response.status_code == 422
+
+
+def test_detail_risk_score_is_kb_scoped() -> None:
+    app = FastAPI()
+    app.include_router(router)
+
+    def risk_payload(entity_id: str, kb_id: str) -> RiskScoreResponse:
+        assert entity_id == "provider-1"
+        assert kb_id == "kb-live"
+        return RiskScoreResponse(
+            entity_id=entity_id,
+            overall_score=0.0,
+            risk_level="low",
+            factors=[],
+            availability_status="unavailable",
+            unavailable_reason="No risk profile has been generated for this entity.",
+        )
+
+    app.dependency_overrides[get_risk_score_payload] = risk_payload
+    test_client = TestClient(app)
+
+    response = test_client.get(
+        "/analytics/risk-scores/provider-1",
+        params={"kb_id": "kb-live"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["entity_id"] == "provider-1"
+    assert payload["availability_status"] == "unavailable"
+
+
+def test_detail_payload_dependencies_pass_kb_scope_to_api_state() -> None:
+    app = FastAPI()
+    app.include_router(router)
+
+    class AnalyticsStateStub:
+        def get_risk_score(self, entity_id: str, *, knowledge_base_id: str | None = None) -> RiskScoreResponse:
+            assert entity_id == "provider-1"
+            assert knowledge_base_id == "kb-live"
+            return RiskScoreResponse(
+                entity_id=entity_id,
+                overall_score=0.37,
+                risk_level="medium",
+                factors=[],
+            )
+
+        def get_timeseries(self, entity_id: str, *, knowledge_base_id: str | None = None) -> EntityTimeseriesResponse:
+            assert entity_id == "provider-1"
+            assert knowledge_base_id == "kb-live"
+            return EntityTimeseriesResponse(
+                entity_id=entity_id,
+                metric_name="normalized_alert_pressure",
+                points=[],
+            )
+
+    app.dependency_overrides[get_api_state] = AnalyticsStateStub
+    test_client = TestClient(app)
+
+    risk_response = test_client.get(
+        "/analytics/risk-scores/provider-1",
+        params={"kb_id": "kb-live"},
+    )
+    timeseries_response = test_client.get(
+        "/analytics/timeseries/provider-1",
+        params={"kb_id": "kb-live"},
+    )
+
+    assert risk_response.status_code == 200
+    assert risk_response.json()["overall_score"] == 0.37
+    assert timeseries_response.status_code == 200
+    assert timeseries_response.json()["metric_name"] == "normalized_alert_pressure"
+
+
+def test_unexpected_risk_errors_are_not_converted_to_unavailable() -> None:
+    state = ApiState()
+
+    class BrokenRiskService:
+        def assess(self, request: object) -> RiskScoreResponse:
+            del request
+            raise RuntimeError("risk backend unavailable")
+
+    state._risk_service = BrokenRiskService()
+
+    with pytest.raises(RuntimeError, match="risk backend unavailable"):
+        state.get_risk_score("provider-1", knowledge_base_id="kb-live")
+
+
 def test_query_timeseries_returns_points_in_range(client: TestClient) -> None:
     response = client.get(
         "/analytics/timeseries",
@@ -188,6 +286,55 @@ def test_query_timeseries_rejects_inverted_range(client: TestClient) -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_detail_timeseries_requires_kb_id(client: TestClient) -> None:
+    response = client.get("/analytics/timeseries/provider-1")
+
+    assert response.status_code == 422
+
+
+def test_detail_timeseries_is_kb_scoped() -> None:
+    app = FastAPI()
+    app.include_router(router)
+
+    def timeseries_payload(entity_id: str, kb_id: str) -> EntityTimeseriesResponse:
+        assert entity_id == "provider-1"
+        assert kb_id == "kb-live"
+        return EntityTimeseriesResponse(
+            entity_id=entity_id,
+            metric_name="normalized_alert_pressure",
+            points=[],
+            availability_status="unavailable",
+            unavailable_reason="No time series has been generated for this entity.",
+        )
+
+    app.dependency_overrides[get_timeseries_payload] = timeseries_payload
+    test_client = TestClient(app)
+
+    response = test_client.get(
+        "/analytics/timeseries/provider-1",
+        params={"kb_id": "kb-live"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["entity_id"] == "provider-1"
+    assert payload["availability_status"] == "unavailable"
+
+
+def test_unexpected_timeseries_errors_are_not_converted_to_unavailable() -> None:
+    state = ApiState()
+
+    class BrokenTimeseriesSource:
+        def load_series(self, **kwargs: object) -> EntityTimeseriesResponse:
+            del kwargs
+            raise RuntimeError("timeseries backend unavailable")
+
+    state._timeseries_source = BrokenTimeseriesSource()
+
+    with pytest.raises(RuntimeError, match="timeseries backend unavailable"):
+        state.get_timeseries("provider-1", knowledge_base_id="kb-live")
 
 
 def test_list_gnn_clusters_returns_clusters_when_enabled(client: TestClient) -> None:
@@ -232,6 +379,28 @@ def test_default_di_factories_return_runtime_checkable_protocols() -> None:
     assert isinstance(risk_service, RiskServiceProtocol)
     assert isinstance(timeseries_service, TimeseriesServiceProtocol)
     assert isinstance(gnn_service, GnnServiceProtocol)
+
+
+def test_overview_payload_can_be_overridden_from_live_projection() -> None:
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_analytics_overview_payload] = lambda: AnalyticsOverviewResponse(
+        active_alerts=0,
+        open_cases=0,
+        entities_monitored=4,
+        high_risk_entities=0,
+    )
+    test_client = TestClient(app)
+
+    response = test_client.get("/analytics/overview")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "active_alerts": 0,
+        "open_cases": 0,
+        "entities_monitored": 4,
+        "high_risk_entities": 0,
+    }
 
 
 def test_default_router_returns_empty_results_with_no_seed_data() -> None:

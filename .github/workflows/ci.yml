@@ -37,6 +37,7 @@ jobs:
       - name: Install backend with all extras
         run: |
           python -m pip install --upgrade pip
+          pip install uv
           pip install -e ".[dev,neo4j,qdrant,openai,anthropic,s3,sentence-transformers,analytics,postgres]" \
             || pip install -e ".[dev]"
 
@@ -51,6 +52,10 @@ jobs:
 
       - name: Run pytest with coverage gate
         run: pytest --cov --cov-report=xml --cov-report=term --cov-fail-under=85
+
+      - name: Run production readiness focused backend checks
+        working-directory: .
+        run: uv run --project backend pytest backend/tests/api/test_analytics_router.py backend/tests/agent/test_workflow_tracking.py backend/tests/api/test_records_router.py backend/tests/records/test_service.py backend/tests/events/test_redis_streams.py backend/tests/ingestion/test_service.py -q
 
       - name: Upload backend coverage report
         if: always()
@@ -75,9 +80,49 @@ jobs:
             --ignore-vuln GHSA-0000-0000-0000 \
             || pip-audit --skip-editable
 
+  api-contracts:
+    name: API contracts (OpenAPI + frontend schema drift)
+    runs-on: ubuntu-latest
+    needs: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "backend[dev]"
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        working-directory: chili_app
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+
+      - name: Export OpenAPI and regenerate frontend schema
+        run: |
+          python -m tools.export_openapi --output chili_app/openapi.json
+          cd chili_app
+          npm run codegen:api
+
+      - name: Check generated contract drift
+        run: git diff --exit-code -- chili_app/openapi.json chili_app/src/lib/api/schema.ts chili_app/src/api/contracts.ts
+
+      - name: Run contract guardrails
+        run: python scripts/contract_guardrails.py
+
   frontend:
     name: Frontend (lint, typecheck, tests, build, audit)
     runs-on: ubuntu-latest
+    needs: api-contracts
     defaults:
       run:
         working-directory: chili_app
@@ -109,6 +154,9 @@ jobs:
 
       - name: Run unit tests
         run: npm run test:run
+
+      - name: Run production readiness focused frontend checks
+        run: npm run test:run -- src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/app/__tests__/router-routes.test.tsx src/pages/__tests__/AnalystCopy.test.tsx
 
       - name: Build production bundle
         run: npm run build

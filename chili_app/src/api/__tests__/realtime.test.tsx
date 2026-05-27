@@ -209,6 +209,32 @@ describe('useRealtimeWorkspaceStream', () => {
     expect(useUiStore.getState().realtimeConnected).toBe(true)
   })
 
+  it('invalidates baseline workspace queries after reconnecting from a long disconnect', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    renderRealtimeHook(queryClient)
+    const firstEventSource = FakeEventSource.instances[0]
+
+    act(() => {
+      firstEventSource.open()
+      firstEventSource.error()
+      vi.advanceTimersByTime(30000)
+      vi.advanceTimersByTime(30000)
+    })
+
+    const secondEventSource = FakeEventSource.instances[1]
+    act(() => {
+      secondEventSource.open()
+    })
+
+    const invalidatedKeys = invalidateSpy.mock.calls.map(([filters]) => filters?.queryKey)
+    expect(invalidatedKeys).toEqual([
+      ['alerts'],
+      ['workflows'],
+      ['knowledge-bases'],
+    ])
+  })
+
   it('cleans up pending reconnect timers on unmount', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { unmount } = renderRealtimeHook(queryClient)

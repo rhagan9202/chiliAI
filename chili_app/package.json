@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
-    "codegen:api": "openapi-typescript http://localhost:8000/openapi.json --output src/lib/api/schema.ts",
+    "codegen:api": "openapi-typescript ./openapi.json --output src/lib/api/schema.ts && node scripts/ensure-generated-api-header.mjs",
     "render:architecture": "mmdc -i ../docs/system_architecture_diagram.md -o ../docs/rendered/system_architecture_diagram_rendered.md -a ../docs/rendered -e svg -p ../docs/rendered/puppeteer-config.json",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"

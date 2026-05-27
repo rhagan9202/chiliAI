@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from api.middleware.rbac import require_role
-from config.schema import DomainConfig
+from config.schema import DomainConfig, ValidationConfig
 from graph.protocols import GraphServiceProtocol
 from graph.service_models import (
     EntityDetailResponse,
@@ -13,6 +13,7 @@ from graph.service_models import (
     NeighborhoodResponse,
 )
 from shared.kb_scope import KnowledgeBaseExistenceCheck, resolve_kb_scope
+from shared.validation import validate_query_length
 
 __all__ = ["get_graph_service", "router"]
 
@@ -110,6 +111,14 @@ async def search_entities(
     graph_service: GraphServiceProtocol = Depends(get_graph_service),
 ) -> EntitySearchResponse:
     """Return entities matching ``q`` paginated by ``limit`` and ``offset``."""
+    validation = domain_config.validation or ValidationConfig()
+    try:
+        cleaned_query = validate_query_length(q, validation.max_query_length)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
     kb_ids = resolve_kb_scope(kb_id, domain_config, kb_repository)
-    items = graph_service.search_entities(kb_ids, q, limit, offset)
+    items = graph_service.search_entities(kb_ids, cleaned_query, limit, offset)
     return EntitySearchResponse(items=items, total=len(items))

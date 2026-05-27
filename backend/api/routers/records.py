@@ -6,10 +6,15 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from pydantic import BaseModel, Field
 
 from api._kb_busy import KbBusyError, WorkflowBusyTracker, ensure_kb_idle
-from knowledgebases import KnowledgeBaseRepository
-from api.dependencies import get_domain_config, get_knowledge_base_repository, get_records_service, get_workflow_tracker
+from api.dependencies import (
+    get_domain_config,
+    get_knowledge_base_repository,
+    get_records_service,
+    get_workflow_tracker,
+)
 from api.middleware.rbac import require_role
 from config.schema import DomainConfig, ValidationConfig
+from knowledgebases import KnowledgeBaseRepository
 from records.adapters.sources.file_source import CsvFileSource, JsonlFileSource
 from records.exceptions import RecordFeedNotFoundError, RecordPersistenceError, RecordsError
 from records.protocols import RecordsServiceProtocol
@@ -117,8 +122,30 @@ async def push_records(
     knowledge_base_id: str,
     payload: RecordPushRequest,
     service: RecordsServiceProtocol = Depends(get_records_service),
+    repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
+    workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
 ) -> RecordIngestReceipt:
     """Ingest a JSON array of record rows into the named feed."""
+    existing_kb = repository.get(knowledge_base_id)
+    if existing_kb is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Knowledge base '{knowledge_base_id}' was not found.",
+        )
+    if existing_kb.pending_cleanup:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Knowledge base '{knowledge_base_id}' has pending cleanup; cannot mutate until resolved.",
+        )
+
+    try:
+        ensure_kb_idle(knowledge_base_id, tracker=workflow_tracker)
+    except KbBusyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
     try:
         return service.register_records(
             knowledge_base_id,

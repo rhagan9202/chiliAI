@@ -6,7 +6,7 @@ import os
 from functools import lru_cache
 from typing import NoReturn, cast
 
-from fastapi import Depends, Path, Request
+from fastapi import Depends, Path, Query, Request
 
 from api.contracts import (
     AnalyticsOverviewResponse,
@@ -69,6 +69,7 @@ from graph.service import create_graph_service
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import ParserRegistry, create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
+from ingestion.recovery import InMemoryIngestionRecoveryStore
 from ingestion.service import IngestionService
 from llm.adapters.protocols import LlmClientProtocol
 from llm.factory import create_llm_client
@@ -118,6 +119,7 @@ __all__ = [
     "get_event_bus",
     "get_event_bus_settings",
     "get_graph_entity_detail_payload",
+    "get_ingestion_recovery_store",
     "get_ingestion_service",
     "get_graph_repository",
     "get_graph_service",
@@ -288,18 +290,20 @@ def get_policy_brief_payload(
 
 def get_risk_score_payload(
     entity_id: str = Path(..., description="Entity identifier."),
+    kb_id: str = Query(..., min_length=1, description="Knowledge base identifier."),
     state: ApiState = Depends(get_api_state),
 ) -> RiskScoreResponse:
-    """Return a deterministic risk-score payload."""
-    return state.get_risk_score(entity_id)
+    """Return a KB-scoped risk-score payload."""
+    return state.get_risk_score(entity_id, knowledge_base_id=kb_id)
 
 
 def get_timeseries_payload(
     entity_id: str = Path(..., description="Entity identifier."),
+    kb_id: str = Query(..., min_length=1, description="Knowledge base identifier."),
     state: ApiState = Depends(get_api_state),
 ) -> EntityTimeseriesResponse:
-    """Return a deterministic timeseries payload."""
-    return state.get_timeseries(entity_id)
+    """Return a KB-scoped timeseries payload."""
+    return state.get_timeseries(entity_id, knowledge_base_id=kb_id)
 
 
 def get_analytics_overview_payload(
@@ -407,6 +411,12 @@ def _resolve_event_bus_settings(config: DomainConfig) -> EventBusSettings:
         consumer_name_prefix=env_settings.consumer_name_prefix,
         batch_size=env_settings.batch_size,
         block_ms=env_settings.block_ms,
+        stream_maxlen=event_config.stream_maxlen
+        if event_config.stream_maxlen is not None
+        else env_settings.stream_maxlen,
+        reclaim_min_idle_ms=event_config.reclaim_min_idle_ms
+        if event_config.reclaim_min_idle_ms is not None
+        else env_settings.reclaim_min_idle_ms,
     )
 
 
@@ -682,12 +692,19 @@ def get_gnn_service() -> GnnServiceProtocol:
 
 
 @lru_cache(maxsize=1)
+def get_ingestion_recovery_store() -> InMemoryIngestionRecoveryStore:
+    """Return the recovery marker store for ingestion publish failures."""
+    return InMemoryIngestionRecoveryStore()
+
+
+@lru_cache(maxsize=1)
 def get_ingestion_service() -> IngestionService:
     """Return the ingestion service used by API routes and tests."""
     return IngestionService(
         get_parser_orchestrator(),
         object_store=get_object_store(),
         event_bus=get_event_bus(),
+        recovery_store=get_ingestion_recovery_store(),
     )
 
 

@@ -1,12 +1,14 @@
 import { create } from 'zustand'
 
 type UiState = {
+  accessNotice: string | null
   aiPanelOpen: boolean
   lastRealtimeEventAt: string | null
   realtimeConnected: boolean
   selectedRole: string | null
   selectedEntityId: string | null
   sidebarCollapsed: boolean
+  setAccessNotice: (message: string | null) => void
   setLastRealtimeEventAt: (timestamp: string | null) => void
   setRealtimeConnected: (connected: boolean) => void
   setSelectedRole: (role: string | null) => void
@@ -16,12 +18,14 @@ type UiState = {
 }
 
 export const useUiStore = create<UiState>((set) => ({
+  accessNotice: null,
   aiPanelOpen: true,
   lastRealtimeEventAt: null,
   realtimeConnected: false,
   selectedRole: null,
   selectedEntityId: null,
   sidebarCollapsed: false,
+  setAccessNotice: (accessNotice) => set({ accessNotice }),
   setLastRealtimeEventAt: (lastRealtimeEventAt) => set({ lastRealtimeEventAt }),
   setRealtimeConnected: (realtimeConnected) => set({ realtimeConnected }),
   setSelectedRole: (selectedRole) => set({ selectedRole }),

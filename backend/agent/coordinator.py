@@ -14,6 +14,7 @@ import json
 import os
 import signal
 import sys
+import time
 import traceback
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -33,6 +34,7 @@ from config.schema import (
     DatabaseConfig,
     DomainConfig,
     EmbeddingsConfig,
+    EventBusConfig,
     GraphDbConfig,
     LlmConfig,
     ObjectStoreConfig,
@@ -128,6 +130,7 @@ from ingestion.models import ExtractionResult, ParsedDocument, ValidationReport
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
+from ingestion.recovery import InMemoryIngestionRecoveryStore
 from ingestion.service import IngestionService
 from ingestion.validator import ExtractionResultValidator, create_extraction_validator
 from llm.adapters.protocols import LlmClientProtocol
@@ -175,6 +178,7 @@ from vectorstore.models import VectorRecord
 from vectorstore.protocols import VectorServiceProtocol
 
 __all__ = [
+    "WORKER_EVENT_TYPES",
     "WorkerDependencies",
     "build_alert_history_writer",
     "build_connection_provider",
@@ -217,6 +221,23 @@ logger = get_logger("chili.worker")
 
 SHUTDOWN_LOG_REQUESTED = "Shutdown requested, finishing current event..."
 SHUTDOWN_LOG_DONE = "Worker stopped gracefully."
+DEFAULT_WORKFLOW_STALE_MAX_AGE_SECONDS = 24 * 60 * 60
+DEFAULT_WORKFLOW_RECONCILE_INTERVAL_SECONDS = 60
+WORKER_EVENT_TYPES: tuple[str, ...] = (
+    "documents.uploaded",
+    "documents.parsed",
+    "documents.chunked",
+    "entities.extracted",
+    "entities.validated",
+    "graph.updated",
+    "embeddings.complete",
+    "vectors.indexed",
+    "kb.ready",
+    "risk.scored",
+    "records.ingested",
+    "alerts.created",
+    "kb.delete",
+)
 
 
 @dataclass(slots=True)
@@ -606,6 +627,32 @@ def build_llm_client(config: DomainConfig) -> LlmClientProtocol:
         ) from exc
 
 
+def _resolve_worker_event_bus_settings(config: DomainConfig) -> EventBusSettings:
+    env_settings = load_event_bus_settings()
+    if "events" not in config.model_fields_set:
+        return env_settings
+
+    event_config = config.events
+    if event_config is None or event_config == EventBusConfig():
+        return env_settings
+
+    return EventBusSettings(
+        backend="redis" if event_config.backend == "redis" else "in-memory",
+        redis_url=event_config.uri or env_settings.redis_url,
+        stream_prefix=event_config.stream_prefix,
+        consumer_group=event_config.consumer_group,
+        consumer_name_prefix=env_settings.consumer_name_prefix,
+        batch_size=env_settings.batch_size,
+        block_ms=env_settings.block_ms,
+        stream_maxlen=event_config.stream_maxlen
+        if event_config.stream_maxlen is not None
+        else env_settings.stream_maxlen,
+        reclaim_min_idle_ms=event_config.reclaim_min_idle_ms
+        if event_config.reclaim_min_idle_ms is not None
+        else env_settings.reclaim_min_idle_ms,
+    )
+
+
 def build_worker_dependencies() -> WorkerDependencies:
     """Assemble the worker's runtime dependencies from configuration.
 
@@ -614,7 +661,7 @@ def build_worker_dependencies() -> WorkerDependencies:
     """
 
     config = load_config()
-    event_settings = load_event_bus_settings()
+    event_settings = _resolve_worker_event_bus_settings(config)
     event_bus = create_event_bus(event_settings)
     workflow_run_store = create_workflow_run_store_from_env()
     workflow_tracker = WorkflowEventTracker(workflow_run_store)
@@ -633,6 +680,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         orchestrator,
         object_store=object_store,
         event_bus=event_bus,
+        recovery_store=InMemoryIngestionRecoveryStore(),
     )
     chunker = create_document_chunker(config.ingestion.chunking)
     extractor = create_document_extractor(config.entities, config.relationships)
@@ -2259,6 +2307,8 @@ def _dispatch_event(
             graph_repository=graph_repository,
             event_bus=event_bus,
         )
+    if isinstance(event, KnowledgeBaseReadyEvent):
+        return 0
     if isinstance(event, RiskScoredEvent):
         processed = 0
         if monitoring_service is not None:
@@ -2440,6 +2490,7 @@ async def drain_ingestion_events(
     consumer_name: str,
     limit: int = 10,
     block_ms: int | None = None,
+    reclaim_min_idle_ms: int | None = None,
     retry_policy: RetryPolicy | None = None,
     health_state: HealthState | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
@@ -2452,28 +2503,30 @@ async def drain_ingestion_events(
 
     policy = retry_policy or RetryPolicy()
     processed = 0
-    event_types = [
-        "documents.uploaded",
-        "documents.parsed",
-        "documents.chunked",
-        "entities.extracted",
-        "entities.validated",
-        "graph.updated",
-        "embeddings.complete",
-        "vectors.indexed",
-        "risk.scored",
-        "records.ingested",
-        "alerts.created",
-        "kb.delete",
-    ]
+    event_types = list(WORKER_EVENT_TYPES)
     event_bus.ensure_consumer_group(event_types, consumer_group=consumer_group)
-    deliveries = event_bus.consume(
-        event_types,
-        consumer_group=consumer_group,
-        consumer_name=consumer_name,
-        limit=limit,
-        block_ms=block_ms,
-    )
+    deliveries: list[EventDelivery] = []
+    if reclaim_min_idle_ms is not None and reclaim_min_idle_ms > 0 and limit > 0:
+        deliveries.extend(
+            event_bus.reclaim_stale_pending(
+                event_types,
+                consumer_group=consumer_group,
+                consumer_name=consumer_name,
+                min_idle_ms=reclaim_min_idle_ms,
+                limit=limit,
+            )
+        )
+    remaining_limit = limit - len(deliveries)
+    if remaining_limit > 0:
+        deliveries.extend(
+            event_bus.consume(
+                event_types,
+                consumer_group=consumer_group,
+                consumer_name=consumer_name,
+                limit=remaining_limit,
+                block_ms=block_ms,
+            )
+        )
     ackable: list[EventDelivery] = []
     for delivery in deliveries:
 
@@ -2589,9 +2642,35 @@ async def run_worker(
     install_signal_handlers(loop, shutdown_event)
 
     health_server = await start_health_server_safely(health_state)
+    stale_workflow_max_age_seconds = _positive_int_from_env(
+        "CHILI_WORKFLOW_STALE_MAX_AGE_SECONDS",
+        DEFAULT_WORKFLOW_STALE_MAX_AGE_SECONDS,
+    )
+    workflow_reconcile_interval_seconds = _positive_int_from_env(
+        "CHILI_WORKFLOW_RECONCILE_INTERVAL_SECONDS",
+        DEFAULT_WORKFLOW_RECONCILE_INTERVAL_SECONDS,
+    )
+    last_workflow_reconcile_at: float | None = None
 
     try:
         while not shutdown_event.is_set():
+            now_monotonic = time.monotonic()
+            should_reconcile_workflows = (
+                stale_workflow_max_age_seconds > 0
+                and workflow_reconcile_interval_seconds > 0
+                and (
+                    last_workflow_reconcile_at is None
+                    or now_monotonic - last_workflow_reconcile_at
+                    >= workflow_reconcile_interval_seconds
+                )
+            )
+            if should_reconcile_workflows:
+                reconciled = deps.workflow_tracker.reconcile_stale_runs(
+                    max_age_seconds=stale_workflow_max_age_seconds
+                )
+                last_workflow_reconcile_at = now_monotonic
+                if reconciled:
+                    logger.warning("Reconciled %s stale workflow run(s)", reconciled)
             processed = await drain_ingestion_events(
                 deps.event_bus,
                 deps.ingestion_service,
@@ -2618,6 +2697,7 @@ async def run_worker(
                 consumer_name=deps.event_settings.consumer_name(),
                 limit=deps.event_settings.batch_size,
                 block_ms=deps.event_settings.block_ms,
+                reclaim_min_idle_ms=deps.event_settings.reclaim_min_idle_ms,
                 retry_policy=policy,
                 health_state=health_state,
                 workflow_tracker=deps.workflow_tracker,
@@ -2639,6 +2719,14 @@ async def run_worker(
             with contextlib.suppress(Exception):
                 await health_server.wait_closed()
         logger.info(SHUTDOWN_LOG_DONE)
+
+
+def _positive_int_from_env(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    value = int(raw)
+    return value if value > 0 else 0
 
 
 def _resolve_graph_repository(graph_service: GraphService) -> GraphRepository:

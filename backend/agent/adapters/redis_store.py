@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import cast
 
 from redis import Redis
+from redis.exceptions import WatchError
 
 from agent.exceptions import WorkflowRunNotFoundError
 from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowRunUpdate
@@ -119,6 +120,46 @@ class RedisWorkflowRunStore:
         merged.update(patch)
         updated = WorkflowRun.model_validate(merged)
         return self.save_run(updated)
+
+    def update_run_if_current(
+        self,
+        workflow_id: str,
+        update: WorkflowRunUpdate,
+        *,
+        expected_statuses: set[WorkflowRunStatus] | frozenset[WorkflowRunStatus],
+        updated_before: datetime,
+    ) -> WorkflowRun | None:
+        workflow_key = self._workflow_key(workflow_id)
+        for _ in range(3):
+            pipe = self._client.pipeline()  # pyright: ignore[reportUnknownMemberType]
+            try:
+                pipe.watch(workflow_key)
+                raw = pipe.get(workflow_key)
+                if raw is None:
+                    return None
+                existing = WorkflowRun.model_validate_json(
+                    _decode_redis_string(cast(RedisValue, raw))
+                )
+                if existing.status not in expected_statuses:
+                    return None
+                if existing.updated_at >= updated_before:
+                    return None
+                patch = update.model_dump(exclude_none=True)
+                if not patch:
+                    return existing.model_copy(deep=True)
+                patch.setdefault("updated_at", utc_now())
+                merged = existing.model_dump()
+                merged.update(patch)
+                updated = WorkflowRun.model_validate(merged)
+                pipe.multi()
+                pipe.set(workflow_key, updated.model_dump_json())
+                pipe.execute()
+                return updated.model_copy(deep=True)
+            except WatchError:
+                continue
+            finally:
+                pipe.reset()
+        return None
 
     def delete_run(self, workflow_id: str) -> None:
         existing = self._get_optional(workflow_id)

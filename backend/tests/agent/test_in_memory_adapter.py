@@ -26,6 +26,7 @@ def _run(
     status: WorkflowRunStatus = WorkflowRunStatus.RUNNING,
     steps: list[WorkflowStepState] | None = None,
     created_at: datetime | None = None,
+    updated_at: datetime | None = None,
 ) -> WorkflowRun:
     return WorkflowRun(
         workflow_id=workflow_id,
@@ -34,6 +35,7 @@ def _run(
         status=status,
         steps=steps or [WorkflowStepState(step_name="parse")],
         created_at=created_at or datetime(2026, 1, 1, tzinfo=timezone.utc),
+        updated_at=updated_at or datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
 
 
@@ -254,6 +256,47 @@ def test_update_run_rejects_invariant_violations() -> None:
     ]
     with pytest.raises(ValidationError):
         store.update_run("workflow-1", WorkflowRunUpdate(steps=duplicate))
+
+
+def test_update_run_if_current_updates_when_conditions_match() -> None:
+    old_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    cutoff = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    store = InMemoryWorkflowRunStore(
+        runs=[_run(status=WorkflowRunStatus.RUNNING, updated_at=old_time)]
+    )
+
+    updated = store.update_run_if_current(
+        "workflow-1",
+        WorkflowRunUpdate(
+            status=WorkflowRunStatus.FAILED,
+            metadata={"reason": "stale_workflow_reconciled"},
+        ),
+        expected_statuses={WorkflowRunStatus.RUNNING},
+        updated_before=cutoff,
+    )
+
+    assert updated is not None
+    assert updated.status is WorkflowRunStatus.FAILED
+    assert updated.metadata["reason"] == "stale_workflow_reconciled"
+    assert store.get_run("workflow-1").status is WorkflowRunStatus.FAILED
+
+
+def test_update_run_if_current_returns_none_when_condition_fails() -> None:
+    old_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    cutoff = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    store = InMemoryWorkflowRunStore(
+        runs=[_run(status=WorkflowRunStatus.COMPLETED, updated_at=old_time)]
+    )
+
+    updated = store.update_run_if_current(
+        "workflow-1",
+        WorkflowRunUpdate(status=WorkflowRunStatus.FAILED),
+        expected_statuses={WorkflowRunStatus.RUNNING},
+        updated_before=cutoff,
+    )
+
+    assert updated is None
+    assert store.get_run("workflow-1").status is WorkflowRunStatus.COMPLETED
 
 
 def test_delete_run_removes_workflow_run() -> None:

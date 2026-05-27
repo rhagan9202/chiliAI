@@ -7,6 +7,8 @@ from typing import Literal, cast
 
 from pydantic import BaseModel, Field
 
+from config.schema import CapabilitiesConfig, UiRoleConfig
+
 
 class ApiEnvelope(BaseModel):
     """Common status envelope for simple mutation responses."""
@@ -21,6 +23,22 @@ class PageInfo(BaseModel):
     page: int = Field(ge=1)
     page_size: int = Field(ge=1)
     total_items: int = Field(ge=0)
+
+
+class DomainFeaturesResponse(BaseModel):
+    """Feature flags and role/navigation metadata derived from DomainConfig."""
+
+    capabilities: CapabilitiesConfig
+    default_entity_type: str | None = None
+    default_role: str | None = None
+    enabled_pages: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    roles: dict[str, UiRoleConfig] = Field(default_factory=dict)
+
+
+class DomainConfigSchemaResponse(BaseModel):
+    """JSON Schema payload for the active domain config model."""
+
+    schema_payload: dict[str, object] = Field(default_factory=dict, alias="schema")
 
 
 class AlertListItem(BaseModel):
@@ -253,6 +271,30 @@ class ChatConversationResponse(BaseModel):
     messages: list[ChatMessageResponse] = Field(default_factory=lambda: cast(list[ChatMessageResponse], []))
 
 
+class ChatStreamCitationResponse(BaseModel):
+    """Citation payload emitted in the final RAG SSE event."""
+
+    record_id: str
+    content_id: str
+    score: float
+    snippet: str
+    document_id: str | None = None
+    chunk_index: int | None = None
+    highlight: str | None = None
+    entity_id: str | None = None
+
+
+class ChatStreamFinalEventResponse(BaseModel):
+    """Final RAG SSE event payload."""
+
+    token: str
+    done: Literal[True]
+    sources: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    citations: list[ChatStreamCitationResponse] = Field(
+        default_factory=lambda: cast(list[ChatStreamCitationResponse], [])
+    )
+
+
 class WorkflowRunResponse(BaseModel):
     """Workflow run summary for pipeline status views."""
 
@@ -287,6 +329,8 @@ class RiskScoreResponse(BaseModel):
     overall_score: float = Field(ge=0.0, le=1.0)
     risk_level: Literal["low", "medium", "high", "critical"]
     factors: list[RiskFactorResponse] = Field(default_factory=lambda: cast(list[RiskFactorResponse], []))
+    availability_status: Literal["available", "unavailable"] = "available"
+    unavailable_reason: str | None = None
 
 
 class EntityTimeseriesPointResponse(BaseModel):
@@ -304,6 +348,8 @@ class EntityTimeseriesResponse(BaseModel):
     entity_id: str
     metric_name: str
     points: list[EntityTimeseriesPointResponse] = Field(default_factory=lambda: cast(list[EntityTimeseriesPointResponse], []))
+    availability_status: Literal["available", "unavailable"] = "available"
+    unavailable_reason: str | None = None
 
 
 class AnalyticsOverviewResponse(BaseModel):
@@ -374,6 +420,10 @@ __all__ = [
     "ChatConversationResponse",
     "ChatMessageCreateRequest",
     "ChatMessageResponse",
+    "ChatStreamCitationResponse",
+    "ChatStreamFinalEventResponse",
+    "DomainConfigSchemaResponse",
+    "DomainFeaturesResponse",
     "EvidenceItemResponse",
     "EvidencePackResponse",
     "EntityTimeseriesPointResponse",

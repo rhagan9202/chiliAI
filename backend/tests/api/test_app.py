@@ -156,6 +156,77 @@ class TestOpenApiSchema:
             "analytics",
         }.issubset(tags)
 
+    def test_frontend_json_routes_have_response_schemas(self, client: TestClient) -> None:
+        schema = cast(dict[str, object], client.get("/openapi.json").json())
+        paths = cast(dict[str, dict[str, dict[str, object]]], schema["paths"])
+
+        required_operations: tuple[tuple[str, str], ...] = (
+            ("/config/domain", "get"),
+            ("/config/features", "get"),
+            ("/chat/conversations/{conversation_id}/messages", "post"),
+            ("/investigation/search", "get"),
+            ("/investigation/entities/{entity_id}/neighborhood", "get"),
+        )
+
+        missing: list[str] = []
+        for path, method in required_operations:
+            operation = paths[path][method]
+            responses = cast(dict[str, object], operation["responses"])
+            success = cast(dict[str, object], responses["200"])
+            content = cast(dict[str, object], success.get("content", {}))
+            json_content = cast(dict[str, object], content.get("application/json", {}))
+            if "schema" not in json_content:
+                missing.append(f"{method.upper()} {path}")
+
+        assert missing == []
+
+        chat_operation = paths["/chat/conversations/{conversation_id}/messages"]["post"]
+        chat_responses = cast(dict[str, object], chat_operation["responses"])
+        chat_success = cast(dict[str, object], chat_responses["200"])
+        chat_content = cast(dict[str, object], chat_success["content"])
+        chat_json = cast(dict[str, object], chat_content["application/json"])
+        assert chat_json["schema"] == {
+            "$ref": "#/components/schemas/ChatConversationResponse"
+        }
+
+    def test_openapi_response_schemas_do_not_use_json_schema_defs(
+        self, client: TestClient
+    ) -> None:
+        schema = cast(dict[str, object], client.get("/openapi.json").json())
+        paths = cast(dict[str, dict[str, dict[str, object]]], schema["paths"])
+        bad_refs: list[str] = []
+
+        def collect_bad_refs(value: object, location: str) -> None:
+            if isinstance(value, dict):
+                node = cast(dict[str, object], value)
+                ref = node.get("$ref")
+                if isinstance(ref, str) and ref.startswith("#/$defs/"):
+                    bad_refs.append(f"{location}: {ref}")
+                for key, child in node.items():
+                    collect_bad_refs(child, f"{location}.{key}")
+            elif isinstance(value, list):
+                items = cast(list[object], value)
+                for index, child in enumerate(items):
+                    collect_bad_refs(child, f"{location}[{index}]")
+
+        for path, operations in paths.items():
+            for method, operation in operations.items():
+                responses = cast(dict[str, object], operation.get("responses", {}))
+                collect_bad_refs(responses, f"{method.upper()} {path}")
+
+        assert bad_refs == []
+
+    def test_domain_config_schema_includes_runtime_sections(self, client: TestClient) -> None:
+        schema = cast(dict[str, object], client.get("/openapi.json").json())
+        components = cast(dict[str, dict[str, object]], schema["components"])
+        schemas = cast(dict[str, dict[str, object]], components["schemas"])
+        domain_config = schemas["DomainConfig"]
+        properties = cast(dict[str, object], domain_config["properties"])
+
+        assert {"capabilities", "validation", "records", "ui", "alerts"}.issubset(
+            properties
+        )
+
 
 class TestWebSocketRouter:
     """The WebSocket router is registered too, but cannot be hit via HTTP GET.

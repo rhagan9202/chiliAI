@@ -821,7 +821,7 @@ The platform supports a dual-graph model: a domain-level reference ("policy") KB
 | Routing | React Router v7 | File-system or config-based routes |
 | Server state | TanStack Query (React Query) | Caching, invalidation, optimistic updates |
 | Client state | Zustand | Lightweight store for UI state (selected entity, panel visibility, etc.) |
-| API client | Typed fetch wrapper + TanStack Query hooks | `lib/apiClient.ts` provides typed envelopes; generated OpenAPI client remains optional future hardening |
+| API client | Typed fetch wrapper + TanStack Query hooks + generated OpenAPI schema aliases | `lib/apiClient.ts` handles transport; `src/api/contracts.ts` aliases `src/lib/api/schema.ts` generated from backend OpenAPI |
 | Real-time | Server-Sent Events + WebSocket support | Workspace snapshots over SSE; WebSocket support remains available for push-style interactions |
 | Graph visualization | `react-force-graph-2d` | Canvas graph explorer in the Investigation Workbench |
 | Styling | CSS Modules + global app CSS | Component-scoped styles for complex UI surfaces |
@@ -898,8 +898,9 @@ The investigation workbench is the primary analyst view. It is a composite page 
 
 ### 8.4 API communication
 
-- The FastAPI backend auto-generates an OpenAPI specification.
-- The current frontend uses typed fetch helpers plus TanStack Query hooks. Generated OpenAPI clients remain an optional hardening path via the existing codegen command.
+- The FastAPI OpenAPI document is the source of truth for frontend HTTP contracts. The frontend commits a generated schema at `chili_app/src/lib/api/schema.ts`; `chili_app/src/api/contracts.ts` only aliases generated schemas and may not define hand-written wire DTOs.
+- Domain configuration remains runtime data: generated types describe the config structure, while entity names, relationship names, property names, record fields, and capabilities are read from `/config/domain`.
+- The current frontend uses typed fetch helpers plus TanStack Query hooks over those generated contract aliases.
 - TanStack Query wraps all API calls, providing caching, background refetching, and optimistic updates.
 - The realtime workspace stream uses `GET /events/stream` as Server-Sent Events. Snapshots include live active-alert counts from the API alert projection, live running-workflow counts from `AgentServiceProtocol`, and live KB statuses from the repository-backed KB projection. In the dev stack, API and worker share workflow lifecycle state through Redis.
 - WebSocket support remains available for push-style interactions and follows typed message envelopes where applicable.

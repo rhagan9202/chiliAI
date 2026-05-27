@@ -60,6 +60,43 @@ class _FakeRedis:
         sorted_set.pop(member, None)
         return 1 if existed else 0
 
+    def pipeline(self) -> "_FakeRedisPipeline":
+        return _FakeRedisPipeline(self)
+
+
+class _FakeRedisPipeline:
+    def __init__(self, client: _FakeRedis) -> None:
+        self._client = client
+        self._commands: list[tuple[str, str, str]] = []
+        self._in_multi = False
+
+    def watch(self, key: str) -> None:
+        assert key
+
+    def get(self, key: str) -> str | None:
+        return self._client.get(key)
+
+    def multi(self) -> None:
+        self._in_multi = True
+
+    def set(self, key: str, value: str) -> bool | None:
+        if self._in_multi:
+            self._commands.append(("set", key, value))
+            return None
+        return self._client.set(key, value)
+
+    def execute(self) -> list[object]:
+        results: list[object] = []
+        for command, key, value in self._commands:
+            if command == "set":
+                results.append(self._client.set(key, value))
+        self.reset()
+        return results
+
+    def reset(self) -> None:
+        self._commands.clear()
+        self._in_multi = False
+
 
 def _run(
     *,
@@ -67,6 +104,7 @@ def _run(
     knowledge_base_id: str = "kb-1",
     status: WorkflowRunStatus = WorkflowRunStatus.RUNNING,
     created_at: datetime | None = None,
+    updated_at: datetime | None = None,
     idempotency_key: str | None = None,
 ) -> WorkflowRun:
     return WorkflowRun(
@@ -76,6 +114,7 @@ def _run(
         status=status,
         steps=[WorkflowStepState(step_name="parse")],
         created_at=created_at or datetime(2026, 1, 1, tzinfo=timezone.utc),
+        updated_at=updated_at or datetime(2026, 1, 1, tzinfo=timezone.utc),
         idempotency_key=idempotency_key,
     )
 
@@ -132,6 +171,41 @@ def test_redis_workflow_run_store_updates_run_and_timestamp() -> None:
 
     assert updated.status is WorkflowRunStatus.COMPLETED
     assert updated.updated_at >= run.updated_at
+
+
+def test_redis_workflow_run_store_update_if_current_updates_matching_run() -> None:
+    store = _store()
+    run = store.save_run(_run(status=WorkflowRunStatus.RUNNING))
+
+    updated = store.update_run_if_current(
+        "workflow-1",
+        WorkflowRunUpdate(
+            status=WorkflowRunStatus.FAILED,
+            metadata={"reason": "stale_workflow_reconciled"},
+        ),
+        expected_statuses={WorkflowRunStatus.RUNNING},
+        updated_before=datetime(2026, 1, 2, tzinfo=timezone.utc),
+    )
+
+    assert updated is not None
+    assert updated.status is WorkflowRunStatus.FAILED
+    assert updated.updated_at >= run.updated_at
+    assert updated.metadata["reason"] == "stale_workflow_reconciled"
+
+
+def test_redis_workflow_run_store_update_if_current_returns_none_on_stale_condition() -> None:
+    store = _store()
+    store.save_run(_run(status=WorkflowRunStatus.COMPLETED))
+
+    updated = store.update_run_if_current(
+        "workflow-1",
+        WorkflowRunUpdate(status=WorkflowRunStatus.FAILED),
+        expected_statuses={WorkflowRunStatus.RUNNING},
+        updated_before=datetime(2026, 1, 2, tzinfo=timezone.utc),
+    )
+
+    assert updated is None
+    assert store.get_run("workflow-1").status is WorkflowRunStatus.COMPLETED
 
 
 def test_redis_workflow_run_store_enforces_idempotency_per_kb() -> None:

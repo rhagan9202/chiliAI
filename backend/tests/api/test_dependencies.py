@@ -25,6 +25,7 @@ from embeddings.service import EmbeddingsService
 from events.adapters.in_memory import InMemoryEventBus
 from events.adapters.redis_streams import RedisStreamsEventBus
 from graph.service import GraphService
+from ingestion.recovery import InMemoryIngestionRecoveryStore
 from llm.service import LlmService
 from monitoring.adapters.in_memory import InMemoryObservationSource
 from monitoring.adapters.postgres import PostgresObservationSource
@@ -67,6 +68,7 @@ def clear_dependency_caches() -> None:
         dependencies.get_parser_registry,
         dependencies.get_remote_fetcher,
         dependencies.get_parser_orchestrator,
+        dependencies.get_ingestion_recovery_store,
     ]
     for factory in cacheable_factories:
         factory.cache_clear()
@@ -186,6 +188,54 @@ def test_event_bus_uses_explicit_config_when_section_present(
     _install_config(monkeypatch, config)
 
     assert isinstance(dependencies.get_event_bus(), RedisStreamsEventBus)
+
+
+def test_event_bus_explicit_config_carries_recovery_and_trim_settings(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={
+            "events": EventBusConfig(
+                backend="redis",
+                uri="redis://localhost:6379/5",
+                stream_prefix="custom",
+                consumer_group="custom-workers",
+                stream_maxlen=5000,
+                reclaim_min_idle_ms=45_000,
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+
+    settings = dependencies._resolve_event_bus_settings(config)  # pyright: ignore[reportPrivateUsage]
+
+    assert settings.stream_maxlen == 5000
+    assert settings.reclaim_min_idle_ms == 45_000
+
+
+def test_event_bus_explicit_config_preserves_env_recovery_and_trim_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={
+            "events": EventBusConfig(
+                backend="redis",
+                uri="redis://localhost:6379/5",
+                stream_prefix="custom",
+                consumer_group="custom-workers",
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+    monkeypatch.setenv("CHILI_EVENT_STREAM_MAXLEN", "7500")
+    monkeypatch.setenv("CHILI_EVENT_RECLAIM_MIN_IDLE_MS", "90_000")
+
+    settings = dependencies._resolve_event_bus_settings(config)  # pyright: ignore[reportPrivateUsage]
+
+    assert settings.stream_maxlen == 7500
+    assert settings.reclaim_min_idle_ms == 90_000
 
 
 def test_explicit_local_storage_uses_shared_filesystem_adapter(
@@ -483,6 +533,17 @@ def test_get_ingestion_service_returns_an_ingestion_service(
     service = dependencies.get_ingestion_service()
 
     assert isinstance(service, IngestionService)
+
+
+def test_get_ingestion_service_wires_recovery_store(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    _install_config(monkeypatch, base_config)
+
+    service = dependencies.get_ingestion_service()
+
+    assert isinstance(service._recovery_store, InMemoryIngestionRecoveryStore)  # pyright: ignore[reportPrivateUsage]
 
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowRunUpdate
@@ -37,6 +38,15 @@ class WorkflowRunStoreProtocol(Protocol):
     ) -> list[WorkflowRun]: ...
 
     def update_run(self, workflow_id: str, update: WorkflowRunUpdate) -> WorkflowRun: ...
+
+    def update_run_if_current(
+        self,
+        workflow_id: str,
+        update: WorkflowRunUpdate,
+        *,
+        expected_statuses: set[WorkflowRunStatus] | frozenset[WorkflowRunStatus],
+        updated_before: datetime,
+    ) -> WorkflowRun | None: ...
 
     def delete_run(self, workflow_id: str) -> None: ...
 

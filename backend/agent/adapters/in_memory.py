@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from threading import RLock
 
 from agent.exceptions import WorkflowRunNotFoundError
@@ -81,6 +82,32 @@ class InMemoryWorkflowRunStore:
             existing = self._runs.get(workflow_id)
             if existing is None:
                 raise WorkflowRunNotFoundError(workflow_id)
+            patch = update.model_dump(exclude_none=True)
+            if not patch:
+                return self._copy_run(existing)
+            patch.setdefault("updated_at", utc_now())
+            merged = existing.model_dump()
+            merged.update(patch)
+            updated = WorkflowRun.model_validate(merged)
+            self._runs[workflow_id] = self._copy_run(updated)
+            return self._copy_run(updated)
+
+    def update_run_if_current(
+        self,
+        workflow_id: str,
+        update: WorkflowRunUpdate,
+        *,
+        expected_statuses: set[WorkflowRunStatus] | frozenset[WorkflowRunStatus],
+        updated_before: datetime,
+    ) -> WorkflowRun | None:
+        with self._lock:
+            existing = self._runs.get(workflow_id)
+            if existing is None:
+                return None
+            if existing.status not in expected_statuses:
+                return None
+            if existing.updated_at >= updated_before:
+                return None
             patch = update.model_dump(exclude_none=True)
             if not patch:
                 return self._copy_run(existing)

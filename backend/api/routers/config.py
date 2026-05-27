@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
+from api.contracts import DomainFeaturesResponse
 from api.dependencies import (
+    get_domain_config,
     get_domain_config_features_payload,
-    get_domain_config_payload,
     get_domain_config_schema_payload,
 )
 from api.middleware.rbac import require_role
+from config.schema import DomainConfig
 
 __all__ = ["router"]
 
@@ -21,15 +23,23 @@ router = APIRouter(prefix="/config", tags=["configuration"])
 # Add ETag / Last-Modified headers for caching. Add change audit logging.
 
 
-@router.get("/domain", dependencies=[Depends(require_role("viewer"))])
+@router.get(
+    "/domain",
+    response_model=DomainConfig,
+    dependencies=[Depends(require_role("viewer"))],
+)
 async def get_domain(
-    config: dict[str, object] = Depends(get_domain_config_payload),
-) -> dict[str, object]:
+    config: DomainConfig = Depends(get_domain_config),
+) -> DomainConfig:
     """Return the active domain configuration."""
     return config
 
 
-@router.get("/features", dependencies=[Depends(require_role("viewer"))])
+@router.get(
+    "/features",
+    response_model=DomainFeaturesResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
 async def get_features(
     features: dict[str, object] = Depends(get_domain_config_features_payload),
 ) -> dict[str, object]:

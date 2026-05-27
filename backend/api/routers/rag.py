@@ -16,7 +16,7 @@ from typing import Union
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
-from knowledgebases import KnowledgeBaseRepository
+from knowledgebases.protocols import KnowledgeBaseRepository
 from api.contracts import ChatConversationResponse, ChatMessageCreateRequest
 from api.dependencies import (
     get_api_state,
@@ -27,11 +27,12 @@ from api.dependencies import (
 )
 from api.middleware.rbac import require_role
 from api.state import ApiState
-from config.schema import DomainConfig
+from config.schema import DomainConfig, ValidationConfig
 from rag.exceptions import RagConfigurationError
 from rag.protocols import RagServiceProtocol
 from rag.service_models import RagQueryRequest, RagStreamChunk
 from shared.kb_scope import resolve_kb_scope
+from shared.validation import validate_query_length
 
 __all__ = ["router"]
 
@@ -64,7 +65,17 @@ async def create_conversation(
 
 @router.post(
     "/conversations/{conversation_id}/messages",
-    response_model=None,
+    response_model=ChatConversationResponse,
+    responses={
+        200: {
+            "content": {
+                "text/event-stream": {
+                    "schema": {"type": "string"},
+                    "description": "Server-sent events carrying token chunks and a final citation event.",
+                },
+            }
+        }
+    },
     dependencies=[Depends(require_role("analyst"))],
 )
 async def add_message(
@@ -76,6 +87,19 @@ async def add_message(
     kb_repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
 ) -> Union[ChatConversationResponse, StreamingResponse]:
     """Append a message to a conversation; stream tokens with ``?stream=true``."""
+
+    validation = domain_config.validation or ValidationConfig()
+    try:
+        cleaned_content = validate_query_length(
+            payload.content,
+            validation.max_rag_question_length,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+    payload = payload.model_copy(update={"content": cleaned_content})
 
     if not stream:
         try:
@@ -125,7 +149,23 @@ async def _stream_sse(
 def _chunk_to_payload(chunk: RagStreamChunk) -> dict[str, object]:
     payload: dict[str, object] = {"token": chunk.chunk_text, "done": chunk.is_final}
     if chunk.is_final:
+        # Legacy field: list of record_ids for backwards compatibility with older clients.
         payload["sources"] = [citation.record_id for citation in chunk.citations]
+        # BL-002: rich citation payload so the chat UI can render snippet,
+        # document anchor, score, and (when available) entity click-through.
+        payload["citations"] = [
+            {
+                "record_id": citation.record_id,
+                "content_id": citation.content_id,
+                "score": citation.score,
+                "snippet": citation.snippet,
+                "document_id": citation.document_id,
+                "chunk_index": citation.chunk_index,
+                "highlight": citation.highlight,
+                "entity_id": None,
+            }
+            for citation in chunk.citations
+        ]
     return payload
 
 
