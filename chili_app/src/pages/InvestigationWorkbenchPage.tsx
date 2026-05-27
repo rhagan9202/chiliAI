@@ -106,6 +106,7 @@ export function InvestigationWorkbenchPage() {
   const riskScore = riskQuery.data ?? null
   const timeseries = timeseriesQuery.data ?? null
   const riskAvailability = analyticsAvailability(riskScore)
+  const timeseriesAvailability = analyticsAvailability(timeseries)
   const entityTitle = entity ? getEntityTitle(entity, domainConfigQuery.data) : 'Investigation Workbench'
   const entitySubtitle = entity ? getEntitySubtitle(entity, domainConfigQuery.data) : null
   const selectedTypeLabel = entity ? getEntityTypeLabel(entity.type, domainConfigQuery.data) : null
@@ -241,7 +242,18 @@ export function InvestigationWorkbenchPage() {
           </div>
 
           <div className="dashboard-panels">
-            {timeseries ? <ChartFrameInvestigation timeseries={timeseries.points} /> : null}
+            {timeseries ? (
+              timeseriesAvailability.unavailable ? (
+                <Card>
+                  <EmptyState
+                    description={timeseriesAvailability.reason ?? 'Time series analytics are unavailable until an entity is selected and analytics respond.'}
+                    title="No time series"
+                  />
+                </Card>
+              ) : (
+                <ChartFrameInvestigation timeseries={timeseries.points} />
+              )
+            ) : null}
 
             <Card>
               <div className="metric-stack">

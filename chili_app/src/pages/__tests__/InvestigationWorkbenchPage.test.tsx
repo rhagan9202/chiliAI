@@ -270,6 +270,8 @@ describe('InvestigationWorkbenchPage', () => {
     expect(analyticsCalls.risk.at(-1)).toEqual(['kb-live', 'provider-204'])
     expect(analyticsCalls.timeseries.at(-1)).toEqual(['kb-live', 'provider-204'])
     expect(screen.getByText(/No risk profile has been generated/i)).toBeInTheDocument()
+    expect(screen.getByText(/No time series has been generated/i)).toBeInTheDocument()
+    expect(screen.queryByText('Risk pressure trend')).not.toBeInTheDocument()
   })
 
   it('renders unavailable risk analytics without a reason as the fallback empty state', () => {
