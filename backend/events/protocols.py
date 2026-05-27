@@ -62,6 +62,16 @@ class EventBus(Protocol):
         block_ms: int | None = None,
     ) -> list[EventDelivery]: ...
 
+    def reclaim_stale_pending(
+        self,
+        event_types: list[str],
+        *,
+        consumer_group: str,
+        consumer_name: str,
+        min_idle_ms: int,
+        limit: int = 10,
+    ) -> list[EventDelivery]: ...
+
     def ack(self, deliveries: list[EventDelivery]) -> None: ...
 
     def publish_to_dlq(

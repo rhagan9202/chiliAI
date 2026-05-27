@@ -18,6 +18,9 @@ RedisValue = str | bytes
 RedisPayload = Mapping[str, str] | Mapping[bytes, bytes]
 RedisStreamMessage = tuple[RedisValue, RedisPayload]
 RedisStreamResponse = list[tuple[RedisValue, list[RedisStreamMessage]]]
+RedisAutoClaimResponse = tuple[RedisValue, list[RedisStreamMessage]] | tuple[
+    RedisValue, list[RedisStreamMessage], list[RedisValue]
+]
 
 
 class RedisStreamsEventBus(EventBus):
@@ -28,18 +31,24 @@ class RedisStreamsEventBus(EventBus):
         *,
         redis_url: str,
         stream_name_resolver: Callable[[str], str],
+        stream_maxlen: int | None = None,
         client: Redis | None = None,
     ) -> None:
         self._client = client or Redis.from_url(redis_url)  # pyright: ignore[reportUnknownMemberType]
         self._stream_name_resolver = stream_name_resolver
+        self._stream_maxlen = stream_maxlen
 
     def publish(self, event: AnyEvent) -> str | None:
         # TODO(production): Add connection error handling with retry and backoff.
-        # Add MAXLEN/XTRIM to prevent unbounded stream growth.
         stream = self._stream_name_resolver(event.event_type)
         message_id = cast(
             RedisValue,
-            self._client.xadd(stream, encode_event(event)),  # pyright: ignore[reportArgumentType]
+            self._client.xadd(
+                stream,
+                encode_event(event),  # pyright: ignore[reportArgumentType]
+                maxlen=self._stream_maxlen,
+                approximate=self._stream_maxlen is not None,
+            ),
         )
         return _decode_redis_string(message_id)
 
@@ -95,8 +104,42 @@ class RedisStreamsEventBus(EventBus):
                 )
         return deliveries
 
+    def reclaim_stale_pending(
+        self,
+        event_types: list[str],
+        *,
+        consumer_group: str,
+        consumer_name: str,
+        min_idle_ms: int,
+        limit: int = 10,
+    ) -> list[EventDelivery]:
+        deliveries: list[EventDelivery] = []
+        for event_type in event_types:
+            stream = self._stream_name_resolver(event_type)
+            response = cast(
+                RedisAutoClaimResponse,
+                self._client.xautoclaim(
+                    stream,
+                    consumer_group,
+                    consumer_name,
+                    min_idle_ms,
+                    "0-0",
+                    count=limit,
+                ),
+            )
+            claimed_messages = response[1]
+            for message_id, payload in claimed_messages:
+                deliveries.append(
+                    EventDelivery(
+                        event=decode_event(payload),
+                        event_id=_decode_redis_string(message_id),
+                        stream=stream,
+                        consumer_group=consumer_group,
+                    )
+                )
+        return deliveries
+
     def ack(self, deliveries: list[EventDelivery]) -> None:
-        # TODO(production): Add XPENDING/XCLAIM for reprocessing stale messages.
         # Implement dead-letter routing for messages that fail N times.
         # Add graceful shutdown (stop consuming, finish in-flight, then exit).
         by_stream: dict[tuple[str, str], list[str]] = {}

@@ -72,6 +72,17 @@ class InMemoryEventBus:
                 break
         return matched
 
+    def reclaim_stale_pending(
+        self,
+        event_types: list[str],
+        *,
+        consumer_group: str,
+        consumer_name: str,
+        min_idle_ms: int,
+        limit: int = 10,
+    ) -> list[EventDelivery]:
+        return []
+
     def ack(self, deliveries: list[EventDelivery]) -> None:
         acked_ids = {delivery.event_id for delivery in deliveries if delivery.event_id is not None}
         self._queue = [entry for entry in self._queue if entry.event_id not in acked_ids]
