@@ -68,15 +68,16 @@ class RecordsService:
             )
 
         accepted = self._store.persist(raw_records)
-        self._event_bus.publish(
-            RecordsIngestedEvent(
-                correlation_id=correlation_id,
-                knowledge_base_id=knowledge_base_id,
-                feed_name=feed.name,
-                record_type=feed.record_type,
-                record_count=accepted,
+        if accepted > 0:
+            self._event_bus.publish(
+                RecordsIngestedEvent(
+                    correlation_id=correlation_id,
+                    knowledge_base_id=knowledge_base_id,
+                    feed_name=feed.name,
+                    record_type=feed.record_type,
+                    record_count=accepted,
+                )
             )
-        )
         return RecordIngestReceipt(
             knowledge_base_id=knowledge_base_id,
             feed_name=feed.name,

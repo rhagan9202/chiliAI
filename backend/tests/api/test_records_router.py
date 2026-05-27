@@ -3,26 +3,52 @@
 from __future__ import annotations
 
 import io
+from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from api.app import create_app
-from api.dependencies import get_raw_record_store
+from api.dependencies import get_knowledge_base_repository, get_raw_record_store
+from knowledgebases import InMemoryKnowledgeBaseRepository
 from records.adapters.in_memory import InMemoryRawRecordStore
+from shared.types import KnowledgeBase
+
+
+_MEDICARE_CONFIG_PATH = str(
+    Path(__file__).resolve().parent.parent.parent
+    / "config"
+    / "defaults"
+    / "medicare_fraud.yaml"
+)
+
+
+def _knowledge_base(knowledge_base_id: str = "kb-1") -> KnowledgeBase:
+    return KnowledgeBase(
+        id=knowledge_base_id,
+        name="Test KB",
+        description="Test knowledge base",
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+
+def _seeded_repository() -> InMemoryKnowledgeBaseRepository:
+    repository = InMemoryKnowledgeBaseRepository()
+    repository.create(_knowledge_base())
+    return repository
 
 
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("CHILI_ENV", "local")
-    monkeypatch.setenv(
-        "CHILI_CONFIG_PATH", "config/defaults/medicare_fraud.yaml"
-    )
+    monkeypatch.setenv("CHILI_CONFIG_PATH", _MEDICARE_CONFIG_PATH)
     app = create_app()
     # Inject a fresh in-memory store per test so that lru_cached singletons do
     # not cause cross-test record deduplication (e.g. record c1 inserted in the
     # push test would prevent the CSV upload test from seeing accepted_count=1).
     app.dependency_overrides[get_raw_record_store] = InMemoryRawRecordStore
+    app.dependency_overrides[get_knowledge_base_repository] = _seeded_repository
     return TestClient(app)
 
 
@@ -62,6 +88,102 @@ def test_push_records_rejects_invalid_rows(client: TestClient) -> None:
         json={"feed_name": "claims_feed", "rows": [{"claim_id": "c1"}]},
     )
     assert response.status_code == 422
+
+
+def test_push_records_rejects_missing_knowledge_base(client: TestClient) -> None:
+    response = client.post(
+        "/records/missing-kb/push",
+        json={
+            "feed_name": "claims_feed",
+            "rows": [
+                {
+                    "claim_id": "c-missing",
+                    "provider_npi": "1234567890",
+                    "billed_amount": 99.0,
+                    "service_date": "2026-01-15",
+                    "anomaly_score": 0.8,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_push_records_rejects_busy_knowledge_base(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi.testclient import TestClient as TC
+    from api.app import create_app
+    from api.dependencies import (
+        get_knowledge_base_repository,
+        get_raw_record_store,
+        get_workflow_tracker,
+    )
+
+    class BusyTracker:
+        def is_busy(self, knowledge_base_id: str) -> bool:
+            return knowledge_base_id == "kb-1"
+
+    monkeypatch.setenv("CHILI_ENV", "local")
+    monkeypatch.setenv("CHILI_CONFIG_PATH", _MEDICARE_CONFIG_PATH)
+    app = create_app()
+    app.dependency_overrides[get_raw_record_store] = InMemoryRawRecordStore
+    app.dependency_overrides[get_knowledge_base_repository] = _seeded_repository
+    app.dependency_overrides[get_workflow_tracker] = lambda: BusyTracker()
+    test_client = TC(app)
+
+    response = test_client.post(
+        "/records/kb-1/push",
+        json={
+            "feed_name": "claims_feed",
+            "rows": [
+                {
+                    "claim_id": "c-busy",
+                    "provider_npi": "1234567890",
+                    "billed_amount": 99.0,
+                    "service_date": "2026-01-15",
+                    "anomaly_score": 0.8,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 409
+
+
+def test_push_records_rejects_pending_cleanup_knowledge_base(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi.testclient import TestClient as TC
+    from api.app import create_app
+    from api.dependencies import get_knowledge_base_repository, get_raw_record_store
+
+    repository = _seeded_repository()
+    repository.mark_pending_cleanup("kb-1")
+
+    monkeypatch.setenv("CHILI_ENV", "local")
+    monkeypatch.setenv("CHILI_CONFIG_PATH", _MEDICARE_CONFIG_PATH)
+    app = create_app()
+    app.dependency_overrides[get_raw_record_store] = InMemoryRawRecordStore
+    app.dependency_overrides[get_knowledge_base_repository] = lambda: repository
+    test_client = TC(app)
+
+    response = test_client.post(
+        "/records/kb-1/push",
+        json={
+            "feed_name": "claims_feed",
+            "rows": [
+                {
+                    "claim_id": "c-cleanup",
+                    "provider_npi": "1234567890",
+                    "billed_amount": 99.0,
+                    "service_date": "2026-01-15",
+                    "anomaly_score": 0.8,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 409
 
 
 def test_upload_csv_file_returns_a_receipt(client: TestClient) -> None:
@@ -111,7 +233,6 @@ def test_upload_rejects_file_exceeding_size_limit() -> None:
     # Load the real medicare_fraud config and override only the validation
     # section with max_file_size_mb=1 (minimum valid value).  Then upload a
     # file slightly larger than 1 MB to trigger the HTTP 413 branch.
-    from pathlib import Path
     from fastapi.testclient import TestClient as TC
 
     from api.app import create_app
@@ -127,7 +248,7 @@ def test_upload_rejects_file_exceeding_size_limit() -> None:
 
     with _pytest.MonkeyPatch.context() as mp:
         mp.setenv("CHILI_ENV", "local")
-        mp.setenv("CHILI_CONFIG_PATH", "config/defaults/medicare_fraud.yaml")
+        mp.setenv("CHILI_CONFIG_PATH", _MEDICARE_CONFIG_PATH)
         app = create_app()
         app.dependency_overrides[get_raw_record_store] = InMemoryRawRecordStore
         app.dependency_overrides[get_domain_config] = lambda: tiny_config
@@ -155,13 +276,14 @@ def test_upload_file_feed_not_found_returns_404(client: TestClient) -> None:
     from fastapi.testclient import TestClient as TC
     import pytest as _pytest
     from api.app import create_app
-    from api.dependencies import get_raw_record_store
+    from api.dependencies import get_knowledge_base_repository, get_raw_record_store
 
     with _pytest.MonkeyPatch.context() as mp:
         mp.setenv("CHILI_ENV", "local")
-        mp.setenv("CHILI_CONFIG_PATH", "config/defaults/medicare_fraud.yaml")
+        mp.setenv("CHILI_CONFIG_PATH", _MEDICARE_CONFIG_PATH)
         app = create_app()
         app.dependency_overrides[get_raw_record_store] = InMemoryRawRecordStore
+        app.dependency_overrides[get_knowledge_base_repository] = _seeded_repository
         app.dependency_overrides[get_records_service] = lambda: mock_service
         err_client = TC(app)
 
@@ -186,13 +308,14 @@ def test_upload_file_persistence_error_returns_500(client: TestClient) -> None:
     from fastapi.testclient import TestClient as TC
     import pytest as _pytest
     from api.app import create_app
-    from api.dependencies import get_raw_record_store
+    from api.dependencies import get_knowledge_base_repository, get_raw_record_store
 
     with _pytest.MonkeyPatch.context() as mp:
         mp.setenv("CHILI_ENV", "local")
-        mp.setenv("CHILI_CONFIG_PATH", "config/defaults/medicare_fraud.yaml")
+        mp.setenv("CHILI_CONFIG_PATH", _MEDICARE_CONFIG_PATH)
         app = create_app()
         app.dependency_overrides[get_raw_record_store] = InMemoryRawRecordStore
+        app.dependency_overrides[get_knowledge_base_repository] = _seeded_repository
         app.dependency_overrides[get_records_service] = lambda: mock_service
         err_client = TC(app)
 
@@ -217,13 +340,14 @@ def test_upload_file_records_error_returns_422(client: TestClient) -> None:
     from fastapi.testclient import TestClient as TC
     import pytest as _pytest
     from api.app import create_app
-    from api.dependencies import get_raw_record_store
+    from api.dependencies import get_knowledge_base_repository, get_raw_record_store
 
     with _pytest.MonkeyPatch.context() as mp:
         mp.setenv("CHILI_ENV", "local")
-        mp.setenv("CHILI_CONFIG_PATH", "config/defaults/medicare_fraud.yaml")
+        mp.setenv("CHILI_CONFIG_PATH", _MEDICARE_CONFIG_PATH)
         app = create_app()
         app.dependency_overrides[get_raw_record_store] = InMemoryRawRecordStore
+        app.dependency_overrides[get_knowledge_base_repository] = _seeded_repository
         app.dependency_overrides[get_records_service] = lambda: mock_service
         err_client = TC(app)
 
@@ -248,13 +372,14 @@ def test_push_records_persistence_error_returns_500(client: TestClient) -> None:
     from fastapi.testclient import TestClient as TC
     import pytest as _pytest
     from api.app import create_app
-    from api.dependencies import get_raw_record_store
+    from api.dependencies import get_knowledge_base_repository, get_raw_record_store
 
     with _pytest.MonkeyPatch.context() as mp:
         mp.setenv("CHILI_ENV", "local")
-        mp.setenv("CHILI_CONFIG_PATH", "config/defaults/medicare_fraud.yaml")
+        mp.setenv("CHILI_CONFIG_PATH", _MEDICARE_CONFIG_PATH)
         app = create_app()
         app.dependency_overrides[get_raw_record_store] = InMemoryRawRecordStore
+        app.dependency_overrides[get_knowledge_base_repository] = _seeded_repository
         app.dependency_overrides[get_records_service] = lambda: mock_service
         err_client = TC(app)
 
@@ -277,13 +402,14 @@ def test_push_records_records_error_returns_422(client: TestClient) -> None:
     from fastapi.testclient import TestClient as TC
     import pytest as _pytest
     from api.app import create_app
-    from api.dependencies import get_raw_record_store
+    from api.dependencies import get_knowledge_base_repository, get_raw_record_store
 
     with _pytest.MonkeyPatch.context() as mp:
         mp.setenv("CHILI_ENV", "local")
-        mp.setenv("CHILI_CONFIG_PATH", "config/defaults/medicare_fraud.yaml")
+        mp.setenv("CHILI_CONFIG_PATH", _MEDICARE_CONFIG_PATH)
         app = create_app()
         app.dependency_overrides[get_raw_record_store] = InMemoryRawRecordStore
+        app.dependency_overrides[get_knowledge_base_repository] = _seeded_repository
         app.dependency_overrides[get_records_service] = lambda: mock_service
         err_client = TC(app)
 

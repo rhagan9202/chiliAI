@@ -76,6 +76,34 @@ def test_register_records_rejects_unknown_feed() -> None:
         )
 
 
+def test_register_records_does_not_publish_event_when_no_new_records() -> None:
+    store = InMemoryRawRecordStore()
+    event_bus = InMemoryEventBus()
+    service = create_records_service(
+        store,
+        event_bus=event_bus,
+        records_config=_records_config(),
+    )
+    submission = RecordSubmission(
+        feed_name="claims_feed",
+        rows=[
+            {
+                "claim_id": "claim-1",
+                "amount": "100",
+            }
+        ],
+        source_type="api_push",
+        source_ref=None,
+    )
+
+    first = service.register_records("kb-1", submission)
+    second = service.register_records("kb-1", submission)
+
+    assert first.accepted_count == 1
+    assert second.accepted_count == 0
+    assert [event.event_type for event in event_bus.published_events] == ["records.ingested"]
+
+
 def test_register_records_uses_id_template() -> None:
     """When a feed declares id_template, record_id is the interpolated composite key."""
     config = RecordsConfig(
