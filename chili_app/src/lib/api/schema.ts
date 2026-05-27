@@ -1693,6 +1693,16 @@ export interface components {
              */
             consumer_group: string;
             /**
+             * Reclaim Min Idle Ms
+             * @default null
+             */
+            reclaim_min_idle_ms: number | null;
+            /**
+             * Stream Maxlen
+             * @default null
+             */
+            stream_maxlen: number | null;
+            /**
              * Stream Prefix
              * @default chili
              */

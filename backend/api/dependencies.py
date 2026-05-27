@@ -409,8 +409,12 @@ def _resolve_event_bus_settings(config: DomainConfig) -> EventBusSettings:
         consumer_name_prefix=env_settings.consumer_name_prefix,
         batch_size=env_settings.batch_size,
         block_ms=env_settings.block_ms,
-        stream_maxlen=event_config.stream_maxlen,
-        reclaim_min_idle_ms=event_config.reclaim_min_idle_ms,
+        stream_maxlen=event_config.stream_maxlen
+        if event_config.stream_maxlen is not None
+        else env_settings.stream_maxlen,
+        reclaim_min_idle_ms=event_config.reclaim_min_idle_ms
+        if event_config.reclaim_min_idle_ms is not None
+        else env_settings.reclaim_min_idle_ms,
     )
 
 

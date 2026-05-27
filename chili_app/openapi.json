@@ -1814,6 +1814,32 @@
             "title": "Consumer Group",
             "type": "string"
           },
+          "reclaim_min_idle_ms": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reclaim Min Idle Ms"
+          },
+          "stream_maxlen": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stream Maxlen"
+          },
           "stream_prefix": {
             "default": "chili",
             "title": "Stream Prefix",

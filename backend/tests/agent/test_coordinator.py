@@ -8,6 +8,7 @@ from collections.abc import Sequence
 
 import pytest
 
+import agent.coordinator as coordinator
 from agent.coordinator import (
     WORKER_EVENT_TYPES,
     build_worker_dependencies,
@@ -36,6 +37,7 @@ from config.loader import load_config
 from config.schema import (
     DomainConfig,
     EmbeddingsConfig,
+    EventBusConfig,
     GraphDbConfig,
     LlmConfig,
     ObjectStoreConfig,
@@ -419,6 +421,32 @@ def test_build_worker_dependencies_assembles_ingestion_pipeline(
     assert isinstance(deps.embeddings_service, EmbeddingsService)
     assert deps.llm_client is not None
     assert deps.event_settings.backend == "in-memory"
+
+
+def test_worker_event_bus_explicit_config_preserves_env_recovery_and_trim_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    defaults_dir = (
+        __file__
+        .replace("tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml")
+    )
+    config = load_config(defaults_dir).model_copy(
+        update={
+            "events": EventBusConfig(
+                backend="redis",
+                uri="redis://localhost:6379/5",
+                stream_prefix="custom",
+                consumer_group="custom-workers",
+            )
+        }
+    )
+    monkeypatch.setenv("CHILI_EVENT_STREAM_MAXLEN", "7500")
+    monkeypatch.setenv("CHILI_EVENT_RECLAIM_MIN_IDLE_MS", "90000")
+
+    settings = coordinator._resolve_worker_event_bus_settings(config)  # pyright: ignore[reportPrivateUsage]
+
+    assert settings.stream_maxlen == 7500
+    assert settings.reclaim_min_idle_ms == 90_000
 
 
 def test_handle_event_returns_zero_for_unhandled_event() -> None:
