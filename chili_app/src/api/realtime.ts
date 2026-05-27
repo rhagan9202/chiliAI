@@ -14,6 +14,7 @@ import { useUiStore } from '../stores/uiStore'
 
 const INITIAL_RECONNECT_DELAY_MS = 1000
 const MAX_RECONNECT_DELAY_MS = 30000
+const BASELINE_RECONNECT_INVALIDATION_MS = 60000
 
 function changedKnowledgeBaseIds(
   previous: RealtimeSnapshotResponse,
@@ -40,6 +41,7 @@ export function useRealtimeWorkspaceStream() {
     let reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS
     let disposed = false
     let previousSnapshot: RealtimeSnapshotResponse | null = null
+    let disconnectedAt: number | null = null
 
     const clearReconnectTimer = () => {
       if (reconnectTimer !== null) {
@@ -103,6 +105,16 @@ export function useRealtimeWorkspaceStream() {
       })
 
       eventSource.onopen = () => {
+        if (
+          disconnectedAt !== null &&
+          Date.now() - disconnectedAt >= BASELINE_RECONNECT_INVALIDATION_MS
+        ) {
+          void queryClient.invalidateQueries({ queryKey: alertsQueryKey })
+          void queryClient.invalidateQueries({ queryKey: workflowsQueryKey })
+          void queryClient.invalidateQueries({ queryKey: knowledgeBasesQueryKey })
+        }
+
+        disconnectedAt = null
         reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS
         setRealtimeConnected(true)
       }
@@ -112,6 +124,7 @@ export function useRealtimeWorkspaceStream() {
         if (disposed) {
           return
         }
+        disconnectedAt = disconnectedAt ?? Date.now()
         setRealtimeConnected(false)
         closeEventSource()
         reconnectTimer = setTimeout(connect, reconnectDelayMs)

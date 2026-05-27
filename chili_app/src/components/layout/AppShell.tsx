@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 
 import { useDomainConfig } from '../../api/config'
@@ -16,8 +16,10 @@ export function AppShell() {
   const domainFeaturesQuery = useDomainFeatures()
   const aiPanelOpen = useUiStore((state) => state.aiPanelOpen)
   const selectedRole = useUiStore((state) => state.selectedRole)
+  const setAccessNotice = useUiStore((state) => state.setAccessNotice)
   const setSelectedRole = useUiStore((state) => state.setSelectedRole)
   const location = useLocation()
+  const [redirectTarget, setRedirectTarget] = useState<string | null>(null)
 
   useRealtimeWorkspaceStream()
 
@@ -43,9 +45,21 @@ export function AppShell() {
     domainFeaturesQuery.data,
     selectedRole,
   )
+  const domainQueriesDone = !domainConfigQuery.isLoading && !domainFeaturesQuery.isLoading
+  const routeBlocked = domainQueriesDone && !routeAllowed
 
-  if (!domainConfigQuery.isLoading && !domainFeaturesQuery.isLoading && !routeAllowed) {
-    return <Navigate replace to={landingRoute} />
+  useEffect(() => {
+    if (!routeBlocked) {
+      setRedirectTarget(null)
+      return
+    }
+
+    setAccessNotice('Selected role cannot access that page.')
+    setRedirectTarget(landingRoute)
+  }, [landingRoute, routeBlocked, setAccessNotice])
+
+  if (routeBlocked) {
+    return redirectTarget ? <Navigate replace to={redirectTarget} /> : null
   }
 
   return (

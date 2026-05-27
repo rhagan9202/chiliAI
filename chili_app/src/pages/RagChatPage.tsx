@@ -73,7 +73,7 @@ export function RagChatPage() {
       <SectionHeader
         actions={<Chip label={conversation?.title ?? 'No active thread'} tone="info" />}
         eyebrow="Conversational RAG"
-        subtitle="Conversation creation and message submission now exercise the backend chat endpoints and seeded RAG service."
+        subtitle="Conversation creation and message submission now exercise the backend chat endpoints and active RAG service."
         title="RAG Chat"
       />
 

@@ -84,7 +84,7 @@ export function KbDetailView(): React.ReactElement {
   return (
     <section>
       <p style={{ marginTop: 0 }}>
-        <Link to="/knowledgebases">← All knowledge bases</Link>
+        <Link to="/knowledge-bases">All knowledge bases</Link>
       </p>
       {kbLoading ? (
         <Skeleton width={200} height={28} />

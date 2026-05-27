@@ -36,6 +36,7 @@ export const router = createBrowserRouter([
       { path: 'investigation/:entityId', element: withPageBoundary(<InvestigationWorkbenchPage />) },
       { path: 'cases', element: withPageBoundary(<CaseManagementPage />) },
       { path: 'knowledge-bases', element: withPageBoundary(<KnowledgeBaseManagerPage />) },
+      { path: 'knowledgebases', element: <Navigate to="/knowledge-bases" replace /> },
       { path: 'policy', element: withPageBoundary(<PolicyIntelligencePage />) },
       { path: 'rag-chat', element: withPageBoundary(<RagChatPage />) },
       { path: 'configuration', element: withPageBoundary(<ConfigurationPage />) },
