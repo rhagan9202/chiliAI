@@ -14,6 +14,7 @@ import json
 import os
 import signal
 import sys
+import time
 import traceback
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -220,6 +221,8 @@ logger = get_logger("chili.worker")
 
 SHUTDOWN_LOG_REQUESTED = "Shutdown requested, finishing current event..."
 SHUTDOWN_LOG_DONE = "Worker stopped gracefully."
+DEFAULT_WORKFLOW_STALE_MAX_AGE_SECONDS = 24 * 60 * 60
+DEFAULT_WORKFLOW_RECONCILE_INTERVAL_SECONDS = 60
 WORKER_EVENT_TYPES: tuple[str, ...] = (
     "documents.uploaded",
     "documents.parsed",
@@ -2639,9 +2642,35 @@ async def run_worker(
     install_signal_handlers(loop, shutdown_event)
 
     health_server = await start_health_server_safely(health_state)
+    stale_workflow_max_age_seconds = _positive_int_from_env(
+        "CHILI_WORKFLOW_STALE_MAX_AGE_SECONDS",
+        DEFAULT_WORKFLOW_STALE_MAX_AGE_SECONDS,
+    )
+    workflow_reconcile_interval_seconds = _positive_int_from_env(
+        "CHILI_WORKFLOW_RECONCILE_INTERVAL_SECONDS",
+        DEFAULT_WORKFLOW_RECONCILE_INTERVAL_SECONDS,
+    )
+    last_workflow_reconcile_at: float | None = None
 
     try:
         while not shutdown_event.is_set():
+            now_monotonic = time.monotonic()
+            should_reconcile_workflows = (
+                stale_workflow_max_age_seconds > 0
+                and workflow_reconcile_interval_seconds > 0
+                and (
+                    last_workflow_reconcile_at is None
+                    or now_monotonic - last_workflow_reconcile_at
+                    >= workflow_reconcile_interval_seconds
+                )
+            )
+            if should_reconcile_workflows:
+                reconciled = deps.workflow_tracker.reconcile_stale_runs(
+                    max_age_seconds=stale_workflow_max_age_seconds
+                )
+                last_workflow_reconcile_at = now_monotonic
+                if reconciled:
+                    logger.warning("Reconciled %s stale workflow run(s)", reconciled)
             processed = await drain_ingestion_events(
                 deps.event_bus,
                 deps.ingestion_service,
@@ -2690,6 +2719,14 @@ async def run_worker(
             with contextlib.suppress(Exception):
                 await health_server.wait_closed()
         logger.info(SHUTDOWN_LOG_DONE)
+
+
+def _positive_int_from_env(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    value = int(raw)
+    return value if value > 0 else 0
 
 
 def _resolve_graph_repository(graph_service: GraphService) -> GraphRepository:

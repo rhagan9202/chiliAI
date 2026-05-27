@@ -2019,6 +2019,7 @@ def test_graceful_shutdown_finishes_in_flight_event(
     """The worker loop completes gracefully when the shutdown event fires."""
 
     import logging
+    from datetime import timedelta
 
     from agent.coordinator import (
         WorkerDependencies,
@@ -2028,6 +2029,7 @@ def test_graceful_shutdown_finishes_in_flight_event(
     )
     from agent.adapters.in_memory import InMemoryWorkflowRunStore
     from agent.workflow_tracking import WorkflowEventTracker
+    from shared.utils import utc_now
 
     defaults_yaml = __file__.replace(
         "tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml"
@@ -2035,7 +2037,19 @@ def test_graceful_shutdown_finishes_in_flight_event(
     monkeypatch.setenv("CHILI_CONFIG_PATH", defaults_yaml)
 
     event_bus = InMemoryEventBus()
-    workflow_run_store = InMemoryWorkflowRunStore()
+    workflow_run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-stale-runtime",
+                knowledge_base_id="kb-stale",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                updated_at=utc_now() - timedelta(days=2),
+                metadata={"correlation_id": "corr-stale-runtime"},
+            )
+        ]
+    )
     object_store = InMemoryObjectStore()
     vector_store = InMemoryVectorStore()
     graph_repository = InMemoryGraphRepository()
@@ -2129,6 +2143,9 @@ def test_graceful_shutdown_finishes_in_flight_event(
     asyncio.run(_run())
     log_text = caplog.text
     assert SHUTDOWN_LOG_DONE in log_text
+    reconciled = workflow_run_store.get_run("workflow-stale-runtime")
+    assert reconciled.status is WorkflowRunStatus.FAILED
+    assert reconciled.metadata["reason"] == "stale_workflow_reconciled"
     # SHUTDOWN_LOG_REQUESTED would only fire if signal was actually delivered;
     # since cancellation skips it, only the graceful-stop log is asserted.
     assert SHUTDOWN_LOG_REQUESTED.startswith("Shutdown requested")
