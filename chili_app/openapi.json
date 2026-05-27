@@ -1754,6 +1754,15 @@
       "EntityTimeseriesResponse": {
         "description": "Timeseries payload for entity trend charts.",
         "properties": {
+          "availability_status": {
+            "default": "available",
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "title": "Availability Status",
+            "type": "string"
+          },
           "entity_id": {
             "title": "Entity Id",
             "type": "string"
@@ -1768,6 +1777,17 @@
             },
             "title": "Points",
             "type": "array"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
           }
         },
         "required": [
@@ -3448,6 +3468,15 @@
       "RiskScoreResponse": {
         "description": "Risk summary for one entity.",
         "properties": {
+          "availability_status": {
+            "default": "available",
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "title": "Availability Status",
+            "type": "string"
+          },
           "entity_id": {
             "title": "Entity Id",
             "type": "string"
@@ -3474,6 +3503,17 @@
             ],
             "title": "Risk Level",
             "type": "string"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
           }
         },
         "required": [
@@ -4180,6 +4220,18 @@
               "title": "Entity Id",
               "type": "string"
             }
+          },
+          {
+            "description": "Knowledge base identifier.",
+            "in": "query",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base identifier.",
+              "minLength": 1,
+              "title": "Kb Id",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4297,6 +4349,18 @@
             "schema": {
               "description": "Entity identifier.",
               "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Knowledge base identifier.",
+            "in": "query",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base identifier.",
+              "minLength": 1,
+              "title": "Kb Id",
               "type": "string"
             }
           }

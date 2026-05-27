@@ -1661,12 +1661,20 @@ export interface components {
          * @description Timeseries payload for entity trend charts.
          */
         EntityTimeseriesResponse: {
+            /**
+             * Availability Status
+             * @default available
+             * @enum {string}
+             */
+            availability_status: "available" | "unavailable";
             /** Entity Id */
             entity_id: string;
             /** Metric Name */
             metric_name: string;
             /** Points */
             points?: components["schemas"]["EntityTimeseriesPointResponse"][];
+            /** Unavailable Reason */
+            unavailable_reason?: string | null;
         };
         /**
          * EventBusConfig
@@ -2503,6 +2511,12 @@ export interface components {
          * @description Risk summary for one entity.
          */
         RiskScoreResponse: {
+            /**
+             * Availability Status
+             * @default available
+             * @enum {string}
+             */
+            availability_status: "available" | "unavailable";
             /** Entity Id */
             entity_id: string;
             /** Factors */
@@ -2514,6 +2528,8 @@ export interface components {
              * @enum {string}
              */
             risk_level: "low" | "medium" | "high" | "critical";
+            /** Unavailable Reason */
+            unavailable_reason?: string | null;
         };
         /**
          * TimeseriesPoint
@@ -2904,7 +2920,10 @@ export interface operations {
     };
     get_risk_score_analytics_risk_scores__entity_id__get: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Knowledge base identifier. */
+                kb_id: string;
+            };
             header?: never;
             path: {
                 /** @description Entity identifier. */
@@ -2970,7 +2989,10 @@ export interface operations {
     };
     get_entity_timeseries_analytics_timeseries__entity_id__get: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Knowledge base identifier. */
+                kb_id: string;
+            };
             header?: never;
             path: {
                 /** @description Entity identifier. */
