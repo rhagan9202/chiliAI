@@ -107,8 +107,9 @@ def create_app() -> FastAPI:
 
     # Reset process-level config cache so each create_app() call (e.g. one
     # per test) reloads from CHILI_CONFIG_PATH / monkeypatched load_config.
-    from api.dependencies import get_domain_config
+    from api.dependencies import get_domain_config, get_rag_service
     get_domain_config.cache_clear()
+    get_rag_service.cache_clear()
 
     config = load_config()
     _enforce_production_guardrail(config.auth)
@@ -129,7 +130,15 @@ def create_app() -> FastAPI:
 
     # Per-app seeded state — see api.dependencies.get_api_state. Each
     # create_app() call yields a fresh ApiState so tests are isolated.
-    app.state.api_state = create_api_state()
+    # The live RAG service (BL-001) is composed via DI and injected here so
+    # the chat surfaces query real embeddings / vector store / graph / LLM
+    # adapters instead of the seeded in-memory demo pipeline.
+    try:
+        live_rag_service = get_rag_service()
+    except Exception:  # pragma: no cover - defensive: bad config / missing optional deps
+        logger.exception("Failed to compose live RAG service; falling back to seeded in-memory pipeline.")
+        live_rag_service = None
+    app.state.api_state = create_api_state(rag_service=live_rag_service)
 
     register_metrics(app)
     instrument_fastapi_app(app)

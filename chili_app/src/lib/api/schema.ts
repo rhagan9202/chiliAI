@@ -1229,6 +1229,32 @@ export interface components {
             title?: string | null;
         };
         /**
+         * ChatCitationResponse
+         * @description Rich citation payload returned alongside an assistant chat message.
+         *
+         *     Mirrors :class:`rag.models.RagCitation` so the frontend can render
+         *     provenance (snippet preview, document anchor, score) and offer
+         *     click-through navigation to investigation entities (see BL-002).
+         */
+        ChatCitationResponse: {
+            /** Chunk Index */
+            chunk_index?: number | null;
+            /** Content Id */
+            content_id: string;
+            /** Document Id */
+            document_id?: string | null;
+            /** Entity Id */
+            entity_id?: string | null;
+            /** Highlight */
+            highlight?: string | null;
+            /** Record Id */
+            record_id: string;
+            /** Score */
+            score: number;
+            /** Snippet */
+            snippet: string;
+        };
+        /**
          * ChatConversationCreateRequest
          * @description Payload for creating a new chat conversation.
          */
@@ -1276,6 +1302,8 @@ export interface components {
         ChatMessageResponse: {
             /** Citation Ids */
             citation_ids?: string[];
+            /** Citations */
+            citations?: components["schemas"]["ChatCitationResponse"][];
             /** Content */
             content: string;
             /**

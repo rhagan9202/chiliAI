@@ -5,6 +5,11 @@ on:
     branches:
       - main
   pull_request:
+  # Nightly dependency-vulnerability sweep — catches newly-disclosed
+  # advisories against pinned dependencies between human-driven CI runs.
+  # 07:17 UTC offset to avoid the 00:00 hot-window. See BL-004.
+  schedule:
+    - cron: "17 7 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

@@ -167,6 +167,12 @@
   gap: 16px;
 }
 
+.investigation-graph-canvas {
+  width: 100%;
+  height: 420px;
+  margin-bottom: 16px;
+}
+
 .page-list-item {
   display: grid;
   gap: 4px;
@@ -218,6 +224,41 @@
   justify-self: end;
   background: rgba(0, 212, 255, 0.08);
   border-color: rgba(0, 212, 255, 0.24);
+}
+
+.chat-citations {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-citation {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px solid var(--c-b0);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.chat-citation__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-citation__score {
+  color: var(--text-muted, #6b6375);
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-citation__snippet {
+  margin: 0;
+  color: var(--text, #1f1d23);
+  line-height: 1.4;
 }
 
 .knowledge-base-layout {

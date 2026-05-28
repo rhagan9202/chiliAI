@@ -37,6 +37,7 @@ from api.contracts import (
     ChatConversationResponse,
     ChatMessageCreateRequest,
     ChatMessageResponse,
+    ChatCitationResponse,
     EntityTimeseriesPointResponse,
     EntityTimeseriesResponse,
     EvidenceItemResponse,
@@ -125,7 +126,12 @@ class PolicyGapRecord:
 class ApiState:
     """Own seeded services and mutable UI-facing state for local API reads and writes."""
 
-    def __init__(self, domain_config: DomainConfig | None = None) -> None:
+    def __init__(
+        self,
+        domain_config: DomainConfig | None = None,
+        *,
+        rag_service: RagServiceProtocol | None = None,
+    ) -> None:
         self._lock = Lock()
         self._domain_config = domain_config or load_config()
         self._entity_definitions = list(self._domain_config.entities)
@@ -169,13 +175,21 @@ class ApiState:
         )
         self._evidence_packs = self._seed_evidence_packs()
 
-        self._rag_service = create_rag_service(
-            InMemoryQueryEmbedder(),
-            InMemoryContextRetriever(records=self._build_context_records()),
-            InMemoryAnswerGenerator(provider="in-memory", model_name="seeded-rag-model"),
-            event_bus=self._event_bus,
-            graph_context_expander=InMemoryGraphContextExpander(),
-        )
+        # When the gateway supplies a fully-wired RAG service we use it directly
+        # (live embeddings/vectorstore/graph/LLM composition — see BL-001).
+        # Falling back to the seeded in-memory pipeline keeps ApiState
+        # self-contained for unit tests that construct it without DI.
+        if rag_service is not None:
+            self._rag_service = rag_service
+        else:
+            self._rag_service = create_rag_service(
+                InMemoryQueryEmbedder(),
+                InMemoryContextRetriever(records=self._build_context_records()),
+                InMemoryAnswerGenerator(provider="in-memory", model_name="seeded-rag-model"),
+                event_bus=self._event_bus,
+                graph_context_expander=InMemoryGraphContextExpander(),
+                domain_config=self._domain_config,
+            )
 
         self._workflow_runs = self._seed_workflows()
         self._cases = self._seed_cases()
@@ -462,6 +476,18 @@ class ApiState:
                 content=rag_response.answer,
                 created_at=self._now(),
                 citation_ids=[citation.content_id for citation in rag_response.citations],
+                citations=[
+                    ChatCitationResponse(
+                        record_id=citation.record_id,
+                        content_id=citation.content_id,
+                        score=citation.score,
+                        snippet=citation.snippet,
+                        document_id=citation.document_id,
+                        chunk_index=citation.chunk_index,
+                        highlight=citation.highlight,
+                    )
+                    for citation in rag_response.citations
+                ],
             )
             record.messages.append(assistant_message)
         return self.get_conversation(conversation_id)
@@ -999,9 +1025,18 @@ class _NoopKbRepository:
         return None
 
 
-def create_api_state(domain_config: DomainConfig | None = None) -> ApiState:
-    """Create the seeded API application state."""
-    return ApiState(domain_config)
+def create_api_state(
+    domain_config: DomainConfig | None = None,
+    *,
+    rag_service: RagServiceProtocol | None = None,
+) -> ApiState:
+    """Create the seeded API application state.
+
+    When ``rag_service`` is provided it replaces the seeded in-memory RAG
+    pipeline — used by :func:`api.app.create_app` to inject a live
+    embeddings → vectorstore → graph → LLM composition (see BL-001).
+    """
+    return ApiState(domain_config, rag_service=rag_service)
 
 
 def _normalize_risk_level(risk_level: str, overall_score: float) -> Literal["low", "medium", "high", "critical"]:

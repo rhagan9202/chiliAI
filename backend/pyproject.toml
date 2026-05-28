@@ -51,6 +51,8 @@ analytics = [
     "networkx>=3.0",
     "numpy>=1.26",
     "shap>=0.43",
+    "numba>=0.65.1",
+    "llvmlite>=0.47.0",
 ]
 auth = [
     "python-jose[cryptography]>=3.3",
@@ -101,7 +103,6 @@ include = [
     "embeddings",
     "api/_alert_store.py",
     "api/_kb_projection.py",
-    "api/_kb_store.py",
     "api/_workflow_projection.py",
     "api/middleware/auth.py",
     "api/middleware/rbac.py",

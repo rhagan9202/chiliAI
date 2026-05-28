@@ -1633,7 +1633,11 @@ def test_run_handler_with_retry_propagates_dlq_publish_failure() -> None:
     """
 
     class _DlqFailingEventBus(InMemoryEventBus):
-        def publish_to_dlq(self, event: AnyEvent, error: DlqErrorInfo) -> None:  # type: ignore[override]
+        def publish_to_dlq(
+            self,
+            event: AnyEvent,
+            error_info: DlqErrorInfo,
+        ) -> str | None:
             raise RuntimeError("simulated DLQ publish failure (Redis unreachable)")
 
     event_bus = _DlqFailingEventBus()
