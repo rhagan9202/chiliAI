@@ -15,31 +15,31 @@
 <!-- BEGIN: status-rollup -->
 | File | Planned | In-progress | Done | Total | % done |
 |------|---------|-------------|------|-------|--------|
-| _cicd.md | 17 | 0 | 0 | 17 | 0% |
-| _infra.md | 14 | 0 | 0 | 14 | 0% |
+| _cicd.md | 21 | 0 | 0 | 21 | 0% |
+| _infra.md | 19 | 0 | 0 | 19 | 0% |
 | _multitenancy.md | 16 | 0 | 0 | 16 | 0% |
 | _observability.md | 13 | 0 | 0 | 13 | 0% |
-| _plugins.md | 12 | 0 | 0 | 12 | 0% |
+| _plugins.md | 16 | 0 | 0 | 16 | 0% |
 | _security.md | 12 | 0 | 0 | 12 | 0% |
 | agent.md | 20 | 0 | 0 | 20 | 0% |
-| analytics.md | 30 | 0 | 0 | 30 | 0% |
-| api.md | 27 | 0 | 0 | 27 | 0% |
-| config.md | 13 | 0 | 0 | 13 | 0% |
+| analytics.md | 32 | 0 | 0 | 32 | 0% |
+| api.md | 29 | 0 | 0 | 29 | 0% |
+| config.md | 15 | 0 | 0 | 15 | 0% |
 | database.md | 13 | 0 | 0 | 13 | 0% |
 | embeddings.md | 12 | 0 | 0 | 12 | 0% |
-| events.md | 14 | 0 | 0 | 14 | 0% |
-| frontend.md | 24 | 0 | 0 | 24 | 0% |
-| graph.md | 16 | 0 | 0 | 16 | 0% |
-| ingestion.md | 25 | 0 | 0 | 25 | 0% |
+| events.md | 16 | 0 | 0 | 16 | 0% |
+| frontend.md | 26 | 0 | 0 | 26 | 0% |
+| graph.md | 20 | 0 | 0 | 20 | 0% |
+| ingestion.md | 28 | 0 | 1 | 29 | 3% |
 | knowledgebases.md | 13 | 0 | 0 | 13 | 0% |
-| llm.md | 15 | 0 | 0 | 15 | 0% |
-| monitoring.md | 14 | 0 | 0 | 14 | 0% |
+| llm.md | 17 | 0 | 0 | 17 | 0% |
+| monitoring.md | 20 | 0 | 0 | 20 | 0% |
 | rag.md | 17 | 0 | 0 | 17 | 0% |
 | records.md | 13 | 0 | 0 | 13 | 0% |
 | shared.md | 18 | 0 | 0 | 18 | 0% |
 | storage.md | 13 | 0 | 0 | 13 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 395 | 0 | 0 | 395 | 0% |
+| **Total** | 433 | 0 | 1 | 434 | 0% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -49,7 +49,6 @@
 - [agent.03] agent — size S — prereqs done
 - [api.26] api — size S — prereqs done
 - [frontend.22] frontend — size S — prereqs done
-- [ingestion.01] ingestion — size S — prereqs done
 - [ingestion.24] ingestion — size S — prereqs done
 - [shared.01] shared — size S — prereqs done
 - [shared.13] shared — size S — prereqs done
@@ -74,32 +73,48 @@
 - [database.07] database — size M — prereqs done
 - [embeddings.01] embeddings — size M — prereqs done
 - [events.02] events — size M — prereqs done
-- …29 more
+- [frontend.06] frontend — size M — prereqs done
+- …28 more
 <!-- END: ready-set -->
 
 ## Critical path
 <!-- BEGIN: critical-path -->
 > Longest dependency chain by weighted size (S=1, M=2, L=5, XL=10).
-1. database.03 (M=2) → 
-2. database.02 (L=5) → 
-3. config.06 (L=5) → 
-4. config.07 (M=2) → 
-5. config.08 (XL=10) → 
-6. monitoring.07 (XL=10) → 
-7. api.05 (L=5) → 
-8. api.06 (M=2) → 
-9. monitoring.01 (M=2) → 
-10. api.01 (XL=10) → 
-11. rag.01 (L=5) → 
-12. _plugins.01 (L=5) → 
-13. _plugins.02 (XL=10) → 
-14. _plugins.03 (L=5) → 
-15. _plugins.04 (L=5) → 
-16. _plugins.05 (XL=10) → 
-17. _plugins.07 (L=5) → 
-18. _plugins.09 (L=5)
+1. database.03 (M=2) →
+2. database.02 (L=5) →
+3. config.06 (L=5) →
+4. config.07 (M=2) →
+5. config.05 (L=5) →
+6. config.08 (L=5) →
+7. config.14 (L=5) →
+8. config.15 (M=2) →
+9. monitoring.07 (L=5) →
+10. monitoring.15 (L=5) →
+11. monitoring.16 (M=2) →
+12. api.05 (L=5) →
+13. api.06 (M=2) →
+14. monitoring.01 (M=2) →
+15. api.01 (L=5) →
+16. api.28 (L=5) →
+17. api.29 (M=2) →
+18. rag.01 (L=5) →
+19. llm.07 (L=5) →
+20. ingestion.11 (L=5) →
+21. analytics.01 (L=5) →
+22. analytics.31 (L=5) →
+23. analytics.32 (M=2) →
+24. _plugins.01 (L=5) →
+25. _plugins.02 (L=5) →
+26. _plugins.13 (L=5) →
+27. _plugins.14 (M=2) →
+28. _plugins.03 (L=5) →
+29. _plugins.05 (L=5) →
+30. _plugins.15 (L=5) →
+31. _plugins.16 (M=2) →
+32. _plugins.07 (L=5) →
+33. _plugins.09 (L=5)
 
-**Total weight: 103**
+**Total weight: 135**
 <!-- END: critical-path -->
 
 ## Cross-cutting epics

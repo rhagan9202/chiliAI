@@ -12,7 +12,7 @@ This is the protocol-level foundation for the dual-graph architecture (Option E 
 
 The Pydantic `DomainConfig` model (`backend/config/schema.py` line 341) currently has no fields that describe KB granularity. KB membership is a runtime concern: KBs are created via `POST /knowledgebases` and the analyst selects one in the UI before running a query.
 
-The `KnowledgeBaseRepository` protocol in `backend/api/_kb_store.py:51` exposes `get(kb_id) -> KnowledgeBase | None` — sufficient for existence checks at scope resolution time.
+The `KnowledgeBaseRepository` protocol in `backend/knowledgebases/protocols.py` exposes `get(knowledge_base_id: str) -> KnowledgeBase | None` — sufficient for existence checks at scope resolution time.
 
 The existing KB `kb-1` ("Fraud KB") is a transactional KB seeded with synthetic DE-SynPUF data. After this change it remains a transactional KB. No data migration is required.
 

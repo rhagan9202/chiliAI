@@ -211,7 +211,7 @@
 **ID:** _observability.06
 **Status:** planned
 **Prerequisites:** [_observability.03]
-**Unblocks:** [_observability.12, api.18, embeddings.05, monitoring.07]
+**Unblocks:** [_observability.12, api.18, embeddings.05]
 **Estimated size:** M
 
 **As an** analyst debugging a slow RAG response,
@@ -428,7 +428,7 @@
 
 **ID:** _observability.11
 **Status:** planned
-**Prerequisites:** [_observability.02, frontend.03]
+**Prerequisites:** [_observability.02, frontend.26]
 **Unblocks:** []
 **Estimated size:** M
 

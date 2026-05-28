@@ -1,6 +1,6 @@
 # Module: shared
 
-**Verified against codebase:** 2026-05-22
+**Verified against codebase:** 2026-05-28
 **Source:** `backend/shared/`
 
 ## Purpose
@@ -14,7 +14,7 @@ Does **not** own: domain types, adapter implementations, service logic.
 ## Public Surface
 
 ### `types.py`
-- `Entity`, `Relationship`, `Alert`, `EvidencePack`, `KnowledgeBase` — generic runtime types
+- `Entity`, `Relationship`, `Alert`, `EvidencePack`, `KnowledgeBase`, `MonitoringObservation` — generic runtime types
 - `EntityDefinition`, `RelationshipDefinition`, `PropertyDefinition`, `PropertyType` — config-definition types
 - `validate_entity(entity, entity_definitions) -> list[str]`
 - `validate_relationship(relationship, relationship_definitions, entities_by_id) -> list[str]`

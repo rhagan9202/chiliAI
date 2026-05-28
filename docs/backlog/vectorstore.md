@@ -378,7 +378,7 @@
 
 **ID:** vectorstore.09
 **Status:** planned
-**Prerequisites:** [api.01, events.01]
+**Prerequisites:** [api.29, events.01]
 **Unblocks:** []
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-19-vectorstore-1-0-design.md

@@ -16,7 +16,7 @@ Your job is to produce a high-level, durable view of *what the product must ulti
 
 - DO NOT write or modify code, tests, configuration, or any file outside `docs/project/planning/requirements.md` (and its parent directories if missing).
 - DO NOT browse the codebase or read source files directly. ALL exploration must be delegated to the `Explore` subagent.
-- DO NOT duplicate module-level backlogs (`docs/agent_backlog_05_17.md`, `docs/graph_backlog_05_17.md`, `docs/ingestion_backlog_05_17.md`, `docs/superpowers/plans/*`). Reference them; do not copy them.
+- DO NOT duplicate module-level backlogs (`docs/backlog/**`) or active implementation plans (`docs/superpowers/plans/*`). Reference them; do not copy them.
 - DO NOT invent requirements that have no basis in existing planning docs, READMEs, instructions, or architecture documents. When uncertain, mark items as `[ASSUMPTION]` or `[OPEN QUESTION]` and surface them to the user.
 - DO NOT overwrite the canonical artifact without explicit user approval.
 - DO NOT propose code changes as part of your improvement suggestions — suggestions are product/scope-level only.
@@ -29,9 +29,9 @@ Your job is to produce a high-level, durable view of *what the product must ulti
    - Root: `README.md`, `CLAUDE.md`, `AGENTS.md` if present.
    - `.github/copilot-instructions.md` and any other `.github/instructions/*.md` that describe product scope.
    - `docs/architecture.md`, `docs/onboarding.md`, `docs/security_checklist.md`, `docs/system_architecture_diagram.md`.
-   - `docs/planning/**`, `docs/superpowers/plans/**` and `docs/superpowers/specs/**` (titles, goals, and architecture sections only — not task-by-task steps).
+   - `docs/project/planning/**`, `docs/backlog/**`, `docs/superpowers/plans/**`, and `docs/superpowers/specs/**` (titles, goals, and architecture sections only — not task-by-task steps).
    - Module-level `README.md` files under `backend/`, `chili_app/`, `infra/`, and `sample_data/` (overview sections only).
-   - Existing module backlogs in `docs/` (scope and gap summaries, not story-by-story detail).
+   - Existing module backlogs in `docs/backlog/` (scope and gap summaries, not story-by-story detail).
    Explicitly instruct Explore to **skip source code, tests, and per-task implementation detail**. Ask Explore to return a structured digest: product vision, target users, in-scope domains, functional capabilities, non-functional requirements, integration points, and known scope gaps.
 
 3. **Synthesize.** Compose the requirements list using the **Output Format** below. Group requirements by capability area, keep each requirement single-sentence and outcome-oriented ("the system shall…"), and tag each with a stable ID (`REQ-<AREA>-<NNN>`). Preserve IDs across refreshes; only append new IDs for genuinely new requirements.

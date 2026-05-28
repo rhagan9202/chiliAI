@@ -3,51 +3,43 @@
 > **Scope:** Timeseries anomaly detection, GNN link prediction/clustering, risk scoring, explainability, metrics — plus §14.2 model training pipeline.
 > **Story format and rules:** see [design spec §5](../superpowers/specs/2026-05-24-complete-backlog-design.md#5-story-format).
 
-## Story analytics.01: GNN: Replace degree-centrality scoring with real GNN inference
+## Story analytics.01: Define analytics inference protocol and baseline adapter
+
 **ID:** analytics.01
 **Status:** planned
-**Prerequisites:** [analytics.02, analytics.03, analytics.23]
-**Unblocks:** [_plugins.01, api.01, graph.16]
-**Estimated size:** XL
-**As a** fraud-analytics engineer,
-**I need** real GNN-based node scoring and link prediction (PyG/DGL) wired behind the existing `GnnServiceProtocol`,
-**so that** GNN analyze results reflect learned graph structure instead of normalized degree plus cosine similarity.
+**Prerequisites:** [graph.04, graph.10, ingestion.11, llm.01]
+**Unblocks:** [analytics.31]
+**Estimated size:** L
+
+### Narrative
+As an analyst,
+I want a backend analytics inference interface with a deterministic baseline implementation,
+so that graph-derived scores can be consumed before a production GNN runtime is selected.
 
 ### Current State
-- `GnnService._score_nodes` (`backend/analytics/gnn/service.py:187-211`) sums edge weights and feature magnitude, then normalizes by max.
-- `GnnService._predict_links` (`backend/analytics/gnn/service.py:214-237`) is plain cosine similarity over the precomputed feature vectors.
-- Module-level `TODO(production)` on `GnnService` (`backend/analytics/gnn/service.py:46-50`) explicitly calls out the missing PyTorch Geometric / DGL integration and selectable GCN/GAT/GraphSAGE backends.
-- The `analyze()` entry point (`backend/analytics/gnn/service.py:63-146`) has no train/infer split — every call recomputes from scratch.
+Graph storage and workflows exist, but analytics inference is still represented by planned backlog work rather than an executable service contract.
 
 ### Acceptance Criteria
-- [ ] New `GnnInferenceProtocol` lives in `backend/analytics/gnn/protocols.py` with `score_nodes`, `predict_links`, and `embed_nodes` methods accepting `GraphSnapshot` and returning typed result models.
-- [ ] At least one production adapter (PyTorch Geometric or DGL — choose one) lives under `backend/analytics/gnn/adapters/` with lazy optional import and `GnnConfigurationError` when the extra is missing.
-- [ ] `GnnService.analyze` dispatches to `GnnInferenceProtocol` instead of the local `_score_nodes`/`_predict_links` helpers; legacy helpers remain only as the fallback `HeuristicGnnInference` adapter used by tests and in-memory profiles.
-- [ ] `DomainConfig.analytics` (in `backend/config/schema.py`) accepts a `gnn_backend: Literal["heuristic","pyg","dgl"]` field with cross-field validation requiring a registered model artifact when not `heuristic`.
-- [ ] pytest coverage ≥ 85% on `backend/analytics/gnn/service.py` and on every new adapter file.
+- [ ] Define an analytics inference protocol for node, edge, and subgraph scoring requests.
+- [ ] Implement a deterministic baseline adapter that can run without GPU or optional ML libraries.
+- [ ] Expose service-layer methods that return typed scores with provenance and model metadata.
+- [ ] Document the adapter boundary so a PyG/DGL implementation can replace the baseline.
 
 ### Verification
-- `pytest backend/tests/analytics/gnn -q` green.
-- `pytest --cov=analytics.gnn --cov-fail-under=85`.
-- Integration test marked `@pytest.mark.integration` exercises the PyG/DGL adapter against a seeded small graph and asserts that `scored_nodes[*].score` differs from the heuristic baseline.
-- `pyright` clean on the new adapters and protocol.
+- [ ] Unit tests cover request validation, deterministic scoring, and provenance output.
+- [ ] Contract tests prove the baseline adapter satisfies the inference protocol.
 
 ### Code touch points
-- `backend/analytics/gnn/protocols.py` (modify)
-- `backend/analytics/gnn/service.py` (modify)
-- `backend/analytics/gnn/adapters/heuristic.py` (new)
-- `backend/analytics/gnn/adapters/pyg_adapter.py` (new) *or* `dgl_adapter.py` (new)
-- `backend/config/schema.py` (modify)
-- `backend/api/dependencies.py` (modify)
-- `backend/tests/analytics/gnn/` (modify, add)
+- `backend/app/analytics/**`
+- `backend/tests/analytics/**`
+- `docs/wiki/modules/analytics.md`
 
 ---
-
 ## Story analytics.02: GNN: Persist trained model artifacts and serve from durable storage
 **ID:** analytics.02
 **Status:** planned
 **Prerequisites:** [analytics.23, storage.01]
-**Unblocks:** [analytics.01]
+**Unblocks:** []
 **Estimated size:** L
 **As a** fraud-analytics engineer,
 **I need** `GnnService` to load trained model artifacts (weights, scaler, label maps) from the model registry instead of recomputing Louvain/spectral embeddings per `analyze()` call,
@@ -84,7 +76,7 @@
 **ID:** analytics.03
 **Status:** planned
 **Prerequisites:** [graph.06]
-**Unblocks:** [analytics.01, analytics.04]
+**Unblocks:** [analytics.04]
 **Estimated size:** L
 **As a** fraud-analytics engineer,
 **I need** a graph-DB-backed `GraphSnapshotSource` that loads nodes + edges from Neo4j (and the in-memory backend) for a knowledge base,
@@ -656,7 +648,7 @@
 **ID:** analytics.20
 **Status:** planned
 **Prerequisites:** [analytics.18, database.04]
-**Unblocks:** [monitoring.13]
+**Unblocks:** []
 **Estimated size:** M
 **As a** investigator,
 **I need** per-entity-type rollup queries (avg/p50/p95 of a metric across all entities of a type) and metric provenance via `correlation_id`,
@@ -758,7 +750,7 @@
 **ID:** analytics.23
 **Status:** planned
 **Prerequisites:** [database.03, storage.01, config.01]
-**Unblocks:** [analytics.01, analytics.02, analytics.09, analytics.21, analytics.22]
+**Unblocks:** [analytics.02, analytics.09, analytics.21, analytics.22]
 **Estimated size:** L
 **As a** platform engineer,
 **I need** a `ModelRegistryProtocol` backed by Postgres metadata + object-store blobs that tracks trained model artifacts (SHAP background, GNN weights, scoring strategy parameters, fine-tuned embeddings) with semantic versioning,
@@ -929,7 +921,7 @@
 ## Story analytics.28: Analytics API: Remove deterministic-payload shortcut endpoints
 **ID:** analytics.28
 **Status:** planned
-**Prerequisites:** [api.01, frontend.04]
+**Prerequisites:** [api.29, frontend.04]
 **Unblocks:** []
 **Estimated size:** M
 **As a** API maintainer,
@@ -1017,3 +1009,61 @@
 - `backend/tests/analytics/timeseries/test_strategies.py` (modify or new)
 - `backend/tests/analytics/explainability/test_shap_adapter.py` (modify)
 - `backend/analytics/README.md` (modify)
+
+## Story analytics.31: Add configurable GNN inference adapter
+
+**ID:** analytics.31
+**Status:** planned
+**Prerequisites:** [analytics.01]
+**Unblocks:** [analytics.32]
+**Estimated size:** L
+
+### Narrative
+As a data scientist,
+I want a configurable PyG/DGL-backed inference adapter,
+so that trained graph models can score graph entities through the analytics protocol.
+
+### Acceptance Criteria
+- [ ] Optional GNN adapter loads configured model artifacts and feature mappings.
+- [ ] Adapter implements the analytics inference protocol without changing callers.
+- [ ] Configuration supports CPU execution and explicit rejection when required optional dependencies are missing.
+
+### Verification
+- [ ] Unit tests cover model configuration validation and missing-dependency behavior.
+- [ ] Adapter contract tests run with lightweight fixtures or fakes.
+
+### Code touch points
+- `backend/app/analytics/**`
+- `backend/app/config/**`
+- `backend/tests/analytics/**`
+
+---
+
+## Story analytics.32: Wire analytics inference into API and graph workflows
+
+**ID:** analytics.32
+**Status:** planned
+**Prerequisites:** [analytics.31]
+**Unblocks:** [_plugins.01, graph.16, monitoring.19]
+**Estimated size:** M
+
+### Narrative
+As an analyst,
+I want analytics inference results available through API and graph workflows,
+so that downstream features can consume scored entities consistently.
+
+### Acceptance Criteria
+- [ ] API exposes inference endpoints or service methods used by planned consumers.
+- [ ] Graph workflow integration can request scores for persisted nodes and edges.
+- [ ] Tests verify baseline and configured adapters are selected through configuration.
+
+### Verification
+- [ ] API/integration tests cover scoring persisted graph fixtures.
+- [ ] Configuration tests prove adapter selection is deterministic.
+
+### Code touch points
+- `backend/app/api/**`
+- `backend/app/analytics/**`
+- `backend/tests/**`
+
+---

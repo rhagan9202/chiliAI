@@ -8,10 +8,11 @@
 ## Story ingestion.01: Reconcile architecture.md HTML-parser milestone with shipped registration
 
 **ID:** ingestion.01
-**Status:** planned
+**Status:** done
 **Prerequisites:** []
 **Unblocks:** [ingestion.02]
 **Estimated size:** S
+**Done:** 2026-05-28 · docs-keeper cleanup · local working tree
 
 **As a** platform maintainer,
 **I need** `docs/architecture.md` to stop describing HTML-parser registration as a "Next milestone" when the parser is already wired,
@@ -19,16 +20,16 @@
 
 ### Current State
 - `HtmlParser` is implemented at `backend/ingestion/parsers/html.py:99-125` and registered in `backend/ingestion/parsers/registry.py:47-57` via `create_default_registry()`.
-- `docs/architecture.md` §14.3 still lists HTML parser registration as future work (verify exact line during execution; the milestone bullet predates the shipped registration).
-- The real residual HTML gap (table/heading fidelity) is captured separately as `ingestion.02`; this story is purely a doc reconcile.
+- `docs/architecture.md` §14.3 now lists HTML as registered and points at `ingestion.02` for the remaining fidelity work.
+- The real residual HTML gap (table/heading fidelity) is captured separately as `ingestion.02`; this story was purely a doc reconcile.
 
 ### Acceptance Criteria
-- [ ] `docs/architecture.md` §14.3 no longer claims HTML parser registration is pending; the bullet is either deleted or rewritten to point at `ingestion.02` as the live follow-on.
-- [ ] `backend/ingestion/README.md` parser inventory section lists HTML alongside PDF/DOCX/CSV/XLSX/JSON/TXT with the correct registration status.
-- [ ] No other doc (root `README.md`, `backend/README.md`, `CLAUDE.md`, `.github/copilot-instructions.md`) repeats the stale "HTML parser pending" claim.
+- [x] `docs/architecture.md` §14.3 no longer claims HTML parser registration is pending; the bullet is either deleted or rewritten to point at `ingestion.02` as the live follow-on.
+- [x] `backend/ingestion/README.md` parser inventory section lists HTML alongside PDF/DOCX/CSV/XLSX/JSON/TXT with the correct registration status.
+- [x] No other doc (root `README.md`, `backend/README.md`, `CLAUDE.md`, `.github/copilot-instructions.md`) repeats the stale "HTML parser pending" claim.
 
 ### Verification
-- `rg -n "HTML parser" docs/ backend/ CLAUDE.md .github/` returns only the rewritten bullet plus the `ingestion.02` follow-on reference.
+- `rg -n "no .*parser is registered|register an HTML parser|DocumentFormat\\.HTML exists" docs/ backend/ CLAUDE.md .github/ -g '!docs/wiki/**' -g '!docs/archive/**' -g '!docs/backlog/ingestion.md'` returns no matches.
 - Reviewer reads the updated §14.3 paragraph and confirms it matches `parsers/registry.py:47-57`.
 
 ### Code touch points
@@ -44,7 +45,7 @@
 **ID:** ingestion.02
 **Status:** planned
 **Prerequisites:** [ingestion.01]
-**Unblocks:** []
+**Unblocks:** [ingestion.06]
 **Estimated size:** M
 
 **As a** policy/news ingestion operator,
@@ -82,7 +83,7 @@
 **ID:** ingestion.03
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [ingestion.06]
 **Estimated size:** L
 
 **As a** Medicare-fraud analyst ingesting scanned policy or claim PDFs,
@@ -124,7 +125,7 @@
 **ID:** ingestion.04
 **Status:** planned
 **Prerequisites:** [ingestion.25]
-**Unblocks:** []
+**Unblocks:** [ingestion.06]
 **Estimated size:** M
 
 **As a** records-ingestion operator,
@@ -160,7 +161,7 @@
 **ID:** ingestion.05
 **Status:** planned
 **Prerequisites:** [events.02, database.04]
-**Unblocks:** [config.13, ingestion.06]
+**Unblocks:** [api.01, config.13]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md
 
@@ -197,53 +198,43 @@
 
 ---
 
-## Story ingestion.06: Move ingestion service and remote fetcher to async I/O with backpressure
+## Story ingestion.06: Introduce async ingestion service facade
 
 **ID:** ingestion.06
 **Status:** planned
-**Prerequisites:** [ingestion.05, storage.05]
-**Unblocks:** [ingestion.07, ingestion.22, ingestion.23]
-**Estimated size:** XL
+**Prerequisites:** [ingestion.02, ingestion.03, ingestion.04]
+**Unblocks:** [ingestion.26]
+**Estimated size:** L
 
-**As a** worker handling large uploads and remote fetches under load,
-**I need** the ingestion service and `HttpxRemoteDocumentFetcher` to use async I/O with bounded concurrency,
-**so that** a single 200 MB upload does not block the event loop and a slow remote host does not stall the entire worker.
+### Narrative
+As an ingestion operator,
+I want ingestion orchestration to expose async service methods,
+so that uploads and remote fetches can run without blocking worker capacity.
 
 ### Current State
-- `IngestionService` (`backend/ingestion/service.py:35-274`) is fully synchronous; `register_documents` and `ingest_task` block the calling task on `object_store.put_bytes`, `object_store.get_bytes`, and `event_bus.publish`.
-- `HttpxRemoteDocumentFetcher.fetch` (`backend/ingestion/parsers/remote.py:34-68`) uses `httpx.Client.get` (sync), reads the full response into memory (`response.content` at line 49), and offers no concurrency cap.
-- No bulkhead, no per-host concurrency limit, no streaming download.
+Ingestion workflows exist, but blocking IO still appears in parts of the service path.
 
 ### Acceptance Criteria
-- [ ] Story is split into M-sized increments before merge (XL split required by §5 field rules); split plan documented in the implementation plan.
-- [ ] `IngestionService` exposes async public methods (`async def register_documents`, `async def ingest_task`); sync callers go through a thin adapter so the FastAPI router and worker can both consume cleanly.
-- [ ] `ObjectStoreProtocol` gains async methods (or the service uses `asyncio.to_thread` if the protocol stays sync, documented decision).
-- [ ] `HttpxRemoteDocumentFetcher` uses `httpx.AsyncClient`, streams the response body, enforces `max_bytes` mid-stream, and rejects oversized bodies before fully reading.
-- [ ] A per-worker `asyncio.Semaphore` caps in-flight ingest tasks (default 16, configurable via `IngestionConfig.max_concurrent_tasks`).
-- [ ] Async smoke tests confirm two concurrent 50 MB ingests do not serialize, and remote-fetch streaming aborts mid-stream when size cap is exceeded.
+- [ ] Async facade covers document registration, file ingestion, remote fetch kickoff, and status reads.
+- [ ] Concurrency limits protect worker and storage resources.
+- [ ] Blocking adapters are wrapped behind explicit boundaries pending native async replacements.
+- [ ] Cancellation and timeout behavior is documented for long-running ingestion calls.
 
 ### Verification
-- `pytest backend/tests/ingestion/test_service_async.py -v` green.
-- `pytest backend/tests/ingestion/parsers/test_remote_async.py -v` green including the streaming-abort case.
-- `pyright --strict` clean on `backend/ingestion/`.
+- [ ] Async unit tests cover concurrent ingestion calls and timeout behavior.
+- [ ] Existing synchronous callers continue to work through compatibility wrappers where required.
 
 ### Code touch points
-- `backend/ingestion/service.py` (modify)
-- `backend/ingestion/parsers/remote.py` (modify)
-- `backend/ingestion/protocols.py` (modify, if async surface added)
-- `backend/shared/protocols.py` (modify, if `ObjectStoreProtocol` gains async methods)
-- `backend/api/routers/knowledgebases.py` (modify — adopt async service)
-- `backend/agent/coordinator.py` (modify — adopt async service)
-- `backend/tests/ingestion/test_service_async.py` (new)
-- `backend/tests/ingestion/parsers/test_remote_async.py` (new)
+- `backend/ingestion/**`
+- `backend/app/api/**`
+- `backend/tests/**`
 
 ---
-
 ## Story ingestion.07: Harden remote document fetching against SSRF and oversized payloads
 
 **ID:** ingestion.07
 **Status:** planned
-**Prerequisites:** [ingestion.06, _security.06]
+**Prerequisites:** [ingestion.27, _security.06]
 **Unblocks:** []
 **Estimated size:** M
 
@@ -317,7 +308,7 @@
 **ID:** ingestion.09
 **Status:** planned
 **Prerequisites:** [config.04]
-**Unblocks:** [ingestion.10, ingestion.21]
+**Unblocks:** [ingestion.10, ingestion.21, ingestion.22]
 **Estimated size:** M
 
 **As a** prompt engineer iterating on extraction quality,
@@ -393,7 +384,7 @@
 **ID:** ingestion.11
 **Status:** planned
 **Prerequisites:** [ingestion.10, llm.04, llm.07]
-**Unblocks:** [ingestion.12, ingestion.19]
+**Unblocks:** [analytics.01, ingestion.12, ingestion.19]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md
 
@@ -663,7 +654,7 @@
 **ID:** ingestion.18
 **Status:** planned
 **Prerequisites:** [database.04, events.04]
-**Unblocks:** [ingestion.23]
+**Unblocks:** [ingestion.22, ingestion.23]
 **Estimated size:** L
 
 **As a** Ingestion Studio user,
@@ -817,54 +808,43 @@
 
 ---
 
-## Story ingestion.22: Add streaming upload and per-document progress reporting
+## Story ingestion.22: Add chunked upload session API
 
 **ID:** ingestion.22
 **Status:** planned
-**Prerequisites:** [ingestion.06, api.10, frontend.11, storage.05]
-**Unblocks:** []
-**Estimated size:** XL
+**Prerequisites:** [frontend.15, ingestion.27, ingestion.09, ingestion.18]
+**Unblocks:** [ingestion.28]
+**Estimated size:** L
 
-**As an** Ingestion Studio user uploading multi-hundred-megabyte documents,
-**I need** chunked / resumable uploads and a per-document progress channel (SSE or WebSocket),
-**so that** large uploads do not require buffering the whole file in API memory and the UI shows live byte-level progress instead of a spinner.
+### Narrative
+As a user uploading large files,
+I want chunked upload sessions,
+so that long uploads can survive network interruptions and backend request limits.
 
 ### Current State
-- `register_knowledge_base_documents` reads the full upload into memory via `await upload.read()` at `backend/api/routers/knowledgebases.py:413`.
-- The synchronous ingestion service blocks on `object_store.put_bytes` at `backend/ingestion/service.py:93-103`.
-- No chunked upload route, no resumable-upload protocol, no SSE/WS progress channel keyed on `source_document_id`.
-- Open question 4 from the Wave 1 epic draft (`tus.io`, multipart S3, or custom range-based POST) is resolved during this story: decision captured in the implementation plan.
+Ingestion accepts uploads, but resumable upload session state and chunk assembly are not implemented.
 
 ### Acceptance Criteria
-- [ ] Story is split into M/L sub-stories before merge (XL split required by §5); split into (a) chunked-upload API + service, (b) progress channel + frontend wiring.
-- [ ] A chunked-upload route accepts a sequence of byte ranges keyed by `(kb_id, upload_session_id)`; sessions persist until completion or TTL expiry.
-- [ ] The chosen protocol (per the resolved open question) is documented in `docs/architecture.md` §5.2 / §14.3.
-- [ ] `IngestionService` consumes the assembled stream rather than a full-byte buffer (relies on `ingestion.06` async I/O).
-- [ ] Progress events are published to a per-`source_document_id` SSE channel under `/knowledgebases/{kb_id}/documents/{document_id}/progress`; events include `bytes_received`, `total_bytes`, `stage`, `parsed_chunks`, `extracted_candidates`.
-- [ ] The Ingestion Studio (cross-edge to `frontend.11`) renders a live progress bar per document.
-- [ ] Resumable uploads survive a client disconnect: re-issuing the next range continues the session.
-- [ ] Backend integration test covers full upload, resume after disconnect, TTL expiry of a stale session.
+- [ ] API creates upload sessions with file metadata, expected size, content hash, and knowledge base scope.
+- [ ] API accepts chunks idempotently and records received byte ranges.
+- [ ] Completed sessions assemble and hand off files to the existing ingestion workflow.
+- [ ] Expired or abandoned sessions are detectable for cleanup.
 
 ### Verification
-- `pytest backend/tests/api/test_chunked_upload.py backend/tests/integration/test_resumable_upload.py -v` green.
-- Manual: drop a 200 MB file in the Ingestion Studio and observe the progress bar update in near-real-time.
+- [ ] API tests cover session creation, repeated chunk submission, completion, and missing chunks.
+- [ ] Large-file smoke test uploads through the chunked path.
 
 ### Code touch points
-- `backend/api/routers/knowledgebases.py` (modify)
-- `backend/ingestion/service.py` (modify)
-- `backend/ingestion/upload_sessions.py` (new)
-- `backend/api/sse.py` (modify or new — progress channel)
-- `backend/tests/api/test_chunked_upload.py` (new)
-- `backend/tests/integration/test_resumable_upload.py` (new)
-- `docs/architecture.md` (modify)
+- `backend/app/api/**`
+- `backend/ingestion/**`
+- `backend/tests/**`
 
 ---
-
 ## Story ingestion.23: Add chunk-and-resume and memory-bounded handling for large documents
 
 **ID:** ingestion.23
 **Status:** planned
-**Prerequisites:** [ingestion.06, ingestion.18, agent.07]
+**Prerequisites:** [ingestion.27, ingestion.18, agent.07]
 **Unblocks:** []
 **Estimated size:** L
 
@@ -976,3 +956,118 @@
 - `backend/tests/integration/test_ingestion_lifecycle_certify.py` (new)
 - `backend/tests/ingestion/fixtures/golden/medicare_fraud/narrative/` (new fixtures)
 - `backend/ingestion/README.md` (modify — playbook section)
+
+## Story ingestion.26: Replace blocking storage adapters with async equivalents
+
+**ID:** ingestion.26
+**Status:** planned
+**Prerequisites:** [ingestion.06]
+**Unblocks:** [ingestion.27]
+**Estimated size:** L
+
+### Narrative
+As an ingestion operator,
+I want storage and parser IO to use async-compatible adapters,
+so that ingestion concurrency is limited by configured capacity rather than blocking calls.
+
+### Acceptance Criteria
+- [ ] Object storage adapter interface supports async reads and writes.
+- [ ] Local filesystem, configured object storage, and parser boundaries expose async-compatible methods or explicit thread offloading.
+- [ ] Adapter selection and fallback behavior are documented.
+
+### Verification
+- [ ] Async adapter tests cover local and object-storage fixtures.
+- [ ] Concurrency test proves multiple uploads do not block the event loop under normal limits.
+
+### Code touch points
+- `backend/ingestion/**`
+- `backend/app/storage/**`
+- `backend/tests/**`
+
+---
+
+## Story ingestion.27: Stream remote fetches through async ingestion pipeline
+
+**ID:** ingestion.27
+**Status:** planned
+**Prerequisites:** [ingestion.26]
+**Unblocks:** [ingestion.07, ingestion.22, ingestion.23]
+**Estimated size:** M
+
+### Narrative
+As an ingestion operator,
+I want remote fetches to stream into the async ingestion pipeline,
+so that large remote files do not require full buffering in memory.
+
+### Acceptance Criteria
+- [ ] Remote fetch implementation streams content with timeout and size-limit enforcement.
+- [ ] Pipeline applies backpressure when storage or parsing is slower than download.
+- [ ] Fetch errors are surfaced through existing ingestion status records.
+
+### Verification
+- [ ] Tests cover streaming success, timeout, oversized response, and upstream failure.
+- [ ] Memory-sensitive smoke test proves large fetches do not buffer the full file in process memory.
+
+### Code touch points
+- `backend/ingestion/**`
+- `backend/tests/**`
+
+---
+
+## Story ingestion.28: Publish upload progress events
+
+**ID:** ingestion.28
+**Status:** planned
+**Prerequisites:** [ingestion.22, events.10]
+**Unblocks:** [ingestion.29]
+**Estimated size:** M
+
+### Narrative
+As a user uploading large files,
+I want upload progress to be visible while chunks are received and processed,
+so that I can tell whether an upload is still making progress.
+
+### Acceptance Criteria
+- [ ] Backend publishes progress events for bytes received, assembly, ingestion handoff, and failure states.
+- [ ] Progress API or subscription endpoint exposes latest session state.
+- [ ] Progress events include upload session ID and knowledge base scope.
+
+### Verification
+- [ ] Tests cover progress transitions for successful and failed uploads.
+- [ ] Event tests prove progress events are emitted in order for a normal upload.
+
+### Code touch points
+- `backend/ingestion/**`
+- `backend/app/events/**`
+- `backend/app/api/**`
+
+---
+
+## Story ingestion.29: Add frontend resumable upload progress flow
+
+**ID:** ingestion.29
+**Status:** planned
+**Prerequisites:** [ingestion.28, frontend.15]
+**Unblocks:** []
+**Estimated size:** L
+
+### Narrative
+As a user uploading large files,
+I want the frontend to show resumable upload progress and recovery controls,
+so that interrupted uploads can be completed without starting over.
+
+### Acceptance Criteria
+- [ ] Frontend uploads files through chunked sessions and shows progress states.
+- [ ] Interrupted uploads can resume from the server-reported received ranges.
+- [ ] Failure states distinguish retryable network errors from rejected files.
+
+### Verification
+- [ ] Browser E2E test covers interruption, resume, completion, and failed upload states.
+- [ ] Component tests cover progress rendering and retry controls.
+
+### Code touch points
+- `frontend/src/**`
+- `frontend/tests/**`
+- `tests/e2e/**`
+
+---

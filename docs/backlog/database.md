@@ -10,7 +10,7 @@
 **ID:** database.01
 **Status:** planned
 **Prerequisites:** [database.03, database.04]
-**Unblocks:** [_multitenancy.05, _security.02, _security.06, api.01, llm.08, records.02, records.05, vectorstore.02]
+**Unblocks:** [_multitenancy.05, _security.02, _security.06, llm.08, records.02, records.05, vectorstore.02]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-14-backend-persistence-design.md
 
@@ -348,7 +348,7 @@
 **ID:** database.09
 **Status:** planned
 **Prerequisites:** [database.03, database.04]
-**Unblocks:** [database.12, monitoring.12]
+**Unblocks:** [database.12]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-14-backend-persistence-design.md
 

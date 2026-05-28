@@ -1,17 +1,17 @@
 # Module: frontend (chili_app)
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-28
 **Source:** `chili_app/src/`
 
 ## Purpose
 
-React 19 SPA serving as the analyst workbench. Renders dynamically based on `DomainConfig` fetched from `GET /config/domain` at startup. Built with Vite 8, TypeScript strict mode, React Router v6.
+React 19 SPA serving as the analyst workbench. Renders navigation and feature gates from `GET /config/features` / `GET /config/domain`. Built with Vite 8, TypeScript strict mode, React Router v6, and TanStack Query.
 
 ---
 
 ## Router (`src/app/router.tsx`)
 
-All authenticated routes are wrapped in `<AuthGuard>` and `<DomainConfigProvider>`.
+`AppProviders` wraps the app with `QueryClientProvider` and `SessionProvider`; authenticated shell routes are wrapped in `<AuthGuard>`.
 
 | Path | Component | Notes |
 |------|-----------|-------|
@@ -23,6 +23,7 @@ All authenticated routes are wrapped in `<AuthGuard>` and `<DomainConfigProvider
 | `/investigation/:entityId` | `InvestigationWorkbenchPage` | Entity preselected |
 | `/cases` | `CaseManagementPage` | |
 | `/knowledge-bases` | `KnowledgeBaseManagerPage` | |
+| `/knowledgebases` | → `/knowledge-bases` | Back-compat redirect |
 | `/policy` | `PolicyIntelligencePage` | |
 | `/rag-chat` | `RagChatPage` | |
 | `/configuration` | `ConfigurationPage` | |
@@ -33,13 +34,13 @@ All authenticated routes are wrapped in `<AuthGuard>` and `<DomainConfigProvider
 
 ## Pages (`src/pages/`)
 
-Last verified: 2026-05-20.
+Last verified: 2026-05-28.
 
 | File | Route | Primary API calls | Stores used |
 |------|-------|-------------------|-------------|
-| `DashboardPage.tsx` | `/dashboard` | `useAnalyticsOverview`, `useAlerts`, `useRecentActivity` | `uiStore`, `appStore` |
+| `DashboardPage.tsx` | `/dashboard` | `useAnalyticsOverview`, `useAlerts`, `useRecentActivity`, `useRealtimeWorkspaceStream` | `uiStore`, `appStore` |
 | `AlertFeedPage.tsx` | `/alerts` | `useAlerts`, `useAlert`, `useAcknowledgeAlert` | `uiStore` |
-| `InvestigationWorkbenchPage.tsx` | `/investigation`, `/investigation/:entityId` | `useInvestigationEntitySearch`, `useInvestigationEntity`, `useInvestigationNeighborhood` | `appStore` (selectedEntityId, activeKnowledgeBaseId) |
+| `InvestigationWorkbenchPage.tsx` | `/investigation`, `/investigation/:entityId` | `useInvestigationEntitySearch`, `useInvestigationEntity`, `useInvestigationNeighborhood`, `useRiskScore`, `useTimeseries` | `appStore` (selectedEntityId, activeKnowledgeBaseId), `uiStore` |
 | `CaseManagementPage.tsx` | `/cases` | `useCases`, `useCase`, `useCreateCase`, `useUpdateCase`, `useCaseFeedback` | `uiStore` |
 | `KnowledgeBaseManagerPage.tsx` | `/knowledge-bases` | `useKnowledgeBases`, `useKnowledgeBaseDocuments`, `uploadDocuments`, `useIngestionStudioStore` | `ingestionStudioStore` |
 | `PolicyIntelligencePage.tsx` | `/policy` | `usePolicyGaps`, `usePolicyGap`, `usePolicyGapCases`, `useCreatePolicyBrief` | — |
@@ -52,14 +53,14 @@ Last verified: 2026-05-20.
 
 ## API Client (`src/api/`)
 
-Last verified: 2026-05-20.
+Last verified: 2026-05-28.
 
-Base utilities in `src/lib/apiClient.ts`. `src/api/client.ts` re-exports `apiFetch`, `apiPost`, `apiPatch`, `apiDelete`, `apiUpload` wrappers.
+Base utilities in `src/lib/apiClient.ts`. `src/api/client.ts` re-exports `apiFetch`, `apiPost`, `apiPatch`, `apiDelete`, `apiUpload` wrappers. API contract types are generated from backend OpenAPI into `src/lib/api/schema.ts`; `src/api/contracts.ts` aliases and tightens those generated schemas for frontend use.
 
 | File | Backend resource | Key functions / hooks |
 |------|-----------------|-----------------------|
 | `client.ts` | Base fetch wrappers | `apiFetch`, `apiPost`, `apiPatch`, `apiDelete`, `apiUpload` |
-| `contracts.ts` | Shared TS types | All `*Response`, `*Request` type aliases — single source of truth for frontend API shapes |
+| `contracts.ts` | Shared TS types | Frontend aliases over generated `src/lib/api/schema.ts` OpenAPI schemas |
 | `knowledgebases.ts` | `/knowledgebases` | `useKnowledgeBases`, `useKnowledgeBase`, `useKnowledgeBaseDocuments`, `createKnowledgeBase`, `deleteKnowledgeBase`, `uploadDocuments` |
 | `alerts.ts` | `/alerts` | `useAlerts`, `useAlert`, `useAcknowledgeAlert`, `getAlerts`, `getAlert`, `acknowledgeAlert` |
 | `cases.ts` | `/cases` | `useCases`, `useCase`, `useCreateCase`, `useUpdateCase`, `useCaseFeedback` |
@@ -68,11 +69,11 @@ Base utilities in `src/lib/apiClient.ts`. `src/api/client.ts` re-exports `apiFet
 | `rag.ts` | `/chat` | `useConversation`, `createConversation`, `sendMessage`, `streamMessage` (SSE) |
 | `records.ts` | `/records` | `uploadRecordFile`, `pushRecords` |
 | `workflows.ts` | `/workflows` | `useWorkflows`, `getWorkflows` |
-| `analytics.ts` | `/analytics` | `useAnalyticsOverview`, `useRiskScore`, `useEntityTimeseries`, `useRiskScores`, `useTimeseries`, `useGnnClusters` |
+| `analytics.ts` | `/analytics` | `useAnalyticsOverview`, `useRiskScore`, `useTimeseries`, `getAnalyticsOverview`, `getRiskScore`, `getTimeseries` |
 | `config.ts` | `/config/domain`, `/config/features` | `useDomainConfig`, `useDomainFeatures`, `getDomainConfig`, `getDomainFeatures`, `getDomainConfigSchema` |
 | `investigation.ts` | `/investigation` | `useInvestigationEntitySearch`, `useInvestigationEntity`, `useInvestigationNeighborhood`, `searchInvestigationEntities`, `getInvestigationEntity`, `getInvestigationNeighborhood` |
 | `policy.ts` | `/policy` | `usePolicyGaps`, `usePolicyGap`, `usePolicyGapCases`, `useCreatePolicyBrief` |
-| `realtime.ts` | SSE `/events/workspace` | `useRealtimeSnapshot` (SSE stream consumer) |
+| `realtime.ts` | SSE `/events/stream` | `useRealtimeWorkspaceStream` (SSE stream consumer) |
 
 All data-fetching hooks use `@tanstack/react-query`. Query keys follow `[resource, scope, ...params]` pattern. Mutation hooks use `useMutation` with `queryClient.invalidateQueries` on success.
 
@@ -80,7 +81,7 @@ All data-fetching hooks use `@tanstack/react-query`. Query keys follow `[resourc
 
 ## Stores (`src/stores/`)
 
-Last verified: 2026-05-20. All stores use Zustand v4.
+Last verified: 2026-05-28. All stores use Zustand v4.
 
 ### `appStore.ts` — `useAppStore`
 
@@ -138,12 +139,14 @@ type IngestionStudioState = {
 
 ```typescript
 type UiState = {
+  accessNotice: string | null
   aiPanelOpen: boolean              // default: true
   lastRealtimeEventAt: string | null
   realtimeConnected: boolean
   selectedRole: string | null
   selectedEntityId: string | null
   sidebarCollapsed: boolean
+  setAccessNotice(message: string | null): void
   setLastRealtimeEventAt(timestamp: string | null): void
   setRealtimeConnected(connected: boolean): void
   setSelectedRole(role: string | null): void
@@ -202,13 +205,13 @@ Toast state: `components/common/toastStore.ts` (internal Zustand store, not expo
 
 ## Contexts (`src/contexts/`)
 
-`DomainConfigProvider` — fetches `GET /config/domain` on mount, provides `DomainConfig` to all child components. Navigation and feature flags are driven from this context.
+`SessionProvider` — calls `GET /auth/me` on mount, exposes session status/user/sign-out through `useSession`. Domain config and feature data are fetched through TanStack Query hooks in `src/api/config.ts`, not a dedicated context provider.
 
 ---
 
 ## AuthGuard (`src/components/AuthGuard.tsx`)
 
-Redirects to `/login` if no session. Reads auth state from `appStore`.
+Redirects to `/login` if `useSession()` reports `unauthenticated`; shows a loading status while the session probe is in flight.
 
 ---
 
@@ -232,29 +235,16 @@ npm run test:e2e    # Playwright (starts Vite automatically)
 | `types/domainConfig.ts` | `config/schema.py::DomainConfig` |
 | `types/api.ts` | `shared/types.py`, `api/contracts.py` |
 | `api/rag.ts` SSE parsing | `api/routers/rag.py::_sse_event()` format |
-| `contexts/DomainConfigContext` | `GET /config/domain` + `GET /config/features` |
+| `api/config.ts` | `GET /config/domain`, `GET /config/features`, `GET /config/domain/schema` |
 | Cookie `chiliai_session` | `api/middleware/auth.py::SESSION_COOKIE_NAME` |
 
 ---
 
 ## Frontend ↔ Backend Type Drift
 
-**Verified against codebase:** 2026-05-20
-**Sources:** `chili_app/src/types/api.ts` vs `backend/shared/types.py` + `backend/api/contracts.py`
+**Verified against codebase:** 2026-05-28
+**Sources:** `chili_app/src/lib/api/schema.ts`, `chili_app/src/api/contracts.ts`, `backend/api/contracts.py`
 
-| Frontend type | Field | Backend counterpart | Drift description | Wire impact |
-|--------------|-------|---------------------|-------------------|-------------|
-| `Alert` (`types/api.ts`) | `updated_at?: string \| null` | `shared/types.py::Alert.updated_at: datetime \| None` | Present in both; frontend uses `string` not `Date`. Consistent with ISO serialization. | No issue |
-| `Alert` (`types/api.ts`) | `acknowledged: boolean` | `shared/types.py::Alert.acknowledged: bool` | Matches. Backend comment marks this field deprecated in favor of `status`. | Frontend may surface stale behavior if it relies on `acknowledged` instead of `status`. |
-| `Alert` (`types/api.ts`) | `kb_id?: string \| null` | `shared/types.py::Alert` — no `kb_id` field | **Drift.** Frontend defines `kb_id` as optional field; backend `Alert` has no such field. | Safe: optional client-side extension, will never be populated from API responses unless a future backend adds it. Comment in frontend marks it "E9-S08 Alert Feed". |
-| `Alert` (`types/api.ts`) | `message?: string \| null` | `shared/types.py::Alert` — no `message` field | **Drift.** Frontend adds `message`; backend uses `title` + `reasoning`. | Safe: optional, never populated by current API. |
-| `Alert` (`types/api.ts`) | `acknowledged_by?: string \| null` | `shared/types.py::Alert` — no `acknowledged_by` field | **Drift.** Frontend adds `acknowledged_by`; backend has `resolved_by` only. | Safe: optional, never populated. |
-| `Alert` (`types/api.ts`) | `properties?: Record<string, unknown> \| null` | `shared/types.py::Alert` — no `properties` field | **Drift.** Frontend adds generic `properties` bag; backend has none. | Safe: optional, never populated. |
-| `Alert` (`types/api.ts`) | `severity: AlertSeverity \| string` | `shared/types.py::Alert.severity: str` | Frontend widens to `AlertSeverity \| string` union. Backend is bare `str` (no enum validation). Loose on both sides. | No 422 risk. |
-| `AlertListResponse` (`types/api.ts`) | `{ items: Alert[], total: number }` | `api/contracts.py::AlertListResponse` → `{ items: list[AlertListItem], page: PageInfo }` | **Shape mismatch.** Frontend expects flat `total: number`; backend returns `page: PageInfo {page, page_size, total_items}`. Frontend `Alert` maps to backend `AlertListItem` (which adds `entity_label`, `confidence`, `tags`). | **Drift.** Frontend `Alert` is missing `entity_label: string`, `confidence: float`, `tags: list[str]` that backend `AlertListItem` carries. These fields will be `undefined` in the frontend. |
-| `DocumentSummary` (`types/api.ts`) | no `knowledge_base_id` field | `api/contracts.py::DocumentSummary.knowledge_base_id: str` | Frontend `DocumentSummary` omits `knowledge_base_id`. | Safe if the field is not needed client-side, but callers relying on it will get `undefined`. |
-| `KnowledgeBaseListResponse` (`types/api.ts`) | `{ items: KnowledgeBase[], total: number }` | `api/contracts.py::KbListResponse` → `{ items: list[KnowledgeBase], total: int }` | Matches structurally. | No issue |
-| `EvidencePack` (`types/api.ts`) | `subgraph_nodes: string[]`, `subgraph_edges: string[]` | `shared/types.py::EvidencePack.subgraph_nodes`, `subgraph_edges` | Matches. | No issue |
-| `EvidencePack` (`types/api.ts`) | `source_documents: string[]` | `shared/types.py::EvidencePack.source_documents: list[str]` | Matches. | No issue |
-| `EvidencePack` (`types/api.ts`) | No `items` or `policy_citations` fields | `api/contracts.py::EvidencePackResponse` has `items: list[EvidenceItemResponse]`, `policy_citations`, `subgraph_node_ids`, `subgraph_edge_ids` | **Drift.** Frontend `EvidencePack` mirrors `shared/types.py::EvidencePack` (the internal model), not `api/contracts.py::EvidencePackResponse` (the API shape). The `/evidence-packs/{id}` route returns `EvidencePackResponse` which uses `subgraph_node_ids`/`subgraph_edge_ids` (not `subgraph_nodes`/`subgraph_edges`). | **Wire mismatch.** Frontend will fail to read `subgraph_node_ids` and will see `undefined` for `items` and `policy_citations`. |
-| `Entity` / `Relationship` (`types/api.ts`) | Matches `shared/types.py::Entity`, `Relationship` | — | Structurally correct. | No issue |
+The previous hand-written drift table is obsolete. Frontend route-facing types now come from generated OpenAPI schemas in `src/lib/api/schema.ts`, with `src/api/contracts.ts` providing aliases such as `AlertListItem`, `EvidencePackResponse`, `KnowledgeBaseDocumentResponse`, `RiskScoreResponse`, and `TimeseriesResponse`.
+
+Remaining caveat: `src/types/api.ts` still contains legacy/internal graph and KB mirrors used by some older components. New API clients should prefer `src/api/contracts.ts`; any use of `src/types/api.ts` should be checked against generated OpenAPI before expanding it.

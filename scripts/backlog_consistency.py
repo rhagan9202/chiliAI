@@ -288,7 +288,7 @@ def render_critical_path(path: list[Story]) -> str:
     ]
     for i, s in enumerate(path, 1):
         w = SIZE_WEIGHT.get(s.estimated_size, 1)
-        arrow = " → " if i < len(path) else ""
+        arrow = " →" if i < len(path) else ""
         lines.append(f"{i}. {s.id} ({s.estimated_size}={w}){arrow}")
     lines.append(f"\n**Total weight: {total}**")
     return "\n".join(lines)

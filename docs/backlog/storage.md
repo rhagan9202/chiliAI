@@ -182,7 +182,7 @@
 **ID:** storage.05
 **Status:** planned
 **Prerequisites:** [storage.01, agent.04]
-**Unblocks:** [api.19, ingestion.06, ingestion.22, storage.10]
+**Unblocks:** [api.19, storage.10]
 **Estimated size:** L
 
 **As a** platform operator,
@@ -521,7 +521,7 @@
 
 **ID:** storage.13
 **Status:** planned
-**Prerequisites:** [storage.04, storage.09, _infra.09, _infra.13, _observability.08]
+**Prerequisites:** [storage.04, storage.09, _infra.17, _infra.13, _observability.08]
 **Unblocks:** []
 **Estimated size:** L
 

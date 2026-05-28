@@ -87,49 +87,38 @@
 
 ---
 
-## Story frontend.03: Configuration UI wizard (read → edit → save)
+## Story frontend.03: Mount configuration wizard shell with validation reads
 
 **ID:** frontend.03
 **Status:** planned
-**Prerequisites:** [api.18, config.08, _security.04]
-**Unblocks:** [_observability.11]
-**Estimated size:** XL
+**Prerequisites:** [config.15, frontend.06, frontend.07]
+**Unblocks:** [frontend.25]
+**Estimated size:** L
 
-**As a** platform administrator,
-**I need** a browser-based wizard to read, edit, validate, and save the domain configuration,
-**so that** I can retarget chiliAI to a new domain without hand-editing YAML on a server.
+### Narrative
+As an operator,
+I want a frontend configuration wizard shell that loads schemas and validates edits,
+so that configuration work can begin from the UI without saving changes yet.
 
 ### Current State
-- `chili_app/src/pages/ConfigurationPage.tsx:8-94` is a read-only counter dashboard surfacing `entityCount`, `relationshipCount`, capability flags, and schema sections.
-- `chili_app/src/components/config/YamlEditor.tsx:15-40` ships a CodeMirror-based YAML editor with `readOnly` prop but is never imported by `ConfigurationPage.tsx` (grep confirms only test imports).
-- `chili_app/README.md` documents the save gap explicitly; no `PUT /config/domain` integration exists in `chili_app/src/api/config.ts`.
-
-> **Split note:** XL → break into 3 stories before merge: (a) YAML editor mounted read-only with schema preview; (b) structured form generated from `useDomainConfigSchema().data`; (c) save + validation + hot-reload UX. Track follow-ups in `_DRAFT_epics.md` before splitting IDs.
+The frontend has operational views, but no mounted wizard experience for configuration sections.
 
 ### Acceptance Criteria
-- [ ] `ConfigurationPage.tsx` mounts `YamlEditor` populated from `useDomainConfig().data` serialized to YAML.
-- [ ] A "Validate" action posts the draft to the backend dry-run endpoint and surfaces errors inline.
-- [ ] A "Save" action posts to `PUT /config/domain` via a new mutation in `chili_app/src/api/config.ts` and refetches `useDomainConfig`/`useDomainFeatures` on success.
-- [ ] The save action is gated by `_security.04` role checks (admin only); non-admins see a disabled state with explanation.
-- [ ] An optimistic-toast surfaces success/failure via `toastStore` (cross-edge to frontend.24).
-- [ ] Vitest covers validate-then-save, save-error, and unauthorized states.
-- [ ] Playwright spec covers: load config → edit a field → save → confirm domain title in TopBar updates.
+- [ ] Wizard route and navigation entry are available to authorized users.
+- [ ] Wizard loads schema metadata and current configuration from backend endpoints.
+- [ ] Section navigation supports environment, storage, graph, LLM, auth, ingestion, and monitoring scopes.
+- [ ] Validation errors are shown inline without applying draft values.
 
 ### Verification
-- `cd chili_app && npm run lint && npm run test:run && npm run build`
-- `cd chili_app && npm run test:e2e -- configuration-save`
-- Manual: log in as admin, edit `display_name`, save, observe TopBar title change after refetch.
+- [ ] Component tests cover schema loading, section navigation, and validation error rendering.
+- [ ] Browser smoke test confirms the wizard shell renders from live API data.
 
 ### Code touch points
-- `chili_app/src/pages/ConfigurationPage.tsx` (modify)
-- `chili_app/src/components/config/YamlEditor.tsx` (modify — keyboard shortcuts)
-- `chili_app/src/api/config.ts` (modify — add mutation)
-- `chili_app/src/pages/__tests__/ConfigurationPage.test.tsx` (new)
-- `chili_app/e2e/configuration-save.spec.ts` (new)
-- `chili_app/README.md` (modify — close the save-gap note)
+- `frontend/src/**`
+- `frontend/tests/**`
+- `docs/wiki/modules/frontend.md`
 
 ---
-
 ## Story frontend.04: Migrate seeded Dashboard + RAG copy to live projections
 
 **ID:** frontend.04
@@ -211,7 +200,7 @@
 **ID:** frontend.06
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [api.08]
+**Unblocks:** [api.08, frontend.03]
 **Estimated size:** M
 
 **As a** frontend developer,
@@ -249,7 +238,7 @@
 **ID:** frontend.07
 **Status:** planned
 **Prerequisites:** [api.09, events.06]
-**Unblocks:** [api.15, frontend.08, frontend.24]
+**Unblocks:** [api.15, frontend.03, frontend.08, frontend.24]
 **Estimated size:** L
 
 **As a** fraud analyst,
@@ -398,7 +387,7 @@
 **ID:** frontend.11
 **Status:** planned
 **Prerequisites:** [frontend.10, _cicd.05]
-**Unblocks:** [ingestion.22]
+**Unblocks:** []
 **Estimated size:** M
 
 **As a** platform owner,
@@ -556,7 +545,7 @@
 **ID:** frontend.15
 **Status:** planned
 **Prerequisites:** [frontend.01, api.07, graph.05]
-**Unblocks:** []
+**Unblocks:** [ingestion.22, ingestion.29]
 **Estimated size:** L
 
 **As a** fraud analyst exploring a large Medicare provider ring,
@@ -923,3 +912,60 @@
 - `chili_app/src/api/realtime.ts` (modify — expose reconnect)
 - All mutation hooks in `chili_app/src/api/*.ts` (modify)
 - `chili_app/e2e/realtime-status.spec.ts` (new)
+
+## Story frontend.25: Build structured configuration editor sections
+
+**ID:** frontend.25
+**Status:** planned
+**Prerequisites:** [frontend.03, config.14]
+**Unblocks:** [frontend.26]
+**Estimated size:** L
+
+### Narrative
+As an operator,
+I want structured editor sections for configuration drafts,
+so that common changes can be made without editing raw YAML.
+
+### Acceptance Criteria
+- [ ] Wizard renders typed controls for environment, storage, graph, LLM, auth, ingestion, and monitoring sections.
+- [ ] Raw YAML or JSON view remains available for advanced inspection where appropriate.
+- [ ] Draft diff is visible before save/apply.
+
+### Verification
+- [ ] Component tests cover representative field types, diff rendering, and raw editor fallback.
+- [ ] Accessibility checks cover labels, errors, and keyboard navigation.
+
+### Code touch points
+- `frontend/src/**`
+- `frontend/tests/**`
+
+---
+
+## Story frontend.26: Complete configuration wizard save/apply flow
+
+**ID:** frontend.26
+**Status:** planned
+**Prerequisites:** [frontend.25, config.15]
+**Unblocks:** [_observability.11]
+**Estimated size:** M
+
+### Narrative
+As an operator,
+I want the configuration wizard to save and apply drafts from the UI,
+so that configuration changes can be completed without leaving the app.
+
+### Acceptance Criteria
+- [ ] UI saves drafts, displays backend validation errors, and applies valid drafts.
+- [ ] Admin-only actions are hidden or disabled for unauthorized users and rejected by backend tests.
+- [ ] Success and failure states are clear after apply attempts.
+
+### Verification
+- [ ] Browser E2E test covers validation failure, draft save, diff review, and apply success.
+- [ ] Component tests cover unauthorized and failed-save states.
+
+### Code touch points
+- `frontend/src/**`
+- `frontend/tests/**`
+- `tests/e2e/**`
+
+---

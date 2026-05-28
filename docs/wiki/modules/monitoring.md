@@ -1,11 +1,11 @@
 # Module: monitoring
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-28
 **Source:** `backend/monitoring/`
 
 ## Purpose
 
-Active monitoring service. Evaluates entity metric observations against configured alert thresholds (`AlertsConfig.thresholds`), generates `Alert` instances with deduplication, and persists alert history.
+Active monitoring service. Loads entity metric observations, resolves medium/high thresholds from request overrides or `MonitoringConfig` defaults, generates `Alert` instances with suppression, deduplication, rate limiting, grouping, and alert-history persistence.
 
 ---
 
@@ -29,11 +29,12 @@ class AlertsServiceProtocol(Protocol):
 
 ## Internal Models (`monitoring/models.py`)
 
-Last verified: 2026-05-20
+Last verified: 2026-05-28
 
 ```python
 class MonitoringObservation(BaseModel):
-    """A scored observation produced by upstream monitoring inputs."""
+    """A scored observation produced by upstream monitoring inputs.
+    Defined in shared/types.py and re-exported from monitoring/models.py."""
     entity_id: str
     entity_type: str
     metric_name: str
@@ -110,11 +111,12 @@ Last verified: 2026-05-20
 class MonitoringEvaluationRequest(BaseModel):
     knowledge_base_id: str
     batch_id: str
-    medium_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
-    high_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
+    medium_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    high_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     window_minutes: int = Field(default=60, gt=0)
     min_observations_in_window: int = Field(default=1, gt=0)
-    # Validation: high_threshold must exceed medium_threshold
+    # Validation: when both are supplied, high_threshold must exceed medium_threshold.
+    # When omitted, service constructor defaults from DomainConfig.monitoring are used.
 
 class MonitoringEvaluationResponse(BaseModel):
     knowledge_base_id: str
@@ -149,9 +151,9 @@ class AlertActionResponse(BaseModel):
 
 ---
 
-## Threshold Evaluation (`monitoring/metrics.py`)
+## Threshold Evaluation
 
-Helpers for comparing entity metric values against `AlertsConfig.thresholds` (keyed by entity_type → metric_name → threshold float).
+`MonitoringService.evaluate()` resolves effective thresholds from `MonitoringEvaluationRequest.medium_threshold` / `high_threshold`, falling back to service constructor defaults. `api/dependencies.py::get_monitoring_service()` passes those defaults from `DomainConfig.monitoring.medium_threshold` and `high_threshold`.
 
 ---
 

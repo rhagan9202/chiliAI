@@ -1269,7 +1269,7 @@ from vectorstore.protocols import VectorServiceProtocol
 
 Add `cleanup_pending: bool = False` to `KnowledgeBaseDeletedEvent` in `backend/events/types.py` if it does not already exist.
 
-Add `mark_pending_cleanup(kb_id)` to `KnowledgeBaseRepository` in `backend/api/_kb_store.py`.
+Add `mark_pending_cleanup(kb_id)` to `KnowledgeBaseRepository` in `backend/knowledgebases/protocols.py` and the repository adapters.
 
 Add the missing dependency providers in `backend/api/dependencies.py`:
 
@@ -1390,18 +1390,18 @@ git commit -m "feat(agent): retry pending KB cleanup on KnowledgeBaseDeletedEven
 
 **Files:**
 - Modify: `backend/api/routers/knowledgebases.py:275-348` (POST /documents)
-- Modify: `backend/api/_kb_store.py` (add `get_document_by_content_hash`)
+- Modify: `backend/knowledgebases/protocols.py` and adapters (add `get_document_by_content_hash`)
 - Test: `backend/tests/api/test_document_reupload.py` (new)
 
 **Why:** Posting the same `(filename, content_hash)` to a KB should drop the old extraction and reinsert. Surfaces `replaced_document_id` in the response.
 
 - [ ] **Step 1: Compute content hash + store it on DocumentRecord**
 
-Find `DocumentRecord` in `backend/api/_kb_store.py`. Add `content_hash: str | None = None` if absent. Compute the hash in the POST handler using `hashlib.sha256` over the bytes read from each upload.
+Find `DocumentRecord` in `backend/knowledgebases/models.py`. Add `content_hash: str | None = None` if absent. Compute the hash in the POST handler using `hashlib.sha256` over the bytes read from each upload.
 
 - [ ] **Step 2: Add repository lookup**
 
-In `backend/api/_kb_store.py`, add:
+In `backend/knowledgebases/protocols.py` and each repository adapter, add:
 
 ```python
     def get_document_by_content_hash(

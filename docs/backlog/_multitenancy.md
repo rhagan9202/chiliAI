@@ -10,7 +10,7 @@
 **ID:** _multitenancy.01
 **Status:** planned
 **Prerequisites:** [shared.01]
-**Unblocks:** [_multitenancy.02, _multitenancy.03, _multitenancy.05, _multitenancy.10, _security.03, api.21, events.11, graph.15, rag.17]
+**Unblocks:** [_multitenancy.02, _multitenancy.03, _multitenancy.05, _multitenancy.10, _security.03, api.21, events.11, rag.17]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -50,7 +50,7 @@
 **ID:** _multitenancy.02
 **Status:** planned
 **Prerequisites:** [_multitenancy.01, config.01]
-**Unblocks:** [_multitenancy.13, _security.03, api.21, config.11, graph.15, rag.17]
+**Unblocks:** [_multitenancy.13, _security.03, api.21, config.11, rag.17]
 **Estimated size:** L
 
 **As a** platform operator,
@@ -86,8 +86,8 @@
 
 **ID:** _multitenancy.03
 **Status:** planned
-**Prerequisites:** [_multitenancy.01, _security.04, api.01]
-**Unblocks:** [_multitenancy.04, _multitenancy.14, _observability.12, _security.03, agent.16, api.21, ingestion.20, monitoring.12, rag.17, records.09]
+**Prerequisites:** [_multitenancy.01, _security.04, api.29]
+**Unblocks:** [_multitenancy.04, _multitenancy.14, _observability.12, _security.03, agent.16, api.21, ingestion.20, rag.17, records.09]
 **Estimated size:** M
 
 **As an** authenticated user,
@@ -161,7 +161,7 @@
 **ID:** _multitenancy.05
 **Status:** planned
 **Prerequisites:** [_multitenancy.01, database.01, database.08]
-**Unblocks:** [_multitenancy.06, ingestion.20, monitoring.12, records.09]
+**Unblocks:** [_multitenancy.06, ingestion.20, records.09]
 **Estimated size:** L
 
 **As a** platform engineer,

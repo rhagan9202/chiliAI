@@ -1,6 +1,6 @@
 # Module: rag
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-28
 **Source:** `backend/rag/`
 
 ## Purpose
@@ -18,7 +18,7 @@ class RagServiceProtocol(Protocol):
     def answer_question(
         self,
         *,
-        knowledge_base_id: str,
+        knowledge_base_ids: list[str],
         question: str,
     ) -> RagAnswer: ...
 
@@ -32,13 +32,13 @@ class RagServiceProtocol(Protocol):
 
 ## Service Models (`rag/service_models.py`)
 
-Last verified: 2026-05-20
+Last verified: 2026-05-28
 
 ```python
 MetadataValue = str | int | float | bool | None  # from rag/models.py
 
 class RagQueryRequest(BaseModel):
-    knowledge_base_id: str
+    knowledge_base_ids: list[str] = Field(min_length=1)
     question: str                         # non-empty; enforced by model_validator
     top_k: int = Field(default=5, gt=0)
     include_graph_context: bool = True
@@ -56,7 +56,7 @@ class RagCitation(BaseModel):
 
 class RagQueryResponse(BaseModel):
     request_id: str
-    knowledge_base_id: str
+    knowledge_base_ids: list[str]
     answer: str
     provider: str
     model_name: str

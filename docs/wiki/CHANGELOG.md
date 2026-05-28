@@ -2,6 +2,30 @@
 
 ---
 
+## 2026-05-28 — Pass 6: Docs/Wiki Cleanup Validation
+
+### Changes
+
+**Code files read:** `backend/ingestion/parsers/registry.py`, `backend/ingestion/parsers/html.py`, `backend/api/routers/analytics.py`, `backend/api/dependencies.py`, `backend/events/types.py`, `backend/events/codec.py`, `backend/api/routers/rag.py`, `backend/api/app.py`, `backend/api/middleware/metrics.py`, `backend/api/routers/events.py`, `backend/api/routers/ws.py`, `backend/api/routers/policy.py`, `backend/agent/adapters/protocols.py`, `backend/agent/adapters/redis_store.py`, `backend/agent/workflow_tracking.py`, `backend/monitoring/service.py`, `backend/monitoring/service_models.py`, `backend/config/schema.py`, `backend/knowledgebases/`, `chili_app/src/app/router.tsx`, `chili_app/src/app/providers.tsx`, `chili_app/src/api/contracts.ts`, `chili_app/src/api/analytics.ts`, `chili_app/src/api/realtime.ts`, `chili_app/src/stores/uiStore.ts`
+
+**Wiki pages updated:**
+
+| Page | Gap closed |
+|------|-----------|
+| `modules/knowledgebases.md` | Added dedicated module page for `backend/knowledgebases/`, including repository protocol, document metadata model, in-memory/object-store adapters, and test locations |
+| `modules/api.md` | Removed retired `_kb_store.py` ownership, documented `knowledgebases/` repository dependency, refreshed metrics/realtime route notes, and updated DI service list |
+| `modules/ingestion.md` | Corrected HTML parser status: `HtmlParser` is registered; remaining backlog is richer heading/link/table fidelity |
+| `modules/analytics.md` | Replaced stale router-local stub factory description with current `api/dependencies.py` analytics service wiring and remaining `ApiState` read-model gap |
+| `modules/agent.md` | Added `update_run_if_current`, stale workflow reconciliation, and corrected Redis workflow-store status |
+| `modules/monitoring.md` | Corrected threshold source: request overrides or `MonitoringConfig` defaults, not `AlertsConfig.thresholds` |
+| `modules/frontend.md` | Replaced obsolete frontend type-drift table with generated OpenAPI contract status and refreshed router/provider/API notes |
+| `modules/events.md` and `contracts/events.md` | Added `VectorsDeletedEvent` / `vectors.deleted` to the registered event surfaces |
+| `contracts/api-routes.md` | Corrected analytics route paths/query parameters, `/events`/`/ws` paths, `/metrics`, and current analytics wiring status |
+| `contracts/domain-config.md` | Added current repository/event/workflow runtime environment variables |
+| `README.md` | Added the new `modules/knowledgebases.md` page to wiki navigation |
+
+---
+
 ## 2026-05-22 — Pass 5: Refresh 10 Backlog Pages (Dev-Wiki-Curator)
 
 ### Changes

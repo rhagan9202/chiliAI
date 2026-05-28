@@ -1,6 +1,6 @@
 # Redis Streams Event Payloads
 
-**Verified against codebase:** 2026-05-22
+**Verified against codebase:** 2026-05-28
 **Source:** `backend/events/types.py`, `backend/events/protocols.py`
 
 All events extend `EventBase`. The `AnyEvent` union type covers all concrete event types. Events are serialized/deserialized via `events/codec.py`.
@@ -62,6 +62,7 @@ class EventDelivery:
 | `GraphUpdatedEvent` | `"graph.updated"` | Worker | Worker: embed step |
 | `EmbeddingsCompleteEvent` | `"embeddings.complete"` | Worker | Worker: vector-index step |
 | `VectorsIndexedEvent` | `"vectors.indexed"` | Worker | Worker: kb-ready step |
+| `VectorsDeletedEvent` | `"vectors.deleted"` | Worker | Informational vector cleanup event |
 | `KnowledgeBaseReadyEvent` | `"kb.ready"` | Worker | API projection |
 | `DocumentsFailedEvent` | `"documents.failed"` | Worker | API projection |
 | `PipelineProgressEvent` | `"pipeline.progress"` | Worker | SSE/WS hub |
@@ -134,6 +135,13 @@ documents: list[EmbeddingsCompleteDocumentReference]
 event_type: Literal["vectors.indexed"] = "vectors.indexed"
 records: list[VectorIndexedReference]     # individual record-level entries
 documents: list[VectorsIndexedDocumentReference]   # document-level entries
+```
+
+### `VectorsDeletedEvent`
+```python
+event_type: Literal["vectors.deleted"] = "vectors.deleted"
+knowledge_base_id: str
+deleted_count: int   # >= 0
 ```
 
 ### `KnowledgeBaseReadyEvent`
@@ -259,7 +267,7 @@ AnyEvent = (
     KnowledgeBaseCreatedEvent | KnowledgeBaseDeletedEvent |
     DocumentsUploadedEvent | DocumentsParsedEvent | DocumentsChunkedEvent |
     EntitiesExtractedEvent | EntitiesValidatedEvent | GraphUpdatedEvent |
-    EmbeddingsCompleteEvent | VectorsIndexedEvent | KnowledgeBaseReadyEvent |
+    EmbeddingsCompleteEvent | VectorsIndexedEvent | VectorsDeletedEvent | KnowledgeBaseReadyEvent |
     LlmCompletedEvent | EmbeddingsGeneratedEvent | RagCompletedEvent |
     TimeseriesAnalyzedEvent | GnnAnalyzedEvent | RiskScoredEvent |
     ExplainabilityGeneratedEvent | AgentWorkflowStartedEvent |

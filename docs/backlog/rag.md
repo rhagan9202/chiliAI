@@ -9,7 +9,7 @@
 
 **ID:** rag.01
 **Status:** planned
-**Prerequisites:** [vectorstore.01, embeddings.01, llm.01, graph.01, api.01]
+**Prerequisites:** [vectorstore.01, embeddings.01, llm.01, graph.01, api.29]
 **Unblocks:** [_plugins.01, analytics.16, llm.07, rag.02, rag.03, rag.04, rag.05, rag.06, rag.08, rag.09, rag.10, rag.11, rag.12, rag.13, rag.14, rag.16]
 **Estimated size:** L
 
@@ -217,7 +217,7 @@
 
 **ID:** rag.06
 **Status:** planned
-**Prerequisites:** [rag.01, llm.03, api.07]
+**Prerequisites:** [rag.01, llm.17, api.07]
 **Unblocks:** []
 **Estimated size:** M
 

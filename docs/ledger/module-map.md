@@ -1,6 +1,7 @@
 # Module Map
 
 **Generated:** 2026-05-22 (merge commit `acae4ac`)
+**Reviewed:** 2026-05-28 against the current working tree for docs-keeper consistency cleanup.
 
 Each entry covers: purpose, primary public exports, adapters (if any), and forbidden/allowed dependencies per CLAUDE.md.
 
@@ -13,9 +14,9 @@ Each entry covers: purpose, primary public exports, adapters (if any), and forbi
 **Key files:**
 - `app.py` — `create_app()` factory
 - `dependencies.py` — DI wiring for all services
-- `state.py` — `AppState` container assembled at startup
+- `state.py` — `ApiState` seeded read-model container assembled at startup
 - `contracts.py` — API-facing request/response models
-- `_kb_store.py` — KB write model (event-sourced projection)
+- `_kb_busy.py` — workflow/pending-cleanup mutation guard
 - `_kb_projection.py` — KB read projection
 - `_rag_bridges.py` — RAG ↔ KB document/entity bridges
 - `_workflow_projection.py` — Worker-updated workflow lifecycle projection
@@ -36,7 +37,7 @@ Each entry covers: purpose, primary public exports, adapters (if any), and forbi
 - `PatternDocumentExtractor` — Regex/heuristic baseline; used when no LLM client is injected.
 - `LlmDocumentExtractor` — Schema-driven LLM extractor (added 2026-05-22). Derives prompts from `DomainConfig.entities/relationships`. Strips markdown fences, validates required properties, deduplicates entities by natural key within each chunk. Selected by `create_document_extractor` when an `LlmClientProtocol` is injected.
 
-**Parsers (registered in `parsers/registry.py`):** PDF, DOCX, TXT, JSON, CSV, XLSX. `DocumentFormat.HTML` exists in the enum but no parser is registered.
+**Parsers (registered in `parsers/registry.py`):** PDF, DOCX, HTML, TXT, JSON, CSV, XLSX. The HTML parser currently emits normalized visible text; richer heading/link/table fidelity remains backlog work.
 
 **Idempotency:** Content-hash `source_document_id` (SHA-256). Re-uploading the same bytes is a no-op. Changed content produces a new `source_document_id`; `DocumentUploadReceipt.replaced_document_id` points at the superseded entry.
 
@@ -227,7 +228,7 @@ Entity-metric persistence (no service, no events). Adapters: `InMemoryEntityMetr
 
 **Key exports:** `ObjectStore` (protocol)
 
-**Adapters:** `InMemoryObjectStore`, `LocalFsAdapter`, `S3Adapter` (also serves MinIO)
+**Adapters:** `InMemoryObjectStore`, `LocalFsObjectStore`, `S3ObjectStore` (also serves MinIO)
 
 ---
 

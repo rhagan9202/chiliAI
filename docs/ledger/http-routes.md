@@ -1,8 +1,18 @@
 # HTTP Route Inventory
 
 **Generated:** 2026-05-22 (merge commit `acae4ac`)
+**Reviewed:** 2026-05-28 against the current working tree for docs-keeper consistency cleanup.
 
 All routes mounted under the FastAPI app. Role column shows `require_role` argument; routes without a `dependencies=[Depends(require_role(...))]` call are marked `public`.
+
+---
+
+## System / Observability
+
+| Method | Path | Role | Notes |
+|--------|------|------|-------|
+| `GET` | `/health` | public | Process health check; returns `{status: "ok"}` |
+| `GET` | `/metrics` | `service` | Prometheus metrics endpoint |
 
 ---
 
@@ -86,7 +96,7 @@ All routes mounted under the FastAPI app. Role column shows `require_role` argum
 |--------|------|------|-------|
 | `GET` | `/chat/conversations/{conversation_id}` | `viewer` | Get conversation; returns `ChatConversationResponse` |
 | `POST` | `/chat/conversations` | `analyst` | Create conversation; returns `ChatConversationResponse` |
-| `POST` | `/chat/conversations/{conversation_id}/messages` | `analyst` | Add message (streams SSE); returns `None` (SSE stream) |
+| `POST` | `/chat/conversations/{conversation_id}/messages` | `analyst` | Add message; returns `ChatConversationResponse` by default or an SSE stream when `stream=true` |
 
 ---
 
@@ -98,8 +108,8 @@ All routes mounted under the FastAPI app. Role column shows `require_role` argum
 | `GET` | `/analytics/timeseries` | `viewer` | Metric time-series; returns `MetricTimeseriesResponse` |
 | `GET` | `/analytics/gnn/clusters` | `viewer` | GNN cluster results; returns `GnnClusterResponse` |
 | `GET` | `/analytics/overview` | `viewer` | Analytics overview; returns `AnalyticsOverviewResponse` |
-| `GET` | `/analytics/entities/{entity_id}/risk` | `viewer` | Entity risk score; returns `RiskScoreResponse` |
-| `GET` | `/analytics/entities/{entity_id}/timeseries` | `viewer` | Entity time-series; returns `EntityTimeseriesResponse` |
+| `GET` | `/analytics/risk-scores/{entity_id}` | `viewer` | Entity risk score; returns `RiskScoreResponse` |
+| `GET` | `/analytics/timeseries/{entity_id}` | `viewer` | Entity time-series; returns `EntityTimeseriesResponse` |
 
 ---
 

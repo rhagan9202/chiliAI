@@ -1,6 +1,6 @@
 # Module: agent
 
-**Verified against codebase:** 2026-05-22
+**Verified against codebase:** 2026-05-28
 **Source:** `backend/agent/`
 
 ## Purpose
@@ -30,7 +30,7 @@ class AgentServiceProtocol(Protocol):
 
 ## Workflow Run State (`agent/models.py`)
 
-Last verified: 2026-05-20
+Last verified: 2026-05-28
 
 ```python
 MetadataValue = str | int | float | bool
@@ -163,6 +163,15 @@ class WorkflowRunStoreProtocol(Protocol):
 
     def update_run(self, workflow_id: str, update: WorkflowRunUpdate) -> WorkflowRun: ...
 
+    def update_run_if_current(
+        self,
+        workflow_id: str,
+        update: WorkflowRunUpdate,
+        *,
+        expected_statuses: set[WorkflowRunStatus] | frozenset[WorkflowRunStatus],
+        updated_before: datetime,
+    ) -> WorkflowRun | None: ...
+
     def delete_run(self, workflow_id: str) -> None: ...
     # Idempotent for missing IDs
 
@@ -174,7 +183,7 @@ class WorkflowRunStoreProtocol(Protocol):
     ) -> WorkflowRun | None: ...
 ```
 
-**Drift note:** The TODO in `adapters/protocols.py` notes that durable adapters (`PostgresWorkflowRunStore`, `RedisWorkflowRunStore`) are not yet implemented. Current production backends are `in_memory` and `redis` (for workflow_id-keyed state only).
+**Drift note:** The TODO in `adapters/protocols.py` is partially stale: `RedisWorkflowRunStore` now exists and implements shared API/worker state, including idempotency and conditional stale-run reconciliation. A Postgres workflow-run adapter is still not implemented.
 
 ---
 
@@ -189,6 +198,7 @@ Public methods:
 - `complete_event(event: AnyEvent) -> None` — marks step COMPLETED or FAILED; terminal events also move the run to COMPLETED/FAILED.
 - `fail_event(event: AnyEvent, error: BaseException) -> None` — marks step + run FAILED after retry exhaustion.
 - `is_busy(knowledge_base_id: str) -> bool` — returns `True` when the KB has at least one non-terminal (QUEUED or RUNNING) workflow run. Queries `list_runs` for each non-terminal status; returns as soon as a run is found.
+- `reconcile_stale_runs(max_age_seconds: int, batch_size: int = 1000) -> int` — conditionally marks stale QUEUED/RUNNING runs failed so busy checks and UI workflow lists do not hang after worker interruption.
 
 ---
 

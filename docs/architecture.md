@@ -216,7 +216,7 @@ backend/
 │   ├── state.py                # Application state container assembled at startup
 │   ├── contracts.py            # API-facing request/response models
 │   ├── _alert_store.py         # In-process alert read model
-│   ├── _kb_store.py            # KB write model (event-sourced)
+│   ├── _kb_busy.py             # Workflow/pending-cleanup mutation guard
 │   ├── _kb_projection.py       # KB read projection updated from events
 │   ├── _rag_bridges.py         # RAG <-> KB document/entity bridges
 │   ├── _workflow_projection.py # Worker-updated workflow lifecycle projection
@@ -240,7 +240,7 @@ backend/
 │       ├── workflows.py        # Workflow run history
 │       ├── events.py           # SSE workspace snapshot stream
 │       ├── ws.py               # WebSocket hub for real-time push
-│       ├── auth.py             # /auth/login, /auth/logout, /auth/whoami
+│       ├── auth.py             # /auth/login, /auth/logout, /auth/me
 │       ├── _oidc_client.py     # OIDC client helpers used by auth router
 │       ├── policy.py           # Route policy introspection
 │       └── config.py           # Domain configuration endpoints
@@ -253,14 +253,12 @@ backend/
 │   ├── chunker.py              # Text chunking strategies
 │   ├── extractor.py            # Entity & relationship extraction (uses LLM adapter)
 │   ├── validator.py            # Source validation
-│   ├── orchestrators/          # Batch + source-document orchestration helpers
+│   ├── orchestrators/          # Batch, format resolution, and source-document helpers
 │   └── parsers/                # Format-specific parsers
 │       ├── registry.py         # ParserRegistry, create_default_registry
-│       ├── format_resolver.py
 │       ├── protocols.py
-│       ├── pdf.py, docx.py, txt.py, json.py, csv.py, xlsx.py
+│       ├── pdf.py, docx.py, html.py, txt.py, json.py, csv.py, xlsx.py
 │       └── remote.py           # Fetch-and-parse for remote URLs
-│       # NOTE: DocumentFormat.HTML exists in the enum but no html.py parser is registered yet.
 ├── graph/                      # Graph database access
 │   ├── __init__.py
 │   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
@@ -1363,13 +1361,13 @@ Adapter selection is driven by environment configuration, not code changes.
 
 ### 14.3 Current state vs. target
 
-> **Last updated**: May 2026. For implementation status, verify the current code and tests first. Historical status reports and planning docs live under [`docs/archive/`](archive/); see [`agent_backlog_05_17.md`](agent_backlog_05_17.md), [`graph_backlog_05_17.md`](graph_backlog_05_17.md), and [`ingestion_backlog_05_17.md`](ingestion_backlog_05_17.md) for module production-readiness gaps.
+> **Last updated**: May 2026. For implementation status, verify the current code and tests first. Historical status reports and retired planning docs live under [`docs/archive/`](archive/). Current production-readiness gaps are tracked in the module backlogs under [`docs/backlog/`](backlog/) and the curated PM backlog under [`docs/project/planning/`](project/planning/).
 
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
-| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion (LLM-driven `LlmDocumentExtractor` + Ollama adapter + `FallbackLlmClient`), graph/vector/embedding/LLM/RAG services, analytics modules (timeseries/gnn/risk/explainability/metrics), monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, `database/` (psycopg 3 + Alembic + TimescaleDB) connection provider, `records/` structured-ingestion pipeline (raw_records + embed+index step + NPPES/DE-SynPUF feeds), KB delete 5-step cascade with 207 partial-failure + worker retry, document re-upload idempotency with `replaced_document_id`, `delete_by_source_document` on graph and vector protocols, `delete_by_kb` on raw records, provenance metadata constants (`shared/provenance.py`), Tennessee subset tooling (`tools/sample_data/build_tennessee_subset.py`), and Plan C per-consumer Postgres adapters with write-back flows in `agent/coordinator.py` | Add a production-grade KB metadata adapter/migration path, wire `delete_by_source_document` to the document-delete endpoint, add production-mode adapter guardrails, add audit-grade workflow history, and register an HTML parser for `DocumentFormat.HTML` |
+| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion (LLM-driven `LlmDocumentExtractor` + Ollama adapter + `FallbackLlmClient`; registered PDF/DOCX/HTML/TXT/JSON/CSV/XLSX parsers), graph/vector/embedding/LLM/RAG services, analytics modules (timeseries/gnn/risk/explainability/metrics), monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, `database/` (psycopg 3 + Alembic + TimescaleDB) connection provider, `records/` structured-ingestion pipeline (raw_records + embed+index step + NPPES/DE-SynPUF feeds), KB delete 5-step cascade with 207 partial-failure + worker retry, document re-upload idempotency with `replaced_document_id`, `delete_by_source_document` on graph and vector protocols, `delete_by_kb` on raw records, provenance metadata constants (`shared/provenance.py`), Tennessee subset tooling (`tools/sample_data/build_tennessee_subset.py`), and Plan C per-consumer Postgres adapters with write-back flows in `agent/coordinator.py` | Add a production-grade KB metadata adapter/migration path, wire `delete_by_source_document` to the document-delete endpoint, add production-mode adapter guardrails, add audit-grade workflow history, and strengthen HTML parser fidelity beyond visible text (`ingestion.02`) |
 | `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, live KB-scoped Investigation Workbench, RAG Chat, Configuration Editor, and realtime SSE hook | Complete persisted evidence-pack surface, config save endpoint integration, migrate remaining seeded read models to live projections, and production UX/performance polish |
-| `docs/` | Architecture, onboarding guide, security checklist, current TODO/stub audit, and archived historical planning/status material | Keep active docs synchronized with implementation and archive stale snapshots |
+| `docs/` | Architecture, onboarding guide, security checklist, live module backlogs, curated project planning, superpowers plans/specs, wiki, ledger, and archived historical material | Keep active docs synchronized with implementation and archive stale snapshots |
 | `infra/` | Docker Compose, flat Kubernetes manifests, and Helm chart | Add cloud-provider Terraform/Pulumi and production hardening as needed |
 | Testing | Extensive backend pytest suite and frontend Vitest suite | Keep CI coverage gates calibrated and add live adapter profiles where services are available |
 | CI/CD | GitHub Actions baseline exists | Add deployment/promotion workflows after release environments are defined |

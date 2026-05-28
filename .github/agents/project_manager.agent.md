@@ -39,7 +39,7 @@ Execute the four phases in order. Do not begin a phase until the prior phase's d
 ### Phase 2 — Current State Exploration (delegate)
 
 1. Invoke the `Explore` subagent in `thorough` mode with this brief: *"Produce a structured digest of the current implementation state of chiliAI, organized to align with the capability areas defined in `docs/project/planning/requirements.md`. For each capability area report: (a) what is implemented and verified by tests, (b) what is partially implemented or stubbed, (c) what is referenced in active plans/specs under `docs/superpowers/plans/**` and `docs/superpowers/specs/**` but not yet merged, (d) what is absent. Cite file paths. Skip per-line code detail; summarize at module/feature granularity."*
-2. Also instruct Explore to surface the active module backlogs (`docs/agent_backlog_05_17.md`, `docs/graph_backlog_05_17.md`, `docs/ingestion_backlog_05_17.md`) and the active plan/spec list as in-flight work signals.
+2. Also instruct Explore to surface the active module backlogs under `docs/backlog/**`, the curated PM backlog at `docs/project/planning/backlog.md`, and the active plan/spec list as in-flight work signals.
 3. Capture the structured digest verbatim for the next phase.
 
 ### Phase 3 — Drift Analysis (synthesize)

@@ -31,6 +31,7 @@ This wiki is the authoritative technical reference for the chiliAI codebase. It 
 | [modules/monitoring.md](modules/monitoring.md) | Active monitoring, alert evaluation |
 | [modules/records.md](modules/records.md) | Structured/tabular ingestion (CSV/JSONL/api-push) |
 | [modules/database.md](modules/database.md) | Postgres + TimescaleDB connection provider |
+| [modules/knowledgebases.md](modules/knowledgebases.md) | Knowledge base and document metadata persistence |
 | [modules/events.md](modules/events.md) | Redis Streams event bus — protocol, adapters |
 | [modules/storage.md](modules/storage.md) | Object storage — protocol, adapters |
 | [modules/config.md](modules/config.md) | Domain configuration — DomainConfig schema, loader |

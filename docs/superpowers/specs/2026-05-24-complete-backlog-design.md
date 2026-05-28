@@ -1,9 +1,9 @@
 # chiliAI Complete Backlog — Design Spec
 
 **Date:** 2026-05-24
-**Status:** Approved (pending user spec-level review)
+**Status:** Executed on 2026-05-24; live backlog now resides under `docs/backlog/**`
 **Author:** brainstorming session, chiliAI repo
-**Supersedes:** `docs/agent_backlog_05_17.md`, `docs/graph_backlog_05_17.md`, `docs/ingestion_backlog_05_17.md` (after execution)
+**Supersedes:** `docs/archive/planning/agent_backlog_05_17.md`, `docs/archive/planning/graph_backlog_05_17.md`, `docs/archive/planning/ingestion_backlog_05_17.md`
 
 ---
 

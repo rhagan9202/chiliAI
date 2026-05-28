@@ -226,7 +226,7 @@
 **ID:** knowledgebases.06
 **Status:** planned
 **Prerequisites:** [knowledgebases.01, _security.06, api.20]
-**Unblocks:** [embeddings.09, knowledgebases.04]
+**Unblocks:** [embeddings.09, graph.15, knowledgebases.04, monitoring.12]
 **Estimated size:** L
 
 **As a** compliance officer reviewing analyst activity on a KB,
@@ -437,7 +437,7 @@
 
 **ID:** knowledgebases.11
 **Status:** planned
-**Prerequisites:** [graph.11]
+**Prerequisites:** [graph.18]
 **Unblocks:** []
 **Estimated size:** L
 

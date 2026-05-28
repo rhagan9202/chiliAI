@@ -1,6 +1,6 @@
 # Shared Types Contract
 
-**Verified against codebase:** 2026-05-22
+**Verified against codebase:** 2026-05-28
 **Source:** `backend/shared/types.py`, `backend/shared/protocols.py`
 
 These are the generic platform types. No domain-specific types (`Provider`, `Claim`, etc.) live here — those are configured via `DomainConfig` and flow at runtime as generic `Entity` instances.
@@ -86,6 +86,7 @@ class Relationship(BaseModel):
     source_id: str
     target_id: str
     properties: dict[str, Any] = {}
+    metadata: dict[str, Any] = {}
     created_at: datetime                   # default: utc_now()
     updated_at: datetime | None = None
     version: int = 1
@@ -139,6 +140,20 @@ class KnowledgeBase(BaseModel):
     status: Literal["active","building","ready","error","archived"] = "active"
     created_at: datetime
     updated_at: datetime | None = None
+    pending_cleanup: bool = False
+```
+
+### `MonitoringObservation`
+
+```python
+class MonitoringObservation(BaseModel):
+    entity_id: str
+    entity_type: str
+    metric_name: str
+    score: float                           # [0.0, 1.0]
+    observed_at: datetime                  # default: utc_now()
+    rationale: str
+    evidence_pack_id: str | None = None
 ```
 
 ---

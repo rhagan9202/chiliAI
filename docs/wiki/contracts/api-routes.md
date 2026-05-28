@@ -1,6 +1,6 @@
 # API Routes Reference
 
-**Verified against codebase:** 2026-05-22
+**Verified against codebase:** 2026-05-28
 **Source:** `backend/api/routers/`, `backend/api/app.py`, `backend/api/contracts.py`
 
 All routes are registered in `api/app.py::create_app()`. RBAC roles follow the hierarchy: `viewer(1) < analyst(2) = service(2) < admin(3)`. When `AuthConfig.enabled=False` (local/dev), all routes are open.
@@ -12,6 +12,12 @@ All routes are registered in `api/app.py::create_app()`. RBAC roles follow the h
 | Method | Path | Response | Auth |
 |--------|------|----------|------|
 | `GET` | `/health` | `{"status": "ok"}` | None |
+
+## Observability
+
+| Method | Path | Response | Auth |
+|--------|------|----------|------|
+| `GET` | `/metrics` | Prometheus text exposition | service |
 
 ---
 
@@ -230,7 +236,7 @@ class GraphEdgeResponse(BaseModel):
 | `POST` | `/chat/conversations` | `ChatConversationCreateRequest` | `ChatConversationResponse` | analyst |
 | `POST` | `/chat/conversations/{conversation_id}/messages` | `ChatMessageCreateRequest` | `ChatConversationResponse` or `StreamingResponse` | analyst |
 
-`POST .../messages?stream=true` returns SSE stream. SSE format: `data: {"token": str, "done": bool, ["sources": list[str]]}\n\n`
+`POST .../messages?stream=true` returns SSE stream. Non-final events carry `{"token": str, "done": false}`. The final event carries `{"token": "", "done": true, "sources": list[str], "citations": list[ChatStreamCitationResponse]}`.
 
 ```python
 class ChatConversationCreateRequest(BaseModel):
@@ -289,17 +295,17 @@ class WorkflowRunResponse(BaseModel):
 | Method | Path | Query | Response | Auth |
 |--------|------|-------|----------|------|
 | `GET` | `/analytics/risk-scores` | `?kb_id=&entity_type=&limit=` | `RiskScoreListResponse` | viewer |
-| `GET` | `/analytics/timeseries` | `?entity_id=&metric_name=&kb_id=` | `MetricTimeseriesResponse` | viewer |
+| `GET` | `/analytics/timeseries` | `?kb_id=&metric=&start=&end=` | `MetricTimeseriesResponse` | viewer |
 | `GET` | `/analytics/gnn/clusters` | `?kb_id=` | `GnnClusterResponse` | viewer |
 | `GET` | `/analytics/overview` | — | `AnalyticsOverviewResponse` | viewer |
-| `GET` | `/analytics/risk-score/{entity_id}` | — | `RiskScoreResponse` | viewer |
-| `GET` | `/analytics/timeseries/{entity_id}` | — | `EntityTimeseriesResponse` | viewer |
+| `GET` | `/analytics/risk-scores/{entity_id}` | `?kb_id=` | `RiskScoreResponse` | viewer |
+| `GET` | `/analytics/timeseries/{entity_id}` | `?kb_id=` | `EntityTimeseriesResponse` | viewer |
 
-**Wiring status:** All analytics routes are served by `@lru_cache` in-memory stub services seeded at API startup — not wired to live analytics stores. See [modules/analytics.md — Current Wiring Status](../modules/analytics.md#current-wiring-status) for detail.
+**Wiring status:** `/analytics/risk-scores`, `/analytics/timeseries`, and `/analytics/gnn/clusters` are served by analytics services from `api/dependencies.py` using empty in-memory sources by default. `/analytics/overview`, `/analytics/risk-scores/{entity_id}`, and `/analytics/timeseries/{entity_id}` remain seeded `ApiState` read models until migrated to live stores. See [modules/analytics.md — Current Wiring Status](../modules/analytics.md#current-wiring-status) for detail.
 
 ### Static payload shapes (api/contracts.py)
 
-The three entity-scoped analytics routes (`/overview`, `/risk-score/{entity_id}`, `/timeseries/{entity_id}`) are backed by `api/dependencies.py` factory functions that return shapes from `api/contracts.py`. These are not returned by the live analytics services (which use `analytics/*/service_models.py`).
+The three dashboard/entity-scoped analytics routes (`/overview`, `/risk-scores/{entity_id}`, `/timeseries/{entity_id}`) are backed by `api/dependencies.py` factory functions that return shapes from `api/contracts.py`. These are not returned by the analytics service modules (which use `analytics/*/service_models.py`).
 
 ```python
 class AnalyticsOverviewResponse(BaseModel):
@@ -340,8 +346,8 @@ class EntityTimeseriesResponse(BaseModel):
 
 **Dependency chain for entity-scoped routes:**
 - `GET /analytics/overview` → `get_analytics_overview_payload(state)` → `state.get_analytics_overview()` → returns `AnalyticsOverviewResponse`
-- `GET /analytics/risk-score/{entity_id}` → `get_risk_score_payload(entity_id, state)` → `state.get_risk_score(entity_id)` → returns `RiskScoreResponse`
-- `GET /analytics/timeseries/{entity_id}` → `get_timeseries_payload(entity_id, state)` → `state.get_timeseries(entity_id)` → returns `EntityTimeseriesResponse`
+- `GET /analytics/risk-scores/{entity_id}?kb_id=...` → `get_risk_score_payload(entity_id, kb_id, state)` → `state.get_risk_score(entity_id, knowledge_base_id=kb_id)` → returns `RiskScoreResponse`
+- `GET /analytics/timeseries/{entity_id}?kb_id=...` → `get_timeseries_payload(entity_id, kb_id, state)` → `state.get_timeseries(entity_id, knowledge_base_id=kb_id)` → returns `EntityTimeseriesResponse`
 
 All three read from `ApiState` (per-app mutable state seeded at startup), not from live analytics services.
 
@@ -351,8 +357,9 @@ All three read from `ApiState` (per-app mutable state seeded at startup), not fr
 
 | Method | Path | Response | Auth |
 |--------|------|----------|------|
-| `GET` | `/events/workspace` | SSE stream of `RealtimeSnapshotResponse` | viewer |
-| `WS` | `/ws` | WebSocket (JSON frames) | viewer |
+| `GET` | `/events/stream` | SSE stream of `RealtimeSnapshotResponse`; optional `?max_events=` | viewer |
+| `WS` | `/ws/alerts` | Alert WebSocket; optional subscribe severity filter | viewer |
+| `WS` | `/ws/pipeline` | Pipeline WebSocket; optional subscribe KB filter | viewer |
 
 ```python
 class RealtimeSnapshotResponse(BaseModel):
@@ -365,7 +372,7 @@ class RealtimeSnapshotResponse(BaseModel):
 
 ## Investigation — `/investigation`
 
-Last verified: 2026-05-20. Source: `backend/api/routers/investigation.py`.
+Last verified: 2026-05-28. Source: `backend/api/routers/investigation.py`.
 
 All routes require `viewer` role. Backed by `GraphServiceProtocol` (injected via `get_graph_service()`).
 
@@ -397,7 +404,7 @@ Cross-linked to: [modules/graph.md](../modules/graph.md), [modules/api.md](../mo
 
 ## Policy — `/policy`
 
-Route policy introspection endpoint (`api/routers/policy.py`) — provides audit of route role annotations. Internal use.
+Policy intelligence read models and brief generation live in `api/routers/policy.py`.
 
 ---
 

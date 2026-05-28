@@ -269,7 +269,7 @@ logger = logging.getLogger(__name__)
 class KnowledgeBaseExistenceCheck(Protocol):
     """Minimal protocol the resolver uses to verify a reference KB exists.
 
-    The full `KnowledgeBaseRepository` (api._kb_store) satisfies this protocol
+    The full `KnowledgeBaseRepository` (knowledgebases.protocols) satisfies this protocol
     because it has a `get(knowledge_base_id) -> KnowledgeBase | None` method.
     Tests can supply a smaller stub.
     """

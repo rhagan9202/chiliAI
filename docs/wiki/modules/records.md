@@ -1,6 +1,6 @@
 # Module: records
 
-**Verified against codebase:** 2026-05-22
+**Verified against codebase:** 2026-05-28
 **Source:** `backend/records/`
 
 ## Purpose
@@ -73,11 +73,11 @@ class RecordIngestReceipt(BaseModel):
 ## Validation (`records/validation.py`)
 
 ```python
-def coerce_row(row: dict, schema: dict[str, PropertyDefinition]) -> dict: ...
-def validate_rows(rows: list[dict], schema: dict[str, PropertyDefinition]) -> list[str]: ...
+def coerce_row(row: Mapping[str, object], schema: dict[str, PropertyDefinition]) -> dict[str, object]: ...
+def validate_rows(feed: RecordFeedConfig, rows: list[dict[str, object]]) -> list[dict[str, object]]: ...
 ```
 
-Validates each row against `RecordFeedConfig.record_schema` (which uses `PropertyDefinition` types).
+Coerces string values to declared `PropertyDefinition` types, accepts CMS compact dates (`YYYYMMDD`) and slash dates (`M/D/YYYY` / `MM/DD/YYYY`), drops empty optional typed fields, validates each row against `RecordFeedConfig.record_schema`, and raises `RecordValidationError` with row-indexed errors on failure.
 
 ---
 

@@ -135,7 +135,7 @@
 **ID:** events.04
 **Status:** planned
 **Prerequisites:** [events.03]
-**Unblocks:** [agent.12, analytics.21, analytics.24, analytics.25, config.05, events.08, ingestion.18]
+**Unblocks:** [agent.12, analytics.21, analytics.24, analytics.25, config.05, events.08, events.10, ingestion.18]
 **Estimated size:** M
 
 **As a** backend engineer adding a new event type,
@@ -219,7 +219,7 @@
 **ID:** events.06
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [agent.07, api.19, events.09, events.10, events.13, frontend.07]
+**Unblocks:** [agent.07, api.19, events.09, events.13, frontend.07]
 **Estimated size:** L
 
 **As a** backend engineer publishing events from an API route,
@@ -338,7 +338,7 @@
 **ID:** events.09
 **Status:** planned
 **Prerequisites:** [events.06]
-**Unblocks:** []
+**Unblocks:** [events.10]
 **Estimated size:** L
 
 **As a** platform operator recovering from an incident,
@@ -375,53 +375,38 @@
 
 ---
 
-## Story events.10: DLQ replay and operator triage tooling
+## Story events.10: Persist event dead-letter queue records
 
 **ID:** events.10
 **Status:** planned
-**Prerequisites:** [events.06, _security.11]
-**Unblocks:** [api.25]
-**Estimated size:** XL
+**Prerequisites:** [events.04, events.09]
+**Unblocks:** [events.15, ingestion.28]
+**Estimated size:** L
 
-**As a** platform operator,
-**I need** an admin surface to list, inspect, retry, and purge DLQ entries,
-**so that** I can recover from handler failures without redis-cli surgery and so that the DLQ-rate alert in `security_checklist.md` has triage tooling behind it.
-
-> **Splittability note:** This story is XL; before merge it should be split into (a) DLQ read API + service (M/L), (b) DLQ replay/purge API + safety guards (M), (c) optional minimal frontend ops panel (M). Split tracking lives in this story's amendment when work starts.
+### Narrative
+As an operator,
+I want failed event deliveries to be persisted in a dead-letter queue,
+so that transient and poison-message failures can be inspected after the fact.
 
 ### Current State
-- `EventBus.publish_to_dlq` writes to `<stream>.dlq` (`backend/events/adapters/redis_streams.py:112-130`) and `agent/coordinator.py:2412` routes there on retry exhaustion.
-- `tests/events/test_in_memory.py:58` only asserts the write path.
-- There is no `EventBus.list_dlq`, `get_dlq_entry`, `replay_dlq_entry`, or `purge_dlq_entry`; operators cannot enumerate, inspect, retry, or remove DLQ entries.
-- Architecture §11.2 references DLQ-rate alerting, which presupposes the triage tooling exists.
-- `_security.11` audits per-router RBAC; DLQ admin endpoints require an admin-tier guard that cannot be added until the policy table is reviewed.
+Event publishing and retry behavior exist, but failed events are not exposed as durable operational records.
 
 ### Acceptance Criteria
-- [ ] `EventBus` protocol gains `list_dlq(event_type: str | None, limit: int, after_id: str | None) -> list[DlqEntry]`, `get_dlq_entry(stream: str, entry_id: str) -> DlqEntry | None`, `replay_dlq_entry(stream: str, entry_id: str) -> str | None`, `purge_dlq_entry(stream: str, entry_id: str) -> bool` — implemented on both Redis Streams and in-memory adapters.
-- [ ] An admin-only `/admin/dlq` router (`backend/api/routers/dlq.py`) exposes `GET /admin/dlq`, `GET /admin/dlq/{stream}/{entry_id}`, `POST /admin/dlq/{stream}/{entry_id}/replay`, `DELETE /admin/dlq/{stream}/{entry_id}`; every endpoint is gated by `require_role("admin")` per the policy table from `_security.11`.
-- [ ] Replay re-publishes the original event to its source stream via `EventBus.publish` and records an audit-log entry (operator id, entry id, timestamp) — falls back to a structured log line if `_security.06` audit log is not yet landed.
-- [ ] Purge XDELs the DLQ entry only after a successful replay, or with an explicit `--force` query parameter for entries that cannot be replayed safely.
-- [ ] OpenAPI schema documents typed request/response models; `chili_app` client regeneration picks up the new endpoints.
-- [ ] A minimal ops panel route under `chili_app/src/routes/admin/dlq/` lists entries with severity badges and exposes replay/purge buttons; story can land without the UI if the API + script cover the triage flow and the UI ships in a follow-up frontend story (track explicitly).
-- [ ] Tests cover: list/get/replay/purge across both adapters; unauthorized callers receive 403; replay re-routes through `publish_to_dlq` if the handler still fails (no infinite-loop hazard); purge after successful replay only.
+- [ ] Event bus records exhausted delivery failures with event payload, handler, error, attempt count, and timestamps.
+- [ ] Repository/API read paths list and fetch DLQ records with pagination.
+- [ ] Sensitive payload fields are redacted according to existing event logging conventions.
+- [ ] DLQ records are linked to original event IDs where available.
 
 ### Verification
-- Run `cd backend && pytest tests/events tests/api/routers/test_dlq.py -q`.
-- Run `cd backend && pyright` and `ruff check backend/events backend/api`.
-- Manual: with `make dev` up, force a handler failure (e.g. point Neo4j at an invalid URL), confirm an entry lands in `<stream>.dlq`, hit `GET /admin/dlq` with an admin token, replay via `POST /admin/dlq/.../replay`, confirm the original stream receives a re-publish and the DLQ entry can be purged.
+- [ ] Unit tests force handler failures and confirm DLQ persistence.
+- [ ] API tests cover listing and retrieving DLQ records.
 
 ### Code touch points
-- `backend/events/protocols.py` (modify)
-- `backend/events/adapters/redis_streams.py` (modify)
-- `backend/events/adapters/in_memory.py` (modify)
-- `backend/api/routers/dlq.py` (new)
-- `backend/api/app.py` (modify — register router)
-- `backend/tests/events/` (modify)
-- `backend/tests/api/routers/test_dlq.py` (new)
-- `chili_app/src/routes/admin/dlq/` (new, optional in this story)
+- `backend/app/events/**`
+- `backend/app/api/**`
+- `backend/tests/**`
 
 ---
-
 ## Story events.11: Tenant-aware stream-naming strategy
 
 **ID:** events.11
@@ -592,3 +577,61 @@
 - `backend/tests/events/` (modify)
 - `backend/tests/agent/test_coordinator.py` (modify)
 - `docs/ledger/event-catalog.md` (modify)
+
+## Story events.15: Add DLQ replay and purge APIs
+
+**ID:** events.15
+**Status:** planned
+**Prerequisites:** [events.10]
+**Unblocks:** [events.16]
+**Estimated size:** L
+
+### Narrative
+As an operator,
+I want to replay or purge dead-lettered events,
+so that recoverable failures can be retried and obsolete records can be cleared safely.
+
+### Acceptance Criteria
+- [ ] API supports replaying selected DLQ records back through the event bus.
+- [ ] API supports purging selected or expired DLQ records with authorization checks.
+- [ ] Replay preserves correlation IDs and records the replay attempt outcome.
+
+### Verification
+- [ ] API tests cover replay success, replay failure, purge, and authorization rejection.
+- [ ] Event bus tests prove replayed events use normal handler dispatch.
+
+### Code touch points
+- `backend/app/events/**`
+- `backend/app/api/**`
+- `backend/tests/**`
+
+---
+
+## Story events.16: Add DLQ operations UI hooks and audit coverage
+
+**ID:** events.16
+**Status:** planned
+**Prerequisites:** [events.15]
+**Unblocks:** [api.25, monitoring.07, monitoring.16]
+**Estimated size:** M
+
+### Narrative
+As an operator,
+I want DLQ actions to be observable and auditable,
+so that replay and purge operations can be reviewed after incident response.
+
+### Acceptance Criteria
+- [ ] DLQ replay and purge emit audit events with actor, record IDs, and outcomes.
+- [ ] API responses include enough metadata for an operations UI to render status and errors.
+- [ ] Tests cover audit records for successful and failed DLQ actions.
+
+### Verification
+- [ ] Run API tests that assert audit records for replay and purge actions.
+- [ ] Confirm operations documentation describes the DLQ action lifecycle.
+
+### Code touch points
+- `backend/app/events/**`
+- `backend/app/monitoring/**`
+- `docs/wiki/modules/events.md`
+
+---

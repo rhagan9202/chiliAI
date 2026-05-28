@@ -1,6 +1,6 @@
 # Module: ingestion
 
-**Verified against codebase:** 2026-05-22
+**Verified against codebase:** 2026-05-28
 **Source:** `backend/ingestion/`
 
 ## Purpose
@@ -96,7 +96,7 @@ class IngestionTask(BaseModel):
 ## Models (`ingestion/models.py`)
 
 Key types:
-- `DocumentFormat` — enum: `PDF`, `DOCX`, `TXT`, `JSON`, `CSV`, `XLSX`, `HTML` (HTML enum value exists but no HTML parser registered — architecture.md note)
+- `DocumentFormat` — enum: `PDF`, `DOCX`, `HTML`, `TXT`, `JSON`, `CSV`, `XLSX`
 - `IngestionStatus` — enum for document lifecycle status
 - `SourceType` — enum: file_upload, api_push, remote_url
 - `ParsedDocument` — parsed text content + metadata
@@ -211,11 +211,11 @@ ingestion/
     registry.py       # ParserRegistry, create_default_registry()
     format_resolver.py
     protocols.py
-    pdf.py, docx.py, txt.py, json.py, csv.py, xlsx.py
+    pdf.py, docx.py, html.py, txt.py, json.py, csv.py, xlsx.py
     remote.py         # Fetch-and-parse for remote URIs
 ```
 
-**Gap:** `DocumentFormat.HTML` exists in the enum but no `html.py` parser is registered in `parsers/registry.py`.
+**Gap:** `HtmlParser` is registered and extracts normalized visible text. Richer preservation of headings, links, and table structure is tracked in `docs/backlog/ingestion.md` as `ingestion.02`.
 
 ---
 

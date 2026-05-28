@@ -91,7 +91,7 @@
 **ID:** monitoring.03
 **Status:** planned
 **Prerequisites:** [shared.04, config.05, graph.04]
-**Unblocks:** []
+**Unblocks:** [monitoring.12]
 **Estimated size:** L
 
 **As a** fraud analyst,
@@ -181,7 +181,7 @@
 **ID:** monitoring.05
 **Status:** planned
 **Prerequisites:** [config.07, _security.05, api.06]
-**Unblocks:** []
+**Unblocks:** [monitoring.12, monitoring.13]
 **Estimated size:** L
 
 **As a** fraud-operations manager,
@@ -223,7 +223,7 @@
 **ID:** monitoring.06
 **Status:** planned
 **Prerequisites:** [analytics.12, graph.05, storage.06]
-**Unblocks:** []
+**Unblocks:** [monitoring.13]
 **Estimated size:** L
 
 **As a** fraud analyst,
@@ -258,49 +258,38 @@
 
 ---
 
-## Story monitoring.07: Add alert notification delivery — email, webhook, Slack, in-app
+## Story monitoring.07: Build notification dispatcher and in-app channel
 
 **ID:** monitoring.07
 **Status:** planned
-**Prerequisites:** [config.08, _security.07, _observability.06]
-**Unblocks:** [api.04, api.05]
-**Estimated size:** XL
+**Prerequisites:** [config.15, events.16]
+**Unblocks:** [monitoring.15]
+**Estimated size:** L
 
-> Split into 07a (protocol + dispatcher + InApp adapter + per-domain rules) and 07b (Email/Slack/Webhook adapters + DLQ + per-channel rate-limit) before merge.
-
-**As a** fraud-operations manager,
-**I need** alerts delivered to email, webhook, Slack, and an in-app inbox per per-domain rules,
-**so that** analysts and downstream systems are notified without relying solely on the WS push or polling the alert feed.
+### Narrative
+As an operator,
+I want alerts to flow through a notification dispatcher with an in-app channel,
+so that alert delivery has one host-owned path before external integrations are added.
 
 ### Current State
-- No notification machinery exists: `grep -rn "Slack\|SmtpNotifier\|WebhookNotifier" backend/` returns nothing.
-- The only delivery paths are the unwired WS hub (closed by `monitoring.01`) and the polled `GET /alerts`.
-- Architecture §14.2 lists `Alert notifications: Email, webhook, Slack, in-app` as medium priority.
+Alert data exists, but notification routing and delivery channels are not centralized.
 
 ### Acceptance Criteria
-- [ ] `NotificationChannel` protocol in `backend/monitoring/protocols.py` with adapters `EmailNotifier`, `SlackNotifier`, `WebhookNotifier`, `InAppNotifier` under `backend/monitoring/adapters/notifications/`.
-- [ ] `NotificationDispatcher` consumes `AlertsCreatedEvent`, evaluates per-domain notification rules (`channel × severity × routing target`), and dispatches asynchronously with retries.
-- [ ] Per-channel token-bucket rate limiter; failures land in a `notification_dlq` Redis stream.
-- [ ] Channel credentials read via `_security.07` secrets boundary (no plaintext secrets in `DomainConfig`).
-- [ ] In-app notification persists to a `notification_inbox` table keyed by `(user_id, alert_id)` with `read_at` field.
-- [ ] Per-channel delivery metrics: `chili_monitoring_notifications_sent_total{channel, status}`, `chili_monitoring_notification_latency_seconds{channel}`.
-- [ ] End-to-end test exercises each adapter against a fake transport.
+- [ ] Notification protocol defines message, severity, recipient, channel, and delivery result models.
+- [ ] Dispatcher routes alert notifications to configured channels.
+- [ ] In-app channel persists notifications and exposes read/acknowledge APIs.
+- [ ] Delivery attempts are correlated with alert IDs and event IDs.
 
 ### Verification
-- `pytest backend/tests/monitoring/test_notifications.py -v` — green for all four adapters.
-- `pytest --cov=backend/monitoring/adapters/notifications --cov-report=term-missing` — ≥ 85%.
-- Local smoke: configure a Slack webhook URL via secrets store, trigger an alert, verify Slack channel receives the formatted message.
+- [ ] Unit tests cover dispatcher routing and in-app delivery.
+- [ ] API tests cover notification list and acknowledge flows.
 
 ### Code touch points
-- `backend/monitoring/protocols.py` (modify — NotificationChannel)
-- `backend/monitoring/adapters/notifications/{email,slack,webhook,in_app}.py` (new)
-- `backend/monitoring/notifications.py` (new — Dispatcher)
-- `backend/database/migrations/*.py` (new — `notification_inbox`)
-- `backend/config/schema.py` (modify — notification rules)
-- `backend/tests/monitoring/test_notifications.py` (new)
+- `backend/app/monitoring/**`
+- `backend/app/api/**`
+- `backend/tests/**`
 
 ---
-
 ## Story monitoring.08: Add stream-level backpressure when alert rate spikes
 
 **ID:** monitoring.08
@@ -472,103 +461,70 @@
 
 ---
 
-## Story monitoring.12: Add tenant-scoped alerts across generation, storage, broadcast, and projection
+## Story monitoring.12: Add tenant fields to alert storage
 
 **ID:** monitoring.12
 **Status:** planned
-**Prerequisites:** [_multitenancy.03, _multitenancy.05, _security.04, database.09]
-**Unblocks:** []
-**Estimated size:** XL
+**Prerequisites:** [knowledgebases.06, monitoring.03, monitoring.05]
+**Unblocks:** [monitoring.17]
+**Estimated size:** L
 
-> Split into 12a (data model: `tenant_id` on observation/candidate/alert/history/projection + DB migrations + per-tenant dedup index) and 12b (WS hub tenant filter + API default-deny + cross-tenant access tests) before merge.
-
-**As a** platform tenant,
-**I need** my alerts visible only inside my tenant boundary across generation, persistence, broadcast, and the API,
-**so that** SaaS deployments do not leak alerts between customers and per-tenant dedup/rate-limit knobs are independent.
+### Narrative
+As a tenant administrator,
+I want alert records to carry tenant ownership,
+so that alert history can be isolated across tenant boundaries.
 
 ### Current State
-- No `tenant_id` anywhere in monitoring: `grep -n "tenant" backend/monitoring/*.py backend/monitoring/adapters/*.py` returns nothing.
-- `MonitoringService` is a process-singleton with one shared `_dedup_index`.
-- `PostgresAlertHistoryStore` writes/queries with `knowledge_base_id` and `entity_id` only (`backend/monitoring/adapters/postgres.py:33-44, 160-170`).
-- `AlertProjectionRepository.list` has no tenant filter.
-- `/ws/alerts` broadcasts to all viewer-role connections regardless of tenant.
-- Architecture §14.2 lists multi-tenancy as medium priority and names tenant-scoped alerts as one of its hardest sub-problems.
+Alerting exists as an operational concept, but tenant scoping is not consistently represented in alert persistence.
 
 ### Acceptance Criteria
-- [ ] `tenant_id` propagated end-to-end: `MonitoringObservation` → `AlertCandidate` → `Alert` → `AlertHistoryRecord` → `AlertProjectionRecord` → WS payload.
-- [ ] Per-tenant dedup index isolation in `MonitoringService` (`self._dedup_index: dict[str, dict[tuple[str, str], datetime]]` keyed by tenant first).
-- [ ] All SQL queries gain `tenant_id` in unique keys and WHERE clauses; new migrations rebuild the indexes.
-- [ ] WS hub gains a `tenant_id_filter` per connection (sourced from the authenticated identity via `_security.04`); broadcast filter rejects mismatches.
-- [ ] `GET /alerts` and `POST /alerts/*` default-deny across tenants; explicit `tenant_id` mismatch returns HTTP 404 (not 403, to avoid existence leak).
-- [ ] Cross-tenant integration test: two tenants with overlapping `entity_id` cannot see each other's alerts.
+- [ ] Alert, notification, and delivery records include tenant or knowledge base ownership fields.
+- [ ] Database migrations and repository models persist tenant ownership.
+- [ ] Existing alert creation paths populate tenant context where available.
+- [ ] Backfill or default behavior is documented for existing records.
 
 ### Verification
-- `pytest backend/tests/monitoring/test_tenancy.py backend/tests/api/test_alerts_tenancy.py -v` — green.
-- `pytest --cov=backend/monitoring --cov=backend/api/_alert_store --cov-report=term-missing` — ≥ 85%.
-- Local smoke: seed two tenants, trigger evaluation in each, confirm `GET /alerts` returns only own tenant's rows.
+- [ ] Repository tests prove tenant fields are required or defaulted according to the migration plan.
+- [ ] Migration tests cover forward and rollback behavior where supported.
 
 ### Code touch points
-- `backend/shared/types.py` (modify)
-- `backend/monitoring/models.py` (modify)
-- `backend/monitoring/service.py` (modify — tenant-keyed dedup)
-- `backend/monitoring/adapters/postgres.py` (modify)
-- `backend/api/_alert_store.py` (modify — tenant scoping)
-- `backend/api/routers/alerts.py` (modify — extract tenant from identity)
-- `backend/api/routers/ws.py` (modify — tenant filter)
-- `backend/database/migrations/*.py` (new — tenant columns + indexes)
-- `backend/tests/monitoring/test_tenancy.py` (new)
-- `backend/tests/api/test_alerts_tenancy.py` (new)
+- `backend/app/monitoring/**`
+- `backend/app/db/**`
+- `backend/tests/**`
 
 ---
-
-## Story monitoring.13: Build a per-domain alert rule library — config-driven generation rules
+## Story monitoring.13: Implement core alert rule library
 
 **ID:** monitoring.13
 **Status:** planned
-**Prerequisites:** [config.06, analytics.20]
-**Unblocks:** []
-**Estimated size:** XL
+**Prerequisites:** [monitoring.05, monitoring.06]
+**Unblocks:** [monitoring.19]
+**Estimated size:** L
 
-> Split into 13a (rule schema + threshold/percentile/rate-of-change rule kinds + `RuleEvaluator` strategy + medicare default library) and 13b (pattern + ml-classifier rule kinds + hot-reload) before merge.
-
-**As a** domain operator,
-**I need** the alert generator to consume a named rule library from `DomainConfig.alerts.rules` (thresholds, percentiles, rate-of-change, patterns, ML classifiers),
-**so that** each domain (Medicare fraud, food supply, future verticals) ships a tailored rule set without code changes.
+### Narrative
+As an operator,
+I want reusable alert rule types for common operational signals,
+so that alerts can be configured consistently without custom code for every metric.
 
 ### Current State
-- `AlertsConfig.thresholds` declares `dict[str, dict[str, float]]` (`backend/config/schema.py:214-220`) but **no code reads it** — `MonitoringService.evaluate` uses only `default_medium_threshold` / `default_high_threshold` plus per-request overrides (`backend/monitoring/service.py:80-81, 116-125`).
-- TODO at `backend/config/schema.py:218-220` explicitly calls out missing dedup window, max-per-entity, suppression rules, escalation policies, and configurable severity tiers.
-- No concept of a named "rule" — only scalar thresholds.
-- Pattern-based and ML-based rules implied by architecture §6.2 (risk-scorer integration) do not exist; `backend/monitoring/` contains no pattern matcher.
+Alert evaluation exists conceptually, but reusable rule definitions are not packaged as a library.
 
 ### Acceptance Criteria
-- [ ] `AlertRule` discriminated union in `backend/monitoring/rules.py` with variants:
-  - `ThresholdRule(metric, entity_type, medium, high)`
-  - `PercentileRule(metric, percentile, window)`
-  - `RateOfChangeRule(metric, delta_pct, window)`
-  - `PatternRule(matcher_id, params)` (calls into a pattern adapter)
-  - `MlClassifierRule(model_id, threshold)` (calls into a model client)
-- [ ] `RuleEvaluator` strategy per rule kind; `MonitoringService.evaluate` iterates over loaded rules instead of scalar thresholds.
-- [ ] Per-entity-type and per-metric thresholds in `AlertsConfig.thresholds` actually consumed.
-- [ ] Default rule library shipped per domain: `backend/config/defaults/medicare_fraud.alerts.yaml`, `food_supply_chain.alerts.yaml`.
-- [ ] Hot-reload on config change (new rule set in flight within 30 s of update; no worker restart).
-- [ ] Rule schema validated by `config.06`'s loader; invalid rules surface as `MonitoringConfigurationError` at load time, never at evaluation time.
+- [ ] Rule schema supports metric selector, window, threshold, severity, labels, and notification routing hints.
+- [ ] Implement threshold, percentile, and rate-of-change rule evaluators.
+- [ ] Rule evaluators emit typed alert decisions with reason metadata.
+- [ ] Default core rules are documented for ingestion, API, graph, and event health.
 
 ### Verification
-- `pytest backend/tests/monitoring/test_rules.py -v` — green; covers every rule kind, hot-reload, default library.
-- `pytest --cov=backend/monitoring/rules --cov-report=term-missing` — ≥ 85%.
-- Local smoke: edit `medicare_fraud.alerts.yaml`, add a new `PercentileRule`, observe new alerts within 30 s.
+- [ ] Unit tests cover each core rule evaluator and edge cases for missing data.
+- [ ] Golden tests cover default rule definitions.
 
 ### Code touch points
-- `backend/monitoring/rules.py` (new)
-- `backend/monitoring/service.py` (modify — use RuleEvaluator)
-- `backend/config/schema.py` (modify — AlertRule schema, drop TODO)
-- `backend/config/defaults/medicare_fraud.yaml` (modify — add `alerts.rules`)
-- `backend/config/defaults/food_supply_chain.yaml` (modify)
-- `backend/tests/monitoring/test_rules.py` (new)
+- `backend/app/monitoring/**`
+- `backend/tests/monitoring/**`
+- `docs/wiki/modules/monitoring.md`
 
 ---
-
 ## Story monitoring.14: Self-reinforcing loop write-back — annotate graph when alerts close
 
 **ID:** monitoring.14
@@ -609,3 +565,177 @@
 - `backend/analytics/gnn/features.py` (modify — consume new properties)
 - `backend/tests/agent/test_alert_lifecycle_for_graph.py` (new)
 - `backend/monitoring/AGENT.md` (modify — document the closed loop)
+
+## Story monitoring.15: Add external notification channel adapters
+
+**ID:** monitoring.15
+**Status:** planned
+**Prerequisites:** [monitoring.07]
+**Unblocks:** [monitoring.16]
+**Estimated size:** L
+
+### Narrative
+As an operator,
+I want email, Slack, and webhook notification channels,
+so that alerts can reach the systems my team already monitors.
+
+### Acceptance Criteria
+- [ ] Email, Slack, and generic webhook adapters implement the notification protocol.
+- [ ] Channel configuration supports secrets by reference rather than inline values.
+- [ ] Delivery results capture provider status and retryability.
+
+### Verification
+- [ ] Adapter tests cover success, retryable failure, permanent failure, and missing configuration.
+- [ ] Fake provider fixtures avoid real network calls in unit tests.
+
+### Code touch points
+- `backend/app/monitoring/**`
+- `backend/app/config/**`
+- `backend/tests/monitoring/**`
+
+---
+
+## Story monitoring.16: Add notification retry, DLQ, and metrics coverage
+
+**ID:** monitoring.16
+**Status:** planned
+**Prerequisites:** [monitoring.15, events.16]
+**Unblocks:** [api.04, api.05]
+**Estimated size:** M
+
+### Narrative
+As an operator,
+I want failed notification deliveries to be retried, dead-lettered, and measured,
+so that alert delivery failures are visible and recoverable.
+
+### Acceptance Criteria
+- [ ] Notification dispatcher applies retry policy with bounded attempts and backoff.
+- [ ] Exhausted deliveries are written to the DLQ or equivalent failed-delivery store.
+- [ ] Metrics expose attempts, successes, failures, retries, and dead-lettered notifications by channel.
+
+### Verification
+- [ ] Tests cover retry success, exhausted retry, DLQ write, and metric increments.
+- [ ] Operations docs describe how to inspect failed notification deliveries.
+
+### Code touch points
+- `backend/app/monitoring/**`
+- `backend/app/events/**`
+- `backend/tests/**`
+
+---
+
+## Story monitoring.17: Enforce tenant scope in alert APIs
+
+**ID:** monitoring.17
+**Status:** planned
+**Prerequisites:** [monitoring.12]
+**Unblocks:** [monitoring.18]
+**Estimated size:** L
+
+### Narrative
+As a tenant administrator,
+I want alert APIs to filter by tenant scope,
+so that users only see alerts they are allowed to inspect.
+
+### Acceptance Criteria
+- [ ] Alert list, detail, notification, and acknowledge APIs require tenant context.
+- [ ] Repository queries filter by tenant or knowledge base ownership.
+- [ ] Authorization failures do not reveal whether another tenant's alert exists.
+
+### Verification
+- [ ] API tests cover same-tenant access, cross-tenant denial, and missing-tenant rejection.
+- [ ] Repository tests cover tenant-filtered queries.
+
+### Code touch points
+- `backend/app/api/**`
+- `backend/app/monitoring/**`
+- `backend/tests/**`
+
+---
+
+## Story monitoring.18: Filter websocket alert streams by tenant
+
+**ID:** monitoring.18
+**Status:** planned
+**Prerequisites:** [monitoring.17]
+**Unblocks:** []
+**Estimated size:** M
+
+### Narrative
+As a tenant administrator,
+I want realtime alert streams to respect tenant scope,
+so that websocket subscribers cannot receive another tenant's operational events.
+
+### Acceptance Criteria
+- [ ] Websocket subscription handshake binds tenant context to the connection.
+- [ ] Alert broadcasts are filtered before delivery to each subscriber.
+- [ ] Tests cover cross-tenant broadcast isolation and disconnected tenant cleanup.
+
+### Verification
+- [ ] Websocket tests prove tenant A does not receive tenant B alert events.
+- [ ] Metrics or logs identify filtered delivery counts without leaking payloads.
+
+### Code touch points
+- `backend/app/api/**`
+- `backend/app/monitoring/**`
+- `backend/tests/api/**`
+
+---
+
+## Story monitoring.19: Add pattern and ML-based alert rule adapters
+
+**ID:** monitoring.19
+**Status:** planned
+**Prerequisites:** [analytics.32, monitoring.13]
+**Unblocks:** [monitoring.20]
+**Estimated size:** M
+
+### Narrative
+As an operator,
+I want pattern and ML-backed alert rules,
+so that alerting can capture anomalies that simple thresholds miss.
+
+### Acceptance Criteria
+- [ ] Pattern rule evaluator supports sequence or co-occurrence matching over metric/event windows.
+- [ ] ML-backed rule adapter can consume analytics scores through the analytics service boundary.
+- [ ] Rule outputs include explainability metadata suitable for alert detail views.
+
+### Verification
+- [ ] Unit tests cover pattern matches, non-matches, and analytics-score decisions.
+- [ ] Fake analytics adapter keeps ML rule tests deterministic.
+
+### Code touch points
+- `backend/app/monitoring/**`
+- `backend/app/analytics/**`
+- `backend/tests/monitoring/**`
+
+---
+
+## Story monitoring.20: Add alert rule library hot reload and defaults
+
+**ID:** monitoring.20
+**Status:** planned
+**Prerequisites:** [monitoring.19]
+**Unblocks:** []
+**Estimated size:** M
+
+### Narrative
+As an operator,
+I want alert rule libraries to ship with defaults and reload safely,
+so that rule updates do not require a full service redeploy.
+
+### Acceptance Criteria
+- [ ] Default rule library is loaded from configuration or packaged files at startup.
+- [ ] Rule reload validates the full library before replacing active rules.
+- [ ] Reload emits audit/event records with changed rule IDs and validation failures.
+
+### Verification
+- [ ] Tests cover successful reload, invalid reload rollback, and default library loading.
+- [ ] Operations docs describe rule reload procedure and rollback behavior.
+
+### Code touch points
+- `backend/app/monitoring/**`
+- `backend/app/config/**`
+- `docs/wiki/modules/monitoring.md`
+
+---

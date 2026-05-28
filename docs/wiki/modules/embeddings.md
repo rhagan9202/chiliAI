@@ -1,6 +1,6 @@
 # Module: embeddings
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-28
 **Source:** `backend/embeddings/`
 
 ## Purpose
@@ -32,6 +32,9 @@ class EmbedSubmission(BaseModel):
 class EmbedRequest(BaseModel):
     knowledge_base_id: str | None = None
     model_name: str = "in-memory-embedder"
+    include_graph_embeddings: bool = False
+    require_graph_embeddings: bool = False
+    graph_embedding_dimension: int = Field(default=8, gt=0, le=256)
     submissions: list[EmbedSubmission]    # must have >= 1 item (validated)
 ```
 
@@ -42,6 +45,7 @@ class EmbedResponse(BaseModel):
     model_name: str
     dimensions: int    # > 0
     items: list[EmbeddedItem]
+    graph_status: GraphEmbeddingStatus | None = None
 ```
 
 ### `EmbeddedItem`
@@ -49,6 +53,10 @@ class EmbedResponse(BaseModel):
 class EmbeddedItem(BaseModel):
     content_id: str
     vector: list[float]
+    channel: EmbeddingChannel = "text"
+    model_name: str | None = None
+    provider: str | None = None
+    dimensions: int | None = None   # defaults to len(vector)
 ```
 
 ---
@@ -75,7 +83,7 @@ Inner adapter protocol: `adapters/protocols.py` (structural subset consumed by t
 
 ## Status Note
 
-Embeddings 1.0 implementation plan is in-flight (`docs/` planning artifacts). Current adapter set is verified complete (in_memory, openai, sentence_transformers).
+Current adapter set is verified complete for text embeddings (in-memory, OpenAI, sentence-transformers). Graph embedding request fields are present in the service model; callers can inspect `graph_status` to see whether graph embeddings were produced or skipped.
 
 ---
 

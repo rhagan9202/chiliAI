@@ -1,6 +1,7 @@
 # chiliAI Code Ledger
 
 **Generated:** 2026-05-22 (anchored to merge commit `acae4ac`, `feature/ingestion-pipeline-e2e-demo` → `prod`)
+**Reviewed:** 2026-05-28 against the current working tree for docs-keeper consistency cleanup.
 **Purpose:** Authoritative snapshot of the codebase's public surface — module map, protocol contracts, event catalog, HTTP routes, config schema, and tooling inventory. Intended for agents and developers who need to understand the exact current state without reading the full codebase.
 
 ## Contents

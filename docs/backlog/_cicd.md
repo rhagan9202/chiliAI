@@ -48,7 +48,7 @@
 **ID:** _cicd.02
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_cicd.10]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -85,7 +85,7 @@
 **ID:** _cicd.03
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [_cicd.10]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-24-complete-backlog-design.md
 
@@ -125,7 +125,7 @@
 **ID:** _cicd.04
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [_cicd.17, _plugins.06, api.13, llm.15]
+**Unblocks:** [_cicd.10, _cicd.17, _plugins.06, api.13, llm.15]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -162,7 +162,7 @@
 **ID:** _cicd.05
 **Status:** planned
 **Prerequisites:** [_infra.10]
-**Unblocks:** [_cicd.06, _cicd.07, _cicd.08, _cicd.10, _cicd.13, agent.20, api.14, frontend.11, frontend.21]
+**Unblocks:** [_cicd.06, _cicd.07, _cicd.08, _cicd.13, agent.20, api.14, frontend.11, frontend.21]
 **Estimated size:** L
 
 **As a** release engineer,
@@ -200,7 +200,7 @@
 **ID:** _cicd.06
 **Status:** planned
 **Prerequisites:** [_cicd.05, _security.07]
-**Unblocks:** [_observability.08, api.15, frontend.20, ingestion.25]
+**Unblocks:** [_cicd.13, _observability.08, api.15, frontend.20, ingestion.25]
 **Estimated size:** M
 
 **As a** security-conscious release engineer,
@@ -237,7 +237,7 @@
 **ID:** _cicd.07
 **Status:** planned
 **Prerequisites:** [_cicd.05, _infra.05]
-**Unblocks:** [_cicd.08, _cicd.15, api.16]
+**Unblocks:** [_cicd.08, _cicd.13, _cicd.15, api.16]
 **Estimated size:** L
 
 **As a** release engineer,
@@ -351,48 +351,39 @@
 
 ---
 
-## Story _cicd.10: Stand up per-PR preview environments
+## Story _cicd.10: Provision basic per-PR preview environments
 
 **ID:** _cicd.10
 **Status:** planned
-**Prerequisites:** [_cicd.05, _infra.05]
-**Unblocks:** []
-**Estimated size:** XL
+**Prerequisites:** [_cicd.02, _cicd.03, _cicd.04]
+**Unblocks:** [_cicd.18]
+**Estimated size:** L
 
-**As a** reviewer,
-**I need** every pull request to deploy an isolated preview environment with a unique URL,
-**so that** I can validate UX and integration without checking out the branch and running `make dev`.
+### Narrative
+As a reviewer,
+I want each pull request to publish an isolated preview environment,
+so that UI and API changes can be inspected before merge.
 
 ### Current State
-- No preview environment workflow exists.
-- Reviewers must `git checkout` and `make dev` locally (see `Makefile` target).
-- Architecture §10.5 lists hybrid deploy targets but no automation provisions a per-PR preview.
-- Auditor's open question — K8s ephemeral namespace vs docker-compose-on-runner — must be resolved before this story can expand; cost (GHA minutes vs cluster spend) and isolation drive the choice.
-- This is XL: split into (a) substrate decision + base workflow, (b) data seeding strategy, (c) teardown on PR close.
+Container images and CI jobs exist, but PR previews do not yet provision an isolated app stack or publish a stable reviewer URL.
 
 ### Acceptance Criteria
-- [ ] Substrate decision (K8s ephemeral ns vs compose-on-runner) recorded in `docs/architecture.md` §10 with rationale.
-- [ ] New `.github/workflows/preview-up.yml` triggers on `pull_request` `opened`/`synchronize` and provisions a preview using the chosen substrate, tagged with PR number.
-- [ ] Preview URL posted as a sticky PR comment via `marocchino/sticky-pull-request-comment`.
-- [ ] Seed data loaded from `tools/sample_data/medicare_fraud/` (or the configured domain default) so the preview has demo content.
-- [ ] New `.github/workflows/preview-down.yml` triggers on `pull_request` `closed` and tears down the namespace/compose project.
-- [ ] Total preview lifetime capped (e.g. 72 h) by a scheduled reaper; long-running PRs auto-recreate on next push.
-- [ ] **XL split required before merge** — this story must be decomposed into at least three child stories (substrate, seeding, teardown) following the auditor's flag.
+- [ ] Preview substrate decision is recorded for PR environments (Compose-on-runner, Kubernetes namespace, or managed preview provider).
+- [ ] CI creates a per-PR environment with frontend, backend, database, and required service dependencies.
+- [ ] A sticky PR comment exposes the preview URL, health URL, branch, commit SHA, and deployment status.
+- [ ] Preview provisioning is idempotent for repeated pushes to the same PR.
 
 ### Verification
-- Open a PR; confirm a preview URL comment appears within 10 min and the URL resolves to a working SPA + API.
-- Push a new commit; confirm the preview is updated in place.
-- Close the PR; confirm the preview namespace/compose project is deleted within 5 min.
+- [ ] Open a PR in a test repository and confirm the preview URL reaches the app health page.
+- [ ] Push a second commit and confirm the sticky comment updates instead of duplicating.
 
 ### Code touch points
-- `.github/workflows/preview-up.yml` (new)
-- `.github/workflows/preview-down.yml` (new)
-- `.github/workflows/preview-reaper.yml` (new — scheduled cleanup)
-- `infra/helm/chili/values-preview.yaml` (new, may be owned by `_infra.05`)
-- `docs/architecture.md` (modify)
+- `.github/workflows/**`
+- `docker-compose*.yml`
+- `scripts/**`
+- `docs/architecture.md`
 
 ---
-
 ## Story _cicd.11: Add backlog consistency check CI hook
 
 **ID:** _cicd.11
@@ -468,46 +459,38 @@
 
 ---
 
-## Story _cicd.13: Run Playwright E2E suite in CI against the docker-compose stack
+## Story _cicd.13: Run baseline E2E smoke tests in CI
 
 **ID:** _cicd.13
 **Status:** planned
-**Prerequisites:** [_cicd.05]
-**Unblocks:** []
-**Estimated size:** XL
+**Prerequisites:** [_cicd.05, _cicd.06, _cicd.07]
+**Unblocks:** [_cicd.20]
+**Estimated size:** L
 
-**As a** quality engineer,
-**I need** the Playwright E2E suite to run in CI against a real docker-compose stack on every PR,
-**so that** workflow regressions are caught before merge — satisfying `CLAUDE.md`'s explicit "use e2e tests and playwright to verify workflows" mandate.
+### Narrative
+As a maintainer,
+I want a CI E2E job that boots the stack and runs the highest-value browser smoke tests,
+so that regressions in the integrated app fail before merge.
 
 ### Current State
-- `chili_app/playwright.config.ts` exists; `chili_app/package.json` exposes `test:e2e` and `test:e2e:ui` scripts.
-- `CLAUDE.md` "Development Rules" requires Playwright for workflow verification.
-- `.github/workflows/ci.yml` never boots the stack or runs Playwright.
-- `scripts/smoke_graph_workflow.sh` is a manual smoke harness, not a CI step.
-- Auditor flagged GHA free-tier minutes risk — a self-hosted runner story may need to spawn from this if runtime exceeds budget. **XL: split into (a) base job running against compose, (b) test-data seeding strategy, (c) artifact capture (traces, videos, screenshots) on failure.**
+Browser tests exist locally, but CI does not yet own a reliable full-stack smoke lane.
 
 ### Acceptance Criteria
-- [ ] New `.github/workflows/e2e.yml` (or a new `e2e` job in `ci.yml`) triggers on `pull_request` and on push to `main`.
-- [ ] Job pulls the `:edge` or `:sha-*` images produced by `_cicd.05` (preferable to rebuilding) and boots them via `docker-compose -f docker-compose.dev.yaml up -d`.
-- [ ] Job runs `cd chili_app && npm run test:e2e -- --reporter=line,html` against the booted stack with a base URL pointing at the compose-published port.
-- [ ] On failure, Playwright HTML report, traces, and videos uploaded as artifacts (retention 14 d).
-- [ ] Test data seeded via `tools/sample_data/medicare_fraud/` so the suite has deterministic content.
-- [ ] Job is parallelized into shards if total runtime exceeds 15 min, using Playwright's `--shard` flag.
-- [ ] **XL split required before merge** — at least three child stories.
+- [ ] CI workflow pulls or builds the required images and boots the app stack with deterministic configuration.
+- [ ] Playwright smoke tests run against the live CI stack.
+- [ ] The job fails on backend startup, frontend startup, or smoke-test failure.
+- [ ] Logs clearly identify which service or test caused the failure.
 
 ### Verification
-- Open a PR with a deliberately broken UI flow; confirm the e2e job fails and the HTML report artifact contains the failing trace.
-- Re-run after fix; confirm green.
-- Inspect the workflow summary; confirm shard timings are recorded.
+- [ ] Run the workflow on a PR and confirm a passing smoke result.
+- [ ] Introduce a temporary smoke-test failure and confirm CI fails with useful logs.
 
 ### Code touch points
-- `.github/workflows/e2e.yml` (new)
-- `chili_app/playwright.config.ts` (modify — add CI reporter)
-- `docker-compose.dev.yaml` (modify — confirm health-checks for CI gating)
+- `.github/workflows/**`
+- `tests/e2e/**`
+- `docker-compose*.yml`
 
 ---
-
 ## Story _cicd.14: Add a performance regression tracking job
 
 **ID:** _cicd.14
@@ -663,3 +646,119 @@
 - `scripts/lint_action_pins.py` (new)
 - `renovate.json` (modify)
 - `docs/security/supply-chain.md` (new)
+
+## Story _cicd.18: Seed preview environments with deterministic data
+
+**ID:** _cicd.18
+**Status:** planned
+**Prerequisites:** [_cicd.10]
+**Unblocks:** [_cicd.19]
+**Estimated size:** M
+
+### Narrative
+As a reviewer,
+I want PR previews to include deterministic demo data,
+so that each preview can be exercised without manual setup.
+
+### Acceptance Criteria
+- [ ] Preview startup seeds users, knowledge bases, documents, and graph data required by smoke tests.
+- [ ] Seed data is deterministic per environment and does not include real secrets or customer data.
+- [ ] Seed failures fail the preview job with actionable logs.
+
+### Verification
+- [ ] Create a preview and confirm seeded records are visible through API and UI flows.
+- [ ] Re-run preview provisioning and confirm seed data remains idempotent.
+
+### Code touch points
+- `scripts/**`
+- `.github/workflows/**`
+- `backend/tests/**`
+
+---
+
+## Story _cicd.19: Tear down stale preview environments
+
+**ID:** _cicd.19
+**Status:** planned
+**Prerequisites:** [_cicd.18]
+**Unblocks:** []
+**Estimated size:** M
+
+### Narrative
+As an operator,
+I want preview environments to be cleaned up automatically,
+so that closed PRs and abandoned branches do not leak infrastructure cost.
+
+### Acceptance Criteria
+- [ ] PR close events tear down the matching preview environment.
+- [ ] Scheduled reaper removes stale previews whose PRs are closed or whose branches no longer exist.
+- [ ] Teardown logs identify resources removed and resources skipped.
+
+### Verification
+- [ ] Close a test PR and confirm the preview is removed.
+- [ ] Run the reaper against a stale preview fixture and confirm only stale resources are deleted.
+
+### Code touch points
+- `.github/workflows/**`
+- `scripts/**`
+- `docs/operations/**`
+
+---
+
+## Story _cicd.20: Seed CI E2E data through a deterministic fixture path
+
+**ID:** _cicd.20
+**Status:** planned
+**Prerequisites:** [_cicd.13]
+**Unblocks:** [_cicd.21]
+**Estimated size:** M
+
+### Narrative
+As a test maintainer,
+I want CI E2E tests to use deterministic fixture data,
+so that browser failures are not caused by implicit local setup.
+
+### Acceptance Criteria
+- [ ] CI job loads a documented fixture bundle before Playwright tests run.
+- [ ] Fixture setup covers auth/session state, knowledge bases, documents, and representative graph data.
+- [ ] Fixture setup can be run locally with the same command used by CI.
+
+### Verification
+- [ ] Run fixture setup locally and in CI and compare expected record counts.
+- [ ] Playwright smoke tests pass from a clean database after fixture setup.
+
+### Code touch points
+- `tests/e2e/**`
+- `scripts/**`
+- `.github/workflows/**`
+
+---
+
+## Story _cicd.21: Publish E2E artifacts and shard browser tests
+
+**ID:** _cicd.21
+**Status:** planned
+**Prerequisites:** [_cicd.20]
+**Unblocks:** []
+**Estimated size:** M
+
+### Narrative
+As a maintainer,
+I want CI E2E failures to publish artifacts and support sharding,
+so that failures are diagnosable and the lane can scale as coverage grows.
+
+### Acceptance Criteria
+- [ ] CI uploads Playwright traces, screenshots, videos, and service logs on failure.
+- [ ] Browser tests can be sharded across parallel jobs without sharing mutable state.
+- [ ] Job summary links directly to artifacts and failed test names.
+
+### Verification
+- [ ] Force a browser failure and confirm artifacts are attached to the workflow run.
+- [ ] Run sharded jobs and confirm the combined suite covers the same tests as the serial run.
+
+### Code touch points
+- `.github/workflows/**`
+- `tests/e2e/**`
+- `playwright.config.*`
+
+---

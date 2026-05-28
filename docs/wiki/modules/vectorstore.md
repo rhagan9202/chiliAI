@@ -1,6 +1,6 @@
 # Module: vectorstore
 
-**Verified against codebase:** 2026-05-22
+**Verified against codebase:** 2026-05-28
 **Source:** `backend/vectorstore/`
 
 ## Purpose
@@ -52,6 +52,13 @@ class VectorIndexReceipt(BaseModel):
     dimension: int          # > 0
     created_at: datetime    # default_factory=utc_now
 
+class VectorAuditArtifact(BaseModel):
+    request_id: str
+    knowledge_base_id: str
+    receipts: list[VectorIndexReceipt] = []
+    created_at: datetime
+    receipt_count: int      # computed from receipts
+
 class VectorDeleteResponse(BaseModel):
     knowledge_base_id: str
     deleted_count: int      # >= 0
@@ -76,7 +83,7 @@ class VectorSearchResponse(BaseModel):
     matches: list[VectorSearchMatch] = []
 ```
 
-**Note:** `VectorSearchRequest.knowledge_base_ids` is a list (multi-KB search), not a single string. The Qdrant adapter uses count-before-delete to return an exact `deleted_count` from `delete_by_source_document`.
+**Note:** `VectorSearchRequest.knowledge_base_ids` is a list (multi-KB search), not a single string. The Qdrant adapter uses count-before-delete to return an exact `deleted_count` from `delete_by_source_document`. `VectorService.index()` publishes `VectorsIndexedEvent` and persists a `VectorAuditArtifact`; `delete_knowledge_base()` publishes `VectorsDeletedEvent`.
 
 ---
 

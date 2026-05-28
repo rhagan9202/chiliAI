@@ -10,7 +10,7 @@
 **ID:** llm.01
 **Status:** planned
 **Prerequisites:** [shared.02]
-**Unblocks:** [rag.01]
+**Unblocks:** [analytics.01, llm.03, rag.01]
 **Estimated size:** L
 
 **As a** RAG chat consumer (frontend or downstream agent),
@@ -59,7 +59,7 @@
 **ID:** llm.02
 **Status:** planned
 **Prerequisites:** [llm.04]
-**Unblocks:** [llm.03, rag.04, rag.05, rag.07]
+**Unblocks:** [rag.04, rag.05, rag.07]
 **Estimated size:** L
 
 **As an** ingestion or RAG caller that needs deterministic JSON output (entity extraction, structured citations),
@@ -100,57 +100,38 @@
 
 ---
 
-## Story llm.03: Add function / tool-calling support to GenerationRequest and adapters
+## Story llm.03: Define tool-calling protocol and OpenAI adapter support
 
 **ID:** llm.03
 **Status:** planned
-**Prerequisites:** [llm.02, agent.01]
-**Unblocks:** [rag.06]
-**Estimated size:** XL
+**Prerequisites:** [llm.01]
+**Unblocks:** [llm.16]
+**Estimated size:** L
 
-**As an** agent author who needs the LLM to call typed tools (graph query, KB lookup, calculator) and receive structured tool-result messages,
-**I need** `GenerationRequest` and every adapter to round-trip OpenAI/Anthropic tool-use specs,
-**so that** the LangGraph workflow coordinator can dispatch tool invocations from LLM outputs without the agent layer parsing free-text.
-
-> **Note:** XL — must be split before merge into (a) request/result model + protocol surface + in-memory + OpenAI adapter, and (b) Anthropic + Ollama adapter parity + multi-turn loop integration. Split is deferred to story-execution time.
+### Narrative
+As an agent developer,
+I want a provider-neutral tool-calling protocol with OpenAI support,
+so that agents can request structured host actions without binding to one provider shape.
 
 ### Current State
-- `LlmClientProtocol`'s `TODO(production)` block explicitly calls out "Add tool/function calling support in GenerationRequest" (`backend/llm/adapters/protocols.py:14-21`).
-- `GenerationRequest` has no `tools`, `tool_choice`, or `tool_calls` fields (`backend/llm/models.py:52-66`).
-- `GenerationResult.completion` is a single string with no tool-call payload extraction (`backend/llm/models.py:69-80`).
-- `ChatMessage` has only `system`/`user`/`assistant` roles — no `tool` role for round-tripping results (`backend/llm/models.py:19-31`).
-- Neither OpenAI nor Anthropic adapter passes `tools=[...]` to the provider; OpenAI calls `chat.completions.create(model, messages, temperature, max_tokens)` only (`backend/llm/adapters/openai_adapter.py:110-115`), Anthropic similarly (`backend/llm/adapters/anthropic_adapter.py:111-117`).
-- §14.1 in architecture flags tool-use as the trigger for LangGraph adoption (`docs/architecture.md:1344`).
+LLM abstraction exists, but tool calls and tool results are not first-class provider-neutral objects.
 
 ### Acceptance Criteria
-- [ ] `GenerationRequest` gains `tools: list[ToolSpec] | None` and `tool_choice: Literal["auto", "none"] | ToolChoice | None`.
-- [ ] `GenerationResult` gains `tool_calls: list[ToolCallRequest]` (empty when the LLM returned plain text).
-- [ ] `ChatMessage` (and `ChatMessageInput`) accept a new `TOOL` role with structured `tool_call_id` and JSON-serializable `content`.
-- [ ] `OpenAILlmClient.generate` passes `tools` and `tool_choice` to `chat.completions.create`; parses `tool_calls` from response messages.
-- [ ] `AnthropicLlmClient.generate` passes `tools=[...]` to `messages.create`; extracts `tool_use` content blocks into `tool_calls`.
-- [ ] `InMemoryLlmClient` supports a deterministic tool-call fixture (returns a configured tool call for tests).
-- [ ] Ollama adapter raises `LlmConfigurationError` when `tools` is supplied (until vLLM/Ollama tool-use lands as a follow-up).
-- [ ] LangGraph-based coordinator in `agent.01` can dispatch a tool call returned from the LLM and feed the result back as a `TOOL`-role message.
-- [ ] Per-package coverage stays at or above 85%; tests cover request shape, result parsing, and multi-turn tool loops.
+- [ ] Define typed request, tool call, tool result, and finish-reason models.
+- [ ] LLM protocol accepts tool definitions and returns structured tool-call responses.
+- [ ] OpenAI adapter maps provider tool-call payloads into the protocol models.
+- [ ] In-memory/fake adapter supports deterministic tool-call tests.
 
 ### Verification
-- `cd backend && pytest backend/tests/llm/ backend/tests/agent/ --cov=llm --cov=agent`.
-- `pyright backend/llm backend/agent` clean.
-- Manual: run an agent flow that performs a graph query via tool-use; observe the tool call dispatched by the coordinator and result returned to the LLM in the next turn.
+- [ ] Unit tests cover OpenAI payload mapping, fake adapter behavior, and validation errors.
+- [ ] Contract tests prove adapters return the same tool-call model shape.
 
 ### Code touch points
-- `backend/llm/models.py` (modify)
-- `backend/llm/service_models.py` (modify)
-- `backend/llm/adapters/protocols.py` (modify)
-- `backend/llm/adapters/openai_adapter.py` (modify)
-- `backend/llm/adapters/anthropic_adapter.py` (modify)
-- `backend/llm/adapters/ollama_adapter.py` (modify)
-- `backend/llm/adapters/in_memory.py` (modify)
-- `backend/agent/coordinator.py` (modify)
-- `backend/tests/llm/test_tool_calling.py` (new)
+- `backend/app/llm/**`
+- `backend/tests/llm/**`
+- `docs/wiki/modules/llm.md`
 
 ---
-
 ## Story llm.04: Add a prompt-template registry with versioning, storage, and audit
 
 **ID:** llm.04
@@ -662,3 +643,60 @@
 - `backend/tests/llm/live/test_ollama_live.py` (new)
 - `.github/workflows/llm-live-smoke.yml` (new)
 - `backend/llm/README.md` (modify)
+
+## Story llm.16: Add Anthropic and Ollama tool-calling parity
+
+**ID:** llm.16
+**Status:** planned
+**Prerequisites:** [llm.03]
+**Unblocks:** [llm.17]
+**Estimated size:** M
+
+### Narrative
+As an agent developer,
+I want Anthropic and Ollama adapters to support the same tool-calling protocol,
+so that agent workflows remain provider-neutral.
+
+### Acceptance Criteria
+- [ ] Anthropic adapter maps provider tool-use payloads into the shared protocol models.
+- [ ] Ollama adapter supports tool-call-capable models or returns explicit unsupported errors.
+- [ ] Provider capability metadata identifies whether tool calling is available.
+
+### Verification
+- [ ] Adapter tests cover Anthropic mapping and Ollama supported/unsupported behavior.
+- [ ] Contract tests prove provider outputs share the same host model shape.
+
+### Code touch points
+- `backend/app/llm/**`
+- `backend/tests/llm/**`
+
+---
+
+## Story llm.17: Integrate tool calling into agent multi-turn loop
+
+**ID:** llm.17
+**Status:** planned
+**Prerequisites:** [llm.16]
+**Unblocks:** [rag.06]
+**Estimated size:** M
+
+### Narrative
+As an agent developer,
+I want the agent loop to execute model-requested tools and continue the conversation,
+so that tool calling can support real workflows instead of one-off responses.
+
+### Acceptance Criteria
+- [ ] Agent loop detects tool calls, invokes authorized host tools, and sends tool results back to the model.
+- [ ] Loop enforces max-iteration, timeout, and permission guardrails.
+- [ ] Tool execution errors are returned as structured tool results without crashing the request.
+
+### Verification
+- [ ] Agent tests cover successful tool use, denied tool use, tool error, and max-iteration stop.
+- [ ] Integration test exercises a multi-turn tool call with the fake adapter.
+
+### Code touch points
+- `backend/app/agents/**`
+- `backend/app/llm/**`
+- `backend/tests/**`
+
+---

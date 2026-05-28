@@ -10,7 +10,7 @@
 **ID:** config.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [_multitenancy.02, _plugins.02, analytics.08, analytics.09, analytics.14, analytics.23, llm.04, rag.03, records.08]
+**Unblocks:** [_multitenancy.02, analytics.08, analytics.09, analytics.14, analytics.23, llm.04, rag.03, records.08]
 **Estimated size:** L
 
 **As a** platform engineer,
@@ -56,7 +56,7 @@
 **ID:** config.02
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [_plugins.11, _security.04, llm.13, rag.16]
+**Unblocks:** [_plugins.11, _security.04, config.08, llm.13, rag.16]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -96,7 +96,7 @@
 **ID:** config.03
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [config.04]
+**Unblocks:** [config.04, config.08]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -139,7 +139,7 @@
 **ID:** config.04
 **Status:** planned
 **Prerequisites:** [config.03]
-**Unblocks:** [agent.05, agent.10, ingestion.08, ingestion.09, ingestion.13, ingestion.15]
+**Unblocks:** [agent.05, agent.10, config.08, ingestion.08, ingestion.09, ingestion.13, ingestion.15]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -180,7 +180,7 @@
 **ID:** config.05
 **Status:** planned
 **Prerequisites:** [config.07, events.04]
-**Unblocks:** [_plugins.11, analytics.29, ingestion.21, monitoring.03]
+**Unblocks:** [_plugins.11, analytics.29, config.08, ingestion.21, monitoring.03]
 **Estimated size:** L
 
 **As a** platform admin,
@@ -224,7 +224,7 @@
 **ID:** config.06
 **Status:** planned
 **Prerequisites:** [database.02]
-**Unblocks:** [config.07, config.09, config.10, config.11, config.13, monitoring.13]
+**Unblocks:** [config.07, config.09, config.10, config.11, config.13]
 **Estimated size:** L
 
 **As a** platform engineer,
@@ -269,7 +269,7 @@
 **ID:** config.07
 **Status:** planned
 **Prerequisites:** [config.06, _security.11]
-**Unblocks:** [api.25, config.05, config.08, config.09, config.13, monitoring.05]
+**Unblocks:** [api.25, config.05, config.09, config.13, monitoring.05]
 **Estimated size:** M
 
 **As a** platform admin,
@@ -305,55 +305,39 @@
 
 ---
 
-## Story config.08: Configuration UI wizard (schema-driven editor + draft/save/publish)
+## Story config.08: Define config UI wizard schemas and draft model
 
 **ID:** config.08
 **Status:** planned
-**Prerequisites:** [config.07]
-**Unblocks:** [frontend.03, monitoring.07]
-**Estimated size:** XL
+**Prerequisites:** [config.02, config.03, config.04, config.05]
+**Unblocks:** [config.14]
+**Estimated size:** L
 
-**As a** platform admin,
-**I need** a browser-based wizard that lets me edit domain config (entities, relationships, capabilities, alert thresholds, display fields) with schema-driven validation, preview, and a save flow that hits the write API,
-**so that** I do not have to hand-edit YAML to retarget chiliAI for a new domain.
-
-> **Size note:** XL — must be split before merge. Two-story split below is a first cut; refine during planning.
->
-> - `config.08a` — Read-mostly editable subset (capabilities toggles, alert thresholds, display fields) on top of `frontend.03`; round-trip via `PUT /config/domain` from config.07. Sized L.
-> - `config.08b` — Full entity/relationship visual editor + records-feed builder + diff/preview. Sized L–XL; may itself split.
+### Narrative
+As an operator,
+I want the configuration wizard to have typed schemas and a draft model,
+so that UI work can safely validate planned configuration changes before saving.
 
 ### Current State
-- `chili_app/src/pages/ConfigurationPage.tsx:1-94` is a static read-only card view (entity count, capability flags, navigation count, schema-section count); no editor, no save flow.
-- `useDomainConfigSchema` is consumed only to count sections at `ConfigurationPage.tsx:87`.
-- Standalone `YamlEditor` (`chili_app/src/components/config/YamlEditor.tsx`) is unused; `@codemirror/lang-yaml` and `@uiw/react-codemirror` already ship in `chili_app/package.json:21-23`.
-- `chili_app/README.md:64` documents the save gap explicitly.
-- Architecture §14.2 lists "Configuration UI wizard" at Medium priority.
-- Open question (Wave 1) on v1 scope: full schema vs. read-mostly editable subset — must be locked, drives the 08a/08b split.
+Configuration endpoints and files exist, but wizard-specific schema slices and draft lifecycle are not defined.
 
-### Acceptance Criteria (umbrella — refined per split story)
-- [ ] Open question on v1 scope resolved; split into `config.08a` + `config.08b` (or single story if scope shrinks) before any code lands.
-- [ ] Schema-driven form components in `chili_app/src/components/config/` consume `useDomainConfigSchema()` and render typed inputs per JSON-schema type.
-- [ ] Validation errors from `PUT /config/domain?validate_only=true` (config.07) surfaced inline next to the offending field.
-- [ ] Draft state persisted to local storage; explicit "Discard draft" / "Save as new version" / "Publish" actions.
-- [ ] Diff preview shows YAML-style diff between active and draft before publish.
-- [ ] Playwright e2e test in `chili_app/e2e/configuration-wizard.spec.ts` covers a capability toggle round-trip and a validation-error flow.
-- [ ] Vitest unit coverage on the new form primitives ≥ 85% per CLAUDE.md.
+### Acceptance Criteria
+- [ ] Wizard v1 scope is documented for environment, storage, graph, LLM, auth, ingestion, and monitoring sections.
+- [ ] Backend exposes typed schema metadata for each wizard section.
+- [ ] Draft model captures edited values separately from active configuration.
+- [ ] Draft validation reports field-level errors without applying changes.
 
 ### Verification
-- `npm run test:run && npm run test:e2e -- configuration-wizard` green.
-- Manual: log in as admin, toggle a capability in the wizard, save, confirm the change is reflected on `GET /config/features` and downstream UI.
-- ESLint clean; TypeScript strict clean.
+- [ ] Unit tests cover schema metadata and draft validation for representative sections.
+- [ ] Invalid drafts return structured errors suitable for frontend rendering.
 
 ### Code touch points
-- `chili_app/src/pages/ConfigurationPage.tsx` (rewrite per split)
-- `chili_app/src/components/config/*.tsx` (new — schema-driven form primitives, diff viewer)
-- `chili_app/src/components/config/YamlEditor.tsx` (adopt or delete)
-- `chili_app/src/api/config.ts` (modify — add `updateDomainConfig`, `validateDomainConfig`)
-- `chili_app/src/api/contracts.ts` (modify)
-- `chili_app/e2e/configuration-wizard.spec.ts` (new)
+- `backend/app/config/**`
+- `backend/app/api/**`
+- `backend/tests/**`
+- `docs/wiki/modules/config.md`
 
 ---
-
 ## Story config.09: Config change audit log and version history
 
 **ID:** config.09
@@ -547,3 +531,62 @@
 - `backend/tests/config/test_domain_pack.py` (new)
 - `docs/architecture/decisions/<NNNN>-domain-pack-format.md` (new)
 - `backend/README.md` (modify)
+
+## Story config.14: Save and apply validated configuration drafts
+
+**ID:** config.14
+**Status:** planned
+**Prerequisites:** [config.08]
+**Unblocks:** [config.15, frontend.25]
+**Estimated size:** L
+
+### Narrative
+As an operator,
+I want validated configuration drafts to be saved and applied through backend APIs,
+so that configuration changes have a controlled lifecycle.
+
+### Acceptance Criteria
+- [ ] Backend saves draft configuration changes with author, timestamp, and validation status.
+- [ ] Apply endpoint writes validated config through the existing configuration persistence path.
+- [ ] API returns a structured diff between active configuration and draft values.
+- [ ] Invalid drafts cannot be applied.
+
+### Verification
+- [ ] API tests cover draft save, diff, invalid apply rejection, and successful apply.
+- [ ] Config persistence tests confirm applied values are reloadable.
+
+### Code touch points
+- `backend/app/config/**`
+- `backend/app/api/**`
+- `backend/tests/**`
+
+---
+
+## Story config.15: Add config wizard admin audit and E2E coverage
+
+**ID:** config.15
+**Status:** planned
+**Prerequisites:** [config.14]
+**Unblocks:** [frontend.03, frontend.26, monitoring.07]
+**Estimated size:** M
+
+### Narrative
+As an administrator,
+I want configuration wizard changes to be audited and covered end to end,
+so that operational changes can be reviewed and trusted.
+
+### Acceptance Criteria
+- [ ] Applying a draft emits an audit/event record with changed sections and actor identity.
+- [ ] Admin authorization is enforced for save and apply operations.
+- [ ] E2E coverage exercises validation, save, diff, and apply flows.
+
+### Verification
+- [ ] Authorization tests reject non-admin config mutation.
+- [ ] Browser/API E2E test proves a valid draft can be applied and reloaded.
+
+### Code touch points
+- `backend/app/config/**`
+- `backend/app/events/**`
+- `tests/e2e/**`
+
+---

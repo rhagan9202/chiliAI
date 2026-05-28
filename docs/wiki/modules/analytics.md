@@ -1,6 +1,6 @@
 # Module: analytics
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-28
 **Source:** `backend/analytics/`
 
 ## Purpose
@@ -204,7 +204,7 @@ class RiskAssessmentRecord(BaseModel):
     assessed_at: datetime = Field(default_factory=utc_now)
 ```
 
-`RiskSignal` and `RiskFactor` are the core input/output shapes for `RiskScoringStrategyProtocol.score()`. `RiskProfile` wraps signals per-entity. `RankedRiskEntry` is returned by `RiskSignalSourceProtocol` (inner adapter protocol) and used by the `@lru_cache` stub in `api/routers/analytics.py`.
+`RiskSignal` and `RiskFactor` are the core input/output shapes for `RiskScoringStrategyProtocol.score()`. `RiskProfile` wraps signals per-entity. `RankedRiskEntry` is returned by `RiskSignalSourceProtocol` (inner adapter protocol) and consumed by the risk service returned from `api/dependencies.py::get_risk_service`.
 
 See also: `events/types.py::RiskFactorReference` — the event-wire shape mirrors `RiskFactor` fields exactly (`factor_name`, `raw_value`, `weight`, `contribution`, `rationale`).
 
@@ -215,9 +215,10 @@ RiskTrend = Literal["increasing", "stable", "decreasing"]
 
 class RiskAssessmentRequest(BaseModel):
     knowledge_base_id: str; entity_id: str
-    medium_risk_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
-    high_risk_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
-    # Validation: high must exceed medium
+    medium_risk_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    high_risk_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    # Validation: when both are supplied, high must exceed medium.
+    # When omitted, service constructor defaults from DomainConfig.analytics are used.
 
 class RiskFactorScore(BaseModel):
     factor_name: str; raw_value: float; weight: float
@@ -368,19 +369,19 @@ See [contracts/api-routes.md](../contracts/api-routes.md) for full route table.
 
 ## Current Wiring Status
 
-**Source:** `backend/api/routers/analytics.py` — file-level `@lru_cache` stub factories
+**Source:** `backend/api/dependencies.py` — analytics dependency factories
 
-Last verified: 2026-05-20
+Last verified: 2026-05-28
 
-The analytics API router is **not wired to production analytics services**. All three capability services (risk, timeseries, gnn) are instantiated with `@lru_cache(maxsize=1)` in-memory stub data seeded at startup:
+The analytics API router now depends on service factories from `api/dependencies.py`:
 
-- `_stub_risk_signal_source()` — hardcoded `RankedRiskEntry` rows for `kb-demo` entities `provider-1`, `provider-2`, `claim-9`
-- `_stub_timeseries_history_source()` — three hardcoded `claim_volume` observations for `kb-demo`
-- `_stub_graph_snapshot_source()` — empty `InMemoryGraphSnapshotSource`
+- `get_risk_service()` builds `RiskService` from `DomainConfig.analytics` thresholds and `get_risk_signal_source()`.
+- `get_timeseries_service()` builds `TimeseriesService` from `get_timeseries_history_source()`.
+- `get_gnn_service()` builds `GnnService` and honors the active `capabilities.gnn` flag.
 
-The real analytics services (`RiskService`, `TimeseriesService`, `GnnService`) exist in the analytics sub-modules and are exercised by worker pipeline handlers. The gap is that `api/dependencies.py` (`get_analytics_overview_payload`, `get_risk_score_payload`, `get_timeseries_payload`) provides static data to the three entity-scoped routes (`/overview`, `/risk-scores/{entity_id}`, `/timeseries/{entity_id}`). Response shapes for these routes are documented in [contracts/api-routes.md — Static payload shapes](../contracts/api-routes.md#static-payload-shapes-apicontractspy).
+The default sources are still empty in-memory implementations (`InMemoryRiskSignalSource`, `InMemoryTimeSeriesHistorySource`, `InMemoryGraphSnapshotSource`) unless tests or future persistence wiring override them. The remaining static read-model gap is limited to the legacy entity-scoped routes backed by `ApiState`: `/analytics/overview`, `/analytics/risk-scores/{entity_id}`, and `/analytics/timeseries/{entity_id}`. Response shapes for these routes are documented in [contracts/api-routes.md — Static payload shapes](../contracts/api-routes.md#static-payload-shapes-apicontractspy).
 
-**Implication for callers:** Analytics route responses will reflect stub seed data until wired to live stores. The worker-side analytics pipeline is functional; the router-facing query path is the gap.
+**Implication for callers:** List-style analytics routes (`/risk-scores`, `/timeseries`, `/gnn/clusters`) go through real services but return empty data until backed by live stores. The entity-scoped dashboard/read-model routes still reflect seeded `ApiState` data until migrated to the same persistence-backed query path.
 
 ---
 

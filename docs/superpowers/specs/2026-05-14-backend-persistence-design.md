@@ -46,7 +46,7 @@ This design adds a persistence backbone that closes all three gaps.
 ## 3. Non-Goals
 
 - Replacing the API's existing KB / alert / workflow projections
-  (`_kb_store`, `_alert_store`, `_workflow_projection`). `alert_history` here
+  (`knowledgebases/` repository adapters plus `_kb_projection`, `_alert_store`, `_workflow_projection`). `alert_history` here
   is an analytics-facing log, not the frontend `/alerts` contract.
 - Streaming ingestion transports (Kafka, etc.). `records/` is structured so a
   stream source can be added later, but only file-upload and api-push sources

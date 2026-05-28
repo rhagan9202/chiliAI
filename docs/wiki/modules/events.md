@@ -1,6 +1,6 @@
 # Module: events
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-28
 **Source:** `backend/events/`
 
 ## Purpose
@@ -52,7 +52,7 @@ def decode_event(payload: Mapping[str, str] | Mapping[bytes, bytes]) -> AnyEvent
     Raises ValueError if event_type missing, unknown, or body event_type mismatch."""
 ```
 
-Registered event types: `agent.workflow.started`, `alert.created`, `alerts.created`, `analysis.failed`, `pipeline.progress`, `kb.create`, `kb.delete`, `documents.uploaded`, `documents.parsed`, `documents.chunked`, `entities.extracted`, `entities.validated`, `graph.updated`, `embeddings.complete`, `vectors.indexed`, `kb.ready`, `llm.completed`, `embeddings.generated`, `rag.completed`, `timeseries.analyzed`, `gnn.analyzed`, `risk.scored`, `explainability.generated`, `documents.failed`, `claims.received`, `claims.ingested`, `records.ingested`.
+Registered event types: `agent.workflow.started`, `alert.created`, `alerts.created`, `analysis.failed`, `pipeline.progress`, `kb.create`, `kb.delete`, `documents.uploaded`, `documents.parsed`, `documents.chunked`, `entities.extracted`, `entities.validated`, `graph.updated`, `embeddings.complete`, `vectors.indexed`, `vectors.deleted`, `kb.ready`, `llm.completed`, `embeddings.generated`, `rag.completed`, `timeseries.analyzed`, `gnn.analyzed`, `risk.scored`, `explainability.generated`, `documents.failed`, `claims.received`, `claims.ingested`, `records.ingested`.
 
 ### `events/runtime.py`
 

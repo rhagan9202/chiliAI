@@ -1,6 +1,6 @@
 # RAG Query Flow: Question → Answer
 
-**Verified against codebase:** 2026-05-20 (Pass 3 update)
+**Verified against codebase:** 2026-05-28
 **Sources:** `rag/service.py`, `rag/protocols.py`, `api/routers/rag.py`, `rag/service_models.py`, `events/types.py`
 
 ---
@@ -16,6 +16,8 @@ The RAG pipeline converts a user question into a grounded answer by embedding th
 ```
 1. API: POST /chat/conversations/{conversation_id}/messages
    ├── Payload: ChatMessageCreateRequest {content, include_graph_context, filters}
+   ├── Validates content with ValidationConfig.max_rag_question_length
+   ├── Resolves knowledge base scope with default_reference_kb_id when configured
    ├── Optional: ?stream=true → returns SSE StreamingResponse
 
 2. RagService.answer(RagQueryRequest) [or stream_answer()]
@@ -27,7 +29,7 @@ The RAG pipeline converts a user question into a grounded answer by embedding th
    │
    ├── _retrieve_context(state)
    │     └── Calls ContextRetrieverProtocol (backed by VectorServiceProtocol.search)
-   │           VectorSearchRequest {knowledge_base_id, query_vector, top_k=RagConfig.top_k}
+   │           VectorSearchRequest {knowledge_base_ids, query_vector, top_k=RagConfig.top_k}
    │           Returns list[RetrievedContextItem {record_id, content, score, metadata}]
    │           Stored in state.context_items
    │
@@ -45,7 +47,7 @@ The RAG pipeline converts a user question into a grounded answer by embedding th
    └── _answer_generator.generate(generation_request) [or stream]
          └── Calls LlmServiceProtocol.generate(GenerateRequest)
                Returns CompletionResponse {content, model_name, provider}
-         Returns RagQueryResponse {request_id, knowledge_base_id, answer: str, provider, model_name, citations: list[RagCitation], graph_summary: str | None}
+         Returns RagQueryResponse {request_id, knowledge_base_ids, answer: str, provider, model_name, citations: list[RagCitation], graph_summary: str | None}
 
 Note: The chat router wraps the result in RagAnswer {content: str, sources: list[str]} before
 returning ChatConversationResponse. "content" maps to RagQueryResponse.answer, "sources" maps to citation record_ids.
@@ -62,11 +64,11 @@ returning ChatConversationResponse. "content" maps to RagQueryResponse.answer, "
 
 ```
 POST /chat/conversations/{id}/messages?stream=true
-  └── _stream_sse(rag_service, knowledge_base_id, question)
+  └── _stream_sse(rag_service, knowledge_base_ids, question)
         └── for chunk in rag_service.stream_answer(RagQueryRequest):
               yield SSE: {"token": chunk.chunk_text, "done": false}
               ...
-              yield SSE: {"token": "", "done": true, "sources": [record_id, ...]}
+              yield SSE: {"token": "", "done": true, "sources": [record_id, ...], "citations": [...]}
 ```
 
 SSE format: `data: {json}\n\n`

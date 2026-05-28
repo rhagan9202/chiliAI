@@ -135,13 +135,13 @@ Implemented by: `CsvFileSource`, `JsonlFileSource`, `ApiPushSource`.
 
 ### `ObjectStore` (`storage/protocols.py`)
 
-- `put(key: str, data: bytes) -> None`
-- `get(key: str) -> bytes`
+- `put_bytes(key: str, content: bytes, *, media_type: str | None = None, metadata: dict[str, object] | None = None) -> StoredObjectWriteResult`
+- `get_bytes(key: str) -> StoredObject`
 - `delete(key: str) -> None`
 - `exists(key: str) -> bool`
 - `list_keys(prefix: str) -> list[str]`
 
-Implemented by: `InMemoryObjectStore`, `LocalFsAdapter`, `S3Adapter`.
+Implemented by: `InMemoryObjectStore`, `LocalFsObjectStore`, `S3ObjectStore`.
 
 ### `EventBus` (`events/protocols.py`)
 

@@ -10,7 +10,7 @@
 **ID:** graph.01
 **Status:** planned
 **Prerequisites:** [shared.01, _observability.02]
-**Unblocks:** [_multitenancy.07, api.01, graph.04, graph.11, rag.01]
+**Unblocks:** [_multitenancy.07, graph.04, rag.01]
 **Estimated size:** M
 
 **As a** platform engineer responsible for graph correctness,
@@ -134,7 +134,7 @@
 **ID:** graph.04
 **Status:** planned
 **Prerequisites:** [graph.01]
-**Unblocks:** [graph.08, graph.11, monitoring.03]
+**Unblocks:** [analytics.01, graph.08, graph.11, monitoring.03]
 **Estimated size:** L
 
 **As a** worker maintainer,
@@ -174,7 +174,7 @@
 **ID:** graph.05
 **Status:** planned
 **Prerequisites:** [shared.01]
-**Unblocks:** [agent.09, analytics.10, analytics.16, frontend.01, frontend.15, graph.11, graph.12, monitoring.06]
+**Unblocks:** [agent.09, analytics.10, analytics.16, frontend.01, frontend.15, graph.12, monitoring.06]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-21-dual-graph-contract-design.md, docs/superpowers/specs/2026-05-21-neo4j-graph-indexes-design.md
 
@@ -217,7 +217,7 @@
 **ID:** graph.06
 **Status:** planned
 **Prerequisites:** [shared.01]
-**Unblocks:** [analytics.03, analytics.04, graph.11, graph.12]
+**Unblocks:** [analytics.03, analytics.04, api.01, graph.11, graph.12, graph.15]
 **Estimated size:** L
 
 **As a** Investigation Workbench user paging through a large KB,
@@ -257,7 +257,7 @@
 **ID:** graph.07
 **Status:** planned
 **Prerequisites:** [_observability.02]
-**Unblocks:** [graph.11, graph.12, ingestion.16, monitoring.02, monitoring.14]
+**Unblocks:** [graph.12, ingestion.16, monitoring.02, monitoring.14]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-21-neo4j-graph-indexes-design.md
 
@@ -298,7 +298,7 @@
 **ID:** graph.08
 **Status:** planned
 **Prerequisites:** [graph.04]
-**Unblocks:** [vectorstore.08]
+**Unblocks:** [api.01, vectorstore.08]
 **Estimated size:** M
 
 **As a** records-pipeline operator running NPPES / DE-SynPUF loads,
@@ -378,7 +378,7 @@
 **ID:** graph.10
 **Status:** planned
 **Prerequisites:** [_observability.02]
-**Unblocks:** [api.09, graph.09]
+**Unblocks:** [analytics.01, api.09, graph.09, graph.11, graph.15]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-21-neo4j-graph-indexes-design.md
 
@@ -413,58 +413,43 @@
 
 ---
 
-## Story graph.11: Memgraph and Neptune adapters with shared contract suite
+## Story graph.11: Establish graph adapter contract suite
 
 **ID:** graph.11
 **Status:** planned
-**Prerequisites:** [graph.01, graph.04, graph.05, graph.06, graph.07]
-**Unblocks:** [api.19, knowledgebases.11]
-**Estimated size:** XL
+**Prerequisites:** [graph.04, graph.06, graph.10]
+**Unblocks:** [graph.17]
+**Estimated size:** L
 
-**As a** deployment engineer evaluating cloud-managed graph backends,
-**I need** `MemgraphGraphRepository` and `NeptuneGraphRepository` to implement the same `GraphRepository` contract and pass a shared test suite,
-**so that** the `GraphDbConfig.backend` literal can safely include them without behavior regressions.
-
-> **Split note (XL):** This story will be split into `graph.11a` (Memgraph adapter + shared contract test suite) and `graph.11b` (Neptune adapter + Gremlin-translation layer) before any branch opens. The split is deferred until the contract suite shape is ratified by `graph.05` / `graph.06` / `graph.07`.
+### Narrative
+As a platform engineer,
+I want a reusable graph adapter contract suite,
+so that additional graph backends can prove compatibility before being enabled.
 
 ### Current State
-- `GraphDbConfig.backend: Literal["neo4j", "in_memory"] = "in_memory"` (`backend/config/schema.py:100`) rejects both.
-- `get_graph_repository` (`backend/api/dependencies.py:466-484`) only resolves the two existing backends.
-- Architecture §3 container catalog (`docs/architecture.md:118-119`) and §5.2 module table (`docs/architecture.md:136`) list Memgraph and Neptune as roadmap backends.
-- CLAUDE.md "Hard Rules" §2 forbids adding adapters to the `Literal` without protocol + factory wiring + tests.
-- No shared contract test suite exists today — each adapter has its own test file.
+Current graph adapters are tested directly, but there is no shared backend-agnostic suite for Memgraph or Neptune work.
 
 ### Acceptance Criteria
-- [ ] `backend/tests/graph/test_contract.py` (or `contract_suite.py` mixin) parametrizes every repository contract — entity upsert, relationship upsert, referential integrity (`graph.01`), versioned upsert (`graph.02`), change detection (`graph.03`), task-scoped transaction (`graph.04`), `get_subgraph` (`graph.05`), pagination (`graph.06`), scored search (`graph.07`), metrics, delete/reindex, snapshot round-trip (`graph.14` if landed) — against any `GraphRepository` instance.
-- [ ] `InMemoryGraphRepository` and `Neo4jGraphRepository` pass the suite (regression baseline).
-- [ ] `MemgraphGraphRepository` lives at `backend/graph/adapters/memgraph_adapter.py`, uses Memgraph's Bolt-compatible driver (the `mgclient` or `pymgclient` package as an `[memgraph]` extra in `pyproject.toml`), and passes the suite under `pytest -m integration` when `MEMGRAPH_URI` env var is set.
-- [ ] `NeptuneGraphRepository` lives at `backend/graph/adapters/neptune_adapter.py`, uses Gremlin via `gremlinpython` as a `[neptune]` extra, translates the repository contract to Gremlin traversals, and passes the suite under `pytest -m integration` when `NEPTUNE_ENDPOINT` env var is set.
-- [ ] `GraphDbConfig.backend` widens to `Literal["neo4j", "in_memory", "memgraph", "neptune"]`; `get_graph_repository` factory resolves both new backends.
-- [ ] `docs/architecture.md` §3 / §5.2 / §14.2 rows updated to reflect Memgraph and Neptune as selectable backends.
-- [ ] Pyright-strict clean on the new modules.
+- [ ] Define contract tests for node/edge upsert, traversal, evidence lookup, tenant context, and error behavior.
+- [ ] Existing in-memory and Neo4j adapters pass the contract suite.
+- [ ] Contract fixtures isolate backend setup and teardown.
+- [ ] Documentation explains how new graph backends run the suite.
 
 ### Verification
-- `cd backend && pytest tests/graph/test_contract.py --cov=graph` green for in-memory + neo4j (default profile).
-- `MEMGRAPH_URI=bolt://localhost:7687 pytest -m integration tests/graph/test_contract.py -k memgraph` green when Memgraph container is up.
-- `NEPTUNE_ENDPOINT=... pytest -m integration tests/graph/test_contract.py -k neptune` green when a Neptune endpoint is provisioned.
+- [ ] Run the graph adapter contract suite against existing adapters.
+- [ ] Confirm failures identify the backend and contract case.
 
 ### Code touch points
-- `backend/graph/adapters/memgraph_adapter.py` (new)
-- `backend/graph/adapters/neptune_adapter.py` (new)
-- `backend/graph/adapters/_contract.py` or `backend/tests/graph/contract_suite.py` (new)
-- `backend/config/schema.py` (modify)
-- `backend/api/dependencies.py` (modify)
-- `backend/pyproject.toml` (modify; add `[memgraph]` and `[neptune]` extras)
-- `backend/tests/graph/test_contract.py` (new)
-- `docs/architecture.md` (modify)
+- `backend/app/graph/**`
+- `backend/tests/graph/**`
+- `docs/wiki/modules/graph.md`
 
 ---
-
 ## Story graph.12: Build out the `/graph` API surface for CRUD and query operations
 
 **ID:** graph.12
 **Status:** planned
-**Prerequisites:** [graph.05, graph.06, graph.07, api.01, _security.02]
+**Prerequisites:** [graph.05, graph.06, graph.07, api.29, _security.02]
 **Unblocks:** []
 **Estimated size:** L
 
@@ -591,57 +576,43 @@
 
 ---
 
-## Story graph.15: Tenant-scoped graph access (per-tenant Neo4j DB or label scoping)
+## Story graph.15: Define tenant-scoped graph isolation contract
 
 **ID:** graph.15
 **Status:** planned
-**Prerequisites:** [_multitenancy.01, _multitenancy.02, _security.04]
-**Unblocks:** []
-**Estimated size:** XL
+**Prerequisites:** [graph.06, graph.10, knowledgebases.06]
+**Unblocks:** [graph.19]
+**Estimated size:** L
 
-**As a** multi-tenant deployment operator,
-**I need** every graph read/write scoped to the caller's tenant with default-deny on cross-tenant access,
-**so that** Tenant A cannot see or mutate Tenant B's entities even if they share a KB id.
-
-> **Split note (XL):** Will be split into `graph.15a` (tenant-id propagation to `GraphRepository` API + label/property scoping on in-memory adapter, `tenant_id` joined into the composite index on Neo4j) and `graph.15b` (per-tenant Neo4j database routing and operational tooling) before any branch opens. The split point is the isolation-strategy decision recorded in `_multitenancy.02`.
+### Narrative
+As a tenant administrator,
+I want graph operations to carry explicit tenant scope,
+so that knowledge graph data cannot leak across tenants.
 
 ### Current State
-- `Neo4jGraphRepository.__init__(database: str | None = None)` (`backend/graph/adapters/neo4j_adapter.py:117-118`) supports only a single database; no per-tenant routing.
-- No `tenant_id` field on `GraphRepository` methods, no tenant predicate in any Cypher / in-memory filter.
-- The composite index `(:Entity {knowledge_base_id, entity_id})` (`neo4j_adapter.py:141-143`) has no `tenant_id` column.
-- Architecture §14.2 lists "Multi-tenancy: Tenant-isolated data, config, and KB namespaces" as Medium priority after auth (`docs/architecture.md:1356`).
+Knowledge bases have identity boundaries, but graph adapter APIs do not consistently model tenant isolation.
 
 ### Acceptance Criteria
-- [ ] Isolation strategy decision recorded in `_multitenancy.02` and adopted here: one of (a) per-tenant Neo4j database, (b) `:Tenant_<id>` label prefix on every node/relationship, (c) `tenant_id` first-class property added to composite index `(tenant_id, knowledge_base_id, entity_id)`.
-- [ ] `GraphRepository` protocol adds `tenant_id: str` to every method (or carries it via a context object) — single source of truth.
-- [ ] Both `InMemoryGraphRepository` and `Neo4jGraphRepository` enforce the chosen scoping; cross-tenant access raises `GraphTenantAccessError`.
-- [ ] `GraphDbConfig` adds `tenancy_strategy: Literal["single_database", "per_tenant_database", "label_prefix", "property_filter"]` (driven by the `_multitenancy.02` decision).
-- [ ] Migration plan documented: existing single-tenant deployments map to a default `tenant_id = "default"` and a one-shot migration applies labels/properties.
-- [ ] The dual-graph reference KB resolver (`backend/shared/kb_scope.py`) is tenant-aware — a tenant cannot resolve to another tenant's reference KB.
-- [ ] Pyright-strict clean; tests cover (a) cross-tenant read denied on both adapters, (b) cross-tenant write denied, (c) per-tenant KB lifecycle isolated.
+- [ ] Tenant isolation decision is documented for labels/properties, databases, or namespaces.
+- [ ] Graph protocol accepts tenant context for reads, writes, traversal, and deletes.
+- [ ] Service-layer calls pass tenant context from knowledge base or request scope.
+- [ ] Contract tests define expected cross-tenant isolation behavior.
 
 ### Verification
-- `cd backend && pytest tests/graph -k tenant --cov=graph` green; coverage ≥ 85%.
-- `pytest -m integration tests/graph/test_neo4j_adapter.py -k tenant_isolation` against a Neo4j instance with two configured databases / two tenant labels.
+- [ ] Unit tests prove tenant context is required for tenant-sensitive operations.
+- [ ] Contract tests fail if cross-tenant reads return another tenant's data.
 
 ### Code touch points
-- `backend/graph/adapters/protocols.py` (modify)
-- `backend/graph/adapters/in_memory.py` (modify)
-- `backend/graph/adapters/neo4j_adapter.py` (modify)
-- `backend/graph/service.py` (modify)
-- `backend/graph/exceptions.py` (modify)
-- `backend/config/schema.py` (modify)
-- `backend/shared/kb_scope.py` (modify)
-- `backend/api/dependencies.py` (modify)
-- `backend/tests/graph/test_tenancy.py` (new)
+- `backend/app/graph/**`
+- `backend/app/knowledgebases/**`
+- `backend/tests/graph/**`
 
 ---
-
 ## Story graph.16: Backend-native graph metrics (degree distribution, components, PageRank)
 
 **ID:** graph.16
 **Status:** planned
-**Prerequisites:** [analytics.01, _observability.02]
+**Prerequisites:** [analytics.32, _observability.02]
 **Unblocks:** [analytics.18]
 **Estimated size:** L
 
@@ -677,3 +648,118 @@
 - `backend/graph/adapters/neo4j_adapter.py` (modify)
 - `backend/config/schema.py` (modify)
 - `backend/tests/graph/test_metrics.py` (new or modify)
+
+## Story graph.17: Add Memgraph graph adapter
+
+**ID:** graph.17
+**Status:** planned
+**Prerequisites:** [graph.11]
+**Unblocks:** [graph.18]
+**Estimated size:** L
+
+### Narrative
+As an operator,
+I want Memgraph as a supported graph backend option,
+so that deployments can choose a Cypher-compatible backend beyond Neo4j.
+
+### Acceptance Criteria
+- [ ] Memgraph adapter implements the graph protocol and passes the shared contract suite.
+- [ ] Configuration selects Memgraph with connection settings and health checks.
+- [ ] Documentation captures supported Memgraph versions and known differences from Neo4j.
+
+### Verification
+- [ ] Run graph contract tests against a Memgraph test container or documented substitute.
+- [ ] Config tests prove Memgraph can be selected without changing callers.
+
+### Code touch points
+- `backend/app/graph/**`
+- `backend/app/config/**`
+- `backend/tests/graph/**`
+
+---
+
+## Story graph.18: Add Neptune graph adapter
+
+**ID:** graph.18
+**Status:** planned
+**Prerequisites:** [graph.17]
+**Unblocks:** [api.19, knowledgebases.11]
+**Estimated size:** L
+
+### Narrative
+As an operator,
+I want Amazon Neptune as a supported graph backend option,
+so that AWS deployments can use a managed graph service.
+
+### Acceptance Criteria
+- [ ] Neptune adapter implements the graph protocol and passes applicable contract tests.
+- [ ] Configuration selects Neptune with endpoint, auth, and traversal mode settings.
+- [ ] Documentation captures supported Neptune mode, limitations, and deployment assumptions.
+
+### Verification
+- [ ] Run adapter contract tests with a Neptune-compatible fixture or documented integration environment.
+- [ ] Config tests prove Neptune can be selected without changing callers.
+
+### Code touch points
+- `backend/app/graph/**`
+- `backend/app/config/**`
+- `backend/tests/graph/**`
+
+---
+
+## Story graph.19: Enforce tenant scope in in-memory and Neo4j graph adapters
+
+**ID:** graph.19
+**Status:** planned
+**Prerequisites:** [graph.15]
+**Unblocks:** [graph.20]
+**Estimated size:** L
+
+### Narrative
+As a tenant administrator,
+I want existing graph adapters to enforce tenant scope,
+so that current deployments honor the tenant isolation contract.
+
+### Acceptance Criteria
+- [ ] In-memory adapter stores and filters graph records by tenant context.
+- [ ] Neo4j adapter persists tenant labels/properties or database selection according to the isolation decision.
+- [ ] Cross-tenant reads, traversals, and deletes are rejected or return empty results consistently.
+
+### Verification
+- [ ] Contract tests pass for tenant isolation on in-memory and Neo4j adapters.
+- [ ] Regression tests prove one tenant cannot delete another tenant's graph records.
+
+### Code touch points
+- `backend/app/graph/**`
+- `backend/tests/graph/**`
+
+---
+
+## Story graph.20: Add per-tenant graph migration and routing support
+
+**ID:** graph.20
+**Status:** planned
+**Prerequisites:** [graph.19]
+**Unblocks:** []
+**Estimated size:** L
+
+### Narrative
+As a platform operator,
+I want migration and routing support for tenant-scoped graph storage,
+so that deployments can evolve from shared to isolated graph layouts safely.
+
+### Acceptance Criteria
+- [ ] Migration plan covers existing graph records and tenant ownership backfill.
+- [ ] Graph service routes operations to the correct tenant storage boundary.
+- [ ] Operational docs describe migration order, rollback limits, and verification queries.
+
+### Verification
+- [ ] Migration tests cover representative existing graph records.
+- [ ] Integration tests prove tenant routing survives service restarts.
+
+### Code touch points
+- `backend/app/graph/**`
+- `backend/app/db/**`
+- `docs/operations/**`
+
+---

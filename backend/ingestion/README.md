@@ -29,7 +29,7 @@ Every `Entity` and `Relationship` emitted by the extractor carries provenance fi
 
 ## Parser Registry
 
-Parsers for PDF, DOCX, TXT, JSON, CSV, and XLSX are registered in `parsers/registry.py`. `DocumentFormat.HTML` exists in the enum but no `html.py` parser is registered yet.
+Parsers for PDF, DOCX, HTML, TXT, JSON, CSV, and XLSX are registered in `parsers/registry.py`. The HTML parser currently normalizes visible text; richer heading/link/table fidelity is tracked separately in `docs/backlog/ingestion.md` as `ingestion.02`.
 
 ## Commands
 

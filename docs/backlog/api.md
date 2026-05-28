@@ -5,58 +5,43 @@
 
 ---
 
-## Story api.01: Replace seeded ApiState with service-backed read paths
+## Story api.01: Replace seeded API graph and evidence reads
 
 **ID:** api.01
 **Status:** planned
-**Prerequisites:** [graph.01, analytics.01, monitoring.01, database.01]
-**Unblocks:** [_multitenancy.03, _plugins.02, analytics.28, api.02, api.03, api.04, graph.12, rag.01, vectorstore.09]
-**Estimated size:** XL
+**Prerequisites:** [graph.06, graph.08, ingestion.05, monitoring.01]
+**Unblocks:** [api.28]
+**Estimated size:** L
 
-**As a** platform engineer,
-**I need** every read endpoint that currently consumes `ApiState` to read from the real graph/analytics/monitoring services and durable repositories,
-**so that** the API does not return Medicare-domain demo data (`provider-204`, `claim-8821`, `beneficiary-771`) hard-coded in process memory and the "no hardcoded domain types" rule (CLAUDE.md §3) is enforced at runtime.
-
-> XL — splits below into api.02, api.03, api.04 (case store, chat store, policy store). This story covers only the graph entity detail, evidence pack, alert detail, risk/timeseries/explainability/analytics-overview read paths. After this lands the `_seed_*` helpers in `backend/api/state.py` are deleted or moved to a `tools/seed_demo_state.py` script gated by `CHILI_DEMO_SEED=true`.
+### Narrative
+As an API consumer,
+I want graph and evidence endpoints to read from persisted services,
+so that responses reflect imported data rather than seeded in-memory state.
 
 ### Current State
-- `backend/api/state.py:1-1014` is a 1014-line in-memory store seeded with literal Medicare entities (`backend/api/state.py:135-139`).
-- `ApiState.__init__` wires in-memory adapters for graph, monitoring, risk, timeseries, explainability, RAG (`backend/api/state.py:128-195`).
-- Every router that takes `state: ApiState = Depends(get_api_state)` resolves through this seeded singleton (`backend/api/dependencies.py:162-309`, `backend/api/app.py:130-132`).
-- `get_graph_entity_detail_payload`, `get_evidence_pack_payload`, `get_risk_score_payload`, `get_timeseries_payload`, `get_analytics_overview_payload` all delegate to `ApiState` (`backend/api/dependencies.py:177-309`).
-- `create_app()` clones a fresh `ApiState` per app instance so tests are isolated (`backend/api/app.py:132`).
+Some API routes still depend on `ApiState` demo data even though persisted ingestion and graph services now exist.
 
 ### Acceptance Criteria
-- [ ] `backend/api/dependencies.py::get_graph_entity_detail_payload` resolves via `get_graph_service()` (already wired) instead of `ApiState`.
-- [ ] `backend/api/dependencies.py::get_evidence_pack_payload` resolves via a real evidence-pack source backed by the analytics explainability service.
-- [ ] `backend/api/dependencies.py::get_risk_score_payload`, `get_timeseries_payload`, `get_analytics_overview_payload` resolve via `get_risk_service()`, `get_timeseries_service()`, and a new analytics overview composer (no `ApiState` reference).
-- [ ] `backend/api/state.py` no longer contains `_seed_graph`, `_seed_alerts`, `_seed_evidence_packs`, `_build_risk_profiles`, `_build_timeseries_series`, `_build_explainability_contexts`, `_build_context_records` (or these are relocated to a `tools/seed_demo_state.py` script and gated by `CHILI_DEMO_SEED=true`).
-- [ ] `provider-204`, `claim-8821`, `beneficiary-771`, `provider-118` literals are removed from `backend/api`.
-- [ ] `pytest backend/tests/api/test_read_model_routers.py` passes without `ApiState` seed dependence; new tests stub the service-layer dependencies via `app.dependency_overrides`.
-- [ ] `pyright --strict` clean across `backend/api/`.
+- [ ] Replace graph endpoint reads with graph service queries backed by persisted storage.
+- [ ] Replace evidence/document endpoint reads with repository-backed data.
+- [ ] Preserve response contracts used by the frontend and tests.
+- [ ] Add not-found behavior for missing persisted records instead of falling back to seed data.
 
 ### Verification
-- `rg "provider-204|claim-8821|beneficiary-771" backend/api` returns no matches.
-- Run `make dev` and hit `GET /graph/entities/{id}`, `/evidence-packs/{id}`, `/analytics/risk-scores/{id}` against a freshly seeded graph; verify responses come from the configured graph backend (in-memory or Neo4j) and not from the deleted seed data.
-- Coverage gate: ≥ 85% on `backend/api/`.
+- [ ] API tests prove graph and evidence responses come from test repositories.
+- [ ] Seeded demo data is not required for these endpoints to pass.
 
 ### Code touch points
-- `backend/api/state.py` (modify — strip seed helpers; or delete if no callers remain after api.02/03/04)
-- `backend/api/dependencies.py` (modify — rewire payload providers)
-- `backend/api/_rag_bridges.py` (modify — promote to wired-in evidence-pack and risk-overview composer)
-- `backend/api/routers/analytics.py` (modify — drop `ApiState`-derived `analytics_overview` path; compose via services)
-- `backend/api/routers/evidence.py` (modify)
-- `backend/api/routers/graph.py` (modify)
-- `backend/tests/api/test_read_model_routers.py` (modify)
-- `tools/seed_demo_state.py` (new — optional, only if seed data is preserved as a demo aid)
+- `backend/app/api/**`
+- `backend/app/services/**`
+- `backend/tests/api/**`
 
 ---
-
 ## Story api.02: Persist cases behind a CaseRepository protocol
 
 **ID:** api.02
 **Status:** planned
-**Prerequisites:** [api.01, database.02, _security.05, _multitenancy.04]
+**Prerequisites:** [api.29, database.02, _security.05, _multitenancy.04]
 **Unblocks:** [_plugins.04]
 **Estimated size:** L
 
@@ -100,7 +85,7 @@
 
 **ID:** api.03
 **Status:** planned
-**Prerequisites:** [api.01, database.02, rag.10, _multitenancy.04]
+**Prerequisites:** [api.29, database.02, rag.10, _multitenancy.04]
 **Unblocks:** [rag.05]
 **Estimated size:** L
 
@@ -144,7 +129,7 @@
 
 **ID:** api.04
 **Status:** planned
-**Prerequisites:** [api.01, analytics.15, monitoring.07, database.02]
+**Prerequisites:** [api.29, analytics.15, monitoring.16, database.02]
 **Unblocks:** []
 **Estimated size:** L
 
@@ -186,7 +171,7 @@
 
 **ID:** api.05
 **Status:** planned
-**Prerequisites:** [events.01, events.05, monitoring.07, agent.17]
+**Prerequisites:** [events.01, events.05, monitoring.16, agent.17]
 **Unblocks:** [agent.19, api.06, frontend.18]
 **Estimated size:** L
 
@@ -384,7 +369,7 @@
 **ID:** api.10
 **Status:** planned
 **Prerequisites:** [api.09]
-**Unblocks:** [analytics.15, analytics.17, api.11, api.12, frontend.16, ingestion.22, records.04, records.10, records.13]
+**Unblocks:** [analytics.15, analytics.17, api.11, api.12, frontend.16, records.04, records.10, records.13]
 **Estimated size:** M
 
 **As a** API consumer,
@@ -688,7 +673,7 @@
 **ID:** api.18
 **Status:** planned
 **Prerequisites:** [_security.07, _infra.08, _observability.06]
-**Unblocks:** [_multitenancy.16, _security.10, api.22, frontend.03, rag.15]
+**Unblocks:** [_multitenancy.16, _security.10, api.22, rag.15]
 **Estimated size:** M
 
 **As a** platform operator,
@@ -724,7 +709,7 @@
 
 **ID:** api.19
 **Status:** planned
-**Prerequisites:** [_infra.09, _observability.07, graph.11, vectorstore.05, embeddings.05, storage.05, database.05, events.06]
+**Prerequisites:** [_infra.17, _observability.07, graph.18, vectorstore.05, embeddings.05, storage.05, database.05, events.06]
 **Unblocks:** []
 **Estimated size:** M
 
@@ -947,7 +932,7 @@
 
 **ID:** api.25
 **Status:** planned
-**Prerequisites:** [config.07, agent.19, events.10, _security.12, api.17]
+**Prerequisites:** [config.07, agent.19, events.16, _security.12, api.17]
 **Unblocks:** []
 **Estimated size:** L
 
@@ -1049,3 +1034,61 @@
 - `docs/architecture.md` (modify — point at `docs/api/`)
 - `backend/api/README.md` (modify)
 - `.github/workflows/*` (modify — see `_cicd.08`)
+
+## Story api.28: Replace seeded API analytics reads
+
+**ID:** api.28
+**Status:** planned
+**Prerequisites:** [api.01]
+**Unblocks:** [api.29]
+**Estimated size:** L
+
+### Narrative
+As an API consumer,
+I want analytics endpoints to read through the analytics service boundary,
+so that seeded analytics fixtures can be retired without coupling API persistence cleanup to later GNN adapter work.
+
+### Acceptance Criteria
+- [ ] Analytics routes call the existing analytics service/repository boundary instead of `ApiState` seed objects.
+- [ ] Responses preserve provenance and model metadata where available from the service boundary.
+- [ ] Empty-state responses are explicit when no analytics results exist.
+
+### Verification
+- [ ] API tests cover analytics responses from service fixtures.
+- [ ] Tests prove seeded `ApiState` analytics fixtures are not required.
+
+### Code touch points
+- `backend/app/api/**`
+- `backend/app/analytics/**`
+- `backend/tests/api/**`
+
+---
+
+## Story api.29: Remove seeded ApiState dependency from production API paths
+
+**ID:** api.29
+**Status:** planned
+**Prerequisites:** [api.28]
+**Unblocks:** [_multitenancy.03, analytics.28, api.02, api.03, api.04, graph.12, rag.01, vectorstore.09]
+**Estimated size:** M
+
+### Narrative
+As a maintainer,
+I want production API routes to stop depending on seeded `ApiState`,
+so that demo fixtures cannot mask missing persistence wiring.
+
+### Acceptance Criteria
+- [ ] Seed data setup is moved behind test/demo-only fixtures.
+- [ ] Production route dependencies no longer require `ApiState` for graph, evidence, or analytics data.
+- [ ] Documentation identifies any remaining demo-only fixture path.
+
+### Verification
+- [ ] API test suite passes with production seed data disabled.
+- [ ] Search confirms `ApiState` is absent from production data routes except documented demo paths.
+
+### Code touch points
+- `backend/app/api/**`
+- `backend/app/demo/**`
+- `backend/tests/**`
+
+---

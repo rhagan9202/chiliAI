@@ -9,7 +9,7 @@
 
 **ID:** _plugins.01
 **Status:** planned
-**Prerequisites:** [shared.01, analytics.01, rag.01, records.01, monitoring.01]
+**Prerequisites:** [shared.01, analytics.32, rag.01, records.01, monitoring.01]
 **Unblocks:** [_plugins.02, _plugins.03, _plugins.06, _plugins.12, config.12]
 **Estimated size:** L
 
@@ -47,56 +47,43 @@
 
 ---
 
-## Story _plugins.02: Implement plugin discovery and PluginRegistry
+## Story _plugins.02: Build plugin discovery and registry core
 
 **ID:** _plugins.02
 **Status:** planned
-**Prerequisites:** [_plugins.01, config.01, api.01, agent.01]
-**Unblocks:** [_plugins.03, _plugins.04, _plugins.07, _plugins.09, _plugins.10, _plugins.11]
-**Estimated size:** XL
+**Prerequisites:** [_plugins.01]
+**Unblocks:** [_plugins.13]
+**Estimated size:** L
 
-**As a** chiliAI platform operator,
-**I need** a single mechanism that discovers installed plugins and exposes them to both `create_app()` and the agent coordinator,
-**so that** third-party capabilities (analytics strategies, monitoring rules, RAG retrievers, record-feed mappers, contributed routers, event handlers) reach the runtime without hand-editing `backend/api/app.py` or `backend/api/dependencies.py`.
+### Narrative
+As a platform owner,
+I want plugins to be discovered from configured bundles and registered in a typed runtime registry,
+so that optional capabilities can be loaded without hard-coded imports.
 
 ### Current State
-- `backend/api/app.py:142-156` hand-includes 15 routers; there is no extension point.
-- `backend/api/dependencies.py` hand-imports every adapter for DI; no registry of third-party-provided services exists.
-- `backend/agent/coordinator.py` consumes Redis Streams events but has no plugin-supplied handler dispatch.
-- No `$CHILI_PLUGIN_DIR` environment variable is read anywhere; no `importlib.metadata.entry_points(group="chiliai.plugins")` lookup exists in source.
+Plugin behavior is planned, but there is no runtime discovery path or registry object shared by API and agent layers.
 
 ### Acceptance Criteria
-- [ ] Discovery mechanism decision (entry-points vs. `DomainConfig.plugins[].import_path` vs. directory scan) recorded in `docs/superpowers/specs/2026-MM-DD-plugin-spi-v1.md` with rationale; v1 ships **at least** the entry-points path (`group="chiliai.plugins"`).
-- [ ] New `backend/plugins/registry.py` exports `PluginRegistry` with `discover()`, `loaded_plugins -> Mapping[str, LoadedPlugin]`, `routers() -> list[APIRouter]`, `event_handlers() -> Mapping[str, list[Callable]]`, `services() -> Mapping[ProtocolType, object]`.
-- [ ] `LoadedPlugin` dataclass carries `manifest`, `module`, `instance: PluginProtocol`, `state: PluginLifecycleState`.
-- [ ] `backend/api/app.py` is refactored so the hand-included router block is preceded by `for router in plugin_registry.routers(): app.include_router(router, prefix=f"/plugins/{plugin_id}")`; no first-party router moved.
-- [ ] `backend/agent/coordinator.py` consults `plugin_registry.event_handlers()` when dispatching events; ordering is first-party-then-plugin and documented.
-- [ ] Discovery is one-shot at process startup; re-discovery requires restart (hot reload is _plugins.04's decision; v1 defaults to cold).
-- [ ] Discovery failures (import error, malformed manifest, SPI-version mismatch) log structured errors via `structlog` tagged `plugin_id`, `failure_class` and exclude the failing plugin without crashing the host.
-- [ ] Unit tests in `backend/tests/plugins/test_registry.py` cover: entry-point happy path, import-error isolation, malformed-manifest rejection, duplicate plugin-id detection, ordering of router/event-handler dispatch.
+- [ ] Discovery source decision is documented for local packages and future installed bundles.
+- [ ] Plugin manifest schema includes ID, version, capabilities, permissions, and entry points.
+- [ ] Runtime registry loads configured manifests into a typed `LoadedPlugin` representation.
+- [ ] Registry exposes lookup by plugin ID and capability type.
 
 ### Verification
-- `pytest backend/tests/plugins/test_registry.py -q` green; coverage ≥ 85% on `backend/plugins/registry.py`.
-- `pyright --strict backend/plugins backend/api/app.py backend/agent/coordinator.py` clean.
-- Manual smoke: install a stub plugin via `pip install -e backend/tests/fixtures/sample_plugin`, start `uvicorn api.app:create_app --factory`, confirm `GET /plugins/sample/ping` returns 200 and structured log records contain `plugin_id=sample`.
-- `make test` green end-to-end.
+- [ ] Unit tests cover valid manifests, duplicate IDs, missing entry points, and disabled plugins.
+- [ ] A sample plugin fixture can be discovered and registered without API wiring.
 
 ### Code touch points
-- `backend/plugins/registry.py` (new)
-- `backend/plugins/loaded_plugin.py` (new)
-- `backend/api/app.py` (modify — extension hook only; first-party routers untouched)
-- `backend/agent/coordinator.py` (modify — plugin event-handler dispatch)
-- `backend/api/dependencies.py` (modify — expose plugin services through DI)
-- `backend/tests/plugins/test_registry.py` (new)
-- `backend/tests/fixtures/sample_plugin/` (new — stub plugin package)
+- `backend/app/plugins/**`
+- `backend/tests/**`
+- `docs/architecture.md`
 
 ---
-
 ## Story _plugins.03: Plugin manifest format and load-time validation
 
 **ID:** _plugins.03
 **Status:** planned
-**Prerequisites:** [_plugins.01, _plugins.02, shared.02]
+**Prerequisites:** [_plugins.01, _plugins.14, shared.02]
 **Unblocks:** [_plugins.04, _plugins.05, _plugins.06, _plugins.07, _plugins.11, config.12]
 **Estimated size:** L
 
@@ -138,8 +125,8 @@
 
 **ID:** _plugins.04
 **Status:** planned
-**Prerequisites:** [_plugins.02, _plugins.03, _security.07, api.02]
-**Unblocks:** [_plugins.05, _plugins.09, _plugins.10]
+**Prerequisites:** [_plugins.14, _plugins.03, _security.07, api.02]
+**Unblocks:** [_plugins.09, _plugins.10]
 **Estimated size:** L
 
 **As a** platform admin,
@@ -177,56 +164,38 @@
 
 ---
 
-## Story _plugins.05: Capability-declaration enforcement at the SPI surface
+## Story _plugins.05: Define plugin permission model and manifest contract
 
 **ID:** _plugins.05
 **Status:** planned
-**Prerequisites:** [_plugins.03, _plugins.04, _security.08]
-**Unblocks:** [_plugins.07, _plugins.09]
-**Estimated size:** XL
+**Prerequisites:** [_plugins.14, _plugins.03]
+**Unblocks:** [_plugins.15]
+**Estimated size:** L
 
-**As a** security-conscious operator,
-**I need** every plugin's declared `permissions` to be enforced at the SPI surface (not just documented), so an analytics-strategy plugin that did not declare `event_publish` cannot publish events even if it tries,
-**so that** the v1 trust model — "in-process plugins, capability-declared, enforced at the seam" — is a real boundary, not honor-system documentation. Subprocess/WASI isolation is explicitly deferred to a later epic.
+### Narrative
+As a security reviewer,
+I want each plugin to declare precise permissions,
+so that plugin capabilities can be reviewed before they receive access to host services.
 
 ### Current State
-- No `permissions` field is enforced today; `_plugins.03` defines the manifest field but enforcement is this story.
-- The graph adapter currently exposes full read/write surface (`backend/graph/protocols.py` style) — a plugin handed this object today could mutate freely.
-- Outbound HTTP from any in-tree module is unbounded; there is no allowlist anywhere in the repo (`grep -rn 'http_outbound\|allowlist' backend/` returns no functional hits).
-- `_security.08` (supply-chain / signing posture) is the cross-edge that decides whether `permissions` are advisory-only for unsigned plugins; this story consumes that decision.
+Plugins are expected to have permissions, but the permission taxonomy and manifest contract are not enforceable yet.
 
 ### Acceptance Criteria
-- [ ] Defined permission scopes (final list in SPI spec): `graph.read`, `graph.write`, `vector.read`, `vector.write`, `embeddings.invoke`, `llm.invoke`, `event.publish`, `event.subscribe`, `http.outbound`, `fs.read`, `fs.write`, `metrics.emit`.
-- [ ] `PluginContext` (from _plugins.04) wraps capability clients in `ScopedClient` proxies that raise `PluginPermissionError` on any method outside declared scopes.
-- [ ] `http.outbound` enforcement implemented as a `ScopedHttpClient` that consults a manifest-declared `outbound_allowlist: list[str]` (host patterns); requests outside the list raise `PluginPermissionError`.
-- [ ] `event.publish` enforcement wraps the event bus so only declared event types are publishable; declared types are listed in the manifest under `event.publish.types`.
-- [ ] No raw adapter object is leaked into `PluginContext` — every reachable client is scoped.
-- [ ] Sandboxing-posture decision recorded in SPI spec: v1 is in-process capability enforcement; subprocess/WASI isolation tracked as a future epic with a cross-link to `_infra.md`.
-- [ ] Tests in `backend/tests/plugins/test_capability_enforcement.py` cover one permitted-call and one denied-call per scope; tests assert `PluginPermissionError.scope` and `.attempted_action` fields.
-- [ ] An end-to-end test loads a stub plugin that declares only `graph.read`, attempts `graph.write`, observes the denial, and confirms the host stays up.
+- [ ] Permission taxonomy covers storage, network, model access, graph/evidence access, and event publishing.
+- [ ] Plugin manifest schema validates declared permissions and rejects unknown permission names.
+- [ ] Registry exposes approved permissions for each loaded plugin.
+- [ ] Documentation explains how new permissions are reviewed and introduced.
 
 ### Verification
-- `pytest backend/tests/plugins/test_capability_enforcement.py -q` green; coverage ≥ 85% on `backend/plugins/scoped_clients/`.
-- `pyright --strict backend/plugins/scoped_clients/` clean.
-- Negative-path verification: the fixture plugin in _plugins.02 is extended to attempt an undeclared `http.outbound` call; structured log emits `event="plugin_permission_denied" plugin_id=sample scope=http.outbound`.
-- Security review checklist item added to `docs/security_checklist.md`.
+- [ ] Unit tests cover accepted, rejected, and omitted permission declarations.
+- [ ] Sample plugin manifests demonstrate least-privilege declarations.
 
 ### Code touch points
-- `backend/plugins/scoped_clients/__init__.py` (new)
-- `backend/plugins/scoped_clients/graph.py` (new)
-- `backend/plugins/scoped_clients/vector.py` (new)
-- `backend/plugins/scoped_clients/llm.py` (new)
-- `backend/plugins/scoped_clients/events.py` (new)
-- `backend/plugins/scoped_clients/http.py` (new)
-- `backend/plugins/scoped_clients/fs.py` (new)
-- `backend/plugins/exceptions.py` (modify — add `PluginPermissionError`)
-- `backend/plugins/context.py` (modify — use scoped clients)
-- `backend/plugins/manifest.py` (modify — add `outbound_allowlist`, `event.publish.types` fields)
-- `backend/tests/plugins/test_capability_enforcement.py` (new)
-- `docs/security_checklist.md` (modify — add plugin-capability section)
+- `backend/app/plugins/**`
+- `backend/tests/**`
+- `docs/wiki/**`
 
 ---
-
 ## Story _plugins.06: SPI versioning and compatibility matrix
 
 **ID:** _plugins.06
@@ -275,7 +244,7 @@
 
 **ID:** _plugins.07
 **Status:** planned
-**Prerequisites:** [_plugins.02, _plugins.03, _plugins.05, shared.03]
+**Prerequisites:** [_plugins.14, _plugins.03, _plugins.16, shared.03]
 **Unblocks:** [_plugins.08, _plugins.09]
 **Estimated size:** L
 
@@ -362,7 +331,7 @@
 
 **ID:** _plugins.09
 **Status:** planned
-**Prerequisites:** [_plugins.02, _plugins.04, _plugins.05, _plugins.07, analytics.04]
+**Prerequisites:** [_plugins.14, _plugins.04, _plugins.16, _plugins.07, analytics.04]
 **Unblocks:** []
 **Estimated size:** L
 
@@ -410,7 +379,7 @@
 
 **ID:** _plugins.10
 **Status:** planned
-**Prerequisites:** [_plugins.02, _plugins.04, _observability.03, _observability.05, _observability.07]
+**Prerequisites:** [_plugins.14, _plugins.04, _observability.03, _observability.05, _observability.07]
 **Unblocks:** []
 **Estimated size:** L
 
@@ -453,7 +422,7 @@
 
 **ID:** _plugins.11
 **Status:** planned
-**Prerequisites:** [_plugins.02, _plugins.03, config.02, config.05]
+**Prerequisites:** [_plugins.14, _plugins.03, config.02, config.05]
 **Unblocks:** []
 **Estimated size:** M
 
@@ -525,3 +494,119 @@
 - `docs/superpowers/specs/2026-MM-DD-plugin-spi-v1.md` (modify — `Frontend extension — deferred to v2` section)
 - `docs/architecture.md` (modify — §14.2 Plugin row sub-bullet)
 - `chili_app/README.md` (modify — Current State note)
+
+## Story _plugins.13: Wire plugin registry into API and agent handlers
+
+**ID:** _plugins.13
+**Status:** planned
+**Prerequisites:** [_plugins.02]
+**Unblocks:** [_plugins.14]
+**Estimated size:** L
+
+### Narrative
+As a platform developer,
+I want loaded plugins to be reachable from API routes and agent handlers,
+so that plugin capabilities can participate in runtime workflows.
+
+### Acceptance Criteria
+- [ ] API dependency wiring exposes the plugin registry to plugin-aware routes.
+- [ ] Agent handler wiring can resolve plugin capabilities by type and ID.
+- [ ] A one-shot sample plugin action can be invoked through the host boundary.
+
+### Verification
+- [ ] Integration tests cover API and agent registry lookup paths.
+- [ ] Sample plugin invocation returns a typed success result.
+
+### Code touch points
+- `backend/app/api/**`
+- `backend/app/agents/**`
+- `backend/app/plugins/**`
+
+---
+
+## Story _plugins.14: Isolate plugin load failures and add registry coverage
+
+**ID:** _plugins.14
+**Status:** planned
+**Prerequisites:** [_plugins.13]
+**Unblocks:** [_plugins.03, _plugins.04, _plugins.05, _plugins.07, _plugins.09, _plugins.10, _plugins.11]
+**Estimated size:** M
+
+### Narrative
+As a platform owner,
+I want plugin load failures to be isolated and observable,
+so that one broken plugin cannot break the host application.
+
+### Acceptance Criteria
+- [ ] Registry records plugin load errors without crashing host startup unless the plugin is required.
+- [ ] Health/status output identifies loaded, disabled, and failed plugins.
+- [ ] Tests cover malformed manifests, import failures, duplicate capabilities, and required-plugin failure behavior.
+
+### Verification
+- [ ] Start the app with a broken optional plugin fixture and confirm host startup succeeds with a recorded error.
+- [ ] Start with a broken required plugin fixture and confirm startup fails clearly.
+
+### Code touch points
+- `backend/app/plugins/**`
+- `backend/app/api/**`
+- `backend/tests/**`
+
+---
+
+## Story _plugins.15: Enforce plugin permissions through scoped host clients
+
+**ID:** _plugins.15
+**Status:** planned
+**Prerequisites:** [_plugins.05]
+**Unblocks:** [_plugins.16]
+**Estimated size:** L
+
+### Narrative
+As a security reviewer,
+I want plugin host access to flow through scoped clients,
+so that declared permissions are enforced at runtime.
+
+### Acceptance Criteria
+- [ ] Host services exposed to plugins are wrapped in permission-checking client proxies.
+- [ ] Denied access returns typed permission errors with plugin ID and requested permission.
+- [ ] Audit events are emitted for denied permission attempts.
+
+### Verification
+- [ ] Unit tests cover allowed and denied access for each scoped client type.
+- [ ] Integration test proves a plugin cannot bypass the scoped client boundary.
+
+### Code touch points
+- `backend/app/plugins/**`
+- `backend/app/events/**`
+- `backend/tests/**`
+
+---
+
+## Story _plugins.16: Add plugin permission security tests and checklist
+
+**ID:** _plugins.16
+**Status:** planned
+**Prerequisites:** [_plugins.15]
+**Unblocks:** [_plugins.07, _plugins.09]
+**Estimated size:** M
+
+### Narrative
+As a release reviewer,
+I want plugin permission enforcement covered by security tests and review guidance,
+so that future plugin changes preserve least privilege.
+
+### Acceptance Criteria
+- [ ] Security regression tests cover network, storage, model, graph, and event permission denial.
+- [ ] Plugin review checklist documents manifest review and runtime enforcement expectations.
+- [ ] Test fixtures include least-privilege and over-privileged sample plugins.
+
+### Verification
+- [ ] Run plugin security tests and confirm denied operations fail closed.
+- [ ] Review checklist is linked from plugin documentation.
+
+### Code touch points
+- `backend/tests/plugins/**`
+- `docs/wiki/modules/plugins.md`
+- `.github/agents/**`
+
+---

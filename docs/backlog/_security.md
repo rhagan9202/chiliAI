@@ -159,7 +159,7 @@
 **ID:** _security.04
 **Status:** planned
 **Prerequisites:** [_infra.08, config.02]
-**Unblocks:** [_cicd.16, _multitenancy.03, agent.16, frontend.03, graph.15, monitoring.12, rag.15, storage.04]
+**Unblocks:** [_cicd.16, _multitenancy.03, agent.16, rag.15, storage.04]
 **Estimated size:** L
 
 **As a** platform operator,
@@ -315,7 +315,7 @@
 **ID:** _security.07
 **Status:** planned
 **Prerequisites:** [_observability.01]
-**Unblocks:** [_cicd.06, _plugins.04, api.18, frontend.19, monitoring.07]
+**Unblocks:** [_cicd.06, _plugins.04, api.18, frontend.19]
 **Estimated size:** M
 
 **As an** operator reviewing structured logs,
@@ -357,7 +357,7 @@
 **ID:** _security.08
 **Status:** planned
 **Prerequisites:** [_security.06, api.23]
-**Unblocks:** [_plugins.05]
+**Unblocks:** []
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-08-auth-rbac-enforcement-design.md
 
@@ -489,7 +489,7 @@
 **ID:** _security.11
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [api.23, config.07, events.10]
+**Unblocks:** [api.23, config.07]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-08-auth-rbac-enforcement-design.md
 

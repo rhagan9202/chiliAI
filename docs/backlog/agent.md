@@ -10,7 +10,7 @@
 **ID:** agent.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [_multitenancy.12, _plugins.02, llm.03, vectorstore.04]
+**Unblocks:** [_multitenancy.12, vectorstore.04]
 **Estimated size:** M
 
 **As a** platform engineer,

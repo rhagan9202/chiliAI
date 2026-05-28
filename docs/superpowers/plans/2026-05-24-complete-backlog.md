@@ -1,6 +1,8 @@
 # Complete Backlog Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **Current status:** Executed on 2026-05-24. The live outputs are `docs/backlog/**`, `docs/backlog/README.md`, `scripts/backlog_consistency.py`, and the archived superseded planning files under `docs/archive/planning/`. The unchecked task boxes below are preserved as the original execution plan, not current open work.
 
 **Goal:** Re-derive chiliAI's complete dependency-ordered backlog from current code state up to the architectural endgame (architecture.md + §14.2 future capabilities), per the design spec at `docs/superpowers/specs/2026-05-24-complete-backlog-design.md`.
 

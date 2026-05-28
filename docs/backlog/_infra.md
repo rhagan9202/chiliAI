@@ -58,7 +58,7 @@
 **ID:** _infra.02
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [_infra.03, _infra.04, _infra.05, _infra.06, _infra.07, _infra.08, _infra.11, _infra.12, _infra.14]
+**Unblocks:** [_infra.03, _infra.04, _infra.05, _infra.06, _infra.07, _infra.08, _infra.09, _infra.11, _infra.14]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -103,7 +103,7 @@
 **ID:** _infra.03
 **Status:** planned
 **Prerequisites:** [_infra.01, _infra.02]
-**Unblocks:** []
+**Unblocks:** [_infra.09]
 **Estimated size:** L
 
 **As a** security-focused operator,
@@ -149,7 +149,7 @@
 **ID:** _infra.04
 **Status:** planned
 **Prerequisites:** [_infra.02]
-**Unblocks:** [graph.14, rag.15]
+**Unblocks:** [_infra.09, graph.14, rag.15]
 **Estimated size:** L
 
 **As a** security-focused operator,
@@ -191,7 +191,7 @@
 **ID:** _infra.05
 **Status:** planned
 **Prerequisites:** [_infra.02]
-**Unblocks:** [_cicd.07, _cicd.08, _cicd.10, _infra.11, _infra.14, embeddings.02, llm.12]
+**Unblocks:** [_cicd.07, _cicd.08, _infra.09, _infra.11, _infra.14, embeddings.02, llm.12]
 **Estimated size:** M
 
 **As a** release engineer,
@@ -231,7 +231,7 @@
 **ID:** _infra.06
 **Status:** planned
 **Prerequisites:** [_infra.02]
-**Unblocks:** [_infra.12, _infra.13, database.06, events.12]
+**Unblocks:** [_infra.09, _infra.13, database.06, events.12]
 **Estimated size:** L
 
 **As a** platform engineer,
@@ -321,7 +321,7 @@
 **ID:** _infra.08
 **Status:** planned
 **Prerequisites:** [_infra.02]
-**Unblocks:** [_security.04, api.18]
+**Unblocks:** [_infra.12, _security.04, api.18]
 **Estimated size:** L
 
 **As a** platform engineer,
@@ -362,58 +362,44 @@
 
 ---
 
-## Story _infra.09: Cloud IaC modules — Terraform per cloud
+## Story _infra.09: Provide first cloud IaC module
 
 **ID:** _infra.09
 **Status:** planned
-**Prerequisites:** []
-**Unblocks:** [api.19, storage.13]
-**Estimated size:** XL
+**Prerequisites:** [_infra.02, _infra.03, _infra.04, _infra.05, _infra.06]
+**Unblocks:** [_infra.15]
+**Estimated size:** L
 
-**As a** platform engineer,
-**I need** Terraform modules under `infra/terraform/{aws,gcp,azure}/` that provision the cluster (EKS/GKE/AKS), VPC/VNet, managed Redis, managed object storage, managed Postgres (where applicable), DNS, certificate issuance, and IAM bindings consumed by Workload Identity / IRSA,
-**so that** the chiliAI Helm chart has a reproducible cloud substrate to install onto and `docs/architecture.md` §14.3's gap — "Add cloud-provider Terraform/Pulumi" — is closed for the chosen cloud(s). (XL — must be split into per-cloud sub-stories before merge.)
+### Narrative
+As an operator,
+I want a supported cloud infrastructure module,
+so that chiliAI can be deployed repeatably outside a laptop.
 
 ### Current State
-- `find infra/ -iname '*.tf'` returns no matches; there is no Terraform, Pulumi, CloudFormation, or Crossplane code anywhere in the repo.
-- `docs/architecture.md:1372` records the explicit next-milestone gap: "Add cloud-provider Terraform/Pulumi and production hardening as needed."
-- `docs/architecture.md:1334` lists "Terraform or Pulumi" under technology stack but does not pick one.
-- The Helm chart's `values-prod.yaml:36-43` references opaque hostnames (`prod-redis.internal`, `prod-neo4j.internal`, `prod-qdrant.internal`, `minio.internal:9000`) — these resources have to come from somewhere.
-- §10.5 of the architecture promises "same images deploy to AWS EKS, GCP GKE, Azure AKS" but offers no IaC to back the promise.
+The repo documents local deployment paths, but there is no checked-in cloud IaC module or output contract.
 
 ### Acceptance Criteria
-- [ ] Tool choice recorded in `infra/terraform/README.md` (recommendation: Terraform; rationale captured; Pulumi/Crossplane explicitly out of scope for v1).
-- [ ] **Split before merge**: this story must be decomposed into per-cloud sub-stories (e.g. `_infra.09a` AWS, `_infra.09b` GCP, `_infra.09c` Azure) before any sub-story exits `planned`. The split should at minimum land AWS first; GCP/Azure may be deferred but must each get their own story ID in a follow-up backlog edit.
-- [ ] AWS module (`infra/terraform/aws/`) provisions: VPC with public + private subnets across 3 AZs, EKS cluster (managed node groups), ElastiCache for Redis, S3 bucket for chili object storage, RDS for Postgres + TimescaleDB extension (or self-hosted on EKS depending on follow-up decision), Route 53 hosted zone wiring, ACM certificate (DNS-validated), and IAM roles for IRSA-bound api/worker ServiceAccounts.
-- [ ] GCP module (`infra/terraform/gcp/`) provisions the analogous resources: VPC, GKE Autopilot (or standard), Memorystore for Redis, GCS bucket, Cloud SQL for Postgres, Cloud DNS, Google-managed certificate, Workload Identity bindings.
-- [ ] Azure module (`infra/terraform/azure/`) provisions: VNet, AKS, Azure Cache for Redis, Blob Storage, Azure Database for PostgreSQL, Azure DNS, App Gateway / Front Door certificate, Workload Identity (AAD Workload Identity).
-- [ ] Each module emits Terraform outputs that map 1:1 to the Helm `values-prod.yaml` keys (`redis.uri`, `neo4j.uri`, `qdrant.uri`, `minio.endpoint`, `storage.storageClassName`).
-- [ ] Per-cloud README sections in `infra/terraform/<cloud>/README.md` show: `terraform init`, `terraform plan -var-file=...`, `terraform apply`, and the follow-up `helm install` command with the matching values file.
-- [ ] `tflint` and `terraform validate` run in CI for each module (gated to PRs touching `infra/terraform/**`).
+- [ ] Terraform/OpenTofu tooling choice and module conventions are documented.
+- [ ] AWS module provisions network, compute/runtime, database, object storage, and secrets wiring required by the app.
+- [ ] Module outputs expose endpoint URLs, secret references, and storage connection details in a documented contract.
+- [ ] Minimal example variables are checked in without real credentials.
 
 ### Verification
-- `terraform -chdir=infra/terraform/aws init && terraform -chdir=infra/terraform/aws validate` exit 0.
-- `terraform -chdir=infra/terraform/aws plan -var environment=staging -var region=us-east-1` produces a plan with the documented resource count and no drift.
-- After `terraform apply` on a sandbox AWS account: `aws eks describe-cluster --name chili-staging` succeeds, ElastiCache returns a Redis endpoint, S3 bucket exists, and the IRSA role can be assumed by a test pod.
-- `helm install chili infra/helm/chili/ --values infra/helm/chili/values-prod.yaml --set redis.uri=$(terraform -chdir=infra/terraform/aws output -raw redis_uri) …` brings the platform up against the Terraform-provisioned substrate.
+- [ ] Run IaC format/validate for the AWS module.
+- [ ] Review generated plan output against the documented module contract.
 
 ### Code touch points
-- `infra/terraform/README.md` (new)
-- `infra/terraform/aws/` (new — main.tf, variables.tf, outputs.tf, README.md, plus modules/{vpc,eks,elasticache,s3,rds,route53,iam}/)
-- `infra/terraform/gcp/` (new — analogous structure)
-- `infra/terraform/azure/` (new — analogous structure)
-- `.github/workflows/terraform-ci.yml` (new) or modify existing workflow
-- `infra/README.md` (modify — top-level pointer to terraform/)
-- `docs/architecture.md` §14.3 row for `infra/` (modify — update once any cloud module lands)
+- `infra/**`
+- `docs/operations/**`
+- `docs/architecture.md`
 
 ---
-
 ## Story _infra.10: Container registry, image promotion, signing, and SBOM publication
 
 **ID:** _infra.10
 **Status:** planned
 **Prerequisites:** [_infra.01]
-**Unblocks:** [_cicd.05, api.23]
+**Unblocks:** [_cicd.05, _infra.12, api.23]
 **Estimated size:** L
 
 **As a** release engineer,
@@ -461,7 +447,7 @@
 **ID:** _infra.11
 **Status:** planned
 **Prerequisites:** [_infra.02, _infra.05]
-**Unblocks:** []
+**Unblocks:** [_infra.12]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -499,51 +485,38 @@
 
 ---
 
-## Story _infra.12: Hybrid / on-prem deployment bundle for stateful backends
+## Story _infra.12: Define on-prem deployment bundle foundation
 
 **ID:** _infra.12
 **Status:** planned
-**Prerequisites:** [_infra.02, _infra.06]
-**Unblocks:** []
-**Estimated size:** XL
+**Prerequisites:** [_infra.08, _infra.17, _infra.10, _infra.11]
+**Unblocks:** [_infra.18]
+**Estimated size:** L
 
-**As a** platform engineer deploying chiliAI on-prem,
-**I need** an opt-in "self-hosted infra" Helm subchart family (Neo4j, Qdrant, MinIO, Postgres+TimescaleDB) plus an air-gapped image-mirror workflow,
-**so that** `docs/architecture.md` §10.5's promise — "same container images deploy to AWS/GCP/Azure or on-prem with managed vs self-hosted backends" — actually works end-to-end without each operator hand-wiring their own subcharts. (XL — should split into per-backend sub-stories.)
+### Narrative
+As an enterprise operator,
+I want a self-hosted deployment bundle foundation,
+so that chiliAI can run in controlled environments without relying on SaaS defaults.
 
 ### Current State
-- The chart's `infra/helm/chili/Chart.yaml:1-13` declares no `dependencies` block. No subcharts are wired.
-- `infra/README.md` `## Future work` lists "Bitnami Redis subchart" as the only mentioned subchart candidate; nothing for Neo4j/Qdrant/MinIO/Postgres.
-- `docker-compose.dev.yaml:147-216` runs `timescale/timescaledb:latest-pg16`, `neo4j:5`, `qdrant/qdrant:latest`, `minio/minio:latest` locally — fine for dev, no parity in K8s.
-- §10.5's "on-premises" bullet (`docs/architecture.md:1226`) says "self-managed Kubernetes with self-hosted Redis, Neo4j, Qdrant, and MinIO or local filesystem" but the chart leaves all four as operator-supplied URIs.
-- No documented procedure for air-gapped image mirroring (no `regctl image copy` script, no `images.txt` manifest, no offline-bundle build target).
+Cloud/container deployment paths exist, but on-prem packaging and dependency ownership are not explicitly defined.
 
 ### Acceptance Criteria
-- [ ] Decision recorded in `infra/README.md`: which of (a) bundled subcharts with `selfHosted.<service>.enabled` toggles, (b) keep BYO and document recommended upstream charts, or (c) ship a sibling umbrella chart (`infra/helm/chili-onprem/`) that depends on `chili` plus stateful subcharts.
-- [ ] **Split before merge**: this story decomposes into per-backend sub-stories (`_infra.12a` Neo4j, `_infra.12b` Qdrant, `_infra.12c` MinIO, `_infra.12d` Postgres+TimescaleDB, `_infra.12e` air-gapped mirror) before any sub-story exits `planned`.
-- [ ] If (a) or (c) is chosen: `Chart.yaml` adds dependencies on community/Bitnami subcharts (e.g. `neo4j` from Neo4j Helm Labs, `qdrant` from Qdrant, `minio` from Bitnami or upstream MinIO operator, `postgresql` from Bitnami with the `timescaledb` extension preloaded); each dependency gated by `selfHosted.<service>.enabled`.
-- [ ] When self-hosted backends are enabled, the chart wires their in-cluster Service names into `values.yaml` automatically (no operator action required) — `redis.uri`, `neo4j.uri`, `qdrant.uri`, `minio.endpoint`.
-- [ ] PVC sizing inherits the values from `_infra.06`'s storage block; subcharts forward `persistence.size` and `persistence.storageClass`.
-- [ ] An air-gapped image-mirror script (`scripts/mirror_images.sh`) reads a curated `infra/images.txt` (chili images + every subchart's image at pinned tags) and runs `regctl image copy` to a target private registry; documented in `infra/README.md` `## Air-gapped install`.
-- [ ] `helm install` in a sandbox cluster with no external Redis/Neo4j/Qdrant/MinIO succeeds when `selfHosted.*.enabled=true` is set and the platform passes the existing smoke tests.
+- [ ] On-prem packaging decision is documented, including Helm/Kubernetes support boundaries.
+- [ ] Chart or bundle structure is created for app services, ingress, configuration, and secrets references.
+- [ ] Dependency strategy is documented for Postgres, graph storage, object storage, queue/eventing, and observability.
+- [ ] Example values cover a minimal single-environment deployment without production secrets.
 
 ### Verification
-- `helm dep update infra/helm/chili/` (or sibling chart) succeeds.
-- `helm template chili infra/helm/chili/ --set selfHosted.neo4j.enabled=true --set selfHosted.qdrant.enabled=true --set selfHosted.minio.enabled=true --set selfHosted.postgres.enabled=true | grep -E 'kind: (StatefulSet|Deployment)' | sort -u | wc -l` returns ≥ 4.
-- After install on a sandbox cluster with no external services: `kubectl get pods -l app.kubernetes.io/instance=chili` shows all four stateful workloads `Running` and `/health` returns 200 on the api pod.
-- `bash scripts/mirror_images.sh --target registry.internal.example.com` copies every image in `infra/images.txt` and the install with `image.<component>.repository=registry.internal.example.com/...` succeeds.
+- [ ] Run chart lint or equivalent static validation for the bundle.
+- [ ] Review example values against the documented dependency strategy.
 
 ### Code touch points
-- `infra/helm/chili/Chart.yaml` (modify — dependencies block) **or**
-- `infra/helm/chili-onprem/` (new — umbrella chart)
-- `infra/helm/chili/values.yaml` (modify — selfHosted block)
-- `infra/helm/chili/values-onprem.yaml` (new)
-- `infra/images.txt` (new — pinned image list)
-- `scripts/mirror_images.sh` (new)
-- `infra/README.md` (modify — Air-gapped install section)
+- `deploy/**`
+- `infra/**`
+- `docs/operations/**`
 
 ---
-
 ## Story _infra.13: Backup, restore, and disaster-recovery drills for stateful services
 
 **ID:** _infra.13
@@ -645,3 +618,146 @@
 - `infra/helm/chili/values.yaml` (modify — observability block)
 - `infra/helm/chili/values-prod.yaml` (modify — enable + production endpoint)
 - `infra/README.md` (modify)
+
+## Story _infra.15: Add GCP IaC module
+
+**ID:** _infra.15
+**Status:** planned
+**Prerequisites:** [_infra.09]
+**Unblocks:** [_infra.16]
+**Estimated size:** L
+
+### Narrative
+As an operator,
+I want a GCP infrastructure module,
+so that chiliAI can be deployed repeatably on Google Cloud.
+
+### Acceptance Criteria
+- [ ] GCP module provisions network, runtime, database, object storage, and secret references required by the app.
+- [ ] Module outputs match the cloud IaC output contract introduced by `_infra.09`.
+- [ ] Example variables are checked in without real credentials.
+
+### Verification
+- [ ] Run IaC format/validate for the GCP module.
+- [ ] Review plan output against the documented output contract.
+
+### Code touch points
+- `infra/**`
+- `docs/operations/**`
+
+---
+
+## Story _infra.16: Add Azure IaC module
+
+**ID:** _infra.16
+**Status:** planned
+**Prerequisites:** [_infra.15]
+**Unblocks:** [_infra.17]
+**Estimated size:** L
+
+### Narrative
+As an operator,
+I want an Azure infrastructure module,
+so that chiliAI can be deployed repeatably on Azure.
+
+### Acceptance Criteria
+- [ ] Azure module provisions network, runtime, database, object storage, and secret references required by the app.
+- [ ] Module outputs match the cloud IaC output contract introduced by `_infra.09`.
+- [ ] Example variables are checked in without real credentials.
+
+### Verification
+- [ ] Run IaC format/validate for the Azure module.
+- [ ] Review plan output against the documented output contract.
+
+### Code touch points
+- `infra/**`
+- `docs/operations/**`
+
+---
+
+## Story _infra.17: Add cloud IaC validation and documentation
+
+**ID:** _infra.17
+**Status:** planned
+**Prerequisites:** [_infra.16]
+**Unblocks:** [_infra.12, api.19, storage.13]
+**Estimated size:** M
+
+### Narrative
+As a maintainer,
+I want cloud IaC modules validated in CI and documented together,
+so that deployment drift is caught before release.
+
+### Acceptance Criteria
+- [ ] CI runs format and validation checks for all cloud IaC modules.
+- [ ] Documentation compares AWS, GCP, and Azure module inputs, outputs, and known gaps.
+- [ ] Example plans are reproducible with placeholder values.
+
+### Verification
+- [ ] Run the IaC validation job locally or in CI.
+- [ ] Confirm docs link from the architecture and operations indexes.
+
+### Code touch points
+- `.github/workflows/**`
+- `infra/**`
+- `docs/operations/**`
+
+---
+
+## Story _infra.18: Package self-hosted stateful dependencies
+
+**ID:** _infra.18
+**Status:** planned
+**Prerequisites:** [_infra.12]
+**Unblocks:** [_infra.19]
+**Estimated size:** L
+
+### Narrative
+As an enterprise operator,
+I want the on-prem bundle to include supported stateful dependency options,
+so that disconnected deployments can install the full stack predictably.
+
+### Acceptance Criteria
+- [ ] Bundle supports self-hosted or externally managed Postgres, graph storage, object storage, and eventing configuration.
+- [ ] Values files document resource requests, persistence, backup hooks, and secret references.
+- [ ] Dependency health checks are wired into app startup guidance.
+
+### Verification
+- [ ] Render the bundle with self-hosted and externally managed dependency values.
+- [ ] Validate generated manifests with Kubernetes schema checks where available.
+
+### Code touch points
+- `deploy/**`
+- `infra/**`
+- `docs/operations/**`
+
+---
+
+## Story _infra.19: Support air-gapped on-prem installation
+
+**ID:** _infra.19
+**Status:** planned
+**Prerequisites:** [_infra.18]
+**Unblocks:** []
+**Estimated size:** M
+
+### Narrative
+As an enterprise operator,
+I want air-gapped installation guidance and image mirroring support,
+so that chiliAI can be deployed without public network access.
+
+### Acceptance Criteria
+- [ ] Image mirror manifest lists every required container image and version.
+- [ ] Installation docs cover registry overrides, offline config, and secret injection.
+- [ ] Bundle validation does not require public network access after images are mirrored.
+
+### Verification
+- [ ] Render manifests with mirrored registry prefixes.
+- [ ] Run an offline install dry-run or documented equivalent.
+
+### Code touch points
+- `deploy/**`
+- `scripts/**`
+- `docs/operations/**`
+
+---

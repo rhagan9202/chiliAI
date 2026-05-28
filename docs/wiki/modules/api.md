@@ -1,11 +1,11 @@
 # Module: api
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-05-28
 **Source:** `backend/api/`
 
 ## Purpose
 
-FastAPI gateway layer. Thin HTTP orchestration — no business logic in routers. Routes delegate to service modules via dependency injection. Owns: auth middleware, RBAC enforcement, SSE/WebSocket real-time push, in-process read projections for alerts/KBs/cases/workflows.
+FastAPI gateway layer. Thin HTTP orchestration — no business logic in routers. Routes delegate to service modules via dependency injection. Owns: auth middleware, RBAC enforcement, SSE/WebSocket real-time push, and in-process read projections for alerts/cases/workflows.
 
 Does **not** own: any business logic, data persistence, event processing.
 
@@ -20,7 +20,6 @@ api/
   dependencies.py         # DI wiring for all injected services
   contracts.py            # All API-facing request/response Pydantic models
   _alert_store.py         # In-process alert projection + repository
-  _kb_store.py            # KnowledgeBaseRepository (in-process write model)
   _kb_projection.py       # project_knowledge_base() hydration helper
   _rag_bridges.py         # RAG <-> KB document/entity bridge helpers
   _workflow_projection.py # project_workflow_runs() helper
@@ -41,10 +40,10 @@ api/
     rag.py                # /chat conversations + message streaming
     records.py            # /records file upload + api-push
     workflows.py          # /workflows list
-    analytics.py          # /analytics risk/timeseries/gnn/overview (partial stubs)
+    analytics.py          # /analytics risk/timeseries/gnn/overview
     config.py             # /config/domain, /config/features, /config/domain/schema
-    events.py             # /events/workspace SSE
-    ws.py                 # /ws WebSocket hub
+    events.py             # /events/stream SSE
+    ws.py                 # /ws/alerts and /ws/pipeline WebSocket hub
     investigation.py      # /investigation queries
     policy.py             # Route policy introspection
     _oidc_client.py       # OIDC PKCE helpers (internal to auth router)
@@ -64,7 +63,7 @@ def create_app() -> FastAPI:
 4. Enforces production guardrail: `CHILI_ENV ∈ {staging, production}` → `AuthConfig.enabled` must be `True` with all required fields.
 5. Creates `FastAPI` app with CORS middleware (`ALLOWED_ORIGINS` env var or localhost defaults).
 6. Attaches `ApiState` to `app.state.api_state`.
-7. Registers `metrics` and OpenTelemetry instrumentation.
+7. Registers HTTP metrics middleware, `GET /metrics`, and OpenTelemetry instrumentation.
 8. Mounts all routers.
 9. Calls `assert_complete(app)` — policy registry default-deny audit.
 
@@ -118,12 +117,12 @@ When auth is disabled, the `_authdisabled` role effectively grants admin-level a
 
 ## In-process Read Models
 
-The API maintains lightweight in-process projections for read-heavy surfaces. These are not persistent — they rebuild from events or start empty on restart:
+The API maintains lightweight read projections for read-heavy surfaces. Persistence depends on the selected repository/adapter:
 
 | File | What it stores | Populated by |
 |------|---------------|-------------|
 | `_alert_store.py` | `AlertProjectionRepository` — alert list for `/alerts` | `AlertsCreatedEvent` handlers |
-| `_kb_store.py` | `KnowledgeBaseRepository` — KB list + document records | Direct mutations in KB router |
+| `knowledgebases/` module | `KnowledgeBaseRepository` — KB list + document records | Direct mutations in KB router; in-memory or object-store-backed via `CHILI_KB_REPOSITORY_BACKEND` |
 | `_workflow_projection.py` | Project `WorkflowRun` list for `/workflows` | `AgentServiceProtocol.list_workflows()` |
 
 ---
@@ -138,10 +137,12 @@ The API maintains lightweight in-process projections for read-heavy surfaces. Th
 | `rag` | `RagServiceProtocol`, `ApiState` |
 | `records` | `RecordsServiceProtocol` |
 | `workflows` | `AgentServiceProtocol` |
-| `analytics` | Inline `@lru_cache` stubs + dependencies |
+| `analytics` | `RiskServiceProtocol`, `TimeseriesServiceProtocol`, `GnnServiceProtocol`, plus `ApiState` dashboard/entity read models |
 | `config` | `DomainConfig` (loaded once, LRU cached) |
 | `graph` | `GraphServiceProtocol` via dependency |
 | `auth` | `SessionStoreProtocol`, OIDC client, `DomainConfig.auth` |
+| `events` | `AlertProjectionRepository`, `AgentServiceProtocol`, `KnowledgeBaseRepository` |
+| `policy` | `ApiState` policy-gap and policy-brief read/write models |
 
 ---
 
@@ -152,15 +153,23 @@ Key injected services (all are `lru_cache`-backed or per-request):
 ```python
 get_domain_config() -> DomainConfig           # LRU cached, cleared on create_app()
 get_api_state(request) -> ApiState
-get_event_bus(state) -> EventBus
-get_ingestion_service(state) -> IngestionServiceProtocol
-get_graph_service(state) -> GraphServiceProtocol
-get_object_store(state) -> ObjectStore
-get_knowledge_base_repository(state) -> KnowledgeBaseRepository
-get_records_service(state) -> RecordsServiceProtocol
-get_agent_service(state) -> AgentServiceProtocol
-get_alert_repository(state) -> AlertProjectionRepository
-get_session_store(state) -> SessionStoreProtocol
+get_event_bus() -> EventBus
+get_ingestion_service() -> IngestionService
+get_graph_service() -> GraphServiceProtocol
+get_vector_service() -> VectorServiceProtocol
+get_embeddings_service() -> EmbeddingsServiceProtocol
+get_llm_service() -> LlmServiceProtocol
+get_rag_service() -> RagServiceProtocol
+get_monitoring_service() -> MonitoringServiceProtocol
+get_risk_service() -> RiskServiceProtocol
+get_timeseries_service() -> TimeseriesServiceProtocol
+get_gnn_service() -> GnnServiceProtocol
+get_object_store() -> ObjectStore
+get_knowledge_base_repository() -> KnowledgeBaseRepository
+get_records_service(...) -> RecordsServiceProtocol
+get_agent_service(...) -> AgentServiceProtocol
+get_alert_repository(request) -> AlertProjectionRepository
+get_session_store() -> SessionStoreProtocol
 ```
 
 ---
