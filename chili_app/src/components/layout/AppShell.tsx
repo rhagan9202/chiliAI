@@ -22,6 +22,15 @@ export function AppShell() {
 
   useRealtimeWorkspaceStream()
 
+  // Synchronously compute the effective role so route-access checks in this
+  // render already use the default role once features are available — avoids
+  // a one-render window where selectedRole is still null after queries resolve
+  // but before the initialisation effect fires (which caused a spurious
+  // "cannot access" banner on every hard reload).
+  const effectiveRole =
+    selectedRole ??
+    (domainFeaturesQuery.data ? getDefaultRole(domainFeaturesQuery.data) : null)
+
   useEffect(() => {
     if (!domainFeaturesQuery.data) {
       return
@@ -36,13 +45,13 @@ export function AppShell() {
   const routeAllowed = isRouteAllowed(
     domainConfigQuery.data,
     domainFeaturesQuery.data,
-    selectedRole,
+    effectiveRole,
     location.pathname,
   )
   const landingRoute = getLandingRoute(
     domainConfigQuery.data,
     domainFeaturesQuery.data,
-    selectedRole,
+    effectiveRole,
   )
   const domainQueriesDone = !domainConfigQuery.isLoading && !domainFeaturesQuery.isLoading
   const routeBlocked = domainQueriesDone && !routeAllowed
@@ -50,6 +59,10 @@ export function AppShell() {
   useEffect(() => {
     if (routeBlocked) {
       setAccessNotice('Selected role cannot access that page.')
+    } else {
+      // Clear the notice once the block resolves so it doesn't persist across
+      // navigations or after the role is initialised.
+      setAccessNotice(null)
     }
   }, [routeBlocked, setAccessNotice])
 
