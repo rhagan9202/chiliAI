@@ -252,6 +252,24 @@ class CaseDetailResponse(BaseModel):
     feedback_history: list[AnalystFeedbackResponse] = Field(default_factory=lambda: cast(list[AnalystFeedbackResponse], []))
 
 
+class ChatCitationResponse(BaseModel):
+    """Rich citation payload returned alongside an assistant chat message.
+
+    Mirrors :class:`rag.models.RagCitation` so the frontend can render
+    provenance (snippet preview, document anchor, score) and offer
+    click-through navigation to investigation entities (see BL-002).
+    """
+
+    record_id: str
+    content_id: str
+    score: float
+    snippet: str
+    document_id: str | None = None
+    chunk_index: int | None = None
+    highlight: str | None = None
+    entity_id: str | None = None
+
+
 class ChatMessageResponse(BaseModel):
     """One message in a RAG chat conversation."""
 
@@ -260,6 +278,9 @@ class ChatMessageResponse(BaseModel):
     content: str
     created_at: datetime
     citation_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    citations: list[ChatCitationResponse] = Field(
+        default_factory=lambda: cast(list[ChatCitationResponse], [])
+    )
 
 
 class ChatConversationResponse(BaseModel):

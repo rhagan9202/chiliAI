@@ -143,7 +143,25 @@ export function RagChatPage() {
               >
                 <strong>{message.role}</strong>
                 <p>{message.content}</p>
-                {message.citation_ids.length > 0 ? (
+                {message.citations.length > 0 ? (
+                  <ul className="chat-citations" aria-label="Citations">
+                    {message.citations.map((citation) => (
+                      <li className="chat-citation" key={`${message.id}-${citation.content_id}`}>
+                        <div className="chat-citation__header">
+                          <strong>{citation.document_id ?? citation.record_id}</strong>
+                          <span className="chat-citation__score">
+                            {(citation.score * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                        <p className="chat-citation__snippet">{citation.snippet}</p>
+                        <span className="metric-row__label">
+                          {citation.content_id}
+                          {citation.chunk_index != null ? ` · chunk ${citation.chunk_index}` : ''}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : message.citation_ids.length > 0 ? (
                   <div className="alert-row-card__meta">
                     {message.citation_ids.map((citationId) => (
                       <Chip key={citationId} label={citationId} tone="default" />

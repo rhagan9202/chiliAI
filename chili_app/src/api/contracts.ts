@@ -98,7 +98,11 @@ export type CaseCreateRequest = Schemas['CaseCreateRequest']
 export type CaseUpdateRequest = Schemas['CaseUpdateRequest']
 export type CaseFeedbackCreateRequest = Schemas['CaseFeedbackCreateRequest']
 
-export type ChatMessageResponse = RequireFields<Schemas['ChatMessageResponse'], 'citation_ids'>
+export type ChatCitationResponse = Schemas['ChatCitationResponse']
+export type ChatMessageResponse = RequireFields<
+  Schemas['ChatMessageResponse'],
+  'citation_ids' | 'citations'
+>
 export type ChatConversationResponse = RequireFields<
   Schemas['ChatConversationResponse'],
   'messages'

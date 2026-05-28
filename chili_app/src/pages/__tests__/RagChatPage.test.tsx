@@ -30,6 +30,16 @@ const mocks = vi.hoisted(() => ({
       content: string
       created_at: string
       citation_ids: string[]
+      citations: Array<{
+        record_id: string
+        content_id: string
+        score: number
+        snippet: string
+        document_id?: string | null
+        chunk_index?: number | null
+        highlight?: string | null
+        entity_id?: string | null
+      }>
     }>
   },
 }))
@@ -164,5 +174,41 @@ describe('RagChatPage', () => {
     await userEvent.selectOptions(screen.getByLabelText('Knowledge base'), 'kb-2')
 
     expect((textarea as HTMLTextAreaElement).value).toBe('')
+  })
+
+  it('renders rich assistant citations when the backend provides provenance', () => {
+    mocks.knowledgeBases = [KB_ONE]
+    mocks.conversation = {
+      id: 'conversation-1',
+      title: 'Investigation thread',
+      knowledge_base_id: 'kb-1',
+      messages: [
+        {
+          id: 'message-1',
+          role: 'assistant',
+          content: 'Claim pattern is anomalous.',
+          created_at: '2026-05-12T00:00:00Z',
+          citation_ids: ['chunk-17'],
+          citations: [
+            {
+              record_id: 'record-1',
+              content_id: 'chunk-17',
+              score: 0.91,
+              snippet: 'Provider billed repeated high-intensity claims.',
+              document_id: 'claims.csv',
+              chunk_index: 4,
+            },
+          ],
+        },
+      ],
+    }
+
+    render(<RagChatPage />)
+
+    expect(screen.getByLabelText('Citations')).toBeInTheDocument()
+    expect(screen.getByText('claims.csv')).toBeInTheDocument()
+    expect(screen.getByText('91%')).toBeInTheDocument()
+    expect(screen.getByText('Provider billed repeated high-intensity claims.')).toBeInTheDocument()
+    expect(screen.getByText('chunk-17 · chunk 4')).toBeInTheDocument()
   })
 })

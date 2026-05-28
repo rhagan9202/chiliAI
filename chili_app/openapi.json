@@ -787,6 +787,79 @@
         "title": "CaseUpdateRequest",
         "type": "object"
       },
+      "ChatCitationResponse": {
+        "description": "Rich citation payload returned alongside an assistant chat message.\n\nMirrors :class:`rag.models.RagCitation` so the frontend can render\nprovenance (snippet preview, document anchor, score) and offer\nclick-through navigation to investigation entities (see BL-002).",
+        "properties": {
+          "chunk_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Index"
+          },
+          "content_id": {
+            "title": "Content Id",
+            "type": "string"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
+          },
+          "highlight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highlight"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "snippet": {
+            "title": "Snippet",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id",
+          "content_id",
+          "score",
+          "snippet"
+        ],
+        "title": "ChatCitationResponse",
+        "type": "object"
+      },
       "ChatConversationCreateRequest": {
         "description": "Payload for creating a new chat conversation.",
         "properties": {
@@ -890,6 +963,13 @@
               "type": "string"
             },
             "title": "Citation Ids",
+            "type": "array"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/ChatCitationResponse"
+            },
+            "title": "Citations",
             "type": "array"
           },
           "content": {

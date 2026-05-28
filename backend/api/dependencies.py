@@ -96,6 +96,15 @@ from vectorstore.adapters.protocols import VectorStoreProtocol
 from vectorstore.protocols import VectorServiceProtocol
 from vectorstore.service import create_vector_service
 
+from api._rag_bridges import (
+    ServiceAnswerGenerator,
+    ServiceContextRetriever,
+    ServiceGraphContextExpander,
+    ServiceQueryEmbedder,
+)
+from rag.protocols import RagServiceProtocol
+from rag.service import create_rag_service
+
 __all__ = [
     "get_api_state",
     "get_alert_repository",
@@ -830,3 +839,29 @@ def get_workflow_tracker(
 ) -> WorkflowEventTracker:
     """Return a WorkflowEventTracker that satisfies the WorkflowBusyTracker protocol."""
     return WorkflowEventTracker(run_store)
+
+
+@lru_cache(maxsize=1)
+def get_rag_service() -> RagServiceProtocol:
+    """Return the live RAG service composed from configured dependencies.
+
+    Wires the production embeddings → vectorstore → graph → LLM pipeline
+    (see BL-001). Bridges in :mod:`api._rag_bridges` adapt the per-module
+    service contracts to the :class:`rag.protocols.RagServiceProtocol`
+    inputs.
+    """
+    domain_config = get_domain_config()
+    llm_cfg = domain_config.llm or LlmConfig()
+    return create_rag_service(
+        ServiceQueryEmbedder(get_embeddings_service()),
+        ServiceContextRetriever(get_vector_service()),
+        ServiceAnswerGenerator(
+            get_llm_service(),
+            max_tokens=llm_cfg.max_tokens,
+            model_name=llm_cfg.model,
+            temperature=llm_cfg.temperature,
+        ),
+        event_bus=get_event_bus(),
+        graph_context_expander=ServiceGraphContextExpander(get_graph_service()),
+        domain_config=domain_config,
+    )
