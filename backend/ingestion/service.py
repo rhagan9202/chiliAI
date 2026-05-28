@@ -10,6 +10,7 @@ from ingestion.orchestrators.protocols import (
     ParseResult,
     ParserOrchestrator,
 )
+from ingestion.recovery import IngestionRecoveryMarker, InMemoryIngestionRecoveryStore
 from ingestion.service_models import DocumentReceipt, DocumentSubmission, IngestionTask
 from events.protocols import EventBus
 from events.types import (
@@ -38,10 +39,12 @@ class IngestionService:
         *,
         object_store: ObjectStoreProtocol,
         event_bus: EventBus,
+        recovery_store: InMemoryIngestionRecoveryStore | None = None,
     ) -> None:
         self._parser_orchestrator = parser_orchestrator
         self._object_store = object_store
         self._event_bus = event_bus
+        self._recovery_store = recovery_store
 
     def register_documents(
         self,
@@ -49,6 +52,7 @@ class IngestionService:
         submissions: list[DocumentSubmission],
     ) -> list[DocumentReceipt]:
         document_references: list[DocumentReference] = []
+        content_hashes_by_source_document_id: dict[str, str | None] = {}
         receipts: list[DocumentReceipt] = []
 
         for submission in submissions:
@@ -61,6 +65,7 @@ class IngestionService:
                 if submission.content is not None
                 else None
             )
+            content_hashes_by_source_document_id[source_document_id] = checksum
             source_document = SourceDocument(
                 id=source_document_id,
                 source_type=source_type,
@@ -161,7 +166,26 @@ class IngestionService:
             )
 
         if document_references:
-            self._event_bus.publish(DocumentsUploadedEvent(documents=document_references))
+            event = DocumentsUploadedEvent(documents=document_references)
+            try:
+                self._event_bus.publish(event)
+            except Exception as exc:
+                if self._recovery_store is not None:
+                    for reference in document_references:
+                        self._recovery_store.add_marker(
+                            IngestionRecoveryMarker(
+                                knowledge_base_id=reference.knowledge_base_id,
+                                source_document_id=reference.source_document_id,
+                                storage_key=reference.storage_key,
+                                content_hash=content_hashes_by_source_document_id.get(
+                                    reference.source_document_id
+                                ),
+                                correlation_id=event.correlation_id,
+                                event_type=event.event_type,
+                                failure_reason=str(exc),
+                            )
+                        )
+                raise
         return receipts
 
     def ingest_task(

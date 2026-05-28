@@ -231,7 +231,7 @@ def test_get_analytics_overview_returns_dashboard_metrics() -> None:
 def test_get_risk_score_returns_factor_breakdown() -> None:
     client = TestClient(create_app())
 
-    response = client.get("/analytics/risk-scores/provider-204")
+    response = client.get("/analytics/risk-scores/provider-204", params={"kb_id": "kb-1"})
 
     assert response.status_code == 200
     payload = response.json()
@@ -242,7 +242,7 @@ def test_get_risk_score_returns_factor_breakdown() -> None:
 def test_get_timeseries_returns_chart_points() -> None:
     client = TestClient(create_app())
 
-    response = client.get("/analytics/timeseries/provider-204")
+    response = client.get("/analytics/timeseries/provider-204", params={"kb_id": "kb-1"})
 
     assert response.status_code == 200
     payload = response.json()

@@ -5,24 +5,26 @@ import type { AnalyticsOverviewResponse, RiskScoreResponse, TimeseriesResponse }
 
 export const analyticsOverviewQueryKey = ['analytics', 'overview'] as const
 
-export function riskScoreQueryKey(entityId: string) {
-  return ['analytics', 'risk-score', entityId] as const
+export function riskScoreQueryKey(knowledgeBaseId: string | null, entityId: string | null) {
+  return ['analytics', 'risk-score', knowledgeBaseId, entityId] as const
 }
 
-export function timeseriesQueryKey(entityId: string) {
-  return ['analytics', 'timeseries', entityId] as const
+export function timeseriesQueryKey(knowledgeBaseId: string | null, entityId: string | null) {
+  return ['analytics', 'timeseries', knowledgeBaseId, entityId] as const
 }
 
 export function getAnalyticsOverview(): Promise<AnalyticsOverviewResponse> {
   return apiFetch<AnalyticsOverviewResponse>('/analytics/overview')
 }
 
-export function getRiskScore(entityId: string): Promise<RiskScoreResponse> {
-  return apiFetch<RiskScoreResponse>(`/analytics/risk-scores/${entityId}`)
+export function getRiskScore(knowledgeBaseId: string, entityId: string): Promise<RiskScoreResponse> {
+  const params = new URLSearchParams({ kb_id: knowledgeBaseId })
+  return apiFetch<RiskScoreResponse>(`/analytics/risk-scores/${encodeURIComponent(entityId)}?${params}`)
 }
 
-export function getTimeseries(entityId: string): Promise<TimeseriesResponse> {
-  return apiFetch<TimeseriesResponse>(`/analytics/timeseries/${entityId}`)
+export function getTimeseries(knowledgeBaseId: string, entityId: string): Promise<TimeseriesResponse> {
+  const params = new URLSearchParams({ kb_id: knowledgeBaseId })
+  return apiFetch<TimeseriesResponse>(`/analytics/timeseries/${encodeURIComponent(entityId)}?${params}`)
 }
 
 export function useAnalyticsOverview() {
@@ -32,18 +34,18 @@ export function useAnalyticsOverview() {
   })
 }
 
-export function useRiskScore(entityId: string | null) {
+export function useRiskScore(knowledgeBaseId: string | null, entityId: string | null) {
   return useQuery({
-    queryKey: riskScoreQueryKey(entityId ?? 'missing'),
-    queryFn: () => getRiskScore(entityId ?? ''),
-    enabled: Boolean(entityId),
+    queryKey: riskScoreQueryKey(knowledgeBaseId, entityId),
+    queryFn: () => getRiskScore(knowledgeBaseId ?? '', entityId ?? ''),
+    enabled: Boolean(knowledgeBaseId && entityId),
   })
 }
 
-export function useTimeseries(entityId: string | null) {
+export function useTimeseries(knowledgeBaseId: string | null, entityId: string | null) {
   return useQuery({
-    queryKey: timeseriesQueryKey(entityId ?? 'missing'),
-    queryFn: () => getTimeseries(entityId ?? ''),
-    enabled: Boolean(entityId),
+    queryKey: timeseriesQueryKey(knowledgeBaseId, entityId),
+    queryFn: () => getTimeseries(knowledgeBaseId ?? '', entityId ?? ''),
+    enabled: Boolean(knowledgeBaseId && entityId),
   })
 }

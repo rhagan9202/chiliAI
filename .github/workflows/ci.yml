@@ -42,6 +42,7 @@ jobs:
       - name: Install backend with all extras
         run: |
           python -m pip install --upgrade pip
+          pip install uv
           pip install -e ".[dev,neo4j,qdrant,openai,anthropic,s3,sentence-transformers,analytics,postgres]" \
             || pip install -e ".[dev]"
 
@@ -56,6 +57,10 @@ jobs:
 
       - name: Run pytest with coverage gate
         run: pytest --cov --cov-report=xml --cov-report=term --cov-fail-under=85
+
+      - name: Run production readiness focused backend checks
+        working-directory: .
+        run: uv run --project backend pytest backend/tests/api/test_analytics_router.py backend/tests/agent/test_workflow_tracking.py backend/tests/api/test_records_router.py backend/tests/records/test_service.py backend/tests/events/test_redis_streams.py backend/tests/ingestion/test_service.py -q
 
       - name: Upload backend coverage report
         if: always()
@@ -154,6 +159,9 @@ jobs:
 
       - name: Run unit tests
         run: npm run test:run
+
+      - name: Run production readiness focused frontend checks
+        run: npm run test:run -- src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/app/__tests__/router-routes.test.tsx src/pages/__tests__/AnalystCopy.test.tsx
 
       - name: Build production bundle
         run: npm run build

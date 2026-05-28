@@ -350,6 +350,8 @@ class RiskScoreResponse(BaseModel):
     overall_score: float = Field(ge=0.0, le=1.0)
     risk_level: Literal["low", "medium", "high", "critical"]
     factors: list[RiskFactorResponse] = Field(default_factory=lambda: cast(list[RiskFactorResponse], []))
+    availability_status: Literal["available", "unavailable"] = "available"
+    unavailable_reason: str | None = None
 
 
 class EntityTimeseriesPointResponse(BaseModel):
@@ -367,6 +369,8 @@ class EntityTimeseriesResponse(BaseModel):
     entity_id: str
     metric_name: str
     points: list[EntityTimeseriesPointResponse] = Field(default_factory=lambda: cast(list[EntityTimeseriesPointResponse], []))
+    availability_status: Literal["available", "unavailable"] = "available"
+    unavailable_reason: str | None = None
 
 
 class AnalyticsOverviewResponse(BaseModel):

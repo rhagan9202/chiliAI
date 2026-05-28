@@ -505,6 +505,18 @@ class TestEventBusConfig:
         assert config.uri is None
         assert config.stream_prefix == "chili"
         assert config.consumer_group == "chili-workers"
+        assert config.stream_maxlen is None
+        assert config.reclaim_min_idle_ms is None
+
+    def test_accepts_redis_recovery_and_trim_settings(self) -> None:
+        config = EventBusConfig(
+            backend="redis",
+            stream_maxlen=5000,
+            reclaim_min_idle_ms=45_000,
+        )
+
+        assert config.stream_maxlen == 5000
+        assert config.reclaim_min_idle_ms == 45_000
 
 
 class TestMonitoringConfig:

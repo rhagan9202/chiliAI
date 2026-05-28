@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
-from ingestion.models import ParsedDocument
+from hashlib import sha256
+
+import pytest
+
 from events.adapters.in_memory import InMemoryEventBus
+from events.protocols import DlqErrorInfo, EventDelivery
+from events.types import AnyEvent
 from events.types import DocumentReference, DocumentsFailedEvent, DocumentsParsedEvent, DocumentsUploadedEvent
+from ingestion.models import ParsedDocument
+from ingestion.recovery import InMemoryIngestionRecoveryStore
 from ingestion.models import DocumentFormat, SourceDocument, SourceType
 from ingestion.orchestrators.protocols import DocumentParseFailure, ParseResult
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
@@ -27,6 +34,51 @@ def _service() -> tuple[IngestionService, InMemoryEventBus, InMemoryObjectStore]
         event_bus=event_bus,
     )
     return service, event_bus, object_store
+
+
+class FailingPublishBus:
+    def __init__(self) -> None:
+        self.events: list[AnyEvent] = []
+
+    def publish(self, event: AnyEvent) -> str | None:
+        self.events.append(event)
+        raise RuntimeError("redis unavailable")
+
+    def ensure_consumer_group(
+        self,
+        event_types: list[str],
+        *,
+        consumer_group: str,
+    ) -> None:
+        return None
+
+    def consume(
+        self,
+        event_types: list[str],
+        *,
+        consumer_group: str | None = None,
+        consumer_name: str | None = None,
+        limit: int = 1,
+        block_ms: int | None = None,
+    ) -> list[EventDelivery]:
+        return []
+
+    def reclaim_stale_pending(
+        self,
+        event_types: list[str],
+        *,
+        consumer_group: str,
+        consumer_name: str,
+        min_idle_ms: int,
+        limit: int = 10,
+    ) -> list[EventDelivery]:
+        return []
+
+    def ack(self, deliveries: list[EventDelivery]) -> None:
+        return None
+
+    def publish_to_dlq(self, event: AnyEvent, error_info: DlqErrorInfo) -> str | None:
+        return None
 
 
 def test_register_documents_stores_content_and_publishes_event() -> None:
@@ -100,6 +152,46 @@ def test_register_documents_deduplicates_repeated_content_with_different_filenam
     assert object_store.list_keys("knowledgebases/kb-1/documents/") == [
         first[0].storage_key
     ]
+
+
+def test_register_documents_records_recovery_marker_when_publish_fails() -> None:
+    recovery_store = InMemoryIngestionRecoveryStore()
+    event_bus = FailingPublishBus()
+    object_store = InMemoryObjectStore()
+    service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(),
+            fetcher=HttpxRemoteDocumentFetcher(),
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+        recovery_store=recovery_store,
+    )
+
+    with pytest.raises(RuntimeError, match="redis unavailable"):
+        service.register_documents(
+            "kb-1",
+            [
+                DocumentSubmission(
+                    filename="claim.txt",
+                    content=b"claim body",
+                    content_type="text/plain",
+                    document_format=DocumentFormat.TXT,
+                )
+            ],
+        )
+
+    markers = recovery_store.list_markers()
+    assert len(markers) == 1
+    marker = markers[0]
+    assert marker.knowledge_base_id == "kb-1"
+    assert marker.source_document_id.startswith("doc-sha256-")
+    assert marker.storage_key == f"knowledgebases/kb-1/documents/{marker.source_document_id}/source"
+    assert marker.content_hash == sha256(b"claim body").hexdigest()
+    assert marker.correlation_id == event_bus.events[0].correlation_id
+    assert marker.event_type == "documents.uploaded"
+    assert "redis unavailable" in marker.failure_reason
+    assert marker.created_at is not None
 
 
 def test_register_documents_deduplicates_repeated_remote_uri() -> None:

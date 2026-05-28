@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 from agent.adapters.protocols import WorkflowRunStoreProtocol
+from agent.exceptions import WorkflowRunNotFoundError
 from agent.models import (
     TERMINAL_RUN_STATUSES,
     MetadataValue,
@@ -24,6 +26,7 @@ from events.types import (
     EntitiesExtractedEvent,
     EntitiesValidatedEvent,
     GraphUpdatedEvent,
+    KnowledgeBaseReadyEvent,
     RecordsIngestedEvent,
     RiskScoredEvent,
     VectorsIndexedEvent,
@@ -43,6 +46,7 @@ _STEP_BY_EVENT_TYPE: dict[str, str] = {
     "graph.updated": "embed",
     "embeddings.complete": "vector_index",
     "vectors.indexed": "ready",
+    "kb.ready": "ready",
     "risk.scored": "monitoring",
 }
 _DEFAULT_STEP_SEQUENCE: tuple[str, ...] = (
@@ -57,7 +61,7 @@ _DEFAULT_STEP_SEQUENCE: tuple[str, ...] = (
     "monitoring",
 )
 _TERMINAL_SUCCESS_EVENT_TYPES: frozenset[str] = frozenset(
-    {"vectors.indexed", "risk.scored", "records.ingested"}
+    {"vectors.indexed", "kb.ready", "risk.scored", "records.ingested"}
 )
 _TERMINAL_FAILURE_EVENT_TYPES: frozenset[str] = frozenset({"documents.failed"})
 _SYSTEM_METADATA_KEYS: frozenset[str] = frozenset(
@@ -124,6 +128,7 @@ class WorkflowEventTracker:
         )
         metadata = dict(tracked.run.metadata)
         metadata["last_event_type"] = event.event_type
+        metadata.update(_summary_metadata_for_event(event))
         if event.event_type in _TERMINAL_FAILURE_EVENT_TYPES:
             status = WorkflowRunStatus.FAILED
         elif event.event_type in _TERMINAL_SUCCESS_EVENT_TYPES:
@@ -179,6 +184,62 @@ class WorkflowEventTracker:
             if runs:
                 return True
         return False
+
+    def reconcile_stale_runs(
+        self,
+        *,
+        max_age_seconds: int,
+        batch_size: int = 1000,
+    ) -> int:
+        """Mark old queued/running runs failed so UI and busy checks do not hang."""
+        if max_age_seconds <= 0:
+            raise ValueError("max_age_seconds must be greater than 0.")
+        if batch_size <= 0:
+            raise ValueError("batch_size must be greater than 0.")
+        now = utc_now()
+        cutoff = now - timedelta(seconds=max_age_seconds)
+        candidates: list[str] = []
+        for status in (WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING):
+            offset = 0
+            while True:
+                runs = self._run_store.list_runs(
+                    status=status,
+                    limit=batch_size,
+                    offset=offset,
+                )
+                if not runs:
+                    break
+                candidates.extend(run.workflow_id for run in runs)
+                offset += batch_size
+
+        reconciled = 0
+        for workflow_id in candidates:
+            try:
+                run = self._run_store.get_run(workflow_id)
+            except WorkflowRunNotFoundError:
+                continue
+            if run.status not in (WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING):
+                continue
+            if run.updated_at >= cutoff:
+                continue
+            metadata = dict(run.metadata)
+            metadata["reason"] = "stale_workflow_reconciled"
+            updated = self._run_store.update_run_if_current(
+                run.workflow_id,
+                WorkflowRunUpdate(
+                    status=WorkflowRunStatus.FAILED,
+                    metadata=metadata,
+                    updated_at=now,
+                ),
+                expected_statuses={
+                    WorkflowRunStatus.QUEUED,
+                    WorkflowRunStatus.RUNNING,
+                },
+                updated_before=cutoff,
+            )
+            if updated is not None:
+                reconciled += 1
+        return reconciled
 
     def _resolve_tracked_event(self, event: AnyEvent) -> _TrackedEvent | None:
         step_name = _STEP_BY_EVENT_TYPE.get(event.event_type)
@@ -259,6 +320,17 @@ def _fallback_steps(current_step: str) -> list[WorkflowStepState]:
     return steps
 
 
+def _summary_metadata_for_event(event: AnyEvent) -> dict[str, MetadataValue]:
+    if isinstance(event, KnowledgeBaseReadyEvent) and event.knowledge_bases:
+        first = event.knowledge_bases[0]
+        return {
+            "entity_count": first.entity_count,
+            "relationship_count": first.relationship_count,
+            "vector_count": first.vector_count,
+        }
+    return {}
+
+
 def _knowledge_base_id_for_event(event: AnyEvent) -> str | None:
     if isinstance(
         event,
@@ -279,6 +351,8 @@ def _knowledge_base_id_for_event(event: AnyEvent) -> str | None:
             return references[0].knowledge_base_id
     if isinstance(event, RecordsIngestedEvent):
         return event.knowledge_base_id
+    if isinstance(event, KnowledgeBaseReadyEvent) and event.knowledge_bases:
+        return event.knowledge_bases[0].knowledge_base_id
     if isinstance(event, RiskScoredEvent) and event.assessments:
         return event.assessments[0].knowledge_base_id
     return None

@@ -8,7 +8,9 @@ from collections.abc import Sequence
 
 import pytest
 
+import agent.coordinator as coordinator
 from agent.coordinator import (
+    WORKER_EVENT_TYPES,
     build_worker_dependencies,
     drain_ingestion_events,
     handle_embeddings_complete,
@@ -23,12 +25,19 @@ from agent.coordinator import (
 )
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.exceptions import ConfigurationError
-from agent.models import RetryPolicy, WorkflowRunStatus
+from agent.models import (
+    RetryPolicy,
+    WorkflowRun,
+    WorkflowRunStatus,
+    WorkflowStepState,
+    WorkflowStepStatus,
+)
 from agent.workflow_tracking import WorkflowEventTracker
 from config.loader import load_config
 from config.schema import (
     DomainConfig,
     EmbeddingsConfig,
+    EventBusConfig,
     GraphDbConfig,
     LlmConfig,
     ObjectStoreConfig,
@@ -63,6 +72,7 @@ from events.types import (
     GraphUpdatedEvent,
     KnowledgeBaseCreatedEvent,
     KnowledgeBaseReadyEvent,
+    KnowledgeBaseReadyReference,
     ParsedDocumentReference,
     RecordsIngestedEvent,
     RiskScoredEvent as _RiskScoredEvent,
@@ -80,12 +90,77 @@ from ingestion.models import ExtractionResult, ParsedDocument, ValidationReport
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
+from ingestion.recovery import InMemoryIngestionRecoveryStore
 from ingestion.service import IngestionService
 from ingestion.service_models import DocumentSubmission
 from ingestion.validator import create_extraction_validator
 from shared.types import Entity
 from storage.adapters.in_memory import InMemoryObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
+
+
+def test_worker_event_types_include_kb_ready_for_workflow_tracking() -> None:
+    assert "kb.ready" in WORKER_EVENT_TYPES
+
+
+def test_drain_ingestion_events_completes_kb_ready_workflow() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    workflow_run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-ready",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="ready")],
+                metadata={"correlation_id": "corr-ready"},
+            )
+        ]
+    )
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+    event_bus.publish(
+        KnowledgeBaseReadyEvent(
+            correlation_id="corr-ready",
+            knowledge_bases=[
+                KnowledgeBaseReadyReference(
+                    knowledge_base_id="kb-1",
+                    entity_count=0,
+                    relationship_count=0,
+                    vector_count=0,
+                )
+            ],
+        )
+    )
+
+    processed = asyncio.run(drain_ingestion_events(
+        event_bus,
+        IngestionService(
+            DocumentParsingOrchestrator(
+                create_default_registry(),
+                fetcher=HttpxRemoteDocumentFetcher(),
+            ),
+            object_store=object_store,
+            event_bus=event_bus,
+        ),
+        create_document_chunker(),
+        create_document_extractor([]),
+        create_extraction_validator([], []),
+        graph_service,
+        object_store,
+        consumer_group="test-workers",
+        consumer_name="worker-1",
+        workflow_tracker=WorkflowEventTracker(workflow_run_store),
+    ))
+
+    run = workflow_run_store.get_run("workflow-ready")
+    assert processed == 0
+    assert run.status is WorkflowRunStatus.COMPLETED
+    assert run.steps[0].status is WorkflowStepStatus.COMPLETED
 
 
 
@@ -134,6 +209,50 @@ class _StaticGraphProvider:
             provider="test-gnn",
             dimensions=self._dimensions,
         )
+
+
+class _RecoveringEventBus(InMemoryEventBus):
+    def __init__(
+        self,
+        *,
+        reclaimed: list[EventDelivery],
+        consumed: list[EventDelivery],
+    ) -> None:
+        super().__init__()
+        self._reclaimed = reclaimed
+        self._consumed = consumed
+        self.calls: list[tuple[str, int]] = []
+        self.acked_deliveries: list[EventDelivery] = []
+
+    def reclaim_stale_pending(
+        self,
+        event_types: list[str],
+        *,
+        consumer_group: str,
+        consumer_name: str,
+        min_idle_ms: int,
+        limit: int = 10,
+    ) -> list[EventDelivery]:
+        del event_types, consumer_group, consumer_name, min_idle_ms
+        self.calls.append(("reclaim", limit))
+        return self._reclaimed[:limit]
+
+    def consume(
+        self,
+        event_types: list[str],
+        *,
+        consumer_group: str | None = None,
+        consumer_name: str | None = None,
+        limit: int = 1,
+        block_ms: int | None = None,
+    ) -> list[EventDelivery]:
+        del event_types, consumer_group, consumer_name, block_ms
+        self.calls.append(("consume", limit))
+        return self._consumed[:limit]
+
+    def ack(self, deliveries: list[EventDelivery]) -> None:
+        self.acked_deliveries.extend(deliveries)
+        super().ack(deliveries)
 
 
 def _graph_updated_event_with_valid_entity(
@@ -193,6 +312,89 @@ def _graph_updated_event_with_valid_entity(
     )
 
 
+def _parsed_delivery(
+    *,
+    event_id: str,
+    parsed_document_id: str,
+    object_store: InMemoryObjectStore,
+) -> EventDelivery:
+    storage_key = f"knowledgebases/kb-1/parsed/{parsed_document_id}.json"
+    object_store.put_bytes(
+        storage_key,
+        ParsedDocument(
+            id=parsed_document_id,
+            source_document_id=f"doc-{parsed_document_id}",
+            text_content=f"Claim content for {parsed_document_id}.",
+            parser_name="test-parser",
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    return EventDelivery(
+        event=DocumentsParsedEvent(
+            correlation_id=f"corr-{parsed_document_id}",
+            documents=[
+                ParsedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id=f"doc-{parsed_document_id}",
+                    parsed_document_id=parsed_document_id,
+                    parser_name="test-parser",
+                    storage_key=f"knowledgebases/kb-1/documents/{parsed_document_id}.txt",
+                    parsed_document_storage_key=storage_key,
+                )
+            ],
+        ),
+        event_id=event_id,
+        stream="chili.documents.parsed",
+        consumer_group="test-workers",
+    )
+
+
+def test_drain_ingestion_events_processes_reclaimed_pending_before_new_deliveries() -> None:
+    object_store = InMemoryObjectStore()
+    reclaimed = _parsed_delivery(
+        event_id="1-0",
+        parsed_document_id="parsed-stale",
+        object_store=object_store,
+    )
+    consumed = _parsed_delivery(
+        event_id="2-0",
+        parsed_document_id="parsed-new",
+        object_store=object_store,
+    )
+    event_bus = _RecoveringEventBus(reclaimed=[reclaimed], consumed=[consumed])
+    service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(),
+            fetcher=HttpxRemoteDocumentFetcher(),
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    processed = asyncio.run(drain_ingestion_events(
+        event_bus,
+        service,
+        create_document_chunker(),
+        create_document_extractor([]),
+        create_extraction_validator([], []),
+        graph_service,
+        object_store,
+        consumer_group="test-workers",
+        consumer_name="worker-1",
+        limit=2,
+        reclaim_min_idle_ms=30_000,
+    ))
+
+    assert processed == 2
+    assert event_bus.calls == [("reclaim", 2), ("consume", 1)]
+    assert event_bus.acked_deliveries == [reclaimed, consumed]
+
+
 def test_build_worker_dependencies_assembles_ingestion_pipeline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -220,6 +422,33 @@ def test_build_worker_dependencies_assembles_ingestion_pipeline(
     assert isinstance(deps.embeddings_service, EmbeddingsService)
     assert deps.llm_client is not None
     assert deps.event_settings.backend == "in-memory"
+    assert isinstance(deps.ingestion_service._recovery_store, InMemoryIngestionRecoveryStore)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_worker_event_bus_explicit_config_preserves_env_recovery_and_trim_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    defaults_dir = (
+        __file__
+        .replace("tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml")
+    )
+    config = load_config(defaults_dir).model_copy(
+        update={
+            "events": EventBusConfig(
+                backend="redis",
+                uri="redis://localhost:6379/5",
+                stream_prefix="custom",
+                consumer_group="custom-workers",
+            )
+        }
+    )
+    monkeypatch.setenv("CHILI_EVENT_STREAM_MAXLEN", "7500")
+    monkeypatch.setenv("CHILI_EVENT_RECLAIM_MIN_IDLE_MS", "90000")
+
+    settings = coordinator._resolve_worker_event_bus_settings(config)  # pyright: ignore[reportPrivateUsage]
+
+    assert settings.stream_maxlen == 7500
+    assert settings.reclaim_min_idle_ms == 90_000
 
 
 def test_handle_event_returns_zero_for_unhandled_event() -> None:
@@ -1638,6 +1867,7 @@ def test_run_handler_with_retry_propagates_dlq_publish_failure() -> None:
             event: AnyEvent,
             error_info: DlqErrorInfo,
         ) -> str | None:
+            del event, error_info
             raise RuntimeError("simulated DLQ publish failure (Redis unreachable)")
 
     event_bus = _DlqFailingEventBus()
@@ -1789,6 +2019,7 @@ def test_graceful_shutdown_finishes_in_flight_event(
     """The worker loop completes gracefully when the shutdown event fires."""
 
     import logging
+    from datetime import timedelta
 
     from agent.coordinator import (
         WorkerDependencies,
@@ -1798,6 +2029,7 @@ def test_graceful_shutdown_finishes_in_flight_event(
     )
     from agent.adapters.in_memory import InMemoryWorkflowRunStore
     from agent.workflow_tracking import WorkflowEventTracker
+    from shared.utils import utc_now
 
     defaults_yaml = __file__.replace(
         "tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml"
@@ -1805,7 +2037,19 @@ def test_graceful_shutdown_finishes_in_flight_event(
     monkeypatch.setenv("CHILI_CONFIG_PATH", defaults_yaml)
 
     event_bus = InMemoryEventBus()
-    workflow_run_store = InMemoryWorkflowRunStore()
+    workflow_run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-stale-runtime",
+                knowledge_base_id="kb-stale",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                updated_at=utc_now() - timedelta(days=2),
+                metadata={"correlation_id": "corr-stale-runtime"},
+            )
+        ]
+    )
     object_store = InMemoryObjectStore()
     vector_store = InMemoryVectorStore()
     graph_repository = InMemoryGraphRepository()
@@ -1899,6 +2143,9 @@ def test_graceful_shutdown_finishes_in_flight_event(
     asyncio.run(_run())
     log_text = caplog.text
     assert SHUTDOWN_LOG_DONE in log_text
+    reconciled = workflow_run_store.get_run("workflow-stale-runtime")
+    assert reconciled.status is WorkflowRunStatus.FAILED
+    assert reconciled.metadata["reason"] == "stale_workflow_reconciled"
     # SHUTDOWN_LOG_REQUESTED would only fire if signal was actually delivered;
     # since cancellation skips it, only the graceful-stop log is asserted.
     assert SHUTDOWN_LOG_REQUESTED.startswith("Shutdown requested")
@@ -2399,6 +2646,9 @@ class _AcceptingExplainabilityContextSource:
 
 
 def test_handle_event_dispatches_analytics_pipeline_for_graph_updated() -> None:
+    pytest.importorskip("networkx")
+    pytest.importorskip("numpy")
+
     from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
     from analytics.gnn.models import (
         GraphEdgeSignal,
@@ -2550,6 +2800,9 @@ def test_handle_event_dispatches_analytics_pipeline_for_graph_updated() -> None:
 
 
 def test_analytics_handler_emits_analysis_failed_when_risk_profile_missing() -> None:
+    pytest.importorskip("networkx")
+    pytest.importorskip("numpy")
+
     from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
     from analytics.gnn.models import (
         GraphEdgeSignal,

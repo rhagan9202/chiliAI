@@ -16,6 +16,7 @@ export function AppShell() {
   const domainFeaturesQuery = useDomainFeatures()
   const aiPanelOpen = useUiStore((state) => state.aiPanelOpen)
   const selectedRole = useUiStore((state) => state.selectedRole)
+  const setAccessNotice = useUiStore((state) => state.setAccessNotice)
   const setSelectedRole = useUiStore((state) => state.setSelectedRole)
   const location = useLocation()
 
@@ -43,8 +44,16 @@ export function AppShell() {
     domainFeaturesQuery.data,
     selectedRole,
   )
+  const domainQueriesDone = !domainConfigQuery.isLoading && !domainFeaturesQuery.isLoading
+  const routeBlocked = domainQueriesDone && !routeAllowed
 
-  if (!domainConfigQuery.isLoading && !domainFeaturesQuery.isLoading && !routeAllowed) {
+  useEffect(() => {
+    if (routeBlocked) {
+      setAccessNotice('Selected role cannot access that page.')
+    }
+  }, [routeBlocked, setAccessNotice])
+
+  if (routeBlocked) {
     return <Navigate replace to={landingRoute} />
   }
 
