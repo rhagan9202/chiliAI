@@ -17,6 +17,10 @@
 .app-shell__main {
   min-height: calc(100vh - 82px);
   padding: 24px;
+  /* Prevent browser text/element selection from interrupting pointer events
+     when a force-graph node drag escapes the canvas boundary. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .app-sidebar {

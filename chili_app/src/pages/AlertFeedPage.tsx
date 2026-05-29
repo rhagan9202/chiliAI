@@ -61,30 +61,31 @@ export function AlertFeedPage() {
         alerts.map((alert) => (
           <Card className="alert-row-card" compact key={alert.id}>
             <div className="alert-row-card__header">
-              <div>
+              <div className="alert-row-card__header-info">
                 <div className="alert-row-card__title">{alert.entity_label}</div>
-                <div className="alert-row-card__subtitle">{alert.reasoning}</div>
+                <div className="alert-row-card__meta">
+                  <Chip label={alert.severity} tone={alert.severity === 'critical' ? 'danger' : 'warning'} />
+                  <Chip label={alert.status} tone={alert.status === 'acknowledged' ? 'success' : 'info'} />
+                  {(alert.tags ?? []).map((tag) => (
+                    <Chip key={tag} label={tag.replace(/-/g, ' ')} tone="default" />
+                  ))}
+                </div>
               </div>
-              <RiskBadge score={Math.round(alert.confidence * 100)} />
+              <div className="alert-row-card__header-actions">
+                <RiskBadge score={Math.round(alert.confidence * 100)} />
+                <button
+                  aria-label={alert.status === 'acknowledged' ? 'Acknowledged' : 'Acknowledge'}
+                  className="page-button page-button--sm"
+                  disabled={alert.status === 'acknowledged' || acknowledgeMutation.isPending}
+                  onClick={() => acknowledgeMutation.mutate(alert.id)}
+                  type="button"
+                >
+                  {alert.status === 'acknowledged' ? '✓' : 'Ack'}
+                </button>
+              </div>
             </div>
-            <div className="alert-row-card__meta">
-              <Chip label={alert.severity} tone={alert.severity === 'critical' ? 'danger' : 'warning'} />
-              <Chip label={alert.status} tone={alert.status === 'acknowledged' ? 'success' : 'info'} />
-              {alert.tags.map((tag) => (
-                <Chip key={tag} label={tag.replace(/-/g, ' ')} tone="default" />
-              ))}
-            </div>
+            <div className="alert-row-card__reasoning">{alert.reasoning}</div>
             <ConfidenceBar value={Math.round(alert.confidence * 100)} />
-            <div className="page-actions-inline">
-              <button
-                className="page-button"
-                disabled={alert.status === 'acknowledged' || acknowledgeMutation.isPending}
-                onClick={() => acknowledgeMutation.mutate(alert.id)}
-                type="button"
-              >
-                {alert.status === 'acknowledged' ? 'Acknowledged' : 'Acknowledge'}
-              </button>
-            </div>
           </Card>
         ))
       ) : (

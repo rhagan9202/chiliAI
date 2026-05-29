@@ -69,67 +69,57 @@ export function RagChatPage() {
   const conversation = conversationQuery.data ?? null
 
   return (
-    <section className="page-grid">
-      <SectionHeader
-        actions={<Chip label={conversation?.title ?? 'No active thread'} tone="info" />}
-        eyebrow="Conversational RAG"
-        subtitle="Conversation creation and message submission now exercise the backend chat endpoints and active RAG service."
-        title="RAG Chat"
-      />
-
-      <Card>
-        <div className="metric-stack">
-          <div className="metric-row">
-            <label className="metric-row__label" htmlFor="rag-kb-select">
-              Knowledge base
-            </label>
-            <select
-              className="page-input"
-              id="rag-kb-select"
-              onChange={(event) => {
-                // setSearchParams (not navigate) because RAG Chat has no entity sub-path to reset.
-                const next = new URLSearchParams(searchParams)
-                next.set('kb', event.target.value)
-                setSearchParams(next)
-                setConversationId(null)
-                setDraft('')
-              }}
-              value={selectedKnowledgeBaseId}
-            >
-              {knowledgeBases.map((kb) => (
-                <option key={kb.id} value={kb.id}>
-                  {kb.name} · {kb.status}
-                </option>
-              ))}
-            </select>
-          </div>
+    <section className="chat-page">
+      <div className="chat-page__toolbar">
+        <div>
+          <div className="chat-page__eyebrow">Conversational RAG</div>
+          <h2 className="chat-page__title">RAG Chat</h2>
         </div>
-      </Card>
-
-      <div className="page-actions-inline">
-        <button
-          className="page-button"
-          disabled={createConversationMutation.isPending}
-          onClick={() =>
-            createConversationMutation.mutate(
-              {
-                knowledge_base_id: selectedKnowledgeBaseId,
-                title: `Investigation thread ${new Date().toLocaleTimeString()}`,
-              },
-              {
-                onSuccess: (conversation) => {
-                  setConversationId(conversation.id)
+        <div className="chat-page__toolbar-controls">
+          <Chip label={conversation?.title ?? 'No active thread'} tone="info" />
+          <select
+            aria-label="Knowledge base"
+            className="page-input--inline"
+            id="rag-kb-select"
+            onChange={(event) => {
+              const next = new URLSearchParams(searchParams)
+              next.set('kb', event.target.value)
+              setSearchParams(next)
+              setConversationId(null)
+              setDraft('')
+            }}
+            value={selectedKnowledgeBaseId}
+          >
+            {knowledgeBases.map((kb) => (
+              <option key={kb.id} value={kb.id}>
+                {kb.name} · {kb.status}
+              </option>
+            ))}
+          </select>
+          <button
+            className="page-button"
+            disabled={createConversationMutation.isPending}
+            onClick={() =>
+              createConversationMutation.mutate(
+                {
+                  knowledge_base_id: selectedKnowledgeBaseId,
+                  title: `Investigation thread ${new Date().toLocaleTimeString()}`,
                 },
-              },
-            )
-          }
-          type="button"
-        >
-          Start new thread
-        </button>
+                {
+                  onSuccess: (created) => {
+                    setConversationId(created.id)
+                  },
+                },
+              )
+            }
+            type="button"
+          >
+            New thread
+          </button>
+        </div>
       </div>
 
-      <Card>
+      <div className="chat-page__thread">
         {conversation ? (
           <div className="chat-thread">
             {conversation.messages.map((message) => (
@@ -143,9 +133,9 @@ export function RagChatPage() {
               >
                 <strong>{message.role}</strong>
                 <p>{message.content}</p>
-                {message.citations.length > 0 ? (
+                {(message.citations ?? []).length > 0 ? (
                   <ul className="chat-citations" aria-label="Citations">
-                    {message.citations.map((citation) => (
+                    {(message.citations ?? []).map((citation) => (
                       <li className="chat-citation" key={`${message.id}-${citation.content_id}`}>
                         <div className="chat-citation__header">
                           <strong>{citation.document_id ?? citation.record_id}</strong>
@@ -161,9 +151,9 @@ export function RagChatPage() {
                       </li>
                     ))}
                   </ul>
-                ) : message.citation_ids.length > 0 ? (
+                ) : (message.citation_ids ?? []).length > 0 ? (
                   <div className="alert-row-card__meta">
-                    {message.citation_ids.map((citationId) => (
+                    {(message.citation_ids ?? []).map((citationId) => (
                       <Chip key={citationId} label={citationId} tone="default" />
                     ))}
                   </div>
@@ -177,10 +167,10 @@ export function RagChatPage() {
             title="No active conversation"
           />
         )}
-      </Card>
+      </div>
 
-      <Card>
-        <div className="metric-stack">
+      <div className="chat-page__compose">
+        <div className="chat-page__compose-row">
           <textarea
             className="page-textarea"
             onChange={(event) => setDraft(event.target.value)}
@@ -200,10 +190,10 @@ export function RagChatPage() {
             }}
             type="button"
           >
-            Send message
+            Send
           </button>
         </div>
-      </Card>
+      </div>
     </section>
   )
 }
