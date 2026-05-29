@@ -87,6 +87,9 @@ export function useInvestigationEntity(
     queryKey: investigationEntityQueryKey(knowledgeBaseId, entityId),
     queryFn: () => getInvestigationEntity(knowledgeBaseId ?? '', entityId ?? ''),
     enabled: Boolean(knowledgeBaseId) && Boolean(entityId),
+    // Keep the previous entity visible while fetching the next one so the
+    // page doesn't collapse in height and trigger an apparent scroll reset.
+    placeholderData: (prev) => prev,
   })
 }
 
@@ -99,5 +102,8 @@ export function useInvestigationNeighborhood(
     queryKey: investigationNeighborhoodQueryKey(knowledgeBaseId, entityId, depth),
     queryFn: () => getInvestigationNeighborhood(knowledgeBaseId ?? '', entityId ?? '', depth),
     enabled: Boolean(knowledgeBaseId) && Boolean(entityId),
+    // Keep the previous neighborhood graph visible during navigation so the
+    // canvas maintains its height and pins survive the transition.
+    placeholderData: (prev) => prev,
   })
 }

@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAlerts } from '../api/alerts'
 import { useRiskScore, useTimeseries } from '../api/analytics'
 import { useDomainConfig } from '../api/config'
-import type { DomainConfig, RuntimeEntity, RuntimeRelationship } from '../api/contracts'
+import type { RuntimeEntity, RuntimeRelationship } from '../api/contracts'
 import { useEvidencePack } from '../api/evidence'
 import {
   useInvestigationEntity,
@@ -27,7 +27,6 @@ import {
   getEntitySubtitle,
   getEntityTitle,
   getEntityTypeLabel,
-  getRelationshipTypeLabel,
 } from '../utils/domainDisplay'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import './pages.css'
@@ -171,7 +170,10 @@ export function InvestigationWorkbenchPage() {
                     if (activeKnowledgeBaseId) {
                       nextSearch.set('kb', activeKnowledgeBaseId)
                     }
-                    navigate({ pathname: `/investigation/${result.id}`, search: nextSearch.toString() })
+                    navigate(
+                      { pathname: `/investigation/${result.id}`, search: nextSearch.toString() },
+                      { preventScrollReset: true },
+                    )
                   }}
                   type="button"
                 >
@@ -290,17 +292,14 @@ export function InvestigationWorkbenchPage() {
                           if (activeKnowledgeBaseId) {
                             nextSearch.set('kb', activeKnowledgeBaseId)
                           }
-                          navigate({ pathname: `/investigation/${nextId}`, search: nextSearch.toString() })
+                          navigate(
+                            { pathname: `/investigation/${nextId}`, search: nextSearch.toString() },
+                            { preventScrollReset: true },
+                          )
                         }}
                         testId="investigation-graph-canvas"
                       />
                     </div>
-                    <NeighborhoodList
-                      config={domainConfigQuery.data}
-                      centerEntityId={entity.id}
-                      entities={neighborhood.entities}
-                      relationships={neighborhood.relationships}
-                    />
                   </>
                 ) : (
                   <EmptyState description="Select an entity to load its graph neighborhood." title="No neighborhood loaded" />
@@ -392,43 +391,6 @@ function toSubgraphResult(
       weight: r.weight,
     })),
   }
-}
-
-function NeighborhoodList({
-  centerEntityId,
-  config,
-  entities,
-  relationships,
-}: {
-  centerEntityId: string
-  config: DomainConfig
-  entities: RuntimeEntity[]
-  relationships: RuntimeRelationship[]
-}) {
-  const neighbors = entities.filter((item) => item.id !== centerEntityId)
-
-  if (neighbors.length === 0 && relationships.length === 0) {
-    return <EmptyState description="The selected entity has no relationships at this depth." title="No connected entities" />
-  }
-
-  return (
-    <div className="knowledge-base-documents">
-      {neighbors.map((neighbor) => (
-        <div className="metric-row metric-row--stacked" key={neighbor.id}>
-          <strong>{getEntityTitle(neighbor, config)}</strong>
-          <span className="metric-row__label">
-            {getEntityTypeLabel(neighbor.type, config)} · {getEntitySubtitle(neighbor, config) ?? neighbor.id}
-          </span>
-        </div>
-      ))}
-      {relationships.map((relationship) => (
-        <div className="metric-row metric-row--stacked" key={relationship.id}>
-          <strong>{getRelationshipTypeLabel(relationship.type, config)}</strong>
-          <span className="metric-row__label">{relationship.source_id} → {relationship.target_id}</span>
-        </div>
-      ))}
-    </div>
-  )
 }
 
 function ChartFrameInvestigation({

@@ -4,11 +4,17 @@
   height: 100%;
   max-height: 100%;
   min-height: 320px;
-  background: var(--bg-soft, #faf8fc);
-  border: 1px solid var(--border, #e5e4e7);
+  background: var(--c-s2, #0c1222);
+  border: 1px solid var(--c-b1, #1e2c44);
   border-radius: 8px;
   overflow: hidden;
   contain: size layout paint;
+  /* Prevent the browser from starting a text/element selection when the
+     drag gesture escapes the canvas boundary, which would block pointer
+     events and prevent subsequent node drags. */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
 }
 
 .placeholder {
@@ -17,7 +23,7 @@
   justify-content: center;
   width: 100%;
   height: 100%;
-  color: var(--text, #6b6375);
+  color: var(--c-dim, #8899bb);
   font-size: 14px;
   padding: 24px;
   text-align: center;
@@ -27,15 +33,16 @@
   position: absolute;
   top: 12px;
   left: 12px;
+  z-index: 10;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--border, #e5e4e7);
+  background: rgba(18, 28, 50, 0.92);
+  border: 1px solid var(--c-b2, #253450);
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 12px;
-  color: var(--text-h, #08060d);
+  color: var(--c-text, #e2eaf6);
   pointer-events: none;
   max-width: 220px;
 }
@@ -44,6 +51,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.legendRowSelected {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--c-b1, #1e2c44);
+  color: var(--c-dim, #8899bb);
+  font-style: italic;
 }
 
 .legendSwatch {

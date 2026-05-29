@@ -230,10 +230,13 @@ describe('InvestigationWorkbenchPage', () => {
     await userEvent.type(screen.getByRole('searchbox', { name: 'Entity search' }), '123')
     await userEvent.click(await screen.findByRole('button', { name: /1234567890/i }))
 
-    expect(mocks.navigate).toHaveBeenCalledWith({
-      pathname: '/investigation/provider-204',
-      search: 'kb=kb-live',
-    })
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      {
+        pathname: '/investigation/provider-204',
+        search: 'kb=kb-live',
+      },
+      { preventScrollReset: true },
+    )
     expect(screen.getByRole('heading', { name: '1234567890' })).toBeInTheDocument()
     expect(screen.getByText('Provider')).toBeInTheDocument()
     expect(screen.getByText('state: WA')).toBeInTheDocument()

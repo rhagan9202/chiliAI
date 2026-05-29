@@ -171,6 +171,10 @@
   width: 100%;
   height: 420px;
   margin-bottom: 16px;
+  /* Prevent browser text selection from intercepting pointer events during
+     node drag gestures that escape the canvas boundary. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .page-list-item {
@@ -327,6 +331,113 @@
 .policy-detail-grid {
   display: grid;
   gap: 16px;
+}
+
+/* ── Chat-page fixed-height layout ───────────────────────────── */
+
+.chat-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 82px - 48px);
+  overflow: hidden;
+}
+
+.chat-page__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--c-b0);
+}
+
+.chat-page__eyebrow {
+  color: var(--c-cyan);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.chat-page__title {
+  margin: 4px 0 0;
+  color: var(--c-text);
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.chat-page__toolbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.page-input--inline {
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--c-text);
+  background: var(--c-s3);
+  border: 1px solid var(--c-b0);
+  border-radius: 10px;
+}
+
+.chat-page__thread {
+  flex: 1;
+  min-height: 200px;
+  overflow-y: auto;
+  padding: 16px 0;
+}
+
+.chat-page__compose {
+  flex-shrink: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--c-b0);
+}
+
+.chat-page__compose-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+/* ── Compact button variant ───────────────────────────────────── */
+
+.page-button--sm {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
+/* ── Alert card compact layout overrides ─────────────────────── */
+
+.alert-row-card__header {
+  align-items: flex-start;
+  flex-wrap: nowrap;
+}
+
+.alert-row-card__header-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.alert-row-card__header-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.alert-row-card__reasoning {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-dim);
+  font-size: 13px;
 }
 
 .policy-copy-grid,
