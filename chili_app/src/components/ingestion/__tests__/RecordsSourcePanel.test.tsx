@@ -53,7 +53,7 @@ describe('RecordsSourcePanel', () => {
         onRowsParsed={onRowsParsed}
         recordFile={null}
         rows={[]}
-        selectedFeedName="claims_feed"
+        selectedFeedName="provider_feed"
       />,
     )
 
@@ -82,8 +82,8 @@ describe('RecordsSourcePanel', () => {
       ],
       [],
     )
-    expect(screen.getByText('claim')).toBeInTheDocument()
-    expect(screen.getByText('claim_id')).toBeInTheDocument()
+    expect(screen.getByText('provider')).toBeInTheDocument()
+    expect(screen.getByText('provider_npi')).toBeInTheDocument()
   })
 
   it('parses pasted CSV records from the parse button', () => {
@@ -99,7 +99,7 @@ describe('RecordsSourcePanel', () => {
         onRowsParsed={onRowsParsed}
         recordFile={null}
         rows={[]}
-        selectedFeedName="claims_feed"
+        selectedFeedName="provider_feed"
       />,
     )
 
@@ -122,7 +122,7 @@ describe('RecordsSourcePanel', () => {
     )
   })
 
-  it('selects and parses a CSV records file for file upload feeds', async () => {
+  it('auto-parses a selected CSV records file for file upload feeds', async () => {
     const onFileChange = vi.fn()
     const onDraftChange = vi.fn()
     const onRowsParsed = vi.fn()
@@ -160,8 +160,6 @@ describe('RecordsSourcePanel', () => {
         selectedFeedName="claims_feed"
       />,
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Parse records' }))
-
     expect(onFileChange).toHaveBeenCalledWith(file)
     expect(onDraftChange).toHaveBeenCalledTimes(1)
     expect(await screen.findByText('claims.csv')).toBeInTheDocument()
@@ -171,6 +169,197 @@ describe('RecordsSourcePanel', () => {
         [],
       )
     })
+    expect(await screen.findByText('Parsed for preview')).toBeInTheDocument()
+  })
+
+  it('auto-parses a selected JSONL records file for file upload feeds', async () => {
+    const onFileChange = vi.fn()
+    const onDraftChange = vi.fn()
+    const onRowsParsed = vi.fn()
+    const file = new File([
+      '{"claim_id":"c1","provider_npi":"1234567890"}\n',
+    ], 'claims.jsonl', {
+      type: 'application/x-ndjson',
+    })
+
+    const { rerender } = render(
+      <RecordsSourcePanel
+        feeds={feeds}
+        issues={[]}
+        onDraftChange={onDraftChange}
+        onFileChange={onFileChange}
+        onFeedChange={vi.fn()}
+        onRowsParsed={onRowsParsed}
+        recordFile={null}
+        rows={[]}
+        selectedFeedName="claims_feed"
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Records file'), {
+      target: { files: [file] },
+    })
+    rerender(
+      <RecordsSourcePanel
+        feeds={feeds}
+        issues={[]}
+        onDraftChange={onDraftChange}
+        onFileChange={onFileChange}
+        onFeedChange={vi.fn()}
+        onRowsParsed={onRowsParsed}
+        recordFile={file}
+        rows={[]}
+        selectedFeedName="claims_feed"
+      />,
+    )
+
+    expect(onFileChange).toHaveBeenCalledWith(file)
+    await waitFor(() => {
+      expect(onRowsParsed).toHaveBeenCalledWith(
+        [{ claim_id: 'c1', provider_npi: '1234567890' }],
+        [],
+      )
+    })
+  })
+
+  it('shows a parsing empty-state hint after a file is selected', () => {
+    const delayedText = createDeferred<string>()
+    const file = new File(['claim_id,provider_npi\nc1,1234567890\n'], 'claims.csv', {
+      type: 'text/csv',
+    })
+    Object.defineProperty(file, 'text', {
+      value: vi.fn(() => delayedText.promise),
+    })
+
+    const { rerender } = render(
+      <RecordsSourcePanel
+        feeds={feeds}
+        issues={[]}
+        onDraftChange={vi.fn()}
+        onFileChange={vi.fn()}
+        onFeedChange={vi.fn()}
+        onRowsParsed={vi.fn()}
+        recordFile={null}
+        rows={[]}
+        selectedFeedName="claims_feed"
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Records file'), {
+      target: { files: [file] },
+    })
+    rerender(
+      <RecordsSourcePanel
+        feeds={feeds}
+        issues={[]}
+        onDraftChange={vi.fn()}
+        onFileChange={vi.fn()}
+        onFeedChange={vi.fn()}
+        onRowsParsed={vi.fn()}
+        recordFile={file}
+        rows={[]}
+        selectedFeedName="claims_feed"
+      />,
+    )
+
+    expect(
+      screen.getByText('Parsing the selected records file.'),
+    ).toBeInTheDocument()
+  })
+
+  it('shows a file-picker hint for file upload feeds before a file is selected', () => {
+    render(
+      <RecordsSourcePanel
+        feeds={feeds}
+        issues={[]}
+        onDraftChange={vi.fn()}
+        onFileChange={vi.fn()}
+        onFeedChange={vi.fn()}
+        onRowsParsed={vi.fn()}
+        recordFile={null}
+        rows={[]}
+        selectedFeedName="claims_feed"
+      />,
+    )
+
+    expect(
+      screen.getByText('Choose a CSV or JSONL records file to preview records automatically.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Choose file to parse' })).toBeDisabled()
+  })
+
+  it('does not parse empty pasted content for file-upload feeds without a selected file', () => {
+    const onRowsParsed = vi.fn()
+
+    render(
+      <RecordsSourcePanel
+        feeds={feeds}
+        issues={[]}
+        onDraftChange={vi.fn()}
+        onFileChange={vi.fn()}
+        onFeedChange={vi.fn()}
+        onRowsParsed={onRowsParsed}
+        recordFile={null}
+        rows={[]}
+        selectedFeedName="claims_feed"
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose file to parse' }))
+
+    expect(onRowsParsed).not.toHaveBeenCalled()
+    expect(screen.queryByText('CSV content is empty.')).not.toBeInTheDocument()
+  })
+
+  it('reports parse errors for unsupported selected file extensions', async () => {
+    const onFileChange = vi.fn()
+    const onRowsParsed = vi.fn()
+    const file = new File(['hello'], 'claims.txt', { type: 'text/plain' })
+
+    const { rerender } = render(
+      <RecordsSourcePanel
+        feeds={feeds}
+        issues={[]}
+        onDraftChange={vi.fn()}
+        onFileChange={onFileChange}
+        onFeedChange={vi.fn()}
+        onRowsParsed={onRowsParsed}
+        recordFile={null}
+        rows={[]}
+        selectedFeedName="claims_feed"
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Records file'), {
+      target: { files: [file] },
+    })
+    rerender(
+      <RecordsSourcePanel
+        feeds={feeds}
+        issues={[]}
+        onDraftChange={vi.fn()}
+        onFileChange={onFileChange}
+        onFeedChange={vi.fn()}
+        onRowsParsed={onRowsParsed}
+        recordFile={file}
+        rows={[]}
+        selectedFeedName="claims_feed"
+      />,
+    )
+
+    expect(onFileChange).toHaveBeenCalledWith(file)
+    await waitFor(() => {
+      expect(onRowsParsed).toHaveBeenCalledWith(
+        [],
+        [
+          expect.objectContaining({
+            id: 'parse-file-unsupported-record-format',
+            message: 'Records file must use a .csv or .jsonl extension.',
+          }),
+        ],
+      )
+    })
+    expect(await screen.findByText('Parse failed')).toBeInTheDocument()
   })
 
   it('invalidates parsed rows when pasted content or format changes', () => {
@@ -206,14 +395,11 @@ describe('RecordsSourcePanel', () => {
     const onRowsParsed = vi.fn()
     const delayedText = createDeferred<string>()
     const firstFile = new File([''], 'claims-a.csv', { type: 'text/csv' })
-    const secondFile = new File(['claim_id,provider_npi\nc2,1234567890\n'], 'claims-b.csv', {
-      type: 'text/csv',
-    })
     Object.defineProperty(firstFile, 'text', {
       value: vi.fn(() => delayedText.promise),
     })
 
-    const { rerender } = render(
+    render(
       <RecordsSourcePanel
         feeds={feeds}
         issues={[]}
@@ -221,35 +407,25 @@ describe('RecordsSourcePanel', () => {
         onFileChange={onFileChange}
         onFeedChange={vi.fn()}
         onRowsParsed={onRowsParsed}
-        recordFile={firstFile}
+        recordFile={null}
         rows={[]}
         selectedFeedName="claims_feed"
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Parse records' }))
     fireEvent.change(screen.getByLabelText('Records file'), {
-      target: { files: [secondFile] },
+      target: { files: [firstFile] },
     })
-    rerender(
-      <RecordsSourcePanel
-        feeds={feeds}
-        issues={[]}
-        onDraftChange={onDraftChange}
-        onFileChange={onFileChange}
-        onFeedChange={vi.fn()}
-        onRowsParsed={onRowsParsed}
-        recordFile={secondFile}
-        rows={[]}
-        selectedFeedName="claims_feed"
-      />,
-    )
+    fireEvent.change(screen.getByLabelText('Records content'), {
+      target: { value: 'claim_id,provider_npi\nc2,1234567890\n' },
+    })
     delayedText.resolve('claim_id,provider_npi\nc1,1234567890\n')
     await delayedText.promise
     await Promise.resolve()
 
     expect(firstFile.text).toHaveBeenCalled()
-    expect(onDraftChange).toHaveBeenCalledTimes(1)
+    expect(onFileChange).toHaveBeenCalledWith(firstFile)
+    expect(onDraftChange).toHaveBeenCalledTimes(2)
     expect(onRowsParsed).not.toHaveBeenCalled()
   })
 
@@ -269,13 +445,15 @@ describe('RecordsSourcePanel', () => {
         onFileChange={vi.fn()}
         onFeedChange={vi.fn()}
         onRowsParsed={onRowsParsed}
-        recordFile={file}
+        recordFile={null}
         rows={[]}
         selectedFeedName="claims_feed"
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Parse records' }))
+    fireEvent.change(screen.getByLabelText('Records file'), {
+      target: { files: [file] },
+    })
     unmount()
     delayedText.resolve('claim_id,provider_npi\nc1,1234567890\n')
     await delayedText.promise

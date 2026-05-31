@@ -15,6 +15,11 @@ search/detail/neighborhood endpoints. Some Dashboard, alert, analytics, RAG,
 and evidence surfaces still include seeded/demo read models until their live
 projections are migrated.
 
+The Knowledge Base Manager supports document upload and config-defined
+structured record feeds. File-upload record feeds parse selected `.csv` and
+`.jsonl` files automatically for client-side preview and validation messaging;
+the backend records API remains the canonical parser/validator on submission.
+
 ## Target Technology Stack
 
 | Concern | Technology |

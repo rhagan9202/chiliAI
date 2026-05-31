@@ -33,6 +33,11 @@ const feed: RecordFeedConfig = {
   observations: [],
 }
 
+const apiPushFeed: RecordFeedConfig = {
+  ...feed,
+  source: 'api_push',
+}
+
 const validationConfig: ValidationConfig = {
   max_file_size_mb: 1,
   allowed_content_types: ['text/csv', 'application/json'],
@@ -81,7 +86,7 @@ describe('ingestion validation', () => {
     const noRecordFile = validateRecordFile(null)
     expect(noRecordFile).toMatchObject([{ id: 'missing-record-file', kind: 'prerequisite' }])
 
-    const noRows = validateRecordRows(feed, [])
+    const noRows = validateRecordRows(apiPushFeed, [])
     expect(noRows).toMatchObject([{ id: 'missing-records', kind: 'prerequisite' }])
 
     // Actual bad content (wrong type, oversized file, row pattern mismatch) → untagged
@@ -180,13 +185,38 @@ describe('ingestion validation', () => {
   })
 
   it('requires record rows', () => {
-    const issues = validateRecordRows(feed, [])
+    const issues = validateRecordRows(apiPushFeed, [])
 
     expect(issues).toMatchObject([
       {
         id: 'missing-records',
         source: 'client',
         severity: 'error',
+      },
+    ])
+  })
+
+  it('does not duplicate a missing rows prerequisite for file-upload feeds without a file', () => {
+    const fileUploadFeed: RecordFeedConfig = {
+      ...feed,
+      source: 'file_upload',
+    }
+
+    expect(validateRecordRows(fileUploadFeed, [], { recordFile: null })).toEqual([])
+  })
+
+  it('asks the user to parse a selected file before submitting file-upload feeds', () => {
+    const fileUploadFeed: RecordFeedConfig = {
+      ...feed,
+      source: 'file_upload',
+    }
+    const file = new File(['claim_id\n1\n'], 'claims.csv', { type: 'text/csv' })
+
+    expect(validateRecordRows(fileUploadFeed, [], { recordFile: file })).toMatchObject([
+      {
+        id: 'unparsed-record-file',
+        kind: 'prerequisite',
+        message: 'Parse the selected records file before submitting.',
       },
     ])
   })

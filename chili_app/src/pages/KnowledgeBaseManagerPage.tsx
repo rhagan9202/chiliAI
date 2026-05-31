@@ -75,7 +75,9 @@ export function KnowledgeBaseManagerPage() {
     domainConfigQuery.data?.validation,
   )
   const recordIssues = selectedFeed
-    ? validateRecordRows(selectedFeed, studio.parsedRows)
+    ? validateRecordRows(selectedFeed, studio.parsedRows, {
+        recordFile: studio.pendingRecordFile,
+      })
     : []
   const requiredIssues = validateRequiredWizardState({
     knowledgeBaseId: activeKnowledgeBaseId,
@@ -144,7 +146,11 @@ export function KnowledgeBaseManagerPage() {
         feedName: studio.selectedFeedName,
       }),
       ...recordFileIssues,
-      ...(selectedFeed ? validateRecordRows(selectedFeed, studio.parsedRows) : []),
+      ...(selectedFeed
+        ? validateRecordRows(selectedFeed, studio.parsedRows, {
+            recordFile: studio.pendingRecordFile,
+          })
+        : []),
     ]
 
     if (issues.some((issue) => issue.severity === 'error') || !selectedFeed) {

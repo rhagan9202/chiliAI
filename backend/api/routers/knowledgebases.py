@@ -189,12 +189,6 @@ async def delete_knowledge_base(
             detail=f"Knowledge base '{knowledge_base_id}' not found.",
         )
 
-    if existing_kb.pending_cleanup:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Knowledge base '{knowledge_base_id}' has pending cleanup; cannot mutate until resolved.",
-        )
-
     try:
         ensure_kb_idle(knowledge_base_id, tracker=workflow_tracker)
     except KbBusyError as exc:
