@@ -6,6 +6,7 @@ import './ingestion.css'
 type RecordsPreviewTableProps = {
   rows: Record<string, unknown>[]
   issues: ValidationIssue[]
+  emptyDescription?: string
 }
 
 function getColumns(rows: Record<string, unknown>[]): string[] {
@@ -44,11 +45,15 @@ function statusLabel(count: number): string {
 
 const previewRowLimit = 25
 
-export function RecordsPreviewTable({ rows, issues }: RecordsPreviewTableProps) {
+export function RecordsPreviewTable({
+  rows,
+  issues,
+  emptyDescription = 'Paste CSV or JSONL content and parse it to preview records.',
+}: RecordsPreviewTableProps) {
   if (rows.length === 0) {
     return (
       <EmptyState
-        description="Paste CSV or JSONL content and parse it to preview records."
+        description={emptyDescription}
         title="No records parsed"
       />
     )

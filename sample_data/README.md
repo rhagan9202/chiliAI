@@ -55,3 +55,25 @@ and updated independently of this repo, so versioning them here adds no value.
 If you need a different sample set checked in for tests, place small,
 purpose-built fixtures under `backend/tests/records/fixtures/` instead — those
 are tracked in git.
+
+## Local Mini Ingest Bundle
+
+For quick manual ingest runs, this workspace now also includes a tiny local
+bundle with three linked CSVs:
+
+- `sample_data/CMS/DE1_0_2010_Beneficiary_Summary_File_Sample_1.csv`
+- `sample_data/CMS/DE1_0_2008_to_2010_Carrier_Claims_Sample_1A.csv`
+- `sample_data/NPPES/npidata_pfile_20260529.csv`
+
+These rows are intentionally small but keep the production feed shapes:
+
+- beneficiary rows use DE-SynPUF `YYYYMMDD` dates
+- carrier claim rows link `DESYNPUF_ID` to `PRF_PHYSN_NPI_1`
+- provider rows use the NPPES `MM/DD/YYYY` enumeration-date format
+
+The IDs line up across all three files so they can be uploaded to the
+`beneficiary_2010`, `carrier_claims_a`, and `nppes_providers` feeds in the same
+knowledge base.
+
+Because `sample_data/` is gitignored, treat this bundle as a local convenience
+set for interactive testing rather than a tracked test fixture.

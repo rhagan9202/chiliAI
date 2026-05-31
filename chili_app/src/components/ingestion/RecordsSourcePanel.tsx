@@ -7,6 +7,7 @@ import { RecordsPreviewTable } from './RecordsPreviewTable'
 import './ingestion.css'
 
 type RecordsFormat = 'csv' | 'jsonl'
+type ParseStatus = 'idle' | 'parsing' | 'parsed' | 'error'
 
 type RecordsSourcePanelProps = {
   feeds: RecordFeedConfig[]
@@ -37,6 +38,23 @@ function readFileText(file: File): Promise<string> {
   })
 }
 
+function inferFileFormat(file: File): RecordsFormat | null {
+  const lowerName = file.name.toLowerCase()
+  if (lowerName.endsWith('.jsonl')) {
+    return 'jsonl'
+  }
+  if (lowerName.endsWith('.csv')) {
+    return 'csv'
+  }
+  return null
+}
+
+function parseRecordsContent(content: string, format: RecordsFormat) {
+  return format === 'csv'
+    ? parseCsvRecords(content)
+    : parseJsonlRecords(content)
+}
+
 export function RecordsSourcePanel({
   feeds,
   selectedFeedName,
@@ -50,12 +68,24 @@ export function RecordsSourcePanel({
 }: RecordsSourcePanelProps) {
   const [format, setFormat] = useState<RecordsFormat>('csv')
   const [content, setContent] = useState('')
+  const [parseStatus, setParseStatus] = useState<ParseStatus>('idle')
   const draftRevisionRef = useRef(0)
 
   const selectedFeed = useMemo(
     () => feeds.find((feed) => feed.name === selectedFeedName) ?? null,
     [feeds, selectedFeedName],
   )
+  const isFileUploadFeed = selectedFeed?.source === 'file_upload'
+
+  const emptyPreviewDescription = isFileUploadFeed
+    ? recordFile
+      ? parseStatus === 'parsing'
+        ? 'Parsing the selected records file.'
+        : parseStatus === 'error'
+          ? 'No preview is available until the selected file parses successfully.'
+          : 'The selected file will be parsed automatically for preview.'
+      : 'Choose a CSV or JSONL records file to preview records automatically.'
+    : 'Paste CSV or JSONL content and parse it to preview records.'
 
   useEffect(() => {
     return () => {
@@ -65,22 +95,85 @@ export function RecordsSourcePanel({
 
   function invalidateDraft() {
     draftRevisionRef.current += 1
+    setParseStatus('idle')
     onDraftChange()
+    return draftRevisionRef.current
   }
 
-  async function parseRecords() {
-    const draftRevision = draftRevisionRef.current
-    const input = recordFile ? await readFileText(recordFile) : content
-    const result = format === 'csv'
-      ? parseCsvRecords(input)
-      : parseJsonlRecords(input)
+  async function parseRecords({
+    auto = false,
+    draftRevision = draftRevisionRef.current,
+    sourceFile = recordFile,
+  }: { auto?: boolean; draftRevision?: number; sourceFile?: File | null } = {}) {
+    if (isFileUploadFeed && !sourceFile) {
+      setParseStatus('error')
+      onRowsParsed([], [
+        {
+          id: 'parse-file-missing-record-file',
+          source: 'client',
+          severity: 'error',
+          kind: 'prerequisite',
+          message: 'Choose a CSV or JSONL records file before parsing.',
+        },
+      ])
+      return
+    }
+
+    const parseFormat = sourceFile ? inferFileFormat(sourceFile) : format
+
+    if (!parseFormat) {
+      setParseStatus('error')
+      onRowsParsed([], [
+        {
+          id: 'parse-file-unsupported-record-format',
+          source: 'client',
+          severity: 'error',
+          message: 'Records file must use a .csv or .jsonl extension.',
+        },
+      ])
+      return
+    }
+
+    setParseStatus('parsing')
+    let input: string
+    try {
+      input = sourceFile ? await readFileText(sourceFile) : content
+    } catch (error) {
+      if (draftRevision !== draftRevisionRef.current) {
+        return
+      }
+
+      setParseStatus('error')
+      onRowsParsed([], [
+        {
+          id: 'parse-file-read-failed',
+          source: 'client',
+          severity: 'error',
+          message: error instanceof Error ? error.message : 'Records file could not be read.',
+        },
+      ])
+      return
+    }
+    const result = parseRecordsContent(input, parseFormat)
 
     if (draftRevision !== draftRevisionRef.current) {
       return
     }
 
+    setParseStatus(result.errors.length > 0 ? 'error' : 'parsed')
     onRowsParsed(result.rows, result.errors)
+
+    if (auto && parseFormat !== format) {
+      setFormat(parseFormat)
+    }
   }
+
+  const parseButtonLabel = isFileUploadFeed
+    ? recordFile
+      ? 'Re-parse file'
+      : 'Choose file to parse'
+    : 'Parse records'
+  const parseButtonDisabled = parseStatus === 'parsing' || (isFileUploadFeed && !recordFile)
 
   return (
     <section className="ingestion-records-source" aria-labelledby="records-source-title">
@@ -157,8 +250,12 @@ export function RecordsSourcePanel({
           accept=".csv,.jsonl,text/csv,application/json,application/x-ndjson"
           aria-label="Records file"
           onChange={(event) => {
-            onFileChange(event.currentTarget.files?.[0] ?? null)
-            invalidateDraft()
+            const selectedFile = event.currentTarget.files?.[0] ?? null
+            onFileChange(selectedFile)
+            const draftRevision = invalidateDraft()
+            if (isFileUploadFeed && selectedFile) {
+              void parseRecords({ auto: true, draftRevision, sourceFile: selectedFile })
+            }
           }}
         />
       </label>
@@ -167,6 +264,9 @@ export function RecordsSourcePanel({
         <div className="ingestion-records-source__selected-file">
           <span>{recordFile.name}</span>
           <span>{recordFile.type || 'unknown type'}</span>
+          {parseStatus === 'parsing' ? <span role="status">Parsing…</span> : null}
+          {parseStatus === 'parsed' ? <span>Parsed for preview</span> : null}
+          {parseStatus === 'error' ? <span>Parse failed</span> : null}
         </div>
       ) : null}
 
@@ -184,11 +284,20 @@ export function RecordsSourcePanel({
         />
       </label>
 
-      <button className="ingestion-records-source__parse" type="button" onClick={() => void parseRecords()}>
-        Parse records
+      <button
+        className="ingestion-records-source__parse"
+        disabled={parseButtonDisabled}
+        type="button"
+        onClick={() => void parseRecords()}
+      >
+        {parseStatus === 'parsing' ? 'Parsing records' : parseButtonLabel}
       </button>
 
-      <RecordsPreviewTable rows={rows} issues={issues} />
+      <RecordsPreviewTable
+        rows={rows}
+        issues={issues}
+        emptyDescription={emptyPreviewDescription}
+      />
     </section>
   )
 }

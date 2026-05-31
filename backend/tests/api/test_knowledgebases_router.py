@@ -451,6 +451,40 @@ def test_delete_knowledge_base_removes_artifacts_and_publishes_event(
     assert client.delete(f"/knowledgebases/{kb_id}").status_code == 404
 
 
+def test_delete_knowledge_base_retries_pending_cleanup_kb(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, event_bus, object_store, repository = harness
+
+    created = client.post(
+        "/knowledgebases", json={"name": "PendingCleanup", "description": ""}
+    )
+    kb_id = created.json()["id"]
+    object_store.put_bytes(
+        f"knowledgebases/{kb_id}/documents/doc-1/file.json",
+        b"{}",
+        media_type="application/json",
+    )
+    repository.mark_pending_cleanup(kb_id)
+
+    response = client.delete(f"/knowledgebases/{kb_id}")
+
+    assert response.status_code == 204
+    assert repository.get(kb_id) is None
+    assert object_store.list_keys(f"knowledgebases/{kb_id}/") == []
+    deletion_events = [
+        event for event in event_bus.published_events
+        if isinstance(event, KnowledgeBaseDeletedEvent)
+    ]
+    assert deletion_events[-1].knowledge_base_id == kb_id
+    assert deletion_events[-1].cleanup_pending is False
+
+
 def test_delete_knowledge_base_returns_404_when_missing(
     harness: tuple[
         TestClient,

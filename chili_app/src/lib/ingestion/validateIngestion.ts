@@ -388,8 +388,27 @@ function validatePrimitive(
 export function validateRecordRows(
   feed: RecordFeedConfig,
   rows: Record<string, unknown>[],
+  options?: {
+    recordFile?: File | null
+  },
 ): ValidationIssue[] {
   if (rows.length === 0) {
+    if (feed.source === 'file_upload') {
+      if (options?.recordFile) {
+        return [
+          {
+            ...issue(
+              'unparsed-record-file',
+              'Parse the selected records file before submitting.',
+            ),
+            kind: 'prerequisite',
+          },
+        ]
+      }
+
+      return []
+    }
+
     return [
       {
         ...issue('missing-records', 'Provide at least one structured record row before submitting.'),
