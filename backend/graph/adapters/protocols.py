@@ -52,6 +52,13 @@ class GraphRepository(Protocol):
         direction: Literal["in", "out", "both"],
     ) -> SubgraphResult: ...
 
+    def get_subgraph(
+        self,
+        knowledge_base_id: str,
+        seed_entity_ids: list[str],
+        depth: int = 1,
+    ) -> SubgraphResult: ...
+
     def get_entities_by_type(
         self,
         knowledge_base_id: str,

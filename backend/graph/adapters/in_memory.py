@@ -139,6 +139,65 @@ class InMemoryGraphRepository(GraphRepository):
             ],
         )
 
+    def get_subgraph(
+        self,
+        knowledge_base_id: str,
+        seed_entity_ids: list[str],
+        depth: int = 1,
+    ) -> SubgraphResult:
+        entity_bucket = self._entities.get(knowledge_base_id, {})
+        seeds = [
+            seed_id
+            for seed_id in dict.fromkeys(seed_entity_ids)
+            if seed_id in entity_bucket
+        ]
+        if not seeds:
+            return SubgraphResult()
+
+        self._rebuild_adjacency_index_if_needed(knowledge_base_id)
+
+        relationship_bucket = self._relationships.get(knowledge_base_id, {})
+        visited_entity_ids: set[str] = set(seeds)
+        frontier: set[str] = set(seeds)
+        collected_relationship_ids: set[str] = set()
+
+        for _ in range(max(depth, 0)):
+            next_frontier: set[str] = set()
+
+            for frontier_entity_id in frontier:
+                for relationship_id in self._relationship_ids_for_direction(
+                    knowledge_base_id,
+                    frontier_entity_id,
+                    "both",
+                ):
+                    relationship = relationship_bucket[relationship_id]
+                    collected_relationship_ids.add(relationship.id)
+
+                    if relationship.source_id == frontier_entity_id:
+                        next_frontier.add(relationship.target_id)
+                    if relationship.target_id == frontier_entity_id:
+                        next_frontier.add(relationship.source_id)
+
+            next_frontier -= visited_entity_ids
+            visited_entity_ids.update(next_frontier)
+            frontier = next_frontier
+
+            if not frontier:
+                break
+
+        return SubgraphResult(
+            entities=[
+                entity_bucket[visited_id]
+                for visited_id in visited_entity_ids
+                if visited_id in entity_bucket
+            ],
+            relationships=[
+                relationship_bucket[relationship_id]
+                for relationship_id in collected_relationship_ids
+                if relationship_id in relationship_bucket
+            ],
+        )
+
     def get_entities_by_type(
         self,
         knowledge_base_id: str,

@@ -224,6 +224,45 @@ def test_get_neighbors_uses_rebuilt_adjacency_after_mutation(
     }
 
 
+def test_get_subgraph_unions_multiple_seed_neighborhoods(
+    populated_repository: InMemoryGraphRepository,
+) -> None:
+    result = populated_repository.get_subgraph("kb-1", ["entity-1", "entity-3"], depth=1)
+
+    assert {entity.id for entity in result.entities} == {"entity-1", "entity-2", "entity-3"}
+    relationship_ids = [relationship.id for relationship in result.relationships]
+    assert set(relationship_ids) == {"relationship-1", "relationship-2"}
+    # entity-2 is reachable from both seeds; relationships must be deduplicated.
+    assert len(relationship_ids) == len(set(relationship_ids))
+
+
+def test_get_subgraph_empty_seeds_returns_empty(
+    populated_repository: InMemoryGraphRepository,
+) -> None:
+    result = populated_repository.get_subgraph("kb-1", [], depth=2)
+
+    assert result.entities == []
+    assert result.relationships == []
+
+
+def test_get_subgraph_skips_unknown_seed(
+    populated_repository: InMemoryGraphRepository,
+) -> None:
+    result = populated_repository.get_subgraph("kb-1", ["entity-1", "missing"], depth=1)
+
+    assert {entity.id for entity in result.entities} == {"entity-1", "entity-2"}
+    assert {relationship.id for relationship in result.relationships} == {"relationship-1"}
+
+
+def test_get_subgraph_is_kb_scoped(
+    populated_repository: InMemoryGraphRepository,
+) -> None:
+    result = populated_repository.get_subgraph("kb-2", ["entity-1"], depth=3)
+
+    assert result.entities == []
+    assert result.relationships == []
+
+
 def test_delete_relationship_is_idempotent(populated_repository: InMemoryGraphRepository) -> None:
     populated_repository.delete_relationship("kb-1", "relationship-2")
     populated_repository.delete_relationship("kb-1", "relationship-2")
