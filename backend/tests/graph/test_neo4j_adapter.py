@@ -297,6 +297,95 @@ def test_neo4j_repository_get_neighbors_uses_variable_length_path_pattern(
     assert any("*1..2" in entry[0] for entry in driver.queries)
 
 
+def test_neo4j_repository_get_subgraph_unions_seed_neighborhoods(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+
+    def _node(entity_id: str, entity_type: str) -> FakeRecord:
+        return {
+            "entity_id": entity_id,
+            "type": entity_type,
+            "properties": {},
+            "metadata": {},
+            "created_at": "2026-04-20T00:00:00+00:00",
+            "updated_at": None,
+            "version": 1,
+        }
+
+    def _rel(relationship_id: str, rel_type: str) -> FakeRecord:
+        return {
+            "relationship_id": relationship_id,
+            "type": rel_type,
+            "properties": {},
+            "created_at": "2026-04-20T00:00:00+00:00",
+            "updated_at": None,
+            "version": 1,
+            "weight": None,
+        }
+
+    provider = _node("provider-1", "provider")
+    claim = _node("claim-1", "claim")
+    beneficiary = _node("beneficiary-1", "beneficiary")
+    rel1 = _rel("relationship-1", "submitted_by")
+    rel2 = _rel("relationship-2", "billed_for")
+    driver.results = [
+        [
+            {
+                "root": provider,
+                "path": _FakePath([provider, claim], [rel1]),
+                "relationship_source_ids": ["claim-1"],
+                "relationship_target_ids": ["provider-1"],
+            },
+            {
+                "root": beneficiary,
+                "path": _FakePath([beneficiary, claim], [rel2]),
+                "relationship_source_ids": ["claim-1"],
+                "relationship_target_ids": ["beneficiary-1"],
+            },
+        ],
+    ]
+
+    result = repository.get_subgraph("kb-1", ["provider-1", "beneficiary-1"], depth=2)
+
+    assert {entity.id for entity in result.entities} == {
+        "provider-1",
+        "claim-1",
+        "beneficiary-1",
+    }
+    assert {relationship.id for relationship in result.relationships} == {
+        "relationship-1",
+        "relationship-2",
+    }
+    assert any("*1..2" in entry[0] for entry in driver.queries)
+
+
+def test_neo4j_repository_get_subgraph_empty_seeds_skips_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    queries_before = len(driver.queries)
+
+    result = repository.get_subgraph("kb-1", [], depth=2)
+
+    assert result.entities == []
+    assert result.relationships == []
+    # Empty seed list short-circuits without issuing a read query.
+    assert len(driver.queries) == queries_before
+
+
 def test_neo4j_repository_get_neighbors_preserves_inbound_relationship_direction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

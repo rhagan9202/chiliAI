@@ -385,6 +385,103 @@ class Neo4jGraphRepository(GraphRepository):
             relationships=list(relationships_by_id.values()),
         )
 
+    def get_subgraph(
+        self,
+        knowledge_base_id: str,
+        seed_entity_ids: list[str],
+        depth: int = 1,
+    ) -> SubgraphResult:
+        seeds = list(dict.fromkeys(seed_entity_ids))
+        if not seeds:
+            return SubgraphResult()
+        if depth < 0 or depth > _MAX_NEIGHBOR_DEPTH:
+            raise ValueError(
+                f"Neo4j subgraph depth must be between 0 and {_MAX_NEIGHBOR_DEPTH}."
+            )
+
+        if depth == 0:
+            query = f"""
+            MATCH (root:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id}})
+            WHERE root.entity_id IN $seed_entity_ids
+            RETURN root
+            """
+            try:
+                with self._session() as session:
+                    records = session.execute_read(
+                        self._run_query,
+                        query,
+                        knowledge_base_id=knowledge_base_id,
+                        seed_entity_ids=seeds,
+                    )
+            except Neo4jError as exc:
+                raise GraphPersistenceError("Failed to query Neo4j subgraph.") from exc
+            seed_entities_by_id: dict[str, Entity] = {}
+            for record in records:
+                node = cast(Neo4jPropertyContainerProtocol, record["root"])
+                entity = self._node_to_entity(node)
+                seed_entities_by_id.setdefault(entity.id, entity)
+            return SubgraphResult(entities=list(seed_entities_by_id.values()), relationships=[])
+
+        pattern = self._path_pattern_for("both", depth)
+        query = f"""
+        MATCH (root:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id}})
+        WHERE root.entity_id IN $seed_entity_ids
+        OPTIONAL MATCH path = {pattern}
+        WHERE path IS NULL
+           OR all(relationship IN relationships(path) WHERE relationship.knowledge_base_id = $knowledge_base_id)
+        RETURN root,
+               path,
+               CASE
+                   WHEN path IS NULL THEN []
+                   ELSE [relationship IN relationships(path) | startNode(relationship).entity_id]
+               END AS relationship_source_ids,
+               CASE
+                   WHEN path IS NULL THEN []
+                   ELSE [relationship IN relationships(path) | endNode(relationship).entity_id]
+               END AS relationship_target_ids
+        """
+
+        try:
+            with self._session() as session:
+                records = session.execute_read(
+                    self._run_query,
+                    query,
+                    knowledge_base_id=knowledge_base_id,
+                    seed_entity_ids=seeds,
+                )
+        except Neo4jError as exc:
+            raise GraphPersistenceError("Failed to query Neo4j subgraph.") from exc
+
+        entities_by_id: dict[str, Entity] = {}
+        relationships_by_id: dict[str, Relationship] = {}
+
+        for record in records:
+            root_node = cast(Neo4jPropertyContainerProtocol, record["root"])
+            root_entity = self._node_to_entity(root_node)
+            entities_by_id.setdefault(root_entity.id, root_entity)
+            path = cast(Neo4jPathProtocol | None, record["path"])
+            if path is None:
+                continue
+
+            relationship_source_ids = cast(Sequence[str], record["relationship_source_ids"])
+            relationship_target_ids = cast(Sequence[str], record["relationship_target_ids"])
+
+            for node in path.nodes:
+                entity = self._node_to_entity(node)
+                entities_by_id.setdefault(entity.id, entity)
+            for index, relationship in enumerate(path.relationships):
+                materialized = self._relationship_to_model(
+                    relationship,
+                    source_id=relationship_source_ids[index],
+                    target_id=relationship_target_ids[index],
+                )
+                relationships_by_id.setdefault(materialized.id, materialized)
+
+        return SubgraphResult(
+            entities=list(entities_by_id.values()),
+            relationships=list(relationships_by_id.values()),
+        )
+
     def get_entities_by_type(
         self,
         knowledge_base_id: str,
