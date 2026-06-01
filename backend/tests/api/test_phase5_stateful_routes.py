@@ -115,7 +115,9 @@ def test_graph_and_analytics_routes_are_service_backed() -> None:
     graph_detail = client.get(f"/graph/entities/{entity_id}")
     risk_score = client.get(f"/analytics/risk-scores/{entity_id}", params={"kb_id": "kb-1"})
     timeseries = client.get(f"/analytics/timeseries/{entity_id}", params={"kb_id": "kb-1"})
-    evidence = client.get(f"/evidence-packs/{evidence_id}")
+    evidence = client.get(
+        f"/evidence-packs/{evidence_id}", params={"knowledge_base_id": "kb-1"}
+    )
 
     assert graph_detail.status_code == 200
     assert graph_detail.json()["entity"]["id"] == entity_id
@@ -123,5 +125,7 @@ def test_graph_and_analytics_routes_are_service_backed() -> None:
     assert risk_score.json()["overall_score"] > 0.0
     assert timeseries.status_code == 200
     assert any(point["is_anomaly"] for point in timeseries.json()["points"])
-    assert evidence.status_code == 200
-    assert evidence.json()["alert_id"] == alerts[0]["id"]
+    # Evidence packs are now served from the persisted repository (BL-005); the
+    # seeded alert's pack is not persisted, so the endpoint reports 404 rather
+    # than returning a seeded read model.
+    assert evidence.status_code == 404

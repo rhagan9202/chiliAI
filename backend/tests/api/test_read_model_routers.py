@@ -158,16 +158,48 @@ def test_get_graph_entity_returns_neighbors_and_relationships() -> None:
     assert payload["relationships"][0]["type"] == "submitted_by"
 
 
-def test_get_evidence_pack_returns_items_and_scores() -> None:
-    client = TestClient(create_app())
+def test_get_evidence_pack_returns_persisted_pack() -> None:
+    from analytics.explainability.adapters.evidence_in_memory import (
+        InMemoryEvidencePackRepository,
+    )
+    from shared.types import EvidencePack
 
-    response = client.get("/evidence-packs/evidence-001")
+    app = create_app()
+    repository = InMemoryEvidencePackRepository()
+    repository.put(
+        "kb-1",
+        EvidencePack(
+            id="ev-1",
+            alert_id="al-1",
+            reasoning="Elevated peer deviation.",
+            subgraph_nodes=["provider-1", "claim-1"],
+            subgraph_edges=["rel-1"],
+            confidence=0.8,
+            scores={"overall": 0.8, "peer_deviation": 0.94},
+        ),
+    )
+    app.state.evidence_pack_repository = repository
+    client = TestClient(app)
+
+    response = client.get("/evidence-packs/ev-1", params={"knowledge_base_id": "kb-1"})
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["id"] == "evidence-001"
-    assert payload["items"][0]["source_type"] == "document"
+    assert payload["id"] == "ev-1"
+    assert payload["subgraph_node_ids"] == ["provider-1", "claim-1"]
     assert payload["scores"]["peer_deviation"] == 0.94
+
+
+def test_get_evidence_pack_returns_404_when_not_persisted() -> None:
+    # De-seed regression (BL-005): the previously seeded evidence-001 pack is no
+    # longer served; the endpoint reads only from the persisted repository.
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/evidence-packs/evidence-001", params={"knowledge_base_id": "kb-1"}
+    )
+
+    assert response.status_code == 404
 
 
 def test_get_cases_returns_case_queue() -> None:

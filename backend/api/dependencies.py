@@ -6,7 +6,7 @@ import os
 from functools import lru_cache
 from typing import NoReturn, cast
 
-from fastapi import Depends, Path, Query, Request
+from fastapi import Depends, HTTPException, Path, Query, Request
 
 from api.contracts import (
     AnalyticsOverviewResponse,
@@ -85,9 +85,14 @@ from database.runtime import create_connection_provider
 from records.adapters.in_memory import InMemoryRawRecordStore
 from records.adapters.postgres import PostgresRawRecordStore
 from records.adapters.protocols import RawRecordStore
+from analytics.explainability.adapters.evidence_object_store import (
+    ObjectStoreEvidencePackRepository,
+)
+from analytics.explainability.repository import EvidencePackRepository
 from records.protocols import RecordsServiceProtocol
 from records.service import create_records_service
 from shared.exceptions import ConfigurationError
+from shared.types import EvidencePack
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.adapters.local_fs_adapter import LocalFsObjectStore
 from storage.protocols import ObjectStore
@@ -125,6 +130,7 @@ __all__ = [
     "get_domain_config_payload",
     "get_domain_config_schema_payload",
     "get_evidence_pack_payload",
+    "get_evidence_pack_repository",
     "get_event_bus",
     "get_event_bus_settings",
     "get_graph_entity_detail_payload",
@@ -193,12 +199,49 @@ def get_graph_entity_detail_payload(
     return state.get_graph_entity_detail(entity_id)
 
 
+def get_evidence_pack_repository(request: Request) -> EvidencePackRepository:
+    """Return the per-app evidence-pack repository used by the evidence route.
+
+    Reads packs the worker persisted to the shared object store (BL-005).
+    """
+    repository = getattr(request.app.state, "evidence_pack_repository", None)
+    if isinstance(repository, EvidencePackRepository):
+        return repository
+
+    repository = ObjectStoreEvidencePackRepository(get_object_store())
+    request.app.state.evidence_pack_repository = repository
+    return repository
+
+
 def get_evidence_pack_payload(
     evidence_pack_id: str = Path(..., description="Evidence pack identifier."),
-    state: ApiState = Depends(get_api_state),
+    knowledge_base_id: str = Query(
+        ..., min_length=1, description="Knowledge base the evidence pack belongs to."
+    ),
+    repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
 ) -> EvidencePackResponse:
-    """Return one deterministic evidence pack read model."""
-    return state.get_evidence_pack(evidence_pack_id)
+    """Return one evidence pack read model from the persisted repository (BL-005)."""
+    pack = repository.get(knowledge_base_id, evidence_pack_id)
+    if pack is None:
+        raise HTTPException(status_code=404, detail="Evidence pack not found.")
+    return _evidence_pack_to_response(pack)
+
+
+def _evidence_pack_to_response(pack: EvidencePack) -> EvidencePackResponse:
+    """Map a persisted EvidencePack to the frontend read model.
+
+    The persisted pack stores subgraph id-lists + a score snapshot; ``items`` and
+    ``policy_citations`` are not persisted on the pack and default to empty.
+    """
+    return EvidencePackResponse(
+        id=pack.id,
+        alert_id=pack.alert_id,
+        reasoning=pack.reasoning,
+        confidence=pack.confidence,
+        scores=dict(pack.scores),
+        subgraph_node_ids=list(pack.subgraph_nodes),
+        subgraph_edge_ids=list(pack.subgraph_edges),
+    )
 
 
 def get_case_list_payload(state: ApiState = Depends(get_api_state)) -> CaseListResponse:
