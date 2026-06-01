@@ -1,48 +1,37 @@
 /**
- * Flow 7b: Case feedback submission
+ * Flow 7b: Case feedback submission (KB-scoped, BL-010)
  *
- * Verifies that filling the analyst feedback textarea and clicking
- * "Save suspicious finding" on the case detail panel:
- *   1. Fires POST /api/cases/:id/feedback with the correct body shape.
- *   2. After mutation success the feedback history section shows the submitted note
- *      (via cache invalidation → GET /api/cases/:id refetch returning the new entry).
+ * Filling the analyst feedback textarea and clicking "Save suspicious finding":
+ *   1. Fires POST /api/cases/:id/feedback?knowledge_base_id= with the correct body.
+ *   2. After mutation success the feedback history shows the submitted note
+ *      (cache invalidation → detail refetch).
  *
- * The feedback form is always visible in the detail panel (no separate trigger button).
- * CaseManagementPage:
- *   - textarea placeholder: "Document the current evidence assessment"
- *   - button:               "Save suspicious finding" (disabled when notes is empty)
- *   - hardcoded payload:    { label: 'suspicious', evidence_adequacy: 'high',
- *                             missing_evidence: [], notes: <textarea value> }
- *
- * Mocked endpoints (host-anchored):
- *   GET  http://localhost:5173/api/auth/me          → SessionUser
- *   GET  http://localhost:5173/api/config/domain    → DomainConfig
- *   GET  http://localhost:5173/api/config/features  → DomainFeatures
- *   GET  http://localhost:5173/api/events/stream    → SSE stub
- *   GET  http://localhost:5173/api/cases            → CaseListResponse (1 open case)
- *   GET  http://localhost:5173/api/alerts           → AlertListResponse (empty)
- *   GET  http://localhost:5173/api/cases/case-fb-1  → CaseDetailResponse (no history,
- *                                                      then with 1 entry after refetch)
- *   POST http://localhost:5173/api/cases/case-fb-1/feedback → CaseDetailResponse
- *
- * Endpoint shapes verified against:
- *   - CaseFeedbackCreateRequest → src/api/contracts.ts:
- *       { label: FeedbackLabel; evidence_adequacy: EvidenceAdequacy;
- *         missing_evidence: string[]; notes: string }
- *   - addCaseFeedback           → src/api/cases.ts: apiPost('/cases/:id/feedback', payload)
- *   - useAddCaseFeedback        → src/api/cases.ts: invalidates casesQueryKey + caseDetailQueryKey
- *   - CaseManagementPage        → src/pages/CaseManagementPage.tsx
+ * Cases are KB-scoped; route patterns and request predicates are query-tolerant.
  *
  * Route: /cases → CaseManagementPage (src/app/router.tsx)
  */
 
 import { expect, test } from '@playwright/test'
 
-import { mockAlerts, mockAuthenticatedShell, mockCases } from './helpers/mocks'
-import type { FakeAlert, FakeCase } from './helpers/mocks'
+import { mockAlerts, mockAuthenticatedShell, mockCases, mockKnowledgeBases } from './helpers/mocks'
+import type { FakeAlert, FakeCase, FakeKnowledgeBase } from './helpers/mocks'
+
+const FAKE_KBS: FakeKnowledgeBase[] = [
+  {
+    id: 'kb-1',
+    name: 'Medicare Fraud',
+    description: 'Primary exemplar',
+    status: 'ready',
+    document_count: 3,
+    entity_count: 12,
+    relationship_count: 8,
+    created_at: '2024-06-01T00:00:00Z',
+  },
+]
 
 const OPEN_CASE: FakeCase = {
   id: 'case-fb-1',
+  knowledge_base_id: 'kb-1',
   title: 'Delta Pharma review',
   status: 'open',
   priority: 'high',
@@ -56,6 +45,8 @@ const NO_ALERTS: FakeAlert[] = []
 const INITIAL_DETAIL = {
   case: OPEN_CASE,
   alerts: [],
+  evidence_pack: null,
+  entity_timeline: [],
   feedback_history: [],
 }
 
@@ -64,6 +55,8 @@ const NOTES_TEXT = 'Unusual billing pattern consistent with upcoding scheme.'
 const DETAIL_WITH_FEEDBACK = {
   case: OPEN_CASE,
   alerts: [],
+  evidence_pack: null,
+  entity_timeline: [],
   feedback_history: [
     {
       case_id: 'case-fb-1',
@@ -81,12 +74,22 @@ test.describe('Case feedback submission', () => {
     page,
   }) => {
     await mockAuthenticatedShell(page)
+    await mockKnowledgeBases(page, FAKE_KBS)
     await mockAlerts(page, NO_ALERTS)
     await mockCases(page, [OPEN_CASE])
 
-    // GET requests return initial detail first, then the version with feedback after mutation.
+    // POST feedback route (registered before the detail route so it matches first).
+    await page.route(/\/api\/cases\/case-fb-1\/feedback(?:\?.*)?$/, (route) => {
+      void route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(DETAIL_WITH_FEEDBACK),
+      })
+    })
+
+    // GET detail returns initial, then the version with feedback after mutation.
     let caseGetCount = 0
-    await page.route('http://localhost:5173/api/cases/case-fb-1', (route) => {
+    await page.route(/\/api\/cases\/case-fb-1(?:\?.*)?$/, (route) => {
       if (route.request().method() === 'GET') {
         caseGetCount++
         const payload = caseGetCount === 1 ? INITIAL_DETAIL : DETAIL_WITH_FEEDBACK
@@ -96,50 +99,28 @@ test.describe('Case feedback submission', () => {
           body: JSON.stringify(payload),
         })
       } else {
-        // Should not be reached in this test — no PATCH expected.
         void route.continue()
       }
     })
 
-    // POST /api/cases/case-fb-1/feedback → CaseDetailResponse.
-    // addCaseFeedback → src/api/cases.ts: apiPost('/cases/:id/feedback', payload)
-    await page.route('http://localhost:5173/api/cases/case-fb-1/feedback', (route) => {
-      void route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(DETAIL_WITH_FEEDBACK),
-      })
-    })
+    await page.goto('/cases?kb=kb-1')
 
-    await page.goto('/cases')
-
-    // Wait for the detail panel to render the case title.
     await expect(page.getByText('Delta Pharma review').first()).toBeVisible()
 
-    // The submit button starts disabled because the textarea is empty.
-    // CaseManagementPage: disabled={feedbackNotes.trim().length === 0}
     await expect(page.getByRole('button', { name: 'Save suspicious finding' })).toBeDisabled()
 
-    // Fill the feedback textarea.
-    await page
-      .getByPlaceholder('Document the current evidence assessment')
-      .fill(NOTES_TEXT)
+    await page.getByPlaceholder('Document the current evidence assessment').fill(NOTES_TEXT)
 
-    // Button should now be enabled.
     await expect(page.getByRole('button', { name: 'Save suspicious finding' })).toBeEnabled()
 
-    // Capture the outgoing POST before clicking.
     const postRequest = page.waitForRequest(
       (req) =>
-        req.url() === 'http://localhost:5173/api/cases/case-fb-1/feedback' &&
+        req.url().split('?')[0].endsWith('/cases/case-fb-1/feedback') &&
         req.method() === 'POST',
     )
 
     await page.getByRole('button', { name: 'Save suspicious finding' }).click()
 
-    // Assert the POST body matches CaseFeedbackCreateRequest exactly.
-    // CaseManagementPage hardcodes label='suspicious', evidence_adequacy='high',
-    // missing_evidence=[] and uses the textarea value as notes.
     const req = await postRequest
     const body: unknown = req.postDataJSON()
     expect(body).toStrictEqual({
@@ -149,9 +130,6 @@ test.describe('Case feedback submission', () => {
       notes: NOTES_TEXT,
     })
 
-    // After mutation onSuccess, useAddCaseFeedback invalidates caseDetailQueryKey and
-    // the detail panel refetches.  The second mock response returns the feedback entry.
-    // CaseManagementPage renders feedback as: <strong>{feedback.label.replace(/_/g, ' ')}</strong>
     await expect(page.getByText('suspicious')).toBeVisible()
     await expect(page.getByText(NOTES_TEXT)).toBeVisible()
   })

@@ -225,6 +225,7 @@ export async function mockAuthenticatedShell(page: Page): Promise<void> {
 /** Minimal AlertListItem — mirrors AlertListItem in src/api/contracts.ts */
 export type FakeAlert = {
   id: string
+  knowledge_base_id?: string
   entity_id: string
   entity_type: string
   entity_label: string
@@ -249,7 +250,7 @@ export async function mockAlerts(page: Page, alerts: FakeAlert[]): Promise<void>
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        items: alerts,
+        items: alerts.map((alert) => ({ knowledge_base_id: 'kb-1', ...alert })),
         page: { page: 1, page_size: 25, total_items: alerts.length },
       }),
     })
@@ -259,6 +260,7 @@ export async function mockAlerts(page: Page, alerts: FakeAlert[]): Promise<void>
 /** Minimal CaseSummaryResponse — mirrors CaseSummaryResponse in src/api/contracts.ts */
 export type FakeCase = {
   id: string
+  knowledge_base_id?: string
   title: string
   status: 'open' | 'in_review' | 'closed'
   priority: 'low' | 'medium' | 'high' | 'critical'
@@ -267,20 +269,102 @@ export type FakeCase = {
   updated_at: string
 }
 
+function withCaseKb(fakeCase: FakeCase): FakeCase & { knowledge_base_id: string } {
+  return { knowledge_base_id: 'kb-1', ...fakeCase }
+}
+
 /**
- * Mock GET /api/cases → CaseListResponse.
- * Endpoint path verified: src/api/cases.ts → apiFetch('/cases')
- * Response shape verified: CaseListResponse in src/api/contracts.ts
+ * Mock GET /api/cases → CaseListResponse. KB-scoped routes carry a
+ * `?knowledge_base_id=` query, so the pattern is query-tolerant (matches
+ * `/cases` and `/cases?...` but not `/cases/{id}` or `/cases/promote`).
+ * Endpoint path verified: src/api/cases.ts → apiFetch('/cases?knowledge_base_id=')
  */
 export async function mockCases(page: Page, cases: FakeCase[]): Promise<void> {
-  await page.route(`${BASE}/cases`, (route) => {
+  await page.route(/\/api\/cases(?:\?.*)?$/, (route) => {
     void route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        items: cases,
+        items: cases.map(withCaseKb),
         page: { page: 1, page_size: 25, total_items: cases.length },
       }),
+    })
+  })
+}
+
+type FakeCaseDetail = {
+  case: FakeCase
+  alerts?: unknown[]
+  evidence_pack?: unknown
+  entity_timeline?: { occurred_at: string; label: string; detail: string }[]
+  feedback_history?: unknown[]
+}
+
+function buildCaseDetailBody(detail: FakeCaseDetail): string {
+  return JSON.stringify({
+    case: withCaseKb(detail.case),
+    alerts: detail.alerts ?? [],
+    evidence_pack: detail.evidence_pack ?? null,
+    entity_timeline: detail.entity_timeline ?? [],
+    feedback_history: detail.feedback_history ?? [],
+  })
+}
+
+/**
+ * Mock GET/PATCH /api/cases/{id} → CaseDetailResponse (query-tolerant).
+ * Used for the auto-selected/clicked case detail panel.
+ */
+export async function mockCaseDetail(
+  page: Page,
+  caseId: string,
+  detail: FakeCaseDetail,
+): Promise<void> {
+  await page.route(new RegExp(`/api/cases/${caseId}(?:\\?.*)?$`), (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: buildCaseDetailBody(detail),
+    })
+  })
+}
+
+/**
+ * Mock POST /api/cases/promote → CaseDetailResponse (query-tolerant).
+ */
+export async function mockPromoteCase(page: Page, detail: FakeCaseDetail): Promise<void> {
+  await page.route(/\/api\/cases\/promote(?:\?.*)?$/, (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: buildCaseDetailBody(detail),
+    })
+  })
+}
+
+/** Minimal EvidencePackResponse — mirrors src/api/contracts.ts. */
+export type FakeEvidencePack = {
+  id: string
+  alert_id: string
+  reasoning: string
+  confidence: number
+  scores: Record<string, number>
+  subgraph_node_ids: string[]
+  subgraph_edge_ids: string[]
+  items?: { source_id: string; source_type: string; quote: string; rationale: string; score: number }[]
+  policy_citations?: unknown[]
+}
+
+/**
+ * Mock GET /api/evidence-packs/{id} → EvidencePackResponse (query-tolerant;
+ * the route is KB-scoped via `?knowledge_base_id=`).
+ * Endpoint path verified: src/api/evidence.ts → apiFetch('/evidence-packs/{id}?knowledge_base_id=')
+ */
+export async function mockEvidencePack(page: Page, pack: FakeEvidencePack): Promise<void> {
+  await page.route(new RegExp(`/api/evidence-packs/${pack.id}(?:\\?.*)?$`), (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [], policy_citations: [], ...pack }),
     })
   })
 }
