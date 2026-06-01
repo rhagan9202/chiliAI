@@ -132,6 +132,33 @@ class TestAuthDisabled:
         assert body["roles"] == anon.roles
 
 
+class TestAnonymousRoleOverride:
+    def test_defaults_to_viewer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("CHILI_DEV_ANONYMOUS_ROLE", raising=False)
+        assert build_anonymous_user().roles == ["viewer"]
+
+    def test_override_to_analyst_in_non_production(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHILI_DEV_ANONYMOUS_ROLE", "analyst")
+        monkeypatch.setenv("CHILI_ENV", "local")
+        assert build_anonymous_user().roles == ["analyst"]
+
+    def test_override_ignored_in_production(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHILI_DEV_ANONYMOUS_ROLE", "analyst")
+        monkeypatch.setenv("CHILI_ENV", "production")
+        assert build_anonymous_user().roles == ["viewer"]
+
+    def test_unknown_role_falls_back_to_viewer(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHILI_DEV_ANONYMOUS_ROLE", "superadmin")
+        monkeypatch.setenv("CHILI_ENV", "local")
+        assert build_anonymous_user().roles == ["viewer"]
+
+
 class TestAuthEnabled:
     @pytest.fixture
     def auth_config(self) -> AuthConfig:

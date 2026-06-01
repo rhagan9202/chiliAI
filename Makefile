@@ -4,7 +4,7 @@
 COMPOSE_DEV  = docker compose -f docker-compose.dev.yaml
 COMPOSE_PROD = docker compose
 
-.PHONY: dev down build logs clean prod prod-down api-shell migrate test help
+.PHONY: dev down build logs clean prod prod-down api-shell migrate test test-e2e help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -34,6 +34,13 @@ migrate: ## Run database migrations inside the API container
 
 test: ## Run backend tests inside the API container
 	$(COMPOSE_DEV) exec api pytest --cov
+
+test-e2e: ## Run Playwright e2e against the full dev stack (real API/worker/services)
+	$(COMPOSE_DEV) down -v
+	CHILI_DEV_ANONYMOUS_ROLE=analyst $(COMPOSE_DEV) up -d --build
+	scripts/wait_for_stack.sh
+	cd chili_app && npm run test:e2e
+	$(COMPOSE_DEV) down
 
 # ---------- Production ----------
 

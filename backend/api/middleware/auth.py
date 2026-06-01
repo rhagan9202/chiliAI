@@ -127,10 +127,24 @@ def get_jwks_cache() -> JwksCache:
     return _jwks_cache
 
 
-def build_anonymous_user() -> User:
-    """Return the default user surfaced when authentication is disabled."""
+_DEV_OVERRIDABLE_ROLES = frozenset({"viewer", "analyst", "service", "admin"})
 
-    return User(user_id="anonymous", roles=["viewer"])
+
+def build_anonymous_user() -> User:
+    """Return the default user surfaced when authentication is disabled.
+
+    Defaults to ``viewer``. A non-production deployment may elevate the anonymous
+    user via ``CHILI_DEV_ANONYMOUS_ROLE`` (e.g. ``analyst`` so e2e can exercise
+    write flows against the real stack). The override is ignored under
+    ``CHILI_ENV=production`` and for unknown roles — both fall back to ``viewer``.
+    """
+
+    role = os.environ.get("CHILI_DEV_ANONYMOUS_ROLE", "viewer").strip().lower()
+    if role == "viewer" or role not in _DEV_OVERRIDABLE_ROLES:
+        return User(user_id="anonymous", roles=["viewer"])
+    if os.environ.get("CHILI_ENV", "").strip().lower() == "production":
+        return User(user_id="anonymous", roles=["viewer"])
+    return User(user_id="anonymous", roles=[role])
 
 
 def decode_token(
