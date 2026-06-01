@@ -26,7 +26,8 @@ services:
     build:
       context: ./backend
     command: >
-      uvicorn api.app:create_app
+      sh -c "alembic upgrade head &&
+      exec uvicorn api.app:create_app
       --factory --host 0.0.0.0 --port 8000 --reload
       --reload-dir /app/api
       --reload-dir /app/agent
@@ -44,9 +45,10 @@ services:
       --reload-dir /app/storage
       --reload-dir /app/database
       --reload-dir /app/records
+      --reload-dir /app/cases
       --reload-exclude '*.pyc'
       --reload-exclude '__pycache__/*'
-      --reload-exclude '*.egg-info/*'
+      --reload-exclude '*.egg-info/*'"
     ports:
       - "8000:8000"
     volumes:
