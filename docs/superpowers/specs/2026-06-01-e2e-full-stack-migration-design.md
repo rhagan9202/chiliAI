@@ -18,7 +18,7 @@ Goal: run the e2e suite against the real running stack (`make dev` — app + api
 ## 3. Decisions (confirmed)
 
 1. **Auth:** dev-gated analyst override env. `build_anonymous_user()` reads `CHILI_DEV_ANONYMOUS_ROLE` (default `viewer`). A non-viewer value is honored only when `CHILI_ENV != "production"`; under production it is ignored (stays viewer). Default behaviour unchanged.
-2. **Data seeding:** real pipeline — create a KB, ingest a fixture records file, poll `/alerts` + `/evidence-packs/{id}` until the worker produces them, then assert the UI against that real data.
+2. **Data seeding:** ~~real pipeline (ingest + poll)~~ **superseded** — investigation proved the real pipeline cannot produce alerts in a dev stack: `upsert_records_graph` publishes no `GraphUpdatedEvent` (records never trigger Flow B), no feed emits `observations`, and document ingestion needs a real LLM the dev stack lacks. **Revised decision (confirmed):** a dev-gated `POST /admin/dev-seed` endpoint writes a deterministic KB + Neo4j subgraph + alert (real projection repo) + evidence pack (real evidence repo) + case (real cases repo). The UI reads REAL data from REAL backends via the REAL API — no component/endpoint is mocked; only the non-deterministic alert-generation step is bypassed. Registered only when `CHILI_ENV != production`. **Implemented + validated live.**
 3. **Orchestration:** a `make test-e2e` target that **first** runs `docker compose … down -v` (clean slate; avoids multiple stacks / port collisions), then `up -d --build`, waits for api `/health`, runs Playwright, then `down`. CI runs the same target.
 
 ## 4. Components
@@ -42,13 +42,11 @@ test-e2e:
 ```
 `npm run test:e2e:full` (or the existing `test:e2e`) runs Playwright against the reused `:5173`. A `scripts/wait_for_stack.sh` bounded health-poll guards startup.
 
-### 4.4 Seeding — `e2e/global-setup.ts`
-- Node-side setup (runs once before specs) hits the stack over `http://localhost:5173/api/...`:
-  1. `POST /knowledgebases` → KB id.
-  2. `POST /records/{kb}/files` with a fixture CSV designed to cross risk/monitoring thresholds (see §6).
-  3. Poll `GET /alerts` until ≥1 alert; capture an alert id + entity id + its `evidence_pack_id`.
-  4. Poll `GET /evidence-packs/{id}?knowledge_base_id={kb}` until 200.
-  5. Write the captured ids to `e2e/.seeded.json` (gitignored).
+### 4.4 Seeding — `e2e/global-setup.ts` (revised: dev-seed endpoint)
+- Node-side setup (runs once before specs) calls the dev-seed endpoint over `http://localhost:5173/api/...`:
+  1. `POST /admin/dev-seed` → `{ knowledge_base_id, entity_id, alert_id, evidence_pack_id, case_id }` (deterministic; written into the real stores).
+  2. Write those ids to `e2e/.seeded.json` (gitignored).
+- The endpoint (`backend/api/routers/dev_seed.py`, **implemented + validated live**) seeds: KB (`KnowledgeBaseRepository`), 3-node subgraph via the graph repository (`provider-1`/`claim-1`/`beneficiary-1` + `submitted_by`/`billed_for`), an `EvidencePack` (real evidence repo), an `AlertProjectionRecord` (real alert repo, KB-scoped), and a `Case` (real cases repo). The UI's neighborhood/evidence/alert/case views all read these real stores.
 - `e2e/helpers/seeded.ts`: typed loader that reads `.seeded.json` and exposes `{ knowledgeBaseId, alertId, entityId, evidencePackId }` to specs. Replaces the per-spec `FAKE_*` constants.
 - Wired via `globalSetup` in `playwright.config.ts`.
 
