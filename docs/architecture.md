@@ -418,7 +418,20 @@ backend/
         └── sources/
             ├── file_source.py      # CsvFileSource, JsonlFileSource
             └── api_push_source.py  # ApiPushSource
+cases/                          # Durable, KB-scoped investigation cases (BL-010)
+    ├── models.py               # Case, CaseTimelineEvent
+    ├── service.py              # CaseService.promote_from_alert (+ CRUD orchestration)
+    ├── exceptions.py
+    └── adapters/
+        ├── protocols.py        # CaseRepository (create/get/list/update/delete_by_kb)
+        ├── in_memory.py        # InMemoryCaseRepository
+        └── postgres.py         # PostgresCaseRepository (cases table, migration 0002_cases)
 ```
+
+> **Sprint 2026-23 additions (evidence/case vertical).**
+> - **`graph.get_subgraph(kb, seed_ids, depth)`** — multi-seed neighborhood union on the graph protocol + in-memory/Neo4j adapters; the traversal primitive behind evidence-pack subgraph extraction.
+> - **Evidence packs (BL-005)** are now generated for real: the worker explainability stage builds an `ExplanationContext` from `graph.get_subgraph` + risk factors/score, `ExplainabilityService` assembles the `EvidencePack`, and it is persisted (best-effort) to an object-store `EvidencePackRepository` under `analytics/explainability/`. `GET /evidence-packs/{id}` reads that repository (KB-scoped), replacing the seeded `ApiState` evidence read model.
+> - **Cases (BL-010)** are durable and KB-scoped via the new `cases/` module; `POST /cases/promote` captures the originating alert + evidence pack + timeline. ApiState `open_cases`/policy-gap aggregates and full `_seed_cases` removal are deferred to BL-012.
 
 ### 5.2 Module responsibility matrix
 

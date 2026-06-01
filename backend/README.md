@@ -31,6 +31,8 @@ For the live, dependency-ordered list of production-readiness work per backend m
 - **`storage/`** — In-memory, local filesystem, and S3-compatible object-store adapters.
 - **`database/`** — Postgres + TimescaleDB connection provider, `DatabaseConfig`-driven backend selection, and Alembic-managed schema (six persistence tables). Infrastructure only — no domain logic.
 - **`records/`** — structured/tabular ingestion (CSV/JSONL/api-push). Validates rows against config-declared feed schemas, lands canonical rows in `raw_records`, and publishes `RecordsIngestedEvent`. Parallel to `ingestion/` for documents.
+- **`cases/`** — durable, KB-scoped investigation case management (BL-010). `Case` model + `CaseRepository` (in-memory + Postgres adapters, `cases` table via migration `0002_cases`) + `CaseService` with `promote_from_alert`. Backs `/cases` CRUD + `POST /cases/promote` (all `?knowledge_base_id=`-scoped). See [`cases/README.md`](cases/README.md).
+- **`analytics/explainability/`** also owns the **evidence-pack repository** (BL-005): real packs are extracted in the worker (`graph.get_subgraph` + risk factors → `ExplanationContext` → `ExplainabilityService`), persisted to an object-store `EvidencePackRepository`, and served by `GET /evidence-packs/{id}` (KB-scoped) — replacing the seeded `ApiState` evidence read model.
 - **`api/middleware/`** — Metrics, auth, and RBAC middleware with route-level policy enforcement and auth-enabled startup audit.
 - **`agent/coordinator.py`** — Worker entry point (`python -m agent.coordinator`) for Redis-stream processing, workflow lifecycle tracking, retry/DLQ routing, graceful shutdown, and a lightweight health endpoint. Implements persistence-layer worker flows:
   - **Flow 2** (`handle_graph_updated_for_analytics`) — On `GraphUpdatedEvent`, computes graph metrics (entity count, relationship count, avg degree) and persists them to `entity_metric_history` / `entity_metrics_current`, throttled per knowledge-base by `MetricsRecomputeThrottle`.
@@ -63,7 +65,8 @@ backend/
 ├── events/          # Event bus abstraction + Redis Streams adapter
 ├── storage/         # Object/file storage abstraction + adapters (S3, MinIO, local FS)
 ├── database/        # Postgres + TimescaleDB connection provider, Alembic migrations
-└── records/         # structured/tabular ingestion (CSV/JSONL/api-push), raw_records landing
+├── records/         # structured/tabular ingestion (CSV/JSONL/api-push), raw_records landing
+└── cases/           # durable, KB-scoped investigation cases (promote-from-alert)
 ```
 
 ## Cross-Module Interaction Rules

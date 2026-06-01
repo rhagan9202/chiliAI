@@ -27,8 +27,8 @@
 | D-03 Live RAG service wiring | CODE-CHANGE (P0 v1-blocker) | **BL-001** |
 | D-04 RAG citations/provenance | CODE-CHANGE (P0 v1-blocker) | **BL-002** |
 | D-05 GNN PyG/DGL inference | ACCEPT-AS-BACKLOG (post-v1) | BL-030 |
-| D-06 Evidence pack subgraph extraction | CODE-CHANGE (P1) | BL-005 |
-| D-07 Evidence pack alert attachment | CODE-CHANGE (P1) | BL-006 |
+| D-06 Evidence pack subgraph extraction | CODE-CHANGE (P1) — **RESOLVED** (Sprint 2026-23) | BL-005 |
+| D-07 Evidence pack alert attachment | CODE-CHANGE (P1) — **RESOLVED** (Sprint 2026-23) | BL-006 |
 | D-08 Mount GraphCanvas in workbench | CODE-CHANGE (P0 v1-blocker) | **BL-003** |
 | D-09 OIDC hardening (JWKS rotation, id_token validation) | ACCEPT-AS-BACKLOG | BL-022 |
 | D-10 CI dependency scanning | CODE-CHANGE (P1) | **BL-004** |
@@ -103,36 +103,37 @@
 - **REQ**: REQ-ANALYTICS-005
 - **Drift**: D-06
 - **Module source**: [docs/backlog/rag.md#story-rag10](../../backlog/rag.md), [docs/backlog/monitoring.md](../../backlog/monitoring.md)
-- **Status**: todo
+- **Status**: done (Sprint 2026-23)
 - **Estimate**: 5 SP
 - **Acceptance**:
-  - `EvidencePack` is generated from alert context (seed entities + relationship traversal + metric snapshot) and persisted alongside the alert.
-  - Replaces seeded evidence pack data in API responses.
-  - Tested with synthetic Medicare alert scenarios.
+  - `EvidencePack` is generated from alert context (seed entities + relationship traversal + metric snapshot) and persisted alongside the alert. ✅ `graph.get_subgraph` + risk factors/score → `ExplanationContext` → object-store `EvidencePackRepository`, written best-effort in the worker explainability stage.
+  - Replaces seeded evidence pack data in API responses. ✅ `GET /evidence-packs/{id}` reads the repository (KB-scoped, 404 when absent); de-seed regression test added.
+  - Tested with synthetic Medicare alert scenarios. ✅ `tests/agent/test_explainability_stage.py`.
 - **Dependencies**: none.
 
 ### BL-006 — Evidence pack on alert UI
 - **REQ**: REQ-ALERT-003
 - **Drift**: D-07
 - **Module source**: [docs/backlog/frontend.md#story-frontend02](../../backlog/frontend.md)
-- **Status**: todo
+- **Status**: done (Sprint 2026-23)
 - **Estimate**: 3 SP
 - **Acceptance**:
-  - Alert Feed and Investigation Workbench show evidence pack viewer when an alert is selected.
-  - Pack viewer renders subgraph (re-using GraphCanvas), metrics snapshot, and reasoning text.
+  - Pack viewer renders subgraph (re-using GraphCanvas), metrics snapshot, and reasoning text. ✅ `EvidencePackViewer` (reasoning + metric chips + items + policy citations + subgraph via GraphCanvas) wired into the Investigation Workbench.
+  - Evidence pack viewer shown when an alert is selected. ✅ in the Investigation Workbench. **Follow-on:** an Alert Feed "view evidence" entry needs KB context that `AlertListItem` does not yet carry; tracked as a small follow-on.
 - **Dependencies**: BL-003, BL-005.
 
 ### BL-010 — Case Management v1 surface
 - **REQ**: REQ-CASE-001..004 (new)
 - **Drift**: D-14
-- **Status**: todo (existing partial code)
+- **Status**: done (Sprint 2026-23)
 - **Estimate**: 8 SP
 - **Acceptance**:
-  - Cases persisted via durable repository (in-memory + Postgres adapters).
-  - `POST/GET/PATCH /cases` endpoints with KB scoping.
-  - Frontend `CaseManagementPage` lists, filters, and edits cases; supports "promote from alert".
-  - pyright --strict, pytest ≥ 85%, Playwright e2e for promote-alert-to-case flow.
+  - Cases persisted via durable repository (in-memory + Postgres adapters). ✅ `backend/cases/` + `0002_cases` migration.
+  - `POST/GET/PATCH /cases` endpoints with KB scoping. ✅ all routes take `?knowledge_base_id=`; plus `POST /cases/promote`.
+  - Frontend `CaseManagementPage` lists, filters, and edits cases; supports "promote from alert". ✅ KB-threaded, status filter, status updates, toasts, promote-from-alert wired to `/cases/promote`.
+  - pyright --strict, pytest ≥ 85%. ✅ (Playwright promote-flow e2e is a follow-on.)
 - **Dependencies**: BL-005 (evidence pack on case).
+- **Deferred to BL-012:** analytics `open_cases`/`list_policy_gap_cases` KB-scoping and removal of legacy `ApiState._seed_cases`; durable analyst feedback; rich `alerts[]` on case detail.
 
 ### BL-011 — Policy Intelligence v1 surface
 - **REQ**: REQ-POLICY-001..004 (new)
