@@ -293,6 +293,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cases/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote Alert To Case
+         * @description Promote an alert into a new case and return the case detail.
+         */
+        post: operations["promote_alert_to_case_cases_promote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cases/{case_id}": {
         parameters: {
             query?: never;
@@ -1153,6 +1173,9 @@ export interface components {
             /** Alerts */
             alerts?: components["schemas"]["AlertListItem"][];
             case: components["schemas"]["CaseSummaryResponse"];
+            /** Entity Timeline */
+            entity_timeline?: components["schemas"]["CaseTimelineEventResponse"][];
+            evidence_pack?: components["schemas"]["EvidencePackResponse"] | null;
             /** Feedback History */
             feedback_history?: components["schemas"]["AnalystFeedbackResponse"][];
         };
@@ -1186,6 +1209,16 @@ export interface components {
             page: components["schemas"]["PageInfo"];
         };
         /**
+         * CasePromoteRequest
+         * @description Payload for promoting an alert into a new investigation case.
+         */
+        CasePromoteRequest: {
+            /** Alert Id */
+            alert_id: string;
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
          * CaseSummaryResponse
          * @description Case list item for the human review workflow.
          */
@@ -1194,8 +1227,14 @@ export interface components {
             alert_ids?: string[];
             /** Assignee */
             assignee?: string | null;
+            /** Evidence Pack Id */
+            evidence_pack_id?: string | null;
             /** Id */
             id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Originating Alert Id */
+            originating_alert_id?: string | null;
             /**
              * Priority
              * @enum {string}
@@ -1213,6 +1252,21 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * CaseTimelineEventResponse
+         * @description A single entry in a case's captured evidence/entity timeline.
+         */
+        CaseTimelineEventResponse: {
+            /** Detail */
+            detail: string;
+            /** Label */
+            label: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
         };
         /**
          * CaseUpdateRequest
@@ -3165,7 +3219,14 @@ export interface operations {
     };
     list_cases_cases_get: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Knowledge base scope. */
+                knowledge_base_id: string;
+                /** @description Filter by case status. */
+                status?: string | null;
+                /** @description Filter by case priority. */
+                priority?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3181,11 +3242,23 @@ export interface operations {
                     "application/json": components["schemas"]["CaseListResponse"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     create_case_cases_post: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Knowledge base scope. */
+                knowledge_base_id: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3216,9 +3289,48 @@ export interface operations {
             };
         };
     };
+    promote_alert_to_case_cases_promote_post: {
+        parameters: {
+            query: {
+                /** @description Knowledge base scope. */
+                knowledge_base_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CasePromoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_case_cases__case_id__get: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Knowledge base scope. */
+                knowledge_base_id: string;
+            };
             header?: never;
             path: {
                 /** @description Case identifier. */
@@ -3250,7 +3362,10 @@ export interface operations {
     };
     update_case_cases__case_id__patch: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Knowledge base scope. */
+                knowledge_base_id: string;
+            };
             header?: never;
             path: {
                 /** @description Case identifier. */
@@ -3286,7 +3401,10 @@ export interface operations {
     };
     add_feedback_cases__case_id__feedback_post: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Knowledge base scope. */
+                knowledge_base_id: string;
+            };
             header?: never;
             path: {
                 /** @description Case identifier. */
@@ -3519,7 +3637,10 @@ export interface operations {
     };
     get_evidence_pack_evidence_packs__evidence_pack_id__get: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Knowledge base the evidence pack belongs to. */
+                knowledge_base_id: string;
+            };
             header?: never;
             path: {
                 /** @description Evidence pack identifier. */

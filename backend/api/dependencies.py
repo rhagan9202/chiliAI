@@ -9,11 +9,15 @@ from typing import NoReturn, cast
 from fastapi import Depends, HTTPException, Path, Query, Request
 
 from api.contracts import (
+    AnalystFeedbackResponse,
     AnalyticsOverviewResponse,
     CaseCreateRequest,
     CaseDetailResponse,
     CaseFeedbackCreateRequest,
     CaseListResponse,
+    CasePromoteRequest,
+    CaseSummaryResponse,
+    CaseTimelineEventResponse,
     CaseUpdateRequest,
     ChatConversationCreateRequest,
     ChatConversationResponse,
@@ -21,6 +25,7 @@ from api.contracts import (
     EntityTimeseriesResponse,
     EvidencePackResponse,
     GraphEntityDetailResponse,
+    PageInfo,
     PolicyBriefCreateRequest,
     PolicyBriefResponse,
     PolicyGapCaseListResponse,
@@ -28,6 +33,13 @@ from api.contracts import (
     PolicyGapListResponse,
     RiskScoreResponse,
 )
+from cases.adapters.in_memory import InMemoryCaseRepository
+from cases.adapters.postgres import PostgresCaseRepository
+from cases.adapters.protocols import CaseRepository
+from cases.exceptions import CaseNotFoundError
+from cases.models import Case, CaseTimelineEvent
+from cases.service import CaseService, create_case_service
+from shared.utils import utc_now
 from api.state import ApiState, create_api_state
 from config.loader import load_config
 from config.schema import (
@@ -119,6 +131,9 @@ __all__ = [
     "get_case_detail_payload",
     "get_case_feedback_payload",
     "get_case_list_payload",
+    "get_case_promote_payload",
+    "get_case_repository",
+    "get_case_service",
     "get_case_update_payload",
     "get_chat_conversation_create_payload",
     "get_chat_conversation_payload",
@@ -244,43 +259,192 @@ def _evidence_pack_to_response(pack: EvidencePack) -> EvidencePackResponse:
     )
 
 
-def get_case_list_payload(state: ApiState = Depends(get_api_state)) -> CaseListResponse:
-    """Return a deterministic case queue read model."""
-    return state.list_cases()
+def get_case_repository(request: Request) -> CaseRepository:
+    """Return the per-app durable case repository selected by config (BL-010).
+
+    Postgres when a connection provider is configured, otherwise a per-app
+    in-memory repository (so each app instance is isolated).
+    """
+    repository = getattr(request.app.state, "case_repository", None)
+    if isinstance(repository, CaseRepository):
+        return repository
+
+    provider = get_connection_provider()
+    repository = (
+        InMemoryCaseRepository() if provider is None else PostgresCaseRepository(provider)
+    )
+    request.app.state.case_repository = repository
+    return repository
+
+
+def get_case_service(
+    repository: CaseRepository = Depends(get_case_repository),
+) -> CaseService:
+    """Return the case service over the configured repository."""
+    return create_case_service(repository)
+
+
+def get_case_feedback_store(request: Request) -> dict[str, list[AnalystFeedbackResponse]]:
+    """Return the per-app, in-memory analyst-feedback store.
+
+    Feedback durability is out of scope for BL-010; it is kept ephemeral per app
+    instance, decoupled from the durable case repository.
+    """
+    store = getattr(request.app.state, "case_feedback", None)
+    if isinstance(store, dict):
+        return cast(dict[str, list[AnalystFeedbackResponse]], store)
+    new_store: dict[str, list[AnalystFeedbackResponse]] = {}
+    request.app.state.case_feedback = new_store
+    return new_store
+
+
+def _case_to_summary(case: Case) -> CaseSummaryResponse:
+    return CaseSummaryResponse(
+        id=case.id,
+        knowledge_base_id=case.knowledge_base_id,
+        title=case.title,
+        status=case.status,
+        priority=case.priority,
+        assignee=case.assignee,
+        originating_alert_id=case.originating_alert_id,
+        evidence_pack_id=case.evidence_pack_id,
+        alert_ids=list(case.alert_ids),
+        updated_at=case.updated_at,
+    )
+
+
+def _assemble_case_detail(
+    case: Case,
+    *,
+    evidence_repository: EvidencePackRepository,
+    feedback_store: dict[str, list[AnalystFeedbackResponse]],
+) -> CaseDetailResponse:
+    evidence_pack: EvidencePackResponse | None = None
+    if case.evidence_pack_id:
+        pack = evidence_repository.get(case.knowledge_base_id, case.evidence_pack_id)
+        if pack is not None:
+            evidence_pack = _evidence_pack_to_response(pack)
+    return CaseDetailResponse(
+        case=_case_to_summary(case),
+        # Rich alert resolution on case detail is a follow-on; alert linkage is
+        # preserved via CaseSummaryResponse.alert_ids.
+        alerts=[],
+        evidence_pack=evidence_pack,
+        entity_timeline=[
+            CaseTimelineEventResponse(
+                occurred_at=event.occurred_at, label=event.label, detail=event.detail
+            )
+            for event in case.timeline
+        ],
+        feedback_history=list(feedback_store.get(case.id, [])),
+    )
+
+
+def get_case_list_payload(
+    knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
+    status: str | None = Query(default=None, description="Filter by case status."),
+    priority: str | None = Query(default=None, description="Filter by case priority."),
+    service: CaseService = Depends(get_case_service),
+) -> CaseListResponse:
+    """Return the KB-scoped case queue from the durable repository."""
+    cases, total = service.list(
+        knowledge_base_id=knowledge_base_id,
+        limit=200,
+        offset=0,
+        status=status,
+        priority=priority,
+    )
+    return CaseListResponse(
+        items=[_case_to_summary(case) for case in cases],
+        page=PageInfo(page=1, page_size=max(len(cases), 1), total_items=total),
+    )
 
 
 def get_case_detail_payload(
     case_id: str = Path(..., description="Case identifier."),
-    state: ApiState = Depends(get_api_state),
+    knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
+    service: CaseService = Depends(get_case_service),
+    evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+    feedback_store: dict[str, list[AnalystFeedbackResponse]] = Depends(get_case_feedback_store),
 ) -> CaseDetailResponse:
-    """Return one deterministic case detail read model."""
-    return state.get_case_detail(case_id)
+    """Return one KB-scoped case detail read model."""
+    case = service.get(knowledge_base_id=knowledge_base_id, case_id=case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found.")
+    return _assemble_case_detail(
+        case, evidence_repository=evidence_repository, feedback_store=feedback_store
+    )
 
 
 def get_case_create_payload(
     payload: CaseCreateRequest,
-    state: ApiState = Depends(get_api_state),
+    knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
+    service: CaseService = Depends(get_case_service),
+    evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+    feedback_store: dict[str, list[AnalystFeedbackResponse]] = Depends(get_case_feedback_store),
 ) -> CaseDetailResponse:
-    """Create and return a persisted case."""
-    return state.create_case(payload)
+    """Create and return a durable, KB-scoped case."""
+    case = service.create(
+        knowledge_base_id=knowledge_base_id,
+        title=payload.title,
+        priority=payload.priority,
+        assignee=payload.assignee,
+        alert_ids=list(payload.alert_ids),
+    )
+    return _assemble_case_detail(
+        case, evidence_repository=evidence_repository, feedback_store=feedback_store
+    )
 
 
 def get_case_update_payload(
     payload: CaseUpdateRequest,
     case_id: str = Path(..., description="Case identifier."),
-    state: ApiState = Depends(get_api_state),
+    knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
+    service: CaseService = Depends(get_case_service),
+    evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+    feedback_store: dict[str, list[AnalystFeedbackResponse]] = Depends(get_case_feedback_store),
 ) -> CaseDetailResponse:
-    """Update and return a persisted case."""
-    return state.update_case(case_id, payload)
+    """Patch and return a durable, KB-scoped case."""
+    try:
+        case = service.update(
+            knowledge_base_id=knowledge_base_id,
+            case_id=case_id,
+            title=payload.title,
+            status=payload.status,
+            priority=payload.priority,
+            assignee=payload.assignee,
+        )
+    except CaseNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Case not found.") from exc
+    return _assemble_case_detail(
+        case, evidence_repository=evidence_repository, feedback_store=feedback_store
+    )
 
 
 def get_case_feedback_payload(
     payload: CaseFeedbackCreateRequest,
     case_id: str = Path(..., description="Case identifier."),
-    state: ApiState = Depends(get_api_state),
+    knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
+    service: CaseService = Depends(get_case_service),
+    evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+    feedback_store: dict[str, list[AnalystFeedbackResponse]] = Depends(get_case_feedback_store),
 ) -> CaseDetailResponse:
-    """Append feedback and return the updated case detail."""
-    return state.add_feedback(case_id, payload)
+    """Append analyst feedback to a case and return the updated detail."""
+    case = service.get(knowledge_base_id=knowledge_base_id, case_id=case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found.")
+    feedback = AnalystFeedbackResponse(
+        case_id=case_id,
+        label=payload.label,
+        evidence_adequacy=payload.evidence_adequacy,
+        missing_evidence=list(payload.missing_evidence),
+        notes=payload.notes,
+        submitted_at=utc_now(),
+    )
+    feedback_store.setdefault(case_id, []).append(feedback)
+    return _assemble_case_detail(
+        case, evidence_repository=evidence_repository, feedback_store=feedback_store
+    )
 
 
 def get_chat_conversation_payload(
@@ -837,6 +1001,37 @@ def get_alert_repository(request: Request) -> AlertProjectionRepository:
     repository = _create_alert_repository()
     request.app.state.alert_repository = repository
     return repository
+
+
+def get_case_promote_payload(
+    payload: CasePromoteRequest,
+    knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
+    service: CaseService = Depends(get_case_service),
+    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
+    evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+    feedback_store: dict[str, list[AnalystFeedbackResponse]] = Depends(get_case_feedback_store),
+) -> CaseDetailResponse:
+    """Promote an alert into a durable, KB-scoped case capturing its evidence."""
+    record = alert_repository.get(payload.alert_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Alert not found.")
+    alert = record.alert
+    timeline = [
+        CaseTimelineEvent(
+            occurred_at=alert.created_at,
+            label="alert_raised",
+            detail=alert.title,
+        )
+    ]
+    case = service.promote_from_alert(
+        knowledge_base_id=knowledge_base_id,
+        alert=alert,
+        timeline=timeline,
+        notes=payload.notes,
+    )
+    return _assemble_case_detail(
+        case, evidence_repository=evidence_repository, feedback_store=feedback_store
+    )
 
 
 def _create_alert_repository() -> AlertProjectionRepository:

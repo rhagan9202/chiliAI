@@ -13,6 +13,7 @@ from api.dependencies import (
     get_case_detail_payload,
     get_case_feedback_payload,
     get_case_list_payload,
+    get_case_promote_payload,
     get_case_update_payload,
 )
 from api.middleware.rbac import require_role
@@ -51,6 +52,18 @@ async def create_case(
     case_detail: CaseDetailResponse = Depends(get_case_create_payload),
 ) -> CaseDetailResponse:
     """Create and return a new case."""
+    return case_detail
+
+
+@router.post(
+    "/promote",
+    response_model=CaseDetailResponse,
+    dependencies=[Depends(require_role("analyst"))],
+)
+async def promote_alert_to_case(
+    case_detail: CaseDetailResponse = Depends(get_case_promote_payload),
+) -> CaseDetailResponse:
+    """Promote an alert into a new case and return the case detail."""
     return case_detail
 
 

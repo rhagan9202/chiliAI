@@ -53,8 +53,10 @@ def test_create_and_update_case_and_append_feedback() -> None:
     client = _client_with_alert_projection()
 
     alert_id = client.get("/alerts").json()["items"][0]["id"]
+    kb = {"knowledge_base_id": "kb-1"}
     created = client.post(
         "/cases",
+        params=kb,
         json={
             "title": "New escalation case",
             "priority": "medium",
@@ -65,13 +67,17 @@ def test_create_and_update_case_and_append_feedback() -> None:
 
     assert created.status_code == 200
     case_id = created.json()["case"]["id"]
+    assert created.json()["case"]["knowledge_base_id"] == "kb-1"
 
-    updated = client.patch(f"/cases/{case_id}", json={"status": "in_review", "priority": "high"})
+    updated = client.patch(
+        f"/cases/{case_id}", params=kb, json={"status": "in_review", "priority": "high"}
+    )
     assert updated.status_code == 200
     assert updated.json()["case"]["status"] == "in_review"
 
     feedback = client.post(
         f"/cases/{case_id}/feedback",
+        params=kb,
         json={
             "label": "suspicious",
             "evidence_adequacy": "high",
@@ -81,6 +87,43 @@ def test_create_and_update_case_and_append_feedback() -> None:
     )
     assert feedback.status_code == 200
     assert feedback.json()["feedback_history"][-1]["label"] == "suspicious"
+
+
+def test_promote_alert_to_case_captures_origin_and_evidence() -> None:
+    client = _client_with_alert_projection()
+
+    promoted = client.post(
+        "/cases/promote",
+        params={"knowledge_base_id": "kb-1"},
+        json={"alert_id": "alert-001", "notes": "Escalate for review"},
+    )
+
+    assert promoted.status_code == 200
+    case = promoted.json()["case"]
+    assert case["originating_alert_id"] == "alert-001"
+    assert case["evidence_pack_id"] == "evidence-001"
+    assert case["alert_ids"] == ["alert-001"]
+    assert case["priority"] == "critical"  # mapped from alert severity
+    assert case["status"] == "open"
+    assert case["knowledge_base_id"] == "kb-1"
+    # Timeline snapshot captured from the originating alert.
+    assert promoted.json()["entity_timeline"][0]["label"] == "alert_raised"
+
+    # The promoted case is now listed under its KB.
+    listed = client.get("/cases", params={"knowledge_base_id": "kb-1"}).json()
+    assert [item["id"] for item in listed["items"]] == [case["id"]]
+
+
+def test_promote_unknown_alert_returns_404() -> None:
+    client = _client_with_alert_projection()
+
+    response = client.post(
+        "/cases/promote",
+        params={"knowledge_base_id": "kb-1"},
+        json={"alert_id": "missing-alert"},
+    )
+
+    assert response.status_code == 404
 
 
 def test_create_conversation_and_add_message() -> None:

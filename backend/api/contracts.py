@@ -218,12 +218,23 @@ class CaseSummaryResponse(BaseModel):
     """Case list item for the human review workflow."""
 
     id: str
+    knowledge_base_id: str
     title: str
     status: Literal["open", "in_review", "closed"]
     priority: Literal["low", "medium", "high", "critical"]
     assignee: str | None = None
+    originating_alert_id: str | None = None
+    evidence_pack_id: str | None = None
     alert_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
     updated_at: datetime
+
+
+class CaseTimelineEventResponse(BaseModel):
+    """A single entry in a case's captured evidence/entity timeline."""
+
+    occurred_at: datetime
+    label: str
+    detail: str
 
 
 class CaseListResponse(BaseModel):
@@ -249,6 +260,10 @@ class CaseDetailResponse(BaseModel):
 
     case: CaseSummaryResponse
     alerts: list[AlertListItem] = Field(default_factory=lambda: cast(list[AlertListItem], []))
+    evidence_pack: EvidencePackResponse | None = None
+    entity_timeline: list[CaseTimelineEventResponse] = Field(
+        default_factory=lambda: cast(list[CaseTimelineEventResponse], [])
+    )
     feedback_history: list[AnalystFeedbackResponse] = Field(default_factory=lambda: cast(list[AnalystFeedbackResponse], []))
 
 
@@ -398,6 +413,13 @@ class CaseUpdateRequest(BaseModel):
     status: Literal["open", "in_review", "closed"] | None = None
     priority: Literal["low", "medium", "high", "critical"] | None = None
     assignee: str | None = None
+
+
+class CasePromoteRequest(BaseModel):
+    """Payload for promoting an alert into a new investigation case."""
+
+    alert_id: str
+    notes: str | None = None
 
 
 class CaseFeedbackCreateRequest(BaseModel):

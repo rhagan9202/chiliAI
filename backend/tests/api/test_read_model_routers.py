@@ -202,27 +202,52 @@ def test_get_evidence_pack_returns_404_when_not_persisted() -> None:
     assert response.status_code == 404
 
 
-def test_get_cases_returns_case_queue() -> None:
+def test_get_cases_returns_kb_scoped_queue() -> None:
     client = TestClient(create_app())
 
-    response = client.get("/cases")
+    created = client.post(
+        "/cases",
+        params={"knowledge_base_id": "kb-1"},
+        json={"title": "Escalation", "priority": "high", "alert_ids": []},
+    )
+    assert created.status_code == 200
+    case_id = created.json()["case"]["id"]
+
+    response = client.get("/cases", params={"knowledge_base_id": "kb-1"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["id"] for item in payload["items"]] == [case_id]
+    assert payload["items"][0]["knowledge_base_id"] == "kb-1"
+
+    # KB isolation: a different KB sees none of kb-1's cases.
+    other = client.get("/cases", params={"knowledge_base_id": "kb-2"})
+    assert other.json()["items"] == []
+
+
+def test_get_case_detail_returns_durable_case() -> None:
+    client = TestClient(create_app())
+
+    created = client.post(
+        "/cases",
+        params={"knowledge_base_id": "kb-1"},
+        json={"title": "Escalation", "priority": "high", "alert_ids": []},
+    )
+    case_id = created.json()["case"]["id"]
+
+    response = client.get(
+        f"/cases/{case_id}", params={"knowledge_base_id": "kb-1"}
+    )
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["items"][0]["id"] == "case-1001"
-    assert payload["page"]["total_items"] == 2
+    assert payload["case"]["id"] == case_id
+    assert payload["case"]["knowledge_base_id"] == "kb-1"
 
-
-def test_get_case_detail_returns_alerts_and_feedback() -> None:
-    client = TestClient(create_app())
-
-    response = client.get("/cases/case-1001")
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["case"]["id"] == "case-1001"
-    assert payload["alerts"][0]["id"] == "alert-001"
-    assert payload["feedback_history"][0]["label"] == "insufficient_evidence"
+    # Unknown case (or wrong KB) is a 404.
+    assert (
+        client.get(f"/cases/{case_id}", params={"knowledge_base_id": "kb-2"}).status_code
+        == 404
+    )
 
 
 def test_get_chat_conversation_returns_messages() -> None:

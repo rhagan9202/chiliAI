@@ -586,6 +586,23 @@
           "case": {
             "$ref": "#/components/schemas/CaseSummaryResponse"
           },
+          "entity_timeline": {
+            "items": {
+              "$ref": "#/components/schemas/CaseTimelineEventResponse"
+            },
+            "title": "Entity Timeline",
+            "type": "array"
+          },
+          "evidence_pack": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvidencePackResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "feedback_history": {
             "items": {
               "$ref": "#/components/schemas/AnalystFeedbackResponse"
@@ -661,6 +678,31 @@
         "title": "CaseListResponse",
         "type": "object"
       },
+      "CasePromoteRequest": {
+        "description": "Payload for promoting an alert into a new investigation case.",
+        "properties": {
+          "alert_id": {
+            "title": "Alert Id",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "required": [
+          "alert_id"
+        ],
+        "title": "CasePromoteRequest",
+        "type": "object"
+      },
       "CaseSummaryResponse": {
         "description": "Case list item for the human review workflow.",
         "properties": {
@@ -682,9 +724,35 @@
             ],
             "title": "Assignee"
           },
+          "evidence_pack_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Pack Id"
+          },
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "originating_alert_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Originating Alert Id"
           },
           "priority": {
             "enum": [
@@ -717,12 +785,38 @@
         },
         "required": [
           "id",
+          "knowledge_base_id",
           "title",
           "status",
           "priority",
           "updated_at"
         ],
         "title": "CaseSummaryResponse",
+        "type": "object"
+      },
+      "CaseTimelineEventResponse": {
+        "description": "A single entry in a case's captured evidence/entity timeline.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "occurred_at",
+          "label",
+          "detail"
+        ],
+        "title": "CaseTimelineEventResponse",
         "type": "object"
       },
       "CaseUpdateRequest": {
@@ -4643,6 +4737,56 @@
       "get": {
         "description": "Return the case management queue.",
         "operationId": "list_cases_cases_get",
+        "parameters": [
+          {
+            "description": "Knowledge base scope.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base scope.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by case status.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by case status.",
+              "title": "Status"
+            }
+          },
+          {
+            "description": "Filter by case priority.",
+            "in": "query",
+            "name": "priority",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by case priority.",
+              "title": "Priority"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -4653,6 +4797,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Cases",
@@ -4663,6 +4817,20 @@
       "post": {
         "description": "Create and return a new case.",
         "operationId": "create_case_cases_post",
+        "parameters": [
+          {
+            "description": "Knowledge base scope.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base scope.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4701,6 +4869,62 @@
         ]
       }
     },
+    "/cases/promote": {
+      "post": {
+        "description": "Promote an alert into a new case and return the case detail.",
+        "operationId": "promote_alert_to_case_cases_promote_post",
+        "parameters": [
+          {
+            "description": "Knowledge base scope.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base scope.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CasePromoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Promote Alert To Case",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
     "/cases/{case_id}": {
       "get": {
         "description": "Return one case detail payload.",
@@ -4714,6 +4938,18 @@
             "schema": {
               "description": "Case identifier.",
               "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Knowledge base scope.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base scope.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
               "type": "string"
             }
           }
@@ -4757,6 +4993,18 @@
             "schema": {
               "description": "Case identifier.",
               "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Knowledge base scope.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base scope.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
               "type": "string"
             }
           }
@@ -4812,6 +5060,18 @@
             "schema": {
               "description": "Case identifier.",
               "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Knowledge base scope.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base scope.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
               "type": "string"
             }
           }
@@ -5140,6 +5400,18 @@
             "schema": {
               "description": "Evidence pack identifier.",
               "title": "Evidence Pack Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Knowledge base the evidence pack belongs to.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base the evidence pack belongs to.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
               "type": "string"
             }
           }

@@ -975,6 +975,7 @@ class ApiState:
     def _to_case_summary(self, record: CaseRecord) -> CaseSummaryResponse:
         return CaseSummaryResponse(
             id=record.id,
+            knowledge_base_id=self._knowledge_base_id,
             title=record.title,
             status=record.status,
             priority=record.priority,
