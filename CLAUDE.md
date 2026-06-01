@@ -8,15 +8,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - All functional code must be fully typed with no `Any` types. Use `pyright --strict` to check.
 - All functional backend code must have pytest coverage >= 85% coverage, full green before acceptance.
 - All frontend code must have TypeScript strict mode enabled and be ESLint clean.
-- Use e2e tests and playwright to verify workflows, UI elements, and integration points.
+- Use e2e tests and Playwright to verify workflows, UI elements, and integration points. E2E tests MUST run against the full running stack (real API + worker + services, e.g. `make dev`); never let `page.route`/mock fixtures stand in for the component, endpoint, or integration under test — if the subject of the test is mocked, it is not an e2e test and does not count as verification.
 - When changing frontend behavior, run the app and verify proper rendering and interactions; do not rely solely on code review.
 - When changing backend behavior, run the API and worker locally, and verify expected logs, database state, and API responses; do not rely solely on code review.
 - Never silence errors, suppress warnings, or bypass type checks to get acceptance. Address the underlying issue instead.
 - Correct all errors, warnings and type errors as soon as they are found. Do NOT leave them for later, ignore as pre-existing, mark with TODO, or skip as out of scope or not my code. If you see it, fix it before proceeding. The only exception is ignore import order. This is non-negotiable.
+- DO NOT LEAVE PRE-EXISTING ERRORS. This includes failures you surface by running a suite/build (a red test, a type error, a lint failure in code you did not write): diagnose the root cause and fix it — do not merely flag it as "pre-existing" or "unrelated." You may NOT end your turn with any known error, warning, or failing test outstanding.
 - When finishing a turn, read and update the README.md, AGENT_Instructions.md, and AGENT.md files in the relevant module(s).
 - When finishing a turn update the architecture.md file and the root README.md if the change affects design or cross-cutting concerns.
 - Before committing, read CLAUDE.md, all instruction files in github/, all README.md files in the repo, and all non-archived files in docs/ and update any contradictions or outdated information.
 - When planning a change, search up the directory for the nearest README.md, AGENT_Instructions.md, and AGENT.md files and read them to understand the current state and any relevant instructions.
+
+### Tooling gotchas (cost real time; will recur)
+- `ruff`'s cache dir is not writable in the sandbox — run `backend/.venv/bin/ruff check --no-cache .`.
+- Bare `pyright` (no args) is the real gate — its `tool.pyright.include` covers many `tests/**`, so test code must be strict-clean too. Never import private `_helpers` into an included test dir (triggers `reportPrivateUsage`); test through the public surface (promote a helper to public if needed). Per-file `pyright <file>` can miss include-scoped test errors.
+- Playwright `page.route` patterns must be `/api/`-anchored — an unanchored `/cases`-style pattern also intercepts the SPA page navigation `localhost:5173/cases` and renders JSON as the page body.
+- Regenerate frontend contracts after ANY frontend-consumed Pydantic change: `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json` (from repo root), then `cd chili_app && npm run codegen:api`. CI fails on drift.
 
 ## Authoritative References
 

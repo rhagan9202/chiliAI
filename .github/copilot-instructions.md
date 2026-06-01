@@ -55,8 +55,9 @@
 - Backend changes require pytest coverage ≥ 85% for affected packages and full green tests before acceptance.
 - Frontend TypeScript is strict (`noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`) and must remain ESLint clean.
 - Follow existing frontend patterns: functional React components, hooks, Vite/ESLint setup, TanStack Query for server state, Zustand for client state, and React Router v7 for routing.
-- Use e2e/Playwright verification for workflows, UI behavior, and integration points when practical.
+- Use e2e/Playwright verification for workflows, UI behavior, and integration points. E2E tests MUST run against the full running stack (real API + worker + services, e.g. `make dev`); `page.route`/mock fixtures must never stand in for the component, endpoint, or integration under test — a test whose subject is mocked is not an e2e test.
 - Never silence errors, suppress warnings, bypass type checks, or leave known errors as TODOs. Fix relevant errors when found; import-order-only issues are the exception.
+- DO NOT LEAVE PRE-EXISTING ERRORS, including failures you surface by running a suite/build (a red test, type error, or lint failure in code you did not write): root-cause and fix them — do not flag them as "pre-existing" or "unrelated." Do not end a turn with any known error, warning, or failing test outstanding.
 
 ## Agent Workflow Rules
 
