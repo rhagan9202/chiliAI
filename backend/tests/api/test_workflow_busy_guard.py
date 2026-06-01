@@ -319,10 +319,18 @@ def test_document_delete_returns_409_when_pending_cleanup(
     assert "pending cleanup" in response.json()["detail"]
 
 
-def test_kb_delete_returns_409_when_pending_cleanup(
+def test_kb_delete_is_reentrant_when_pending_cleanup(
     busy_guard_harness: tuple[TestClient, WorkflowEventTracker],
 ) -> None:
-    """DELETE /knowledgebases/{id} returns 409 when KB is in pending_cleanup state."""
+    """DELETE /knowledgebases/{id} is re-entrant when the KB is in pending_cleanup.
+
+    Unlike upload / document-delete (which refuse with 409 while a KB is in
+    ``pending_cleanup``), KB delete is the *recovery path*: re-issuing it retries
+    the cascade cleanup. With healthy backends the retry completes and removes the
+    KB (204). The ``pending_cleanup -> 409`` guard was intentionally removed from
+    this route in 9e0de91 ("streamline records ingest and kb cleanup") so stuck
+    KBs are never undeletable; there is no separate cleanup-retry endpoint.
+    """
     client, _workflow_tracker = busy_guard_harness
 
     create = client.post("/knowledgebases", json={"name": "cleanup-kb-del", "description": ""})
@@ -338,5 +346,8 @@ def test_kb_delete_returns_409_when_pending_cleanup(
     _force_pending_cleanup(kb_repo, kb_id)
 
     response = client.delete(f"/knowledgebases/{kb_id}")
-    assert response.status_code == 409
-    assert "pending cleanup" in response.json()["detail"]
+
+    # Re-running the delete retries cleanup; healthy in-memory backends succeed,
+    # so the KB is fully removed rather than blocked.
+    assert response.status_code == 204
+    assert kb_repo.get(kb_id) is None
