@@ -94,7 +94,7 @@
 ## Story records.03: Resolve `pde` feed status (drop or land Plan-C fan-out)
 
 **ID:** records.03
-**Status:** planned
+**Status:** in-progress
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** M
@@ -104,10 +104,9 @@
 **so that** the declared 9th feed is not a half-wired surface that ingests `raw_records` but never produces graph entities or observations.
 
 ### Current State
-- `medicare_fraud_cms_desynpuf.yaml:349-383` declares `name: pde`, `record_type: pde_record`, `id_field: PDE_ID`, with a `record_schema`. The Tennessee subset materializer (`tools/sample_data/build_tennessee_subset.py`) references PDE rows.
-- The fixture `backend/tests/records/fixtures/cms/pde_sample.csv` exists but no `entities`, `relationships`, or `observations` mappings are declared for the feed in the YAML — only the schema.
-- No `pde_record` entity definition exists in the top-level `entities:` block (`backend/config/defaults/medicare_fraud_cms_desynpuf.yaml:7-90`) — `map_batch` would yield zero entities.
-- Architecture §5.2 / §6.3 expects feed → entities → graph; a declared-but-unmapped feed is a footgun.
+- `medicare_fraud_cms_desynpuf.yaml:349-380` declares `name: pde`, `record_type: pde_record`, `id_field: PDE_ID`, with a `record_schema`. The Tennessee subset materializer (`tools/sample_data/build_tennessee_subset.py`) references PDE rows.
+- **Update (2026-06-01):** the `pde` feed has since been **wired toward the Plan-C path** — it now declares `entities` and a `billed_for` `relationships` block (`medicare_fraud_cms_desynpuf.yaml:375`), so `map_batch` produces graph entities and edges rather than zero. A golden test asserts deterministic entity/relationship counts after the fan-out (`backend/tests/records/test_cms_ingestion.py:268` `test_pde_feed_creates_drug_claims_and_billed_for_edges`), alongside validation and column-count coverage.
+- Residual gap (why this is in-progress, not done): the feed declares no `observations` mapping; the wire-vs-drop **decision is not yet recorded** — `backend/records/README.md` has no "CMS feed inventory" section and `docs/architecture.md` §6.3 has no callout; and no `Done:` line cites the chosen path.
 
 ### Acceptance Criteria
 - [ ] Decision recorded in `backend/records/README.md` ("CMS feed inventory" section) and `docs/architecture.md` §6.3 callout: `pde` is either (a) dropped, or (b) wired end-to-end.

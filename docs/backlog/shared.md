@@ -470,7 +470,7 @@
 ## Story shared.13: Document MonitoringObservation placement and export it from shared/__init__
 
 **ID:** shared.13
-**Status:** planned
+**Status:** in-progress
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** S

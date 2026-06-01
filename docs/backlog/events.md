@@ -8,7 +8,7 @@
 ## Story events.01: Reclaim stale pending entries with XPENDING/XCLAIM
 
 **ID:** events.01
-**Status:** planned
+**Status:** in-progress
 **Prerequisites:** []
 **Unblocks:** [_multitenancy.11, _security.05, _security.06, api.05, events.07, vectorstore.09]
 **Estimated size:** L
@@ -24,9 +24,9 @@
 - The agent worker's retry/DLQ wrapper (`backend/agent/coordinator.py:2345-2412 run_handler_with_retry`) only protects in-flight handler invocations; once the process exits abnormally, the entry stays pending.
 
 ### Acceptance Criteria
-- [ ] `RedisStreamsEventBus.consume` polls XPENDING for entries idle longer than a configurable `min_idle_ms` and reclaims them via XCLAIM before reading new entries with `>`, so a healthy consumer recovers crashed-peer deliveries.
+- [x] `RedisStreamsEventBus.consume` polls XPENDING for entries idle longer than a configurable `min_idle_ms` and reclaims them via XCLAIM before reading new entries with `>`, so a healthy consumer recovers crashed-peer deliveries. _(landed via `reclaim_stale_pending` / XAUTOCLAIM, consumed in `agent/coordinator.py` before the `>` read.)_
 - [ ] A new `EventBusSettings.claim_min_idle_ms: int = 60000` field is wired through `events/runtime.py` and reflected in `EventBus.consume` (default off when 0, on otherwise); the field is documented in `backend/events/__init__.py` module docstring.
-- [ ] Reclaimed entries surface to the caller as `EventDelivery` instances with the original `event_id`/`stream`/`consumer_group`, identical to first-time deliveries, so handlers do not need to differentiate.
+- [x] Reclaimed entries surface to the caller as `EventDelivery` instances with the original `event_id`/`stream`/`consumer_group`, identical to first-time deliveries, so handlers do not need to differentiate.
 - [ ] `RedisStreamsEventBus` exposes a typed counter for reclaim attempts and successes (or a callback hook) suitable for binding to a Prometheus counter in a follow-up observability story.
 - [ ] The XPENDING/XCLAIM TODO comment is removed from `backend/events/adapters/redis_streams.py:99` and replaced with a one-line reference to this story's design note.
 - [ ] `tests/events/test_redis_streams.py` adds an integration test (marked `@pytest.mark.integration`) that publishes an event, simulates a crashed consumer by reading without ack from one consumer name, then verifies a second consumer name reclaims the entry after `min_idle_ms`.
@@ -50,7 +50,7 @@
 ## Story events.02: Trim Redis streams with MAXLEN/XTRIM retention
 
 **ID:** events.02
-**Status:** planned
+**Status:** in-progress
 **Prerequisites:** []
 **Unblocks:** [_observability.09, api.07, graph.03, ingestion.05, monitoring.01, monitoring.02, rag.02]
 **Estimated size:** M
@@ -72,7 +72,7 @@
 - [ ] A per-event-type override map (`stream_maxlen_overrides: dict[str, int]`) is supported in `EventBusSettings` so high-volume streams (e.g. `pipeline.progress`) can have tighter bounds than low-volume lifecycle streams (e.g. `kb.create`).
 - [ ] DLQ streams use a separately configurable `dlq_stream_maxlen` (or default to `10 * stream_maxlen`) so DLQ history outlives the source stream.
 - [ ] `docs/ledger/event-catalog.md` gains a "Retention" column per event with a default bound and per-event overrides recorded.
-- [ ] The TODO at `backend/events/adapters/redis_streams.py:38` is removed.
+- [x] The TODO at `backend/events/adapters/redis_streams.py:38` is removed.
 - [ ] Unit tests in `tests/events/test_redis_streams.py` assert `xadd` is invoked with the expected `maxlen` argument when settings populate it, and without it when settings leave it `None`.
 
 ### Verification

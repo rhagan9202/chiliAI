@@ -387,7 +387,7 @@ Container images and CI jobs exist, but PR previews do not yet provision an isol
 ## Story _cicd.11: Add backlog consistency check CI hook
 
 **ID:** _cicd.11
-**Status:** planned
+**Status:** in-progress
 **Prerequisites:** []
 **Unblocks:** [events.08]
 **Estimated size:** S
@@ -404,11 +404,11 @@ Container images and CI jobs exist, but PR previews do not yet provision an isol
 - The change-detection idiom in the spec uses `contains(github.event.pull_request.changed_files, 'docs/backlog/')` which is not a real Actions context expression — implementation must use `dorny/paths-filter` or a `paths:` trigger on a separate workflow file.
 
 ### Acceptance Criteria
-- [ ] `.github/workflows/ci.yml` (or a new `.github/workflows/backlog.yml`) runs `python scripts/backlog_consistency.py --check` whenever any file under `docs/backlog/` changes on a pull request.
+- [x] `.github/workflows/ci.yml` (or a new `.github/workflows/backlog.yml`) runs `python scripts/backlog_consistency.py --check` whenever any file under `docs/backlog/` changes on a pull request. _(landed at `ci.yml:193`; currently runs unconditionally rather than path-scoped — see AC#2/#4 below.)_
 - [ ] Uses `dorny/paths-filter@v3` (or a path-filtered `on: pull_request: paths:` trigger on a dedicated workflow) — never the bogus `contains(github.event.pull_request.changed_files, ...)` form.
-- [ ] Step exits non-zero on validation errors or Unblocks drift, failing the PR.
+- [x] Step exits non-zero on validation errors or Unblocks drift, failing the PR.
 - [ ] When no `docs/backlog/` files change, the step is skipped cleanly (no spurious failures, no wasted minutes).
-- [ ] Step uses Python 3.12 (matching `setup-python@v5 with python-version: "3.12"` at `ci.yml:24-27`) and installs no extra dependencies (the script is stdlib-only per spec §8).
+- [x] Step uses Python 3.12 (matching `setup-python@v5 with python-version: "3.12"` at `ci.yml:24-27`) and installs no extra dependencies (the script is stdlib-only per spec §8).
 - [ ] `docs/backlog/README.md` (delivered by Wave 3) is referenced from the workflow comment so maintainers can find the gate's purpose.
 
 ### Verification

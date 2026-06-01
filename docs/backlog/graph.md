@@ -146,7 +146,7 @@
 - `GraphService._upsert_relationships` does the same per relationship batch (`service.py:149-162`).
 - `BatchUpsertError` reports `successful_entity_count` / `successful_relationship_count` (`graph/exceptions.py:14-28`) but the partial commits are NOT rolled back — the next replay sees a partially-written graph.
 - `InMemoryGraphRepository._transaction_scope` (`in_memory.py:255-286`) snapshots entities, relationships, and adjacency indexes on enter and restores on exception — only the snapshot of the CURRENT batch, not the whole task.
-- `Neo4jGraphRepository.transaction` (`neo4j_adapter.py:164-165`) currently returns a no-op `_transaction_scope()` (line 165) — relies on per-write auto-commit semantics, with no task-scoped transaction wrapping.
+- **Correction (2026-06-01):** `Neo4jGraphRepository.transaction` (`neo4j_adapter.py:164`) is **not** a no-op — it opens a real Neo4j transaction via `session.begin_transaction()` and commits/rolls back on exit (`neo4j_adapter.py:578`), with `_run_read`/`_run_write` routing through the active transaction (`neo4j_adapter.py:592`, `599`). Adapter-level atomicity already exists; the remaining gap is purely at **service scope** — the transaction is opened per *batch* inside the upsert loops (see the `service.py` bullets above), not once per task.
 
 ### Acceptance Criteria
 - [ ] `GraphRepository.transaction(knowledge_base_id)` contract is clarified: it MUST commit all writes done inside the `with` block atomically, or roll them all back on exception.
