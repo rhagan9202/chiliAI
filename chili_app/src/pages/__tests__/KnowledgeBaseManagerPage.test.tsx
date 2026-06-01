@@ -323,7 +323,9 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
         type: 'text/csv',
       }),
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Parse records' }))
+    // File-upload feeds auto-parse on file selection (the manual control is
+    // labelled "Re-parse file"); there is no separate "Parse records" step.
+    await screen.findByText('Parsed for preview')
     await userEvent.click(screen.getByRole('button', { name: 'Submit records' }))
 
     expect(await screen.findByText('1 records accepted for claims_feed.')).toBeInTheDocument()
@@ -334,7 +336,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     expect(recordsFileCall?.[1]?.body).toBeInstanceOf(FormData)
   })
 
-  it('requires re-parsing after changing a records file upload draft', async () => {
+  it('auto-re-parses when the records file upload draft changes', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
     await screen.findByText('Ingestion Studio')
@@ -346,9 +348,12 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
         type: 'text/csv',
       }),
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Parse records' }))
+    // File-upload feeds auto-parse on selection, enabling submit.
+    await screen.findByText('Parsed for preview')
     expect(screen.getByRole('button', { name: 'Submit records' })).toBeEnabled()
 
+    // Changing the file invalidates the prior draft and auto-re-parses the new
+    // file, so submit becomes ready again with the updated content.
     await userEvent.upload(
       screen.getByLabelText('Records file'),
       new File(['claim_id,provider_npi,billed_amount\nc2,1234567890,101.25\n'], 'claims-2.csv', {
@@ -356,7 +361,9 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
       }),
     )
 
-    expect(screen.getByRole('button', { name: 'Submit records' })).toBeDisabled()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Submit records' })).toBeEnabled(),
+    )
   })
 
   it('requires re-parsing after editing pasted api-push records', async () => {
