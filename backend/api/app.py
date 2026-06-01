@@ -15,6 +15,7 @@ from api.routers.analytics import router as analytics_router
 from api.routers.auth import router as auth_router
 from api.routers.cases import router as cases_router
 from api.routers.config import router as config_router
+from api.routers.dev_seed import router as dev_seed_router
 from api.routers.evidence import router as evidence_router
 from api.routers.events import router as events_router
 from api.routers.graph import router as graph_router
@@ -163,6 +164,10 @@ def create_app() -> FastAPI:
     app.include_router(investigation_router)
     app.include_router(auth_router)
     app.include_router(ws_router)
+
+    # Dev/e2e-only seed endpoint — never registered in production.
+    if _load_chili_environment() != "production":
+        app.include_router(dev_seed_router)
 
     # Default-deny audit validates route annotations independent of runtime auth
     # mode. Individual require_role dependencies still short-circuit when auth is
