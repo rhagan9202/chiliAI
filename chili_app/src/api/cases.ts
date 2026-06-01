@@ -6,85 +6,132 @@ import type {
   CaseDetailResponse,
   CaseFeedbackCreateRequest,
   CaseListResponse,
+  CasePromoteRequest,
   CaseUpdateRequest,
 } from './contracts'
 
-export const casesQueryKey = ['cases'] as const
-
-export function caseDetailQueryKey(caseId: string) {
-  return ['cases', caseId] as const
+function kbQuery(knowledgeBaseId: string): string {
+  return new URLSearchParams({ knowledge_base_id: knowledgeBaseId }).toString()
 }
 
-export function getCases(): Promise<CaseListResponse> {
-  return apiFetch<CaseListResponse>('/cases')
+export function casesQueryKey(knowledgeBaseId: string) {
+  return ['cases', knowledgeBaseId] as const
 }
 
-export function getCase(caseId: string): Promise<CaseDetailResponse> {
-  return apiFetch<CaseDetailResponse>(`/cases/${caseId}`)
+export function caseDetailQueryKey(knowledgeBaseId: string, caseId: string) {
+  return ['cases', knowledgeBaseId, caseId] as const
 }
 
-export function createCase(payload: CaseCreateRequest): Promise<CaseDetailResponse> {
-  return apiPost<CaseDetailResponse, CaseCreateRequest>('/cases', payload)
+export function getCases(knowledgeBaseId: string): Promise<CaseListResponse> {
+  return apiFetch<CaseListResponse>(`/cases?${kbQuery(knowledgeBaseId)}`)
 }
 
-export function updateCase(caseId: string, payload: CaseUpdateRequest): Promise<CaseDetailResponse> {
-  return apiPatch<CaseDetailResponse, CaseUpdateRequest>(`/cases/${caseId}`, payload)
+export function getCase(knowledgeBaseId: string, caseId: string): Promise<CaseDetailResponse> {
+  return apiFetch<CaseDetailResponse>(
+    `/cases/${encodeURIComponent(caseId)}?${kbQuery(knowledgeBaseId)}`,
+  )
 }
 
-export function addCaseFeedback(caseId: string, payload: CaseFeedbackCreateRequest): Promise<CaseDetailResponse> {
-  return apiPost<CaseDetailResponse, CaseFeedbackCreateRequest>(`/cases/${caseId}/feedback`, payload)
+export function createCase(
+  knowledgeBaseId: string,
+  payload: CaseCreateRequest,
+): Promise<CaseDetailResponse> {
+  return apiPost<CaseDetailResponse, CaseCreateRequest>(
+    `/cases?${kbQuery(knowledgeBaseId)}`,
+    payload,
+  )
 }
 
-export function useCases() {
+export function updateCase(
+  knowledgeBaseId: string,
+  caseId: string,
+  payload: CaseUpdateRequest,
+): Promise<CaseDetailResponse> {
+  return apiPatch<CaseDetailResponse, CaseUpdateRequest>(
+    `/cases/${encodeURIComponent(caseId)}?${kbQuery(knowledgeBaseId)}`,
+    payload,
+  )
+}
+
+export function addCaseFeedback(
+  knowledgeBaseId: string,
+  caseId: string,
+  payload: CaseFeedbackCreateRequest,
+): Promise<CaseDetailResponse> {
+  return apiPost<CaseDetailResponse, CaseFeedbackCreateRequest>(
+    `/cases/${encodeURIComponent(caseId)}/feedback?${kbQuery(knowledgeBaseId)}`,
+    payload,
+  )
+}
+
+export function promoteCase(
+  knowledgeBaseId: string,
+  payload: CasePromoteRequest,
+): Promise<CaseDetailResponse> {
+  return apiPost<CaseDetailResponse, CasePromoteRequest>(
+    `/cases/promote?${kbQuery(knowledgeBaseId)}`,
+    payload,
+  )
+}
+
+export function useCases(knowledgeBaseId: string | null) {
   return useQuery({
-    queryKey: casesQueryKey,
-    queryFn: getCases,
+    queryKey: casesQueryKey(knowledgeBaseId ?? 'missing'),
+    queryFn: () => getCases(knowledgeBaseId ?? ''),
+    enabled: Boolean(knowledgeBaseId),
   })
 }
 
-export function useCase(caseId: string | null) {
+export function useCase(knowledgeBaseId: string | null, caseId: string | null) {
   return useQuery({
-    queryKey: caseDetailQueryKey(caseId ?? 'missing'),
-    queryFn: () => getCase(caseId ?? ''),
-    enabled: Boolean(caseId),
+    queryKey: caseDetailQueryKey(knowledgeBaseId ?? 'missing', caseId ?? 'missing'),
+    queryFn: () => getCase(knowledgeBaseId ?? '', caseId ?? ''),
+    enabled: Boolean(knowledgeBaseId) && Boolean(caseId),
   })
 }
 
-export function useCreateCase() {
+function useCaseInvalidation(knowledgeBaseId: string | null, caseId: string | null) {
   const queryClient = useQueryClient()
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: casesQueryKey(knowledgeBaseId ?? 'missing') })
+    if (knowledgeBaseId && caseId) {
+      void queryClient.invalidateQueries({
+        queryKey: caseDetailQueryKey(knowledgeBaseId, caseId),
+      })
+    }
+  }
+}
 
+export function useCreateCase(knowledgeBaseId: string | null) {
+  const invalidate = useCaseInvalidation(knowledgeBaseId, null)
   return useMutation({
-    mutationFn: createCase,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: casesQueryKey })
-    },
+    mutationFn: (payload: CaseCreateRequest) => createCase(knowledgeBaseId ?? '', payload),
+    onSuccess: invalidate,
   })
 }
 
-export function useUpdateCase(caseId: string | null) {
-  const queryClient = useQueryClient()
-
+export function useUpdateCase(knowledgeBaseId: string | null, caseId: string | null) {
+  const invalidate = useCaseInvalidation(knowledgeBaseId, caseId)
   return useMutation({
-    mutationFn: (payload: CaseUpdateRequest) => updateCase(caseId ?? '', payload),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: casesQueryKey })
-      if (caseId) {
-        void queryClient.invalidateQueries({ queryKey: caseDetailQueryKey(caseId) })
-      }
-    },
+    mutationFn: (payload: CaseUpdateRequest) =>
+      updateCase(knowledgeBaseId ?? '', caseId ?? '', payload),
+    onSuccess: invalidate,
   })
 }
 
-export function useAddCaseFeedback(caseId: string | null) {
-  const queryClient = useQueryClient()
-
+export function useAddCaseFeedback(knowledgeBaseId: string | null, caseId: string | null) {
+  const invalidate = useCaseInvalidation(knowledgeBaseId, caseId)
   return useMutation({
-    mutationFn: (payload: CaseFeedbackCreateRequest) => addCaseFeedback(caseId ?? '', payload),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: casesQueryKey })
-      if (caseId) {
-        void queryClient.invalidateQueries({ queryKey: caseDetailQueryKey(caseId) })
-      }
-    },
+    mutationFn: (payload: CaseFeedbackCreateRequest) =>
+      addCaseFeedback(knowledgeBaseId ?? '', caseId ?? '', payload),
+    onSuccess: invalidate,
+  })
+}
+
+export function usePromoteCase(knowledgeBaseId: string | null) {
+  const invalidate = useCaseInvalidation(knowledgeBaseId, null)
+  return useMutation({
+    mutationFn: (payload: CasePromoteRequest) => promoteCase(knowledgeBaseId ?? '', payload),
+    onSuccess: invalidate,
   })
 }

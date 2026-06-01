@@ -58,7 +58,7 @@ export function InvestigationWorkbenchPage() {
     () => alertsQuery.data?.items.find((alert) => alert.entity_id === selectedEntityId) ?? null,
     [alertsQuery.data?.items, selectedEntityId],
   )
-  const evidenceQuery = useEvidencePack(selectedAlert?.evidence_pack_id ?? null)
+  const evidenceQuery = useEvidencePack(selectedAlert?.evidence_pack_id ?? null, activeKnowledgeBaseId)
 
   if (domainConfigQuery.isLoading || knowledgeBasesQuery.isLoading || alertsQuery.isLoading) {
     return <LoadingState label="Loading investigation context" />

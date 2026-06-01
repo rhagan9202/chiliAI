@@ -1,25 +1,74 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import { useAlerts } from '../api/alerts'
-import { useAddCaseFeedback, useCase, useCases, useCreateCase, useUpdateCase } from '../api/cases'
+import { useAddCaseFeedback, useCase, useCases, usePromoteCase, useUpdateCase } from '../api/cases'
+import { useKnowledgeBases } from '../api/knowledgebases'
+import { showToast } from '../components/common/toastStore'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
+import { FilterBar } from '../components/ui/FilterBar'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import './pages.css'
 
+type StatusFilter = 'all' | 'open' | 'in_review' | 'closed'
+
+const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'open', label: 'Open' },
+  { id: 'in_review', label: 'In review' },
+  { id: 'closed', label: 'Closed' },
+]
+
 export function CaseManagementPage() {
-  const casesQuery = useCases()
+  const [searchParams] = useSearchParams()
+  const knowledgeBasesQuery = useKnowledgeBases()
+  const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
+  const requestedKbId = searchParams.get('kb')
+  const knowledgeBaseId = knowledgeBases.some((kb) => kb.id === requestedKbId)
+    ? requestedKbId
+    : knowledgeBases[0]?.id ?? null
+
+  const casesQuery = useCases(knowledgeBaseId)
   const alertsQuery = useAlerts()
-  const createCaseMutation = useCreateCase()
+  const promoteMutation = usePromoteCase(knowledgeBaseId)
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const activeCaseId = selectedCaseId ?? casesQuery.data?.items[0]?.id ?? null
-  const caseQuery = useCase(activeCaseId)
-  const updateCaseMutation = useUpdateCase(activeCaseId)
-  const feedbackMutation = useAddCaseFeedback(activeCaseId)
+  const caseQuery = useCase(knowledgeBaseId, activeCaseId)
+  const updateCaseMutation = useUpdateCase(knowledgeBaseId, activeCaseId)
+  const feedbackMutation = useAddCaseFeedback(knowledgeBaseId, activeCaseId)
   const [feedbackNotes, setFeedbackNotes] = useState('')
+
+  if (knowledgeBasesQuery.isLoading) {
+    return <LoadingState label="Loading knowledge bases" />
+  }
+
+  if (knowledgeBasesQuery.isError) {
+    return <ErrorState description="Knowledge base inventory could not be loaded from the backend." />
+  }
+
+  if (!knowledgeBaseId) {
+    return (
+      <section className="page-grid">
+        <SectionHeader
+          actions={<Chip label="No knowledge base" tone="default" />}
+          eyebrow="Human feedback loop"
+          subtitle="Create or select a knowledge base to manage its investigation cases."
+          title="Case Management"
+        />
+        <Card>
+          <EmptyState
+            description="Cases are scoped to a knowledge base. Select one to view its queue."
+            title="No knowledge base selected"
+          />
+        </Card>
+      </section>
+    )
+  }
 
   if (casesQuery.isLoading || alertsQuery.isLoading) {
     return <LoadingState label="Loading case queue" />
@@ -33,24 +82,45 @@ export function CaseManagementPage() {
     return <LoadingState label="Waiting for case data" />
   }
 
-  const unassignedAlert = alertsQuery.data.items.find(
+  const visibleCases =
+    statusFilter === 'all'
+      ? casesQuery.data.items
+      : casesQuery.data.items.filter((caseItem) => caseItem.status === statusFilter)
+
+  const unpromotedAlert = alertsQuery.data.items.find(
     (alert) => !casesQuery.data.items.some((existingCase) => existingCase.alert_ids.includes(alert.id)),
   )
+
+  const handleUpdate = (status: 'in_review' | 'closed') => {
+    updateCaseMutation.mutate(
+      { status },
+      {
+        onSuccess: () => showToast('success', `Case marked ${status.replace(/_/g, ' ')}.`),
+        onError: () => showToast('error', 'Could not update the case.'),
+      },
+    )
+  }
 
   return (
     <section className="page-grid">
       <SectionHeader
         actions={<Chip label={`${casesQuery.data.page.total_items} cases`} tone="info" />}
         eyebrow="Human feedback loop"
-        subtitle="Cases, status updates, and analyst feedback now persist through the backend case endpoints."
+        subtitle="Cases persist durably per knowledge base and can be promoted from alerts with their evidence."
         title="Case Management"
+      />
+
+      <FilterBar
+        activeFilterId={statusFilter}
+        filters={STATUS_FILTERS}
+        onChange={(value) => setStatusFilter(value as StatusFilter)}
       />
 
       <div className="case-layout">
         <Card>
           <div className="metric-stack">
             <strong>Case queue</strong>
-            {casesQuery.data.items.map((caseItem) => (
+            {visibleCases.map((caseItem) => (
               <button
                 className={selectedCaseId === caseItem.id ? 'page-list-item page-list-item--active' : 'page-list-item'}
                 key={caseItem.id}
@@ -58,23 +128,33 @@ export function CaseManagementPage() {
                 type="button"
               >
                 <strong>{caseItem.title}</strong>
-                <span className="metric-row__label">{caseItem.status}</span>
+                <span className="metric-row__label">
+                  {caseItem.status} · {caseItem.priority}
+                </span>
               </button>
             ))}
-            {unassignedAlert ? (
+            {visibleCases.length === 0 ? (
+              <EmptyState description="No cases match the current filter." title="Empty queue" />
+            ) : null}
+            {unpromotedAlert ? (
               <button
                 className="page-button"
+                disabled={promoteMutation.isPending}
                 onClick={() =>
-                  createCaseMutation.mutate({
-                    title: `${unassignedAlert.entity_label} review`,
-                    priority: unassignedAlert.severity === 'critical' ? 'critical' : 'high',
-                    assignee: 'Unassigned',
-                    alert_ids: [unassignedAlert.id],
-                  })
+                  promoteMutation.mutate(
+                    { alert_id: unpromotedAlert.id },
+                    {
+                      onSuccess: (detail) => {
+                        setSelectedCaseId(detail.case.id)
+                        showToast('success', `Promoted ${unpromotedAlert.entity_label} to a case.`)
+                      },
+                      onError: () => showToast('error', 'Could not promote the alert.'),
+                    },
+                  )
                 }
                 type="button"
               >
-                Create case from {unassignedAlert.entity_label}
+                Promote {unpromotedAlert.entity_label} to case
               </button>
             ) : null}
           </div>
@@ -90,21 +170,31 @@ export function CaseManagementPage() {
                 {caseQuery.data.case.assignee ? <Chip label={caseQuery.data.case.assignee} tone="default" /> : null}
               </div>
               <div className="page-actions-inline">
-                <button className="page-button" onClick={() => updateCaseMutation.mutate({ status: 'in_review' })} type="button">
+                <button className="page-button" onClick={() => handleUpdate('in_review')} type="button">
                   Mark in review
                 </button>
-                <button className="page-button page-button--secondary" onClick={() => updateCaseMutation.mutate({ status: 'closed' })} type="button">
+                <button className="page-button page-button--secondary" onClick={() => handleUpdate('closed')} type="button">
                   Close case
                 </button>
               </div>
+              {caseQuery.data.evidence_pack ? (
+                <div className="metric-stack">
+                  <strong>Evidence</strong>
+                  <span className="metric-row__label">{caseQuery.data.evidence_pack.reasoning}</span>
+                </div>
+              ) : null}
               <div className="metric-stack">
-                <strong>Attached alerts</strong>
-                {caseQuery.data.alerts.map((alert) => (
-                  <div className="metric-row metric-row--stacked" key={alert.id}>
-                    <strong>{alert.entity_label}</strong>
-                    <span className="metric-row__label">{alert.reasoning}</span>
-                  </div>
-                ))}
+                <strong>Timeline</strong>
+                {caseQuery.data.entity_timeline.length > 0 ? (
+                  caseQuery.data.entity_timeline.map((event) => (
+                    <div className="metric-row metric-row--stacked" key={`${event.label}-${event.occurred_at}`}>
+                      <strong>{event.label.replace(/_/g, ' ')}</strong>
+                      <span className="metric-row__label">{event.detail}</span>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyState description="No timeline events were captured." title="No timeline" />
+                )}
               </div>
               <div className="metric-stack">
                 <strong>Submit analyst feedback</strong>
@@ -118,12 +208,18 @@ export function CaseManagementPage() {
                   className="page-button"
                   disabled={feedbackNotes.trim().length === 0}
                   onClick={() => {
-                    feedbackMutation.mutate({
-                      label: 'suspicious',
-                      evidence_adequacy: 'high',
-                      missing_evidence: [],
-                      notes: feedbackNotes,
-                    })
+                    feedbackMutation.mutate(
+                      {
+                        label: 'suspicious',
+                        evidence_adequacy: 'high',
+                        missing_evidence: [],
+                        notes: feedbackNotes,
+                      },
+                      {
+                        onSuccess: () => showToast('success', 'Feedback saved.'),
+                        onError: () => showToast('error', 'Could not save feedback.'),
+                      },
+                    )
                     setFeedbackNotes('')
                   }}
                   type="button"

@@ -86,17 +86,19 @@ export type FeedbackLabel = Schemas['AnalystFeedbackResponse']['label']
 export type EvidenceAdequacy = Schemas['AnalystFeedbackResponse']['evidence_adequacy']
 export type CaseSummaryResponse = RequireFields<Schemas['CaseSummaryResponse'], 'alert_ids'>
 export type CaseListResponse = RequireFields<Schemas['CaseListResponse'], 'items'>
+export type CaseTimelineEventResponse = Schemas['CaseTimelineEventResponse']
 export type AnalystFeedbackResponse = RequireFields<
   Schemas['AnalystFeedbackResponse'],
   'missing_evidence'
 >
 export type CaseDetailResponse = RequireFields<
   Schemas['CaseDetailResponse'],
-  'alerts' | 'feedback_history'
+  'alerts' | 'entity_timeline' | 'feedback_history'
 >
 export type CaseCreateRequest = Schemas['CaseCreateRequest']
 export type CaseUpdateRequest = Schemas['CaseUpdateRequest']
 export type CaseFeedbackCreateRequest = Schemas['CaseFeedbackCreateRequest']
+export type CasePromoteRequest = Schemas['CasePromoteRequest']
 
 export type ChatCitationResponse = Schemas['ChatCitationResponse']
 export type ChatMessageResponse = RequireFields<
