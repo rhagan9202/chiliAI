@@ -193,6 +193,7 @@ __all__ = [
     "build_embedder",
     "build_entity_metric_repository",
     "build_explainability_context_source",
+    "build_explanation_context",
     "build_graph_repository",
     "build_graph_snapshot_source",
     "build_llm_client",
@@ -1347,7 +1348,7 @@ def _run_explainability_stage(
 ) -> AlertCreatedReference | None:
     alert_id = f"alert-{entity_id}-{risk_response.request_id}"
     try:
-        context = _build_explanation_context(
+        context = build_explanation_context(
             graph_service=graph_service,
             knowledge_base_id=knowledge_base_id,
             entity_id=entity_id,
@@ -1389,7 +1390,7 @@ def _run_explainability_stage(
     )
 
 
-def _build_explanation_context(
+def build_explanation_context(
     *,
     graph_service: GraphService,
     knowledge_base_id: str,

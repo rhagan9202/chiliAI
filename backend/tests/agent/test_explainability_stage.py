@@ -1,18 +1,16 @@
-"""Tests for real evidence-pack extraction + persistence in Flow B (BL-005)."""
+"""Tests for real evidence-pack context extraction in Flow B (BL-005).
+
+The persistence + alert-reference wiring of ``_run_explainability_stage`` is
+exercised end-to-end by the Flow B coordinator tests; here we cover the public
+``build_explanation_context`` unit that derives a real explanation context from
+``graph.get_subgraph`` plus the risk assessment (replacing the seeded context).
+"""
 
 from __future__ import annotations
 
-from agent.coordinator import _build_explanation_context, _run_explainability_stage
-from analytics.explainability.adapters.evidence_in_memory import (
-    InMemoryEvidencePackRepository,
-)
-from analytics.explainability.adapters.in_memory import (
-    InMemoryExplainabilityContextSource,
-)
-from analytics.explainability.service import create_explainability_service
+from agent.coordinator import build_explanation_context
 from analytics.risk.service_models import RiskAssessmentResponse, RiskFactorScore
 from events.adapters.in_memory import InMemoryEventBus
-from events.types import GraphUpdatedEvent
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.service import GraphService, create_graph_service
 from shared.types import Entity, Relationship
@@ -41,15 +39,11 @@ def _graph_service() -> GraphService:
     )
 
 
-def _risk_response() -> RiskAssessmentResponse:
-    return RiskAssessmentResponse(
-        request_id="req-1",
-        knowledge_base_id="kb-1",
-        entity_id="provider-1",
-        overall_score=0.82,
-        risk_level="high",
-        factor_count=1,
-        factors=[
+def _risk_response(*, factors: list[RiskFactorScore] | None = None) -> RiskAssessmentResponse:
+    resolved = (
+        factors
+        if factors is not None
+        else [
             RiskFactorScore(
                 factor_name="upcoding",
                 raw_value=0.9,
@@ -57,12 +51,21 @@ def _risk_response() -> RiskAssessmentResponse:
                 contribution=0.7,
                 rationale="Unusual cardiac billing volume.",
             )
-        ],
+        ]
+    )
+    return RiskAssessmentResponse(
+        request_id="req-1",
+        knowledge_base_id="kb-1",
+        entity_id="provider-1",
+        overall_score=0.82,
+        risk_level="high",
+        factor_count=len(resolved),
+        factors=resolved,
     )
 
 
 def test_build_explanation_context_uses_graph_subgraph_and_risk_scores() -> None:
-    context = _build_explanation_context(
+    context = build_explanation_context(
         graph_service=_graph_service(),
         knowledge_base_id="kb-1",
         entity_id="provider-1",
@@ -76,47 +79,34 @@ def test_build_explanation_context_uses_graph_subgraph_and_risk_scores() -> None
     assert context.scores["overall"] == 0.82
     assert context.confidence == 0.82
     assert any(item.quote == "upcoding" for item in context.explanation_items)
+    assert context.alert.id == "alert-provider-1-req-1"
+    assert context.alert.entity_type == "provider"
 
 
-def test_run_explainability_stage_persists_real_pack() -> None:
-    repository = InMemoryEvidencePackRepository()
-    service = create_explainability_service(
-        InMemoryExplainabilityContextSource(), event_bus=InMemoryEventBus()
-    )
-
-    reference = _run_explainability_stage(
-        event=GraphUpdatedEvent(correlation_id="corr-1", documents=[]),
-        explainability_service=service,
+def test_build_explanation_context_falls_back_to_seed_when_no_factors() -> None:
+    context = build_explanation_context(
         graph_service=_graph_service(),
         knowledge_base_id="kb-1",
         entity_id="provider-1",
-        risk_response=_risk_response(),
-        event_bus=InMemoryEventBus(),
-        evidence_pack_repository=repository,
+        alert_id="alert-provider-1-req-2",
+        risk_response=_risk_response(factors=[]),
     )
 
-    assert reference is not None
-    persisted = repository.get("kb-1", reference.evidence_pack_id)
-    assert persisted is not None
-    assert set(persisted.subgraph_nodes) >= {"provider-1", "claim-1", "beneficiary-1"}
-    assert persisted.scores["overall"] == 0.82
+    # No risk factors -> a single risk-summary item keeps the context valid.
+    assert len(context.explanation_items) == 1
+    assert context.explanation_items[0].source_type == "risk_summary"
+    assert context.scores["overall"] == 0.82
 
 
-def test_run_explainability_stage_without_repository_still_returns_reference() -> None:
-    service = create_explainability_service(
-        InMemoryExplainabilityContextSource(), event_bus=InMemoryEventBus()
-    )
-
-    reference = _run_explainability_stage(
-        event=GraphUpdatedEvent(correlation_id="corr-1", documents=[]),
-        explainability_service=service,
+def test_build_explanation_context_handles_entity_absent_from_graph() -> None:
+    # An entity with no graph node still yields a valid single-node subgraph.
+    context = build_explanation_context(
         graph_service=_graph_service(),
         knowledge_base_id="kb-1",
-        entity_id="provider-1",
+        entity_id="ghost-entity",
+        alert_id="alert-ghost-req-3",
         risk_response=_risk_response(),
-        event_bus=InMemoryEventBus(),
-        evidence_pack_repository=None,
     )
 
-    assert reference is not None
-    assert reference.evidence_pack_id
+    assert context.subgraph.node_ids == ["ghost-entity"]
+    assert context.alert.entity_type == "entity"
