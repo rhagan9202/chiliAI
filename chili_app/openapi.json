@@ -69,6 +69,10 @@
             "title": "Id",
             "type": "string"
           },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
           "reasoning": {
             "title": "Reasoning",
             "type": "string"
@@ -108,6 +112,7 @@
         },
         "required": [
           "id",
+          "knowledge_base_id",
           "entity_id",
           "entity_type",
           "entity_label",

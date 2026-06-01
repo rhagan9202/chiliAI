@@ -45,6 +45,7 @@ class AlertProjectionRecord(BaseModel):
     """Stored read-model record for one analyst-facing alert."""
 
     alert: Alert
+    knowledge_base_id: str
     entity_label: str | None = None
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     tags: list[str] = Field(default_factory=list)
@@ -275,6 +276,7 @@ def _to_alert_item(record: AlertProjectionRecord) -> AlertListItem:
     alert = record.alert
     return AlertListItem(
         id=alert.id,
+        knowledge_base_id=record.knowledge_base_id,
         entity_id=alert.entity_id,
         entity_type=alert.entity_type,
         entity_label=record.entity_label or alert.entity_id,

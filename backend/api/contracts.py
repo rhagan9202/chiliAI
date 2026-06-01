@@ -45,6 +45,7 @@ class AlertListItem(BaseModel):
     """Summary alert row consumed by the analyst feed."""
 
     id: str
+    knowledge_base_id: str
     entity_id: str
     entity_type: str
     entity_label: str

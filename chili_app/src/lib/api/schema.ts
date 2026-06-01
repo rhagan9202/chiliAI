@@ -904,6 +904,8 @@ export interface components {
             evidence_pack_id?: string | null;
             /** Id */
             id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
             /** Reasoning */
             reasoning: string;
             /**

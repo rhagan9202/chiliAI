@@ -38,6 +38,7 @@ def _seed_alert_repository() -> InMemoryAlertProjectionRepository:
     repository = InMemoryAlertProjectionRepository()
     repository.upsert(
         AlertProjectionRecord(
+            knowledge_base_id="kb-1",
             alert=Alert(
                 id="alert-active",
                 entity_type="provider",
@@ -52,6 +53,7 @@ def _seed_alert_repository() -> InMemoryAlertProjectionRepository:
     )
     repository.upsert(
         AlertProjectionRecord(
+            knowledge_base_id="kb-1",
             alert=Alert(
                 id="alert-resolved",
                 entity_type="provider",

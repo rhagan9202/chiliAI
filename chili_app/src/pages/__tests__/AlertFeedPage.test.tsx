@@ -13,6 +13,10 @@ vi.mock('../../api/alerts', () => ({
   useAlerts: mocks.useAlerts,
 }))
 
+vi.mock('../../api/evidence', () => ({
+  useEvidencePack: () => ({ isLoading: false, data: undefined }),
+}))
+
 const alertResponse = {
   items: [
     {

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 
 import { useAcknowledgeAlert, useAlerts } from '../api/alerts'
+import { useEvidencePack } from '../api/evidence'
+import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { Chip } from '../components/ui/Chip'
 import { ConfidenceBar } from '../components/ui/ConfidenceBar'
 import { EmptyState } from '../components/ui/EmptyState'
@@ -21,8 +23,18 @@ const filters = [
 
 export function AlertFeedPage() {
   const [activeFilterId, setActiveFilterId] = useState('all')
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
   const alertsQuery = useAlerts()
   const acknowledgeMutation = useAcknowledgeAlert()
+
+  // Resolve the selected alert's evidence pack (KB-scoped). Hooks must run
+  // unconditionally, so derive from the (possibly undefined) query data.
+  const selectedAlert =
+    alertsQuery.data?.items.find((alert) => alert.id === selectedAlertId) ?? null
+  const evidenceQuery = useEvidencePack(
+    selectedAlert?.evidence_pack_id ?? null,
+    selectedAlert?.knowledge_base_id ?? null,
+  )
 
   if (alertsQuery.isLoading) {
     return <LoadingState label="Loading alert feed" />
@@ -73,6 +85,17 @@ export function AlertFeedPage() {
               </div>
               <div className="alert-row-card__header-actions">
                 <RiskBadge score={Math.round(alert.confidence * 100)} />
+                {alert.evidence_pack_id ? (
+                  <button
+                    className="page-button page-button--sm page-button--secondary"
+                    onClick={() =>
+                      setSelectedAlertId((current) => (current === alert.id ? null : alert.id))
+                    }
+                    type="button"
+                  >
+                    {selectedAlertId === alert.id ? 'Hide evidence' : 'View evidence'}
+                  </button>
+                ) : null}
                 <button
                   aria-label={alert.status === 'acknowledged' ? 'Acknowledged' : 'Acknowledge'}
                   className="page-button page-button--sm"
@@ -91,6 +114,24 @@ export function AlertFeedPage() {
       ) : (
         <EmptyState description="No alerts match the current filter." title="No matching alerts" />
       )}
+
+      {selectedAlert?.evidence_pack_id ? (
+        evidenceQuery.isLoading ? (
+          <LoadingState label="Loading evidence pack" />
+        ) : evidenceQuery.data ? (
+          <EvidencePackViewer
+            pack={evidenceQuery.data}
+            subgraph={{ nodes: [], edges: [] }}
+            entityTypes={[]}
+            selectedEntityId={selectedAlert.entity_id}
+          />
+        ) : (
+          <EmptyState
+            description="No evidence pack has been generated for this alert yet."
+            title="Evidence pending"
+          />
+        )
+      ) : null}
     </section>
   )
 }

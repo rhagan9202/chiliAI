@@ -9,6 +9,7 @@ import type { SortDirection, SortField } from '../AlertTable'
 function makeAlert(overrides: Partial<Alert>): Alert {
   return {
     id: 'a1',
+    knowledge_base_id: 'kb-1',
     entity_type: 'provider',
     entity_id: 'e1',
     entity_label: 'Provider e1',

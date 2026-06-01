@@ -17,6 +17,7 @@ def _client_with_alert_projection() -> TestClient:
     repository = InMemoryAlertProjectionRepository()
     repository.upsert(
         AlertProjectionRecord(
+            knowledge_base_id="kb-1",
             alert=Alert(
                 id="alert-001",
                 entity_type="provider",

@@ -45,6 +45,7 @@ def _record(
     created_at: datetime | None = None,
 ) -> AlertProjectionRecord:
     return AlertProjectionRecord(
+        knowledge_base_id="kb-1",
         alert=_alert(
             alert_id,
             severity=severity,
