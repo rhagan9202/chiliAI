@@ -26,8 +26,7 @@ ItemT = TypeVar("ItemT")
 class GraphService:
     """Persist validated runtime objects and publish graph update events."""
 
-    # TODO(production): Add get_subgraph once repository adapters expose a filtered
-    # subgraph query surface. Add idempotency (change detection / version
+    # TODO(production): Add idempotency (change detection / version
     # tracking on upsert to avoid redundant writes).
 
     def __init__(
@@ -241,6 +240,15 @@ class GraphService:
             query.depth,
             query.direction,
         )
+
+    def get_subgraph(
+        self,
+        knowledge_base_id: str,
+        seed_entity_ids: list[str],
+        depth: int = 1,
+    ) -> SubgraphResult:
+        """Return the deduplicated union of the depth-hop neighborhoods of the seeds."""
+        return self._repository.get_subgraph(knowledge_base_id, seed_entity_ids, depth)
 
     def get_neighbors(
         self,
