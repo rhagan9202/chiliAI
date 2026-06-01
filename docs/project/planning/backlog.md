@@ -119,7 +119,7 @@
 - **Estimate**: 3 SP
 - **Acceptance**:
   - Pack viewer renders subgraph (re-using GraphCanvas), metrics snapshot, and reasoning text. ✅ `EvidencePackViewer` (reasoning + metric chips + items + policy citations + subgraph via GraphCanvas) wired into the Investigation Workbench.
-  - Evidence pack viewer shown when an alert is selected. ✅ in the Investigation Workbench. **Follow-on:** an Alert Feed "view evidence" entry needs KB context that `AlertListItem` does not yet carry; tracked as a small follow-on.
+  - Evidence pack viewer shown when an alert is selected. ✅ in the Investigation Workbench **and** the Alert Feed (per-row "View evidence" toggle; `knowledge_base_id` added to `AlertListItem`/projection to scope the fetch). Playwright e2e: `alert-feed-evidence.spec.ts`.
 - **Dependencies**: BL-003, BL-005.
 
 ### BL-010 — Case Management v1 surface
@@ -131,7 +131,7 @@
   - Cases persisted via durable repository (in-memory + Postgres adapters). ✅ `backend/cases/` + `0002_cases` migration.
   - `POST/GET/PATCH /cases` endpoints with KB scoping. ✅ all routes take `?knowledge_base_id=`; plus `POST /cases/promote`.
   - Frontend `CaseManagementPage` lists, filters, and edits cases; supports "promote from alert". ✅ KB-threaded, status filter, status updates, toasts, promote-from-alert wired to `/cases/promote`.
-  - pyright --strict, pytest ≥ 85%. ✅ (Playwright promote-flow e2e is a follow-on.)
+  - pyright --strict, pytest ≥ 85%, Playwright e2e for promote-alert-to-case. ✅ (`case-promote.spec.ts`; case CRUD/feedback specs updated for KB scoping.)
 - **Dependencies**: BL-005 (evidence pack on case).
 - **Deferred to BL-012:** analytics `open_cases`/`list_policy_gap_cases` KB-scoping and removal of legacy `ApiState._seed_cases`; durable analyst feedback; rich `alerts[]` on case detail.
 
