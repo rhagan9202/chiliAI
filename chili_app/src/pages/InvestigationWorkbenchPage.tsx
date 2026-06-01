@@ -13,6 +13,7 @@ import {
 } from '../api/investigation'
 import { useKnowledgeBases } from '../api/knowledgebases'
 import { TrendBars } from '../components/charts/TrendBars'
+import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { GraphCanvas } from '../components/investigation/GraphCanvas'
 import type { Entity as ApiEntity, Relationship as ApiRelationship, SubgraphResult } from '../types/api'
 import { Card } from '../components/ui/Card'
@@ -309,19 +310,26 @@ export function InvestigationWorkbenchPage() {
           </div>
 
           {evidenceQuery.data ? (
-            <Card>
-              <div className="metric-stack">
-                <strong>Evidence pack</strong>
-                <p className="page-copy-block">{evidenceQuery.data.reasoning}</p>
-                {evidenceQuery.data.items.map((item) => (
-                  <div className="metric-row metric-row--stacked" key={item.source_id}>
-                    <strong>{item.source_type}</strong>
-                    <span className="metric-row__label">{item.quote}</span>
-                    <span className="metric-row__label">{item.rationale}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
+            <EvidencePackViewer
+              pack={evidenceQuery.data}
+              subgraph={
+                neighborhood
+                  ? toSubgraphResult(neighborhood.entities, neighborhood.relationships)
+                  : { nodes: [], edges: [] }
+              }
+              entityTypes={domainConfigQuery.data.entities.map((e) => e.name)}
+              selectedEntityId={selectedEntityId}
+              onSelectNode={(nextId) => {
+                const nextSearch = new URLSearchParams(searchParams)
+                if (activeKnowledgeBaseId) {
+                  nextSearch.set('kb', activeKnowledgeBaseId)
+                }
+                navigate(
+                  { pathname: `/investigation/${nextId}`, search: nextSearch.toString() },
+                  { preventScrollReset: true },
+                )
+              }}
+            />
           ) : null}
         </>
       ) : null}
