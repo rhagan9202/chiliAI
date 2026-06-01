@@ -9,6 +9,7 @@ from analytics.explainability.exceptions import (
     ExplainabilitySourceError,
 )
 from analytics.explainability.models import (
+    ExplanationContext,
     ExplanationItem,
     ExplanationNarrative,
     NarrativeSection,
@@ -47,12 +48,28 @@ class ExplainabilityService:
         except Exception as exc:
             raise ExplainabilitySourceError("Failed to load explainability context.") from exc
 
+        return self.generate_from_context(
+            context, max_evidence_items=request.max_evidence_items
+        )
+
+    def generate_from_context(
+        self,
+        context: ExplanationContext,
+        *,
+        max_evidence_items: int = 3,
+    ) -> ExplainabilityResponse:
+        """Assemble and publish an evidence pack from an already-loaded context.
+
+        Used by the worker, which builds the context from the graph subgraph and
+        risk assessment directly, bypassing the context-source load step.
+        """
+
         if not context.explanation_items:
             raise ExplainabilityInsufficientEvidenceError(
                 "Explainability context requires at least one explanation item."
             )
 
-        selected_items = _select_items(context.explanation_items, max_items=request.max_evidence_items)
+        selected_items = _select_items(context.explanation_items, max_items=max_evidence_items)
         narrative = _build_narrative(selected_items)
         evidence_pack = EvidencePack(
             id=generate_id(),

@@ -44,6 +44,9 @@ from config.schema import (
 )
 from database.protocols import ConnectionProvider
 from database.runtime import create_connection_provider
+from analytics.explainability.adapters.evidence_object_store import (
+    ObjectStoreEvidencePackRepository,
+)
 from analytics.explainability.adapters.in_memory import (
     InMemoryExplainabilityContextSource,
 )
@@ -51,11 +54,16 @@ from analytics.explainability.adapters.protocols import (
     ExplainabilityContextSourceProtocol,
 )
 from analytics.explainability.exceptions import ExplainabilityError
+from analytics.explainability.models import (
+    ExplanationContext,
+    ExplanationItem,
+    ExplanationSubgraph,
+)
+from analytics.explainability.repository import EvidencePackRepository
 from analytics.explainability.service import (
     ExplainabilityService,
     create_explainability_service,
 )
-from analytics.explainability.service_models import ExplainabilityRequest
 from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
 from analytics.gnn.adapters.protocols import GraphSnapshotSourceProtocol
 from analytics.gnn.exceptions import GnnDisabledError, GnnError, GnnSnapshotUnavailableError
@@ -169,7 +177,7 @@ from shared.provenance import (
     SOURCE_KIND_RECORD,
 )
 from shared.tracing import setup_tracing, start_pipeline_span
-from shared.types import Entity
+from shared.types import Alert, Entity
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.protocols import ObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
@@ -218,6 +226,10 @@ __all__ = [
 
 configure_logging()
 logger = get_logger("chili.worker")
+
+# Depth of the explanatory subgraph extracted around an alert's seed entity
+# when building an evidence pack (BL-005). Bounded per sprint risk R-03.
+_EVIDENCE_SUBGRAPH_DEPTH = 2
 
 SHUTDOWN_LOG_REQUESTED = "Shutdown requested, finishing current event..."
 SHUTDOWN_LOG_DONE = "Worker stopped gracefully."
@@ -1161,6 +1173,13 @@ def handle_graph_updated_for_analytics(
     the graph (E7-S11) before publishing the ``alerts.created`` aggregate.
     """
 
+    # Evidence packs are persisted to the shared object store so the API can
+    # serve them; with no object store configured (e.g. unit scaffolding),
+    # persistence is skipped and the pack id remains a forward reference.
+    evidence_pack_repository: EvidencePackRepository | None = (
+        ObjectStoreEvidencePackRepository(object_store) if object_store is not None else None
+    )
+
     alerts: list[AlertCreatedReference] = []
     for document in event.documents:
         knowledge_base_id = document.knowledge_base_id
@@ -1201,9 +1220,11 @@ def handle_graph_updated_for_analytics(
             alert_reference = _run_explainability_stage(
                 event=event,
                 explainability_service=explainability_service,
+                graph_service=graph_service,
                 knowledge_base_id=knowledge_base_id,
                 entity_id=entity_id,
                 risk_response=risk_response,
+                evidence_pack_repository=evidence_pack_repository,
                 event_bus=event_bus,
             )
             if alert_reference is not None:
@@ -1317,20 +1338,24 @@ def _run_explainability_stage(
     *,
     event: GraphUpdatedEvent,
     explainability_service: ExplainabilityService,
+    graph_service: GraphService,
     knowledge_base_id: str,
     entity_id: str,
     risk_response: RiskAssessmentResponse,
     event_bus: EventBus,
+    evidence_pack_repository: EvidencePackRepository | None = None,
 ) -> AlertCreatedReference | None:
     alert_id = f"alert-{entity_id}-{risk_response.request_id}"
     try:
-        response = explainability_service.generate(
-            ExplainabilityRequest(
-                knowledge_base_id=knowledge_base_id,
-                alert_id=alert_id,
-            )
+        context = _build_explanation_context(
+            graph_service=graph_service,
+            knowledge_base_id=knowledge_base_id,
+            entity_id=entity_id,
+            alert_id=alert_id,
+            risk_response=risk_response,
         )
-    except ExplainabilityError as exc:
+        response = explainability_service.generate_from_context(context)
+    except (ExplainabilityError, Exception) as exc:  # noqa: BLE001 - Flow B isolates per-entity failures
         _publish_analysis_failed(
             event_bus=event_bus,
             correlation_id=event.correlation_id,
@@ -1340,6 +1365,18 @@ def _run_explainability_stage(
             error_message=str(exc),
         )
         return None
+
+    if evidence_pack_repository is not None:
+        try:
+            evidence_pack_repository.put(knowledge_base_id, response.evidence_pack)
+        except Exception as exc:  # noqa: BLE001 - persistence is best-effort
+            logger.warning(
+                "Failed to persist evidence pack %s for entity %s: %s",
+                response.evidence_pack.id,
+                entity_id,
+                exc,
+            )
+
     return AlertCreatedReference(
         knowledge_base_id=knowledge_base_id,
         alert_id=response.alert_id,
@@ -1349,6 +1386,78 @@ def _run_explainability_stage(
         status="open",
         title=f"{risk_response.risk_level.title()} risk: {entity_id}",
         reasoning=response.evidence_pack.reasoning,
+    )
+
+
+def _build_explanation_context(
+    *,
+    graph_service: GraphService,
+    knowledge_base_id: str,
+    entity_id: str,
+    alert_id: str,
+    risk_response: RiskAssessmentResponse,
+) -> ExplanationContext:
+    """Assemble a real explanation context from the graph subgraph + risk assessment.
+
+    Replaces the seeded/in-memory explainability context: the explanatory
+    subgraph comes from ``graph.get_subgraph`` and the evidence items + score
+    snapshot come from the risk factors.
+    """
+
+    subgraph = graph_service.get_subgraph(
+        knowledge_base_id, [entity_id], depth=_EVIDENCE_SUBGRAPH_DEPTH
+    )
+    node_ids = [entity.id for entity in subgraph.entities] or [entity_id]
+    edge_ids = [relationship.id for relationship in subgraph.relationships]
+
+    focal_entity = graph_service.get_entity([knowledge_base_id], entity_id)
+    entity_type = focal_entity.type if focal_entity is not None else "entity"
+
+    items = [
+        ExplanationItem(
+            source_id=entity_id,
+            source_type="risk_factor",
+            quote=factor.factor_name,
+            rationale=(
+                factor.rationale
+                or f"{factor.factor_name} contributed {factor.contribution:.2f} to the risk score."
+            ),
+            score=factor.contribution,
+        )
+        for factor in risk_response.factors
+    ]
+    if not items:
+        items = [
+            ExplanationItem(
+                source_id=entity_id,
+                source_type="risk_summary",
+                quote=risk_response.risk_level,
+                rationale=f"Overall risk score {risk_response.overall_score:.2f}.",
+                score=risk_response.overall_score,
+            )
+        ]
+
+    scores: dict[str, float] = {
+        factor.factor_name: factor.contribution for factor in risk_response.factors
+    }
+    scores["overall"] = risk_response.overall_score
+
+    alert = Alert(
+        id=alert_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        severity=risk_response.risk_level,
+        title=f"{risk_response.risk_level.title()} risk: {entity_id}",
+        reasoning=f"{risk_response.risk_level.title()} risk identified for {entity_id}.",
+        created_at=__datetime__.now(tz=__timezone__.utc),
+    )
+    return ExplanationContext(
+        knowledge_base_id=knowledge_base_id,
+        alert=alert,
+        explanation_items=items,
+        subgraph=ExplanationSubgraph(node_ids=node_ids, edge_ids=edge_ids),
+        confidence=risk_response.overall_score,
+        scores=scores,
     )
 
 

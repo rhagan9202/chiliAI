@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from analytics.explainability.models import ExplanationContext
 from analytics.explainability.service_models import ExplainabilityRequest, ExplainabilityResponse
 
 
@@ -12,6 +13,13 @@ class ExplainabilityServiceProtocol(Protocol):
     """Service boundary for evidence-pack generation."""
 
     def generate(self, request: ExplainabilityRequest) -> ExplainabilityResponse: ...
+
+    def generate_from_context(
+        self,
+        context: ExplanationContext,
+        *,
+        max_evidence_items: int = 3,
+    ) -> ExplainabilityResponse: ...
 
 
 __all__ = [
