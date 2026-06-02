@@ -132,7 +132,7 @@ async def dev_seed(
         )
     )
 
-    # --- case -------------------------------------------------------------
+    # --- case (independent of the alert so the alert stays promotable) ----
     case_id = generate_id()
     case_repository.create(
         Case(
@@ -140,10 +140,9 @@ async def dev_seed(
             knowledge_base_id=kb_id,
             title="Redwood DME escalation",
             status="open",
-            priority="critical",
-            originating_alert_id=alert_id,
-            evidence_pack_id=evidence_pack_id,
-            alert_ids=[alert_id],
+            priority="high",
+            assignee="analyst@example.com",
+            alert_ids=[],
         )
     )
 

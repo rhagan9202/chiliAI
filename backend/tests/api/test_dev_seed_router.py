@@ -30,11 +30,12 @@ def test_dev_seed_writes_real_alert_evidence_case_and_kb() -> None:
     assert ev.status_code == 200
     assert ev.json()["subgraph_node_ids"]
 
-    # The case is served from the real repository (KB-scoped) with its evidence link.
+    # The case is served from the real repository (KB-scoped). It is independent
+    # of the seeded alert so that alert stays promotable in the promote spec.
     case = client.get(f"/cases/{ids['case_id']}", params={"knowledge_base_id": kb})
     assert case.status_code == 200
-    assert case.json()["case"]["evidence_pack_id"] == ids["evidence_pack_id"]
-    assert case.json()["case"]["originating_alert_id"] == ids["alert_id"]
+    assert case.json()["case"]["knowledge_base_id"] == kb
+    assert case.json()["case"]["alert_ids"] == []
 
     # The KB is listed.
     kbs = client.get("/knowledgebases").json()["items"]

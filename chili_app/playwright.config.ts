@@ -11,10 +11,20 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './e2e',
+  /* Seed the real backend stores once before any spec (full-stack e2e). */
+  globalSetup: './e2e/global-setup.ts',
   /* No timeout-based retries in local dev; 2 retries on CI */
   retries: process.env['CI'] ? 2 : 0,
-  /* Run tests serially in CI to avoid port contention */
-  workers: process.env['CI'] ? 1 : undefined,
+  /*
+   * Full-stack e2e runs against ONE shared real backend seeded with a single
+   * deterministic scenario (see global-setup.ts). Specs mutate that shared
+   * state (promote alert, mark case in review, submit feedback), so they must
+   * run serially — parallel execution races on the shared case/alert. This is
+   * an intentional trade of wall-clock for determinism, not a port-contention
+   * workaround.
+   */
+  fullyParallel: false,
+  workers: 1,
   reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   use: {
     baseURL: 'http://localhost:5173',

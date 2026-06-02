@@ -101,55 +101,85 @@ npm run codegen:api
 ## E2E Tests
 
 End-to-end tests use [Playwright](https://playwright.dev/) and live in `e2e/`.
-The Playwright config (`playwright.config.ts`) targets Chromium and auto-starts
-the Vite dev server via `webServer` if nothing is listening on `:5173`.
+They run against the **full running stack** (real API, worker, Neo4j, Qdrant,
+Redis, MinIO, Postgres) — there are no `page.route()` mocks. The browser under
+test talks to the real backend, so a spec passing means the real
+endpoint/component/integration works, not a fixture.
 
 ### Running e2e tests
 
+The canonical entrypoint is the repo-root Makefile target, which brings up a
+clean stack, seeds it, runs the suite, and tears it down:
+
 ```bash
-# From chili_app/
-npm run test:e2e           # headless Chromium run, HTML report written to playwright-report/
-npm run test:e2e:ui        # open Playwright UI for interactive debugging
-npx playwright test --project=chromium e2e/smoke.spec.ts  # single file
+# From repo root
+make test-e2e
 ```
 
-### What runs without the backend
+`make test-e2e` does: `docker compose down -v` (clean slate) →
+`CHILI_DEV_ANONYMOUS_ROLE=analyst docker compose up -d --build` →
+`scripts/wait_for_stack.sh` (polls API `:8000/health` and app `:5173/`) →
+`npm run test:e2e` → `docker compose down`.
 
-All current e2e tests run without the backend. Tests that require authenticated
-pages use `page.route()` to intercept and mock API calls at the browser layer,
-so no live API server is needed.
+For iterative local runs against an already-running stack:
 
-| File | Description | Backend needed? |
-|------|-------------|-----------------|
-| `smoke.spec.ts` | Root → /login redirect; login page renders | No |
-| `authenticated-shell.spec.ts` | Mocked auth + domain config → sidebar nav, topbar | No |
-| `knowledge-base-list.spec.ts` | Mocked KB list → rows, create form visible | No |
-| `login-redirect.spec.ts` | Clicking Sign in navigates to /api/auth/login | No |
-| `investigation-workbench.spec.ts` | Mocked KB + search → entity results rendered | No |
-| `alert-feed.spec.ts` | Mocked alerts (critical/high/medium) → rows, severity chips, status chips, filter bar visible; severity filter reduces visible rows | No |
-| `rag-chat.spec.ts` | Mocked KB list → "no KB" empty state; mocked create conversation + add message → user message + assistant reply + citation chip rendered | No |
-| `alert-acknowledge.spec.ts` | Mocked single open alert → click Acknowledge → POST /alerts/:id/acknowledge with empty body asserted via waitForRequest; status chip transitions to "acknowledged"; row button relabelled and disabled | No |
-| `case-management.spec.ts` | Mocked 3 cases + case detail → all rows render with status labels; detail panel shows status/priority/assignee chips; clicking a second case row loads its detail with correct chips | No |
-| `case-mutation.spec.ts` | Mocked 1 open case → click "Mark in review" → PATCH /cases/:id body asserted `{ status: 'in_review' }` via waitForRequest; detail panel status chip updates to "in_review" after refetch | No |
-| `case-feedback.spec.ts` | Mocked 1 open case → fill feedback textarea → POST /cases/:id/feedback body asserted `{ label, evidence_adequacy, missing_evidence, notes }` via waitForRequest; feedback history entry appears after refetch; submit button starts disabled, enabled once textarea is non-empty | No |
-| `policy-intelligence.spec.ts` | Mocked 2 policy gaps + detail + cases → gap queue rows render with severity/count chips; detail panel shows first-gap summary; clicking second row switches detail panel title | No |
+```bash
+# Bring the stack up once with the analyst override, then:
+cd chili_app
+npm run test:e2e           # headless Chromium; HTML report in playwright-report/
+npm run test:e2e:ui        # interactive Playwright UI
+npx playwright test e2e/smoke.spec.ts   # single file
+```
 
-### Mock patterns and gotcha
+### How the suite is seeded
 
-All API mocks use **host-anchored patterns** (`http://localhost:5173/api/...`)
-rather than `**/api/...` globs. The glob `**/api/auth/me` accidentally matches
-Vite module URLs like `/src/api/client.ts` and causes a MIME-type error that
-prevents the React app from mounting. The host-anchored form is safe.
+`e2e/global-setup.ts` runs once before any spec: it waits for the API to be
+healthy, POSTs `/admin/dev-seed`, and writes the returned ids to
+`e2e/.seeded.json` (gitignored). Specs read those ids via `e2e/helpers/seeded.ts`
+(`seeded().knowledge_base_id`, etc.) and assert against the real data.
 
-Shared mock helpers (auth, domain config, features, SSE stream) live in
-`e2e/helpers/mocks.ts`. Call `mockAuthenticatedShell(page)` before navigating
-to any protected route.
+- **`POST /admin/dev-seed`** (`backend/api/routers/dev_seed.py`) is a dev-only
+  endpoint, registered only when `CHILI_ENV != production`. It writes a
+  deterministic scenario directly to the real stores: a ready KB ("E2E Seed KB"),
+  a provider/claim/beneficiary subgraph, an evidence pack, an alert
+  ("Redwood DME Group", confidence 0.96), and an **independent** open case
+  ("Redwood DME escalation", priority `high`) whose `alert_ids` is empty so the
+  seeded alert stays promotable for the promote spec.
+- **`CHILI_DEV_ANONYMOUS_ROLE=analyst`** elevates the anonymous user to the
+  analyst role (dev-gated in `api/middleware/auth.py`; ignored when
+  `CHILI_ENV=production`), so protected pages render without a login flow.
+
+### Serial execution (shared mutable state)
+
+`playwright.config.ts` sets `fullyParallel: false` and `workers: 1`. The whole
+suite shares one real backend seeded with a single scenario, and several specs
+mutate that shared state (promote the alert, mark the case in review, submit
+feedback). Running serially is intentional — it trades wall-clock for
+determinism. Read specs assert on **seed-stable** fields (title, priority),
+not on mutable status, so they are order-independent.
+
+| File | Asserts (against real stack) |
+|------|------|
+| `smoke.spec.ts` | Root renders the app shell (analyst override → no `/login`) |
+| `authenticated-shell.spec.ts` | Config-driven sidebar nav ("Alert Feed", "Knowledge Bases") |
+| `login-redirect.spec.ts` | Protected route renders without a login redirect (auth disabled) |
+| `knowledge-base-list.spec.ts` | Seeded "E2E Seed KB" appears in the Ingestion Studio |
+| `investigation-workbench.spec.ts` | Graph canvas mounts for the seeded entity neighborhood |
+| `alert-feed.spec.ts` | Seeded alert rows + severity/status chips + filter bar |
+| `alert-acknowledge.spec.ts` | Acknowledge a real alert → status chip transitions |
+| `alert-feed-evidence.spec.ts` | "View evidence" renders the real evidence pack reasoning + confidence |
+| `case-management.spec.ts` | Seeded case queue + detail (priority chip, "Mark in review") |
+| `case-mutation.spec.ts` | "Mark in review" persists via the real API |
+| `case-feedback.spec.ts` | Submitting feedback persists and renders in history |
+| `case-promote.spec.ts` | Promoting the seeded alert creates a case (real `/cases/promote`) |
+| `rag-chat.spec.ts` | New thread → send → real assistant reply renders |
+| `policy-intelligence.spec.ts` | Policy gap queue renders from the real API |
 
 ### Configuration
 
-- `playwright.config.ts` — testDir, webServer, reporter, retries (0 local / 2 CI)
-- `e2e/helpers/mocks.ts` — shared `page.route()` helpers with verified shapes
-- Artifacts excluded from git: `test-results/`, `playwright-report/`, `playwright/.cache/`
+- `playwright.config.ts` — testDir, `globalSetup`, `fullyParallel: false`, `workers: 1`, webServer (reuses `:5173`), reporter, retries (0 local / 2 CI)
+- `e2e/global-setup.ts` / `e2e/helpers/seeded.ts` — seed the real backend and expose the ids
+- Artifacts excluded from git: `e2e/.seeded.json`, `test-results/`, `playwright-report/`, `playwright/.cache/`
 
 ## API Conventions
 
