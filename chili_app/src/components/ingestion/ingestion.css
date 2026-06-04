@@ -617,6 +617,74 @@
   overflow-wrap: anywhere;
 }
 
+.ingestion-run-timeline__receipt {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.ingestion-run-timeline__counts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ingestion-run-timeline__counts-summary {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--c-text);
+}
+
+.ingestion-run-timeline__rejected {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ingestion-run-timeline__rejected-title {
+  margin: 0;
+  color: var(--c-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.ingestion-run-timeline__rejected-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ingestion-run-timeline__rejected-list li {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--c-dim);
+}
+
+.ingestion-run-timeline__rejected-index {
+  flex: none;
+  font-family: var(--font-mono);
+  color: var(--c-amber);
+}
+
+.ingestion-run-timeline__rejected-reason {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ingestion-run-timeline__rejected-more {
+  margin: 0;
+  font-size: 11px;
+  color: var(--c-muted);
+}
+
 .ingestion-upload-progress {
   margin-top: 12px;
   display: flex;

@@ -1,8 +1,18 @@
 import { Chip } from '../ui/Chip'
 import { EmptyState } from '../ui/EmptyState'
-import type { WorkflowRunResponse } from '../../api/contracts'
+import type { RecordIngestReceipt, WorkflowRunResponse } from '../../api/contracts'
 import type { IngestionReceiptEntry } from '../../lib/ingestion/types'
 import './ingestion.css'
+
+const MAX_REJECTED_ROWS_SHOWN = 5
+
+function receiptCountsSummary(receipt: RecordIngestReceipt): string {
+  return [
+    `${receipt.accepted_count} accepted`,
+    `${receipt.duplicate_count} duplicate`,
+    `${receipt.rejected_count} rejected`,
+  ].join(', ')
+}
 
 type RunTimelineProps = {
   receipts: IngestionReceiptEntry[]
@@ -131,16 +141,7 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
                 </div>
                 <p className="ingestion-run-timeline__message">{receipt.message}</p>
                 {receipt.receipt ? (
-                  <dl className="ingestion-run-timeline__meta" aria-label={`${receipt.id} receipt details`}>
-                    <div>
-                      <dt>Feed</dt>
-                      <dd>{receipt.receipt.feed_name}</dd>
-                    </div>
-                    <div>
-                      <dt>Correlation</dt>
-                      <dd>{receipt.receipt.correlation_id}</dd>
-                    </div>
-                  </dl>
+                  <ReceiptDetails receipt={receipt.receipt} entryId={receipt.id} />
                 ) : null}
               </div>
             </li>
@@ -148,5 +149,63 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
         })}
       </ol>
     </section>
+  )
+}
+
+function ReceiptDetails({
+  receipt,
+  entryId,
+}: {
+  receipt: RecordIngestReceipt
+  entryId: string
+}) {
+  const rejected = receipt.rejected ?? []
+  const shownRejected = rejected.slice(0, MAX_REJECTED_ROWS_SHOWN)
+  const remainingRejected = rejected.length - shownRejected.length
+
+  return (
+    <div className="ingestion-run-timeline__receipt">
+      <div className="ingestion-run-timeline__counts">
+        <span className="ingestion-run-timeline__counts-summary">
+          {receiptCountsSummary(receipt)}
+        </span>
+        {receipt.duplicate ? (
+          <Chip tone="warning" label="Duplicate submission (no-op)" />
+        ) : null}
+      </div>
+
+      <dl className="ingestion-run-timeline__meta" aria-label={`${entryId} receipt details`}>
+        <div>
+          <dt>Feed</dt>
+          <dd>{receipt.feed_name}</dd>
+        </div>
+        <div>
+          <dt>Correlation</dt>
+          <dd>{receipt.correlation_id}</dd>
+        </div>
+      </dl>
+
+      {shownRejected.length > 0 ? (
+        <div className="ingestion-run-timeline__rejected">
+          <p className="ingestion-run-timeline__rejected-title">Rejected rows</p>
+          <ul
+            className="ingestion-run-timeline__rejected-list"
+            aria-label={`${entryId} rejected rows`}
+          >
+            {shownRejected.map((row) => (
+              <li key={`${entryId}-rejected-${row.index}`}>
+                <span className="ingestion-run-timeline__rejected-index">Row {row.index}</span>
+                <span className="ingestion-run-timeline__rejected-reason">{row.reason}</span>
+              </li>
+            ))}
+          </ul>
+          {remainingRejected > 0 ? (
+            <p className="ingestion-run-timeline__rejected-more">
+              and {remainingRejected} more rejected row{remainingRejected === 1 ? '' : 's'}.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   )
 }

@@ -78,6 +78,85 @@ describe('RunTimeline', () => {
     expect(within(items[1]).getByText('ingestion')).toBeInTheDocument()
   })
 
+  it('summarises accepted, duplicate, and rejected counts for a receipt', () => {
+    render(
+      <RunTimeline
+        workflows={[]}
+        receipts={[
+          {
+            ...receipts[0],
+            receipt: {
+              ...receipts[0].receipt!,
+              accepted_count: 8,
+              duplicate_count: 1,
+              rejected_count: 2,
+              rejected: [
+                { index: 3, reason: 'missing DESYNPUF_ID' },
+                { index: 5, reason: 'invalid CLM_FROM_DT' },
+              ],
+            },
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('8 accepted, 1 duplicate, 2 rejected')).toBeInTheDocument()
+    const rejectedList = screen.getByRole('list', { name: /rejected rows/i })
+    expect(rejectedList).toHaveTextContent('Row 3')
+    expect(rejectedList).toHaveTextContent('missing DESYNPUF_ID')
+    expect(rejectedList).toHaveTextContent('Row 5')
+    expect(rejectedList).toHaveTextContent('invalid CLM_FROM_DT')
+  })
+
+  it('shows a duplicate submission no-op indicator when the receipt is a duplicate', () => {
+    render(
+      <RunTimeline
+        workflows={[]}
+        receipts={[
+          {
+            ...receipts[0],
+            receipt: {
+              ...receipts[0].receipt!,
+              accepted_count: 0,
+              duplicate: true,
+              duplicate_count: 2,
+            },
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText(/duplicate submission \(no-op\)/i)).toBeInTheDocument()
+  })
+
+  it('bounds the rejected-row list and notes the remainder when there are many rejections', () => {
+    const rejected = Array.from({ length: 9 }, (_, index) => ({
+      index,
+      reason: `reason ${index}`,
+    }))
+
+    render(
+      <RunTimeline
+        workflows={[]}
+        receipts={[
+          {
+            ...receipts[0],
+            receipt: {
+              ...receipts[0].receipt!,
+              accepted_count: 0,
+              rejected_count: 9,
+              rejected,
+            },
+          },
+        ]}
+      />,
+    )
+
+    const rejectedList = screen.getByRole('list', { name: /rejected rows/i })
+    expect(within(rejectedList).getAllByRole('listitem')).toHaveLength(5)
+    expect(screen.getByText(/4 more/)).toBeInTheDocument()
+  })
+
   it('renders failure detail for failed workflows', () => {
     render(<RunTimeline workflows={[{
       ...workflows[0],
