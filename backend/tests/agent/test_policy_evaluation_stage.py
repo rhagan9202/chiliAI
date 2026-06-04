@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent.coordinator import handle_records_ingested
+from agent.coordinator import build_worker_dependencies, handle_records_ingested
 from config.schema import (
     PolicyPredicate,
     PolicyPredicateValue,
@@ -164,3 +164,9 @@ def test_policy_evaluation_is_skipped_when_unwired() -> None:
     )
 
     assert processed == 1
+
+
+def test_policy_metrics_throttle_is_independent_from_metrics_throttle() -> None:
+    """BL-011: policy-eval and graph-metrics must use separate throttle instances."""
+    deps = build_worker_dependencies()
+    assert deps.policy_metrics_throttle is not deps.metrics_throttle

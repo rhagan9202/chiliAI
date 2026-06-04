@@ -286,6 +286,7 @@ class WorkerDependencies:
     policy_rules: list[PolicyRulePack]
     entity_metric_repository: EntityMetricRepository
     metrics_throttle: MetricsRecomputeThrottle
+    policy_metrics_throttle: MetricsRecomputeThrottle
     risk_history_writer: RiskHistoryWriter
     alert_history_writer: AlertHistoryWriter
     event_settings: EventBusSettings
@@ -783,6 +784,9 @@ def build_worker_dependencies() -> WorkerDependencies:
     metrics_throttle = MetricsRecomputeThrottle(
         min_interval_seconds=analytics_config.metrics_recompute_min_interval_seconds
     )
+    policy_metrics_throttle = MetricsRecomputeThrottle(
+        min_interval_seconds=analytics_config.metrics_recompute_min_interval_seconds
+    )
     records_config = config.records or RecordsConfig()
 
     return WorkerDependencies(
@@ -807,6 +811,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         policy_rules=policy_rules,
         entity_metric_repository=entity_metric_repository,
         metrics_throttle=metrics_throttle,
+        policy_metrics_throttle=policy_metrics_throttle,
         risk_history_writer=risk_history_writer,
         alert_history_writer=alert_history_writer,
         event_settings=event_settings,
@@ -2345,6 +2350,7 @@ def handle_event(
     policy_rules: list[PolicyRulePack] | None = None,
     entity_metric_repository: EntityMetricRepository | None = None,
     metrics_throttle: MetricsRecomputeThrottle | None = None,
+    policy_metrics_throttle: MetricsRecomputeThrottle | None = None,
     risk_history_writer: RiskHistoryWriter | None = None,
     alert_history_writer: AlertHistoryWriter | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
@@ -2391,6 +2397,7 @@ def handle_event(
             policy_rules=policy_rules,
             entity_metric_repository=entity_metric_repository,
             metrics_throttle=metrics_throttle,
+            policy_metrics_throttle=policy_metrics_throttle,
             risk_history_writer=risk_history_writer,
             alert_history_writer=alert_history_writer,
             graph_embeddings_enabled=graph_embeddings_enabled,
@@ -2427,6 +2434,7 @@ def _dispatch_event(
     policy_rules: list[PolicyRulePack] | None,
     entity_metric_repository: EntityMetricRepository | None,
     metrics_throttle: MetricsRecomputeThrottle | None,
+    policy_metrics_throttle: MetricsRecomputeThrottle | None,
     risk_history_writer: RiskHistoryWriter | None,
     alert_history_writer: AlertHistoryWriter | None,
     graph_embeddings_enabled: bool,
@@ -2577,7 +2585,7 @@ def _dispatch_event(
             vector_store=vector_store,
             policy_rules=policy_rules,
             policy_service=policy_service,
-            metrics_throttle=metrics_throttle,
+            metrics_throttle=policy_metrics_throttle,
         )
     if isinstance(event, KnowledgeBaseDeletedEvent):
         if (
@@ -2695,6 +2703,7 @@ async def drain_ingestion_events(
     policy_rules: list[PolicyRulePack] | None = None,
     entity_metric_repository: EntityMetricRepository | None = None,
     metrics_throttle: MetricsRecomputeThrottle | None = None,
+    policy_metrics_throttle: MetricsRecomputeThrottle | None = None,
     risk_history_writer: RiskHistoryWriter | None = None,
     alert_history_writer: AlertHistoryWriter | None = None,
     consumer_group: str,
@@ -2765,6 +2774,7 @@ async def drain_ingestion_events(
                 policy_rules=policy_rules,
                 entity_metric_repository=entity_metric_repository,
                 metrics_throttle=metrics_throttle,
+                policy_metrics_throttle=policy_metrics_throttle,
                 risk_history_writer=risk_history_writer,
                 alert_history_writer=alert_history_writer,
                 workflow_tracker=workflow_tracker,
@@ -2906,6 +2916,7 @@ async def run_worker(
                 policy_rules=deps.policy_rules,
                 entity_metric_repository=deps.entity_metric_repository,
                 metrics_throttle=deps.metrics_throttle,
+                policy_metrics_throttle=deps.policy_metrics_throttle,
                 risk_history_writer=deps.risk_history_writer,
                 alert_history_writer=deps.alert_history_writer,
                 consumer_group=deps.event_settings.consumer_group,
