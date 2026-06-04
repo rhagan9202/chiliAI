@@ -121,14 +121,15 @@ All routes mounted under the FastAPI app. Role column shows `require_role` argum
 
 ---
 
-## `/policy` — Policy Gaps
+## `/policy` — Policy Intelligence (BL-011)
+
+All routes require `?knowledge_base_id=` (KB-scoped). Old `/policy/gaps*` and `POST /policy/briefs` routes have been removed.
 
 | Method | Path | Role | Notes |
 |--------|------|------|-------|
-| `GET` | `/policy/gaps` | `viewer` | List policy gaps; returns `PolicyGapListResponse` |
-| `GET` | `/policy/gaps/{gap_id}` | `viewer` | Get gap detail; returns `PolicyGapDetailResponse` |
-| `GET` | `/policy/gaps/{gap_id}/cases` | `viewer` | List gap cases; returns `PolicyGapCaseListResponse` |
-| `POST` | `/policy/briefs` | `analyst` | Create policy brief; returns `PolicyBriefResponse` |
+| `GET` | `/policy/items` | `viewer` | List KB-scoped policy items; returns `PolicyItemListResponse`; optional `?status=` filter; paginated. |
+| `GET` | `/policy/items/{item_id}` | `viewer` | Item detail; returns `PolicyItemDetailResponse`. |
+| `POST` | `/policy/items/{item_id}/triage` | `analyst` | Triage item (accept/reject/defer/escalate); persists `PolicyDisposition`; escalate action also creates a case via `CaseService`; returns `PolicyItemDetailResponse`. |
 
 ---
 

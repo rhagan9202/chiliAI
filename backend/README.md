@@ -32,6 +32,7 @@ For the live, dependency-ordered list of production-readiness work per backend m
 - **`database/`** — Postgres + TimescaleDB connection provider, `DatabaseConfig`-driven backend selection, and Alembic-managed schema (six persistence tables). Infrastructure only — no domain logic.
 - **`records/`** — structured/tabular ingestion (CSV/JSONL/api-push). Validates rows against config-declared feed schemas, lands canonical rows in `raw_records`, and publishes `RecordsIngestedEvent`. Parallel to `ingestion/` for documents.
 - **`cases/`** — durable, KB-scoped investigation case management (BL-010). `Case` model + `CaseRepository` (in-memory + Postgres adapters, `cases` table via migration `0002_cases`) + `CaseService` with `promote_from_alert`. Backs `/cases` CRUD + `POST /cases/promote` (all `?knowledge_base_id=`-scoped). See [`cases/README.md`](cases/README.md).
+- **`policy/`** — durable, KB-scoped policy intelligence (BL-011). Rule-pack-driven `PolicyItem` generation + analyst triage (accept/reject/defer/escalate-to-case) with persisted `PolicyDisposition`. `PolicyItemRepository` (in-memory + Postgres adapters, `policy_items` table via migration `0003_policy`). Backs `GET /policy/items`, `GET /policy/items/{id}`, `POST /policy/items/{id}/triage`. Replaces the old seeded policy-gap surface. See [`policy/README.md`](policy/README.md).
 - **`analytics/explainability/`** also owns the **evidence-pack repository** (BL-005): real packs are extracted in the worker (`graph.get_subgraph` + risk factors → `ExplanationContext` → `ExplainabilityService`), persisted to an object-store `EvidencePackRepository`, and served by `GET /evidence-packs/{id}` (KB-scoped) — replacing the seeded `ApiState` evidence read model.
 - **`api/middleware/`** — Metrics, auth, and RBAC middleware with route-level policy enforcement and auth-enabled startup audit.
 - **`agent/coordinator.py`** — Worker entry point (`python -m agent.coordinator`) for Redis-stream processing, workflow lifecycle tracking, retry/DLQ routing, graceful shutdown, and a lightweight health endpoint. Implements persistence-layer worker flows:
@@ -66,7 +67,8 @@ backend/
 ├── storage/         # Object/file storage abstraction + adapters (S3, MinIO, local FS)
 ├── database/        # Postgres + TimescaleDB connection provider, Alembic migrations
 ├── records/         # structured/tabular ingestion (CSV/JSONL/api-push), raw_records landing
-└── cases/           # durable, KB-scoped investigation cases (promote-from-alert)
+├── cases/           # durable, KB-scoped investigation cases (promote-from-alert)
+└── policy/          # durable, KB-scoped policy intelligence (rule-pack items + triage)
 ```
 
 ## Cross-Module Interaction Rules

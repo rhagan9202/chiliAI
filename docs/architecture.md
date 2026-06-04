@@ -426,12 +426,24 @@ cases/                          # Durable, KB-scoped investigation cases (BL-010
         ├── protocols.py        # CaseRepository (create/get/list/update/delete_by_kb)
         ├── in_memory.py        # InMemoryCaseRepository
         └── postgres.py         # PostgresCaseRepository (cases table, migration 0002_cases)
+policy/                         # Durable, KB-scoped policy intelligence (BL-011)
+    ├── models.py               # PolicyItem, PolicyDisposition, PolicyCitation
+    ├── evaluation.py           # Pure evaluate(rule_packs, state) -> list[PolicyMatch]; no I/O
+    ├── service.py              # PolicyService.record_match / triage / get / list
+    ├── exceptions.py
+    └── adapters/
+        ├── protocols.py        # PolicyItemRepository (upsert/get/list/update/delete_by_kb)
+        ├── in_memory.py        # InMemoryPolicyItemRepository
+        └── postgres.py         # PostgresPolicyItemRepository (policy_items table, migration 0003_policy)
 ```
 
 > **Sprint 2026-23 additions (evidence/case vertical).**
 > - **`graph.get_subgraph(kb, seed_ids, depth)`** — multi-seed neighborhood union on the graph protocol + in-memory/Neo4j adapters; the traversal primitive behind evidence-pack subgraph extraction.
 > - **Evidence packs (BL-005)** are now generated for real: the worker explainability stage builds an `ExplanationContext` from `graph.get_subgraph` + risk factors/score, `ExplainabilityService` assembles the `EvidencePack`, and it is persisted (best-effort) to an object-store `EvidencePackRepository` under `analytics/explainability/`. `GET /evidence-packs/{id}` reads that repository (KB-scoped), replacing the seeded `ApiState` evidence read model.
 > - **Cases (BL-010)** are durable and KB-scoped via the new `cases/` module; `POST /cases/promote` captures the originating alert + evidence pack + timeline. ApiState `open_cases`/policy-gap aggregates and full `_seed_cases` removal are deferred to BL-012.
+>
+> **Sprint 2026-24 additions (policy intelligence vertical).**
+> - **Policy Intelligence (BL-011)** is durable and KB-scoped via the new `policy/` module. Domain-configured `PolicyRulePack`s are evaluated against KB entities and metrics in the worker; each hit produces a persisted `PolicyItem`. Analysts triage items (accept/reject/defer/escalate-to-case) through `POST /policy/items/{id}/triage`. The old seeded `/policy/gaps` surface, `PolicyGap*`/`PolicyBrief*` contracts, and `ApiState._seed_policy_gaps` have been removed. See [`policy/README.md`](../backend/policy/README.md).
 
 ### 5.2 Module responsibility matrix
 
@@ -454,6 +466,8 @@ cases/                          # Durable, KB-scoped investigation cases (BL-010
 | `storage` | Object/file storage abstraction | `shared.types` | Everything except `shared` |
 | `database` | Connection pooling, schema migrations | `config`, `shared` | domain logic, business logic, imports of any capability module |
 | `records` | Structured-record validation, raw_records persistence, feed mapping | `config`, `shared`, `events`, `database`, `monitoring.models` | imports of `graph`/`analytics` internals — communicates downstream only by publishing `RecordsIngestedEvent` |
+| `policy` | KB-scoped policy item persistence, rule evaluation, analyst triage | `config` (PolicyRulePack), `shared.types`, `database.ConnectionProvider` | `api`, `ingestion`, `graph` internals — the pure `evaluate()` function takes a plain `PolicyEvalState`; item I/O goes through `PolicyItemRepository` |
+| `cases` | KB-scoped investigation case management | `shared.types`, `database.ConnectionProvider` | `api`, `ingestion`, `monitoring` internals |
 
 ### 5.3 Cross-module interaction rules
 
@@ -764,6 +778,47 @@ Re-uploading a document with identical content bytes is idempotent (same `source
 `config/defaults/medicare_fraud_cms_desynpuf.yaml` now declares eight feed definitions under `records.feeds`: `nppes_providers`, `beneficiary_2008`, `beneficiary_2009`, `beneficiary_2010`, `carrier_claims_a`, `carrier_claims_b`, `inpatient_claims`, and `outpatient_claims`. These are config-only additions — the records pipeline code is unchanged. A Tennessee-provider subset materializer lives at `tools/sample_data/build_tennessee_subset.py` and is invoked by the `make demo-tn-subset` target.
 
 `handle_records_ingested` in the worker now also embeds and indexes records-derived entities into the vector store so they are co-searchable with document-derived content in RAG queries.
+
+### 6.6 Policy Intelligence flow (BL-011)
+
+Policy items are generated from domain-configured rule packs and surfaced for analyst triage. The flow is best-effort and KB-scoped.
+
+```
+DomainConfig.policy_rules
+  (list[PolicyRulePack])
+       │
+       │  loaded at startup via DI
+       ▼
+handle_records_ingested()          ← triggered by RecordsIngestedEvent
+  │
+  ├── evaluation.evaluate(rule_packs, PolicyEvalState(entities, metrics))
+  │     # pure function; no I/O; returns list[PolicyMatch]
+  │
+  └── for each PolicyMatch:
+        PolicyService.record_match(...)
+          └── PolicyItemRepository.upsert(item)
+                # natural key (kb_id, rule_id, target_ref)
+                # open items refreshed; disposed items untouched
+
+                          ┌──────────────────────┐
+                          │  PolicyItem (open)    │
+                          └────────┬─────────────┘
+                                   │  POST /policy/items/{id}/triage
+                         ┌─────────┴─────────────────────────┐
+                         │                                   │
+                   accept / reject / defer            escalate
+                         │                                   │
+                 PolicyDisposition stored          PolicyDisposition stored
+                 status → accepted/rejected/       status → escalated
+                         deferred                  CaseService.create() called
+                                                   (additive timeline param)
+```
+
+**Deviations recorded at implementation time:**
+
+- **D-EVAL-IMPL**: evaluation is folded into `handle_records_ingested` (no standalone pipeline stage). Alert-target rules (`target_kind = "alert"`) are parsed but not yet evaluated.
+- **D-ESCALATE-IMPL**: escalate-to-case uses `CaseService.create(timeline=...)` directly, not the `POST /cases/promote` alert→case path.
+- **D-DISPOSITION-JSONB**: `PolicyDisposition` is stored as a jsonb column (not a separate table).
 
 ### 6.7 Self-reinforcing analysis loop
 

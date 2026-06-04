@@ -28,6 +28,7 @@
 | `validation` | `ValidationConfig \| None` | no | `ValidationConfig()` | |
 | `records` | `RecordsConfig \| None` | no | `RecordsConfig()` | |
 | `analytics` | `AnalyticsConfig \| None` | no | `AnalyticsConfig()` | |
+| `policy_rules` | `list[PolicyRulePack]` | no | `[]` | Additive/optional; drives `policy/` item generation in the worker |
 | `alerts` | `AlertsConfig` | yes | — | Thresholds dict |
 | `ui` | `UiConfig \| None` | no | None | Navigation, display_fields, roles |
 | `default_reference_kb_id` | `str \| None` | no | None | Auto-attached "policy graph" KB; enables dual-graph reads when set |
@@ -52,6 +53,63 @@
 
 **`CapabilitiesConfig`**:
 - `timeseries`, `gnn`, `risk_scoring`, `rag_chat`, `explainability`, `structured_ingestion` (all `bool`, default `False`)
+
+**`PolicyRulePack`** (added Sprint 2026-24 — BL-011):
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | `str` | Unique pack identifier |
+| `name` | `str` | Human-readable name |
+| `description` | `str \| None` | Optional description |
+| `thresholds` | `dict[str, str \| float \| int \| bool]` | Named values referenced by `PolicyPredicateValue.config_ref` |
+| `rules` | `list[PolicyRule]` | Rules in this pack |
+
+**`PolicyRule`**:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | `str` | Unique rule identifier (natural key component) |
+| `title_template` | `str` | Python `str.format_map` template; `{target_ref}` is always available |
+| `severity` | `Literal["medium", "high", "critical"]` | |
+| `target_kind` | `Literal["entity", "alert", "metric"]` | `alert` is defined but not yet evaluated in v1 |
+| `target_selector` | `dict[str, str]` | e.g., `{entity_type: provider}` to filter targets |
+| `predicate` | `PolicyPredicate` | Single bounded comparison |
+| `citations` | `list[PolicyCitationRef]` | Optional document references surfaced on every item the rule generates |
+
+**`PolicyPredicate`**:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `field` | `str` | `"properties.<name>"`, `"risk_score"`, or `"metric.<name>"` |
+| `op` | `Literal["eq","neq","gt","gte","lt","lte","in","not_in"]` | |
+| `value` | `PolicyPredicateValue` | Exactly one of `literal` or `config_ref` must be set |
+
+**`PolicyPredicateValue`**: exactly one of `literal` (inline `str \| float \| int \| bool \| list[str]`) or `config_ref` (key into the owning pack's `thresholds` map).
+
+Example rule pack (YAML):
+```yaml
+policy_rules:
+  - id: medicare_billing_rules
+    name: Medicare Billing Compliance
+    thresholds:
+      high_risk_threshold: 0.85
+    rules:
+      - id: high_risk_provider
+        title_template: "High-risk provider: {target_ref}"
+        severity: high
+        target_kind: entity
+        target_selector:
+          entity_type: provider
+        predicate:
+          field: risk_score
+          op: gte
+          value:
+            config_ref: high_risk_threshold
+        citations:
+          - citation_id: cms-sar-2023
+            title: CMS Special Advisory Report 2023
+            source_ref: https://oig.hhs.gov/sar/2023
+```
 
 ---
 

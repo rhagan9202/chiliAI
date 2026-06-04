@@ -36,7 +36,7 @@
 | D-12 Load testing / SLO baselines | ACCEPT-AS-BACKLOG | BL-024 |
 | D-13 Config editor read-only polish | ACCEPT-AS-BACKLOG | BL-025 |
 | D-14 Case Management surface | ADD-REQUIREMENT (REQ-CASE-*) + BL | BL-010 |
-| D-15 Policy Intelligence surface | ADD-REQUIREMENT (REQ-POLICY-*) + BL | BL-011 |
+| D-15 Policy Intelligence surface | ADD-REQUIREMENT (REQ-POLICY-*) + BL — **RESOLVED (Sprint 2026-24)** | BL-011 |
 | D-16 SSE/WebSocket transport policy | REQUIREMENT-CHANGE (REQ-UI-005 amended) | n/a |
 | D-17 Two default configs ship | REQUIREMENT-CHANGE (REQ-CONFIG-001 amended) | BL-026 (test) |
 | D-18 Postgres/TimescaleDB stack | No action | n/a |
@@ -138,14 +138,14 @@
 ### BL-011 — Policy Intelligence v1 surface
 - **REQ**: REQ-POLICY-001..004 (new)
 - **Drift**: D-15
-- **Status**: todo (existing frontend page)
+- **Status**: done (Sprint 2026-24)
 - **Estimate**: 8 SP
 - **Acceptance**:
-  - Domain config schema extended with `policy_rules: list[PolicyRulePack]`.
-  - Worker generates policy items from configured rules against KB state.
-  - `GET/POST /policy/items`, `POST /policy/items/{id}/triage` endpoints with KB scoping.
-  - Frontend `PolicyIntelligencePage` lists items, supports triage actions (accept/reject/defer/escalate-to-case).
-  - Tests + e2e.
+  - Domain config schema extended with `policy_rules: list[PolicyRulePack]`. ✅ `DomainConfig.policy_rules: list[PolicyRulePack]` (additive, optional) in `config/schema.py`; example packs in `medicare_fraud.yaml` / `medicare_fraud_dev.yaml`.
+  - Worker generates policy items from configured rules against KB state. ✅ `evaluation.evaluate()` (pure) called in `handle_records_ingested`; matches upserted as durable `PolicyItem`s via `PolicyService.record_match` (D-EVAL-IMPL: folded into record-ingest handler, no standalone stage; alert-target rules defined but not yet evaluated).
+  - `GET /policy/items`, `GET /policy/items/{id}`, `POST /policy/items/{id}/triage` endpoints with KB scoping. ✅ all routes take `?knowledge_base_id=`; viewer for reads, analyst for triage. Old `/policy/gaps*` + `POST /policy/briefs` removed.
+  - Frontend `PolicyIntelligencePage` rebuilt as an item queue + triage; `api/policy.ts` KB-scoped; contracts regenerated (not hand-written). ✅
+  - Tests + e2e. ✅ unit tests for evaluation/service/repository + `tests/e2e/policy-triage.spec.ts`.
 - **Dependencies**: BL-010 (escalate-to-case action).
 
 ### BL-012 — Replace seeded ApiState with real services across remaining endpoints
