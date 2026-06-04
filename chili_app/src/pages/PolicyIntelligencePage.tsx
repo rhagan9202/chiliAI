@@ -1,258 +1,232 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
-import {
-  useCreatePolicyBrief,
-  usePolicyGap,
-  usePolicyGapCases,
-  usePolicyGaps,
-} from '../api/policy'
-import { ChartFrame } from '../components/charts/ChartFrame'
-import { TrendBars } from '../components/charts/TrendBars'
+import { useKnowledgeBases } from '../api/knowledgebases'
+import { usePolicyItem, usePolicyItems, useTriagePolicyItem } from '../api/policy'
+import type { PolicySeverity, PolicyItemStatus, PolicyTriageRequest } from '../api/contracts'
+import { showToast } from '../components/common/toastStore'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
+import { FilterBar } from '../components/ui/FilterBar'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import './pages.css'
 
+type StatusFilter = 'all' | 'open' | 'accepted' | 'rejected' | 'deferred' | 'escalated'
+
+const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'open', label: 'Open' },
+  { id: 'accepted', label: 'Accepted' },
+  { id: 'rejected', label: 'Rejected' },
+  { id: 'deferred', label: 'Deferred' },
+  { id: 'escalated', label: 'Escalated' },
+]
+
+const TRIAGE_ACTIONS: { action: PolicyTriageRequest['action']; label: string; secondary: boolean }[] = [
+  { action: 'accept', label: 'Accept', secondary: false },
+  { action: 'reject', label: 'Reject', secondary: true },
+  { action: 'defer', label: 'Defer', secondary: true },
+  { action: 'escalate', label: 'Escalate', secondary: true },
+]
+
 export function PolicyIntelligencePage() {
-  const gapsQuery = usePolicyGaps()
-  const [selectedGapId, setSelectedGapId] = useState<string | null>(null)
-  const [briefAudience, setBriefAudience] = useState('Operations leadership')
-  const [briefObjective, setBriefObjective] = useState('Summarize the policy gap and recommended guidance update.')
+  const [searchParams] = useSearchParams()
+  const knowledgeBasesQuery = useKnowledgeBases()
+  const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
+  const requestedKbId = searchParams.get('kb')
+  const knowledgeBaseId = knowledgeBases.some((kb) => kb.id === requestedKbId)
+    ? requestedKbId
+    : knowledgeBases[0]?.id ?? null
 
-  const gaps = gapsQuery.data?.items ?? []
-  const activeGapId = gaps.some((gap) => gap.id === selectedGapId) ? selectedGapId : gaps[0]?.id ?? null
-  const gapQuery = usePolicyGap(activeGapId)
-  const gapCasesQuery = usePolicyGapCases(activeGapId)
-  const createBriefMutation = useCreatePolicyBrief()
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const itemsQuery = usePolicyItems(knowledgeBaseId, statusFilter === 'all' ? undefined : statusFilter)
+  const items = itemsQuery.data?.items ?? []
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const activeItemId = items.some((item) => item.id === selectedItemId)
+    ? selectedItemId
+    : items[0]?.id ?? null
+  const itemQuery = usePolicyItem(knowledgeBaseId, activeItemId)
+  const triageMutation = useTriagePolicyItem(knowledgeBaseId)
 
-  if (gapsQuery.isLoading) {
-    return <LoadingState label="Loading policy intelligence queue" />
+  if (knowledgeBasesQuery.isLoading) {
+    return <LoadingState label="Loading knowledge bases" />
   }
 
-  if (gapsQuery.isError) {
-    return <ErrorState description="Policy intelligence data could not be loaded from the backend." />
+  if (knowledgeBasesQuery.isError) {
+    return <ErrorState description="Knowledge base inventory could not be loaded from the backend." />
   }
 
-  if (!gapsQuery.data) {
-    return <LoadingState label="Waiting for policy gap queue" />
-  }
-
-  if (gaps.length === 0) {
+  if (!knowledgeBaseId) {
     return (
       <section className="page-grid">
         <SectionHeader
-          actions={<Chip label="0 active gaps" tone="info" />}
+          actions={<Chip label="No knowledge base" tone="default" />}
           eyebrow="Policy knowledge graph"
-          subtitle="No policy intelligence gaps are currently available from the backend read model."
+          subtitle="Create or select a knowledge base to review its policy items."
           title="Policy Intelligence"
         />
-        <EmptyState
-          description="Once policy-linked investigation patterns are aggregated into the PKG surface, they will appear here for supervisor review."
-          title="No policy gaps detected"
-        />
+        <Card>
+          <EmptyState
+            description="Policy items are scoped to a knowledge base. Select one to view its queue."
+            title="No knowledge base selected"
+          />
+        </Card>
       </section>
     )
   }
 
-  if (gapQuery.isLoading || gapCasesQuery.isLoading) {
-    return <LoadingState label="Loading policy gap detail" />
+  if (itemsQuery.isLoading) {
+    return <LoadingState label="Loading policy item queue" />
   }
 
-  if (gapQuery.isError || gapCasesQuery.isError) {
-    return <ErrorState description="Policy gap detail could not be loaded from the backend." />
+  if (itemsQuery.isError) {
+    return <ErrorState description="Policy intelligence data could not be loaded from the backend." />
   }
 
-  if (!gapQuery.data || !gapCasesQuery.data) {
-    return <LoadingState label="Waiting for policy gap detail" />
+  const handleTriage = (action: PolicyTriageRequest['action']) => {
+    if (!activeItemId) {
+      return
+    }
+    triageMutation.mutate(
+      { itemId: activeItemId, payload: { action } },
+      {
+        onSuccess: () => showToast('success', `Policy item ${action}ed.`),
+        onError: () => showToast('error', 'Could not record the triage decision.'),
+      },
+    )
   }
 
-  const gapDetail = gapQuery.data
-  const affectedCases = gapCasesQuery.data.items
-  const generatedBrief = createBriefMutation.data
+  const detail = itemQuery.data
+  const disposition = detail?.disposition ?? null
 
   return (
     <section className="page-grid">
       <SectionHeader
-        actions={<Chip label={`${gaps.length} active gaps`} tone="info" />}
+        actions={<Chip label={`${itemsQuery.data?.total ?? items.length} items`} tone="info" />}
         eyebrow="Policy knowledge graph"
-        subtitle="Phase 7 replaces the placeholder with a live policy gap queue, PKG citations, affected case context, trend evidence, and a backend-generated brief builder."
+        subtitle="Configured rule packs generate durable, KB-scoped policy items for analyst triage."
         title="Policy Intelligence"
+      />
+
+      <FilterBar
+        activeFilterId={statusFilter}
+        filters={STATUS_FILTERS}
+        onChange={(value) => setStatusFilter(value as StatusFilter)}
       />
 
       <div className="policy-layout">
         <Card>
           <div className="metric-stack">
-            <div className="metric-row">
-              <strong>Policy gaps</strong>
-              <Chip label={gapDetail.gap.status} tone={toneForGapStatus(gapDetail.gap.status)} />
-            </div>
-
-            {gaps.map((gap) => (
+            <strong>Item queue</strong>
+            {items.map((item) => (
               <button
-                className={activeGapId === gap.id ? 'page-list-item page-list-item--active' : 'page-list-item'}
-                key={gap.id}
-                onClick={() => setSelectedGapId(gap.id)}
+                className={activeItemId === item.id ? 'page-list-item page-list-item--active' : 'page-list-item'}
+                key={item.id}
+                onClick={() => setSelectedItemId(item.id)}
                 type="button"
               >
-                <strong>{gap.title}</strong>
-                <span className="metric-row__label">Updated {formatTimestamp(gap.updated_at)}</span>
+                <strong>{item.title}</strong>
+                <span className="metric-row__label">Updated {formatTimestamp(item.updated_at)}</span>
                 <div className="alert-row-card__meta">
-                  <Chip label={gap.severity} tone={toneForGapSeverity(gap.severity)} />
-                  <Chip label={`${gap.affected_case_count} cases`} tone="warning" />
-                  <Chip label={`${gap.impacted_entities} entities`} tone="network" />
+                  <Chip label={item.severity} tone={toneForSeverity(item.severity)} />
+                  <Chip label={item.status} tone={toneForStatus(item.status)} />
                 </div>
               </button>
             ))}
+            {items.length === 0 ? (
+              <EmptyState description="No policy items match the current filter." title="Empty queue" />
+            ) : null}
           </div>
         </Card>
 
         <div className="policy-main">
-          <Card>
-            <div className="metric-stack">
-              <div className="metric-row metric-row--stacked">
-                <strong>{gapDetail.gap.title}</strong>
-                <span className="metric-row__label">{gapDetail.summary}</span>
-              </div>
-              <div className="alert-row-card__meta">
-                <Chip label={gapDetail.gap.severity} tone={toneForGapSeverity(gapDetail.gap.severity)} />
-                <Chip label={gapDetail.gap.status} tone={toneForGapStatus(gapDetail.gap.status)} />
-                <Chip label={`${gapDetail.gap.impacted_entities} impacted entities`} tone="network" />
-              </div>
-              <div className="policy-copy-grid">
-                <div className="policy-copy-block">
-                  <strong>Impact</strong>
-                  <p className="page-copy-block">{gapDetail.impact_statement}</p>
-                </div>
-                <div className="policy-copy-block">
-                  <strong>Recommended guidance</strong>
-                  <p className="page-copy-block">{gapDetail.recommendation}</p>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          <div className="policy-detail-grid">
-            <ChartFrame
-              eyebrow="Trend evidence"
-              footer={<Chip label="Policy signal volume" tone="info" />}
-              subtitle="Observed growth in policy-linked review demand across recent reporting windows."
-              title="Gap trend"
-            >
-              <TrendBars color="#7dd3fc" data={gapDetail.trend} />
-            </ChartFrame>
-
+          {itemQuery.isLoading ? (
             <Card>
-              <div className="metric-stack">
-                <div className="metric-row">
-                  <strong>Policy citations</strong>
-                  <Chip label={`${gapDetail.policy_citations.length} references`} tone="default" />
-                </div>
-                {gapDetail.policy_citations.map((citation) => (
-                  <div className="policy-citation-card" key={citation.citation_id}>
-                    <strong>{citation.title}</strong>
-                    <span className="metric-row__label">{citation.source_document_id}</span>
-                    <p className="page-copy-block">{citation.excerpt}</p>
-                  </div>
-                ))}
-              </div>
+              <LoadingState label="Loading policy item detail" />
             </Card>
-          </div>
-
-          <div className="policy-detail-grid">
+          ) : itemQuery.isError ? (
+            <Card>
+              <ErrorState description="Policy item detail could not be loaded from the backend." />
+            </Card>
+          ) : detail ? (
             <Card>
               <div className="metric-stack">
-                <div className="metric-row">
-                  <strong>Affected cases</strong>
-                  <Chip label={`${affectedCases.length} cases`} tone="warning" />
+                <div className="metric-row metric-row--stacked">
+                  <strong>{detail.item.title}</strong>
+                  <span className="metric-row__label">
+                    {detail.item.target_kind} · {detail.item.target_ref}
+                  </span>
                 </div>
-                {affectedCases.length > 0 ? (
-                  affectedCases.map((caseItem) => (
-                    <div className="policy-case-card" key={caseItem.id}>
-                      <div className="metric-row">
-                        <strong>{caseItem.title}</strong>
-                        <div className="alert-row-card__meta">
-                          <Chip label={caseItem.priority} tone={toneForGapSeverity(caseItem.priority === 'critical' ? 'critical' : caseItem.priority === 'high' ? 'high' : 'medium')} />
-                          <Chip label={caseItem.status} tone="info" />
-                        </div>
+                <div className="alert-row-card__meta">
+                  <Chip label={detail.item.severity} tone={toneForSeverity(detail.item.severity)} />
+                  <Chip label={detail.item.status} tone={toneForStatus(detail.item.status)} />
+                  <Chip label={detail.item.rule_id} tone="default" />
+                </div>
+
+                <div className="page-actions-inline">
+                  {TRIAGE_ACTIONS.map(({ action, label, secondary }) => (
+                    <button
+                      className={secondary ? 'page-button page-button--secondary' : 'page-button'}
+                      disabled={triageMutation.isPending || detail.item.status !== 'open'}
+                      key={action}
+                      onClick={() => handleTriage(action)}
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="metric-stack">
+                  <strong>Matched fields</strong>
+                  {Object.keys(detail.matched_fields).length > 0 ? (
+                    Object.entries(detail.matched_fields).map(([field, value]) => (
+                      <div className="metric-row" key={field}>
+                        <span className="metric-row__label">{field}</span>
+                        <strong>{String(value)}</strong>
                       </div>
-                      <span className="metric-row__label">
-                        {caseItem.assignee ? `Assigned to ${caseItem.assignee}` : 'Awaiting assignment'}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <EmptyState description="No affected cases are linked to this policy gap yet." title="No cases linked" />
-                )}
-              </div>
-            </Card>
-
-            <Card>
-              <div className="metric-stack">
-                <div className="metric-row">
-                  <strong>Policy brief builder</strong>
-                  <Chip label="Triage support" tone="info" />
+                    ))
+                  ) : (
+                    <EmptyState description="No matched fields were recorded." title="No matched fields" />
+                  )}
                 </div>
-                <input
-                  className="page-input"
-                  onChange={(event) => setBriefAudience(event.target.value)}
-                  placeholder="Audience"
-                  value={briefAudience}
-                />
-                <textarea
-                  className="page-textarea"
-                  onChange={(event) => setBriefObjective(event.target.value)}
-                  placeholder="Describe the policy brief objective"
-                  value={briefObjective}
-                />
-                <button
-                  className="page-button"
-                  disabled={
-                    createBriefMutation.isPending ||
-                    briefAudience.trim().length === 0 ||
-                    briefObjective.trim().length === 0
-                  }
-                  onClick={() =>
-                    createBriefMutation.mutate({
-                      gap_id: gapDetail.gap.id,
-                      audience: briefAudience.trim(),
-                      objective: briefObjective.trim(),
-                    })
-                  }
-                  type="button"
-                >
-                  {createBriefMutation.isPending ? 'Generating brief…' : 'Generate policy brief'}
-                </button>
 
-                {generatedBrief ? (
-                  <div className="policy-brief-card">
+                <div className="metric-stack">
+                  <strong>Policy citations</strong>
+                  {detail.citations.length > 0 ? (
+                    detail.citations.map((citation) => (
+                      <div className="policy-citation-card" key={citation.citation_id}>
+                        <strong>{citation.title}</strong>
+                        <span className="metric-row__label">{citation.source_ref}</span>
+                        {citation.excerpt ? <p className="page-copy-block">{citation.excerpt}</p> : null}
+                      </div>
+                    ))
+                  ) : (
+                    <EmptyState description="No policy citations are attached to this item." title="No citations" />
+                  )}
+                </div>
+
+                {disposition ? (
+                  <div className="metric-stack">
+                    <strong>Disposition</strong>
                     <div className="metric-row metric-row--stacked">
-                      <strong>{generatedBrief.title}</strong>
+                      <strong>{disposition.action} · {disposition.actor}</strong>
                       <span className="metric-row__label">
-                        {generatedBrief.audience} • {formatTimestamp(generatedBrief.created_at)}
+                        Decided {formatTimestamp(disposition.decided_at)}
+                        {disposition.case_id ? ` · case ${disposition.case_id}` : ''}
                       </span>
-                    </div>
-                    <p className="page-copy-block">{generatedBrief.narrative}</p>
-                    <div className="metric-stack">
-                      <strong>Recommendations</strong>
-                      {generatedBrief.recommendations.map((recommendation) => (
-                        <div className="policy-brief-card__item" key={recommendation}>
-                          {recommendation}
-                        </div>
-                      ))}
+                      {disposition.note ? <span className="metric-row__label">{disposition.note}</span> : null}
                     </div>
                   </div>
-                ) : (
-                  <EmptyState
-                    description="Generate a brief to package the current policy gap, citations, and recommendations for a supervisor audience."
-                    title="No brief generated"
-                  />
-                )}
+                ) : null}
               </div>
             </Card>
-          </div>
+          ) : (
+            <EmptyState description="Select a policy item to inspect its detail and triage it." title="No item selected" />
+          )}
         </div>
       </div>
     </section>
@@ -266,7 +240,7 @@ function formatTimestamp(value: string) {
   }).format(new Date(value))
 }
 
-function toneForGapSeverity(severity: 'medium' | 'high' | 'critical') {
+function toneForSeverity(severity: PolicySeverity) {
   switch (severity) {
     case 'critical':
       return 'danger' as const
@@ -277,13 +251,17 @@ function toneForGapSeverity(severity: 'medium' | 'high' | 'critical') {
   }
 }
 
-function toneForGapStatus(status: 'monitoring' | 'drafting' | 'recommended') {
+function toneForStatus(status: PolicyItemStatus) {
   switch (status) {
-    case 'recommended':
-      return 'success' as const
-    case 'drafting':
-      return 'warning' as const
-    case 'monitoring':
+    case 'open':
       return 'info' as const
+    case 'accepted':
+      return 'success' as const
+    case 'rejected':
+      return 'default' as const
+    case 'deferred':
+      return 'warning' as const
+    case 'escalated':
+      return 'network' as const
   }
 }
