@@ -19,6 +19,12 @@ The Knowledge Base Manager supports document upload and config-defined
 structured record feeds. File-upload record feeds parse selected `.csv` and
 `.jsonl` files automatically for client-side preview and validation messaging;
 the backend records API remains the canonical parser/validator on submission.
+Document and records-file uploads go through `apiUploadWithProgress`
+(`XMLHttpRequest`, since `fetch` cannot observe request-body upload progress),
+rendering an accessible progress bar during upload and a Retry button on
+failure. Submission receipts surface in the run timeline with an
+"X accepted, Y duplicate, Z rejected" summary, a duplicate-submission (no-op)
+indicator, and a bounded list of rejected-row reasons.
 
 ## Target Technology Stack
 
@@ -164,6 +170,7 @@ not on mutable status, so they are order-independent.
 | `authenticated-shell.spec.ts` | Config-driven sidebar nav ("Alert Feed", "Knowledge Bases") |
 | `login-redirect.spec.ts` | Protected route renders without a login redirect (auth disabled) |
 | `knowledge-base-list.spec.ts` | Seeded "E2E Seed KB" appears in the Ingestion Studio |
+| `ingestion-records.spec.ts` | Records `carrier_claims_a` CSV upload → success receipt + counts in the run timeline |
 | `investigation-workbench.spec.ts` | Graph canvas mounts for the seeded entity neighborhood |
 | `alert-feed.spec.ts` | Seeded alert rows + severity/status chips + filter bar |
 | `alert-acknowledge.spec.ts` | Acknowledge a real alert → status chip transitions |
