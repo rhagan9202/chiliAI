@@ -1475,6 +1475,8 @@ export interface components {
             alert_id: string;
             /** Case Id */
             case_id: string;
+            /** Conversation Id */
+            conversation_id: string;
             /** Entity Id */
             entity_id: string;
             /** Evidence Pack Id */
