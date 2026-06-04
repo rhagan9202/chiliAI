@@ -7,8 +7,12 @@ from fastapi.testclient import TestClient
 from api.app import create_app
 
 
+def _get_client() -> TestClient:
+    return TestClient(create_app())
+
+
 def test_dev_seed_writes_real_alert_evidence_case_and_kb() -> None:
-    client = TestClient(create_app())
+    client = _get_client()
 
     resp = client.post("/admin/dev-seed")
     assert resp.status_code == 200
@@ -54,3 +58,16 @@ def test_dev_seed_writes_real_alert_evidence_case_and_kb() -> None:
     assert neighborhood.status_code == 200
     node_ids = {e["id"] for e in neighborhood.json()["entities"]}
     assert {"provider-1", "claim-1", "beneficiary-1"} <= node_ids
+
+
+def test_dev_seed_creates_a_policy_item() -> None:
+    client = _get_client()
+
+    res = client.post("/admin/dev-seed")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["policy_item_id"]
+    kb = body["knowledge_base_id"]
+    got = client.get(f"/policy/items/{body['policy_item_id']}?knowledge_base_id={kb}")
+    assert got.status_code == 200
+    assert got.json()["item"]["status"] == "open"

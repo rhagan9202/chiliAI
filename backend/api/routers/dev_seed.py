@@ -27,8 +27,11 @@ from api.dependencies import (
     get_evidence_pack_repository,
     get_graph_repository,
     get_knowledge_base_repository,
+    get_policy_repository,
 )
 from api.middleware.rbac import require_role
+from policy.adapters.protocols import PolicyItemRepository
+from policy.service import create_policy_service
 from cases.adapters.protocols import CaseRepository
 from cases.models import Case
 from graph.adapters.protocols import GraphRepository
@@ -49,6 +52,7 @@ class DevSeedResponse(BaseModel):
     alert_id: str
     evidence_pack_id: str
     case_id: str
+    policy_item_id: str
 
 
 @router.post(
@@ -63,6 +67,7 @@ async def dev_seed(
     alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
     case_repository: CaseRepository = Depends(get_case_repository),
+    policy_repository: PolicyItemRepository = Depends(get_policy_repository),
 ) -> DevSeedResponse:
     """Seed a deterministic KB + subgraph + alert + evidence + case (dev/e2e only)."""
     now = utc_now()
@@ -146,10 +151,25 @@ async def dev_seed(
         )
     )
 
+    # --- policy item (open, targeting the seeded claim entity) --------------
+    policy_service = create_policy_service(policy_repository)
+    policy_item = policy_service.record_match(
+        knowledge_base_id=kb_id,
+        rule_id="claim_over_billed",
+        rule_pack_id="billing_thresholds",
+        target_kind="entity",
+        target_ref=claim_id,
+        title=f"Claim {claim_id} exceeds the billing threshold",
+        severity="high",
+        matched_fields={"properties.amount": 1500.0},
+        citations=[],
+    )
+
     return DevSeedResponse(
         knowledge_base_id=kb_id,
         entity_id=provider_id,
         alert_id=alert_id,
         evidence_pack_id=evidence_pack_id,
         case_id=case_id,
+        policy_item_id=policy_item.id,
     )

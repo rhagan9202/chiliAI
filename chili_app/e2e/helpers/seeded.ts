@@ -11,6 +11,7 @@ export type SeededIds = {
   alert_id: string
   evidence_pack_id: string
   case_id: string
+  policy_item_id: string
 }
 
 let cached: SeededIds | null = null
