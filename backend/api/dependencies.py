@@ -26,19 +26,29 @@ from api.contracts import (
     EvidencePackResponse,
     GraphEntityDetailResponse,
     PageInfo,
-    PolicyBriefCreateRequest,
-    PolicyBriefResponse,
-    PolicyGapCaseListResponse,
-    PolicyGapDetailResponse,
-    PolicyGapListResponse,
+    PolicyCitationResponse,
+    PolicyDispositionResponse,
+    PolicyItemDetailResponse,
+    PolicyItemListResponse,
+    PolicyItemSummaryResponse,
+    PolicyTriageRequest,
     RiskScoreResponse,
 )
 from cases.adapters.in_memory import InMemoryCaseRepository
 from cases.adapters.postgres import PostgresCaseRepository
 from cases.adapters.protocols import CaseRepository
 from cases.exceptions import CaseNotFoundError
-from cases.models import Case, CaseTimelineEvent
+from cases.models import Case, CasePriority, CaseTimelineEvent
 from cases.service import CaseService, create_case_service
+from policy.adapters.in_memory import InMemoryPolicyItemRepository
+from policy.adapters.postgres import PostgresPolicyItemRepository
+from policy.adapters.protocols import PolicyItemRepository
+from policy.exceptions import (
+    PolicyItemAlreadyTriagedError,
+    PolicyItemNotFoundError,
+)
+from policy.models import PolicyItem
+from policy.service import PolicyService, create_policy_service
 from shared.utils import utc_now
 from api.state import ApiState, create_api_state
 from config.loader import load_config
@@ -164,10 +174,11 @@ __all__ = [
     "get_object_store",
     "get_parser_orchestrator",
     "get_parser_registry",
-    "get_policy_brief_payload",
-    "get_policy_gap_cases_payload",
-    "get_policy_gap_detail_payload",
-    "get_policy_gap_list_payload",
+    "get_policy_item_detail_payload",
+    "get_policy_item_list_payload",
+    "get_policy_repository",
+    "get_policy_service",
+    "get_policy_triage_payload",
     "get_remote_fetcher",
     "get_risk_score_payload",
     "get_timeseries_payload",
@@ -473,35 +484,141 @@ def get_chat_message_payload(
     return state.add_message(conversation_id, payload, kb_repository=kb_repository)
 
 
-def get_policy_gap_list_payload(
-    state: ApiState = Depends(get_api_state),
-) -> PolicyGapListResponse:
-    """Return the policy intelligence gap queue."""
-    return state.list_policy_gaps()
+def get_policy_repository(request: Request) -> PolicyItemRepository:
+    """Return the per-app durable policy item repository selected by config.
+
+    Postgres when a connection provider is configured, otherwise a per-app
+    in-memory repository (so each app instance is isolated).
+    """
+    repository = getattr(request.app.state, "policy_repository", None)
+    if isinstance(repository, PolicyItemRepository):
+        return repository
+
+    provider = get_connection_provider()
+    repository = (
+        InMemoryPolicyItemRepository()
+        if provider is None
+        else PostgresPolicyItemRepository(provider)
+    )
+    request.app.state.policy_repository = repository
+    return repository
 
 
-def get_policy_gap_detail_payload(
-    gap_id: str = Path(..., description="Policy gap identifier."),
-    state: ApiState = Depends(get_api_state),
-) -> PolicyGapDetailResponse:
-    """Return one policy gap detail payload."""
-    return state.get_policy_gap_detail(gap_id)
+def get_policy_service(
+    repository: PolicyItemRepository = Depends(get_policy_repository),
+) -> PolicyService:
+    """Return the policy service over the configured repository."""
+    return create_policy_service(repository)
 
 
-def get_policy_gap_cases_payload(
-    gap_id: str = Path(..., description="Policy gap identifier."),
-    state: ApiState = Depends(get_api_state),
-) -> PolicyGapCaseListResponse:
-    """Return the affected cases for one policy gap."""
-    return state.list_policy_gap_cases(gap_id)
+def _policy_item_to_summary(item: PolicyItem) -> PolicyItemSummaryResponse:
+    return PolicyItemSummaryResponse(
+        id=item.id,
+        knowledge_base_id=item.knowledge_base_id,
+        rule_id=item.rule_id,
+        rule_pack_id=item.rule_pack_id,
+        target_kind=item.target_kind,
+        target_ref=item.target_ref,
+        title=item.title,
+        severity=item.severity,
+        status=item.status,
+        updated_at=item.updated_at,
+    )
 
 
-def get_policy_brief_payload(
-    payload: PolicyBriefCreateRequest,
-    state: ApiState = Depends(get_api_state),
-) -> PolicyBriefResponse:
-    """Generate a policy brief for the supplied policy gap."""
-    return state.create_policy_brief(payload)
+def _policy_item_to_detail(item: PolicyItem) -> PolicyItemDetailResponse:
+    disposition = (
+        None
+        if item.disposition is None
+        else PolicyDispositionResponse(**item.disposition.model_dump())
+    )
+    return PolicyItemDetailResponse(
+        item=_policy_item_to_summary(item),
+        matched_fields=dict(item.matched_fields),
+        citations=[PolicyCitationResponse(**c.model_dump()) for c in item.citations],
+        disposition=disposition,
+    )
+
+
+_POLICY_SEVERITY_TO_PRIORITY: dict[str, CasePriority] = {
+    "medium": "medium",
+    "high": "high",
+    "critical": "critical",
+}
+
+
+def _apply_policy_triage(
+    *,
+    policy_service: PolicyService,
+    case_service: CaseService,
+    knowledge_base_id: str,
+    item_id: str,
+    payload: PolicyTriageRequest,
+    actor: str,
+) -> PolicyItemDetailResponse:
+    existing = policy_service.get(knowledge_base_id=knowledge_base_id, item_id=item_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Policy item not found.")
+    case_id: str | None = None
+    if payload.action == "escalate":
+        case = case_service.create(
+            knowledge_base_id=knowledge_base_id,
+            title=f"Policy escalation: {existing.title}",
+            priority=_POLICY_SEVERITY_TO_PRIORITY.get(existing.severity, "medium"),
+            timeline=[
+                CaseTimelineEvent(
+                    occurred_at=utc_now(),
+                    label=f"Escalated from policy rule {existing.rule_id}",
+                    detail=(
+                        f"target={existing.target_ref}; "
+                        f"matched={existing.matched_fields}"
+                    ),
+                )
+            ],
+        )
+        case_id = case.id
+    try:
+        updated = policy_service.triage(
+            knowledge_base_id=knowledge_base_id,
+            item_id=item_id,
+            action=payload.action,
+            actor=actor,
+            note=payload.note,
+            case_id=case_id,
+        )
+    except PolicyItemNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PolicyItemAlreadyTriagedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _policy_item_to_detail(updated)
+
+
+def get_policy_item_list_payload(
+    knowledge_base_id: str = Query(...),
+    status: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    service: PolicyService = Depends(get_policy_service),
+) -> PolicyItemListResponse:
+    """Return a KB-scoped page of policy items, optionally filtered by status."""
+    items, total = service.list(
+        knowledge_base_id=knowledge_base_id, limit=limit, offset=offset, status=status
+    )
+    return PolicyItemListResponse(
+        items=[_policy_item_to_summary(item) for item in items], total=total
+    )
+
+
+def get_policy_item_detail_payload(
+    item_id: str = Path(...),
+    knowledge_base_id: str = Query(...),
+    service: PolicyService = Depends(get_policy_service),
+) -> PolicyItemDetailResponse:
+    """Return one policy item detail payload."""
+    item = service.get(knowledge_base_id=knowledge_base_id, item_id=item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Policy item not found.")
+    return _policy_item_to_detail(item)
 
 
 def get_risk_score_payload(
@@ -975,6 +1092,29 @@ from api.middleware.session_store import (  # noqa: E402  (intentional bottom-of
     RedisSessionStore,
     SessionStoreProtocol,
 )
+from api.middleware.auth import User  # noqa: E402  (intentional bottom-of-file import)
+from api.middleware.rbac import (  # noqa: E402  (intentional bottom-of-file import)
+    require_role,
+)
+
+
+def get_policy_triage_payload(
+    payload: PolicyTriageRequest,
+    item_id: str = Path(...),
+    knowledge_base_id: str = Query(...),
+    policy_service: PolicyService = Depends(get_policy_service),
+    case_service: CaseService = Depends(get_case_service),
+    user: User = Depends(require_role("analyst")),
+) -> PolicyItemDetailResponse:
+    """Triage a policy item, orchestrating escalate-to-case when requested."""
+    return _apply_policy_triage(
+        policy_service=policy_service,
+        case_service=case_service,
+        knowledge_base_id=knowledge_base_id,
+        item_id=item_id,
+        payload=payload,
+        actor=user.user_id,
+    )
 
 
 @lru_cache(maxsize=1)
