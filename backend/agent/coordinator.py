@@ -38,6 +38,7 @@ from config.schema import (
     GraphDbConfig,
     LlmConfig,
     ObjectStoreConfig,
+    PolicyRulePack,
     RecordFeedConfig,
     RecordsConfig,
     VectorStoreConfig,
@@ -168,6 +169,8 @@ from records.adapters.postgres import PostgresRawRecordStore
 from records.adapters.protocols import RawRecordStore
 from records.exceptions import RecordFeedNotFoundError
 from records.mappers.feed_mapper import map_batch, map_observations
+from policy.evaluation import PolicyEvalState, evaluate
+from policy.service import PolicyService
 from shared.logging import bind_correlation_id, configure_logging, get_logger
 from shared.provenance import (
     SOURCE_DOCUMENT_ID_KEY,
@@ -1761,6 +1764,9 @@ def handle_records_ingested(
     observation_writer: ObservationWriter,
     embeddings_service: EmbeddingsServiceProtocol | None = None,
     vector_store: VectorStoreProtocol | None = None,
+    policy_rules: list[PolicyRulePack] | None = None,
+    policy_service: PolicyService | None = None,
+    metrics_throttle: MetricsRecomputeThrottle | None = None,
 ) -> int:
     """Flow 1 — fan a structured-records batch out to the graph and observations.
 
@@ -1845,7 +1851,64 @@ def handle_records_ingested(
             ),
             correlation_id=event.correlation_id,
         )
+
+    if policy_service is not None and policy_rules:
+        _evaluate_policy_rules(
+            event=event,
+            policy_rules=policy_rules,
+            policy_service=policy_service,
+            entities=stored_entities,
+            graph_service=graph_service,
+            metrics_throttle=metrics_throttle,
+        )
     return len(records)
+
+
+def _evaluate_policy_rules(
+    *,
+    event: RecordsIngestedEvent,
+    policy_rules: list[PolicyRulePack],
+    policy_service: PolicyService,
+    entities: list[Entity],
+    graph_service: GraphService,
+    metrics_throttle: MetricsRecomputeThrottle | None,
+) -> None:
+    """Flow P — evaluate configured rules over the freshly-stored entities and
+    (throttled) graph metrics; upsert a durable item per match. Best-effort:
+    a failure here is logged but never aborts records ingestion."""
+
+    try:
+        metrics: dict[str, float] = {}
+        now = datetime.now(tz=timezone.utc)
+        if metrics_throttle is None or metrics_throttle.should_recompute(
+            event.knowledge_base_id, now=now
+        ):
+            graph_metrics = graph_service.compute_metrics(event.knowledge_base_id)
+            metrics = {
+                "entity_count": float(graph_metrics.entity_count),
+                "relationship_count": float(graph_metrics.relationship_count),
+                "avg_degree": graph_metrics.avg_degree,
+            }
+        matches = evaluate(
+            policy_rules,
+            PolicyEvalState(entities=entities, alerts=[], metrics=metrics),
+        )
+        for match in matches:
+            policy_service.record_match(
+                knowledge_base_id=event.knowledge_base_id,
+                rule_id=match.rule_id,
+                rule_pack_id=match.rule_pack_id,
+                target_kind=match.target_kind,
+                target_ref=match.target_ref,
+                title=match.title,
+                severity=match.severity,
+                matched_fields=match.matched_fields,
+                citations=match.citations,
+            )
+    except Exception as exc:  # noqa: BLE001 - policy eval must not block ingestion
+        logger.warning(
+            "Policy evaluation failed for kb=%s: %s", event.knowledge_base_id, exc
+        )
 
 
 def _resolve_records_feed(
