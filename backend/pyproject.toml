@@ -76,7 +76,8 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["api*", "agent*", "shared*", "config*", "events*", "storage*",
            "ingestion*", "graph*", "vectorstore*", "embeddings*", "rag*",
-           "llm*", "analytics*", "monitoring*", "database*", "records*"]
+           "llm*", "analytics*", "monitoring*", "database*", "records*",
+           "conversations*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -96,6 +97,7 @@ venv = ".venv"
 extraPaths = [".."]
 include = [
     "agent",
+    "conversations",
     "analytics/gnn",
     "analytics/metrics",
     "analytics/risk",
@@ -122,6 +124,7 @@ include = [
     "records",
     "vectorstore",
     "tests/agent",
+    "tests/conversations",
     "tests/analytics/gnn",
     "tests/analytics/metrics",
     "tests/analytics/risk",
