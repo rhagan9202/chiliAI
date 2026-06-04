@@ -32,6 +32,7 @@ def test_upsert_inserts_then_refreshes_open_item_in_place() -> None:
     assert refreshed.matched_fields == {"billed_amount": 2000.0}
     items, total = repo.list(knowledge_base_id="kb-1", limit=10, offset=0)
     assert total == 1
+    assert len(items) == 1
 
 
 def test_upsert_does_not_reopen_a_disposed_item() -> None:

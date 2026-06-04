@@ -3,12 +3,12 @@ from __future__ import annotations
 from policy.adapters.in_memory import InMemoryPolicyItemRepository
 from policy.exceptions import PolicyItemAlreadyTriagedError, PolicyItemNotFoundError
 from policy.models import PolicyDisposition, PolicyItem
-from policy.service import create_policy_service
+from policy.service import PolicyService, create_policy_service
 
 import pytest
 
 
-def _service() -> tuple[object, InMemoryPolicyItemRepository]:
+def _service() -> tuple[PolicyService, InMemoryPolicyItemRepository]:
     repo = InMemoryPolicyItemRepository()
     return create_policy_service(repo), repo
 
