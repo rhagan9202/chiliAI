@@ -1481,6 +1481,8 @@ export interface components {
             evidence_pack_id: string;
             /** Knowledge Base Id */
             knowledge_base_id: string;
+            /** Policy Item Id */
+            policy_item_id: string;
         };
         /**
          * DocumentFormat

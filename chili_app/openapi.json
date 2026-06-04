@@ -1272,6 +1272,10 @@
           "knowledge_base_id": {
             "title": "Knowledge Base Id",
             "type": "string"
+          },
+          "policy_item_id": {
+            "title": "Policy Item Id",
+            "type": "string"
           }
         },
         "required": [
@@ -1279,7 +1283,8 @@
           "entity_id",
           "alert_id",
           "evidence_pack_id",
-          "case_id"
+          "case_id",
+          "policy_item_id"
         ],
         "title": "DevSeedResponse",
         "type": "object"
