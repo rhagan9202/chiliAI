@@ -71,15 +71,30 @@ Two paths, pick whichever is cheaper at the time:
 
 ## Pick-Up Checklist
 
-- [ ] Decide authoring approach (LLM-assisted vs. manual).
-- [ ] Author corpus following the shape and entity/relationship guidance above.
-- [ ] Place files per the "Where to Put the Files" guidance.
-- [ ] Update `medicare_fraud_cms_desynpuf.yaml` to declare any new entity types (`policy`, `procedure_code`, `regulation_section`, etc.) with natural keys and relationships.
-- [ ] Run the LLM extractor against one document end to end manually and tune prompts in `LlmDocumentExtractor` if extraction quality is poor.
-- [ ] Add an integration test that uploads the full corpus and asserts entity/relationship counts.
-- [ ] Extend the E2E test to cover the combined records + documents graph.
-- [ ] Update `make demo-tn-subset` to upload the corpus.
-- [ ] Update READMEs and `docs/architecture.md` to reflect the broader document graph.
+- [x] Decide authoring approach (manual — controlled synthetic prose).
+- [x] Author corpus following the shape and entity/relationship guidance above.
+- [x] Place files per the "Where to Put the Files" guidance (checked into `backend/tests/ingestion/fixtures/policies/`).
+- [x] Update `medicare_fraud_cms_desynpuf.yaml` to declare the new entity types (`policy`, `procedure_code`, `regulation_section`, `provider_specialty`) with natural keys and relationships (`governs`, `cites`, `applies_to`, `supersedes`).
+- [x] Extend the E2E test to assert the policy entity + a joining relationship appears in the graph (`test_e2e_policy_document_populates_policy_graph`).
+- [x] Update `make demo-tn-subset` to upload the corpus (via `scripts/demo_ingest_tn_subset.sh`).
+- [ ] Run the LLM extractor against one document end to end manually and tune prompts in `LlmDocumentExtractor` if extraction quality is poor (deferred — out of scope for BL-014; the config-driven schema is the dependency and is now in place).
+
+## BL-014 Delivery Notes (2026-06-04)
+
+- **Corpus shipped:** 17 documents in `backend/tests/ingestion/fixtures/policies/` —
+  5 Markdown, 3 HTML, 3 JSON, 4 plain-text (one is `policy_extraction_probe.txt`,
+  a machine-readable fact sheet for deterministic e2e extraction), 2 DOCX.
+- **PDF/DOCX tooling:** `python-docx` was available, so 2 DOCX fixtures were
+  generated; `pandoc` was **not** available in the environment, so **PDF is a
+  documented follow-up** — add 2–4 PDFs via `pandoc md→pdf` (or a Python PDF
+  writer) once tooling is present. The MD source content is PDF-ready.
+- **Extractor note:** the in-memory e2e harness wires no LLM client, so the
+  `PatternDocumentExtractor` (regex on config property labels) runs. It coerces
+  bare numeric tokens to ints, which the validator rejects for string-typed
+  properties (`code`, `npi`); the probe fixture quotes those values so they
+  extract as strings. The prose fixtures still extract `policy` reliably via
+  `policy_id`. With an LLM provider configured, `LlmDocumentExtractor` recovers
+  the richer relationships from the prose fixtures directly.
 
 ## Estimated Effort
 

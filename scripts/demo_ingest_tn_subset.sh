@@ -29,4 +29,45 @@ upload "outpatient_claims" sample_data/CMS/tn_subset/desynpuf_outpatient_claims_
 upload "carrier_claims_a"  sample_data/CMS/tn_subset/desynpuf_carrier_claims_tn.csv
 upload "beneficiary_2010"  sample_data/CMS/tn_subset/desynpuf_beneficiaries_tn.csv
 
+# ---------------------------------------------------------------------------
+# Policy corpus (BL-014) — upload synthetic policy DOCUMENTS into the same KB
+# via the document endpoint so the demo shows a policy graph (policy/
+# procedure_code/regulation_section + applies_to->provider) that joins the
+# records graph. Best-effort: skipped if the corpus directory is absent.
+# Set DEMO_SKIP_POLICIES=1 to disable.
+# ---------------------------------------------------------------------------
+POLICIES_DIR="${DEMO_POLICIES_DIR:-backend/tests/ingestion/fixtures/policies}"
+
+upload_document() {
+  local path="$1"
+  if [ ! -f "$path" ]; then
+    return 0
+  fi
+  echo "Uploading policy document $(basename "$path")..."
+  # Markdown is uploaded as text/plain (text/markdown is not in the default
+  # allowed content types; the plain-text parser passes content through so the
+  # extractor still sees the full policy text).
+  local ctype="text/plain"
+  case "$path" in
+    *.html) ctype="text/html" ;;
+    *.json) ctype="application/json" ;;
+    *.docx) ctype="application/vnd.openxmlformats-officedocument.wordprocessingml.document" ;;
+    *.txt|*.md) ctype="text/plain" ;;
+  esac
+  curl -s -X POST "$API/knowledgebases/$KB_ID/documents" \
+    -F "files=@$path;type=$ctype" \
+    | python3 -m json.tool || true
+}
+
+if [ "${DEMO_SKIP_POLICIES:-0}" != "1" ] && [ -d "$POLICIES_DIR" ]; then
+  echo "Uploading policy corpus from $POLICIES_DIR..."
+  for doc in "$POLICIES_DIR"/*.md "$POLICIES_DIR"/*.html "$POLICIES_DIR"/*.json \
+             "$POLICIES_DIR"/*.txt "$POLICIES_DIR"/*.docx; do
+    [ -e "$doc" ] || continue
+    upload_document "$doc"
+  done
+else
+  echo "Skipping policy corpus (DEMO_SKIP_POLICIES set or $POLICIES_DIR missing)." >&2
+fi
+
 echo "Done. KB ID: $KB_ID"

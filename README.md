@@ -14,11 +14,13 @@ A **domain-reconfigurable Graph RAG analytics platform**. Combines knowledge-gra
 
 ## Demo: Tennessee Medicare Subset
 
-A self-contained end-to-end demo uses a Tennessee-provider subset of the publicly available NPPES and CMS DE-SynPUF datasets. The demo builds a knowledge base, uploads policy documents with LLM extraction, and indexes records-derived entities into the vector store — all with one Make target.
+A self-contained end-to-end demo uses a Tennessee-provider subset of the publicly available NPPES and CMS DE-SynPUF datasets. The demo builds a knowledge base, ingests the records-derived entities into the graph + vector store, and then uploads a synthetic policy-document corpus (Markdown/HTML/JSON/TXT/DOCX under `backend/tests/ingestion/fixtures/policies/`) through the document endpoint so the configured LLM extractor produces a policy graph (`policy`/`procedure_code`/`regulation_section`) that joins the records graph on the shared `provider` node — all with one Make target.
 
 ```bash
-make demo-tn-subset   # build TN subset + create KB + upload (requires `make dev` first)
+make demo-tn-subset   # build TN subset + create KB + upload records + policy corpus (requires `make dev` first)
 ```
+
+The policy corpus upload is best-effort: set `DEMO_SKIP_POLICIES=1` to skip it, or `DEMO_POLICIES_DIR=...` to point at a different corpus. (PDF fixtures are a documented follow-up — see `docs/superpowers/specs/notes/synthetic-policy-corpus.md`.)
 
 See [`docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md`](docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md) for the full specification.
 

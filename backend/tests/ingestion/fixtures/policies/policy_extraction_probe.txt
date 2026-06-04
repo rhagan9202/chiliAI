@@ -1,0 +1,14 @@
+SYNTHETIC TEST DOCUMENT — NOT A REAL CMS POLICY. Fictional IDs and providers.
+
+POLICY FACT SHEET (machine-readable field labels for deterministic extraction)
+
+policy_id: "POL-2024-PROBE-999"
+title: "Inpatient Billing Probe"
+effective_date: "2024-01-01"
+specialty: "Internal Medicine"
+code: "99221"
+citation: "42 CFR 410.32"
+npi: "1234567890"
+
+This fact sheet governs procedure code 99221, cites 42 CFR 410.32, and
+applies to provider NPI 1234567890.

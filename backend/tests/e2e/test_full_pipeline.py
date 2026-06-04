@@ -393,6 +393,80 @@ def test_e2e_records_and_documents_populate_one_kb(
 
 
 # ---------------------------------------------------------------------------
+# Policy-corpus document E2E (BL-014)
+# ---------------------------------------------------------------------------
+
+_POLICIES_DIR = (
+    Path(__file__).parents[1] / "ingestion" / "fixtures" / "policies"
+)
+
+
+@pytest.mark.e2e
+def test_e2e_policy_document_populates_policy_graph(
+    medicare_fraud_harness: E2EHarness,
+) -> None:
+    """A synthetic policy document yields a policy entity joined to its codes/provider.
+
+    Uploads the policy_extraction_probe.txt fixture (machine-readable field
+    labels) via POST /knowledgebases/{kb_id}/documents and asserts the
+    config-driven extractor recovers a ``policy`` entity plus at least one
+    relationship from the policy to a procedure_code or provider — exercising
+    the new policy/procedure_code/regulation_section entity types and the
+    governs/cites/applies_to relationships added in BL-014.
+
+    Uses text/plain so the TXT parser passes content through unchanged. The
+    in-memory harness has no LLM client wired, so the PatternDocumentExtractor
+    runs; the probe fixture exposes the literal property labels (policy_id,
+    code, citation, npi) that the heuristic extractor keys on, making the
+    extraction deterministic without an LLM.
+    """
+    harness = medicare_fraud_harness
+    kb_id = _create_kb_named(harness, "policy-doc-e2e")
+
+    probe = _POLICIES_DIR / "policy_extraction_probe.txt"
+    with probe.open("rb") as fh:
+        resp = harness.client.post(
+            f"/knowledgebases/{kb_id}/documents",
+            files=[("files", (probe.name, fh, "text/plain"))],
+        )
+    assert resp.status_code == 202, resp.text
+
+    harness.drain()
+
+    entities = harness.graph_repository.get_entities(kb_id)
+    entity_types = {e.type for e in entities}
+    assert "policy" in entity_types, (
+        f"expected a 'policy' entity from the policy document, got {sorted(entity_types)}"
+    )
+
+    policy_entities = [e for e in entities if e.type == "policy"]
+    assert any(
+        e.properties.get("policy_id") == "POL-2024-PROBE-999" for e in policy_entities
+    ), f"expected policy_id POL-2024-PROBE-999, got {[e.properties for e in policy_entities]}"
+    policy_ids = {e.id for e in policy_entities}
+
+    # The policy must join the rest of the graph: at least one relationship from
+    # the policy to a procedure_code (governs) or a provider (applies_to).
+    relationships = harness.graph_repository.get_relationships(kb_id)
+    entity_by_id = {e.id: e for e in entities}
+    joining_rels = [
+        r
+        for r in relationships
+        if r.source_id in policy_ids
+        and entity_by_id.get(r.target_id) is not None
+        and entity_by_id[r.target_id].type in {"procedure_code", "provider"}
+    ]
+    observed = [
+        (r.type, target.type if (target := entity_by_id.get(r.target_id)) is not None else None)
+        for r in relationships
+    ]
+    assert joining_rels, (
+        "expected at least one policy->procedure_code (governs) or "
+        f"policy->provider (applies_to) relationship, got {observed}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # DE-SynPUF per-feed E2E tests
 # ---------------------------------------------------------------------------
 # These tests verify each of the 5 DE-SynPUF record types can be ingested
