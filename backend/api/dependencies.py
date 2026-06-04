@@ -178,7 +178,6 @@ __all__ = [
     "get_policy_item_list_payload",
     "get_policy_repository",
     "get_policy_service",
-    "get_policy_triage_payload",
     "get_remote_fetcher",
     "get_risk_score_payload",
     "get_timeseries_payload",
@@ -1092,29 +1091,6 @@ from api.middleware.session_store import (  # noqa: E402  (intentional bottom-of
     RedisSessionStore,
     SessionStoreProtocol,
 )
-from api.middleware.auth import User  # noqa: E402  (intentional bottom-of-file import)
-from api.middleware.rbac import (  # noqa: E402  (intentional bottom-of-file import)
-    require_role,
-)
-
-
-def get_policy_triage_payload(
-    payload: PolicyTriageRequest,
-    item_id: str = Path(...),
-    knowledge_base_id: str = Query(...),
-    policy_service: PolicyService = Depends(get_policy_service),
-    case_service: CaseService = Depends(get_case_service),
-    user: User = Depends(require_role("analyst")),
-) -> PolicyItemDetailResponse:
-    """Triage a policy item, orchestrating escalate-to-case when requested."""
-    return _apply_policy_triage(
-        policy_service=policy_service,
-        case_service=case_service,
-        knowledge_base_id=knowledge_base_id,
-        item_id=item_id,
-        payload=payload,
-        actor=user.user_id,
-    )
 
 
 @lru_cache(maxsize=1)

@@ -1,22 +1,25 @@
-"""Policy intelligence router exposing policy gap read models and brief generation."""
+"""Policy intelligence router: rule-generated items + analyst triage (BL-011)."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Path, Query
 
 from api.contracts import (
-    PolicyBriefResponse,
-    PolicyGapCaseListResponse,
-    PolicyGapDetailResponse,
-    PolicyGapListResponse,
+    PolicyItemDetailResponse,
+    PolicyItemListResponse,
+    PolicyTriageRequest,
 )
 from api.dependencies import (
-    get_policy_brief_payload,
-    get_policy_gap_cases_payload,
-    get_policy_gap_detail_payload,
-    get_policy_gap_list_payload,
+    _apply_policy_triage,
+    get_case_service,
+    get_policy_item_detail_payload,
+    get_policy_item_list_payload,
+    get_policy_service,
 )
+from api.middleware.auth import User
 from api.middleware.rbac import require_role
+from cases.service import CaseService
+from policy.service import PolicyService
 
 __all__ = ["router"]
 
@@ -24,48 +27,47 @@ router = APIRouter(prefix="/policy", tags=["policy"])
 
 
 @router.get(
-    "/gaps",
-    response_model=PolicyGapListResponse,
+    "/items",
+    response_model=PolicyItemListResponse,
     dependencies=[Depends(require_role("viewer"))],
 )
-async def list_policy_gaps(
-    gaps: PolicyGapListResponse = Depends(get_policy_gap_list_payload),
-) -> PolicyGapListResponse:
-    """Return policy gaps for supervisor and policy-intelligence views."""
-    return gaps
+async def list_policy_items(
+    payload: PolicyItemListResponse = Depends(get_policy_item_list_payload),
+) -> PolicyItemListResponse:
+    """List KB-scoped policy items, optionally filtered by status."""
+    return payload
 
 
 @router.get(
-    "/gaps/{gap_id}",
-    response_model=PolicyGapDetailResponse,
+    "/items/{item_id}",
+    response_model=PolicyItemDetailResponse,
     dependencies=[Depends(require_role("viewer"))],
 )
-async def get_policy_gap(
-    gap: PolicyGapDetailResponse = Depends(get_policy_gap_detail_payload),
-) -> PolicyGapDetailResponse:
-    """Return one policy gap detail payload."""
-    return gap
-
-
-@router.get(
-    "/gaps/{gap_id}/cases",
-    response_model=PolicyGapCaseListResponse,
-    dependencies=[Depends(require_role("viewer"))],
-)
-async def list_policy_gap_cases(
-    cases: PolicyGapCaseListResponse = Depends(get_policy_gap_cases_payload),
-) -> PolicyGapCaseListResponse:
-    """Return affected cases for one policy gap."""
-    return cases
+async def get_policy_item(
+    payload: PolicyItemDetailResponse = Depends(get_policy_item_detail_payload),
+) -> PolicyItemDetailResponse:
+    """Return one policy item detail payload."""
+    return payload
 
 
 @router.post(
-    "/briefs",
-    response_model=PolicyBriefResponse,
-    dependencies=[Depends(require_role("analyst"))],
+    "/items/{item_id}/triage",
+    response_model=PolicyItemDetailResponse,
 )
-async def create_policy_brief(
-    brief: PolicyBriefResponse = Depends(get_policy_brief_payload),
-) -> PolicyBriefResponse:
-    """Generate a policy brief from one policy gap."""
-    return brief
+async def triage_policy_item(
+    payload: PolicyTriageRequest,
+    item_id: str = Path(...),
+    knowledge_base_id: str = Query(...),
+    policy_service: PolicyService = Depends(get_policy_service),
+    case_service: CaseService = Depends(get_case_service),
+    user: User = Depends(require_role("analyst")),
+) -> PolicyItemDetailResponse:
+    """Triage a policy item (accept/reject/defer/escalate)."""
+    return _apply_policy_triage(
+        policy_service=policy_service,
+        case_service=case_service,
+        knowledge_base_id=knowledge_base_id,
+        item_id=item_id,
+        payload=payload,
+        actor=user.user_id,
+    )
