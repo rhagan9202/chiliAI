@@ -169,8 +169,11 @@ from records.adapters.postgres import PostgresRawRecordStore
 from records.adapters.protocols import RawRecordStore
 from records.exceptions import RecordFeedNotFoundError
 from records.mappers.feed_mapper import map_batch, map_observations
+from policy.adapters.in_memory import InMemoryPolicyItemRepository
+from policy.adapters.postgres import PostgresPolicyItemRepository
+from policy.adapters.protocols import PolicyItemRepository
 from policy.evaluation import PolicyEvalState, evaluate
-from policy.service import PolicyService
+from policy.service import PolicyService, create_policy_service
 from shared.logging import bind_correlation_id, configure_logging, get_logger
 from shared.provenance import (
     SOURCE_DOCUMENT_ID_KEY,
@@ -203,6 +206,8 @@ __all__ = [
     "build_monitoring_observation_source",
     "build_object_store",
     "build_observation_writer",
+    "build_policy_item_repository",
+    "build_policy_service",
     "build_raw_record_store",
     "build_risk_history_writer",
     "build_risk_signal_source",
@@ -277,6 +282,8 @@ class WorkerDependencies:
     records_config: RecordsConfig
     raw_record_store: RawRecordStore
     observation_writer: ObservationWriter
+    policy_service: PolicyService
+    policy_rules: list[PolicyRulePack]
     entity_metric_repository: EntityMetricRepository
     metrics_throttle: MetricsRecomputeThrottle
     risk_history_writer: RiskHistoryWriter
@@ -518,6 +525,22 @@ def build_observation_writer(
     return PostgresObservationStore(provider)
 
 
+def build_policy_item_repository(
+    provider: ConnectionProvider | None,
+) -> PolicyItemRepository:
+    """Select a policy item repository: Postgres when a provider exists, else in-memory."""
+
+    if provider is None:
+        return InMemoryPolicyItemRepository()
+    return PostgresPolicyItemRepository(provider)
+
+
+def build_policy_service(provider: ConnectionProvider | None) -> PolicyService:
+    """Create the policy service over the selected repository backend."""
+
+    return create_policy_service(build_policy_item_repository(provider))
+
+
 def build_entity_metric_repository(
     provider: ConnectionProvider | None,
 ) -> EntityMetricRepository:
@@ -751,6 +774,8 @@ def build_worker_dependencies() -> WorkerDependencies:
     )
     raw_record_store = build_raw_record_store(connection_provider)
     observation_writer = build_observation_writer(connection_provider)
+    policy_service = build_policy_service(connection_provider)
+    policy_rules = list(config.policy_rules)
     entity_metric_repository = build_entity_metric_repository(connection_provider)
     risk_history_writer = build_risk_history_writer(connection_provider)
     alert_history_writer = build_alert_history_writer(connection_provider)
@@ -778,6 +803,8 @@ def build_worker_dependencies() -> WorkerDependencies:
         records_config=records_config,
         raw_record_store=raw_record_store,
         observation_writer=observation_writer,
+        policy_service=policy_service,
+        policy_rules=policy_rules,
         entity_metric_repository=entity_metric_repository,
         metrics_throttle=metrics_throttle,
         risk_history_writer=risk_history_writer,
@@ -2314,6 +2341,8 @@ def handle_event(
     records_config: RecordsConfig | None = None,
     raw_record_store: RawRecordStore | None = None,
     observation_writer: ObservationWriter | None = None,
+    policy_service: PolicyService | None = None,
+    policy_rules: list[PolicyRulePack] | None = None,
     entity_metric_repository: EntityMetricRepository | None = None,
     metrics_throttle: MetricsRecomputeThrottle | None = None,
     risk_history_writer: RiskHistoryWriter | None = None,
@@ -2358,6 +2387,8 @@ def handle_event(
             records_config=records_config,
             raw_record_store=raw_record_store,
             observation_writer=observation_writer,
+            policy_service=policy_service,
+            policy_rules=policy_rules,
             entity_metric_repository=entity_metric_repository,
             metrics_throttle=metrics_throttle,
             risk_history_writer=risk_history_writer,
@@ -2392,6 +2423,8 @@ def _dispatch_event(
     records_config: RecordsConfig | None,
     raw_record_store: RawRecordStore | None,
     observation_writer: ObservationWriter | None,
+    policy_service: PolicyService | None,
+    policy_rules: list[PolicyRulePack] | None,
     entity_metric_repository: EntityMetricRepository | None,
     metrics_throttle: MetricsRecomputeThrottle | None,
     risk_history_writer: RiskHistoryWriter | None,
@@ -2542,6 +2575,9 @@ def _dispatch_event(
             observation_writer=observation_writer,
             embeddings_service=embeddings_service,
             vector_store=vector_store,
+            policy_rules=policy_rules,
+            policy_service=policy_service,
+            metrics_throttle=metrics_throttle,
         )
     if isinstance(event, KnowledgeBaseDeletedEvent):
         if (
@@ -2655,6 +2691,8 @@ async def drain_ingestion_events(
     records_config: RecordsConfig | None = None,
     raw_record_store: RawRecordStore | None = None,
     observation_writer: ObservationWriter | None = None,
+    policy_service: PolicyService | None = None,
+    policy_rules: list[PolicyRulePack] | None = None,
     entity_metric_repository: EntityMetricRepository | None = None,
     metrics_throttle: MetricsRecomputeThrottle | None = None,
     risk_history_writer: RiskHistoryWriter | None = None,
@@ -2723,6 +2761,8 @@ async def drain_ingestion_events(
                 records_config=records_config,
                 raw_record_store=raw_record_store,
                 observation_writer=observation_writer,
+                policy_service=policy_service,
+                policy_rules=policy_rules,
                 entity_metric_repository=entity_metric_repository,
                 metrics_throttle=metrics_throttle,
                 risk_history_writer=risk_history_writer,
@@ -2862,6 +2902,8 @@ async def run_worker(
                 records_config=deps.records_config,
                 raw_record_store=deps.raw_record_store,
                 observation_writer=deps.observation_writer,
+                policy_service=deps.policy_service,
+                policy_rules=deps.policy_rules,
                 entity_metric_repository=deps.entity_metric_repository,
                 metrics_throttle=deps.metrics_throttle,
                 risk_history_writer=deps.risk_history_writer,

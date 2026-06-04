@@ -425,6 +425,26 @@ def test_build_worker_dependencies_assembles_ingestion_pipeline(
     assert isinstance(deps.ingestion_service._recovery_store, InMemoryIngestionRecoveryStore)  # pyright: ignore[reportPrivateUsage]
 
 
+def test_build_worker_dependencies_wires_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    defaults_dir = (
+        __file__
+        .replace("tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml")
+    )
+    monkeypatch.setattr("agent.coordinator.load_config", lambda: load_config(defaults_dir))
+    monkeypatch.setattr(
+        "agent.coordinator.load_event_bus_settings",
+        lambda: EventBusSettings(backend="in-memory"),
+    )
+
+    deps = build_worker_dependencies()
+
+    assert deps.policy_service is not None
+    assert isinstance(deps.policy_rules, list)
+    assert deps.policy_rules, "medicare_fraud.yaml ships policy rule packs"
+
+
 def test_worker_event_bus_explicit_config_preserves_env_recovery_and_trim_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2083,6 +2103,8 @@ def test_graceful_shutdown_finishes_in_flight_event(
     from analytics.metrics.throttle import MetricsRecomputeThrottle
     from analytics.risk.adapters.in_memory import InMemoryRiskHistoryWriter
     from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter
+    from policy.adapters.in_memory import InMemoryPolicyItemRepository
+    from policy.service import create_policy_service
 
     fake_deps = WorkerDependencies(
         event_bus=event_bus,
@@ -2112,6 +2134,8 @@ def test_graceful_shutdown_finishes_in_flight_event(
         records_config=RecordsConfig(),
         raw_record_store=InMemoryRawRecordStore(),
         observation_writer=InMemoryObservationWriter(),
+        policy_service=create_policy_service(InMemoryPolicyItemRepository()),
+        policy_rules=[],
         entity_metric_repository=InMemoryEntityMetricRepository(),
         metrics_throttle=MetricsRecomputeThrottle(min_interval_seconds=300),
         risk_history_writer=InMemoryRiskHistoryWriter(),
