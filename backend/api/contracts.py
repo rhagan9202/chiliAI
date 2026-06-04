@@ -75,72 +75,67 @@ class PolicyCitation(BaseModel):
     source_document_id: str
 
 
-class PolicyTrendPointResponse(BaseModel):
-    """One point in a policy gap trend series."""
+class PolicyCitationResponse(BaseModel):
+    """A policy/document reference attached to a matched policy item."""
 
-    label: str
-    value: float = Field(ge=0.0)
+    citation_id: str
+    title: str
+    source_ref: str
+    excerpt: str | None = None
 
 
-class PolicyGapSummaryResponse(BaseModel):
-    """Summary row for the policy intelligence gap queue."""
+class PolicyDispositionResponse(BaseModel):
+    """The recorded triage decision for a policy item."""
+
+    action: Literal["accept", "reject", "defer", "escalate"]
+    actor: str
+    note: str | None = None
+    decided_at: datetime
+    case_id: str | None = None
+
+
+class PolicyItemSummaryResponse(BaseModel):
+    """Summary row for the policy intelligence item queue."""
 
     id: str
-    title: str
-    status: Literal["monitoring", "drafting", "recommended"]
-    severity: Literal["medium", "high", "critical"]
-    impacted_entities: int = Field(ge=0)
-    affected_case_count: int = Field(ge=0)
     knowledge_base_id: str
+    rule_id: str
+    rule_pack_id: str
+    target_kind: Literal["entity", "alert", "metric"]
+    target_ref: str
+    title: str
+    severity: Literal["medium", "high", "critical"]
+    status: Literal["open", "accepted", "rejected", "deferred", "escalated"]
     updated_at: datetime
 
 
-class PolicyGapListResponse(BaseModel):
-    """Collection response for policy intelligence gaps."""
+class PolicyItemListResponse(BaseModel):
+    """Collection response for KB-scoped policy items."""
 
-    items: list[PolicyGapSummaryResponse] = Field(default_factory=lambda: cast(list[PolicyGapSummaryResponse], []))
-    page: PageInfo
-
-
-class PolicyGapDetailResponse(BaseModel):
-    """Expanded policy gap detail payload."""
-
-    gap: PolicyGapSummaryResponse
-    summary: str
-    impact_statement: str
-    recommendation: str
-    policy_citations: list[PolicyCitation] = Field(default_factory=lambda: cast(list[PolicyCitation], []))
-    trend: list[PolicyTrendPointResponse] = Field(default_factory=lambda: cast(list[PolicyTrendPointResponse], []))
+    items: list[PolicyItemSummaryResponse] = Field(
+        default_factory=lambda: cast(list[PolicyItemSummaryResponse], [])
+    )
+    total: int = 0
 
 
-class PolicyGapCaseListResponse(BaseModel):
-    """Case list attached to one policy gap."""
+class PolicyItemDetailResponse(BaseModel):
+    """Expanded policy item detail payload."""
 
-    gap_id: str
-    items: list["CaseSummaryResponse"] = Field(default_factory=lambda: cast(list[CaseSummaryResponse], []))
-    page: PageInfo
-
-
-class PolicyBriefCreateRequest(BaseModel):
-    """Payload for generating a policy brief from a gap."""
-
-    gap_id: str
-    audience: str
-    objective: str
+    item: PolicyItemSummaryResponse
+    matched_fields: dict[str, str | float | int | bool] = Field(
+        default_factory=lambda: cast(dict[str, str | float | int | bool], {})
+    )
+    citations: list[PolicyCitationResponse] = Field(
+        default_factory=lambda: cast(list[PolicyCitationResponse], [])
+    )
+    disposition: PolicyDispositionResponse | None = None
 
 
-class PolicyBriefResponse(BaseModel):
-    """Generated policy brief returned to the policy intelligence UI."""
+class PolicyTriageRequest(BaseModel):
+    """Payload for triaging a policy item (accept/reject/defer/escalate)."""
 
-    id: str
-    gap_id: str
-    title: str
-    audience: str
-    objective: str
-    narrative: str
-    recommendations: list[str] = Field(default_factory=lambda: cast(list[str], []))
-    policy_citations: list[PolicyCitation] = Field(default_factory=lambda: cast(list[PolicyCitation], []))
-    created_at: datetime
+    action: Literal["accept", "reject", "defer", "escalate"]
+    note: str | None = None
 
 
 class RealtimeSnapshotResponse(BaseModel):
@@ -476,14 +471,13 @@ __all__ = [
     "GraphEntityDetailResponse",
     "GraphNodeResponse",
     "PageInfo",
-    "PolicyBriefCreateRequest",
-    "PolicyBriefResponse",
     "PolicyCitation",
-    "PolicyGapCaseListResponse",
-    "PolicyGapDetailResponse",
-    "PolicyGapListResponse",
-    "PolicyGapSummaryResponse",
-    "PolicyTrendPointResponse",
+    "PolicyCitationResponse",
+    "PolicyDispositionResponse",
+    "PolicyItemDetailResponse",
+    "PolicyItemListResponse",
+    "PolicyItemSummaryResponse",
+    "PolicyTriageRequest",
     "RealtimeSnapshotResponse",
     "RiskFactorResponse",
     "RiskScoreResponse",
