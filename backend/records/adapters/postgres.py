@@ -38,6 +38,18 @@ _DELETE_BY_KB_SQL = """
     WHERE knowledge_base_id = %s
 """
 
+_WAS_SUBMITTED_SQL = """
+    SELECT 1 FROM record_submissions
+    WHERE knowledge_base_id = %s AND submission_hash = %s
+"""
+
+_RECORD_SUBMISSION_SQL = """
+    INSERT INTO record_submissions (
+        knowledge_base_id, submission_hash, correlation_id
+    ) VALUES (%s, %s, %s)
+    ON CONFLICT (knowledge_base_id, submission_hash) DO NOTHING
+"""
+
 
 class PostgresRawRecordStore:
     """A ``RawRecordStore`` backed by the ``raw_records`` table."""
@@ -94,6 +106,37 @@ class PostgresRawRecordStore:
         except Exception as exc:
             raise RecordPersistenceError(
                 "Failed to delete raw records for knowledge base."
+            ) from exc
+
+    def was_submitted(
+        self, *, knowledge_base_id: str, submission_hash: str
+    ) -> bool:
+        """Return True if this submission hash was already registered for the KB."""
+        try:
+            with self._provider.connection() as conn:
+                row = conn.execute(
+                    _WAS_SUBMITTED_SQL, (knowledge_base_id, submission_hash)
+                ).fetchone()
+        except Exception as exc:
+            raise RecordPersistenceError(
+                "Failed to look up record submission."
+            ) from exc
+        return row is not None
+
+    def record_submission(
+        self, *, knowledge_base_id: str, submission_hash: str, correlation_id: str
+    ) -> None:
+        """Record that a submission hash has been accepted for a KB."""
+        try:
+            with self._provider.connection() as conn:
+                conn.execute(
+                    _RECORD_SUBMISSION_SQL,
+                    (knowledge_base_id, submission_hash, correlation_id),
+                )
+                conn.commit()
+        except Exception as exc:
+            raise RecordPersistenceError(
+                "Failed to record submission hash."
             ) from exc
 
 

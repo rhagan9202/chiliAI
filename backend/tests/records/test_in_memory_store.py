@@ -39,3 +39,29 @@ def test_load_batch_filters_by_correlation_id() -> None:
     store.persist([_record("c2", correlation_id="corr-2")])
     loaded = store.load_batch(knowledge_base_id="kb-1", correlation_id="corr-1")
     assert [record.record_id for record in loaded] == ["c1"]
+
+
+def test_submission_dedup_round_trip() -> None:
+    store = InMemoryRawRecordStore()
+    assert (
+        store.was_submitted(knowledge_base_id="kb-1", submission_hash="sub-1") is False
+    )
+    store.record_submission(
+        knowledge_base_id="kb-1", submission_hash="sub-1", correlation_id="corr-1"
+    )
+    assert store.was_submitted(knowledge_base_id="kb-1", submission_hash="sub-1") is True
+
+
+def test_submission_dedup_is_scoped_by_kb_and_hash() -> None:
+    store = InMemoryRawRecordStore()
+    store.record_submission(
+        knowledge_base_id="kb-1", submission_hash="sub-1", correlation_id="corr-1"
+    )
+    # Different KB, same hash → not seen.
+    assert (
+        store.was_submitted(knowledge_base_id="kb-2", submission_hash="sub-1") is False
+    )
+    # Same KB, different hash → not seen.
+    assert (
+        store.was_submitted(knowledge_base_id="kb-1", submission_hash="sub-2") is False
+    )

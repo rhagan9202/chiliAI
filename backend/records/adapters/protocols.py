@@ -25,6 +25,18 @@ class RawRecordStore(Protocol):
         """Delete all records for a knowledge base; return the count removed."""
         ...
 
+    def was_submitted(
+        self, *, knowledge_base_id: str, submission_hash: str
+    ) -> bool:
+        """Return True if this submission hash was already registered for the KB."""
+        ...
+
+    def record_submission(
+        self, *, knowledge_base_id: str, submission_hash: str, correlation_id: str
+    ) -> None:
+        """Record that a submission hash has been accepted for a KB."""
+        ...
+
 
 @runtime_checkable
 class RecordSourceProtocol(Protocol):

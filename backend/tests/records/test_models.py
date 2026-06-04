@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from records.models import RawRecord, RecordBatch, content_hash_for
+from records.models import (
+    RawRecord,
+    RecordBatch,
+    RejectedRow,
+    content_hash_for,
+    submission_hash_for,
+)
 from records.service_models import RecordIngestReceipt, RecordSubmission
 
 
@@ -48,6 +54,30 @@ def test_record_batch_groups_records() -> None:
         records=[_record("claim-1"), _record("claim-2")],
     )
     assert len(batch.records) == 2
+
+
+def test_submission_hash_is_order_independent_over_content_hashes() -> None:
+    first = submission_hash_for("claims_feed", ["hash-a", "hash-b"])
+    second = submission_hash_for("claims_feed", ["hash-b", "hash-a"])
+    assert first == second
+
+
+def test_submission_hash_differs_by_feed_name() -> None:
+    a = submission_hash_for("feed_one", ["hash-a"])
+    b = submission_hash_for("feed_two", ["hash-a"])
+    assert a != b
+
+
+def test_submission_hash_differs_by_content() -> None:
+    a = submission_hash_for("claims_feed", ["hash-a", "hash-b"])
+    b = submission_hash_for("claims_feed", ["hash-a", "hash-c"])
+    assert a != b
+
+
+def test_rejected_row_carries_index_and_reason() -> None:
+    rejected = RejectedRow(index=3, reason="not a valid number")
+    assert rejected.index == 3
+    assert rejected.reason == "not a valid number"
 
 
 def test_record_submission_and_receipt() -> None:

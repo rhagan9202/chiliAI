@@ -20,9 +20,11 @@ migration. It contains no domain logic and no business logic.
 
 ## Schema
 
-Six tables (see `docs/architecture.md` and the design spec for details):
+Core tables (see `docs/architecture.md` and the design spec for details):
 `raw_records`, `observations` (hypertable), `entity_metric_history`
 (hypertable), `entity_metrics_current`, `risk_score_history`, `alert_history`.
+Later migrations add `policy_items` (0003) and `record_submissions`
+(0004 — submission-level records dedup, BL-015).
 
 ## Commands
 

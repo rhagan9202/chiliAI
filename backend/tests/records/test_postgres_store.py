@@ -64,3 +64,49 @@ def test_persist_and_load_round_trip(database_url: str) -> None:
             )
             conn.commit()
         provider.close()
+
+
+def test_submission_dedup_round_trip(database_url: str) -> None:
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresRawRecordStore(provider)
+    submission_hash = "sub-hash-records-store-1"
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM record_submissions "
+                "WHERE knowledge_base_id = 'kb-records-test'"
+            )
+            conn.commit()
+
+        assert (
+            store.was_submitted(
+                knowledge_base_id="kb-records-test", submission_hash=submission_hash
+            )
+            is False
+        )
+        store.record_submission(
+            knowledge_base_id="kb-records-test",
+            submission_hash=submission_hash,
+            correlation_id="corr-dedup-1",
+        )
+        assert (
+            store.was_submitted(
+                knowledge_base_id="kb-records-test", submission_hash=submission_hash
+            )
+            is True
+        )
+        # Re-recording the same submission hash is a no-op (ON CONFLICT).
+        store.record_submission(
+            knowledge_base_id="kb-records-test",
+            submission_hash=submission_hash,
+            correlation_id="corr-dedup-2",
+        )
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM record_submissions "
+                "WHERE knowledge_base_id = 'kb-records-test'"
+            )
+            conn.commit()
+        provider.close()

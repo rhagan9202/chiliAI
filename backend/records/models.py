@@ -27,6 +27,21 @@ def content_hash_for(payload: Mapping[str, object]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def submission_hash_for(feed_name: str, content_hashes: list[str]) -> str:
+    """Return a stable SHA-256 digest identifying a whole submission.
+
+    The digest is computed over the feed name and the *sorted* list of per-row
+    ``content_hash`` values, so a re-pushed identical batch hashes identically
+    regardless of row order — this backs the submission-level idempotency check.
+    """
+
+    canonical = json.dumps(
+        {"feed": feed_name, "rows": sorted(content_hashes)},
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 class RawRecord(BaseModel):
     """A canonical row landed in the ``raw_records`` table."""
 
@@ -39,6 +54,13 @@ class RawRecord(BaseModel):
     correlation_id: str
     content_hash: str
     ingested_at: datetime = Field(default_factory=utc_now)
+
+
+class RejectedRow(BaseModel):
+    """A submitted row that failed coercion or feed-schema validation."""
+
+    index: int
+    reason: str
 
 
 class RecordBatch(BaseModel):
@@ -54,5 +76,7 @@ class RecordBatch(BaseModel):
 __all__ = [
     "RawRecord",
     "RecordBatch",
+    "RejectedRow",
     "content_hash_for",
+    "submission_hash_for",
 ]

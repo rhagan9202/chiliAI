@@ -12,6 +12,7 @@ class InMemoryRawRecordStore:
 
     def __init__(self) -> None:
         self._records: dict[tuple[str, str, str], RawRecord] = {}
+        self._submissions: set[tuple[str, str]] = set()
 
     def persist(self, records: list[RawRecord]) -> int:
         inserted = 0
@@ -52,3 +53,15 @@ class InMemoryRawRecordStore:
         for key in keys_to_remove:
             del self._records[key]
         return len(keys_to_remove)
+
+    def was_submitted(
+        self, *, knowledge_base_id: str, submission_hash: str
+    ) -> bool:
+        """Return True if this submission hash was already registered for the KB."""
+        return (knowledge_base_id, submission_hash) in self._submissions
+
+    def record_submission(
+        self, *, knowledge_base_id: str, submission_hash: str, correlation_id: str
+    ) -> None:
+        """Record that a submission hash has been accepted for a KB."""
+        self._submissions.add((knowledge_base_id, submission_hash))
