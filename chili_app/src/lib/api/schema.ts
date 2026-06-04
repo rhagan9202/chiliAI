@@ -2523,6 +2523,8 @@ export interface components {
          * @description A single structured-ingestion feed definition.
          */
         RecordFeedConfig: {
+            /** Accepted Formats */
+            accepted_formats?: string[];
             /**
              * Allow Extra Fields
              * @default false
@@ -2569,12 +2571,29 @@ export interface components {
              * Format: date-time
              */
             created_at?: string;
+            /**
+             * Duplicate
+             * @default false
+             */
+            duplicate: boolean;
+            /**
+             * Duplicate Count
+             * @default 0
+             */
+            duplicate_count: number;
             /** Feed Name */
             feed_name: string;
             /** Knowledge Base Id */
             knowledge_base_id: string;
             /** Record Type */
             record_type: string;
+            /** Rejected */
+            rejected?: components["schemas"]["RejectedRow"][];
+            /**
+             * Rejected Count
+             * @default 0
+             */
+            rejected_count: number;
         };
         /**
          * RecordObservationMapping
@@ -2624,6 +2643,16 @@ export interface components {
         RecordsConfig: {
             /** Feeds */
             feeds?: components["schemas"]["RecordFeedConfig"][];
+        };
+        /**
+         * RejectedRow
+         * @description A submitted row that failed coercion or feed-schema validation.
+         */
+        RejectedRow: {
+            /** Index */
+            index: number;
+            /** Reason */
+            reason: string;
         };
         /**
          * Relationship

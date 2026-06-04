@@ -3561,6 +3561,13 @@
       "RecordFeedConfig": {
         "description": "A single structured-ingestion feed definition.",
         "properties": {
+          "accepted_formats": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Accepted Formats",
+            "type": "array"
+          },
           "allow_extra_fields": {
             "default": false,
             "title": "Allow Extra Fields",
@@ -3653,6 +3660,17 @@
             "title": "Created At",
             "type": "string"
           },
+          "duplicate": {
+            "default": false,
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "duplicate_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Duplicate Count",
+            "type": "integer"
+          },
           "feed_name": {
             "title": "Feed Name",
             "type": "string"
@@ -3664,6 +3682,19 @@
           "record_type": {
             "title": "Record Type",
             "type": "string"
+          },
+          "rejected": {
+            "items": {
+              "$ref": "#/components/schemas/RejectedRow"
+            },
+            "title": "Rejected",
+            "type": "array"
+          },
+          "rejected_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Rejected Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -3766,6 +3797,25 @@
           }
         },
         "title": "RecordsConfig",
+        "type": "object"
+      },
+      "RejectedRow": {
+        "description": "A submitted row that failed coercion or feed-schema validation.",
+        "properties": {
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "reason"
+        ],
+        "title": "RejectedRow",
         "type": "object"
       },
       "Relationship": {

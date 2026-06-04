@@ -53,6 +53,9 @@ describe('records API', () => {
       record_type: 'claim',
       correlation_id: 'corr-1',
       accepted_count: 1,
+      duplicate: false,
+      duplicate_count: 0,
+      rejected_count: 0,
       created_at: '2026-05-16T12:00:00Z',
     }
     apiPostMock.mockResolvedValue(receipt)
@@ -72,6 +75,9 @@ describe('records API', () => {
       record_type: 'claim',
       correlation_id: 'corr-1',
       accepted_count: 1,
+      duplicate: false,
+      duplicate_count: 0,
+      rejected_count: 0,
       created_at: '2026-05-16T12:00:00Z',
     }
     apiUploadMock.mockResolvedValue(receipt)
@@ -97,6 +103,9 @@ describe('records API', () => {
       record_type: 'claim',
       correlation_id: 'corr-1',
       accepted_count: 1,
+      duplicate: false,
+      duplicate_count: 0,
+      rejected_count: 0,
       created_at: '2026-05-16T12:00:00Z',
     }
     const queryClient = createTestQueryClient()
@@ -132,6 +141,9 @@ describe('records API', () => {
       record_type: 'claim',
       correlation_id: 'corr-1',
       accepted_count: 1,
+      duplicate: false,
+      duplicate_count: 0,
+      rejected_count: 0,
       created_at: '2026-05-16T12:00:00Z',
     }
     const queryClient = createTestQueryClient()
