@@ -1,54 +1,25 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { apiFetch, apiPost } from '../client'
-import type { PolicyBriefCreateRequest } from '../contracts'
-import {
-  createPolicyBrief,
-  getPolicyGap,
-  getPolicyGapCases,
-  getPolicyGaps,
-  policyGapCasesQueryKey,
-  policyGapDetailQueryKey,
-  policyGapsQueryKey,
-} from '../policy'
+import * as client from '../client'
+import { getPolicyItems, getPolicyItem, triagePolicyItem } from '../policy'
 
-vi.mock('../client', () => ({
-  apiFetch: vi.fn(),
-  apiPost: vi.fn(),
-}))
+describe('policy api client', () => {
+  it('threads knowledge_base_id and status into requests', async () => {
+    const apiFetch = vi.spyOn(client, 'apiFetch').mockResolvedValue({ items: [], total: 0 })
+    await getPolicyItems('kb-1', 'open')
+    expect(apiFetch).toHaveBeenCalledWith('/policy/items?knowledge_base_id=kb-1&status=open')
 
-const apiFetchMock = vi.mocked(apiFetch)
-const apiPostMock = vi.mocked(apiPost)
-
-describe('policy API', () => {
-  it('exposes stable query keys', () => {
-    expect(policyGapsQueryKey).toEqual(['policy', 'gaps'])
-    expect(policyGapDetailQueryKey('gap-1')).toEqual(['policy', 'gaps', 'gap-1'])
-    expect(policyGapCasesQueryKey('gap-1')).toEqual(['policy', 'gaps', 'gap-1', 'cases'])
+    apiFetch.mockResolvedValue({ item: {}, matched_fields: {}, citations: [] })
+    await getPolicyItem('kb-1', 'item-9')
+    expect(apiFetch).toHaveBeenCalledWith('/policy/items/item-9?knowledge_base_id=kb-1')
   })
 
-  it('fetches policy gap list, detail, and case paths', async () => {
-    apiFetchMock.mockResolvedValue({ items: [], page: { page: 1, page_size: 25, total_items: 0 } })
-
-    await getPolicyGaps()
-    await getPolicyGap('gap-1')
-    await getPolicyGapCases('gap-1')
-
-    expect(apiFetchMock).toHaveBeenNthCalledWith(1, '/policy/gaps')
-    expect(apiFetchMock).toHaveBeenNthCalledWith(2, '/policy/gaps/gap-1')
-    expect(apiFetchMock).toHaveBeenNthCalledWith(3, '/policy/gaps/gap-1/cases')
-  })
-
-  it('creates policy briefs with the expected payload', async () => {
-    const payload: PolicyBriefCreateRequest = {
-      gap_id: 'gap-1',
-      audience: 'CMS leadership',
-      objective: 'Prioritize enforcement.',
-    }
-    apiPostMock.mockResolvedValue({ id: 'brief-1' })
-
-    await createPolicyBrief(payload)
-
-    expect(apiPostMock).toHaveBeenCalledWith('/policy/briefs', payload)
+  it('posts triage actions', async () => {
+    const apiPost = vi.spyOn(client, 'apiPost').mockResolvedValue({ item: {}, matched_fields: {}, citations: [] })
+    await triagePolicyItem('kb-1', 'item-9', { action: 'escalate', note: 'urgent' })
+    expect(apiPost).toHaveBeenCalledWith(
+      '/policy/items/item-9/triage?knowledge_base_id=kb-1',
+      { action: 'escalate', note: 'urgent' },
+    )
   })
 })

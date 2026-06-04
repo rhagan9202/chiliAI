@@ -1250,6 +1250,40 @@
         "title": "DatabaseConfig",
         "type": "object"
       },
+      "DevSeedResponse": {
+        "description": "Identifiers of the deterministic scenario seeded into the real stores.",
+        "properties": {
+          "alert_id": {
+            "title": "Alert Id",
+            "type": "string"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "evidence_pack_id": {
+            "title": "Evidence Pack Id",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "entity_id",
+          "alert_id",
+          "evidence_pack_id",
+          "case_id"
+        ],
+        "title": "DevSeedResponse",
+        "type": "object"
+      },
       "DocumentFormat": {
         "description": "Supported source document formats.",
         "enum": [
@@ -1565,6 +1599,13 @@
               }
             ],
             "default": null
+          },
+          "policy_rules": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyRulePack"
+            },
+            "title": "Policy Rules",
+            "type": "array"
           },
           "rag": {
             "anyOf": [
@@ -2813,89 +2854,6 @@
         "title": "PageInfo",
         "type": "object"
       },
-      "PolicyBriefCreateRequest": {
-        "description": "Payload for generating a policy brief from a gap.",
-        "properties": {
-          "audience": {
-            "title": "Audience",
-            "type": "string"
-          },
-          "gap_id": {
-            "title": "Gap Id",
-            "type": "string"
-          },
-          "objective": {
-            "title": "Objective",
-            "type": "string"
-          }
-        },
-        "required": [
-          "gap_id",
-          "audience",
-          "objective"
-        ],
-        "title": "PolicyBriefCreateRequest",
-        "type": "object"
-      },
-      "PolicyBriefResponse": {
-        "description": "Generated policy brief returned to the policy intelligence UI.",
-        "properties": {
-          "audience": {
-            "title": "Audience",
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "gap_id": {
-            "title": "Gap Id",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "narrative": {
-            "title": "Narrative",
-            "type": "string"
-          },
-          "objective": {
-            "title": "Objective",
-            "type": "string"
-          },
-          "policy_citations": {
-            "items": {
-              "$ref": "#/components/schemas/PolicyCitation"
-            },
-            "title": "Policy Citations",
-            "type": "array"
-          },
-          "recommendations": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Recommendations",
-            "type": "array"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "gap_id",
-          "title",
-          "audience",
-          "objective",
-          "narrative",
-          "created_at"
-        ],
-        "title": "PolicyBriefResponse",
-        "type": "object"
-      },
       "PolicyCitation": {
         "description": "Policy reference surfaced with evidence or alerts.",
         "properties": {
@@ -2925,112 +2883,216 @@
         "title": "PolicyCitation",
         "type": "object"
       },
-      "PolicyGapCaseListResponse": {
-        "description": "Case list attached to one policy gap.",
+      "PolicyCitationRef": {
+        "description": "A policy/document reference surfaced on every item a rule generates.",
         "properties": {
-          "gap_id": {
-            "title": "Gap Id",
+          "citation_id": {
+            "title": "Citation Id",
             "type": "string"
           },
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Excerpt"
+          },
+          "source_ref": {
+            "title": "Source Ref",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "citation_id",
+          "title",
+          "source_ref"
+        ],
+        "title": "PolicyCitationRef",
+        "type": "object"
+      },
+      "PolicyCitationResponse": {
+        "description": "A policy/document reference attached to a matched policy item.",
+        "properties": {
+          "citation_id": {
+            "title": "Citation Id",
+            "type": "string"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
+          },
+          "source_ref": {
+            "title": "Source Ref",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "citation_id",
+          "title",
+          "source_ref"
+        ],
+        "title": "PolicyCitationResponse",
+        "type": "object"
+      },
+      "PolicyDispositionResponse": {
+        "description": "The recorded triage decision for a policy item.",
+        "properties": {
+          "action": {
+            "enum": [
+              "accept",
+              "reject",
+              "defer",
+              "escalate"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "case_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Id"
+          },
+          "decided_at": {
+            "format": "date-time",
+            "title": "Decided At",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "action",
+          "actor",
+          "decided_at"
+        ],
+        "title": "PolicyDispositionResponse",
+        "type": "object"
+      },
+      "PolicyItemDetailResponse": {
+        "description": "Expanded policy item detail payload.",
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyCitationResponse"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "disposition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PolicyDispositionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "item": {
+            "$ref": "#/components/schemas/PolicyItemSummaryResponse"
+          },
+          "matched_fields": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "title": "Matched Fields",
+            "type": "object"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "title": "PolicyItemDetailResponse",
+        "type": "object"
+      },
+      "PolicyItemListResponse": {
+        "description": "Collection response for KB-scoped policy items.",
+        "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/CaseSummaryResponse"
+              "$ref": "#/components/schemas/PolicyItemSummaryResponse"
             },
             "title": "Items",
             "type": "array"
           },
-          "page": {
-            "$ref": "#/components/schemas/PageInfo"
-          }
-        },
-        "required": [
-          "gap_id",
-          "page"
-        ],
-        "title": "PolicyGapCaseListResponse",
-        "type": "object"
-      },
-      "PolicyGapDetailResponse": {
-        "description": "Expanded policy gap detail payload.",
-        "properties": {
-          "gap": {
-            "$ref": "#/components/schemas/PolicyGapSummaryResponse"
-          },
-          "impact_statement": {
-            "title": "Impact Statement",
-            "type": "string"
-          },
-          "policy_citations": {
-            "items": {
-              "$ref": "#/components/schemas/PolicyCitation"
-            },
-            "title": "Policy Citations",
-            "type": "array"
-          },
-          "recommendation": {
-            "title": "Recommendation",
-            "type": "string"
-          },
-          "summary": {
-            "title": "Summary",
-            "type": "string"
-          },
-          "trend": {
-            "items": {
-              "$ref": "#/components/schemas/PolicyTrendPointResponse"
-            },
-            "title": "Trend",
-            "type": "array"
-          }
-        },
-        "required": [
-          "gap",
-          "summary",
-          "impact_statement",
-          "recommendation"
-        ],
-        "title": "PolicyGapDetailResponse",
-        "type": "object"
-      },
-      "PolicyGapListResponse": {
-        "description": "Collection response for policy intelligence gaps.",
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/PolicyGapSummaryResponse"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "page": {
-            "$ref": "#/components/schemas/PageInfo"
-          }
-        },
-        "required": [
-          "page"
-        ],
-        "title": "PolicyGapListResponse",
-        "type": "object"
-      },
-      "PolicyGapSummaryResponse": {
-        "description": "Summary row for the policy intelligence gap queue.",
-        "properties": {
-          "affected_case_count": {
-            "minimum": 0.0,
-            "title": "Affected Case Count",
+          "total": {
+            "default": 0,
+            "title": "Total",
             "type": "integer"
-          },
+          }
+        },
+        "title": "PolicyItemListResponse",
+        "type": "object"
+      },
+      "PolicyItemSummaryResponse": {
+        "description": "Summary row for the policy intelligence item queue.",
+        "properties": {
           "id": {
             "title": "Id",
             "type": "string"
           },
-          "impacted_entities": {
-            "minimum": 0.0,
-            "title": "Impacted Entities",
-            "type": "integer"
-          },
           "knowledge_base_id": {
             "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "rule_id": {
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "rule_pack_id": {
+            "title": "Rule Pack Id",
             "type": "string"
           },
           "severity": {
@@ -3044,11 +3106,26 @@
           },
           "status": {
             "enum": [
-              "monitoring",
-              "drafting",
-              "recommended"
+              "open",
+              "accepted",
+              "rejected",
+              "deferred",
+              "escalated"
             ],
             "title": "Status",
+            "type": "string"
+          },
+          "target_kind": {
+            "enum": [
+              "entity",
+              "alert",
+              "metric"
+            ],
+            "title": "Target Kind",
+            "type": "string"
+          },
+          "target_ref": {
+            "title": "Target Ref",
             "type": "string"
           },
           "title": {
@@ -3063,35 +3140,242 @@
         },
         "required": [
           "id",
-          "title",
-          "status",
-          "severity",
-          "impacted_entities",
-          "affected_case_count",
           "knowledge_base_id",
+          "rule_id",
+          "rule_pack_id",
+          "target_kind",
+          "target_ref",
+          "title",
+          "severity",
+          "status",
           "updated_at"
         ],
-        "title": "PolicyGapSummaryResponse",
+        "title": "PolicyItemSummaryResponse",
         "type": "object"
       },
-      "PolicyTrendPointResponse": {
-        "description": "One point in a policy gap trend series.",
+      "PolicyPredicate": {
+        "description": "A single bounded comparison evaluated against a target's field.",
         "properties": {
-          "label": {
-            "title": "Label",
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "eq",
+              "neq",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "in",
+              "not_in"
+            ],
+            "title": "Op",
             "type": "string"
           },
           "value": {
-            "minimum": 0.0,
-            "title": "Value",
-            "type": "number"
+            "$ref": "#/components/schemas/PolicyPredicateValue"
           }
         },
         "required": [
-          "label",
+          "field",
+          "op",
           "value"
         ],
-        "title": "PolicyTrendPointResponse",
+        "title": "PolicyPredicate",
+        "type": "object"
+      },
+      "PolicyPredicateValue": {
+        "description": "A predicate's right-hand value: exactly one of an inline literal or a\n``config_ref`` resolving against the owning pack's ``thresholds`` map.",
+        "properties": {
+          "config_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Config Ref"
+          },
+          "literal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Literal"
+          }
+        },
+        "title": "PolicyPredicateValue",
+        "type": "object"
+      },
+      "PolicyRule": {
+        "description": "A single rule: select targets, test one predicate, emit an item per hit.",
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyCitationRef"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "predicate": {
+            "$ref": "#/components/schemas/PolicyPredicate"
+          },
+          "severity": {
+            "enum": [
+              "medium",
+              "high",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "target_kind": {
+            "enum": [
+              "entity",
+              "alert",
+              "metric"
+            ],
+            "title": "Target Kind",
+            "type": "string"
+          },
+          "target_selector": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Target Selector",
+            "type": "object"
+          },
+          "title_template": {
+            "title": "Title Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title_template",
+          "severity",
+          "target_kind",
+          "predicate"
+        ],
+        "title": "PolicyRule",
+        "type": "object"
+      },
+      "PolicyRulePack": {
+        "description": "A named bundle of rules with shared, config-referenceable thresholds.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyRule"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "thresholds": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "title": "Thresholds",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "PolicyRulePack",
+        "type": "object"
+      },
+      "PolicyTriageRequest": {
+        "description": "Payload for triaging a policy item (accept/reject/defer/escalate).",
+        "properties": {
+          "action": {
+            "enum": [
+              "accept",
+              "reject",
+              "defer",
+              "escalate"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "PolicyTriageRequest",
         "type": "object"
       },
       "PropertyDefinition": {
@@ -4160,6 +4444,28 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/admin/dev-seed": {
+      "post": {
+        "description": "Seed a deterministic KB + subgraph + alert + evidence + case (dev/e2e only).",
+        "operationId": "dev_seed_admin_dev_seed_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevSeedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dev Seed",
+        "tags": [
+          "dev"
+        ]
+      }
+    },
     "/alerts": {
       "get": {
         "description": "Return the alert feed in the api.contracts shape (items + page).",
@@ -6082,15 +6388,169 @@
         ]
       }
     },
-    "/policy/briefs": {
+    "/policy/items": {
+      "get": {
+        "description": "List KB-scoped policy items, optionally filtered by status.",
+        "operationId": "list_policy_items_policy_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyItemListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Policy Items",
+        "tags": [
+          "policy"
+        ]
+      }
+    },
+    "/policy/items/{item_id}": {
+      "get": {
+        "description": "Return one policy item detail payload.",
+        "operationId": "get_policy_item_policy_items__item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyItemDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Policy Item",
+        "tags": [
+          "policy"
+        ]
+      }
+    },
+    "/policy/items/{item_id}/triage": {
       "post": {
-        "description": "Generate a policy brief from one policy gap.",
-        "operationId": "create_policy_brief_policy_briefs_post",
+        "description": "Triage a policy item (accept/reject/defer/escalate).",
+        "operationId": "triage_policy_item_policy_items__item_id__triage_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PolicyBriefCreateRequest"
+                "$ref": "#/components/schemas/PolicyTriageRequest"
               }
             }
           },
@@ -6101,7 +6561,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PolicyBriefResponse"
+                  "$ref": "#/components/schemas/PolicyItemDetailResponse"
                 }
               }
             },
@@ -6118,119 +6578,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Policy Brief",
-        "tags": [
-          "policy"
-        ]
-      }
-    },
-    "/policy/gaps": {
-      "get": {
-        "description": "Return policy gaps for supervisor and policy-intelligence views.",
-        "operationId": "list_policy_gaps_policy_gaps_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PolicyGapListResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "List Policy Gaps",
-        "tags": [
-          "policy"
-        ]
-      }
-    },
-    "/policy/gaps/{gap_id}": {
-      "get": {
-        "description": "Return one policy gap detail payload.",
-        "operationId": "get_policy_gap_policy_gaps__gap_id__get",
-        "parameters": [
-          {
-            "description": "Policy gap identifier.",
-            "in": "path",
-            "name": "gap_id",
-            "required": true,
-            "schema": {
-              "description": "Policy gap identifier.",
-              "title": "Gap Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PolicyGapDetailResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Policy Gap",
-        "tags": [
-          "policy"
-        ]
-      }
-    },
-    "/policy/gaps/{gap_id}/cases": {
-      "get": {
-        "description": "Return affected cases for one policy gap.",
-        "operationId": "list_policy_gap_cases_policy_gaps__gap_id__cases_get",
-        "parameters": [
-          {
-            "description": "Policy gap identifier.",
-            "in": "path",
-            "name": "gap_id",
-            "required": true,
-            "schema": {
-              "description": "Policy gap identifier.",
-              "title": "Gap Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PolicyGapCaseListResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Policy Gap Cases",
+        "summary": "Triage Policy Item",
         "tags": [
           "policy"
         ]

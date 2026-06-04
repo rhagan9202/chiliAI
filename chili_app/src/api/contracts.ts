@@ -19,23 +19,15 @@ export type AlertDetailResponse = RequireFields<
 >
 
 export type PolicyCitation = Schemas['PolicyCitation']
-export type PolicyGapStatus = Schemas['PolicyGapSummaryResponse']['status']
-export type PolicyTrendPointResponse = Schemas['PolicyTrendPointResponse']
-export type PolicyGapSummaryResponse = Schemas['PolicyGapSummaryResponse']
-export type PolicyGapListResponse = RequireFields<Schemas['PolicyGapListResponse'], 'items'>
-export type PolicyGapDetailResponse = RequireFields<
-  Schemas['PolicyGapDetailResponse'],
-  'policy_citations' | 'trend'
+export type PolicyItemStatus = Schemas['PolicyItemSummaryResponse']['status']
+export type PolicySeverity = Schemas['PolicyItemSummaryResponse']['severity']
+export type PolicyItemSummaryResponse = Schemas['PolicyItemSummaryResponse']
+export type PolicyItemListResponse = RequireFields<Schemas['PolicyItemListResponse'], 'items'>
+export type PolicyItemDetailResponse = RequireFields<
+  Schemas['PolicyItemDetailResponse'],
+  'matched_fields' | 'citations'
 >
-export type PolicyGapCaseListResponse = RequireFields<
-  Schemas['PolicyGapCaseListResponse'],
-  'items'
->
-export type PolicyBriefCreateRequest = Schemas['PolicyBriefCreateRequest']
-export type PolicyBriefResponse = RequireFields<
-  Schemas['PolicyBriefResponse'],
-  'policy_citations' | 'recommendations'
->
+export type PolicyTriageRequest = Schemas['PolicyTriageRequest']
 
 export type RealtimeSnapshotResponse = {
   sequence: number

@@ -1,67 +1,62 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiFetch, apiPost } from './client'
 import type {
-  PolicyBriefCreateRequest,
-  PolicyBriefResponse,
-  PolicyGapCaseListResponse,
-  PolicyGapDetailResponse,
-  PolicyGapListResponse,
+  PolicyItemDetailResponse,
+  PolicyItemListResponse,
+  PolicyTriageRequest,
 } from './contracts'
 
-export const policyGapsQueryKey = ['policy', 'gaps'] as const
-
-export function policyGapDetailQueryKey(gapId: string) {
-  return ['policy', 'gaps', gapId] as const
+const kbQuery = (kb: string, extra?: Record<string, string>) => {
+  const params = new URLSearchParams({ knowledge_base_id: kb, ...(extra ?? {}) })
+  return params.toString()
 }
 
-export function policyGapCasesQueryKey(gapId: string) {
-  return ['policy', 'gaps', gapId, 'cases'] as const
+export const policyItemsQueryKey = (kb: string | null, status?: string) =>
+  ['policy', 'items', kb, status ?? 'all'] as const
+export const policyItemQueryKey = (kb: string | null, itemId: string | null) =>
+  ['policy', 'items', kb, itemId] as const
+
+export function getPolicyItems(kb: string, status?: string): Promise<PolicyItemListResponse> {
+  const query = status ? kbQuery(kb, { status }) : kbQuery(kb)
+  return apiFetch<PolicyItemListResponse>(`/policy/items?${query}`)
 }
 
-export function getPolicyGaps(): Promise<PolicyGapListResponse> {
-  return apiFetch<PolicyGapListResponse>('/policy/gaps')
+export function getPolicyItem(kb: string, itemId: string): Promise<PolicyItemDetailResponse> {
+  return apiFetch<PolicyItemDetailResponse>(`/policy/items/${itemId}?${kbQuery(kb)}`)
 }
 
-export function getPolicyGap(gapId: string): Promise<PolicyGapDetailResponse> {
-  return apiFetch<PolicyGapDetailResponse>(`/policy/gaps/${gapId}`)
+export function triagePolicyItem(
+  kb: string, itemId: string, payload: PolicyTriageRequest,
+): Promise<PolicyItemDetailResponse> {
+  return apiPost<PolicyItemDetailResponse, PolicyTriageRequest>(
+    `/policy/items/${itemId}/triage?${kbQuery(kb)}`, payload,
+  )
 }
 
-export function getPolicyGapCases(gapId: string): Promise<PolicyGapCaseListResponse> {
-  return apiFetch<PolicyGapCaseListResponse>(`/policy/gaps/${gapId}/cases`)
-}
-
-export function createPolicyBrief(
-  payload: PolicyBriefCreateRequest,
-): Promise<PolicyBriefResponse> {
-  return apiPost<PolicyBriefResponse, PolicyBriefCreateRequest>('/policy/briefs', payload)
-}
-
-export function usePolicyGaps() {
+export function usePolicyItems(kb: string | null, status?: string) {
   return useQuery({
-    queryKey: policyGapsQueryKey,
-    queryFn: getPolicyGaps,
+    queryKey: policyItemsQueryKey(kb, status),
+    queryFn: () => getPolicyItems(kb ?? '', status),
+    enabled: Boolean(kb),
   })
 }
 
-export function usePolicyGap(gapId: string | null) {
+export function usePolicyItem(kb: string | null, itemId: string | null) {
   return useQuery({
-    queryKey: policyGapDetailQueryKey(gapId ?? 'missing'),
-    queryFn: () => getPolicyGap(gapId ?? ''),
-    enabled: Boolean(gapId),
+    queryKey: policyItemQueryKey(kb, itemId),
+    queryFn: () => getPolicyItem(kb ?? '', itemId ?? ''),
+    enabled: Boolean(kb) && Boolean(itemId),
   })
 }
 
-export function usePolicyGapCases(gapId: string | null) {
-  return useQuery({
-    queryKey: policyGapCasesQueryKey(gapId ?? 'missing'),
-    queryFn: () => getPolicyGapCases(gapId ?? ''),
-    enabled: Boolean(gapId),
-  })
-}
-
-export function useCreatePolicyBrief() {
+export function useTriagePolicyItem(kb: string | null) {
+  const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: createPolicyBrief,
+    mutationFn: (vars: { itemId: string; payload: PolicyTriageRequest }) =>
+      triagePolicyItem(kb ?? '', vars.itemId, vars.payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['policy', 'items', kb] })
+    },
   })
 }

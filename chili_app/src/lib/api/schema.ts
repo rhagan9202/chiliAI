@@ -7,6 +7,26 @@
  */
 
 export interface paths {
+    "/admin/dev-seed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dev Seed
+         * @description Seed a deterministic KB + subgraph + alert + evidence + case (dev/e2e only).
+         */
+        post: operations["dev_seed_admin_dev_seed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/alerts": {
         parameters: {
             query?: never;
@@ -727,7 +747,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/policy/briefs": {
+    "/policy/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Policy Items
+         * @description List KB-scoped policy items, optionally filtered by status.
+         */
+        get: operations["list_policy_items_policy_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/policy/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Policy Item
+         * @description Return one policy item detail payload.
+         */
+        get: operations["get_policy_item_policy_items__item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/policy/items/{item_id}/triage": {
         parameters: {
             query?: never;
             header?: never;
@@ -737,70 +797,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Create Policy Brief
-         * @description Generate a policy brief from one policy gap.
+         * Triage Policy Item
+         * @description Triage a policy item (accept/reject/defer/escalate).
          */
-        post: operations["create_policy_brief_policy_briefs_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/policy/gaps": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Policy Gaps
-         * @description Return policy gaps for supervisor and policy-intelligence views.
-         */
-        get: operations["list_policy_gaps_policy_gaps_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/policy/gaps/{gap_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Policy Gap
-         * @description Return one policy gap detail payload.
-         */
-        get: operations["get_policy_gap_policy_gaps__gap_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/policy/gaps/{gap_id}/cases": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Policy Gap Cases
-         * @description Return affected cases for one policy gap.
-         */
-        get: operations["list_policy_gap_cases_policy_gaps__gap_id__cases_get"];
-        put?: never;
-        post?: never;
+        post: operations["triage_policy_item_policy_items__item_id__triage_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1467,6 +1467,22 @@ export interface components {
             statement_timeout_ms: number;
         };
         /**
+         * DevSeedResponse
+         * @description Identifiers of the deterministic scenario seeded into the real stores.
+         */
+        DevSeedResponse: {
+            /** Alert Id */
+            alert_id: string;
+            /** Case Id */
+            case_id: string;
+            /** Entity Id */
+            entity_id: string;
+            /** Evidence Pack Id */
+            evidence_pack_id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+        };
+        /**
          * DocumentFormat
          * @description Supported source document formats.
          * @enum {string}
@@ -1574,6 +1590,8 @@ export interface components {
             llm: components["schemas"]["LlmConfig"] | null;
             /** @default null */
             monitoring: components["schemas"]["MonitoringConfig"] | null;
+            /** Policy Rules */
+            policy_rules?: components["schemas"]["PolicyRulePack"][];
             /** @default null */
             rag: components["schemas"]["RagConfig"] | null;
             /** @default null */
@@ -2185,45 +2203,6 @@ export interface components {
             total_items: number;
         };
         /**
-         * PolicyBriefCreateRequest
-         * @description Payload for generating a policy brief from a gap.
-         */
-        PolicyBriefCreateRequest: {
-            /** Audience */
-            audience: string;
-            /** Gap Id */
-            gap_id: string;
-            /** Objective */
-            objective: string;
-        };
-        /**
-         * PolicyBriefResponse
-         * @description Generated policy brief returned to the policy intelligence UI.
-         */
-        PolicyBriefResponse: {
-            /** Audience */
-            audience: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Gap Id */
-            gap_id: string;
-            /** Id */
-            id: string;
-            /** Narrative */
-            narrative: string;
-            /** Objective */
-            objective: string;
-            /** Policy Citations */
-            policy_citations?: components["schemas"]["PolicyCitation"][];
-            /** Recommendations */
-            recommendations?: string[];
-            /** Title */
-            title: string;
-        };
-        /**
          * PolicyCitation
          * @description Policy reference surfaced with evidence or alerts.
          */
@@ -2238,55 +2217,98 @@ export interface components {
             title: string;
         };
         /**
-         * PolicyGapCaseListResponse
-         * @description Case list attached to one policy gap.
+         * PolicyCitationRef
+         * @description A policy/document reference surfaced on every item a rule generates.
          */
-        PolicyGapCaseListResponse: {
-            /** Gap Id */
-            gap_id: string;
+        PolicyCitationRef: {
+            /** Citation Id */
+            citation_id: string;
+            /**
+             * Excerpt
+             * @default null
+             */
+            excerpt: string | null;
+            /** Source Ref */
+            source_ref: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * PolicyCitationResponse
+         * @description A policy/document reference attached to a matched policy item.
+         */
+        PolicyCitationResponse: {
+            /** Citation Id */
+            citation_id: string;
+            /** Excerpt */
+            excerpt?: string | null;
+            /** Source Ref */
+            source_ref: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * PolicyDispositionResponse
+         * @description The recorded triage decision for a policy item.
+         */
+        PolicyDispositionResponse: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "accept" | "reject" | "defer" | "escalate";
+            /** Actor */
+            actor: string;
+            /** Case Id */
+            case_id?: string | null;
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at: string;
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * PolicyItemDetailResponse
+         * @description Expanded policy item detail payload.
+         */
+        PolicyItemDetailResponse: {
+            /** Citations */
+            citations?: components["schemas"]["PolicyCitationResponse"][];
+            disposition?: components["schemas"]["PolicyDispositionResponse"] | null;
+            item: components["schemas"]["PolicyItemSummaryResponse"];
+            /** Matched Fields */
+            matched_fields?: {
+                [key: string]: string | number | boolean;
+            };
+        };
+        /**
+         * PolicyItemListResponse
+         * @description Collection response for KB-scoped policy items.
+         */
+        PolicyItemListResponse: {
             /** Items */
-            items?: components["schemas"]["CaseSummaryResponse"][];
-            page: components["schemas"]["PageInfo"];
+            items?: components["schemas"]["PolicyItemSummaryResponse"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
         };
         /**
-         * PolicyGapDetailResponse
-         * @description Expanded policy gap detail payload.
+         * PolicyItemSummaryResponse
+         * @description Summary row for the policy intelligence item queue.
          */
-        PolicyGapDetailResponse: {
-            gap: components["schemas"]["PolicyGapSummaryResponse"];
-            /** Impact Statement */
-            impact_statement: string;
-            /** Policy Citations */
-            policy_citations?: components["schemas"]["PolicyCitation"][];
-            /** Recommendation */
-            recommendation: string;
-            /** Summary */
-            summary: string;
-            /** Trend */
-            trend?: components["schemas"]["PolicyTrendPointResponse"][];
-        };
-        /**
-         * PolicyGapListResponse
-         * @description Collection response for policy intelligence gaps.
-         */
-        PolicyGapListResponse: {
-            /** Items */
-            items?: components["schemas"]["PolicyGapSummaryResponse"][];
-            page: components["schemas"]["PageInfo"];
-        };
-        /**
-         * PolicyGapSummaryResponse
-         * @description Summary row for the policy intelligence gap queue.
-         */
-        PolicyGapSummaryResponse: {
-            /** Affected Case Count */
-            affected_case_count: number;
+        PolicyItemSummaryResponse: {
             /** Id */
             id: string;
-            /** Impacted Entities */
-            impacted_entities: number;
             /** Knowledge Base Id */
             knowledge_base_id: string;
+            /** Rule Id */
+            rule_id: string;
+            /** Rule Pack Id */
+            rule_pack_id: string;
             /**
              * Severity
              * @enum {string}
@@ -2296,7 +2318,14 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "monitoring" | "drafting" | "recommended";
+            status: "open" | "accepted" | "rejected" | "deferred" | "escalated";
+            /**
+             * Target Kind
+             * @enum {string}
+             */
+            target_kind: "entity" | "alert" | "metric";
+            /** Target Ref */
+            target_ref: string;
             /** Title */
             title: string;
             /**
@@ -2306,14 +2335,96 @@ export interface components {
             updated_at: string;
         };
         /**
-         * PolicyTrendPointResponse
-         * @description One point in a policy gap trend series.
+         * PolicyPredicate
+         * @description A single bounded comparison evaluated against a target's field.
          */
-        PolicyTrendPointResponse: {
-            /** Label */
-            label: string;
-            /** Value */
-            value: number;
+        PolicyPredicate: {
+            /** Field */
+            field: string;
+            /**
+             * Op
+             * @enum {string}
+             */
+            op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "not_in";
+            value: components["schemas"]["PolicyPredicateValue"];
+        };
+        /**
+         * PolicyPredicateValue
+         * @description A predicate's right-hand value: exactly one of an inline literal or a
+         *     ``config_ref`` resolving against the owning pack's ``thresholds`` map.
+         */
+        PolicyPredicateValue: {
+            /**
+             * Config Ref
+             * @default null
+             */
+            config_ref: string | null;
+            /**
+             * Literal
+             * @default null
+             */
+            literal: string | number | boolean | string[] | null;
+        };
+        /**
+         * PolicyRule
+         * @description A single rule: select targets, test one predicate, emit an item per hit.
+         */
+        PolicyRule: {
+            /** Citations */
+            citations?: components["schemas"]["PolicyCitationRef"][];
+            /** Id */
+            id: string;
+            predicate: components["schemas"]["PolicyPredicate"];
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "medium" | "high" | "critical";
+            /**
+             * Target Kind
+             * @enum {string}
+             */
+            target_kind: "entity" | "alert" | "metric";
+            /** Target Selector */
+            target_selector?: {
+                [key: string]: string;
+            };
+            /** Title Template */
+            title_template: string;
+        };
+        /**
+         * PolicyRulePack
+         * @description A named bundle of rules with shared, config-referenceable thresholds.
+         */
+        PolicyRulePack: {
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Rules */
+            rules?: components["schemas"]["PolicyRule"][];
+            /** Thresholds */
+            thresholds?: {
+                [key: string]: string | number | boolean;
+            };
+        };
+        /**
+         * PolicyTriageRequest
+         * @description Payload for triaging a policy item (accept/reject/defer/escalate).
+         */
+        PolicyTriageRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "accept" | "reject" | "defer" | "escalate";
+            /** Note */
+            note?: string | null;
         };
         /**
          * PropertyDefinition
@@ -2844,6 +2955,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    dev_seed_admin_dev_seed_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevSeedResponse"];
+                };
+            };
+        };
+    };
     list_alerts_alerts_get: {
         parameters: {
             query?: never;
@@ -4080,16 +4211,87 @@ export interface operations {
             };
         };
     };
-    create_policy_brief_policy_briefs_post: {
+    list_policy_items_policy_items_get: {
         parameters: {
-            query?: never;
+            query: {
+                knowledge_base_id: string;
+                status?: string | null;
+                limit?: number;
+                offset?: number;
+            };
             header?: never;
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyItemListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_policy_item_policy_items__item_id__get: {
+        parameters: {
+            query: {
+                knowledge_base_id: string;
+            };
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyItemDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    triage_policy_item_policy_items__item_id__triage_post: {
+        parameters: {
+            query: {
+                knowledge_base_id: string;
+            };
+            header?: never;
+            path: {
+                item_id: string;
+            };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PolicyBriefCreateRequest"];
+                "application/json": components["schemas"]["PolicyTriageRequest"];
             };
         };
         responses: {
@@ -4099,91 +4301,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PolicyBriefResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_policy_gaps_policy_gaps_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PolicyGapListResponse"];
-                };
-            };
-        };
-    };
-    get_policy_gap_policy_gaps__gap_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Policy gap identifier. */
-                gap_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PolicyGapDetailResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_policy_gap_cases_policy_gaps__gap_id__cases_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Policy gap identifier. */
-                gap_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PolicyGapCaseListResponse"];
+                    "application/json": components["schemas"]["PolicyItemDetailResponse"];
                 };
             };
             /** @description Validation Error */
