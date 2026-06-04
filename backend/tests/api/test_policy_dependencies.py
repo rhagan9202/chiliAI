@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from api.contracts import PolicyTriageRequest
 from api.dependencies import _apply_policy_triage
 from cases.adapters.in_memory import InMemoryCaseRepository
@@ -55,3 +57,20 @@ def test_accept_does_not_create_a_case() -> None:
     )
     assert detail.item.status == "accepted"
     assert cases.list(knowledge_base_id="kb-1", limit=10, offset=0)[1] == 0
+
+
+def test_escalate_on_already_triaged_item_creates_no_case() -> None:
+    # Orphan-prevention: a 409 on triage must not leave a committed case behind.
+    from fastapi import HTTPException
+
+    policy, cases, item = _wire()
+    policy.triage(knowledge_base_id="kb-1", item_id=item.id, action="accept", actor="ana")
+    before = cases.list(knowledge_base_id="kb-1", limit=10, offset=0)[1]
+    with pytest.raises(HTTPException) as exc_info:
+        _apply_policy_triage(
+            policy_service=policy, case_service=cases, knowledge_base_id="kb-1",
+            item_id=item.id, payload=PolicyTriageRequest(action="escalate"), actor="ana",
+        )
+    assert exc_info.value.status_code == 409
+    after = cases.list(knowledge_base_id="kb-1", limit=10, offset=0)[1]
+    assert after == before  # no orphaned case was created

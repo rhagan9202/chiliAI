@@ -422,6 +422,21 @@ class PolicyRulePack(BaseModel):
     )
     rules: list[PolicyRule] = Field(default_factory=lambda: cast(list[PolicyRule], []))
 
+    @model_validator(mode="after")
+    def _validate_config_refs(self) -> PolicyRulePack:
+        # Fail fast at config load if a predicate references a threshold key
+        # that the pack does not declare — otherwise the worker would silently
+        # raise KeyError at evaluation time and produce an empty queue.
+        for rule in self.rules:
+            ref = rule.predicate.value.config_ref
+            if ref is not None and ref not in self.thresholds:
+                raise ValueError(
+                    f"Policy rule '{rule.id}' references unknown threshold "
+                    f"'{ref}' in pack '{self.id}'. Declared thresholds: "
+                    f"{sorted(self.thresholds)}."
+                )
+        return self
+
 
 # ---------------------------------------------------------------------------
 # Top-level config

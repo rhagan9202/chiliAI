@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from policy.adapters.protocols import PolicyItemRepository
-from policy.exceptions import PolicyItemAlreadyTriagedError, PolicyItemNotFoundError
+from policy.exceptions import (
+    PolicyError,
+    PolicyItemAlreadyTriagedError,
+    PolicyItemNotFoundError,
+)
 from policy.models import (
     ACTION_TO_STATUS,
     MatchedValue,
@@ -97,6 +101,28 @@ class PolicyService:
                 "disposition": disposition,
                 "updated_at": disposition.decided_at,
             }
+        )
+        return self._repository.update(updated)
+
+    def link_case(
+        self, *, knowledge_base_id: str, item_id: str, case_id: str
+    ) -> PolicyItem:
+        """Attach a created case to an already-triaged item's disposition.
+
+        Called after an escalate triage has committed, so the case is only ever
+        created once the item is durably escalated (prevents orphaned cases)."""
+        existing = self._repository.get(
+            knowledge_base_id=knowledge_base_id, item_id=item_id
+        )
+        if existing is None:
+            raise PolicyItemNotFoundError(knowledge_base_id, item_id)
+        if existing.disposition is None:
+            raise PolicyError(
+                f"Policy item '{item_id}' has no disposition to link a case to."
+            )
+        disposition = existing.disposition.model_copy(update={"case_id": case_id})
+        updated = existing.model_copy(
+            update={"disposition": disposition, "updated_at": utc_now()}
         )
         return self._repository.update(updated)
 

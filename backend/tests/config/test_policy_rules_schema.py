@@ -41,3 +41,26 @@ def test_rule_pack_round_trips() -> None:
     )
     assert pack.rules[0].predicate.op == "gt"
     assert pack.thresholds["amt_threshold"] == 1000.0
+
+
+def test_rule_pack_rejects_unknown_config_ref() -> None:
+    with pytest.raises(ValueError):
+        PolicyRulePack(
+            id="billing",
+            name="Billing",
+            thresholds={"present": 1.0},
+            rules=[
+                PolicyRule(
+                    id="r",
+                    title_template="t {target_ref}",
+                    severity="high",
+                    target_kind="entity",
+                    target_selector={"entity_type": "claim"},
+                    predicate=PolicyPredicate(
+                        field="properties.amount",
+                        op="gt",
+                        value=PolicyPredicateValue(config_ref="missing"),
+                    ),
+                )
+            ],
+        )

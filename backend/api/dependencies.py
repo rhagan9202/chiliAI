@@ -555,27 +555,9 @@ def _apply_policy_triage(
     payload: PolicyTriageRequest,
     actor: str,
 ) -> PolicyItemDetailResponse:
-    existing = policy_service.get(knowledge_base_id=knowledge_base_id, item_id=item_id)
-    if existing is None:
-        raise HTTPException(status_code=404, detail="Policy item not found.")
-    case_id: str | None = None
-    if payload.action == "escalate":
-        case = case_service.create(
-            knowledge_base_id=knowledge_base_id,
-            title=f"Policy escalation: {existing.title}",
-            priority=_POLICY_SEVERITY_TO_PRIORITY.get(existing.severity, "medium"),
-            timeline=[
-                CaseTimelineEvent(
-                    occurred_at=utc_now(),
-                    label=f"Escalated from policy rule {existing.rule_id}",
-                    detail=(
-                        f"target={existing.target_ref}; "
-                        f"matched={existing.matched_fields}"
-                    ),
-                )
-            ],
-        )
-        case_id = case.id
+    # Triage first so the item's open-check + disposition commit atomically.
+    # Only after that succeeds do we create the case for escalate, so a 404/409
+    # (concurrent delete or double-triage) can never leave an orphaned case.
     try:
         updated = policy_service.triage(
             knowledge_base_id=knowledge_base_id,
@@ -583,12 +565,30 @@ def _apply_policy_triage(
             action=payload.action,
             actor=actor,
             note=payload.note,
-            case_id=case_id,
         )
     except PolicyItemNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PolicyItemAlreadyTriagedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    if payload.action == "escalate":
+        case = case_service.create(
+            knowledge_base_id=knowledge_base_id,
+            title=f"Policy escalation: {updated.title}",
+            priority=_POLICY_SEVERITY_TO_PRIORITY.get(updated.severity, "medium"),
+            timeline=[
+                CaseTimelineEvent(
+                    occurred_at=utc_now(),
+                    label=f"Escalated from policy rule {updated.rule_id}",
+                    detail=(
+                        f"target={updated.target_ref}; matched={updated.matched_fields}"
+                    ),
+                )
+            ],
+        )
+        updated = policy_service.link_case(
+            knowledge_base_id=knowledge_base_id, item_id=item_id, case_id=case.id
+        )
     return _policy_item_to_detail(updated)
 
 
