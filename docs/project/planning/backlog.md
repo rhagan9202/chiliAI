@@ -178,26 +178,26 @@ A code-level audit of every non-done BL story was run on 2026-06-04 (statuses we
 ### BL-012 — Replace seeded ApiState with real services across remaining endpoints
 - **REQ**: REQ-RAG-002, REQ-ALERT-001, REQ-WORKFLOW-002
 - **Module source**: [docs/backlog/api.md](../../backlog/api.md) (multiple stories)
-- **Status**: todo
+- **Status**: done (Sprint 2026-25 — all six `_seed_*` removed; durable conversations module + migration 0005; analytics/graph-entity rewired; regression test enforces no `_seed_*` outside tests)
 - **Estimate**: 5 SP
 - **Acceptance**: ApiState seeded data fully removed from non-test code paths; replaced with durable repositories.
 
 ### BL-013 — Ingestion Studio UI/UX (file upload progress, retry)
 - **REQ**: REQ-KB-002, REQ-KB-004
 - **Plan**: [docs/superpowers/plans/2026-05-17-ingestion-studio-ui-ux-implementation.md](../../superpowers/plans/)
-- **Status**: in-progress — **~95% done** (verified 2026-06-04; full studio shipped + 89 tests). Remaining ≈ 3 SP: file-upload progress/retry + Playwright e2e. Scheduled Sprint 2026-25.
+- **Status**: in-progress — **~95% done** (verified 2026-06-04; full studio shipped + 89 tests). **done (Sprint 2026-25)** — XHR upload progress + retry, receipt counts, ingestion-records e2e.
 - **Estimate**: 8 SP (nominal) — **~3 SP remaining**
 
 ### BL-014 — Ingestion pipeline E2E demo (TN Medicare subset)
 - **REQ**: REQ-KB-003, REQ-REC-001..004, REQ-RAG-002
 - **Plan**: [docs/superpowers/plans/2026-05-22-ingestion-pipeline-e2e-demo.md](../../superpowers/plans/)
-- **Status**: in-progress — **~95% done** (verified 2026-06-04; provenance, cascade delete, TN-subset tool + `make demo-tn-subset`, Ollama+fallback, LLM extractor, 6 e2e variants). Remaining ≈ 2 SP: synthetic policy corpus. Scheduled Sprint 2026-25.
+- **Status**: in-progress — **~95% done** (verified 2026-06-04; provenance, cascade delete, TN-subset tool + `make demo-tn-subset`, Ollama+fallback, LLM extractor, 6 e2e variants). **done (Sprint 2026-25)** — 17-doc synthetic policy corpus + policy/procedure_code/regulation_section config entities + demo/e2e wiring.
 - **Estimate**: 13 SP (nominal) — **~2 SP remaining**
 
 ### BL-015 — Records submission-level dedup + format enforcement
 - **REQ**: REQ-REC-001, REQ-REC-003
 - **Module source**: [docs/backlog/records.md](../../backlog/records.md) stories records.01, records.02
-- **Status**: partial (verified 2026-06-04 — per-row hash + validation + DB record-ID dedup done). Remaining = submission idempotency + format-rejection. Scheduled Sprint 2026-25.
+- **Status**: partial (verified 2026-06-04 — per-row hash + validation + DB record-ID dedup done). **done (Sprint 2026-25)** — submission-hash dedup (migration 0004) + per-row format-rejection + typed receipt + accepted_formats 415 gate.
 - **Estimate**: 5 SP (nominal) — **~3 SP remaining**
 
 ### BL-016 — Configuration save endpoint + wizard
