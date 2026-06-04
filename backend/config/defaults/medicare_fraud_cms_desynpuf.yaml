@@ -414,6 +414,66 @@ records:
             enumeration_date: "Provider Enumeration Date"
             deactivation_date: "NPI Deactivation Date"
 
+# ---------------------------------------------------------------------------
+# Policy Intelligence rule packs (BL-011).
+#
+# The worker evaluates these against ingested data and generates durable,
+# KB-scoped policy items. These are demo-tuned so a plain `make dev` + ingest
+# of the TN DE-SynPUF subset produces live items without any code or
+# CHILI_CONFIG_PATH change. See docs/adding_rulesets.md for how this works and
+# how to author your own packs.
+# ---------------------------------------------------------------------------
+policy_rules:
+  # Entity-target rule: flags individual claims whose Medicare payment amount
+  # is high enough to warrant analyst review. `properties.amount` is the claim
+  # entity's payment-amount property (mapped from LINE_NCH_PMT_AMT_1 /
+  # CLM_PMT_AMT / TOT_RX_CST_AMT across the claim feeds). The threshold is set
+  # low for the demo; raise `min_elevated_amount` for production screening.
+  - id: elevated_payment_claims
+    name: "Elevated payment claims"
+    description: "Claims whose Medicare payment exceeds the analyst-review threshold."
+    thresholds:
+      min_elevated_amount: 500
+    rules:
+      - id: claim_elevated_payment
+        title_template: "Claim {target_ref} payment exceeds the elevated-review threshold"
+        severity: high
+        target_kind: entity
+        target_selector:
+          entity_type: claim
+        predicate:
+          field: properties.amount
+          op: gt
+          value:
+            config_ref: min_elevated_amount
+        citations:
+          - citation_id: cms-pim-ch3
+            title: "CMS Program Integrity Manual, Ch. 3 — claims review"
+            source_ref: "policy://cms/pim/chapter-3"
+            excerpt: "High-dollar claims are prioritized for medical-review screening."
+
+  # Metric-target rule: surfaces one review item per KB once the graph grows
+  # past a watch line, demonstrating the `metric` target kind. `entity_count`
+  # is supplied by the worker from graph metrics. Reliably fires after the TN
+  # subset is ingested (which lands well over 50 entities).
+  - id: graph_scale_watch
+    name: "Graph growth watch"
+    description: "Surfaces a periodic integrity-sweep item once a KB accumulates many entities."
+    thresholds:
+      max_entities: 50
+    rules:
+      - id: kb_entity_volume
+        title_template: "Knowledge base {target_ref} crossed the entity-volume watch line"
+        severity: medium
+        target_kind: metric
+        target_selector:
+          metric_name: entity_count
+        predicate:
+          field: metric.entity_count
+          op: gt
+          value:
+            config_ref: max_entities
+
 graph:
   backend: neo4j
   uri: bolt://neo4j:7687

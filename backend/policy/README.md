@@ -2,6 +2,8 @@
 
 Durable, KB-scoped **policy intelligence** (BL-011). Rule packs defined in the domain configuration are evaluated against KB state; each match produces a persisted `PolicyItem` that analysts triage (accept / reject / defer / escalate-to-case). This module replaces the old seeded "policy gap" surface (`/policy/gaps`, `_seed_policy_gaps`, `PolicyGap*` / `PolicyBrief*` contracts), which have been removed.
 
+> **Authoring rule packs:** see [`docs/adding_rulesets.md`](../../docs/adding_rulesets.md) — how the worker-vs-dev-seed paths differ, the `PolicyRulePack` schema, and a worked example (the demo packs shipped in `medicare_fraud_cms_desynpuf.yaml`).
+
 ## Layout
 
 | File | Responsibility |
