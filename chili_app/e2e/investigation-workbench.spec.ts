@@ -11,7 +11,10 @@ test.describe('Investigation workbench', () => {
     const { knowledge_base_id: kb, entity_id: entity } = seeded()
     await page.goto(`/investigation/${entity}?kb=${kb}`)
 
-    await expect(page.getByRole('heading', { name: 'Investigation Workbench' })).toBeVisible()
+    // Once the seeded entity loads, the section heading shows the entity's
+    // title (not the literal "Investigation Workbench"), so assert the stable
+    // eyebrow plus the graph canvas — the actual subject of this test (BL-003).
+    await expect(page.getByText('Entity workbench')).toBeVisible()
     await expect(page.getByTestId('investigation-graph-canvas')).toBeVisible()
   })
 })
