@@ -26,7 +26,7 @@ out of logs, and out of any structured ``model_dump()`` output.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -358,6 +358,72 @@ class RecordsConfig(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Policy rule-pack models
+# ---------------------------------------------------------------------------
+
+
+class PolicyPredicateValue(BaseModel):
+    """A predicate's right-hand value: exactly one of an inline literal or a
+    ``config_ref`` resolving against the owning pack's ``thresholds`` map."""
+
+    literal: str | float | int | bool | list[str] | None = None
+    config_ref: str | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_source(self) -> PolicyPredicateValue:
+        has_literal = self.literal is not None
+        has_ref = self.config_ref is not None
+        if has_literal == has_ref:
+            raise ValueError(
+                "PolicyPredicateValue requires exactly one of 'literal' or 'config_ref'."
+            )
+        return self
+
+
+class PolicyPredicate(BaseModel):
+    """A single bounded comparison evaluated against a target's field."""
+
+    field: str  # "properties.<name>" | "risk_score" | "metric.<name>"
+    op: Literal["eq", "neq", "gt", "gte", "lt", "lte", "in", "not_in"]
+    value: PolicyPredicateValue
+
+
+class PolicyCitationRef(BaseModel):
+    """A policy/document reference surfaced on every item a rule generates."""
+
+    citation_id: str
+    title: str
+    source_ref: str
+    excerpt: str | None = None
+
+
+class PolicyRule(BaseModel):
+    """A single rule: select targets, test one predicate, emit an item per hit."""
+
+    id: str
+    title_template: str
+    severity: Literal["medium", "high", "critical"]
+    target_kind: Literal["entity", "alert", "metric"]
+    target_selector: dict[str, str] = Field(default_factory=lambda: cast(dict[str, str], {}))
+    predicate: PolicyPredicate
+    citations: list[PolicyCitationRef] = Field(
+        default_factory=lambda: cast(list[PolicyCitationRef], [])
+    )
+
+
+class PolicyRulePack(BaseModel):
+    """A named bundle of rules with shared, config-referenceable thresholds."""
+
+    id: str
+    name: str
+    description: str | None = None
+    thresholds: dict[str, str | float | int | bool] = Field(
+        default_factory=lambda: cast(dict[str, str | float | int | bool], {})
+    )
+    rules: list[PolicyRule] = Field(default_factory=lambda: cast(list[PolicyRule], []))
+
+
+# ---------------------------------------------------------------------------
 # Top-level config
 # ---------------------------------------------------------------------------
 
@@ -388,6 +454,9 @@ class DomainConfig(BaseModel):
     validation: ValidationConfig | None = None
     records: RecordsConfig | None = None
     analytics: AnalyticsConfig | None = None
+    policy_rules: list[PolicyRulePack] = Field(
+        default_factory=lambda: cast(list[PolicyRulePack], [])
+    )
     alerts: AlertsConfig
     ui: UiConfig | None = None
     default_reference_kb_id: str | None = Field(
@@ -564,6 +633,11 @@ __all__ = [
     "LlmConfig",
     "MonitoringConfig",
     "ObjectStoreConfig",
+    "PolicyCitationRef",
+    "PolicyPredicate",
+    "PolicyPredicateValue",
+    "PolicyRule",
+    "PolicyRulePack",
     "RagConfig",
     "RecordEntityMapping",
     "RecordFeedConfig",
