@@ -89,3 +89,17 @@ def test_promote_maps_unknown_severity_to_medium() -> None:
     case = service.promote_from_alert(knowledge_base_id="kb-1", alert=_alert(severity="weird"))
 
     assert case.priority == "medium"
+
+
+def test_create_accepts_optional_timeline() -> None:
+    from shared.utils import utc_now
+
+    service = create_case_service(InMemoryCaseRepository())
+    event = CaseTimelineEvent(occurred_at=utc_now(), label="Policy escalation", detail="rule x")
+    case = service.create(
+        knowledge_base_id="kb-1",
+        title="Policy escalation: t",
+        priority="high",
+        timeline=[event],
+    )
+    assert case.timeline == [event]

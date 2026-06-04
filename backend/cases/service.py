@@ -32,6 +32,7 @@ class CaseService:
         priority: CasePriority,
         assignee: str | None = None,
         alert_ids: list[str] | None = None,
+        timeline: list[CaseTimelineEvent] | None = None,
     ) -> Case:
         case = Case(
             id=generate_id(),
@@ -41,6 +42,7 @@ class CaseService:
             priority=priority,
             assignee=assignee,
             alert_ids=list(alert_ids or []),
+            timeline=list(timeline or []),
         )
         return self._repository.create(case)
 
