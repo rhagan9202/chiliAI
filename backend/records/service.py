@@ -90,12 +90,15 @@ class RecordsService:
                 rejected=rejected,
             )
 
+        accepted = self._store.persist(raw_records)
+        # Record the submission hash only after a successful persist, so a
+        # persist failure does not poison the dedup set (a client retry must
+        # not be falsely treated as a duplicate no-op).
         self._store.record_submission(
             knowledge_base_id=knowledge_base_id,
             submission_hash=submission_hash,
             correlation_id=correlation_id,
         )
-        accepted = self._store.persist(raw_records)
         if accepted > 0:
             self._event_bus.publish(
                 RecordsIngestedEvent(
