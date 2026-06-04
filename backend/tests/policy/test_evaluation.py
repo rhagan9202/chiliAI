@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from config.schema import (
     PolicyCitationRef,
     PolicyPredicate,
@@ -105,4 +107,144 @@ def test_no_match_when_field_absent() -> None:
     state = PolicyEvalState(
         entities=[Entity(id="claim-3", type="claim", properties={})], alerts=[], metrics={}
     )
+    assert evaluate([pack], state) == []
+
+
+def _entity_rule(*, op: str, value: PolicyPredicateValue, field: str = "properties.amount") -> PolicyRulePack:
+    return PolicyRulePack(
+        id="pack",
+        name="pack",
+        thresholds={},
+        rules=[
+            PolicyRule(
+                id="r",
+                title_template="Claim {target_ref}",
+                severity="medium",
+                target_kind="entity",
+                target_selector={"entity_type": "claim"},
+                predicate=PolicyPredicate(field=field, op=op, value=value),  # type: ignore[arg-type]
+            )
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    ("op", "literal", "amount", "expect_match"),
+    [
+        ("eq", 100.0, 100.0, True),
+        ("eq", 100.0, 101.0, False),
+        ("neq", 100.0, 101.0, True),
+        ("neq", 100.0, 100.0, False),
+        ("gt", 100.0, 150.0, True),
+        ("gt", 100.0, 100.0, False),
+        ("gte", 100.0, 100.0, True),
+        ("gte", 100.0, 99.0, False),
+        ("lt", 100.0, 99.0, True),
+        ("lt", 100.0, 100.0, False),
+        ("lte", 100.0, 100.0, True),
+        ("lte", 100.0, 101.0, False),
+    ],
+)
+def test_numeric_and_equality_operators(
+    op: str, literal: float, amount: float, expect_match: bool
+) -> None:
+    pack = _entity_rule(op=op, value=PolicyPredicateValue(literal=literal))
+    state = PolicyEvalState(entities=[_claim("claim-1", amount)], alerts=[], metrics={})
+    matches = evaluate([pack], state)
+    assert bool(matches) is expect_match
+
+
+def test_not_in_operator() -> None:
+    pack = _entity_rule(
+        op="not_in", value=PolicyPredicateValue(literal=["FL", "TX"]), field="properties.state"
+    )
+    state = PolicyEvalState(
+        entities=[
+            Entity(id="claim-1", type="claim", properties={"state": "CA"}),
+            Entity(id="claim-2", type="claim", properties={"state": "FL"}),
+        ],
+        alerts=[],
+        metrics={},
+    )
+    assert [m.target_ref for m in evaluate([pack], state)] == ["claim-1"]
+
+
+def test_numeric_operator_with_non_numeric_value_does_not_match() -> None:
+    # left side is a non-numeric string -> _as_float returns None -> no match.
+    pack = _entity_rule(op="gt", value=PolicyPredicateValue(literal=100.0), field="properties.note")
+    state = PolicyEvalState(
+        entities=[Entity(id="claim-1", type="claim", properties={"note": "n/a"})],
+        alerts=[],
+        metrics={},
+    )
+    assert evaluate([pack], state) == []
+
+
+def test_numeric_operator_coerces_string_amount() -> None:
+    pack = _entity_rule(op="gt", value=PolicyPredicateValue(literal=100.0))
+    state = PolicyEvalState(
+        entities=[Entity(id="claim-1", type="claim", properties={"amount": "150"})],
+        alerts=[],
+        metrics={},
+    )
+    assert len(evaluate([pack], state)) == 1
+
+
+def test_risk_score_field_resolution() -> None:
+    pack = _entity_rule(op="gte", value=PolicyPredicateValue(literal=0.8), field="risk_score")
+    state = PolicyEvalState(
+        entities=[Entity(id="claim-1", type="claim", properties={"risk_score": 0.9})],
+        alerts=[],
+        metrics={},
+    )
+    assert len(evaluate([pack], state)) == 1
+
+
+def test_unknown_entity_field_yields_no_match() -> None:
+    pack = _entity_rule(op="gt", value=PolicyPredicateValue(literal=1.0), field="nope")
+    state = PolicyEvalState(entities=[_claim("claim-1", 9.0)], alerts=[], metrics={})
+    assert evaluate([pack], state) == []
+
+
+def test_alert_target_is_not_evaluated_in_v1() -> None:
+    pack = PolicyRulePack(
+        id="pack",
+        name="pack",
+        thresholds={},
+        rules=[
+            PolicyRule(
+                id="r",
+                title_template="t",
+                severity="high",
+                target_kind="alert",
+                target_selector={},
+                predicate=PolicyPredicate(
+                    field="risk_score", op="gt", value=PolicyPredicateValue(literal=0.1)
+                ),
+            )
+        ],
+    )
+    state = PolicyEvalState(entities=[], alerts=[], metrics={})
+    assert evaluate([pack], state) == []
+
+
+def test_metric_target_absent_metric_yields_no_match() -> None:
+    pack = PolicyRulePack(
+        id="pack",
+        name="pack",
+        thresholds={},
+        rules=[
+            PolicyRule(
+                id="r",
+                title_template="{target_ref}",
+                severity="medium",
+                target_kind="metric",
+                target_selector={"metric_name": "missing"},
+                predicate=PolicyPredicate(
+                    field="metric.missing", op="gt", value=PolicyPredicateValue(literal=1.0)
+                ),
+            )
+        ],
+    )
+    state = PolicyEvalState(entities=[], alerts=[], metrics={"entity_count": 5.0})
     assert evaluate([pack], state) == []
