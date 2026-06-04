@@ -49,6 +49,48 @@ entities:
     properties:
       facility_id: { type: string, display: "Facility ID", required: true }
 
+  # ------------------------------------------------------------------
+  # Document-side entity types (BL-014).
+  #
+  # These are extracted from the synthetic policy corpus by the document
+  # ingestion path (LlmDocumentExtractor). The extractor derives its
+  # extraction schema from these definitions, so they must be declared
+  # for the new types to be recovered. `provider` is shared with the
+  # records side, so policy->applies_to->provider joins the two graphs.
+  # ------------------------------------------------------------------
+  - name: policy
+    display_label: "Policy"
+    icon: shield
+    natural_key: [policy_id]
+    properties:
+      policy_id: { type: string, display: "Policy ID", required: true }
+      title: { type: string, display: "Title" }
+      effective_date: { type: date, display: "Effective Date" }
+      specialty: { type: string, display: "Specialty" }
+
+  - name: procedure_code
+    display_label: "Procedure Code"
+    icon: tag
+    natural_key: [code]
+    properties:
+      code: { type: string, display: "CPT/HCPCS Code", required: true }
+      description: { type: string, display: "Description" }
+
+  - name: regulation_section
+    display_label: "Regulation Section"
+    icon: book
+    natural_key: [citation]
+    properties:
+      citation: { type: string, display: "Citation", required: true }
+      title: { type: string, display: "Title" }
+
+  - name: provider_specialty
+    display_label: "Provider Specialty"
+    icon: badge
+    natural_key: [name]
+    properties:
+      name: { type: string, display: "Specialty Name", required: true }
+
 relationships:
   - name: submitted_by
     display_label: "Submitted By"
@@ -69,6 +111,27 @@ relationships:
     display_label: "Referred By"
     source: provider
     target: provider
+
+  # Document-side relationships (BL-014). Extracted from the policy corpus.
+  - name: governs
+    display_label: "Governs"
+    source: policy
+    target: procedure_code
+
+  - name: cites
+    display_label: "Cites"
+    source: policy
+    target: regulation_section
+
+  - name: applies_to
+    display_label: "Applies To"
+    source: policy
+    target: provider
+
+  - name: supersedes
+    display_label: "Supersedes"
+    source: policy
+    target: policy
 
 capabilities:
   timeseries: true
@@ -594,6 +657,17 @@ ui:
       subtitle: service_date
     facility:
       title: facility_id
+    policy:
+      title: policy_id
+      subtitle: title
+    procedure_code:
+      title: code
+      subtitle: description
+    regulation_section:
+      title: citation
+      subtitle: title
+    provider_specialty:
+      title: name
   roles:
     analyst:
       landing_page: alerts
