@@ -34,9 +34,22 @@ from api.contracts import (
     PolicyTriageRequest,
     RiskScoreResponse,
 )
+from api._analytics_overview import build_analytics_overview
+from api._graph_entity_payload import build_graph_entity_detail
+from api._conversation_payloads import (
+    build_assistant_message,
+    build_user_message,
+    project_conversation,
+)
 from cases.adapters.in_memory import InMemoryCaseRepository
 from cases.adapters.postgres import PostgresCaseRepository
 from cases.adapters.protocols import CaseRepository
+from conversations.adapters.in_memory import InMemoryConversationRepository
+from conversations.adapters.postgres import PostgresConversationRepository
+from conversations.adapters.protocols import ConversationRepository
+from conversations.service import ConversationService, create_conversation_service
+from rag.service_models import RagQueryRequest
+from shared.kb_scope import resolve_kb_scope
 from cases.exceptions import CaseNotFoundError
 from cases.models import Case, CasePriority, CaseTimelineEvent
 from cases.service import CaseService, create_case_service
@@ -148,6 +161,8 @@ __all__ = [
     "get_chat_conversation_create_payload",
     "get_chat_conversation_payload",
     "get_chat_message_payload",
+    "get_conversation_repository",
+    "get_conversation_service",
     "get_embedder",
     "get_embeddings_service",
     "get_domain_config",
@@ -214,14 +229,6 @@ def get_api_state(request: Request) -> ApiState:
         state = create_api_state(get_domain_config())
         request.app.state.api_state = state
     return state
-
-
-def get_graph_entity_detail_payload(
-    entity_id: str = Path(..., description="Entity identifier."),
-    state: ApiState = Depends(get_api_state),
-) -> GraphEntityDetailResponse:
-    """Return one deterministic graph entity read model."""
-    return state.get_graph_entity_detail(entity_id)
 
 
 def get_evidence_pack_repository(request: Request) -> EvidencePackRepository:
@@ -457,30 +464,87 @@ def get_case_feedback_payload(
     )
 
 
+def get_conversation_repository(request: Request) -> ConversationRepository:
+    """Return the per-app durable conversation repository selected by config (BL-012).
+
+    Postgres when a connection provider is configured, otherwise a per-app
+    in-memory repository (so each app instance is isolated).
+    """
+    repository = getattr(request.app.state, "conversation_repository", None)
+    if isinstance(repository, ConversationRepository):
+        return repository
+
+    provider = get_connection_provider()
+    repository = (
+        InMemoryConversationRepository()
+        if provider is None
+        else PostgresConversationRepository(provider)
+    )
+    request.app.state.conversation_repository = repository
+    return repository
+
+
+def get_conversation_service(
+    repository: ConversationRepository = Depends(get_conversation_repository),
+) -> ConversationService:
+    """Return the conversation service over the configured repository."""
+    return create_conversation_service(repository)
+
+
 def get_chat_conversation_payload(
     conversation_id: str = Path(..., description="Conversation identifier."),
-    state: ApiState = Depends(get_api_state),
+    service: ConversationService = Depends(get_conversation_service),
 ) -> ChatConversationResponse:
-    """Return a deterministic chat conversation read model."""
-    return state.get_conversation(conversation_id)
+    """Return a chat conversation read model from the durable repository."""
+    conversation = service.get(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    return project_conversation(conversation)
 
 
 def get_chat_conversation_create_payload(
     payload: ChatConversationCreateRequest,
-    state: ApiState = Depends(get_api_state),
+    service: ConversationService = Depends(get_conversation_service),
 ) -> ChatConversationResponse:
-    """Create and return a new conversation."""
-    return state.create_conversation(payload)
+    """Create and return a new durable conversation."""
+    conversation = service.create(
+        knowledge_base_id=payload.knowledge_base_id, title=payload.title
+    )
+    return project_conversation(conversation)
 
 
 def get_chat_message_payload(
     payload: ChatMessageCreateRequest,
     conversation_id: str = Path(..., description="Conversation identifier."),
     state: ApiState = Depends(get_api_state),
+    service: ConversationService = Depends(get_conversation_service),
+    config: DomainConfig | None = None,
 ) -> ChatConversationResponse:
-    """Append a message and return the updated conversation."""
-    kb_repository = get_knowledge_base_repository()
-    return state.add_message(conversation_id, payload, kb_repository=kb_repository)
+    """Append a user message + generated assistant reply to a durable conversation."""
+    resolved_config = config if config is not None else get_domain_config()
+    conversation = service.get(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+
+    kb_ids = resolve_kb_scope(
+        conversation.knowledge_base_id, resolved_config, get_knowledge_base_repository()
+    )
+    rag_response = state.rag_service.answer(
+        RagQueryRequest(
+            knowledge_base_ids=kb_ids,
+            question=payload.content,
+            include_graph_context=payload.include_graph_context,
+            filters=payload.filters,
+        )
+    )
+    updated = service.append_messages(
+        conversation_id,
+        [
+            build_user_message(payload.content),
+            build_assistant_message(rag_response),
+        ],
+    )
+    return project_conversation(updated)
 
 
 def get_policy_repository(request: Request) -> PolicyItemRepository:
@@ -638,11 +702,6 @@ def get_timeseries_payload(
     return state.get_timeseries(entity_id, knowledge_base_id=kb_id)
 
 
-def get_analytics_overview_payload(
-    state: ApiState = Depends(get_api_state),
-) -> AnalyticsOverviewResponse:
-    """Return a deterministic analytics overview payload."""
-    return state.get_analytics_overview()
 
 
 @lru_cache(maxsize=1)
@@ -1117,6 +1176,41 @@ def get_alert_repository(request: Request) -> AlertProjectionRepository:
     repository = _create_alert_repository()
     request.app.state.alert_repository = repository
     return repository
+
+
+def get_graph_entity_detail_payload(
+    entity_id: str = Path(..., description="Entity identifier."),
+    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
+    graph_service: GraphServiceProtocol = Depends(get_graph_service),
+    risk_service: RiskServiceProtocol = Depends(get_risk_service),
+    kb_repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
+    domain_config: DomainConfig = Depends(get_domain_config),
+) -> GraphEntityDetailResponse:
+    """Return one graph entity read model from the durable graph service (BL-012)."""
+    detail = build_graph_entity_detail(
+        entity_id,
+        graph_service=graph_service,
+        risk_service=risk_service,
+        alert_repository=alert_repository,
+        kb_repository=kb_repository,
+        domain_config=domain_config,
+    )
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Entity not found.")
+    return detail
+
+
+def get_analytics_overview_payload(
+    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
+    case_service: CaseService = Depends(get_case_service),
+    kb_repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
+) -> AnalyticsOverviewResponse:
+    """Return the analytics overview computed from durable stores (BL-012)."""
+    return build_analytics_overview(
+        alert_repository=alert_repository,
+        case_service=case_service,
+        kb_repository=kb_repository,
+    )
 
 
 def get_case_promote_payload(

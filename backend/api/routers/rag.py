@@ -22,11 +22,14 @@ from api.dependencies import (
     get_api_state,
     get_chat_conversation_create_payload,
     get_chat_conversation_payload,
+    get_chat_message_payload,
+    get_conversation_service,
     get_domain_config,
     get_knowledge_base_repository,
 )
 from api.middleware.rbac import require_role
 from api.state import ApiState
+from conversations.service import ConversationService
 from config.schema import DomainConfig, ValidationConfig
 from rag.exceptions import RagConfigurationError
 from rag.protocols import RagServiceProtocol
@@ -84,6 +87,7 @@ async def add_message(
     stream: bool = False,
     state: ApiState = Depends(get_api_state),
     domain_config: DomainConfig = Depends(get_domain_config),
+    conversation_service: ConversationService = Depends(get_conversation_service),
     kb_repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
 ) -> Union[ChatConversationResponse, StreamingResponse]:
     """Append a message to a conversation; stream tokens with ``?stream=true``."""
@@ -102,21 +106,22 @@ async def add_message(
     payload = payload.model_copy(update={"content": cleaned_content})
 
     if not stream:
-        try:
-            return state.add_message(conversation_id, payload, kb_repository=kb_repository)
-        except KeyError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Conversation '{conversation_id}' not found.",
-            ) from exc
+        # Non-streaming append + persistence is owned by the durable-repo
+        # dependency, which already 404s on unknown conversation ids.
+        return get_chat_message_payload(
+            payload,
+            conversation_id=conversation_id,
+            state=state,
+            service=conversation_service,
+            config=domain_config,
+        )
 
-    try:
-        conversation = state.get_conversation(conversation_id)
-    except KeyError as exc:
+    conversation = conversation_service.get(conversation_id)
+    if conversation is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Conversation '{conversation_id}' not found.",
-        ) from exc
+        )
 
     kb_ids = resolve_kb_scope(conversation.knowledge_base_id, domain_config, kb_repository)
     return StreamingResponse(
