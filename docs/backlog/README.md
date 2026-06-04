@@ -18,7 +18,7 @@
 | _cicd.md | 20 | 1 | 0 | 21 | 0% |
 | _infra.md | 19 | 0 | 0 | 19 | 0% |
 | _multitenancy.md | 16 | 0 | 0 | 16 | 0% |
-| _observability.md | 13 | 0 | 0 | 13 | 0% |
+| _observability.md | 12 | 1 | 0 | 13 | 0% |
 | _plugins.md | 16 | 0 | 0 | 16 | 0% |
 | _security.md | 12 | 0 | 0 | 12 | 0% |
 | agent.md | 20 | 0 | 0 | 20 | 0% |
@@ -39,7 +39,7 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 13 | 0 | 0 | 13 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 428 | 5 | 1 | 434 | 0% |
+| **Total** | 427 | 6 | 1 | 434 | 0% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -55,7 +55,6 @@
 - [_cicd.03] _cicd — size M — prereqs done
 - [_cicd.04] _cicd — size M — prereqs done
 - [_infra.02] _infra — size M — prereqs done
-- [_observability.01] _observability — size M — prereqs done
 - [_security.09] _security — size M — prereqs done
 - [_security.11] _security — size M — prereqs done
 - [agent.01] agent — size M — prereqs done
@@ -74,7 +73,8 @@
 - [frontend.10] frontend — size M — prereqs done
 - [frontend.13] frontend — size M — prereqs done
 - [frontend.14] frontend — size M — prereqs done
-- …23 more
+- [ingestion.02] ingestion — size M — prereqs done
+- …22 more
 <!-- END: ready-set -->
 
 ## Critical path

@@ -6,7 +6,7 @@
 ## Story _observability.01: Adopt shared structlog across all backend modules
 
 **ID:** _observability.01
-**Status:** planned
+**Status:** in-progress
 **Prerequisites:** []
 **Unblocks:** [_observability.02, _observability.03, _observability.04, _observability.10, _observability.13, _security.07, rag.13, records.06, vectorstore.12]
 **Estimated size:** M
