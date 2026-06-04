@@ -9,19 +9,28 @@ the `observations` table.
 
 ## Layout
 
-- `models.py` — `RawRecord`, `RecordBatch`, `content_hash_for` (idempotency digest).
-- `service_models.py` — `RecordSubmission`, `RecordIngestReceipt` (API boundary).
-- `validation.py` — `coerce_row` / `validate_rows`: coerce string-encoded
-  values and validate each row against the feed schema (reuses
-  `shared.types.validate_entity` via a synthetic `EntityDefinition`).
+- `models.py` — `RawRecord`, `RecordBatch`, `RejectedRow`, `content_hash_for`
+  (per-row idempotency digest) and `submission_hash_for` (whole-submission
+  digest over feed name + sorted per-row content hashes).
+- `service_models.py` — `RecordSubmission`, `RecordIngestReceipt` (API
+  boundary). The receipt carries `accepted_count`, `duplicate` /
+  `duplicate_count` (submission-level dedup), and `rejected_count` / `rejected`
+  (per-row format rejections).
+- `validation.py` — `coerce_row` and two validators: `validate_rows_partition`
+  splits a batch into coerced-valid rows and `RejectedRow`s **without raising**
+  (used by the service so good rows still ingest); `validate_rows` retains the
+  all-or-nothing raise for callers that need a hard failure. Both reuse
+  `shared.types.validate_entity` via a synthetic `EntityDefinition`.
 - `mappers/feed_mapper.py` — config-driven `map_batch` (rows → entities +
   relationships) and `map_observations` (rows → scored observations).
 - `service.py` — `RecordsService.register_records()`: validate → persist →
   publish `RecordsIngestedEvent`.
 - `protocols.py` — `RecordsServiceProtocol` (service boundary).
-- `adapters/protocols.py` — `RawRecordStore`, `RecordSourceProtocol`.
+- `adapters/protocols.py` — `RawRecordStore` (now also `was_submitted` /
+  `record_submission` for submission-level dedup), `RecordSourceProtocol`.
 - `adapters/in_memory.py` — `InMemoryRawRecordStore` (local/test backend).
-- `adapters/postgres.py` — `PostgresRawRecordStore` (`raw_records` table).
+- `adapters/postgres.py` — `PostgresRawRecordStore` (`raw_records` plus the
+  `record_submissions` dedup table, migration `0004_record_submissions`).
 - `adapters/sources/file_source.py` — `CsvFileSource`, `JsonlFileSource`.
 - `adapters/sources/api_push_source.py` — `ApiPushSource`.
 
@@ -50,12 +59,31 @@ records source (CSV/JSONL/api-push)
 Every write is an idempotent upsert, so the worker's retry/DLQ wrapper can
 re-run the handler safely.
 
+## Idempotency, partial acceptance, and format gating (BL-015)
+
+- **Submission-level dedup** — `register_records` computes a
+  `submission_hash_for(feed_name, [content_hash...])` (order-independent). If
+  the same hash was already registered for the KB (`RawRecordStore.was_submitted`),
+  the call is a no-op: nothing is persisted or published and the receipt is
+  returned with `duplicate=True`, `accepted_count=0`, `duplicate_count=<rows>`.
+  The file/push endpoints return **HTTP 200** for a duplicate (vs. 202 for a
+  fresh accept). Otherwise the hash is recorded via `record_submission` before
+  persisting.
+- **Per-row format rejection** — individual rows that fail coercion/schema
+  validation no longer abort the whole batch. Valid rows ingest; rejected rows
+  are reported in the receipt as `rejected_count` / `rejected` (`RejectedRow`
+  with `index` + `reason`).
+- **Format gate** — each `RecordFeedConfig` declares
+  `accepted_formats` (default `["csv", "jsonl"]`). The file-upload endpoint
+  rejects an upload whose format is not in the resolved feed's
+  `accepted_formats` with **HTTP 415**.
+
 ## API endpoints
 
 | Method | Path | Role | Description |
 |--------|------|------|-------------|
-| `POST` | `/records/{knowledge_base_id}/files` | analyst | Ingest a CSV or JSONL file upload into the named feed |
-| `POST` | `/records/{knowledge_base_id}/push` | analyst | Ingest a JSON array of record rows into the named feed |
+| `POST` | `/records/{knowledge_base_id}/files` | analyst | Ingest a CSV or JSONL file upload into the named feed (415 if the feed does not accept the format; 200 on duplicate submission, else 202) |
+| `POST` | `/records/{knowledge_base_id}/push` | analyst | Ingest a JSON array of record rows into the named feed (200 on duplicate submission, else 202) |
 
 ## NPPES and DE-SynPUF Feeds (medicare_fraud domain)
 

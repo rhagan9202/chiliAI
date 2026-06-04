@@ -346,6 +346,11 @@ class RecordFeedConfig(BaseModel):
     # payload but skipped during entity validation.  Required for wide
     # real-world files where only a subset of fields need typed validation.
     allow_extra_fields: bool = False
+    # File formats accepted by the file-upload endpoint for this feed. Uploads
+    # whose extension is not listed are rejected with HTTP 415.
+    accepted_formats: list[str] = Field(
+        default_factory=lambda: cast(list[str], ["csv", "jsonl"])
+    )
     entities: list[RecordEntityMapping] = Field(default_factory=lambda: [])
     relationships: list[RecordRelationshipMapping] = Field(default_factory=lambda: [])
     observations: list[RecordObservationMapping] = Field(default_factory=lambda: [])

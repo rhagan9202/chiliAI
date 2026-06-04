@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel, Field
 
 from api._kb_busy import KbBusyError, WorkflowBusyTracker, ensure_kb_idle
@@ -32,16 +32,29 @@ class RecordPushRequest(BaseModel):
     rows: list[dict[str, object]] = Field(min_length=1)
 
 
-def _select_file_source(filename: str) -> CsvFileSource | JsonlFileSource:
+def _select_file_source(
+    filename: str,
+) -> tuple[CsvFileSource | JsonlFileSource, str]:
+    """Return the source parser and its format token for an upload filename."""
     lowered = filename.lower()
     if lowered.endswith(".jsonl"):
-        return JsonlFileSource()
+        return JsonlFileSource(), "jsonl"
     if lowered.endswith(".csv"):
-        return CsvFileSource()
+        return CsvFileSource(), "csv"
     raise HTTPException(
         status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
         detail=f"Unsupported records file type: '{filename}'. Use .csv or .jsonl.",
     )
+
+
+def _resolve_feed_formats(config: DomainConfig, feed_name: str) -> list[str] | None:
+    """Return a feed's accepted_formats, or None when the feed is not declared."""
+    if config.records is None:
+        return None
+    for feed in config.records.feeds:
+        if feed.name == feed_name:
+            return feed.accepted_formats
+    return None
 
 
 @router.post(
@@ -52,6 +65,7 @@ def _select_file_source(filename: str) -> CsvFileSource | JsonlFileSource:
 )
 async def upload_record_file(
     knowledge_base_id: str,
+    response: Response,
     feed: str = Form(...),
     file: UploadFile = File(...),
     service: RecordsServiceProtocol = Depends(get_records_service),
@@ -76,7 +90,16 @@ async def upload_record_file(
         ) from exc
 
     filename = file.filename or "upload"
-    source = _select_file_source(filename)
+    source, file_format = _select_file_source(filename)
+    accepted_formats = _resolve_feed_formats(config, feed)
+    if accepted_formats is not None and file_format not in accepted_formats:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=(
+                f"Feed '{feed}' does not accept '{file_format}' uploads. "
+                f"Accepted formats: {', '.join(accepted_formats)}."
+            ),
+        )
     content = await file.read()
 
     validation = config.validation or ValidationConfig()
@@ -88,7 +111,7 @@ async def upload_record_file(
 
     try:
         rows = source.read_rows(content)
-        return service.register_records(
+        receipt = service.register_records(
             knowledge_base_id,
             RecordSubmission(
                 feed_name=feed,
@@ -97,6 +120,9 @@ async def upload_record_file(
                 source_ref=filename,
             ),
         )
+        if receipt.duplicate:
+            response.status_code = status.HTTP_200_OK
+        return receipt
     except RecordFeedNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
@@ -121,6 +147,7 @@ async def upload_record_file(
 async def push_records(
     knowledge_base_id: str,
     payload: RecordPushRequest,
+    response: Response,
     service: RecordsServiceProtocol = Depends(get_records_service),
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
     workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
@@ -147,7 +174,7 @@ async def push_records(
         ) from exc
 
     try:
-        return service.register_records(
+        receipt = service.register_records(
             knowledge_base_id,
             RecordSubmission(
                 feed_name=payload.feed_name,
@@ -156,6 +183,9 @@ async def push_records(
                 source_ref=None,
             ),
         )
+        if receipt.duplicate:
+            response.status_code = status.HTTP_200_OK
+        return receipt
     except RecordFeedNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)

@@ -48,6 +48,29 @@ def test_feed_config_accepts_a_full_definition() -> None:
     assert feed.entities[0].entity_type == "claim"
 
 
+def test_feed_config_defaults_accepted_formats() -> None:
+    feed = RecordFeedConfig(
+        name="claims_feed",
+        record_type="claim_record",
+        source="file_upload",
+        id_field="claim_id",
+        record_schema=_schema(),
+    )
+    assert feed.accepted_formats == ["csv", "jsonl"]
+
+
+def test_feed_config_accepts_custom_accepted_formats() -> None:
+    feed = RecordFeedConfig(
+        name="claims_feed",
+        record_type="claim_record",
+        source="file_upload",
+        id_field="claim_id",
+        record_schema=_schema(),
+        accepted_formats=["csv"],
+    )
+    assert feed.accepted_formats == ["csv"]
+
+
 def test_feed_rejects_unknown_source() -> None:
     with pytest.raises(ValidationError):
         RecordFeedConfig(

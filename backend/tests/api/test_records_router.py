@@ -82,12 +82,55 @@ def test_push_records_rejects_unknown_feed(client: TestClient) -> None:
     assert response.status_code == 404
 
 
-def test_push_records_rejects_invalid_rows(client: TestClient) -> None:
+def test_push_records_reports_invalid_rows_as_rejected(client: TestClient) -> None:
+    """Per-row format-rejection: a bad row is reported, not raised (BL-015)."""
     response = client.post(
         "/records/kb-1/push",
         json={"feed_name": "claims_feed", "rows": [{"claim_id": "c1"}]},
     )
-    assert response.status_code == 422
+    assert response.status_code == 202, response.text
+    body = response.json()
+    assert body["accepted_count"] == 0
+    assert body["rejected_count"] == 1
+    assert body["rejected"][0]["index"] == 0
+
+
+def test_push_records_duplicate_resubmission_returns_200(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A re-pushed identical batch is a duplicate no-op at HTTP 200 (BL-015)."""
+    monkeypatch.setenv("CHILI_ENV", "local")
+    monkeypatch.setenv("CHILI_CONFIG_PATH", _MEDICARE_CONFIG_PATH)
+    app = create_app()
+    # A single shared store instance so submission dedup persists across the two
+    # requests (the default fixture builds a fresh store per request).
+    shared_store = InMemoryRawRecordStore()
+    app.dependency_overrides[get_raw_record_store] = lambda: shared_store
+    app.dependency_overrides[get_knowledge_base_repository] = _seeded_repository
+    shared_client = TestClient(app)
+
+    payload = {
+        "feed_name": "claims_feed",
+        "rows": [
+            {
+                "claim_id": "c-dup",
+                "provider_npi": "1234567890",
+                "billed_amount": 99.0,
+                "service_date": "2026-01-15",
+                "anomaly_score": 0.8,
+            }
+        ],
+    }
+    first = shared_client.post("/records/kb-1/push", json=payload)
+    assert first.status_code == 202, first.text
+    assert first.json()["duplicate"] is False
+
+    second = shared_client.post("/records/kb-1/push", json=payload)
+    assert second.status_code == 200, second.text
+    body = second.json()
+    assert body["duplicate"] is True
+    assert body["accepted_count"] == 0
+    assert body["duplicate_count"] == 1
 
 
 def test_push_records_rejects_missing_knowledge_base(client: TestClient) -> None:
@@ -227,6 +270,53 @@ def test_upload_rejects_unsupported_file_type(client: TestClient) -> None:
         files={"file": ("claims.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
     )
     assert response.status_code == 415
+
+
+def test_upload_rejects_format_not_in_feed_accepted_formats() -> None:
+    """A feed that only accepts csv rejects a jsonl upload with HTTP 415 (BL-015)."""
+    from fastapi.testclient import TestClient as TC
+
+    from api.app import create_app
+    from api.dependencies import get_domain_config, get_raw_record_store
+    from config.loader import load_config
+
+    base = load_config(Path(_MEDICARE_CONFIG_PATH))
+    assert base.records is not None
+    feeds = base.records.feeds
+    csv_only_feeds = [
+        feed.model_copy(update={"accepted_formats": ["csv"]})
+        if feed.name == "claims_feed"
+        else feed
+        for feed in feeds
+    ]
+    csv_only_config = base.model_copy(
+        update={"records": base.records.model_copy(update={"feeds": csv_only_feeds})}
+    )
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("CHILI_ENV", "local")
+        mp.setenv("CHILI_CONFIG_PATH", _MEDICARE_CONFIG_PATH)
+        app = create_app()
+        app.dependency_overrides[get_raw_record_store] = InMemoryRawRecordStore
+        app.dependency_overrides[get_knowledge_base_repository] = _seeded_repository
+        app.dependency_overrides[get_domain_config] = lambda: csv_only_config
+        csv_only_client = TC(app)
+
+    import json
+
+    row = {
+        "claim_id": "c1",
+        "provider_npi": "1234567890",
+        "billed_amount": 99.0,
+        "service_date": "2026-01-15",
+        "anomaly_score": 0.8,
+    }
+    response = csv_only_client.post(
+        "/records/kb-1/files",
+        data={"feed": "claims_feed"},
+        files={"file": ("claims.jsonl", io.BytesIO(json.dumps(row).encode()), "application/x-ndjson")},
+    )
+    assert response.status_code == 415, response.text
 
 
 def test_upload_rejects_file_exceeding_size_limit() -> None:
