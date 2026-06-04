@@ -8,7 +8,7 @@ from config.schema import RecordEntityMapping, RecordFeedConfig, RecordsConfig
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import RecordsIngestedEvent
 from records.adapters.in_memory import InMemoryRawRecordStore
-from records.exceptions import RecordFeedNotFoundError, RecordValidationError
+from records.exceptions import RecordFeedNotFoundError
 from records.service import create_records_service
 from records.service_models import RecordSubmission
 from shared.types import PropertyDefinition, PropertyType
@@ -146,16 +146,101 @@ def test_register_records_uses_id_template() -> None:
     assert record_ids == {"CLM001:1", "CLM001:2"}
 
 
-def test_register_records_rejects_invalid_rows() -> None:
-    service = create_records_service(
-        InMemoryRawRecordStore(), event_bus=InMemoryEventBus(), records_config=_records_config()
+def test_register_records_partitions_invalid_rows_without_raising() -> None:
+    """A bad row is reported, not raised; valid rows still ingest (BL-015)."""
+    store = InMemoryRawRecordStore()
+    bus = InMemoryEventBus()
+    service = create_records_service(store, event_bus=bus, records_config=_records_config())
+
+    receipt = service.register_records(
+        "kb-1",
+        RecordSubmission(
+            feed_name="claims_feed",
+            rows=[
+                {"claim_id": "c1", "amount": "10"},
+                {"claim_id": "c2"},  # missing required "amount"
+            ],
+            source_type="api_push",
+        ),
     )
-    with pytest.raises(RecordValidationError):
-        service.register_records(
-            "kb-1",
-            RecordSubmission(
-                feed_name="claims_feed",
-                rows=[{"claim_id": "c1"}],  # missing required "amount"
-                source_type="api_push",
-            ),
-        )
+
+    assert receipt.accepted_count == 1
+    assert receipt.rejected_count == 1
+    assert [r.index for r in receipt.rejected] == [1]
+    assert receipt.duplicate is False
+    persisted = store.load_batch(
+        knowledge_base_id="kb-1", correlation_id=receipt.correlation_id
+    )
+    assert {r.record_id for r in persisted} == {"c1"}
+
+
+def test_register_records_all_rows_rejected_does_not_publish() -> None:
+    store = InMemoryRawRecordStore()
+    bus = InMemoryEventBus()
+    service = create_records_service(store, event_bus=bus, records_config=_records_config())
+
+    receipt = service.register_records(
+        "kb-1",
+        RecordSubmission(
+            feed_name="claims_feed",
+            rows=[{"claim_id": "c1"}],  # missing required "amount"
+            source_type="api_push",
+        ),
+    )
+
+    assert receipt.accepted_count == 0
+    assert receipt.rejected_count == 1
+    assert receipt.duplicate is False
+    assert [e for e in bus.published_events if isinstance(e, RecordsIngestedEvent)] == []
+
+
+def test_register_records_dedupes_identical_resubmission() -> None:
+    """A re-pushed identical batch is a no-op flagged duplicate (BL-015)."""
+    store = InMemoryRawRecordStore()
+    bus = InMemoryEventBus()
+    service = create_records_service(store, event_bus=bus, records_config=_records_config())
+    submission = RecordSubmission(
+        feed_name="claims_feed",
+        rows=[{"claim_id": "c1", "amount": "10"}, {"claim_id": "c2", "amount": "20"}],
+        source_type="api_push",
+    )
+
+    first = service.register_records("kb-1", submission)
+    second = service.register_records("kb-1", submission)
+
+    assert first.duplicate is False
+    assert first.accepted_count == 2
+    assert second.duplicate is True
+    assert second.accepted_count == 0
+    assert second.duplicate_count == 2
+    # No second persistence and no second event.
+    published = [e for e in bus.published_events if isinstance(e, RecordsIngestedEvent)]
+    assert len(published) == 1
+
+
+def test_register_records_dedup_is_row_order_independent() -> None:
+    store = InMemoryRawRecordStore()
+    bus = InMemoryEventBus()
+    service = create_records_service(store, event_bus=bus, records_config=_records_config())
+
+    first = service.register_records(
+        "kb-1",
+        RecordSubmission(
+            feed_name="claims_feed",
+            rows=[{"claim_id": "c1", "amount": "10"}, {"claim_id": "c2", "amount": "20"}],
+            source_type="api_push",
+        ),
+    )
+    # Same rows, reversed order → same submission hash → duplicate.
+    second = service.register_records(
+        "kb-1",
+        RecordSubmission(
+            feed_name="claims_feed",
+            rows=[{"claim_id": "c2", "amount": "20"}, {"claim_id": "c1", "amount": "10"}],
+            source_type="api_push",
+        ),
+    )
+
+    assert first.duplicate is False
+    assert second.duplicate is True
+    assert second.accepted_count == 0

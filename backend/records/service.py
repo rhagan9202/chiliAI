@@ -7,9 +7,13 @@ from events.protocols import EventBus
 from events.types import RecordsIngestedEvent
 from records.adapters.protocols import RawRecordStore
 from records.exceptions import RecordFeedNotFoundError, RecordValidationError
-from records.models import RawRecord, content_hash_for
+from records.models import (
+    RawRecord,
+    content_hash_for,
+    submission_hash_for,
+)
 from records.service_models import RecordIngestReceipt, RecordSubmission
-from records.validation import validate_rows
+from records.validation import validate_rows_partition
 from shared.utils import generate_id, utc_now
 
 
@@ -31,7 +35,7 @@ class RecordsService:
         self, knowledge_base_id: str, submission: RecordSubmission
     ) -> RecordIngestReceipt:
         feed = self._resolve_feed(submission.feed_name)
-        coerced_rows = validate_rows(feed, submission.rows)
+        coerced_rows, rejected = validate_rows_partition(feed, submission.rows)
 
         correlation_id = generate_id()
         ingested_at = utc_now()
@@ -67,6 +71,30 @@ class RecordsService:
                 )
             )
 
+        submission_hash = submission_hash_for(
+            feed.name, [record.content_hash for record in raw_records]
+        )
+        if self._store.was_submitted(
+            knowledge_base_id=knowledge_base_id, submission_hash=submission_hash
+        ):
+            # Identical batch already registered — no-op (no persist, no publish).
+            return RecordIngestReceipt(
+                knowledge_base_id=knowledge_base_id,
+                feed_name=feed.name,
+                record_type=feed.record_type,
+                correlation_id=correlation_id,
+                accepted_count=0,
+                duplicate=True,
+                duplicate_count=len(raw_records),
+                rejected_count=len(rejected),
+                rejected=rejected,
+            )
+
+        self._store.record_submission(
+            knowledge_base_id=knowledge_base_id,
+            submission_hash=submission_hash,
+            correlation_id=correlation_id,
+        )
         accepted = self._store.persist(raw_records)
         if accepted > 0:
             self._event_bus.publish(
@@ -84,6 +112,9 @@ class RecordsService:
             record_type=feed.record_type,
             correlation_id=correlation_id,
             accepted_count=accepted,
+            duplicate=False,
+            rejected_count=len(rejected),
+            rejected=rejected,
         )
 
     def _resolve_feed(self, feed_name: str) -> RecordFeedConfig:

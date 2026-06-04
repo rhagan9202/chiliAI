@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import BaseModel, Field
 
+from records.models import RejectedRow
 from shared.utils import utc_now
 
 
@@ -27,6 +28,12 @@ class RecordIngestReceipt(BaseModel):
     record_type: str
     correlation_id: str
     accepted_count: int = Field(ge=0)
+    duplicate: bool = False
+    duplicate_count: int = Field(default=0, ge=0)
+    rejected_count: int = Field(default=0, ge=0)
+    rejected: list[RejectedRow] = Field(
+        default_factory=lambda: cast(list[RejectedRow], [])
+    )
     created_at: datetime = Field(default_factory=utc_now)
 
 

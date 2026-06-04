@@ -9,7 +9,13 @@ from records.exceptions import (
     RecordValidationError,
     RecordsError,
 )
-from records.models import RawRecord, RecordBatch, content_hash_for
+from records.models import (
+    RawRecord,
+    RecordBatch,
+    RejectedRow,
+    content_hash_for,
+    submission_hash_for,
+)
 from records.protocols import RecordsServiceProtocol
 from records.service import RecordsService, create_records_service
 from records.service_models import RecordIngestReceipt, RecordSubmission
@@ -26,6 +32,8 @@ __all__ = [
     "RecordsError",
     "RecordsService",
     "RecordsServiceProtocol",
+    "RejectedRow",
     "content_hash_for",
     "create_records_service",
+    "submission_hash_for",
 ]

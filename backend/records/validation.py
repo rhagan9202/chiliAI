@@ -13,6 +13,7 @@ from datetime import datetime
 
 from config.schema import RecordFeedConfig
 from records.exceptions import RecordValidationError
+from records.models import RejectedRow
 from shared.types import (
     Entity,
     EntityDefinition,
@@ -108,13 +109,17 @@ def coerce_row(
     return coerced
 
 
-def validate_rows(
+def validate_rows_partition(
     feed: RecordFeedConfig, rows: list[dict[str, object]]
-) -> list[dict[str, object]]:
-    """Coerce and validate every row against the feed schema.
+) -> tuple[list[dict[str, object]], list[RejectedRow]]:
+    """Coerce and validate every row, partitioning valid from invalid.
 
-    Returns the coerced rows on success; raises :class:`RecordValidationError`
-    listing every offending row when any row fails.
+    Returns a ``(coerced_ok, rejected)`` tuple — valid rows are coerced and
+    returned for ingestion, while each offending row is captured as a
+    :class:`~records.models.RejectedRow` carrying its submission index and the
+    failure reason.  Unlike :func:`validate_rows`, this never raises on
+    individual bad rows, so a submission can ingest its good rows and report
+    the bad ones.
 
     When ``feed.allow_extra_fields`` is ``True``, columns not declared in
     ``record_schema`` are passed through to the stored payload but are excluded
@@ -130,14 +135,13 @@ def validate_rows(
         properties=feed.record_schema,
     )
     coerced_rows: list[dict[str, object]] = []
-    errors: list[str] = []
+    rejected: list[RejectedRow] = []
     for index, row in enumerate(rows):
         try:
             coerced = coerce_row(row, feed.record_schema)
         except RecordValidationError as exc:
-            errors.append(f"row {index}: {exc}")
+            rejected.append(RejectedRow(index=index, reason=str(exc)))
             continue
-        coerced_rows.append(coerced)
         # When allow_extra_fields is set, only the declared-schema properties
         # are passed to the entity validator so extra columns do not trigger
         # "Unexpected property" errors.
@@ -151,8 +155,30 @@ def validate_rows(
             [definition],
         )
         if row_errors:
-            errors.append(f"row {index}: " + "; ".join(row_errors))
-    if errors:
+            rejected.append(RejectedRow(index=index, reason="; ".join(row_errors)))
+            continue
+        coerced_rows.append(coerced)
+    return coerced_rows, rejected
+
+
+def validate_rows(
+    feed: RecordFeedConfig, rows: list[dict[str, object]]
+) -> list[dict[str, object]]:
+    """Coerce and validate every row against the feed schema.
+
+    Returns the coerced rows on success; raises :class:`RecordValidationError`
+    listing every offending row when any row fails.  This all-or-nothing variant
+    is retained for callers that require a hard failure on any bad row; the
+    service path uses :func:`validate_rows_partition` instead.
+
+    When ``feed.allow_extra_fields`` is ``True``, columns not declared in
+    ``record_schema`` are passed through to the stored payload but are excluded
+    from entity validation.
+    """
+
+    coerced_rows, rejected = validate_rows_partition(feed, rows)
+    if rejected:
+        errors = [f"row {item.index}: {item.reason}" for item in rejected]
         raise RecordValidationError(
             f"Feed '{feed.name}' validation failed:\n  - " + "\n  - ".join(errors)
         )
@@ -162,4 +188,5 @@ def validate_rows(
 __all__ = [
     "coerce_row",
     "validate_rows",
+    "validate_rows_partition",
 ]

@@ -6,7 +6,8 @@ import pytest
 
 from config.schema import RecordFeedConfig
 from records.exceptions import RecordValidationError
-from records.validation import coerce_row, validate_rows
+from records.models import RejectedRow
+from records.validation import coerce_row, validate_rows, validate_rows_partition
 from shared.types import PropertyDefinition, PropertyType
 
 
@@ -49,6 +50,38 @@ def test_validate_rows_returns_coerced_rows() -> None:
 def test_validate_rows_rejects_missing_required_field() -> None:
     with pytest.raises(RecordValidationError, match="row 0"):
         validate_rows(_feed(), [{"claim_id": "c1"}])
+
+
+def test_validate_rows_partition_returns_only_valid_rows() -> None:
+    ok, rejected = validate_rows_partition(_feed(), [{"claim_id": "c1", "amount": "10"}])
+    assert ok == [{"claim_id": "c1", "amount": 10.0}]
+    assert rejected == []
+
+
+def test_validate_rows_partition_splits_valid_and_invalid_rows() -> None:
+    ok, rejected = validate_rows_partition(
+        _feed(),
+        [
+            {"claim_id": "c1", "amount": "10"},
+            {"claim_id": "c2", "amount": "not-a-number"},
+            {"claim_id": "c3"},  # missing required amount
+            {"claim_id": "c4", "amount": "40"},
+        ],
+    )
+    assert ok == [
+        {"claim_id": "c1", "amount": 10.0},
+        {"claim_id": "c4", "amount": 40.0},
+    ]
+    assert [r.index for r in rejected] == [1, 2]
+    assert all(isinstance(r, RejectedRow) for r in rejected)
+    assert "not a valid number" in rejected[0].reason
+
+
+def test_validate_rows_partition_does_not_raise_on_all_invalid() -> None:
+    ok, rejected = validate_rows_partition(_feed(), [{"claim_id": "c1"}])
+    assert ok == []
+    assert len(rejected) == 1
+    assert rejected[0].index == 0
 
 
 def test_validate_rows_rejects_unknown_field() -> None:
