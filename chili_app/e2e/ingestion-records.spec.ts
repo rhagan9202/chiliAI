@@ -30,8 +30,12 @@ test.describe('Ingestion Studio records flow', () => {
 
     await expect(page.getByRole('heading', { name: 'Ingestion Studio' })).toBeVisible()
 
-    // Choose the structured records source.
-    await page.getByRole('radio', { name: /Structured Records/i }).check()
+    // Choose the structured records source by clicking its option label (the
+    // radio input is visually hidden inside the label; clicking the label
+    // fires the input's onChange and drives the wizard state).
+    await page
+      .locator('label.ingestion-source-choice__option', { hasText: 'Structured Records' })
+      .click()
 
     // Select the config-defined file_upload feed.
     await page.getByLabel('Records feed').selectOption('carrier_claims_a')
