@@ -60,6 +60,33 @@ def test_dev_seed_writes_real_alert_evidence_case_and_kb() -> None:
     assert {"provider-1", "claim-1", "beneficiary-1"} <= node_ids
 
 
+def test_dev_seed_serves_entity_via_graph_read_model() -> None:
+    # BL-012: /graph/entities/{id} now reads the durable graph the seeder wrote.
+    client = _get_client()
+
+    ids = client.post("/admin/dev-seed").json()
+
+    detail = client.get(f"/graph/entities/{ids['entity_id']}")
+    assert detail.status_code == 200
+    assert detail.json()["entity"]["id"] == ids["entity_id"]
+
+
+def test_dev_seed_creates_a_conversation() -> None:
+    # BL-012: the seeder writes one durable chat conversation for the KB.
+    client = _get_client()
+
+    body = client.post("/admin/dev-seed").json()
+    conversation_id = body["conversation_id"]
+    assert conversation_id
+
+    conversation = client.get(f"/chat/conversations/{conversation_id}")
+    assert conversation.status_code == 200
+    payload = conversation.json()
+    assert payload["knowledge_base_id"] == body["knowledge_base_id"]
+    assert len(payload["messages"]) == 2
+    assert payload["messages"][-1]["role"] == "assistant"
+
+
 def test_dev_seed_creates_a_policy_item() -> None:
     client = _get_client()
 

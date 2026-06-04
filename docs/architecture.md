@@ -435,15 +435,26 @@ policy/                         # Durable, KB-scoped policy intelligence (BL-011
         ├── protocols.py        # PolicyItemRepository (upsert/get/list/update/delete_by_kb)
         ├── in_memory.py        # InMemoryPolicyItemRepository
         └── postgres.py         # PostgresPolicyItemRepository (policy_items table, migration 0003_policy)
+conversations/                  # Durable RAG chat conversations (BL-012)
+    ├── models.py               # Conversation, ConversationMessage, ConversationCitation
+    ├── service.py              # ConversationService (create / get / append_messages)
+    ├── exceptions.py
+    └── adapters/
+        ├── protocols.py        # ConversationRepository (create/get/save)
+        ├── in_memory.py        # InMemoryConversationRepository
+        └── postgres.py         # PostgresConversationRepository (conversations table, migration 0005_conversations)
 ```
 
 > **Sprint 2026-23 additions (evidence/case vertical).**
 > - **`graph.get_subgraph(kb, seed_ids, depth)`** — multi-seed neighborhood union on the graph protocol + in-memory/Neo4j adapters; the traversal primitive behind evidence-pack subgraph extraction.
 > - **Evidence packs (BL-005)** are now generated for real: the worker explainability stage builds an `ExplanationContext` from `graph.get_subgraph` + risk factors/score, `ExplainabilityService` assembles the `EvidencePack`, and it is persisted (best-effort) to an object-store `EvidencePackRepository` under `analytics/explainability/`. `GET /evidence-packs/{id}` reads that repository (KB-scoped), replacing the seeded `ApiState` evidence read model.
-> - **Cases (BL-010)** are durable and KB-scoped via the new `cases/` module; `POST /cases/promote` captures the originating alert + evidence pack + timeline. ApiState `open_cases`/policy-gap aggregates and full `_seed_cases` removal are deferred to BL-012.
+> - **Cases (BL-010)** are durable and KB-scoped via the new `cases/` module; `POST /cases/promote` captures the originating alert + evidence pack + timeline.
 >
 > **Sprint 2026-24 additions (policy intelligence vertical).**
 > - **Policy Intelligence (BL-011)** is durable and KB-scoped via the new `policy/` module. Domain-configured `PolicyRulePack`s are evaluated against KB entities and metrics in the worker; each hit produces a persisted `PolicyItem`. Analysts triage items (accept/reject/defer/escalate-to-case) through `POST /policy/items/{id}/triage`. The old seeded `/policy/gaps` surface, `PolicyGap*`/`PolicyBrief*` contracts, and `ApiState._seed_policy_gaps` have been removed. See [`policy/README.md`](../backend/policy/README.md).
+>
+> **Sprint 2026-25 additions (de-seed vertical).**
+> - **De-seeded `ApiState` (BL-012).** All remaining seeded read models were moved to durable stores. Conversations are persisted via the new `conversations/` module (`ConversationRepository`, `conversations` table). `GET /graph/entities/{id}` (`api/_graph_entity_payload.py`) and `GET /analytics/overview` (`api/_analytics_overview.py`) read durable graph/risk/alert/case/KB stores. `ApiState` now owns only the risk/timeseries analytics composition and the RAG service handle; its `_seed_graph`/`_seed_alerts`/`_seed_cases`/`_seed_conversations`/`_seed_evidence_packs`/`_seed_workflows` methods and the unused alert/case/conversation/evidence/workflow read methods were removed. `/admin/dev-seed` now also seeds one conversation. A regression guard asserts no non-test code reads a `_seed_*` token.
 
 ### 5.2 Module responsibility matrix
 

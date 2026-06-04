@@ -24,6 +24,7 @@ from api._alert_store import AlertProjectionRecord, AlertProjectionRepository
 from api.dependencies import (
     get_alert_repository,
     get_case_repository,
+    get_conversation_repository,
     get_evidence_pack_repository,
     get_graph_repository,
     get_knowledge_base_repository,
@@ -34,6 +35,8 @@ from policy.adapters.protocols import PolicyItemRepository
 from policy.service import create_policy_service
 from cases.adapters.protocols import CaseRepository
 from cases.models import Case
+from conversations.adapters.protocols import ConversationRepository
+from conversations.models import Conversation, ConversationMessage
 from graph.adapters.protocols import GraphRepository
 from knowledgebases import KnowledgeBaseRepository
 from shared.types import Alert, Entity, EvidencePack, KnowledgeBase, Relationship
@@ -53,6 +56,7 @@ class DevSeedResponse(BaseModel):
     evidence_pack_id: str
     case_id: str
     policy_item_id: str
+    conversation_id: str
 
 
 @router.post(
@@ -68,6 +72,7 @@ async def dev_seed(
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
     case_repository: CaseRepository = Depends(get_case_repository),
     policy_repository: PolicyItemRepository = Depends(get_policy_repository),
+    conversation_repository: ConversationRepository = Depends(get_conversation_repository),
 ) -> DevSeedResponse:
     """Seed a deterministic KB + subgraph + alert + evidence + case (dev/e2e only)."""
     now = utc_now()
@@ -165,6 +170,33 @@ async def dev_seed(
         citations=[],
     )
 
+    # --- conversation (one seeded RAG chat thread for the KB) ---------------
+    conversation_id = generate_id()
+    conversation_repository.create(
+        Conversation(
+            id=conversation_id,
+            title="Redwood DME provider review",
+            knowledge_base_id=kb_id,
+            messages=[
+                ConversationMessage(
+                    id=generate_id(),
+                    role="user",
+                    content="Why is Redwood DME Group flagged as high risk?",
+                    created_at=now,
+                ),
+                ConversationMessage(
+                    id=generate_id(),
+                    role="assistant",
+                    content=(
+                        "Redwood DME Group shows outlier billing concentration "
+                        "well above its peer cohort, with linked high-value claims."
+                    ),
+                    created_at=now,
+                ),
+            ],
+        )
+    )
+
     return DevSeedResponse(
         knowledge_base_id=kb_id,
         entity_id=provider_id,
@@ -172,4 +204,5 @@ async def dev_seed(
         evidence_pack_id=evidence_pack_id,
         case_id=case_id,
         policy_item_id=policy_item.id,
+        conversation_id=conversation_id,
     )

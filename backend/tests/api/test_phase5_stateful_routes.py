@@ -6,9 +6,19 @@ from fastapi.testclient import TestClient
 
 from api._alert_store import AlertProjectionRecord, InMemoryAlertProjectionRepository
 from api.app import create_app
-from api.dependencies import get_alert_repository
-from shared.types import Alert
+from api.dependencies import (
+    get_alert_repository,
+    get_graph_service,
+    get_knowledge_base_repository,
+)
+from events.adapters.in_memory import InMemoryEventBus
+from graph import InMemoryGraphRepository, create_graph_service
+from graph.protocols import GraphServiceProtocol
+from knowledgebases import InMemoryKnowledgeBaseRepository
+from knowledgebases.protocols import KnowledgeBaseRepository
+from shared.types import Alert, Entity, KnowledgeBase
 from shared.utils import utc_now
+from storage.adapters.in_memory import InMemoryObjectStore
 
 
 def _client_with_alert_projection() -> TestClient:
@@ -149,8 +159,61 @@ def test_create_conversation_and_add_message() -> None:
     assert payload["messages"][-1]["role"] == "assistant"
 
 
+def _seeded_graph_service(entity_id: str) -> GraphServiceProtocol:
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities(
+        "kb-1",
+        [Entity(id=entity_id, type="provider", properties={"display_name": "Seeded"})],
+    )
+    return create_graph_service(
+        repository,
+        object_store=InMemoryObjectStore(),
+        event_bus=InMemoryEventBus(),
+    )
+
+
+def _seeded_kb_repository() -> KnowledgeBaseRepository:
+    repository = InMemoryKnowledgeBaseRepository()
+    repository.create(
+        KnowledgeBase(
+            id="kb-1",
+            name="KB",
+            description="Seeded",
+            entity_count=1,
+            status="ready",
+            created_at=utc_now(),
+        )
+    )
+    return repository
+
+
 def test_graph_and_analytics_routes_are_service_backed() -> None:
-    client = _client_with_alert_projection()
+    app = create_app()
+    repository = InMemoryAlertProjectionRepository()
+    repository.upsert(
+        AlertProjectionRecord(
+            knowledge_base_id="kb-1",
+            alert=Alert(
+                id="alert-001",
+                entity_type="provider",
+                entity_id="provider-204",
+                severity="critical",
+                title="Outlier billing concentration",
+                reasoning="Provider activity is materially above peers.",
+                evidence_pack_id="evidence-001",
+                created_at=utc_now(),
+            ),
+            entity_label="Redwood DME Group",
+            confidence=0.96,
+            tags=["billing"],
+        )
+    )
+    app.dependency_overrides[get_alert_repository] = lambda: repository
+    graph_service = _seeded_graph_service("provider-204")
+    kb_repository = _seeded_kb_repository()
+    app.dependency_overrides[get_graph_service] = lambda: graph_service
+    app.dependency_overrides[get_knowledge_base_repository] = lambda: kb_repository
+    client = TestClient(app)
 
     alerts = client.get("/alerts").json()["items"]
     entity_id = alerts[0]["entity_id"]

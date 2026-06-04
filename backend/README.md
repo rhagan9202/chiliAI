@@ -29,10 +29,11 @@ For the live, dependency-ordered list of production-readiness work per backend m
 - **`analytics/README.md`** — Contributor guide for turning Postgres-backed scripts and notebook algorithms into typed analytics services, adapters, tests, and API/worker wiring.
 - **`analytics/metrics/`** — Entity-metric persistence package (no service layer, no events). `EntityMetricRepository` protocol backed by `InMemoryEntityMetricRepository` (tests/local) or `PostgresEntityMetricRepository` (Postgres). `MetricsRecomputeThrottle` limits per-KB recompute rate. Graph-scope metrics use sentinel `entity_id = "__graph__"`.
 - **`storage/`** — In-memory, local filesystem, and S3-compatible object-store adapters.
-- **`database/`** — Postgres + TimescaleDB connection provider, `DatabaseConfig`-driven backend selection, and Alembic-managed schema (six persistence tables). Infrastructure only — no domain logic.
+- **`database/`** — Postgres + TimescaleDB connection provider, `DatabaseConfig`-driven backend selection, and Alembic-managed schema (ten persistence tables). Infrastructure only — no domain logic.
 - **`records/`** — structured/tabular ingestion (CSV/JSONL/api-push). Validates rows against config-declared feed schemas, lands canonical rows in `raw_records`, and publishes `RecordsIngestedEvent`. Parallel to `ingestion/` for documents.
 - **`cases/`** — durable, KB-scoped investigation case management (BL-010). `Case` model + `CaseRepository` (in-memory + Postgres adapters, `cases` table via migration `0002_cases`) + `CaseService` with `promote_from_alert`. Backs `/cases` CRUD + `POST /cases/promote` (all `?knowledge_base_id=`-scoped). See [`cases/README.md`](cases/README.md).
 - **`policy/`** — durable, KB-scoped policy intelligence (BL-011). Rule-pack-driven `PolicyItem` generation + analyst triage (accept/reject/defer/escalate-to-case) with persisted `PolicyDisposition`. `PolicyItemRepository` (in-memory + Postgres adapters, `policy_items` table via migration `0003_policy`). Backs `GET /policy/items`, `GET /policy/items/{id}`, `POST /policy/items/{id}/triage`. Replaces the old seeded policy-gap surface. See [`policy/README.md`](policy/README.md).
+- **`conversations/`** — durable RAG chat persistence (BL-012). `Conversation`/`ConversationMessage` models + `ConversationRepository` (in-memory + Postgres adapters, `conversations` table via migration `0005_conversations`) + `ConversationService`. Backs the `/chat/conversations` create/read/append routes; the API layer (`api/_conversation_payloads.py`) adapts these models to the frontend `Chat*` contracts and builds the user/assistant turn from a RAG answer — replacing the in-memory-only seeded `ApiState` conversation store.
 - **`analytics/explainability/`** also owns the **evidence-pack repository** (BL-005): real packs are extracted in the worker (`graph.get_subgraph` + risk factors → `ExplanationContext` → `ExplainabilityService`), persisted to an object-store `EvidencePackRepository`, and served by `GET /evidence-packs/{id}` (KB-scoped) — replacing the seeded `ApiState` evidence read model.
 - **`api/middleware/`** — Metrics, auth, and RBAC middleware with route-level policy enforcement and auth-enabled startup audit.
 - **`agent/coordinator.py`** — Worker entry point (`python -m agent.coordinator`) for Redis-stream processing, workflow lifecycle tracking, retry/DLQ routing, graceful shutdown, and a lightweight health endpoint. Implements persistence-layer worker flows:
@@ -194,6 +195,14 @@ cfg = load_config("config/defaults/medicare_fraud.yaml")
 - Alert read models are owned by the FastAPI gateway behind `AlertProjectionRepository`; `/alerts` no longer reads from legacy seeded `ApiState`.
 - `GET /alerts`, `GET /alerts/{id}`, `POST /alerts/{id}/acknowledge`, and SSE `active_alerts` use the same projection store so feed state and realtime counts stay aligned.
 - The `object_store` alert repository is intended for local/dev single-writer durability. A production alert metadata adapter should implement the same protocol when alert projection writes become concurrent or tenant-scoped.
+
+## De-seeded ApiState Notes (BL-012)
+
+- The seeded, in-memory `ApiState` no longer holds alerts, cases, conversations, workflows, evidence packs, or a demo graph. Every frontend read path resolves through a durable store; `ApiState` now only owns the risk/timeseries analytics composition and the RAG service handle used by the chat streaming path.
+- `/chat/conversations` (create/read/append) reads and writes the durable `ConversationRepository` (`conversations/`). The non-streaming append builds the user + assistant turn from the RAG answer in `get_chat_message_payload`; the streaming branch fetches the conversation from the same repository.
+- `GET /graph/entities/{id}` is served by `api/_graph_entity_payload.py` from the durable graph service (the same store the worker and the `/admin/dev-seed` endpoint write to), with risk scores from the durable risk service and related alerts from the alert projection repository.
+- `GET /analytics/overview` is computed entirely from durable stores (`api/_analytics_overview.py`): active/high-risk alert counts from the alert projection, open-case counts from the durable case repository, and `entities_monitored` from KB metadata — aggregated across every knowledge base.
+- A regression guard (`tests/api/test_deseed_regression.py`) asserts no `_seed_*` method/attribute survives on `ApiState` and that no non-test backend module reads a `_seed_*` token.
 
 ## Workflow Projection Notes
 

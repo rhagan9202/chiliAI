@@ -58,8 +58,8 @@ query param:
   durable repository); durable feedback is out of scope for BL-010.
 - **Rich `alerts[]`** on the case detail is a follow-on; alert linkage is
   preserved via `CaseSummaryResponse.alert_ids`.
-- Analytics `open_cases` / `list_policy_gap_cases` aggregates and removal of the
-  legacy `ApiState` `_seed_cases` are tracked under **BL-012** (ApiState de-seed).
+- Analytics `open_cases` now aggregates from the durable case repository and the
+  legacy `ApiState` `_seed_cases` store has been removed (**BL-012**, ApiState de-seed).
 
 ## Tests
 

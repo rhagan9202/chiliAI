@@ -10,13 +10,28 @@ from fastapi.testclient import TestClient
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowStepState, WorkflowStepStatus
 from agent.service import create_agent_service
+from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
+from analytics.risk.models import RiskProfile, RiskSignal
+from analytics.risk.protocols import RiskServiceProtocol
+from analytics.risk.service import create_risk_service
 from api._alert_store import AlertProjectionRecord, InMemoryAlertProjectionRepository
 from api.app import create_app
 from api.contracts import PolicyCitation
-from api.dependencies import get_agent_service, get_alert_repository
+from api.dependencies import (
+    get_agent_service,
+    get_alert_repository,
+    get_graph_service,
+    get_knowledge_base_repository,
+    get_risk_service,
+)
 from events.adapters.in_memory import InMemoryEventBus
-from shared.types import Alert
+from graph import InMemoryGraphRepository, create_graph_service
+from graph.protocols import GraphServiceProtocol
+from knowledgebases import InMemoryKnowledgeBaseRepository
+from knowledgebases.protocols import KnowledgeBaseRepository
+from shared.types import Alert, Entity, KnowledgeBase, Relationship
 from shared.utils import utc_now
+from storage.adapters.in_memory import InMemoryObjectStore
 
 
 def _seed_alert_repository() -> InMemoryAlertProjectionRepository:
@@ -148,14 +163,98 @@ def test_acknowledge_alert_returns_scaffold_status() -> None:
     assert response.json()["status"] == "accepted"
 
 
+def _seeded_graph_service() -> GraphServiceProtocol:
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(
+                id="provider-204",
+                type="provider",
+                properties={"display_name": "Advanced Pain Specialists"},
+            ),
+            Entity(
+                id="claim-8821",
+                type="claim",
+                properties={"display_name": "Claim 8821"},
+            ),
+        ],
+    )
+    repository.upsert_relationships(
+        "kb-1",
+        [
+            Relationship(
+                id="rel-1",
+                type="submitted_by",
+                source_id="claim-8821",
+                target_id="provider-204",
+            )
+        ],
+    )
+    return create_graph_service(
+        repository,
+        object_store=InMemoryObjectStore(),
+        event_bus=InMemoryEventBus(),
+    )
+
+
+def _seeded_kb_repository(entity_count: int = 2) -> KnowledgeBaseRepository:
+    repository = InMemoryKnowledgeBaseRepository()
+    repository.create(
+        KnowledgeBase(
+            id="kb-1",
+            name="KB",
+            description="Seeded KB",
+            entity_count=entity_count,
+            status="ready",
+            created_at=utc_now(),
+        )
+    )
+    return repository
+
+
+def _seeded_risk_service() -> RiskServiceProtocol:
+    profiles = [
+        RiskProfile(
+            knowledge_base_id="kb-1",
+            entity_id="provider-204",
+            signals=[
+                RiskSignal(
+                    signal_name="peer_group_deviation",
+                    value=0.95,
+                    weight=2.0,
+                    rationale="Exceeds peer benchmark.",
+                ),
+                RiskSignal(
+                    signal_name="network_concentration",
+                    value=0.78,
+                    weight=1.3,
+                    rationale="Narrow referral cluster.",
+                ),
+            ],
+        )
+    ]
+    return create_risk_service(
+        InMemoryRiskSignalSource(profiles=profiles), event_bus=InMemoryEventBus()
+    )
+
+
 def test_get_graph_entity_returns_neighbors_and_relationships() -> None:
-    client = TestClient(create_app())
+    app = create_app()
+    graph_service = _seeded_graph_service()
+    kb_repository = _seeded_kb_repository()
+    risk_service = _seeded_risk_service()
+    app.dependency_overrides[get_graph_service] = lambda: graph_service
+    app.dependency_overrides[get_knowledge_base_repository] = lambda: kb_repository
+    app.dependency_overrides[get_risk_service] = lambda: risk_service
+    client = TestClient(app)
 
     response = client.get("/graph/entities/provider-204")
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["entity"]["id"] == "provider-204"
+    assert payload["entity"]["risk_score"] > 0.0
     assert payload["neighbors"][0]["type"] == "claim"
     assert payload["relationships"][0]["type"] == "submitted_by"
 
@@ -255,11 +354,23 @@ def test_get_case_detail_returns_durable_case() -> None:
 def test_get_chat_conversation_returns_messages() -> None:
     client = TestClient(create_app())
 
-    response = client.get("/chat/conversations/conversation-001")
+    created = client.post(
+        "/chat/conversations",
+        json={"knowledge_base_id": "kb-1", "title": "Provider anomaly review"},
+    )
+    assert created.status_code == 200
+    conversation_id = created.json()["id"]
+    sent = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={"content": "Why is provider-204 risky?"},
+    )
+    assert sent.status_code == 200
+
+    response = client.get(f"/chat/conversations/{conversation_id}")
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["id"] == "conversation-001"
+    assert payload["id"] == conversation_id
     assert payload["messages"][1]["role"] == "assistant"
 
 
@@ -276,14 +387,28 @@ def test_get_workflows_returns_recent_runs() -> None:
 
 
 def test_get_analytics_overview_returns_dashboard_metrics() -> None:
-    client = TestClient(create_app())
+    app = create_app()
+    alert_repository = _seed_alert_repository()
+    kb_repository = _seeded_kb_repository(entity_count=4)
+    app.dependency_overrides[get_alert_repository] = lambda: alert_repository
+    app.dependency_overrides[get_knowledge_base_repository] = lambda: kb_repository
+    client = TestClient(app)
+
+    # An open case so the overview reflects durable case state.
+    client.post(
+        "/cases",
+        params={"knowledge_base_id": "kb-1"},
+        json={"title": "Escalation", "priority": "high", "alert_ids": []},
+    )
 
     response = client.get("/analytics/overview")
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["active_alerts"] >= 1
-    assert payload["entities_monitored"] >= 1
+    assert payload["open_cases"] >= 1
+    assert payload["entities_monitored"] == 4
+    # alert-001 is critical -> counts as a high-risk active alert.
     assert payload["high_risk_entities"] >= 1
 
 
