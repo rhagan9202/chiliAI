@@ -11,6 +11,7 @@ import {
   useUploadKnowledgeBaseDocuments,
 } from '../api/knowledgebases'
 import { usePushRecords, useUploadRecordFile } from '../api/records'
+import type { RecordIngestReceipt } from '../api/contracts'
 import { useWorkflows } from '../api/workflows'
 import { DocumentSourcePanel } from '../components/ingestion/DocumentSourcePanel'
 import { IngestionStepper } from '../components/ingestion/IngestionStepper'
@@ -19,7 +20,10 @@ import { RecordsSourcePanel } from '../components/ingestion/RecordsSourcePanel'
 import { RunTimeline } from '../components/ingestion/RunTimeline'
 import { SourceTypeStep } from '../components/ingestion/SourceTypeStep'
 import { SubmitPanel } from '../components/ingestion/SubmitPanel'
+import { UploadProgress } from '../components/ingestion/UploadProgress'
+import type { UploadStatus } from '../components/ingestion/UploadProgress'
 import { ValidationPanel } from '../components/ingestion/ValidationPanel'
+import { showToast } from '../components/common/toastStore'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
 import { EmptyState } from '../components/ui/EmptyState'
@@ -44,6 +48,11 @@ export function KnowledgeBaseManagerPage() {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
   const [knowledgeBaseName, setKnowledgeBaseName] = useState('')
   const [knowledgeBaseDescription, setKnowledgeBaseDescription] = useState('')
+  const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle')
+  const [uploadPercent, setUploadPercent] = useState(0)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  // Holds the last upload invocation so the Retry button can re-run it verbatim.
+  const [retryUpload, setRetryUpload] = useState<(() => void) | null>(null)
 
   const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
   const activeKnowledgeBaseId = knowledgeBases.some((item) => item.id === selectedKnowledgeBaseId)
@@ -91,6 +100,98 @@ export function KnowledgeBaseManagerPage() {
     ...studio.validationIssues,
   ]
 
+  function beginUpload(retry: () => void) {
+    setUploadStatus('uploading')
+    setUploadPercent(0)
+    setUploadError(null)
+    setRetryUpload(() => retry)
+  }
+
+  function reportUploadProgress(percent: number) {
+    setUploadPercent(percent)
+  }
+
+  function runDocumentUpload(files: File[]) {
+    beginUpload(() => runDocumentUpload(files))
+    uploadMutation.mutate(
+      { files, onUploadProgress: reportUploadProgress },
+      {
+        onSuccess: (response) => {
+          const count = response.documents.length
+          const suffix = count === 1 ? 'document' : 'documents'
+
+          setUploadStatus('done')
+          setUploadPercent(100)
+          setRetryUpload(null)
+          studio.setValidationIssues([])
+          studio.addReceipt({
+            id: `documents-${response.documents.map((document) => document.source_document_id).join('-')}`,
+            sourceType: 'documents',
+            status: 'accepted',
+            message: `${count} ${suffix} accepted.`,
+            createdAt: response.documents[0]?.created_at ?? new Date().toISOString(),
+          })
+          studio.setPendingFiles([])
+          studio.setCurrentStep('runs')
+          showToast('success', `${count} ${suffix} uploaded.`)
+        },
+        onError: (error) => {
+          const message = apiErrorMessage(error, 'Document submission failed.')
+          setUploadStatus('error')
+          setUploadError(message)
+          studio.addValidationIssues([
+            {
+              id: `documents-backend-error-${Date.now()}`,
+              source: 'backend',
+              severity: 'error',
+              message,
+            },
+          ])
+          showToast('error', message)
+        },
+      },
+    )
+  }
+
+  function runRecordFileUpload(feedName: string, file: File) {
+    beginUpload(() => runRecordFileUpload(feedName, file))
+    uploadRecordFileMutation.mutate(
+      { feedName, file, onUploadProgress: reportUploadProgress },
+      {
+        onSuccess: (receipt) => {
+          setUploadStatus('done')
+          setUploadPercent(100)
+          setRetryUpload(null)
+          studio.setValidationIssues([])
+          studio.addReceipt({
+            id: `records-${receipt.correlation_id}`,
+            sourceType: 'records',
+            status: 'accepted',
+            message: `${receipt.accepted_count} records accepted for ${receipt.feed_name}.`,
+            createdAt: receipt.created_at,
+            receipt,
+          })
+          studio.setCurrentStep('runs')
+          showToast('success', receiptToastMessage(receipt))
+        },
+        onError: (error) => {
+          const message = apiErrorMessage(error, 'Records submission failed.')
+          setUploadStatus('error')
+          setUploadError(message)
+          studio.addValidationIssues([
+            {
+              id: `records-backend-error-${Date.now()}`,
+              source: 'backend',
+              severity: 'error',
+              message,
+            },
+          ])
+          showToast('error', message)
+        },
+      },
+    )
+  }
+
   function submitDocuments() {
     const issues = [
       ...validateRequiredWizardState({
@@ -106,33 +207,7 @@ export function KnowledgeBaseManagerPage() {
       return
     }
 
-    uploadMutation.mutate(studio.pendingFiles, {
-      onSuccess: (response) => {
-        const count = response.documents.length
-        const suffix = count === 1 ? 'document' : 'documents'
-
-        studio.setValidationIssues([])
-        studio.addReceipt({
-          id: `documents-${response.documents.map((document) => document.source_document_id).join('-')}`,
-          sourceType: 'documents',
-          status: 'accepted',
-          message: `${count} ${suffix} accepted.`,
-          createdAt: response.documents[0]?.created_at ?? new Date().toISOString(),
-        })
-        studio.setPendingFiles([])
-        studio.setCurrentStep('runs')
-      },
-      onError: (error) => {
-        studio.addValidationIssues([
-          {
-            id: `documents-backend-error-${Date.now()}`,
-            source: 'backend',
-            severity: 'error',
-            message: apiErrorMessage(error, 'Document submission failed.'),
-          },
-        ])
-      },
-    })
+    runDocumentUpload(studio.pendingFiles)
   }
 
   function submitRecords() {
@@ -159,40 +234,12 @@ export function KnowledgeBaseManagerPage() {
     }
 
     if (selectedFeed.source === 'file_upload') {
-      if (!studio.pendingRecordFile) {
+      const recordFile = studio.pendingRecordFile
+      if (!recordFile) {
         studio.setValidationIssues(recordFileIssues)
         return
       }
-      uploadRecordFileMutation.mutate(
-        {
-          feedName: selectedFeed.name,
-          file: studio.pendingRecordFile,
-        },
-        {
-          onSuccess: (receipt) => {
-            studio.setValidationIssues([])
-            studio.addReceipt({
-              id: `records-${receipt.correlation_id}`,
-              sourceType: 'records',
-              status: 'accepted',
-              message: `${receipt.accepted_count} records accepted for ${receipt.feed_name}.`,
-              createdAt: receipt.created_at,
-              receipt,
-            })
-            studio.setCurrentStep('runs')
-          },
-          onError: (error) => {
-            studio.addValidationIssues([
-              {
-                id: `records-backend-error-${Date.now()}`,
-                source: 'backend',
-                severity: 'error',
-                message: apiErrorMessage(error, 'Records submission failed.'),
-              },
-            ])
-          },
-        },
-      )
+      runRecordFileUpload(selectedFeed.name, recordFile)
       return
     }
 
@@ -213,16 +260,19 @@ export function KnowledgeBaseManagerPage() {
             receipt,
           })
           studio.setCurrentStep('runs')
+          showToast('success', receiptToastMessage(receipt))
         },
         onError: (error) => {
+          const message = apiErrorMessage(error, 'Records submission failed.')
           studio.addValidationIssues([
             {
               id: `records-backend-error-${Date.now()}`,
               source: 'backend',
               severity: 'error',
-              message: apiErrorMessage(error, 'Records submission failed.'),
+              message,
             },
           ])
+          showToast('error', message)
         },
       },
     )
@@ -404,6 +454,17 @@ export function KnowledgeBaseManagerPage() {
               onSubmitDocuments={submitDocuments}
               onSubmitRecords={submitRecords}
             />
+            <UploadProgress
+              label={
+                studio.sourceType === 'documents'
+                  ? 'Document upload progress'
+                  : 'Records upload progress'
+              }
+              status={uploadStatus}
+              percent={uploadPercent}
+              error={uploadError ?? undefined}
+              onRetry={() => retryUpload?.()}
+            />
           </Card>
         </div>
 
@@ -554,6 +615,21 @@ function DocumentInventory({
       ) : null}
     </section>
   )
+}
+
+function receiptToastMessage(receipt: RecordIngestReceipt): string {
+  if (receipt.duplicate) {
+    return `Duplicate submission for ${receipt.feed_name} (no-op).`
+  }
+
+  const parts = [`${receipt.accepted_count} accepted`]
+  if (receipt.duplicate_count > 0) {
+    parts.push(`${receipt.duplicate_count} duplicate`)
+  }
+  if (receipt.rejected_count > 0) {
+    parts.push(`${receipt.rejected_count} rejected`)
+  }
+  return `${parts.join(', ')} for ${receipt.feed_name}.`
 }
 
 function formatTimestamp(value: string | null) {

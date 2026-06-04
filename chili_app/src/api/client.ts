@@ -1,6 +1,8 @@
-import { API_BASE_URL, apiRequest } from '../lib/apiClient'
+import { API_BASE_URL, apiRequest, apiUploadWithProgress } from '../lib/apiClient'
+import type { UploadOptions } from '../lib/apiClient'
 
-export { API_BASE_URL }
+export { API_BASE_URL, apiUploadWithProgress }
+export type { UploadOptions }
 
 export async function apiFetch<TResponse>(
   path: string,

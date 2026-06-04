@@ -617,6 +617,55 @@
   overflow-wrap: anywhere;
 }
 
+.ingestion-upload-progress {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ingestion-upload-progress__track-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ingestion-upload-progress__track {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--c-s2);
+  overflow: hidden;
+}
+
+.ingestion-upload-progress__bar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--c-cyan);
+  transition: width 120ms ease-out;
+}
+
+.ingestion-upload-progress__percent {
+  min-width: 40px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--c-dim);
+}
+
+.ingestion-upload-progress__error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.ingestion-upload-progress__message {
+  margin: 0;
+  color: var(--c-red);
+  font-size: 13px;
+}
+
 @media (max-width: 680px) {
   .ingestion-source-choice {
     grid-template-columns: 1fr;

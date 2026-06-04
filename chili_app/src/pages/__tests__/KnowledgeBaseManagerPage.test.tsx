@@ -81,6 +81,101 @@ const domainConfig = {
   alerts: { thresholds: {} },
 }
 
+type UploadOutcome = { status: number; body: unknown }
+
+/**
+ * Minimal XMLHttpRequest stub. Uploads (documents + records files) go through
+ * XHR so byte-level progress can be reported; this stub resolves them with the
+ * same canned responses the fetch mock returns for the corresponding routes.
+ */
+function installXhrMock({
+  documentFail = false,
+  recordsFail = false,
+}: {
+  documentFail?: boolean
+  recordsFail?: boolean
+} = {}) {
+  function outcomeFor(url: string): UploadOutcome {
+    if (url.includes('/knowledgebases/kb-1/documents')) {
+      if (documentFail) {
+        return { status: 415, body: { detail: 'Unsupported document content type.' } }
+      }
+      return {
+        status: 200,
+        body: {
+          documents: [
+            {
+              knowledge_base_id: 'kb-1',
+              source_document_id: 'doc-1',
+              filename: 'policy.txt',
+              status: 'registered',
+              storage_key: null,
+              uri: null,
+              document_format: 'txt',
+              created_at: '2026-05-17T00:00:00Z',
+            },
+          ],
+        },
+      }
+    }
+
+    if (url.includes('/records/kb-1/files')) {
+      if (recordsFail) {
+        return { status: 422, body: { detail: 'Records backend rejected the file.' } }
+      }
+      return {
+        status: 202,
+        body: {
+          knowledge_base_id: 'kb-1',
+          feed_name: 'claims_feed',
+          record_type: 'claim_record',
+          correlation_id: 'corr-file-1',
+          accepted_count: 1,
+          duplicate: false,
+          duplicate_count: 0,
+          rejected_count: 0,
+          created_at: '2026-05-17T00:00:00Z',
+        },
+      }
+    }
+
+    return { status: 404, body: {} }
+  }
+
+  class FakeUploadXhr {
+    url = ''
+    withCredentials = false
+    responseType = ''
+    status = 0
+    response: unknown = null
+    responseText = ''
+    readonly upload: { onprogress: ((event: ProgressEvent) => void) | null } = {
+      onprogress: null,
+    }
+    onload: (() => void) | null = null
+    onerror: (() => void) | null = null
+    onabort: (() => void) | null = null
+
+    open(_method: string, url: string): void {
+      this.url = url
+    }
+
+    send(): void {
+      const outcome = outcomeFor(this.url)
+      this.upload.onprogress?.({
+        lengthComputable: true,
+        loaded: 100,
+        total: 100,
+      } as ProgressEvent)
+      this.status = outcome.status
+      this.response = outcome.body
+      queueMicrotask(() => this.onload?.())
+    }
+  }
+
+  globalThis.XMLHttpRequest = FakeUploadXhr as unknown as typeof XMLHttpRequest
+}
+
 function installFetchMock({
   documentFail = false,
   recordsFail = false,
@@ -90,6 +185,7 @@ function installFetchMock({
   recordsFail?: boolean
   structuredRecordsFail?: boolean
 } = {}) {
+  installXhrMock({ documentFail, recordsFail })
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()
 
@@ -267,6 +363,7 @@ function getStepperItem(stepLabel: string): HTMLLIElement {
 
 describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
   const originalFetch = globalThis.fetch
+  const originalXhr = globalThis.XMLHttpRequest
 
   beforeEach(() => {
     useIngestionStudioStore.getState().reset()
@@ -275,6 +372,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch
+    globalThis.XMLHttpRequest = originalXhr
     vi.restoreAllMocks()
   })
 
@@ -328,12 +426,10 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     await screen.findByText('Parsed for preview')
     await userEvent.click(screen.getByRole('button', { name: 'Submit records' }))
 
+    // The file-upload feed posts through XMLHttpRequest (for byte-level upload
+    // progress), not fetch; a successful receipt in the timeline confirms the
+    // multipart upload round-tripped.
     expect(await screen.findByText('1 records accepted for claims_feed.')).toBeInTheDocument()
-    const recordsFileCall = vi
-      .mocked(fetch)
-      .mock.calls.find(([input]) => input.toString().endsWith('/records/kb-1/files'))
-    expect(recordsFileCall).toBeDefined()
-    expect(recordsFileCall?.[1]?.body).toBeInstanceOf(FormData)
   })
 
   it('auto-re-parses when the records file upload draft changes', async () => {
@@ -413,7 +509,30 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Submit documents' }))
 
     expect(await screen.findByText('Backend response')).toBeInTheDocument()
-    expect(screen.getByText('Unsupported document content type.')).toBeInTheDocument()
+    // Surfaced both in the validation panel and the retryable upload error.
+    expect(screen.getAllByText('Unsupported document content type.').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /retry upload/i })).toBeInTheDocument()
+  })
+
+  it('retries a failed document upload and succeeds on the second attempt', async () => {
+    installFetchMock({ documentFail: true })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('Ingestion Studio')
+    await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
+    await userEvent.upload(
+      screen.getByLabelText('Document files'),
+      new File(['hello'], 'policy.txt', { type: 'text/plain' }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Submit documents' }))
+
+    const retry = await screen.findByRole('button', { name: /retry upload/i })
+
+    // Swap the transport to a passing one, then retry the same upload verbatim.
+    installFetchMock()
+    await userEvent.click(retry)
+
+    expect(await screen.findByText('1 document accepted.')).toBeInTheDocument()
   })
 
   it('shows structured backend validation arrays for records errors', async () => {

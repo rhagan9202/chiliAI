@@ -91,6 +91,79 @@ async function parseBody(response: Response): Promise<unknown> {
   return text.length > 0 ? text : null
 }
 
+export interface UploadOptions {
+  /** Reports upload progress as an integer percentage (0-100). */
+  onUploadProgress?: (percent: number) => void
+}
+
+/**
+ * Uploads form data via XMLHttpRequest so the byte-level upload progress can be
+ * reported (the Fetch API cannot observe request-body upload progress). On a
+ * non-2xx status or transport failure the promise rejects with an `ApiError`,
+ * mirroring `apiRequest` so callers share one error surface.
+ */
+export function apiUploadWithProgress<T>(
+  path: string,
+  formData: FormData,
+  options: UploadOptions = {},
+): Promise<T> {
+  const url = path.startsWith('http')
+    ? path
+    : `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
+
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', url, true)
+    xhr.withCredentials = true
+    xhr.responseType = 'json'
+
+    const { onUploadProgress } = options
+    if (onUploadProgress) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && event.total > 0) {
+          onUploadProgress(Math.round((event.loaded / event.total) * 100))
+        }
+      }
+    }
+
+    xhr.onload = () => {
+      const body: unknown =
+        xhr.response ??
+        (typeof xhr.responseText === 'string' && xhr.responseText.length > 0
+          ? xhr.responseText
+          : null)
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(body as T)
+        return
+      }
+
+      if (xhr.status === 401 && !path.startsWith('/auth/')) {
+        if (typeof window !== 'undefined') {
+          window.location.assign('/login')
+        }
+      }
+
+      const message =
+        body && typeof body === 'object' && 'detail' in body
+          ? validationMessageFromDetail((body as { detail: unknown }).detail) ??
+            `Upload failed with status ${xhr.status}`
+          : `Upload failed with status ${xhr.status}`
+      reject(new ApiError(xhr.status, message, body))
+    }
+
+    xhr.onerror = () => {
+      reject(new ApiError(0, 'Network error during upload. Please try again.', null))
+    }
+
+    xhr.onabort = () => {
+      reject(new ApiError(0, 'Upload was aborted.', null))
+    }
+
+    xhr.send(formData)
+  })
+}
+
 export async function apiRequest<T>(
   path: string,
   options: RequestOptions = {},

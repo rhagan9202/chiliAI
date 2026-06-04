@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
 
-import { apiPost, apiUpload } from './client'
+import { apiPost, apiUploadWithProgress } from './client'
+import type { UploadOptions } from './client'
 import type { RecordIngestReceipt, RecordPushRequest } from './contracts'
 import {
   knowledgeBaseDetailQueryKey,
@@ -41,11 +42,16 @@ export function uploadRecordFile(
   knowledgeBaseId: string,
   feedName: string,
   file: File,
+  options: UploadOptions = {},
 ): Promise<RecordIngestReceipt> {
   const formData = new FormData()
   formData.append('feed', feedName)
   formData.append('file', file)
-  return apiUpload<RecordIngestReceipt>(`/records/${knowledgeBaseId}/files`, formData)
+  return apiUploadWithProgress<RecordIngestReceipt>(
+    `/records/${knowledgeBaseId}/files`,
+    formData,
+    options,
+  )
 }
 
 export function usePushRecords(knowledgeBaseId: string | null) {
@@ -59,12 +65,18 @@ export function usePushRecords(knowledgeBaseId: string | null) {
   })
 }
 
+export type UploadRecordFileVariables = {
+  feedName: string
+  file: File
+  onUploadProgress?: (percent: number) => void
+}
+
 export function useUploadRecordFile(knowledgeBaseId: string | null) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ feedName, file }: { feedName: string; file: File }) =>
-      uploadRecordFile(knowledgeBaseId ?? '', feedName, file),
+    mutationFn: ({ feedName, file, onUploadProgress }: UploadRecordFileVariables) =>
+      uploadRecordFile(knowledgeBaseId ?? '', feedName, file, { onUploadProgress }),
     onSuccess: () => {
       invalidateRecordsIngestionQueries(queryClient, knowledgeBaseId)
     },

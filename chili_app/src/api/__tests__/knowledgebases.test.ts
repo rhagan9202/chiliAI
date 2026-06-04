@@ -7,7 +7,7 @@ vi.mock('../client', () => ({
   apiDelete: vi.fn(),
   apiFetch: vi.fn(),
   apiPost: vi.fn(),
-  apiUpload: vi.fn(),
+  apiUploadWithProgress: vi.fn(),
 }))
 
 const apiDeleteMock = vi.mocked(apiDelete)

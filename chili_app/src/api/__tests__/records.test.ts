@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { apiPost, apiUpload } from '../client'
+import { apiPost, apiUploadWithProgress } from '../client'
 import {
   pushRecords,
   uploadRecordFile,
@@ -14,11 +14,11 @@ import type { RecordIngestReceipt, RecordPushRequest } from '../contracts'
 
 vi.mock('../client', () => ({
   apiPost: vi.fn(),
-  apiUpload: vi.fn(),
+  apiUploadWithProgress: vi.fn(),
 }))
 
 const apiPostMock = vi.mocked(apiPost)
-const apiUploadMock = vi.mocked(apiUpload)
+const apiUploadMock = vi.mocked(apiUploadWithProgress)
 
 function createQueryWrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -82,13 +82,18 @@ describe('records API', () => {
     }
     apiUploadMock.mockResolvedValue(receipt)
 
-    await expect(uploadRecordFile('kb-1', 'claims_feed', file)).resolves.toBe(receipt)
+    const onUploadProgress = vi.fn()
+    await expect(
+      uploadRecordFile('kb-1', 'claims_feed', file, { onUploadProgress }),
+    ).resolves.toBe(receipt)
 
     expect(apiUploadMock).toHaveBeenCalledTimes(1)
-    const [path, formData] = apiUploadMock.mock.calls[0]
+    const [path, formData, uploadOptions] = apiUploadMock.mock.calls[0]
     expect(path).toBe('/records/kb-1/files')
     expect(formData.get('feed')).toBe('claims_feed')
     expect(formData.get('file')).toBe(file)
+    uploadOptions?.onUploadProgress?.(75)
+    expect(onUploadProgress).toHaveBeenCalledWith(75)
   })
 
   it('exports records ingestion mutation hooks', () => {
@@ -164,5 +169,34 @@ describe('records API', () => {
         ['graph'],
       ])
     })
+  })
+
+  it('threads an onUploadProgress callback through the upload mutation', async () => {
+    const file = new File(['claim_id\nc1\n'], 'claims.csv', { type: 'text/csv' })
+    const receipt: RecordIngestReceipt = {
+      knowledge_base_id: 'kb-1',
+      feed_name: 'claims_feed',
+      record_type: 'claim',
+      correlation_id: 'corr-1',
+      accepted_count: 1,
+      duplicate: false,
+      duplicate_count: 0,
+      rejected_count: 0,
+      created_at: '2026-05-16T12:00:00Z',
+    }
+    const queryClient = createTestQueryClient()
+    vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue()
+    apiUploadMock.mockResolvedValue(receipt)
+
+    const onUploadProgress = vi.fn()
+    const { result } = renderHook(() => useUploadRecordFile('kb-1'), {
+      wrapper: createQueryWrapper(queryClient),
+    })
+
+    await result.current.mutateAsync({ feedName: 'claims_feed', file, onUploadProgress })
+
+    const uploadOptions = apiUploadMock.mock.calls.at(-1)?.[2]
+    uploadOptions?.onUploadProgress?.(50)
+    expect(onUploadProgress).toHaveBeenCalledWith(50)
   })
 })

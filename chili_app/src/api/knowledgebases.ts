@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { apiDelete, apiFetch, apiPost, apiUpload } from './client'
+import { apiDelete, apiFetch, apiPost, apiUploadWithProgress } from './client'
+import type { UploadOptions } from './client'
 import type {
   DocumentRegistrationResponse,
   KnowledgeBaseCreateRequest,
@@ -55,12 +56,17 @@ export function deleteKnowledgeBaseDocument(
 export function uploadKnowledgeBaseDocuments(
   knowledgeBaseId: string,
   files: File[],
+  options: UploadOptions = {},
 ): Promise<DocumentRegistrationResponse> {
   const formData = new FormData()
   files.forEach((file) => {
     formData.append('files', file)
   })
-  return apiUpload<DocumentRegistrationResponse>(`/knowledgebases/${knowledgeBaseId}/documents`, formData)
+  return apiUploadWithProgress<DocumentRegistrationResponse>(
+    `/knowledgebases/${knowledgeBaseId}/documents`,
+    formData,
+    options,
+  )
 }
 
 export function useKnowledgeBases() {
@@ -112,11 +118,17 @@ export function useDeleteKnowledgeBase() {
   })
 }
 
+export type UploadKnowledgeBaseDocumentsVariables = {
+  files: File[]
+  onUploadProgress?: (percent: number) => void
+}
+
 export function useUploadKnowledgeBaseDocuments(knowledgeBaseId: string | null) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (files: File[]) => uploadKnowledgeBaseDocuments(knowledgeBaseId ?? '', files),
+    mutationFn: ({ files, onUploadProgress }: UploadKnowledgeBaseDocumentsVariables) =>
+      uploadKnowledgeBaseDocuments(knowledgeBaseId ?? '', files, { onUploadProgress }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: knowledgeBasesQueryKey })
       if (knowledgeBaseId) {
