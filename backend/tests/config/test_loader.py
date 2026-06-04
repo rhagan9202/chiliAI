@@ -160,3 +160,15 @@ class TestConfigLoadErrors:
         bad.write_text("- item1\n- item2\n", encoding="utf-8")
         with pytest.raises(ConfigLoadError, match="mapping"):
             load_config(bad)
+
+
+def test_medicare_ships_policy_rules() -> None:
+    cfg = load_config(MEDICARE_YAML)
+    assert cfg.policy_rules, "medicare_fraud.yaml must ship at least one policy rule pack"
+    rule = cfg.policy_rules[0].rules[0]
+    assert rule.predicate.op in {"eq", "neq", "gt", "gte", "lt", "lte", "in", "not_in"}
+
+
+def test_food_supply_loads_without_policy_rules() -> None:
+    cfg = load_config(DEFAULTS_DIR / "food_supply_chain.yaml")
+    assert cfg.policy_rules == []  # additive/optional — absent block defaults to []
