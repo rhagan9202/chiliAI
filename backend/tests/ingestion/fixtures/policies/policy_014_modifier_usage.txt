@@ -1,0 +1,17 @@
+SYNTHETIC TEST DOCUMENT — NOT A REAL CMS POLICY. Fictional IDs and providers.
+
+POLICY EXPLAINER
+Policy POL-2024-MODIFIER-014 — Correct Use of Modifier 25
+
+policy_id: POL-2024-MODIFIER-014
+Effective: 2024-10-15
+Specialty: Dermatology
+
+This policy governs the correct use of modifier 25 when a separately
+identifiable E/M service is billed with procedure codes 11100 (skin biopsy)
+and 17000 (destruction of premalignant lesion) on the same date of service.
+
+This policy applies to provider NPI 3030303030 (Dermatology).
+
+This policy cites regulation section 42 CFR 414.40 and supersedes prior policy
+POL-2023-MODIFIER-001.

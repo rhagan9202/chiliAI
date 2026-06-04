@@ -1,0 +1,12 @@
+{
+  "_note": "SYNTHETIC TEST DOCUMENT - NOT A REAL CMS POLICY. Fictional IDs and providers.",
+  "policy_id": "POL-2024-ANESTH-009",
+  "title": "Anesthesia Time-Unit Billing",
+  "effective_date": "2024-09-01",
+  "specialty": "Anesthesiology",
+  "governs_procedure_codes": ["00100", "00300", "00400"],
+  "cites_regulation_sections": ["42 CFR 414.46"],
+  "applies_to_provider_npi": "7788990011",
+  "supersedes_policy_id": "POL-2022-ANESTH-002",
+  "summary": "This policy governs anesthesia time-unit billing for procedure codes 00100, 00300, and 00400, applies to provider NPI 7788990011 (Anesthesiology), and cites 42 CFR 414.46."
+}

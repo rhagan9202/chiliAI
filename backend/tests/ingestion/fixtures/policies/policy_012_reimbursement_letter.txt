@@ -1,0 +1,24 @@
+SYNTHETIC TEST DOCUMENT — NOT A REAL CMS POLICY. Fictional IDs and providers.
+
+PROVIDER NOTIFICATION LETTER
+Policy POL-2024-REIMB-012 — Reimbursement Rate Change for Office Visits
+
+policy_id: POL-2024-REIMB-012
+Effective: 2024-12-01
+Specialty: Internal Medicine
+
+Dear Provider,
+
+This letter notifies you of a reimbursement rate change governing established
+patient office visit procedure codes 99212, 99213, and 99214. The revised
+fee-schedule amounts take effect on the date above.
+
+This policy applies to provider NPI 1010101010 (Internal Medicine).
+
+This policy cites regulation section 42 CFR 414.40, which governs the
+methodology for calculating physician fee-schedule amounts.
+
+This policy supersedes prior policy POL-2023-REIMB-005.
+
+Sincerely,
+Synthetic Demo Contractor

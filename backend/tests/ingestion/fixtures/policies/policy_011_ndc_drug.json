@@ -1,0 +1,12 @@
+{
+  "_note": "SYNTHETIC TEST DOCUMENT - NOT A REAL CMS POLICY. Fictional IDs and providers.",
+  "policy_id": "POL-2024-DRUG-011",
+  "title": "Part B Drug Administration Coverage",
+  "effective_date": "2024-11-01",
+  "specialty": "Oncology",
+  "governs_procedure_codes": ["J9035", "96413"],
+  "cites_regulation_sections": ["42 CFR 414.904"],
+  "applies_to_provider_npi": "9900112233",
+  "supersedes_policy_id": "POL-2023-DRUG-006",
+  "summary": "This policy governs HCPCS code J9035 and administration code 96413, applies to provider NPI 9900112233 (Oncology), cites 42 CFR 414.904, and supersedes POL-2023-DRUG-006."
+}

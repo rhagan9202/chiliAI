@@ -1,0 +1,17 @@
+SYNTHETIC TEST DOCUMENT — NOT A REAL CMS POLICY. Fictional IDs and providers.
+
+PROVIDER NOTIFICATION LETTER
+Policy POL-2024-NETWORK-013 — Network Participation Requirements
+
+policy_id: POL-2024-NETWORK-013
+Effective: 2024-11-15
+Specialty: Physical Therapy
+
+This policy governs network participation rules for outpatient therapy
+procedure codes 97110 and 97140. Providers must maintain an active enrollment
+record to remain in network.
+
+This policy applies to provider NPI 2020202020 (Physical Therapy).
+
+This policy cites regulation section 42 CFR 424.516, which establishes the
+additional provider and supplier enrollment requirements.

@@ -1,0 +1,11 @@
+{
+  "_note": "SYNTHETIC TEST DOCUMENT - NOT A REAL CMS POLICY. Fictional IDs and providers.",
+  "policy_id": "POL-2024-WOUND-010",
+  "title": "Wound Care Debridement Coverage",
+  "effective_date": "2024-10-01",
+  "specialty": "Wound Care",
+  "governs_procedure_codes": ["11042", "11043"],
+  "cites_regulation_sections": ["42 CFR 410.32", "42 CFR 414.40"],
+  "applies_to_provider_npi": "8899001122",
+  "summary": "This policy governs debridement procedure codes 11042 and 11043, applies to provider NPI 8899001122 (Wound Care), and cites 42 CFR 410.32 and 42 CFR 414.40."
+}
