@@ -30,6 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `docs/architecture.md` — design source of truth (full module decomposition, container topology, domain-config model). Read it before any non-trivial change.
 - `.github/copilot-instructions.md` — condensed operating rules for agents (kept consistent with this file).
 - `backend/README.md`, `chili_app/README.md` — module/page-level setup details.
+- `docs/testing/DATA.md` — **single source of truth for all test/sample data**: the two-tier model (tracked tiny fixtures vs gitignored bulk `sample_data/`), the fixture index (every data location → its consumer), and how to stage the CMS/NPPES bulk data (`make data-setup`). Read before adding any fixture or wiring data into a test/demo.
 
 ## What This Repo Is
 

@@ -17,8 +17,12 @@ A **domain-reconfigurable Graph RAG analytics platform**. Combines knowledge-gra
 A self-contained end-to-end demo uses a Tennessee-provider subset of the publicly available NPPES and CMS DE-SynPUF datasets. The demo builds a knowledge base, ingests the records-derived entities into the graph + vector store, and then uploads a synthetic policy-document corpus (Markdown/HTML/JSON/TXT/DOCX under `backend/tests/ingestion/fixtures/policies/`) through the document endpoint so the configured LLM extractor produces a policy graph (`policy`/`procedure_code`/`regulation_section`) that joins the records graph on the shared `provider` node — all with one Make target.
 
 ```bash
-make demo-tn-subset   # build TN subset + create KB + upload records + policy corpus (requires `make dev` first)
+CMS_DOWNLOADS_DIR=/path/to/downloads make data-setup   # one-time: stage the CMS/NPPES source data (gitignored, GB-scale)
+make dev                                                # bring up the full stack, wait for healthy
+make demo-tn-subset                                     # build TN subset + create KB + upload records + policy corpus
 ```
+
+> **Data:** the demo needs the public CMS DE-SynPUF + NPPES source files staged locally first. **[`docs/testing/DATA.md`](docs/testing/DATA.md) is the single source of truth** for where all test/sample data lives, the fixture index, and how to stage the bulk data. `sample_data/` is gitignored — never commit bulk data.
 
 The policy corpus upload is best-effort: set `DEMO_SKIP_POLICIES=1` to skip it, or `DEMO_POLICIES_DIR=...` to point at a different corpus. (PDF fixtures are a documented follow-up — see `docs/superpowers/specs/notes/synthetic-policy-corpus.md`.)
 

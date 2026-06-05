@@ -52,10 +52,26 @@ prod-down: ## Stop production stack
 
 # ---------- Demo ----------
 
-.PHONY: demo-tn-subset
-demo-tn-subset: ## Build TN subset and upload to the running API
+# Demo build samples claims by default so the ingest is quick. The full TN
+# subset is ~4.7M carrier claims (2.4 GB) — a load test, not a demo. Override
+# with DEMO_SAMPLE_RATE=1.0 for the complete subset, or use `make tn-subset-full`.
+DEMO_SAMPLE_RATE ?= 0.01
+
+.PHONY: demo-tn-subset tn-subset-full data-setup
+demo-tn-subset: ## Build a sampled TN subset and upload to the running API (DEMO_SAMPLE_RATE=0.01)
 	python3 -m tools.sample_data.build_tennessee_subset \
 		--nppes-root sample_data \
 		--desynpuf-root sample_data/CMS \
-		--output-root sample_data/CMS/tn_subset
+		--output-root sample_data/CMS/tn_subset \
+		--sample-rate $(DEMO_SAMPLE_RATE)
 	scripts/demo_ingest_tn_subset.sh
+
+tn-subset-full: ## Build the COMPLETE TN subset (no sampling, ~2.4 GB carrier) — slow
+	python3 -m tools.sample_data.build_tennessee_subset \
+		--nppes-root sample_data \
+		--desynpuf-root sample_data/CMS \
+		--output-root sample_data/CMS/tn_subset \
+		--sample-rate 1.0
+
+data-setup: ## Stage local CMS/NPPES source data into sample_data/ (extracts downloaded zips)
+	scripts/setup_local_data.sh

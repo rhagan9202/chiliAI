@@ -57,3 +57,6 @@ chili_app/playwright/.cache/
 
 # Editor configs
 .vscode/
+
+# Runtime object-store data (local FS storage adapter base_path)
+backend/data/
