@@ -94,8 +94,9 @@ CHILI_ENV=local uvicorn api.app:create_app --factory --reload --port 8000
 # Pipeline worker
 python -m agent.coordinator
 
-# Tests
-pytest --cov
+# Tests (integration + e2e tests run against the live stack — bring it up first)
+make dev          # from repo root: start Postgres/Neo4j/Qdrant/Redis/MinIO
+pytest --cov      # @pytest.mark.integration tests target the running stack
 
 # Type checking (currently scoped in pyproject.toml while strict coverage expands)
 pyright
@@ -109,6 +110,16 @@ python -m tools.sample_data.build_tennessee_subset --help  # subset builder opti
 ```
 
 > These commands target the architecture described in `docs/architecture.md`. The codebase is under active hardening; keep Ruff, Pyright, and pytest clean for touched packages.
+
+> **Integration tests against the live stack.** `tests/conftest.py` defaults the
+> per-service test URLs (`DATABASE_URL`, `QDRANT_URL`, `CHILI_TEST_REDIS_URL`,
+> `NEO4J_TEST_URI`/`NEO4J_TEST_PASSWORD`) to the dev stack (host-published ports;
+> compose hostnames inside the API container), so `@pytest.mark.integration`
+> tests run against a running stack instead of self-skipping. Apply migrations
+> first (`DATABASE_URL=… python -m alembic upgrade head`). Smokes that are not
+> compose services stay opt-in and skip unless their env var is set:
+> `OPENAI_API_KEY` (paid API), `SENTENCE_TRANSFORMERS_SMOKE_MODEL` (model
+> download), and the Ollama e2e (`OLLAMA_MODEL` + a reachable Ollama server).
 
 ## Quality Requirements
 
