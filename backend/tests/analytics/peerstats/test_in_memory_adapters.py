@@ -112,3 +112,22 @@ def test_latest_signals_isolates_by_entity_and_kb() -> None:
     )
     assert len(writer.latest_signals(knowledge_base_id="kb2", entity_id="provider:1")) == 1
     assert writer.latest_signals(knowledge_base_id="kb1", entity_id="provider:99") == []
+
+
+def test_delete_by_kb_removes_only_target_kb() -> None:
+    writer = InMemoryDerivedRiskSignalWriter()
+    writer.write_signals(
+        [
+            _signal("provider:1"),
+            _signal("provider:2"),
+            _signal("provider:1", knowledge_base_id="kb2"),
+        ]
+    )
+    removed = writer.delete_by_kb("kb1")
+    assert removed == 2
+    # kb1 signals gone; kb2 untouched.
+    assert writer.latest_signals(knowledge_base_id="kb1", entity_id="provider:1") == []
+    assert writer.latest_signals(knowledge_base_id="kb1", entity_id="provider:2") == []
+    assert len(writer.latest_signals(knowledge_base_id="kb2", entity_id="provider:1")) == 1
+    # Idempotent: deleting again removes nothing.
+    assert writer.delete_by_kb("kb1") == 0

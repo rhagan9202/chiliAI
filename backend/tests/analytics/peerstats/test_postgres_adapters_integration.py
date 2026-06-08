@@ -122,6 +122,18 @@ def test_aggregate_and_write_round_trip(database_url: str) -> None:
                 (_KB, "provider:1"),
             ).fetchall()
             assert int(cast(int, rows[0][0])) == 1
+
+        # delete_by_kb purges all derived signals for the KB.
+        assert writer.delete_by_kb(_KB) == 1
+        with provider.connection() as conn:
+            rows = conn.execute(
+                "SELECT count(*) FROM entity_derived_signals "
+                "WHERE knowledge_base_id = %s",
+                (_KB,),
+            ).fetchall()
+            assert int(cast(int, rows[0][0])) == 0
+        # Idempotent: deleting again removes nothing.
+        assert writer.delete_by_kb(_KB) == 0
     finally:
         with provider.connection() as conn:
             conn.execute(

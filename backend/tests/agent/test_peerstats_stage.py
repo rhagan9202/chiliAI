@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+
 from analytics.peerstats.adapters.in_memory import (
     InMemoryDerivedRiskSignalWriter,
     InMemoryRecordColumnSource,
 )
 from analytics.peerstats.adapters.protocols import ColumnRow
 from analytics.peerstats.service import create_peerstats_service
-from analytics.risk.exceptions import RiskInsufficientSignalsError
+from analytics.risk.exceptions import (
+    RiskInsufficientSignalsError,
+    RiskSourceError,
+)
 from analytics.risk.service_models import RiskAssessmentRequest, RiskAssessmentResponse
 from agent.coordinator import assess_entities, run_peerstats_stage
 from config.schema import PeerMetricSpec, PeerStatsConfig
@@ -93,3 +98,21 @@ def test_assess_entities_counts_successes_and_skips_risk_error() -> None:
     )
     assert count == 1
     assert risk.assessed == ["provider:good", "provider:bad"]
+
+
+class _FailingRiskService:
+    """A risk service stub that raises an infrastructure error."""
+
+    def assess(self, request: RiskAssessmentRequest) -> RiskAssessmentResponse:
+        raise RiskSourceError("db down")
+
+
+def test_assess_entities_propagates_infrastructure_errors() -> None:
+    # RiskSourceError/RiskHistoryError are NOT swallowed — a DB outage must
+    # surface (to the caller's exception logger) rather than look like a no-op.
+    with pytest.raises(RiskSourceError):
+        assess_entities(
+            risk_service=_FailingRiskService(),  # type: ignore[arg-type]
+            knowledge_base_id="kb1",
+            entity_ids=["provider:1"],
+        )

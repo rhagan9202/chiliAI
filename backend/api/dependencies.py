@@ -118,6 +118,9 @@ from monitoring.protocols import MonitoringServiceProtocol
 from monitoring.service import create_monitoring_service
 from database.protocols import ConnectionProvider
 from database.runtime import create_connection_provider
+from analytics.peerstats.adapters.in_memory import InMemoryDerivedRiskSignalWriter
+from analytics.peerstats.adapters.postgres import PostgresDerivedRiskSignalWriter
+from analytics.peerstats.adapters.protocols import DerivedRiskSignalWriterProtocol
 from records.adapters.in_memory import InMemoryRawRecordStore
 from records.adapters.postgres import PostgresRawRecordStore
 from records.adapters.protocols import RawRecordStore
@@ -1117,6 +1120,18 @@ def get_raw_record_store() -> RawRecordStore:
     if provider is None:
         return InMemoryRawRecordStore()
     return PostgresRawRecordStore(provider)
+
+
+@lru_cache(maxsize=1)
+def get_derived_signal_store() -> DerivedRiskSignalWriterProtocol:
+    """Return the peerstats derived-signal store (Postgres when a DB is configured).
+
+    Used by the KB-delete cascade to purge ``entity_derived_signals``.
+    """
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemoryDerivedRiskSignalWriter()
+    return PostgresDerivedRiskSignalWriter(provider)
 
 
 def get_records_service(

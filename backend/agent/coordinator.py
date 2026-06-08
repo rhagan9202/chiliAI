@@ -99,7 +99,11 @@ from analytics.peerstats.service_models import PeerStatsComputeRequest
 from analytics.risk.adapters.in_memory import InMemoryRiskHistoryWriter, InMemoryRiskSignalSource
 from analytics.risk.adapters.postgres import PostgresRiskHistoryStore, PostgresRiskSignalSource
 from analytics.risk.adapters.protocols import RiskHistoryWriter, RiskSignalSourceProtocol
-from analytics.risk.exceptions import RiskError
+from analytics.risk.exceptions import (
+    RiskConfigurationError,
+    RiskError,
+    RiskInsufficientSignalsError,
+)
 from analytics.risk.models import RiskAssessmentRecord, RiskFactor
 from analytics.risk.service import RiskService, create_risk_service
 from analytics.risk.service_models import (
@@ -302,6 +306,7 @@ class WorkerDependencies:
     monitoring_service: MonitoringService
     records_config: RecordsConfig
     raw_record_store: RawRecordStore
+    derived_signal_store: DerivedRiskSignalWriterProtocol
     observation_writer: ObservationWriter
     policy_service: PolicyService
     policy_rules: list[PolicyRulePack]
@@ -830,6 +835,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         ),
     )
     raw_record_store = build_raw_record_store(connection_provider)
+    derived_signal_store = build_derived_signal_writer(connection_provider)
     observation_writer = build_observation_writer(connection_provider)
     policy_service = build_policy_service(connection_provider)
     policy_rules = list(config.policy_rules)
@@ -867,6 +873,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         monitoring_service=monitoring_service,
         records_config=records_config,
         raw_record_store=raw_record_store,
+        derived_signal_store=derived_signal_store,
         observation_writer=observation_writer,
         policy_service=policy_service,
         policy_rules=policy_rules,
@@ -1889,8 +1896,12 @@ def assess_entities(
     """Assess each entity once; tolerate entities with insufficient signals.
 
     Each successful assess publishes one RiskScoredEvent (existing Flow 3),
-    persisted to risk_score_history. RiskError (insufficient signals / config /
-    source) is logged and skipped so one bad entity never aborts the batch.
+    persisted to risk_score_history. Only *expected* per-entity conditions are
+    swallowed (an entity below the >=2-signal floor, or a per-entity threshold
+    misconfiguration) so one such entity never aborts the batch. Infrastructure
+    failures (``RiskSourceError``/``RiskHistoryError``) deliberately propagate so
+    a transient DB/source outage surfaces (logged with a traceback by the
+    caller's best-effort wrapper) rather than being silently swallowed at INFO.
     """
 
     assessed = 0
@@ -1902,7 +1913,7 @@ def assess_entities(
                 )
             )
             assessed += 1
-        except RiskError as exc:
+        except (RiskInsufficientSignalsError, RiskConfigurationError) as exc:
             logger.info("Skipping risk assess for entity=%s: %s", entity_id, exc)
     return assessed
 
@@ -2109,6 +2120,7 @@ def handle_knowledge_base_deleted(
     graph_service: GraphServiceProtocol,
     vector_service: VectorServiceProtocol,
     raw_record_store: RawRecordStore,
+    derived_signal_store: DerivedRiskSignalWriterProtocol,
     kb_repository: KnowledgeBaseRepository,
     object_store: ObjectStore | None = None,
 ) -> None:
@@ -2117,7 +2129,7 @@ def handle_knowledge_base_deleted(
     When the API DELETE endpoint returns 207 with ``cleanup_pending=True`` it
     means one or more downstream stores could not be cleaned up synchronously.
     The worker picks up the ``KnowledgeBaseDeletedEvent`` and retries each
-    store in order.  All five calls are idempotent; the coordinator's retry/DLQ
+    store in order.  All calls are idempotent; the coordinator's retry/DLQ
     wrapper handles any exceptions that bubble up.
     """
 
@@ -2128,6 +2140,7 @@ def handle_knowledge_base_deleted(
     graph_service.delete_knowledge_base(event.knowledge_base_id)
     vector_service.delete_knowledge_base(event.knowledge_base_id)
     raw_record_store.delete_by_kb(event.knowledge_base_id)
+    derived_signal_store.delete_by_kb(event.knowledge_base_id)
     if object_store is not None:
         prefix = f"knowledgebases/{event.knowledge_base_id}/"
         for key in object_store.list_keys(prefix):
@@ -2496,6 +2509,7 @@ def handle_event(
     monitoring_service: MonitoringService | None = None,
     records_config: RecordsConfig | None = None,
     raw_record_store: RawRecordStore | None = None,
+    derived_signal_store: DerivedRiskSignalWriterProtocol | None = None,
     observation_writer: ObservationWriter | None = None,
     policy_service: PolicyService | None = None,
     policy_rules: list[PolicyRulePack] | None = None,
@@ -2546,6 +2560,7 @@ def handle_event(
             monitoring_service=monitoring_service,
             records_config=records_config,
             raw_record_store=raw_record_store,
+            derived_signal_store=derived_signal_store,
             observation_writer=observation_writer,
             policy_service=policy_service,
             policy_rules=policy_rules,
@@ -2586,6 +2601,7 @@ def _dispatch_event(
     monitoring_service: MonitoringService | None,
     records_config: RecordsConfig | None,
     raw_record_store: RawRecordStore | None,
+    derived_signal_store: DerivedRiskSignalWriterProtocol | None,
     observation_writer: ObservationWriter | None,
     policy_service: PolicyService | None,
     policy_rules: list[PolicyRulePack] | None,
@@ -2755,6 +2771,7 @@ def _dispatch_event(
         if (
             vector_service is None
             or raw_record_store is None
+            or derived_signal_store is None
             or kb_repository is None
         ):
             logger.warning(
@@ -2766,6 +2783,7 @@ def _dispatch_event(
             graph_service=graph_service,
             vector_service=vector_service,
             raw_record_store=raw_record_store,
+            derived_signal_store=derived_signal_store,
             kb_repository=kb_repository,
             object_store=object_store,
         )
@@ -2862,6 +2880,7 @@ async def drain_ingestion_events(
     monitoring_service: MonitoringService | None = None,
     records_config: RecordsConfig | None = None,
     raw_record_store: RawRecordStore | None = None,
+    derived_signal_store: DerivedRiskSignalWriterProtocol | None = None,
     observation_writer: ObservationWriter | None = None,
     policy_service: PolicyService | None = None,
     policy_rules: list[PolicyRulePack] | None = None,
@@ -2936,6 +2955,7 @@ async def drain_ingestion_events(
                 monitoring_service=monitoring_service,
                 records_config=records_config,
                 raw_record_store=raw_record_store,
+                derived_signal_store=derived_signal_store,
                 observation_writer=observation_writer,
                 policy_service=policy_service,
                 policy_rules=policy_rules,
@@ -3081,6 +3101,7 @@ async def run_worker(
                 monitoring_service=deps.monitoring_service,
                 records_config=deps.records_config,
                 raw_record_store=deps.raw_record_store,
+                derived_signal_store=deps.derived_signal_store,
                 observation_writer=deps.observation_writer,
                 policy_service=deps.policy_service,
                 policy_rules=deps.policy_rules,

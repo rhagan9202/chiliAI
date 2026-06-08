@@ -16,7 +16,9 @@ from api._kb_projection import (
     project_knowledge_base,
 )
 from knowledgebases import DocumentRecord, KnowledgeBaseRepository
+from analytics.peerstats.adapters.protocols import DerivedRiskSignalWriterProtocol
 from api.dependencies import (
+    get_derived_signal_store,
     get_event_bus,
     get_domain_config,
     get_graph_service,
@@ -177,11 +179,14 @@ async def delete_knowledge_base(
     graph_service: GraphServiceProtocol = Depends(get_graph_service),
     vector_service: VectorServiceProtocol = Depends(get_vector_service),
     raw_record_store: RawRecordStore = Depends(get_raw_record_store),
+    derived_signal_store: DerivedRiskSignalWriterProtocol = Depends(
+        get_derived_signal_store
+    ),
     object_store: ObjectStore = Depends(get_object_store),
     workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
     event_bus: EventBus = Depends(get_event_bus),
 ) -> Response:
-    """Cascade-delete a KB across graph, vector, raw_records, object store, and metadata."""
+    """Cascade-delete a KB across graph, vector, raw_records, derived signals, object store, and metadata."""
     existing_kb = repository.get(knowledge_base_id)
     if existing_kb is None:
         raise HTTPException(
@@ -212,6 +217,10 @@ async def delete_knowledge_base(
     _run("graph", lambda: graph_service.delete_knowledge_base(knowledge_base_id))
     _run("vector", lambda: vector_service.delete_knowledge_base(knowledge_base_id))
     _run("raw_records", lambda: raw_record_store.delete_by_kb(knowledge_base_id))
+    _run(
+        "derived_signals",
+        lambda: derived_signal_store.delete_by_kb(knowledge_base_id),
+    )
     _run(
         "object_store",
         lambda: _delete_object_store_prefix(object_store, knowledge_base_id),

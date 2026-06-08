@@ -75,6 +75,12 @@ class InMemoryDerivedRiskSignalWriter:
             self._signals[key] = signal
         return len(signals)
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        keys = [key for key in self._signals if key[0] == knowledge_base_id]
+        for key in keys:
+            del self._signals[key]
+        return len(keys)
+
     def latest_signals(
         self, *, knowledge_base_id: str, entity_id: str
     ) -> list[DerivedRiskSignal]:

@@ -46,6 +46,10 @@ class DerivedRiskSignalWriterProtocol(Protocol):
         """Persist the signals; return the count processed (not net-new inserts)."""
         ...
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Delete all derived signals for a knowledge base; return rows removed."""
+        ...
+
 
 __all__ = [
     "ColumnRow",

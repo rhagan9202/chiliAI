@@ -57,6 +57,8 @@ UPSERT_SQL = """
         computed_at = now()
 """
 
+_DELETE_BY_KB_SQL = "DELETE FROM entity_derived_signals WHERE knowledge_base_id = %s"
+
 
 def build_agg_sql(spec: PeerMetricSpec) -> str:
     """Build the per-entity, per-interval aggregation SQL (positional %s)."""
@@ -220,6 +222,19 @@ class PostgresDerivedRiskSignalWriter:
                 "Failed to write derived risk signals."
             ) from exc
         return len(signals)
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Delete all derived signals for a knowledge base; return rows removed."""
+
+        try:
+            with self._provider.connection() as conn:
+                cursor = conn.execute(_DELETE_BY_KB_SQL, (knowledge_base_id,))
+                conn.commit()
+                return cursor.rowcount
+        except Exception as exc:
+            raise PeerStatsSourceError(
+                "Failed to delete derived risk signals."
+            ) from exc
 
 
 __all__ = [

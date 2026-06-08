@@ -27,6 +27,9 @@ module itself is unchanged.
 - Postgres (`adapters/postgres.py`) — aggregates `raw_records` JSONB in SQL
   (skipping non-numeric values), upserts `entity_derived_signals`.
 
+The `DerivedRiskSignalWriterProtocol` also exposes `delete_by_kb(knowledge_base_id)`,
+which the KB-delete cascade calls to purge a knowledge base's `entity_derived_signals`.
+
 ## Edge cases
 Cohort `< min_peers` → no signal; `peer_std == 0` → `z = 0`; missing/non-numeric
 value → row skipped; group membership computed per interval.

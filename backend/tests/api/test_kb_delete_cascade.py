@@ -8,6 +8,7 @@ workers, no external services.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,7 +18,10 @@ from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowStepState
 from agent.workflow_tracking import WorkflowEventTracker
 from knowledgebases import InMemoryKnowledgeBaseRepository
 from api.app import create_app
+from analytics.peerstats.adapters.in_memory import InMemoryDerivedRiskSignalWriter
+from analytics.peerstats.models import DerivedRiskSignal
 from api.dependencies import (
+    get_derived_signal_store,
     get_event_bus,
     get_domain_config,
     get_graph_service,
@@ -374,4 +378,72 @@ def test_delete_kb_returns_404_when_missing(
     assert response.status_code == 404
     assert not any(
         isinstance(e, KnowledgeBaseDeletedEvent) for e in event_bus.published_events
+    )
+
+
+def _seed_derived_signal(
+    store: InMemoryDerivedRiskSignalWriter, knowledge_base_id: str
+) -> None:
+    store.write_signals(
+        [
+            DerivedRiskSignal(
+                knowledge_base_id=knowledge_base_id,
+                entity_id="provider:1",
+                entity_type="provider",
+                metric_name="weekly_billing",
+                interval_start=datetime(2026, 1, 5, tzinfo=timezone.utc),
+                peer_group_key="provider",
+                aggregate_value=10.0,
+                peer_mean=5.0,
+                peer_std=2.0,
+                z_score=2.5,
+                signal_value=0.5,
+                weight=1.0,
+                rationale="r",
+                correlation_id="c",
+            )
+        ]
+    )
+
+
+def test_delete_kb_purges_derived_signals(
+    cascade_harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+        InMemoryGraphRepository,
+        InMemoryVectorStore,
+        InMemoryRawRecordStore,
+        WorkflowEventTracker,
+    ],
+) -> None:
+    """The KB-delete cascade purges entity_derived_signals (peerstats)."""
+    client, *_ = cascade_harness
+    derived_signal_store = InMemoryDerivedRiskSignalWriter()
+    client.app.dependency_overrides[get_derived_signal_store] = (
+        lambda: derived_signal_store
+    )
+
+    created = client.post(
+        "/knowledgebases", json={"name": "derived-cleanup", "description": ""}
+    )
+    assert created.status_code == 201
+    kb_id: str = created.json()["id"]
+
+    _seed_derived_signal(derived_signal_store, kb_id)
+    assert (
+        derived_signal_store.latest_signals(
+            knowledge_base_id=kb_id, entity_id="provider:1"
+        )
+        != []
+    )
+
+    response = client.delete(f"/knowledgebases/{kb_id}")
+    assert response.status_code == 204
+    assert (
+        derived_signal_store.latest_signals(
+            knowledge_base_id=kb_id, entity_id="provider:1"
+        )
+        == []
     )
