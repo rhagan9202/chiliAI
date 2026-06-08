@@ -5,9 +5,17 @@ SQL (one row per entity per interval bucket); ``PostgresDerivedRiskSignalWriter`
 upserts ``entity_derived_signals``. Both depend only on the psycopg-free
 ``database.ConnectionProvider`` protocol and use positional ``%s`` parameters.
 
-Note: ``date_trunc`` runs in the database session timezone; the deployment runs
-Postgres in UTC, matching the Python ``bucket_start`` helper used to compute the
-``interval_starts`` filter.
+Notes:
+- ``date_trunc`` runs in the database session timezone; the deployment runs
+  Postgres in UTC, matching the Python ``bucket_start`` helper used to compute
+  the ``interval_starts`` filter.
+- Rows whose value column is present but not numeric-castable are excluded by a
+  regex guard in the subquery (implements the design's "non-numeric value →
+  record skipped" rule), so one bad value never aborts the whole batch. For the
+  ``count`` aggregation this means counting records with a numeric value column.
+
+The helper functions and ``UPSERT_SQL`` are public so the no-DB consistency
+tests can assert placeholder/param alignment without importing private names.
 """
 
 from __future__ import annotations
@@ -19,15 +27,6 @@ from analytics.peerstats.exceptions import PeerStatsSourceError
 from analytics.peerstats.models import DerivedRiskSignal, PeerAggregate
 from config.schema import PeerMetricSpec
 from database.protocols import ConnectionProvider, Row
-
-__all__ = [
-    "PostgresDerivedRiskSignalWriter",
-    "PostgresRecordColumnSource",
-    "UPSERT_SQL",
-    "build_agg_params",
-    "build_agg_sql",
-    "signal_params",
-]
 
 _AGG_EXPR: dict[str, str] = {
     "sum": "sum(val)",
@@ -84,6 +83,7 @@ def build_agg_sql(spec: PeerMetricSpec) -> str:
               AND record_type = %s
               AND jsonb_exists(payload, %s)
               AND jsonb_exists(payload, %s)
+              AND (payload->>%s) ~ '^-?[0-9]+([.][0-9]+)?$'
         ) AS rows
         GROUP BY entity_id, entity_type, peer_group_key, interval_start
     """
@@ -105,6 +105,7 @@ def build_agg_params(
       8  record_type        — WHERE record_type
       9  value_column       — jsonb_exists value column
       10 entity_id_field    — jsonb_exists id field
+      11 value_column       — numeric-castability regex guard
 
     Each group_by item inserts one %s between position 4 and 5.
     time_column (when not None) inserts one %s between interval and value_column.
@@ -125,6 +126,7 @@ def build_agg_params(
     params.append(spec.record_type)      # next: WHERE record_type
     params.append(spec.value_column)     # next: jsonb_exists value_column
     params.append(spec.entity_id_field)  # next: jsonb_exists entity_id_field
+    params.append(spec.value_column)     # next: numeric-castability regex guard
     return tuple(params)
 
 
@@ -167,6 +169,8 @@ class PostgresRecordColumnSource:
         Filters the result set to only the requested ``interval_starts`` after
         fetching — the SQL intentionally omits a time-range predicate so the
         query plan stays simple and the caller controls filtering granularity.
+        An empty ``interval_starts`` disables the filter and returns aggregates
+        for all available intervals.
         """
 
         try:
@@ -216,3 +220,13 @@ class PostgresDerivedRiskSignalWriter:
                 "Failed to write derived risk signals."
             ) from exc
         return len(signals)
+
+
+__all__ = [
+    "UPSERT_SQL",
+    "PostgresDerivedRiskSignalWriter",
+    "PostgresRecordColumnSource",
+    "build_agg_params",
+    "build_agg_sql",
+    "signal_params",
+]
