@@ -3309,3 +3309,67 @@ def test_handle_event_absorbs_unexpected_monitoring_exception() -> None:
     )
 
     assert processed == 0
+
+
+def test_dispatch_runs_kb_cleanup_when_wired_and_guards_when_not() -> None:
+    """The worker dispatch invokes the KB-delete cascade when wired, else guards."""
+    from types import SimpleNamespace
+    from typing import cast
+    from unittest.mock import MagicMock
+
+    from agent.coordinator import handle_event
+    from events.types import KnowledgeBaseDeletedEvent
+    from knowledgebases.cleanup import KbDeletionStores
+    from storage.adapters.in_memory import InMemoryObjectStore
+
+    object_store = InMemoryObjectStore()
+    event_bus = InMemoryEventBus()
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(), object_store=object_store, event_bus=event_bus
+    )
+    ingestion_service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(), fetcher=HttpxRemoteDocumentFetcher()
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    store_fields = [
+        "graph_service", "vector_service", "raw_record_store", "derived_signal_store",
+        "risk_history_writer", "observation_writer", "alert_history_writer",
+        "entity_metric_repository", "conversation_repository", "case_repository",
+        "policy_item_repository", "evidence_pack_repository", "object_store",
+    ]
+    mocks = {field: MagicMock() for field in store_fields}
+    mocks["object_store"].list_keys.return_value = []
+    bundle = cast(KbDeletionStores, SimpleNamespace(**mocks))
+    kb_repository = MagicMock()
+
+    def _dispatch(stores: KbDeletionStores | None) -> int:
+        return handle_event(
+            EventDelivery(
+                event=KnowledgeBaseDeletedEvent(
+                    knowledge_base_id="kb-x", cleanup_pending=True
+                )
+            ),
+            ingestion_service,
+            document_chunker=create_document_chunker(),
+            document_extractor=create_document_extractor([]),
+            extraction_validator=create_extraction_validator([], []),
+            graph_service=graph_service,
+            object_store=object_store,
+            event_bus=event_bus,
+            kb_deletion_stores=stores,
+            kb_repository=kb_repository,  # type: ignore[arg-type]
+        )
+
+    # Wired → dispatch invokes the handler, which replays the cascade + deletes metadata.
+    assert _dispatch(bundle) == 1
+    mocks["risk_history_writer"].delete_by_kb.assert_called_once_with("kb-x")
+    kb_repository.delete.assert_called_once_with("kb-x")
+
+    # Not wired (no bundle) → guard short-circuits, no cleanup.
+    kb_repository.reset_mock()
+    assert _dispatch(None) == 0
+    kb_repository.delete.assert_not_called()
