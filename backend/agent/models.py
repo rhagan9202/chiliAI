@@ -38,6 +38,7 @@ class HealthSettings(BaseModel):
     host: str = "0.0.0.0"
     port: int = Field(default=8001, gt=0)
     degraded_after_seconds: float = Field(default=300.0, gt=0.0)
+    degraded_after_drain_errors: int = Field(default=3, gt=0)
 
 
 class WorkflowStepStatus(str, Enum):

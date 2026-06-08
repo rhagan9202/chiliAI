@@ -277,6 +277,9 @@ SHUTDOWN_LOG_REQUESTED = "Shutdown requested, finishing current event..."
 SHUTDOWN_LOG_DONE = "Worker stopped gracefully."
 DEFAULT_WORKFLOW_STALE_MAX_AGE_SECONDS = 24 * 60 * 60
 DEFAULT_WORKFLOW_RECONCILE_INTERVAL_SECONDS = 60
+# Backoff after a drain iteration raises (e.g. transient Redis outage) so the
+# worker neither dies nor hot-loops while the dependency recovers.
+DRAIN_ERROR_BACKOFF_SECONDS = 1.0
 WORKER_EVENT_TYPES: tuple[str, ...] = (
     "documents.uploaded",
     "documents.parsed",
@@ -3092,10 +3095,14 @@ async def drain_ingestion_events(
                 kb_deletion_stores=kb_deletion_stores,
             )
 
+        dead_lettered = False
+
         def _record_failure(
             error: BaseException,
             captured: EventDelivery = delivery,
         ) -> None:
+            nonlocal dead_lettered
+            dead_lettered = True
             if workflow_tracker is not None:
                 workflow_tracker.fail_event(captured.event, error)
 
@@ -3109,7 +3116,13 @@ async def drain_ingestion_events(
         )
         ackable.append(delivery)
         if health_state is not None:
-            health_state.mark_event_processed()
+            # Honest health: a dead-lettered delivery is NOT a success. Marking
+            # it processed (the old behaviour) made a worker dead-lettering 100%
+            # of events look healthy.
+            if dead_lettered:
+                health_state.mark_event_dead_lettered()
+            else:
+                health_state.mark_event_processed()
     if ackable:
         event_bus.ack(ackable)
     return processed
@@ -3153,6 +3166,62 @@ async def start_health_server_safely(
         return None
 
 
+async def _drain_once(
+    deps: WorkerDependencies,
+    *,
+    policy: RetryPolicy,
+    health_state: HealthState,
+) -> int:
+    """Run one drain iteration with the full worker dependency set.
+
+    Extracted from ``run_worker`` so the loop body stays small enough to wrap in
+    the resilience guard that keeps a transient drain error from killing the
+    worker process.
+    """
+
+    return await drain_ingestion_events(
+        deps.event_bus,
+        deps.ingestion_service,
+        deps.document_chunker,
+        deps.document_extractor,
+        deps.extraction_validator,
+        deps.graph_service,
+        deps.object_store,
+        embeddings_service=deps.embeddings_service,
+        vector_store=deps.vector_store,
+        graph_repository=_resolve_graph_repository(deps.graph_service),
+        gnn_service=deps.gnn_service,
+        risk_service=deps.risk_service,
+        explainability_service=deps.explainability_service,
+        monitoring_service=deps.monitoring_service,
+        records_config=deps.records_config,
+        raw_record_store=deps.raw_record_store,
+        derived_signal_store=deps.derived_signal_store,
+        kb_deletion_stores=deps.kb_deletion_stores,
+        kb_repository=deps.kb_repository,
+        observation_writer=deps.observation_writer,
+        policy_service=deps.policy_service,
+        policy_rules=deps.policy_rules,
+        entity_metric_repository=deps.entity_metric_repository,
+        metrics_throttle=deps.metrics_throttle,
+        policy_metrics_throttle=deps.policy_metrics_throttle,
+        risk_history_writer=deps.risk_history_writer,
+        alert_history_writer=deps.alert_history_writer,
+        peerstats_service=deps.peerstats_service,
+        peer_stats_config=deps.peer_stats_config,
+        peer_stats_enabled=deps.peer_stats_enabled,
+        consumer_group=deps.event_settings.consumer_group,
+        consumer_name=deps.event_settings.consumer_name(),
+        limit=deps.event_settings.batch_size,
+        block_ms=deps.event_settings.block_ms,
+        reclaim_min_idle_ms=deps.event_settings.reclaim_min_idle_ms,
+        retry_policy=policy,
+        health_state=health_state,
+        workflow_tracker=deps.workflow_tracker,
+        graph_embeddings_enabled=deps.graph_embeddings_enabled,
+    )
+
+
 async def run_worker(
     *,
     retry_policy: RetryPolicy | None = None,
@@ -3186,64 +3255,43 @@ async def run_worker(
 
     try:
         while not shutdown_event.is_set():
-            now_monotonic = time.monotonic()
-            should_reconcile_workflows = (
-                stale_workflow_max_age_seconds > 0
-                and workflow_reconcile_interval_seconds > 0
-                and (
-                    last_workflow_reconcile_at is None
-                    or now_monotonic - last_workflow_reconcile_at
-                    >= workflow_reconcile_interval_seconds
+            try:
+                now_monotonic = time.monotonic()
+                should_reconcile_workflows = (
+                    stale_workflow_max_age_seconds > 0
+                    and workflow_reconcile_interval_seconds > 0
+                    and (
+                        last_workflow_reconcile_at is None
+                        or now_monotonic - last_workflow_reconcile_at
+                        >= workflow_reconcile_interval_seconds
+                    )
                 )
-            )
-            if should_reconcile_workflows:
-                reconciled = deps.workflow_tracker.reconcile_stale_runs(
-                    max_age_seconds=stale_workflow_max_age_seconds
+                if should_reconcile_workflows:
+                    reconciled = deps.workflow_tracker.reconcile_stale_runs(
+                        max_age_seconds=stale_workflow_max_age_seconds
+                    )
+                    last_workflow_reconcile_at = now_monotonic
+                    if reconciled:
+                        logger.warning(
+                            "Reconciled %s stale workflow run(s)", reconciled
+                        )
+                processed = await _drain_once(
+                    deps, policy=policy, health_state=health_state
                 )
-                last_workflow_reconcile_at = now_monotonic
-                if reconciled:
-                    logger.warning("Reconciled %s stale workflow run(s)", reconciled)
-            processed = await drain_ingestion_events(
-                deps.event_bus,
-                deps.ingestion_service,
-                deps.document_chunker,
-                deps.document_extractor,
-                deps.extraction_validator,
-                deps.graph_service,
-                deps.object_store,
-                embeddings_service=deps.embeddings_service,
-                vector_store=deps.vector_store,
-                graph_repository=_resolve_graph_repository(deps.graph_service),
-                gnn_service=deps.gnn_service,
-                risk_service=deps.risk_service,
-                explainability_service=deps.explainability_service,
-                monitoring_service=deps.monitoring_service,
-                records_config=deps.records_config,
-                raw_record_store=deps.raw_record_store,
-                derived_signal_store=deps.derived_signal_store,
-                kb_deletion_stores=deps.kb_deletion_stores,
-                kb_repository=deps.kb_repository,
-                observation_writer=deps.observation_writer,
-                policy_service=deps.policy_service,
-                policy_rules=deps.policy_rules,
-                entity_metric_repository=deps.entity_metric_repository,
-                metrics_throttle=deps.metrics_throttle,
-                policy_metrics_throttle=deps.policy_metrics_throttle,
-                risk_history_writer=deps.risk_history_writer,
-                alert_history_writer=deps.alert_history_writer,
-                peerstats_service=deps.peerstats_service,
-                peer_stats_config=deps.peer_stats_config,
-                peer_stats_enabled=deps.peer_stats_enabled,
-                consumer_group=deps.event_settings.consumer_group,
-                consumer_name=deps.event_settings.consumer_name(),
-                limit=deps.event_settings.batch_size,
-                block_ms=deps.event_settings.block_ms,
-                reclaim_min_idle_ms=deps.event_settings.reclaim_min_idle_ms,
-                retry_policy=policy,
-                health_state=health_state,
-                workflow_tracker=deps.workflow_tracker,
-                graph_embeddings_enabled=deps.graph_embeddings_enabled,
-            )
+                health_state.record_drain_success()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - resilience: never kill the worker
+                # A transient error (e.g. Redis outage in consume/ack, or the
+                # workflow reconcile) must not crash the worker process. Record
+                # it for /health, back off so we don't hot-loop, and continue.
+                health_state.record_drain_error(exc)
+                logger.exception(
+                    "Worker drain iteration failed; backing off %.1fs and continuing",
+                    DRAIN_ERROR_BACKOFF_SECONDS,
+                )
+                await asyncio.sleep(DRAIN_ERROR_BACKOFF_SECONDS)
+                continue
             if processed:
                 logger.info("Processed %s ingestion document(s)", processed)
                 await asyncio.sleep(0)

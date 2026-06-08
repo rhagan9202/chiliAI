@@ -79,3 +79,52 @@ def test_build_health_payload_returns_iso_timestamp_when_event_processed() -> No
     payload = build_health_payload(state)
     assert payload["status"] == "ok"
     assert isinstance(payload["last_event_processed_at"], str)
+    assert payload["events_processed"] == 1
+    assert payload["events_dead_lettered"] == 0
+
+
+def test_status_degraded_when_only_dead_lettering() -> None:
+    # A worker that has received events but dead-lettered all of them has made
+    # no real progress and must NOT report healthy.
+    state = HealthState(settings=HealthSettings())
+    assert state.status() == "ok"  # fresh + idle is genuinely ok
+    state.mark_event_dead_lettered()
+    state.mark_event_dead_lettered()
+    assert state.status() == "degraded"
+    payload = build_health_payload(state)
+    assert payload["status"] == "degraded"
+    assert payload["events_dead_lettered"] == 2
+    assert payload["events_processed"] == 0
+
+
+def test_status_ok_when_some_events_succeed_despite_dead_letters() -> None:
+    state = HealthState(settings=HealthSettings())
+    state.mark_event_processed()
+    state.mark_event_dead_lettered()
+    # Some genuine progress → not degraded on the dead-letter signal alone.
+    assert state.status() == "ok"
+
+
+def test_status_degraded_after_consecutive_drain_errors() -> None:
+    state = HealthState(settings=HealthSettings(degraded_after_drain_errors=3))
+    state.record_drain_error(RuntimeError("redis down"))
+    state.record_drain_error(RuntimeError("redis down"))
+    assert state.status() == "ok"  # below threshold
+    state.record_drain_error(RuntimeError("redis down"))
+    assert state.status() == "degraded"
+    payload = build_health_payload(state)
+    assert payload["consecutive_drain_errors"] == 3
+    assert payload["last_drain_error"] == "redis down"
+    # A successful drain (or processed event) clears the streak.
+    state.record_drain_success()
+    assert state.status() == "ok"
+    assert state.consecutive_drain_errors == 0
+
+
+def test_mark_event_processed_clears_drain_error_streak() -> None:
+    state = HealthState(settings=HealthSettings(degraded_after_drain_errors=2))
+    state.record_drain_error(RuntimeError("blip"))
+    state.record_drain_error(RuntimeError("blip"))
+    assert state.status() == "degraded"
+    state.mark_event_processed()
+    assert state.status() == "ok"

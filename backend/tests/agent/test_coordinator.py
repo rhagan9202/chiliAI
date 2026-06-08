@@ -2648,7 +2648,14 @@ def test_health_payload_handles_no_events() -> None:
 
     state = HealthState(settings=HealthSettings())
     payload = build_health_payload(state)
-    assert payload == {"status": "ok", "last_event_processed_at": None}
+    assert payload == {
+        "status": "ok",
+        "last_event_processed_at": None,
+        "events_processed": 0,
+        "events_dead_lettered": 0,
+        "consecutive_drain_errors": 0,
+        "last_drain_error": None,
+    }
 
 # ---------------------------------------------------------------------------
 # E7-S10 — analytics handler (Flow B)
@@ -3477,3 +3484,106 @@ def test_handle_event_propagates_alert_history_writeback_failure() -> None:
             event_bus=event_bus,
             alert_history_writer=_BoomAlertHistory(),  # type: ignore[arg-type]
         )
+
+
+def test_drain_records_dead_letter_in_health_not_success() -> None:
+    """A dead-lettered delivery is recorded as dead-lettered, not processed."""
+    from agent.health import HealthState
+    from agent.models import HealthSettings
+
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(), object_store=object_store, event_bus=event_bus
+    )
+    event_bus.publish(
+        RecordsIngestedEvent(
+            correlation_id="corr-dl",
+            knowledge_base_id="kb-1",
+            feed_name="missing_feed",
+            record_type="claim_record",
+            record_count=1,
+        )
+    )
+    health_state = HealthState(settings=HealthSettings())
+
+    asyncio.run(
+        drain_ingestion_events(
+            event_bus,
+            IngestionService(
+                DocumentParsingOrchestrator(
+                    create_default_registry(), fetcher=HttpxRemoteDocumentFetcher()
+                ),
+                object_store=object_store,
+                event_bus=event_bus,
+            ),
+            create_document_chunker(),
+            create_document_extractor([]),
+            create_extraction_validator([], []),
+            graph_service,
+            object_store,
+            records_config=RecordsConfig(),
+            raw_record_store=InMemoryRawRecordStore(),
+            derived_signal_store=build_derived_signal_writer(None),
+            observation_writer=InMemoryObservationWriter(),
+            consumer_group="test-workers",
+            consumer_name="worker-1",
+            retry_policy=RetryPolicy(max_retries=0, base_delay_seconds=0.0),
+            health_state=health_state,
+            sleep=_instant_sleep,
+        )
+    )
+
+    assert len(event_bus.dlq_entries) == 1
+    assert health_state.events_dead_lettered == 1
+    assert health_state.events_processed == 0
+    # Honest health: received an event, dead-lettered it all → degraded.
+    assert health_state.status() == "degraded"
+
+
+def test_run_worker_survives_transient_drain_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A transient error in a drain iteration must NOT crash the worker process."""
+    import socket
+    from contextlib import closing
+
+    from agent.coordinator import run_worker
+    from agent.models import HealthSettings
+
+    defaults_yaml = __file__.replace(
+        "tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml"
+    )
+    monkeypatch.setenv("CHILI_CONFIG_PATH", defaults_yaml)
+    monkeypatch.setattr("agent.coordinator.DRAIN_ERROR_BACKOFF_SECONDS", 0.01)
+
+    calls = {"n": 0}
+
+    async def _boom(*_args: object, **_kwargs: object) -> int:
+        calls["n"] += 1
+        raise RuntimeError("transient redis outage")
+
+    monkeypatch.setattr("agent.coordinator._drain_once", _boom)
+
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+        sock.bind(("127.0.0.1", 0))
+        free_port = sock.getsockname()[1]
+
+    async def _run() -> None:
+        task = asyncio.create_task(
+            run_worker(
+                health_settings=HealthSettings(host="127.0.0.1", port=free_port)
+            )
+        )
+        await asyncio.sleep(0.1)
+        task.cancel()
+        # run_worker swallows CancelledError for graceful shutdown; if resilience
+        # were broken, the first RuntimeError would propagate here instead.
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(_run())
+    # The loop kept invoking drain across repeated failures rather than crashing.
+    assert calls["n"] >= 2

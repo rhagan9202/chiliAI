@@ -774,6 +774,12 @@ Triggered by `RiskScoredEvent`. Writes the full risk assessment to `risk_score_h
 
 Triggered by `AlertsCreatedEvent`. Writes each alert to `alert_history` for durable audit. Also snapshots `active_alert_count`, `last_alert_at`, and `last_alert_severity` onto the affected graph entities.
 
+#### Worker loop resilience + health honesty
+
+The `run_worker` loop wraps each drain iteration (workflow reconcile + `drain_ingestion_events`) in a resilience guard: a transient failure (e.g. a Redis outage in `consume`/`ack`, or the reconcile) is recorded, logged, and followed by a short backoff (`DRAIN_ERROR_BACKOFF_SECONDS`) before continuing — it never crashes the worker process (only `CancelledError` ends the loop, for graceful shutdown). The drain itself is factored into `_drain_once` so the loop body stays small enough to guard.
+
+The worker `/health` endpoint reports honestly. `HealthState` distinguishes a **successfully processed** event from a **dead-lettered** one: a delivery whose retries are exhausted and routed to the DLQ calls `mark_event_dead_lettered()` (not `mark_event_processed()`), so a worker dead-lettering 100% of events no longer looks `"ok"`. `status()` returns `"degraded"` when (a) consecutive drain errors reach `degraded_after_drain_errors` (default 3), (b) events have been received but every one was dead-lettered (no successful progress), or (c) the worker was processing and has since stalled past `degraded_after_seconds`. A freshly-started, idle worker with no errors is genuinely `"ok"`. The payload also surfaces `events_processed`, `events_dead_lettered`, `consecutive_drain_errors`, and `last_drain_error` for operators.
+
 #### Plan C design deviations
 
 The following decisions were made during Plan C implementation and differ from the original design intent:

@@ -31,6 +31,10 @@ class HealthState:
         self._settings = settings
         self._clock_factory: type[datetime] = clock if clock is not None else datetime
         self._last_event_processed_at: datetime | None = None
+        self._events_processed: int = 0
+        self._events_dead_lettered: int = 0
+        self._consecutive_drain_errors: int = 0
+        self._last_drain_error: str | None = None
 
     @property
     def settings(self) -> HealthSettings:
@@ -40,20 +44,74 @@ class HealthState:
     def last_event_processed_at(self) -> datetime | None:
         return self._last_event_processed_at
 
-    def mark_event_processed(self, when: datetime | None = None) -> None:
-        """Record the timestamp of the last successfully processed event."""
+    @property
+    def events_processed(self) -> int:
+        return self._events_processed
 
+    @property
+    def events_dead_lettered(self) -> int:
+        return self._events_dead_lettered
+
+    @property
+    def consecutive_drain_errors(self) -> int:
+        return self._consecutive_drain_errors
+
+    @property
+    def last_drain_error(self) -> str | None:
+        return self._last_drain_error
+
+    def mark_event_processed(self, when: datetime | None = None) -> None:
+        """Record a successfully processed event (NOT a dead-lettered one).
+
+        Successful progress also clears the consecutive-drain-error counter: a
+        worker making progress is, by definition, reading the stream.
+        """
+
+        self._events_processed += 1
         self._last_event_processed_at = when if when is not None else utc_now()
+        self._consecutive_drain_errors = 0
+
+    def mark_event_dead_lettered(self) -> None:
+        """Record an event whose retries were exhausted and routed to the DLQ.
+
+        Deliberately does NOT touch ``last_event_processed_at`` — a worker that
+        only dead-letters has made no real progress and must not look healthy.
+        """
+
+        self._events_dead_lettered += 1
+
+    def record_drain_error(self, error: BaseException) -> None:
+        """Record a drain iteration that failed to read/process the stream."""
+
+        self._consecutive_drain_errors += 1
+        self._last_drain_error = str(error)
+
+    def record_drain_success(self) -> None:
+        """Record a drain iteration that completed (the read path is healthy)."""
+
+        self._consecutive_drain_errors = 0
+        self._last_drain_error = None
 
     def status(self, *, now: datetime | None = None) -> str:
-        """Return ``"ok"`` while events flow, otherwise ``"degraded"``."""
+        """Return ``"ok"`` only when the worker is genuinely healthy.
 
-        if self._last_event_processed_at is None:
-            return "ok"
-        current = now if now is not None else self._clock_factory.now(timezone.utc)
-        elapsed = (current - self._last_event_processed_at).total_seconds()
-        if elapsed > self._settings.degraded_after_seconds:
+        Reports ``"degraded"`` when the worker cannot drain the stream
+        (``>= degraded_after_drain_errors`` consecutive failures), when it has
+        received events but dead-lettered all of them (no successful progress),
+        or when it was processing and has since stalled past
+        ``degraded_after_seconds``. A freshly-started, idle worker with no errors
+        is genuinely ``"ok"``.
+        """
+
+        if self._consecutive_drain_errors >= self._settings.degraded_after_drain_errors:
             return "degraded"
+        if self._events_dead_lettered > 0 and self._events_processed == 0:
+            return "degraded"
+        if self._last_event_processed_at is not None:
+            current = now if now is not None else self._clock_factory.now(timezone.utc)
+            elapsed = (current - self._last_event_processed_at).total_seconds()
+            if elapsed > self._settings.degraded_after_seconds:
+                return "degraded"
         return "ok"
 
 
@@ -66,6 +124,10 @@ def build_health_payload(state: HealthState, *, now: datetime | None = None) -> 
         "last_event_processed_at": (
             last_processed.isoformat() if last_processed is not None else None
         ),
+        "events_processed": state.events_processed,
+        "events_dead_lettered": state.events_dead_lettered,
+        "consecutive_drain_errors": state.consecutive_drain_errors,
+        "last_drain_error": state.last_drain_error,
     }
     return payload
 
