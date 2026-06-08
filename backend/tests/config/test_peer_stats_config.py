@@ -40,6 +40,20 @@ def test_peer_metric_spec_rejects_nonpositive_z_cap() -> None:
         )
 
 
+def test_peer_metric_spec_rejects_nonpositive_weight() -> None:
+    with pytest.raises(ValidationError):
+        PeerMetricSpec(
+            name="x",
+            record_type="r",
+            entity_type="e",
+            entity_id_field="id",
+            value_column="v",
+            aggregation="mean",
+            interval="day",
+            weight=0.0,
+        )
+
+
 def test_peer_metric_spec_rejects_min_peers_below_two() -> None:
     with pytest.raises(ValidationError):
         PeerMetricSpec(

@@ -460,7 +460,7 @@ class PeerMetricSpec(BaseModel):
     aggregation: Literal["sum", "mean", "count", "max", "min"]
     interval: Literal["day", "week", "month"]
     time_column: str | None = None
-    group_by: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    group_by: list[str] = Field(default_factory=lambda: [])
     direction: Literal["high", "low", "two_sided"] = "high"
     z_cap: float = Field(default=4.0, gt=0.0)
     weight: float = Field(default=1.0, gt=0.0)
@@ -471,9 +471,7 @@ class PeerMetricSpec(BaseModel):
 class PeerStatsConfig(BaseModel):
     """Collection of peer-group z-score metric specs for a domain."""
 
-    metrics: list[PeerMetricSpec] = Field(
-        default_factory=lambda: cast(list[PeerMetricSpec], [])
-    )
+    metrics: list[PeerMetricSpec] = Field(default_factory=lambda: [])
 
 
 # ---------------------------------------------------------------------------
