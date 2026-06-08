@@ -30,3 +30,10 @@ module itself is unchanged.
 ## Edge cases
 Cohort `< min_peers` → no signal; `peer_std == 0` → `z = 0`; missing/non-numeric
 value → row skipped; group membership computed per interval.
+
+> **Two-signal floor:** the risk service requires ≥2 signals to score an entity.
+> Each `PeerMetricSpec` contributes one derived signal per entity, so a domain
+> must configure **at least two matching specs** for an entity type for those
+> entities to receive a risk score (the medicare default ships two provider
+> specs). With a single spec, affected entities are assessed but skipped with an
+> INFO log (`RiskInsufficientSignalsError`) and produce no score.

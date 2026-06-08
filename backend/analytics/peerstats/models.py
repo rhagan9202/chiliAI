@@ -17,16 +17,6 @@ class PeerAggregate(BaseModel):
     aggregate_value: float
 
 
-class PeerGroupStat(BaseModel):
-    """Mean/std of a peer group for one interval bucket."""
-
-    peer_group_key: str
-    interval_start: datetime
-    mean: float
-    std: float = Field(ge=0.0)
-    count: int = Field(ge=0)
-
-
 class DerivedRiskSignal(BaseModel):
     """A peer z-score expressed as a persistable, risk-consumable signal."""
 
@@ -49,5 +39,4 @@ class DerivedRiskSignal(BaseModel):
 __all__ = [
     "DerivedRiskSignal",
     "PeerAggregate",
-    "PeerGroupStat",
 ]

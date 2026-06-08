@@ -7,11 +7,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from analytics.peerstats.models import (
-    DerivedRiskSignal,
-    PeerAggregate,
-    PeerGroupStat,
-)
+from analytics.peerstats.models import DerivedRiskSignal, PeerAggregate
 
 
 def _now() -> datetime:
@@ -46,15 +42,4 @@ def test_derived_signal_value_bounds() -> None:
             weight=1.0,
             rationale="x",
             correlation_id="c1",
-        )
-
-
-def test_peer_group_stat_rejects_negative_std() -> None:
-    with pytest.raises(ValidationError):
-        PeerGroupStat(
-            peer_group_key="provider",
-            interval_start=_now(),
-            mean=5.0,
-            std=-1.0,
-            count=3,
         )

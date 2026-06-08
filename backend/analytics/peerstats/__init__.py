@@ -10,14 +10,12 @@ from analytics.peerstats.exceptions import (
 from analytics.peerstats.models import (
     DerivedRiskSignal,
     PeerAggregate,
-    PeerGroupStat,
 )
 from analytics.peerstats.service import PeerStatsService, create_peerstats_service
 
 __all__ = [
     "DerivedRiskSignal",
     "PeerAggregate",
-    "PeerGroupStat",
     "PeerStatsConfigurationError",
     "PeerStatsError",
     "PeerStatsService",
