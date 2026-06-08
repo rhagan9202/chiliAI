@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+
 from analytics.peerstats.adapters.in_memory import (
     InMemoryDerivedRiskSignalWriter,
     InMemoryRecordColumnSource,
 )
 from analytics.peerstats.adapters.protocols import ColumnRow
-from analytics.peerstats.service import create_peerstats_service
+from analytics.peerstats.exceptions import PeerStatsSourceError
+from analytics.peerstats.models import PeerAggregate
+from analytics.peerstats.service import PeerStatsService, create_peerstats_service
 from analytics.peerstats.service_models import PeerStatsComputeRequest
 from config.schema import PeerMetricSpec
 
@@ -44,7 +48,7 @@ def _seed(source: InMemoryRecordColumnSource, values: dict[str, float]) -> None:
 
 def _service(
     source: InMemoryRecordColumnSource, writer: InMemoryDerivedRiskSignalWriter
-):
+) -> PeerStatsService:
     return create_peerstats_service(source, writer=writer)
 
 
@@ -93,3 +97,58 @@ def test_zero_std_yields_zero_z_and_signal() -> None:
     signal = writer.latest_signals(knowledge_base_id="kb1", entity_id="provider:1")[0]
     assert signal.z_score == 0.0
     assert signal.signal_value == 0.0
+
+
+def test_compute_handles_multiple_intervals() -> None:
+    source = InMemoryRecordColumnSource()
+    writer = InMemoryDerivedRiskSignalWriter()
+    tuesday_next = datetime(2026, 1, 13, tzinfo=timezone.utc)  # week of Jan 12
+    week2_start = datetime(2026, 1, 12, tzinfo=timezone.utc)
+    source.add_rows(
+        "kb1",
+        "claim_record",
+        [
+            ColumnRow(entity_id="provider:1", entity_type="provider",
+                      group_values=(), value=1.0, observed_at=MONDAY),
+            ColumnRow(entity_id="provider:2", entity_type="provider",
+                      group_values=(), value=5.0, observed_at=MONDAY),
+            ColumnRow(entity_id="provider:1", entity_type="provider",
+                      group_values=(), value=9.0, observed_at=tuesday_next),
+            ColumnRow(entity_id="provider:2", entity_type="provider",
+                      group_values=(), value=1.0, observed_at=tuesday_next),
+        ],
+    )
+    response = _service(source, writer).compute(
+        PeerStatsComputeRequest(
+            knowledge_base_id="kb1", spec=_spec(),
+            interval_starts=[MONDAY, week2_start], correlation_id="c1",
+        )
+    )
+    # 2 entities x 2 intervals = 4 signals; affected ids deduped to 2.
+    assert response.signals_written == 4
+    assert response.affected_entity_ids == ["provider:1", "provider:2"]
+
+
+class _RaisingColumnSource:
+    """A column source that always fails, to test error propagation."""
+
+    def load_interval_aggregates(
+        self,
+        *,
+        knowledge_base_id: str,
+        spec: PeerMetricSpec,
+        interval_starts: list[datetime],
+    ) -> list[PeerAggregate]:
+        raise PeerStatsSourceError("boom")
+
+
+def test_source_error_propagates() -> None:
+    writer = InMemoryDerivedRiskSignalWriter()
+    service = create_peerstats_service(_RaisingColumnSource(), writer=writer)
+    with pytest.raises(PeerStatsSourceError, match="boom"):
+        service.compute(
+            PeerStatsComputeRequest(
+                knowledge_base_id="kb1", spec=_spec(),
+                interval_starts=[MONDAY], correlation_id="c1",
+            )
+        )
