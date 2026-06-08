@@ -15,7 +15,7 @@ from analytics.risk.exceptions import (
     RiskSourceError,
 )
 from analytics.risk.models import RankedRiskEntry, RiskFactor, RiskProfile, RiskSignal
-from analytics.risk.service import create_risk_service
+from analytics.risk.service import RiskService, create_risk_service
 from analytics.risk.service_models import RiskAssessmentRequest, RiskScoreListRequest
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import RiskScoredEvent
@@ -46,6 +46,47 @@ def test_risk_service_scores_profile_and_publishes_event() -> None:
     assert response.factor_count == 3
     assert response.overall_score == 0.8
     assert isinstance(event_bus.published_events[-1], RiskScoredEvent)
+
+
+def _two_signal_service() -> RiskService:
+    return create_risk_service(
+        InMemoryRiskSignalSource(
+            profiles=[
+                RiskProfile(
+                    knowledge_base_id="kb-1",
+                    entity_id="provider-7",
+                    signals=[
+                        RiskSignal(signal_name="a", value=0.9, weight=2.0),
+                        RiskSignal(signal_name="b", value=0.6, weight=1.0),
+                    ],
+                )
+            ]
+        ),
+        event_bus=InMemoryEventBus(),
+    )
+
+
+def test_assess_uses_caller_supplied_request_id() -> None:
+    service = _two_signal_service()
+    response = service.assess(
+        RiskAssessmentRequest(
+            knowledge_base_id="kb-1",
+            entity_id="provider-7",
+            request_id="risk:corr-1:kb-1:provider-7",
+        )
+    )
+    # Deterministic id flows through → risk_score_history / monitoring batch /
+    # alert id all dedup on a retried assessment of the same event.
+    assert response.request_id == "risk:corr-1:kb-1:provider-7"
+
+
+def test_assess_generates_request_id_when_omitted() -> None:
+    service = _two_signal_service()
+    response = service.assess(
+        RiskAssessmentRequest(knowledge_base_id="kb-1", entity_id="provider-7")
+    )
+    assert response.request_id
+    assert response.request_id != "risk:corr-1:kb-1:provider-7"
 
 
 def test_risk_service_requires_multiple_signals() -> None:

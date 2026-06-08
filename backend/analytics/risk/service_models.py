@@ -19,6 +19,16 @@ class RiskAssessmentRequest(BaseModel):
 
     knowledge_base_id: str
     entity_id: str
+    request_id: str | None = Field(
+        default=None,
+        description=(
+            "Caller-supplied deterministic id for this assessment. When set, it "
+            "becomes the response/history request_id so a retried assessment of "
+            "the same triggering event upserts the same risk_score_history row "
+            "(and the same monitoring batch / alert id) instead of accumulating "
+            "duplicates. Falls back to a generated id when omitted."
+        ),
+    )
     medium_risk_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     high_risk_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 

@@ -56,6 +56,7 @@ from analytics.explainability.adapters.protocols import (
     ExplainabilityContextSourceProtocol,
 )
 from analytics.explainability.exceptions import ExplainabilityError
+from graph.exceptions import GraphError
 from analytics.explainability.models import (
     ExplanationContext,
     ExplanationItem,
@@ -1496,6 +1497,19 @@ def _run_gnn_stage(
         return None
 
 
+def _risk_request_id(
+    *, correlation_id: str, knowledge_base_id: str, entity_id: str
+) -> str:
+    """Deterministic risk request id for one entity assessment of one event.
+
+    Stable across retries of the same triggering event so risk_score_history,
+    the monitoring batch, and the derived alert id all dedup on retry, while a
+    genuinely new event (new correlation_id) still appends a new history row.
+    """
+
+    return f"risk:{correlation_id}:{knowledge_base_id}:{entity_id}"
+
+
 def _run_risk_stage(
     *,
     event: GraphUpdatedEvent,
@@ -1509,6 +1523,11 @@ def _run_risk_stage(
             RiskAssessmentRequest(
                 knowledge_base_id=knowledge_base_id,
                 entity_id=entity_id,
+                request_id=_risk_request_id(
+                    correlation_id=event.correlation_id,
+                    knowledge_base_id=knowledge_base_id,
+                    entity_id=entity_id,
+                ),
             )
         )
     except RiskError as exc:
@@ -1544,7 +1563,10 @@ def _run_explainability_stage(
             risk_response=risk_response,
         )
         response = explainability_service.generate_from_context(context)
-    except (ExplainabilityError, Exception) as exc:  # noqa: BLE001 - Flow B isolates per-entity failures
+    except (ExplainabilityError, GraphError) as exc:
+        # Expected per-entity failures (explainability, or a graph read in
+        # build_explanation_context) are isolated to this entity; unexpected
+        # exceptions (programming errors) propagate instead of being hidden.
         _publish_analysis_failed(
             event_bus=event_bus,
             correlation_id=event.correlation_id,
@@ -1977,16 +1999,20 @@ def assess_entities(
     risk_service: RiskService,
     knowledge_base_id: str,
     entity_ids: list[str],
+    correlation_id: str,
 ) -> int:
     """Assess each entity once; tolerate entities with insufficient signals.
 
     Each successful assess publishes one RiskScoredEvent (existing Flow 3),
-    persisted to risk_score_history. Only *expected* per-entity conditions are
-    swallowed (an entity below the >=2-signal floor, or a per-entity threshold
-    misconfiguration) so one such entity never aborts the batch. Infrastructure
-    failures (``RiskSourceError``/``RiskHistoryError``) deliberately propagate so
-    a transient DB/source outage surfaces (logged with a traceback by the
-    caller's best-effort wrapper) rather than being silently swallowed at INFO.
+    persisted to risk_score_history under a deterministic request id derived from
+    ``correlation_id`` + entity, so a retried ingest re-assesses idempotently
+    instead of accumulating duplicate history rows. Only *expected* per-entity
+    conditions are swallowed (an entity below the >=2-signal floor, or a
+    per-entity threshold misconfiguration) so one such entity never aborts the
+    batch. Infrastructure failures (``RiskSourceError``/``RiskHistoryError``)
+    deliberately propagate so a transient DB/source outage surfaces (logged with
+    a traceback by the caller's best-effort wrapper) rather than being silently
+    swallowed at INFO.
     """
 
     assessed = 0
@@ -1994,7 +2020,13 @@ def assess_entities(
         try:
             risk_service.assess(
                 RiskAssessmentRequest(
-                    knowledge_base_id=knowledge_base_id, entity_id=entity_id
+                    knowledge_base_id=knowledge_base_id,
+                    entity_id=entity_id,
+                    request_id=_risk_request_id(
+                        correlation_id=correlation_id,
+                        knowledge_base_id=knowledge_base_id,
+                        entity_id=entity_id,
+                    ),
                 )
             )
             assessed += 1
@@ -2133,6 +2165,7 @@ def handle_records_ingested(
                     risk_service=risk_service,
                     knowledge_base_id=event.knowledge_base_id,
                     entity_ids=affected,
+                    correlation_id=event.correlation_id,
                 )
         except Exception:  # noqa: BLE001 - best-effort: never break ingest
             logger.exception(
@@ -2439,16 +2472,26 @@ def handle_vectors_indexed(
 def _count_entities(graph_repository: GraphRepository, knowledge_base_id: str) -> int:
     try:
         return graph_repository.count_entities(knowledge_base_id)
-    except Exception:  # noqa: BLE001 - graph backend may be unavailable in tests
-        logger.debug("Graph entity count unavailable for kb=%s", knowledge_base_id)
+    except Exception as exc:  # noqa: BLE001 - kb.ready count is best-effort, not fatal
+        # Visible at WARNING: a graph-backend failure here publishes a count of 0,
+        # which a consumer would read as an empty KB — surface it rather than hide.
+        logger.warning(
+            "Graph entity count unavailable for kb=%s (publishing 0): %s",
+            knowledge_base_id,
+            exc,
+        )
         return 0
 
 
 def _count_relationships(graph_repository: GraphRepository, knowledge_base_id: str) -> int:
     try:
         return graph_repository.count_relationships(knowledge_base_id)
-    except Exception:  # noqa: BLE001 - graph backend may be unavailable in tests
-        logger.debug("Graph relationship count unavailable for kb=%s", knowledge_base_id)
+    except Exception as exc:  # noqa: BLE001 - kb.ready count is best-effort, not fatal
+        logger.warning(
+            "Graph relationship count unavailable for kb=%s (publishing 0): %s",
+            knowledge_base_id,
+            exc,
+        )
         return 0
 
 
@@ -2760,7 +2803,16 @@ def _dispatch_event(
                     entity_metric_repository=entity_metric_repository,
                     metrics_throttle=metrics_throttle,
                 )
-            except Exception as exc:  # noqa: BLE001 - analytics must not block Flow A
+            except Exception as exc:  # noqa: BLE001 - analytics must not re-run Flow A
+                # Kept best-effort intentionally: GraphUpdatedEvent already ran
+                # Flow A (embeddings) in this same dispatch, so propagating a Flow B
+                # failure would re-run the expensive embedding pipeline on retry.
+                # Durability for the analytics *outputs* is provided by their own
+                # retryable events — the RiskScoredEvent and AlertsCreatedEvent
+                # branches now propagate write-back failures. The residual gap (a
+                # fan-out failure BEFORE those events are published) would be closed
+                # by splitting Flow B into its own retryable consumer — tracked
+                # separately.
                 logger.warning(
                     "Flow B analytics handler raised; Flow A already completed. error=%s",
                     exc,
@@ -2786,47 +2838,35 @@ def _dispatch_event(
     if isinstance(event, KnowledgeBaseReadyEvent):
         return 0
     if isinstance(event, RiskScoredEvent):
+        # RiskScoredEvent is the sole path for monitoring + the risk_score_history
+        # write-back. Both are idempotent (the deterministic request_id keys the
+        # monitoring batch, the history row, and the derived alert id), so a
+        # failure must PROPAGATE to the retry/DLQ wrapper rather than be silently
+        # dropped — a transient DB/event-bus outage retries instead of vanishing.
         processed = 0
         if monitoring_service is not None:
-            try:
-                processed = handle_risk_scored(
-                    event,
-                    monitoring_service=monitoring_service,
-                    event_bus=event_bus,
-                )
-            except Exception as exc:  # noqa: BLE001 - monitoring must not abort pipeline
-                logger.warning(
-                    "Monitoring stream consumer raised; continuing. error=%s",
-                    exc,
-                )
+            processed = handle_risk_scored(
+                event,
+                monitoring_service=monitoring_service,
+                event_bus=event_bus,
+            )
         if risk_history_writer is not None:
-            try:
-                handle_risk_scored_for_graph(
-                    event,
-                    risk_history_writer=risk_history_writer,
-                    graph_service=graph_service,
-                )
-            except Exception as exc:  # noqa: BLE001 - write-back must not abort pipeline
-                logger.warning(
-                    "Risk graph write-back raised; continuing. error=%s",
-                    exc,
-                )
+            handle_risk_scored_for_graph(
+                event,
+                risk_history_writer=risk_history_writer,
+                graph_service=graph_service,
+            )
         return processed
     if isinstance(event, AlertsCreatedEvent):
         if alert_history_writer is None:
             return 0
-        try:
-            return handle_alerts_created_for_graph(
-                event,
-                alert_history_writer=alert_history_writer,
-                graph_service=graph_service,
-            )
-        except Exception as exc:  # noqa: BLE001 - write-back must not abort pipeline
-            logger.warning(
-                "Alert graph write-back raised; continuing. error=%s",
-                exc,
-            )
-            return 0
+        # Sole path for the alert_history write; idempotent on alert_id, so a
+        # failure propagates to retry/DLQ rather than being silently dropped.
+        return handle_alerts_created_for_graph(
+            event,
+            alert_history_writer=alert_history_writer,
+            graph_service=graph_service,
+        )
     if isinstance(event, RecordsIngestedEvent):
         if (
             records_config is None

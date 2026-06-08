@@ -766,7 +766,9 @@ Triggered by `GraphUpdatedEvent`. Computes graph-scope metrics (entity count, re
 
 **Flow 3 — Risk score persistence** (`handle_risk_scored_for_graph`)
 
-Triggered by `RiskScoredEvent`. Writes the full risk assessment to `risk_score_history` for durable audit. Also snapshots `risk_score`, `risk_level`, and `risk_assessed_at` as properties onto the affected graph entities so investigation queries can read current scores from the graph without a SQL join.
+Triggered by `RiskScoredEvent`. Writes the full risk assessment to `risk_score_history` for durable audit. Also snapshots `risk_score`, `risk_level`, and `risk_assessed_at` as properties onto the affected graph entities so investigation queries can read current scores from the graph without a SQL join (the graph snapshot is a best-effort denormalized cache; `risk_score_history` is authoritative).
+
+**Idempotency + failure durability.** Each assessment carries a deterministic `request_id = risk:{correlation_id}:{kb}:{entity}` (set by the worker fan-out / peerstats stage via `RiskAssessmentRequest.request_id`). That id keys `risk_score_history` (`ON CONFLICT(request_id) DO NOTHING`), the monitoring batch (`handle_risk_scored` uses it as `batch_id`), and the derived `alert_id` — so a **retried** assessment of the same triggering event dedups instead of accumulating duplicate rows, while a genuinely new event (new `correlation_id`) still appends. Because the chain is idempotent, the dispatch no longer swallows the `RiskScoredEvent`/`AlertsCreatedEvent` write-backs: a transient DB/event-bus failure in `risk_score_history`/`alert_history` now **propagates to the retry/DLQ wrapper** rather than being silently dropped. (Monitoring and the graph snapshots remain best-effort. The `GraphUpdatedEvent` Flow-B analytics fan-out is still wrapped best-effort so it cannot re-run Flow A's embeddings on retry; splitting Flow B into its own retryable consumer is tracked as follow-up.)
 
 **Flow 4 — Alert persistence** (`handle_alerts_created_for_graph`)
 

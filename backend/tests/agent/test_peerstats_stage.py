@@ -74,9 +74,11 @@ class _RecordingRiskService:
 
     def __init__(self) -> None:
         self.assessed: list[str] = []
+        self.request_ids: list[str | None] = []
 
     def assess(self, request: RiskAssessmentRequest) -> RiskAssessmentResponse:
         self.assessed.append(request.entity_id)
+        self.request_ids.append(request.request_id)
         if request.entity_id == "provider:bad":
             raise RiskInsufficientSignalsError("no signals")
         return RiskAssessmentResponse(
@@ -95,9 +97,15 @@ def test_assess_entities_counts_successes_and_skips_risk_error() -> None:
         risk_service=risk,  # type: ignore[arg-type]
         knowledge_base_id="kb1",
         entity_ids=["provider:good", "provider:bad"],
+        correlation_id="corr-1",
     )
     assert count == 1
     assert risk.assessed == ["provider:good", "provider:bad"]
+    # Deterministic, correlation-scoped request id → idempotent on retry.
+    assert risk.request_ids == [
+        "risk:corr-1:kb1:provider:good",
+        "risk:corr-1:kb1:provider:bad",
+    ]
 
 
 class _FailingRiskService:
@@ -115,4 +123,5 @@ def test_assess_entities_propagates_infrastructure_errors() -> None:
             risk_service=_FailingRiskService(),  # type: ignore[arg-type]
             knowledge_base_id="kb1",
             entity_ids=["provider:1"],
+            correlation_id="corr-1",
         )

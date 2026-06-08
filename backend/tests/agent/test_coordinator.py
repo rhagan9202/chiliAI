@@ -3373,3 +3373,107 @@ def test_dispatch_runs_kb_cleanup_when_wired_and_guards_when_not() -> None:
     kb_repository.reset_mock()
     assert _dispatch(None) == 0
     kb_repository.delete.assert_not_called()
+
+
+def _dispatch_ingestion_service(event_bus: InMemoryEventBus, object_store: InMemoryObjectStore) -> IngestionService:
+    return IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(), fetcher=HttpxRemoteDocumentFetcher()
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+
+def test_handle_event_propagates_risk_history_writeback_failure() -> None:
+    """Un-swallowed: a risk_score_history write failure reaches the retry/DLQ wrapper."""
+    import pytest as _pytest
+
+    from agent.coordinator import handle_event
+    from analytics.risk.models import RiskAssessmentRecord
+    from events.types import RiskScoredEvent, RiskScoredReference
+
+    class _BoomRiskHistory:
+        def write_assessment(self, record: RiskAssessmentRecord) -> bool:
+            raise RuntimeError("risk-history db down")
+
+        def load_historical_score(
+            self, *, knowledge_base_id: str, entity_id: str
+        ) -> float | None:
+            return None
+
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(), object_store=object_store, event_bus=event_bus
+    )
+    event = RiskScoredEvent(
+        assessments=[
+            RiskScoredReference(
+                knowledge_base_id="kb-1",
+                request_id="risk:corr-1:kb-1:provider-1",
+                entity_id="provider-1",
+                overall_score=0.9,
+                risk_level="high",
+                factor_count=2,
+            )
+        ]
+    )
+
+    with _pytest.raises(RuntimeError, match="risk-history db down"):
+        handle_event(
+            EventDelivery(event=event, event_id="1", stream="risk.scored"),
+            _dispatch_ingestion_service(event_bus, object_store),
+            document_chunker=create_document_chunker(),
+            document_extractor=create_document_extractor([]),
+            extraction_validator=create_extraction_validator([], []),
+            graph_service=graph_service,
+            object_store=object_store,
+            event_bus=event_bus,
+            risk_history_writer=_BoomRiskHistory(),  # type: ignore[arg-type]
+        )
+
+
+def test_handle_event_propagates_alert_history_writeback_failure() -> None:
+    """Un-swallowed: an alert_history write failure reaches the retry/DLQ wrapper."""
+    import pytest as _pytest
+
+    from agent.coordinator import handle_event
+    from events.types import AlertCreatedReference, AlertsCreatedEvent
+    from monitoring.models import AlertHistoryRecord
+
+    class _BoomAlertHistory:
+        def write_alerts(self, records: list[AlertHistoryRecord]) -> int:
+            raise RuntimeError("alert-history db down")
+
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(), object_store=object_store, event_bus=event_bus
+    )
+    event = AlertsCreatedEvent(
+        alerts=[
+            AlertCreatedReference(
+                knowledge_base_id="kb-1",
+                alert_id="alert-provider-1-risk:corr-1:kb-1:provider-1",
+                entity_id="provider-1",
+                severity="high",
+                title="High risk: provider-1",
+                reasoning="why",
+                metric_name="risk_score",
+            )
+        ]
+    )
+
+    with _pytest.raises(RuntimeError, match="alert-history db down"):
+        handle_event(
+            EventDelivery(event=event, event_id="1", stream="alerts.created"),
+            _dispatch_ingestion_service(event_bus, object_store),
+            document_chunker=create_document_chunker(),
+            document_extractor=create_document_extractor([]),
+            extraction_validator=create_extraction_validator([], []),
+            graph_service=graph_service,
+            object_store=object_store,
+            event_bus=event_bus,
+            alert_history_writer=_BoomAlertHistory(),  # type: ignore[arg-type]
+        )

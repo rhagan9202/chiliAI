@@ -101,7 +101,7 @@ class RiskService:
         )
 
         result = RiskAssessmentResult(
-            request_id=generate_id(),
+            request_id=request.request_id or generate_id(),
             knowledge_base_id=request.knowledge_base_id,
             entity_id=request.entity_id,
             overall_score=overall_score,
