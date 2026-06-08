@@ -66,10 +66,12 @@ RecordsIngestedEvent (existing)
                    d. Per entity: z = (aggregate - peer_mean) / peer_std.
                    e. Map z → signal_value via direction + z_cap; attach weight.
                    f. Persist rows to entity_derived_signals (incl. peer_mean/std/z for audit).
-              3. For each affected entity: RiskService.assess(entity):
-                   - PostgresRiskSignalSource.load_profile reads latest derived signals → RiskProfile
-                   - LinearScoringStrategy sums weighted signals → overall_score (risk module UNCHANGED)
-                   - publishes RiskScoredEvent → risk_score_history (existing Flow 3)
+              3. Collect the DEDUPED set of affected entity ids across all specs/intervals,
+                 then assess them in batches (not one event per entity):
+                   - for each unique entity: RiskService.assess(entity)
+                     - PostgresRiskSignalSource.load_profile reads latest derived signals → RiskProfile
+                     - LinearScoringStrategy sums weighted signals → overall_score (risk module UNCHANGED)
+                     - publishes RiskScoredEvent → risk_score_history (existing Flow 3)
 ```
 
 The risk module is not modified — this design fills the empty "where do real
@@ -127,7 +129,9 @@ Standard module layout (protocols / models / service_models / service / adapters
 
 - **`service_models.py`** — `PeerStatsComputeRequest` (`knowledge_base_id`,
   `spec`, `interval_starts`, `correlation_id`), `PeerStatsComputeResponse`
-  (`metric_name`, `signals_written`, `entities_scored`).
+  (`metric_name`, `signals_written`, `affected_entity_ids: list[str]`). The worker
+  unions `affected_entity_ids` across all `compute` calls into a deduped set before
+  the assess pass.
 
 - **`protocols.py`** — `PeerStatsServiceProtocol.compute(request) -> PeerStatsComputeResponse`.
 
@@ -214,8 +218,13 @@ written, gated on `capabilities.peer_stats`:
 
 1. For each `PeerMetricSpec` whose `record_type` matches the ingested feed, derive
    the interval buckets touched by this batch (from the batch's records' time values).
-2. Call `PeerStatsService.compute(...)` for those intervals.
-3. For each affected entity, call `RiskService.assess(entity)` so `risk_score_history`
+2. Call `PeerStatsService.compute(...)` for those intervals; each call returns the set
+   of entity ids it wrote signals for.
+3. **Accumulate affected entity ids into a single deduped set across all specs/intervals**
+   (an entity touched by N specs/intervals is assessed once), then assess them in
+   bounded batches via a helper `assess_entities(kb_id, entity_ids)` rather than
+   emitting one assess-and-event per (spec, interval, entity). Each unique entity's
+   `RiskService.assess` still publishes one `RiskScoredEvent` so `risk_score_history`
    and the risk-scores endpoint reflect the new signals.
 
 Failures are logged and do not break ingest (consistent with the existing best-effort
