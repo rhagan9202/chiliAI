@@ -10,7 +10,9 @@ from analytics.peerstats.adapters.in_memory import (
 )
 from analytics.peerstats.adapters.protocols import ColumnRow
 from analytics.peerstats.service import create_peerstats_service
-from agent.coordinator import run_peerstats_stage
+from analytics.risk.exceptions import RiskInsufficientSignalsError
+from analytics.risk.service_models import RiskAssessmentRequest, RiskAssessmentResponse
+from agent.coordinator import assess_entities, run_peerstats_stage
 from config.schema import PeerMetricSpec, PeerStatsConfig
 
 MONDAY = datetime(2026, 1, 5, tzinfo=timezone.utc)
@@ -60,3 +62,34 @@ def test_run_peerstats_stage_skips_nonmatching_record_type() -> None:
         correlation_id="c1",
     )
     assert affected == []
+
+
+class _RecordingRiskService:
+    """A risk service stub: records assess calls; fails for one entity."""
+
+    def __init__(self) -> None:
+        self.assessed: list[str] = []
+
+    def assess(self, request: RiskAssessmentRequest) -> RiskAssessmentResponse:
+        self.assessed.append(request.entity_id)
+        if request.entity_id == "provider:bad":
+            raise RiskInsufficientSignalsError("no signals")
+        return RiskAssessmentResponse(
+            request_id="r",
+            knowledge_base_id=request.knowledge_base_id,
+            entity_id=request.entity_id,
+            overall_score=0.5,
+            risk_level="medium",
+            factor_count=0,
+        )
+
+
+def test_assess_entities_counts_successes_and_skips_risk_error() -> None:
+    risk = _RecordingRiskService()
+    count = assess_entities(
+        risk_service=risk,  # type: ignore[arg-type]
+        knowledge_base_id="kb1",
+        entity_ids=["provider:good", "provider:bad"],
+    )
+    assert count == 1
+    assert risk.assessed == ["provider:good", "provider:bad"]
