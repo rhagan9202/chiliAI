@@ -143,7 +143,17 @@ from events.types import (
     VectorsIndexedDocumentReference,
     VectorsIndexedEvent,
 )
-from knowledgebases import KnowledgeBaseRepository
+from knowledgebases import (
+    InMemoryKnowledgeBaseRepository,
+    KnowledgeBaseRepository,
+    ObjectStoreKnowledgeBaseRepository,
+)
+from knowledgebases.cleanup import KbDeletionStores, kb_deletion_steps
+from cases.adapters.in_memory import InMemoryCaseRepository
+from cases.adapters.postgres import PostgresCaseRepository
+from conversations.adapters.in_memory import InMemoryConversationRepository
+from conversations.adapters.postgres import PostgresConversationRepository
+from vectorstore.service import create_vector_service
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.adapters.protocols import GraphRepository
 from graph.auth import resolve_graph_auth
@@ -302,6 +312,8 @@ class WorkerDependencies:
     peerstats_service: PeerStatsService
     peer_stats_config: PeerStatsConfig
     peer_stats_enabled: bool
+    kb_deletion_stores: KbDeletionStores
+    kb_repository: KnowledgeBaseRepository
     explainability_service: ExplainabilityService
     monitoring_service: MonitoringService
     records_config: RecordsConfig
@@ -633,6 +645,63 @@ def build_alert_history_writer(
     return PostgresAlertHistoryStore(provider)
 
 
+def build_kb_repository(object_store: ObjectStore) -> KnowledgeBaseRepository:
+    """Select the KB metadata repository, mirroring the API DI selection."""
+
+    backend = os.environ.get("CHILI_KB_REPOSITORY_BACKEND", "in_memory").strip().lower()
+    if backend in {"object_store", "object-store", "objectstore"}:
+        return ObjectStoreKnowledgeBaseRepository(object_store)
+    return InMemoryKnowledgeBaseRepository()
+
+
+def build_kb_deletion_stores(
+    provider: ConnectionProvider | None,
+    *,
+    graph_service: GraphServiceProtocol,
+    vector_store: VectorStoreProtocol,
+    object_store: ObjectStore,
+    event_bus: EventBus,
+    raw_record_store: RawRecordStore,
+    derived_signal_store: DerivedRiskSignalWriterProtocol,
+    observation_writer: ObservationWriter,
+    risk_history_writer: RiskHistoryWriter,
+    alert_history_writer: AlertHistoryWriter,
+    entity_metric_repository: EntityMetricRepository,
+) -> KbDeletionStores:
+    """Assemble the shared KB-delete cascade bundle for the worker.
+
+    Reuses the already-built worker stores and constructs the few extra stores
+    (vector service, conversation/case/policy/evidence repositories) that the
+    worker otherwise needs only for KB-delete retries.
+    """
+
+    return KbDeletionStores(
+        graph_service=graph_service,
+        vector_service=create_vector_service(
+            vector_store, event_bus=event_bus, object_store=object_store
+        ),
+        raw_record_store=raw_record_store,
+        derived_signal_store=derived_signal_store,
+        risk_history_writer=risk_history_writer,
+        observation_writer=observation_writer,
+        alert_history_writer=alert_history_writer,
+        entity_metric_repository=entity_metric_repository,
+        conversation_repository=(
+            InMemoryConversationRepository()
+            if provider is None
+            else PostgresConversationRepository(provider)
+        ),
+        case_repository=(
+            InMemoryCaseRepository()
+            if provider is None
+            else PostgresCaseRepository(provider)
+        ),
+        policy_item_repository=build_policy_item_repository(provider),
+        evidence_pack_repository=ObjectStoreEvidencePackRepository(object_store),
+        object_store=object_store,
+    )
+
+
 def _section_is_default(value: object, default: object) -> bool:
     """Return True when a config subsystem section equals its post-validator default.
 
@@ -852,6 +921,20 @@ def build_worker_dependencies() -> WorkerDependencies:
     records_config = config.records or RecordsConfig()
     peer_stats_config = config.peer_stats or PeerStatsConfig()
     peerstats_service = build_peerstats_service(connection_provider)
+    kb_repository = build_kb_repository(object_store)
+    kb_deletion_stores = build_kb_deletion_stores(
+        connection_provider,
+        graph_service=graph_service,
+        vector_store=vector_store,
+        object_store=object_store,
+        event_bus=event_bus,
+        raw_record_store=raw_record_store,
+        derived_signal_store=derived_signal_store,
+        observation_writer=observation_writer,
+        risk_history_writer=risk_history_writer,
+        alert_history_writer=alert_history_writer,
+        entity_metric_repository=entity_metric_repository,
+    )
 
     return WorkerDependencies(
         event_bus=event_bus,
@@ -869,6 +952,8 @@ def build_worker_dependencies() -> WorkerDependencies:
         peerstats_service=peerstats_service,
         peer_stats_config=peer_stats_config,
         peer_stats_enabled=config.capabilities.peer_stats,
+        kb_deletion_stores=kb_deletion_stores,
+        kb_repository=kb_repository,
         explainability_service=explainability_service,
         monitoring_service=monitoring_service,
         records_config=records_config,
@@ -2117,43 +2202,32 @@ def _resolve_records_feed(
 def handle_knowledge_base_deleted(
     event: KnowledgeBaseDeletedEvent,
     *,
-    graph_service: GraphServiceProtocol,
-    vector_service: VectorServiceProtocol,
-    raw_record_store: RawRecordStore,
-    derived_signal_store: DerivedRiskSignalWriterProtocol,
+    kb_deletion_stores: KbDeletionStores,
     kb_repository: KnowledgeBaseRepository,
-    object_store: ObjectStore | None = None,
 ) -> None:
-    """Retry residual KB cleanup steps when the API DELETE returned a partial cleanup.
+    """Retry the FULL KB cleanup cascade when the API DELETE returned a partial cleanup.
 
     When the API DELETE endpoint returns 207 with ``cleanup_pending=True`` it
     means one or more downstream stores could not be cleaned up synchronously.
-    The worker picks up the ``KnowledgeBaseDeletedEvent`` and retries each
-    store in order.  All calls are idempotent; the coordinator's retry/DLQ
-    wrapper handles any exceptions that bubble up.
-
-    NOTE: the authoritative, complete cascade is the API endpoint
-    (``api._kb_cleanup.kb_deletion_steps`` — graph/vector/raw_records/derived
+    The worker picks up the ``KnowledgeBaseDeletedEvent`` and replays the same
+    cascade as the API — the single authoritative step list in
+    ``knowledgebases.cleanup.kb_deletion_steps`` (graph/vector/raw_records/derived
     signals/risk history/observations/alert history/metrics/conversations/cases/
-    policy/evidence/object store). This worker retry covers only the core
-    namespaced stores; aligning it with the full step list (and wiring its
-    ``vector_service``/``kb_repository`` deps, which ``run_worker`` does not yet
-    pass) is tracked separately — the module boundary prevents importing the
-    api-side step list here.
+    policy/evidence/object store) — then deletes the KB metadata.
+
+    Every step is idempotent. Exceptions propagate so the coordinator's retry/DLQ
+    wrapper re-runs the whole (idempotent) cascade; KB metadata is deleted only
+    after every store has been purged.
     """
 
     if not event.cleanup_pending:
         return
     logger.info("retrying KB cleanup", extra={"knowledge_base_id": event.knowledge_base_id})
-    # Best-effort retries — exceptions bubble to the coordinator's DLQ flow.
-    graph_service.delete_knowledge_base(event.knowledge_base_id)
-    vector_service.delete_knowledge_base(event.knowledge_base_id)
-    raw_record_store.delete_by_kb(event.knowledge_base_id)
-    derived_signal_store.delete_by_kb(event.knowledge_base_id)
-    if object_store is not None:
-        prefix = f"knowledgebases/{event.knowledge_base_id}/"
-        for key in object_store.list_keys(prefix):
-            object_store.delete(key)
+    # Exceptions bubble to the coordinator's DLQ flow; the cascade is idempotent.
+    for _step_name, deletion in kb_deletion_steps(
+        kb_deletion_stores, event.knowledge_base_id
+    ):
+        deletion()
     kb_repository.delete(event.knowledge_base_id)
 
 
@@ -2534,6 +2608,7 @@ def handle_event(
     peer_stats_enabled: bool = False,
     vector_service: VectorServiceProtocol | None = None,
     kb_repository: KnowledgeBaseRepository | None = None,
+    kb_deletion_stores: KbDeletionStores | None = None,
 ) -> int:
     """Handle a single event and return the number of processed documents."""
 
@@ -2584,6 +2659,7 @@ def handle_event(
             peer_stats_enabled=peer_stats_enabled,
             vector_service=vector_service,
             kb_repository=kb_repository,
+            kb_deletion_stores=kb_deletion_stores,
         )
         if workflow_tracker is not None:
             workflow_tracker.complete_event(event)
@@ -2625,6 +2701,7 @@ def _dispatch_event(
     peer_stats_enabled: bool = False,
     vector_service: VectorServiceProtocol | None = None,
     kb_repository: KnowledgeBaseRepository | None = None,
+    kb_deletion_stores: KbDeletionStores | None = None,
 ) -> int:
     del delivery  # reserved for future stream offsets / dlq metadata
     if isinstance(event, DocumentsUploadedEvent):
@@ -2777,24 +2854,15 @@ def _dispatch_event(
             peer_stats_enabled=peer_stats_enabled,
         )
     if isinstance(event, KnowledgeBaseDeletedEvent):
-        if (
-            vector_service is None
-            or raw_record_store is None
-            or derived_signal_store is None
-            or kb_repository is None
-        ):
+        if kb_deletion_stores is None or kb_repository is None:
             logger.warning(
                 "KnowledgeBaseDeletedEvent received but KB cleanup dependencies are not wired."
             )
             return 0
         handle_knowledge_base_deleted(
             event,
-            graph_service=graph_service,
-            vector_service=vector_service,
-            raw_record_store=raw_record_store,
-            derived_signal_store=derived_signal_store,
+            kb_deletion_stores=kb_deletion_stores,
             kb_repository=kb_repository,
-            object_store=object_store,
         )
         return 1
     return 0
@@ -2912,6 +2980,7 @@ async def drain_ingestion_events(
     graph_embeddings_enabled: bool = False,
     vector_service: VectorServiceProtocol | None = None,
     kb_repository: KnowledgeBaseRepository | None = None,
+    kb_deletion_stores: KbDeletionStores | None = None,
     sleep: Callable[[float], "asyncio.Future[None] | object"] = asyncio.sleep,
 ) -> int:
     """Consume and process available ingestion events with retry/DLQ semantics."""
@@ -2980,6 +3049,7 @@ async def drain_ingestion_events(
                 peer_stats_enabled=peer_stats_enabled,
                 vector_service=vector_service,
                 kb_repository=kb_repository,
+                kb_deletion_stores=kb_deletion_stores,
             )
 
         def _record_failure(
@@ -3111,6 +3181,8 @@ async def run_worker(
                 records_config=deps.records_config,
                 raw_record_store=deps.raw_record_store,
                 derived_signal_store=deps.derived_signal_store,
+                kb_deletion_stores=deps.kb_deletion_stores,
+                kb_repository=deps.kb_repository,
                 observation_writer=deps.observation_writer,
                 policy_service=deps.policy_service,
                 policy_rules=deps.policy_rules,

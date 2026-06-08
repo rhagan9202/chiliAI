@@ -2048,6 +2048,8 @@ def test_graceful_shutdown_finishes_in_flight_event(
         SHUTDOWN_LOG_DONE,
         SHUTDOWN_LOG_REQUESTED,
         build_derived_signal_writer,
+        build_kb_deletion_stores,
+        build_kb_repository,
         build_peerstats_service,
         run_worker,
     )
@@ -2111,6 +2113,21 @@ def test_graceful_shutdown_finishes_in_flight_event(
     from policy.adapters.in_memory import InMemoryPolicyItemRepository
     from policy.service import create_policy_service
 
+    kb_deletion_stores = build_kb_deletion_stores(
+        None,
+        graph_service=graph_service,
+        vector_store=vector_store,
+        object_store=object_store,
+        event_bus=event_bus,
+        raw_record_store=InMemoryRawRecordStore(),
+        derived_signal_store=build_derived_signal_writer(None),
+        observation_writer=InMemoryObservationWriter(),
+        risk_history_writer=InMemoryRiskHistoryWriter(),
+        alert_history_writer=InMemoryAlertHistoryWriter(),
+        entity_metric_repository=InMemoryEntityMetricRepository(),
+    )
+    kb_repository = build_kb_repository(object_store)
+
     fake_deps = WorkerDependencies(
         event_bus=event_bus,
         ingestion_service=ingestion_service,
@@ -2133,6 +2150,8 @@ def test_graceful_shutdown_finishes_in_flight_event(
         peerstats_service=build_peerstats_service(None),
         peer_stats_config=PeerStatsConfig(),
         peer_stats_enabled=False,
+        kb_deletion_stores=kb_deletion_stores,
+        kb_repository=kb_repository,
         explainability_service=create_explainability_service(
             InMemoryExplainabilityContextSource(), event_bus=event_bus
         ),

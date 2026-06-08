@@ -1,128 +1,119 @@
-"""handle_knowledge_base_deleted retries cascade on pending_cleanup events."""
+"""handle_knowledge_base_deleted replays the full cascade on pending_cleanup events."""
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import cast
 from unittest.mock import MagicMock
+
+import pytest
 
 from agent.coordinator import handle_knowledge_base_deleted
 from events.types import KnowledgeBaseDeletedEvent
-from storage.adapters.in_memory import InMemoryObjectStore
+from knowledgebases.cleanup import KbDeletionStores
+
+_STORE_FIELDS = [
+    "graph_service",
+    "vector_service",
+    "raw_record_store",
+    "derived_signal_store",
+    "risk_history_writer",
+    "observation_writer",
+    "alert_history_writer",
+    "entity_metric_repository",
+    "conversation_repository",
+    "case_repository",
+    "policy_item_repository",
+    "evidence_pack_repository",
+    "object_store",
+]
+
+# Stores whose deletion goes through `delete_by_kb`.
+_DELETE_BY_KB_FIELDS = [
+    "raw_record_store",
+    "derived_signal_store",
+    "risk_history_writer",
+    "observation_writer",
+    "alert_history_writer",
+    "entity_metric_repository",
+    "conversation_repository",
+    "case_repository",
+    "policy_item_repository",
+    "evidence_pack_repository",
+]
+
+
+def _mock_stores() -> tuple[KbDeletionStores, dict[str, MagicMock]]:
+    mocks = {field: MagicMock() for field in _STORE_FIELDS}
+    mocks["object_store"].list_keys.return_value = []
+    return cast(KbDeletionStores, SimpleNamespace(**mocks)), mocks
 
 
 def test_handler_does_nothing_when_cleanup_not_pending() -> None:
-    graph_service = MagicMock()
-    vector_service = MagicMock()
-    raw_record_store = MagicMock()
-    derived_signal_store = MagicMock()
-    repository = MagicMock()
-
+    stores, mocks = _mock_stores()
+    kb_repository = MagicMock()
     event = KnowledgeBaseDeletedEvent(knowledge_base_id="kb-1", cleanup_pending=False)
+
     handle_knowledge_base_deleted(
         event,
-        graph_service=graph_service,
-        vector_service=vector_service,
-        raw_record_store=raw_record_store,
-        derived_signal_store=derived_signal_store,
-        kb_repository=repository,
+        kb_deletion_stores=stores,
+        kb_repository=kb_repository,  # type: ignore[arg-type]
     )
-    graph_service.delete_knowledge_base.assert_not_called()
-    vector_service.delete_knowledge_base.assert_not_called()
-    raw_record_store.delete_by_kb.assert_not_called()
-    derived_signal_store.delete_by_kb.assert_not_called()
-    repository.delete.assert_not_called()
+
+    mocks["graph_service"].delete_knowledge_base.assert_not_called()
+    mocks["raw_record_store"].delete_by_kb.assert_not_called()
+    kb_repository.delete.assert_not_called()
 
 
-def test_handler_retries_cascade_when_pending() -> None:
-    graph_service = MagicMock()
-    vector_service = MagicMock()
-    raw_record_store = MagicMock()
-    derived_signal_store = MagicMock()
-    repository = MagicMock()
-    object_store = MagicMock()
-    object_store.list_keys.return_value = [
-        "knowledgebases/kb-1/documents/doc-1/source",
-        "knowledgebases/kb-1/documents/doc-2/source",
-    ]
-
+def test_handler_replays_full_cascade_then_deletes_metadata() -> None:
+    stores, mocks = _mock_stores()
+    kb_repository = MagicMock()
     event = KnowledgeBaseDeletedEvent(knowledge_base_id="kb-1", cleanup_pending=True)
+
     handle_knowledge_base_deleted(
         event,
-        graph_service=graph_service,
-        vector_service=vector_service,
-        raw_record_store=raw_record_store,
-        derived_signal_store=derived_signal_store,
-        kb_repository=repository,
-        object_store=object_store,
+        kb_deletion_stores=stores,
+        kb_repository=kb_repository,  # type: ignore[arg-type]
     )
-    graph_service.delete_knowledge_base.assert_called_once_with("kb-1")
-    vector_service.delete_knowledge_base.assert_called_once_with("kb-1")
-    raw_record_store.delete_by_kb.assert_called_once_with("kb-1")
-    derived_signal_store.delete_by_kb.assert_called_once_with("kb-1")
-    object_store.list_keys.assert_called_once_with("knowledgebases/kb-1/")
-    assert object_store.delete.call_count == 2
-    object_store.delete.assert_any_call("knowledgebases/kb-1/documents/doc-1/source")
-    object_store.delete.assert_any_call("knowledgebases/kb-1/documents/doc-2/source")
-    repository.delete.assert_called_once_with("kb-1")
+
+    mocks["graph_service"].delete_knowledge_base.assert_called_once_with("kb-1")
+    mocks["vector_service"].delete_knowledge_base.assert_called_once_with("kb-1")
+    mocks["object_store"].list_keys.assert_called_once_with("knowledgebases/kb-1/")
+    for field in _DELETE_BY_KB_FIELDS:
+        mocks[field].delete_by_kb.assert_called_once_with("kb-1")
+    # KB metadata deleted last, after every store is purged.
+    kb_repository.delete.assert_called_once_with("kb-1")
 
 
-def test_handler_retries_cascade_when_pending_no_object_store() -> None:
-    """object_store defaults to None for backward compatibility."""
-    graph_service = MagicMock()
-    vector_service = MagicMock()
-    raw_record_store = MagicMock()
-    derived_signal_store = MagicMock()
-    repository = MagicMock()
-
+def test_handler_propagates_failure_and_skips_metadata_delete() -> None:
+    """A failing step raises (DLQ retries the idempotent cascade); KB metadata stays."""
+    stores, mocks = _mock_stores()
+    mocks["risk_history_writer"].delete_by_kb.side_effect = RuntimeError("db down")
+    kb_repository = MagicMock()
     event = KnowledgeBaseDeletedEvent(knowledge_base_id="kb-1", cleanup_pending=True)
-    handle_knowledge_base_deleted(
-        event,
-        graph_service=graph_service,
-        vector_service=vector_service,
-        raw_record_store=raw_record_store,
-        derived_signal_store=derived_signal_store,
-        kb_repository=repository,
-        # object_store omitted — backward compat
-    )
-    graph_service.delete_knowledge_base.assert_called_once_with("kb-1")
-    vector_service.delete_knowledge_base.assert_called_once_with("kb-1")
-    raw_record_store.delete_by_kb.assert_called_once_with("kb-1")
-    derived_signal_store.delete_by_kb.assert_called_once_with("kb-1")
-    repository.delete.assert_called_once_with("kb-1")
+
+    with pytest.raises(RuntimeError, match="db down"):
+        handle_knowledge_base_deleted(
+            event,
+            kb_deletion_stores=stores,
+            kb_repository=kb_repository,  # type: ignore[arg-type]
+        )
+
+    # Failure occurred before the metadata delete — KB is retained for retry.
+    kb_repository.delete.assert_not_called()
 
 
-def test_handler_object_store_cleanup_uses_in_memory_store() -> None:
-    """Verify cleanup actually removes keys from a real InMemoryObjectStore."""
-    graph_service = MagicMock()
-    vector_service = MagicMock()
-    raw_record_store = MagicMock()
-    derived_signal_store = MagicMock()
-    repository = MagicMock()
-    object_store = InMemoryObjectStore()
+def test_build_worker_dependencies_wires_kb_cleanup() -> None:
+    """run_worker passes deps.kb_deletion_stores/kb_repository — so the handler is wired.
 
-    # Pre-populate with two objects under the KB prefix.
-    object_store.put_bytes(
-        "knowledgebases/kb-1/documents/doc-1/source",
-        b"content-1",
-        media_type="application/json",
-    )
-    object_store.put_bytes(
-        "knowledgebases/kb-1/documents/doc-2/source",
-        b"content-2",
-        media_type="application/json",
-    )
-    assert len(object_store.list_keys("knowledgebases/kb-1/")) == 2
+    The dispatch guard previously short-circuited because these were never built;
+    this asserts the worker now assembles them (the wiring fix).
+    """
+    from agent.coordinator import build_worker_dependencies
 
-    event = KnowledgeBaseDeletedEvent(knowledge_base_id="kb-1", cleanup_pending=True)
-    handle_knowledge_base_deleted(
-        event,
-        graph_service=graph_service,
-        vector_service=vector_service,
-        raw_record_store=raw_record_store,
-        derived_signal_store=derived_signal_store,
-        kb_repository=repository,
-        object_store=object_store,
-    )
-
-    assert object_store.list_keys("knowledgebases/kb-1/") == [], (
-        "All object-store keys under the KB prefix should be deleted."
-    )
+    deps = build_worker_dependencies()
+    assert isinstance(deps.kb_deletion_stores, KbDeletionStores)
+    assert deps.kb_repository is not None
+    # The bundle carries every per-KB store the cascade purges.
+    for field in _STORE_FIELDS:
+        assert getattr(deps.kb_deletion_stores, field) is not None
