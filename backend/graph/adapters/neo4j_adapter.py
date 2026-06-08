@@ -190,13 +190,11 @@ class Neo4jGraphRepository(GraphRepository):
         """
 
         try:
-            with self._session() as session:
-                records = session.execute_write(
-                    self._run_query,
-                    query,
-                    knowledge_base_id=knowledge_base_id,
-                    rows=payload,
-                )
+            records = self._run_write(
+                query,
+                knowledge_base_id=knowledge_base_id,
+                rows=payload,
+            )
         except Neo4jError as exc:
             raise GraphPersistenceError("Failed to upsert Neo4j entities.") from exc
 
@@ -241,13 +239,11 @@ class Neo4jGraphRepository(GraphRepository):
         """
 
         try:
-            with self._session() as session:
-                records = session.execute_write(
-                    self._run_query,
-                    query,
-                    knowledge_base_id=knowledge_base_id,
-                    rows=payload,
-                )
+            records = self._run_write(
+                query,
+                knowledge_base_id=knowledge_base_id,
+                rows=payload,
+            )
         except Neo4jError as exc:
             raise GraphPersistenceError("Failed to upsert Neo4j relationships.") from exc
 
@@ -343,13 +339,11 @@ class Neo4jGraphRepository(GraphRepository):
         """
 
         try:
-            with self._session() as session:
-                records = session.execute_read(
-                    self._run_query,
-                    query,
-                    knowledge_base_id=knowledge_base_id,
-                    entity_id=entity_id,
-                )
+            records = self._run_read(
+                query,
+                knowledge_base_id=knowledge_base_id,
+                entity_id=entity_id,
+            )
         except Neo4jError as exc:
             raise GraphPersistenceError("Failed to query Neo4j neighborhood.") from exc
 
@@ -406,13 +400,11 @@ class Neo4jGraphRepository(GraphRepository):
             RETURN root
             """
             try:
-                with self._session() as session:
-                    records = session.execute_read(
-                        self._run_query,
-                        query,
-                        knowledge_base_id=knowledge_base_id,
-                        seed_entity_ids=seeds,
-                    )
+                records = self._run_read(
+                    query,
+                    knowledge_base_id=knowledge_base_id,
+                    seed_entity_ids=seeds,
+                )
             except Neo4jError as exc:
                 raise GraphPersistenceError("Failed to query Neo4j subgraph.") from exc
             seed_entities_by_id: dict[str, Entity] = {}
@@ -442,13 +434,11 @@ class Neo4jGraphRepository(GraphRepository):
         """
 
         try:
-            with self._session() as session:
-                records = session.execute_read(
-                    self._run_query,
-                    query,
-                    knowledge_base_id=knowledge_base_id,
-                    seed_entity_ids=seeds,
-                )
+            records = self._run_read(
+                query,
+                knowledge_base_id=knowledge_base_id,
+                seed_entity_ids=seeds,
+            )
         except Neo4jError as exc:
             raise GraphPersistenceError("Failed to query Neo4j subgraph.") from exc
 
