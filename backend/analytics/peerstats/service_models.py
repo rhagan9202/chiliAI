@@ -14,7 +14,7 @@ class PeerStatsComputeRequest(BaseModel):
 
     knowledge_base_id: str
     spec: PeerMetricSpec
-    interval_starts: list[datetime] = Field(default_factory=lambda: [])
+    interval_starts: list[datetime] = Field(default_factory=list[datetime])
     correlation_id: str
 
 
@@ -23,7 +23,7 @@ class PeerStatsComputeResponse(BaseModel):
 
     metric_name: str
     signals_written: int = Field(ge=0)
-    affected_entity_ids: list[str] = Field(default_factory=lambda: [])
+    affected_entity_ids: list[str] = Field(default_factory=list[str])
 
 
 __all__ = ["PeerStatsComputeRequest", "PeerStatsComputeResponse"]

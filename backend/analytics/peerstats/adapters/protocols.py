@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
@@ -12,11 +12,15 @@ from config.schema import PeerMetricSpec
 
 @dataclass(frozen=True, slots=True)
 class ColumnRow:
-    """One record's contribution to a metric: an entity value at a time."""
+    """One record's contribution to a metric: an entity value at a time.
+
+    ``group_values`` is a tuple so the row is genuinely immutable and hashable
+    under ``frozen=True``.
+    """
 
     entity_id: str
     entity_type: str
-    group_values: list[str] = field(default_factory=lambda: [])
+    group_values: tuple[str, ...] = ()
     value: float = 0.0
     observed_at: datetime = datetime.min
 
@@ -38,7 +42,9 @@ class RecordColumnSourceProtocol(Protocol):
 class DerivedRiskSignalWriterProtocol(Protocol):
     """Persist derived risk signals idempotently."""
 
-    def write_signals(self, signals: list[DerivedRiskSignal]) -> int: ...
+    def write_signals(self, signals: list[DerivedRiskSignal]) -> int:
+        """Persist the signals; return the count processed (not net-new inserts)."""
+        ...
 
 
 __all__ = [

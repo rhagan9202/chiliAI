@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Literal
 
@@ -54,7 +55,7 @@ def apply_aggregation(values: list[float], fn: Aggregation) -> float:
     )
 
 
-def peer_group_key(entity_type: str, group_values: list[str]) -> str:
+def peer_group_key(entity_type: str, group_values: Sequence[str]) -> str:
     """Build a stable cohort key from entity type and grouping-column values."""
 
     return "|".join([entity_type, *group_values])
