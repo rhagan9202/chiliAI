@@ -23,7 +23,7 @@ class PeerGroupStat(BaseModel):
     peer_group_key: str
     interval_start: datetime
     mean: float
-    std: float
+    std: float = Field(ge=0.0)
     count: int = Field(ge=0)
 
 
@@ -38,9 +38,16 @@ class DerivedRiskSignal(BaseModel):
     peer_group_key: str
     aggregate_value: float
     peer_mean: float
-    peer_std: float
+    peer_std: float = Field(ge=0.0)
     z_score: float
     signal_value: float = Field(ge=0.0, le=1.0)
     weight: float = Field(gt=0.0)
     rationale: str
     correlation_id: str
+
+
+__all__ = [
+    "DerivedRiskSignal",
+    "PeerAggregate",
+    "PeerGroupStat",
+]

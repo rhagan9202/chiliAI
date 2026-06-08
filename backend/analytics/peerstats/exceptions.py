@@ -13,3 +13,10 @@ class PeerStatsConfigurationError(PeerStatsError):
 
 class PeerStatsSourceError(PeerStatsError):
     """Raised when loading record column aggregates fails."""
+
+
+__all__ = [
+    "PeerStatsConfigurationError",
+    "PeerStatsError",
+    "PeerStatsSourceError",
+]
