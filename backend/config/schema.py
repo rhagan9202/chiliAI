@@ -692,6 +692,8 @@ __all__ = [
     "PolicyPredicateValue",
     "PolicyRule",
     "PolicyRulePack",
+    "PeerMetricSpec",
+    "PeerStatsConfig",
     "RagConfig",
     "RecordEntityMapping",
     "RecordFeedConfig",
