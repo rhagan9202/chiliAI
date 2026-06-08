@@ -317,15 +317,26 @@ backend/
 │   │   └── adapters/
 │   │       ├── in_memory.py
 │   │       └── shap_adapter.py
-│   └── metrics/                # Entity-metric persistence (no service, no events)
+│   ├── metrics/                # Entity-metric persistence (no service, no events)
+│   │   ├── __init__.py
+│   │   ├── models.py           # EntityMetric, EntityMetricSnapshot
+│   │   ├── exceptions.py
+│   │   ├── throttle.py         # MetricsRecomputeThrottle — per-KB rate limiter
+│   │   └── adapters/
+│   │       ├── protocols.py    # EntityMetricRepository protocol
+│   │       ├── in_memory.py
+│   │       └── postgres.py     # PostgresEntityMetricRepository
+│   └── peerstats/              # Cross-sectional peer-group z-score analytics (gated: capabilities.peer_stats)
 │       ├── __init__.py
-│       ├── models.py           # EntityMetric, EntityMetricSnapshot
+│       ├── service.py          # PeerStatsService.compute() — aggregate → z-score → signal
+│       ├── service_models.py   # DerivedRiskSignal
+│       ├── models.py           # PeerCohortStats
+│       ├── protocols.py        # RecordColumnSourceProtocol, DerivedRiskSignalWriterProtocol
+│       ├── aggregation.py      # Pure interval-bucketing + population z-score helpers
 │       ├── exceptions.py
-│       ├── throttle.py         # MetricsRecomputeThrottle — per-KB rate limiter
 │       └── adapters/
-│           ├── protocols.py    # EntityMetricRepository protocol
-│           ├── in_memory.py
-│           └── postgres.py     # PostgresEntityMetricRepository
+│           ├── in_memory.py    # InMemoryRecordColumnSource / InMemoryDerivedRiskSignalWriter
+│           └── postgres.py     # PostgresRecordColumnSource (raw_records JSONB) / PostgresDerivedRiskSignalWriter (entity_derived_signals)
 ├── agent/                      # Workflow / pipeline coordinator
 │   ├── __init__.py
 │   ├── coordinator.py          # Worker entrypoint + event consumer + Plan C handlers
@@ -455,6 +466,9 @@ conversations/                  # Durable RAG chat conversations (BL-012)
 >
 > **Sprint 2026-25 additions (de-seed vertical).**
 > - **De-seeded `ApiState` (BL-012).** All remaining seeded read models were moved to durable stores. Conversations are persisted via the new `conversations/` module (`ConversationRepository`, `conversations` table). `GET /graph/entities/{id}` (`api/_graph_entity_payload.py`) and `GET /analytics/overview` (`api/_analytics_overview.py`) read durable graph/risk/alert/case/KB stores. `ApiState` now owns only the risk/timeseries analytics composition and the RAG service handle; its `_seed_graph`/`_seed_alerts`/`_seed_cases`/`_seed_conversations`/`_seed_evidence_packs`/`_seed_workflows` methods and the unused alert/case/conversation/evidence/workflow read methods were removed. `/admin/dev-seed` now also seeds one conversation. A regression guard asserts no non-test code reads a `_seed_*` token.
+>
+> **Sprint 2026-25 additions (peer-group z-score risk signals).**
+> - **`analytics/peerstats/` (BL-013–BL-015).** Config-driven cross-sectional peer-group z-score analytics. For each `PeerMetricSpec` in `DomainConfig.peer_stats`, the module aggregates a `raw_records` JSONB column per entity over a config interval (`day`/`week`/`month`), z-scores each entity against its cohort, and upserts a `DerivedRiskSignal` to the new `entity_derived_signals` table (migration `0006_entity_derived_signals`). Gated on `capabilities.peer_stats`. The worker calls `run_peerstats_stage` best-effort on every `RecordsIngestedEvent`, then assesses affected entities through the risk service. `PostgresRiskSignalSource` in `analytics/risk/adapters/postgres.py` reads `entity_derived_signals` alongside timeseries observations to assemble entity risk profiles — the risk module itself is unchanged. The medicare default config ships with two provider billing specs (`weekly_provider_billing` and `weekly_provider_claim_count`).
 
 ### 5.2 Module responsibility matrix
 
@@ -469,6 +483,7 @@ conversations/                  # Durable RAG chat conversations (BL-012)
 | `llm` | LLM client abstraction, prompt management | `shared.types` | Everything except `shared` |
 | `analytics/*` | ML/AI analysis (timeseries, GNN, risk, explainability) | `shared.types`, `graph` (protocol for reads) | `api`, `ingestion`, other analytics sub-modules |
 | `analytics/metrics` | Entity-metric persistence: append history, upsert current snapshot | `database.ConnectionProvider` (Postgres adapter), `config` (backend selection) | domain logic, events, service modules |
+| `analytics/peerstats` | Cross-sectional peer-group z-scores → `entity_derived_signals` upsert; gated on `capabilities.peer_stats` | `database.ConnectionProvider`, `config` (PeerMetricSpec, capability flag), `records` raw_records (via SQL, not module import) | `api`, `ingestion`, other analytics sub-modules, direct `records` imports |
 | `agent` | Pipeline coordination, state machine | `events` (protocol), `shared.types` | Direct imports of service internals |
 | `monitoring` | Stream consumption, alert generation | `shared.types`, `events` (protocol) | `api`, `ingestion` internals |
 | `shared` | Domain types, protocols, utilities | Python stdlib only | Everything — must be leaf dependency |
@@ -720,13 +735,26 @@ handle_records_ingested()
   ├── map_batch()  → GraphService.upsert_records_graph()
   │                   # entities + relationships, no document artifacts,
   │                   # no GraphUpdatedEvent published
-  └── map_observations() → PostgresObservationStore.write_observations()
-                              # observations table (idempotent upsert)
+  ├── map_observations() → PostgresObservationStore.write_observations()
+  │                           # observations table (idempotent upsert)
+  └── run_peerstats_stage()   # best-effort, gated on capabilities.peer_stats
+        │
+        └── PeerStatsService.compute()
+              • PostgresRecordColumnSource aggregates raw_records JSONB per entity/interval
+              • population z-score per entity vs peer cohort (same entity_type + interval)
+              • map z → [0,1] signal value (direction, z_cap)
+              • PostgresDerivedRiskSignalWriter.upsert() → entity_derived_signals
+              │
+              └── for each affected entity_type:
+                    RiskService.assess_entity_risk()
+                      # PostgresRiskSignalSource assembles signal profile
+                      # (timeseries observations + entity_derived_signals)
+                      # → risk_score_history + graph entity snapshot
 ```
 
-Every write is an idempotent upsert keyed on `(knowledge_base_id, record_type, record_id)` for `raw_records` and on `(entity_id, metric_name, observed_at)` for `observations`, so the worker's retry/DLQ wrapper can re-run the handler safely without duplicating data.
+Every write is an idempotent upsert keyed on `(knowledge_base_id, record_type, record_id)` for `raw_records`, on `(entity_id, metric_name, observed_at)` for `observations`, and on `(knowledge_base_id, entity_id, signal_name)` for `entity_derived_signals`, so the worker's retry/DLQ wrapper can re-run the handler safely without duplicating data.
 
-`GraphService.upsert_records_graph` is the records-specific graph entry point. Unlike the document pipeline's `upsert_graph`, it accepts no document artifacts and does not publish a `GraphUpdatedEvent`. The `observations` table has a write-side adapter at `monitoring/adapters/postgres.py` (`PostgresObservationStore`).
+`GraphService.upsert_records_graph` is the records-specific graph entry point. Unlike the document pipeline's `upsert_graph`, it accepts no document artifacts and does not publish a `GraphUpdatedEvent`. The `observations` table has a write-side adapter at `monitoring/adapters/postgres.py` (`PostgresObservationStore`). The `entity_derived_signals` table is written by `PostgresDerivedRiskSignalWriter` (`analytics/peerstats/adapters/postgres.py`) and read by `PostgresRiskSignalSource` (`analytics/risk/adapters/postgres.py`) when assembling entity risk profiles.
 
 ### 6.4 Plan C Persistence Flows (worker-side write-back)
 
@@ -748,7 +776,7 @@ Triggered by `AlertsCreatedEvent`. Writes each alert to `alert_history` for dura
 
 The following decisions were made during Plan C implementation and differ from the original design intent:
 
-- **Risk adapter is writer-only**: `PostgresRiskHistoryStore` is a write-side adapter plus `load_historical_score` (point read). It does not back the full `RiskSignalSourceProtocol` — risk signals remain graph-derived. Full Postgres-backed risk signal reads are deferred.
+- **Risk adapter is writer-only for history; `PostgresRiskSignalSource` reads derived signals**: `PostgresRiskHistoryStore` is a write-side adapter plus `load_historical_score` (point read). Risk signal assembly now has a Postgres-backed read path via `PostgresRiskSignalSource` (`analytics/risk/adapters/postgres.py`), which joins timeseries observations and `entity_derived_signals` (populated by `analytics/peerstats/`) to build entity risk profiles when the `peer_stats` capability is enabled.
 - **Entity-property snapshot instead of graph history nodes**: Flows 3 and 4 write a flat entity-property snapshot to the graph (e.g., `risk_score`, `active_alert_count`) alongside full history in SQL tables. Graph-native "history nodes" (linking graph entities to historical result nodes inside the graph DB) are deferred.
 - **Flow 2 throttled per-KB**: Metric recompute is rate-limited per knowledge-base to avoid redundant work on ingest bursts. The interval is configurable via `analytics.metrics_recompute_min_interval_seconds` (default 300 s) in the domain config.
 

@@ -511,6 +511,11 @@
             "title": "Gnn",
             "type": "boolean"
           },
+          "peer_stats": {
+            "default": false,
+            "title": "Peer Stats",
+            "type": "boolean"
+          },
           "rag_chat": {
             "default": false,
             "title": "Rag Chat",
@@ -1603,6 +1608,17 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/MonitoringConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "peer_stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeerStatsConfig"
               },
               {
                 "type": "null"
@@ -2862,6 +2878,128 @@
           "total_items"
         ],
         "title": "PageInfo",
+        "type": "object"
+      },
+      "PeerMetricSpec": {
+        "description": "One cross-sectional peer-group z-score metric derived from a record column.",
+        "properties": {
+          "aggregation": {
+            "enum": [
+              "sum",
+              "mean",
+              "count",
+              "max",
+              "min"
+            ],
+            "title": "Aggregation",
+            "type": "string"
+          },
+          "direction": {
+            "default": "high",
+            "enum": [
+              "high",
+              "low",
+              "two_sided"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "entity_id_field": {
+            "title": "Entity Id Field",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "group_by": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Group By",
+            "type": "array"
+          },
+          "interval": {
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ],
+            "title": "Interval",
+            "type": "string"
+          },
+          "min_peers": {
+            "default": 5,
+            "minimum": 2,
+            "title": "Min Peers",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rationale_template": {
+            "default": "{name}: z={z:.2f} vs {peer_group} peers",
+            "title": "Rationale Template",
+            "type": "string"
+          },
+          "record_type": {
+            "title": "Record Type",
+            "type": "string"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Time Column"
+          },
+          "value_column": {
+            "title": "Value Column",
+            "type": "string"
+          },
+          "weight": {
+            "default": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Weight",
+            "type": "number"
+          },
+          "z_cap": {
+            "default": 4.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Z Cap",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "record_type",
+          "entity_type",
+          "entity_id_field",
+          "value_column",
+          "aggregation",
+          "interval"
+        ],
+        "title": "PeerMetricSpec",
+        "type": "object"
+      },
+      "PeerStatsConfig": {
+        "description": "Collection of peer-group z-score metric specs for a domain.",
+        "properties": {
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/PeerMetricSpec"
+            },
+            "title": "Metrics",
+            "type": "array"
+          }
+        },
+        "title": "PeerStatsConfig",
         "type": "object"
       },
       "PolicyCitation": {
