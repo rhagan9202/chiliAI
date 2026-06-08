@@ -55,6 +55,7 @@ class CapabilitiesConfig(BaseModel):
     rag_chat: bool = False
     explainability: bool = False
     structured_ingestion: bool = False
+    peer_stats: bool = False
 
 
 class IngestionSourceConfig(BaseModel):
@@ -349,7 +350,7 @@ class RecordFeedConfig(BaseModel):
     # File formats accepted by the file-upload endpoint for this feed. Uploads
     # whose extension is not listed are rejected with HTTP 415.
     accepted_formats: list[str] = Field(
-        default_factory=lambda: cast(list[str], ["csv", "jsonl"])
+        default_factory=lambda: ["csv", "jsonl"]
     )
     entities: list[RecordEntityMapping] = Field(default_factory=lambda: [])
     relationships: list[RecordRelationshipMapping] = Field(default_factory=lambda: [])
@@ -444,6 +445,38 @@ class PolicyRulePack(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Peer-group z-score config
+# ---------------------------------------------------------------------------
+
+
+class PeerMetricSpec(BaseModel):
+    """One cross-sectional peer-group z-score metric derived from a record column."""
+
+    name: str
+    record_type: str
+    entity_type: str
+    entity_id_field: str
+    value_column: str
+    aggregation: Literal["sum", "mean", "count", "max", "min"]
+    interval: Literal["day", "week", "month"]
+    time_column: str | None = None
+    group_by: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    direction: Literal["high", "low", "two_sided"] = "high"
+    z_cap: float = Field(default=4.0, gt=0.0)
+    weight: float = Field(default=1.0, gt=0.0)
+    min_peers: int = Field(default=5, ge=2)
+    rationale_template: str = "{name}: z={z:.2f} vs {peer_group} peers"
+
+
+class PeerStatsConfig(BaseModel):
+    """Collection of peer-group z-score metric specs for a domain."""
+
+    metrics: list[PeerMetricSpec] = Field(
+        default_factory=lambda: cast(list[PeerMetricSpec], [])
+    )
+
+
+# ---------------------------------------------------------------------------
 # Top-level config
 # ---------------------------------------------------------------------------
 
@@ -474,6 +507,7 @@ class DomainConfig(BaseModel):
     validation: ValidationConfig | None = None
     records: RecordsConfig | None = None
     analytics: AnalyticsConfig | None = None
+    peer_stats: PeerStatsConfig | None = None
     policy_rules: list[PolicyRulePack] = Field(
         default_factory=lambda: cast(list[PolicyRulePack], [])
     )
