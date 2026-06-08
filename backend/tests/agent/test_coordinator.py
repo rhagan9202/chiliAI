@@ -2045,8 +2045,10 @@ def test_graceful_shutdown_finishes_in_flight_event(
         WorkerDependencies,
         SHUTDOWN_LOG_DONE,
         SHUTDOWN_LOG_REQUESTED,
+        build_peerstats_service,
         run_worker,
     )
+    from config.schema import PeerStatsConfig
     from agent.adapters.in_memory import InMemoryWorkflowRunStore
     from agent.workflow_tracking import WorkflowEventTracker
     from shared.utils import utc_now
@@ -2125,6 +2127,9 @@ def test_graceful_shutdown_finishes_in_flight_event(
         risk_service=create_risk_service(
             InMemoryRiskSignalSource(), event_bus=event_bus
         ),
+        peerstats_service=build_peerstats_service(None),
+        peer_stats_config=PeerStatsConfig(),
+        peer_stats_enabled=False,
         explainability_service=create_explainability_service(
             InMemoryExplainabilityContextSource(), event_bus=event_bus
         ),

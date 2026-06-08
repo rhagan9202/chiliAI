@@ -11,6 +11,7 @@ const features: DomainFeatures = {
     gnn: true,
     explainability: true,
     structured_ingestion: true,
+    peer_stats: false,
   },
   default_entity_type: 'provider',
   default_role: 'analyst',

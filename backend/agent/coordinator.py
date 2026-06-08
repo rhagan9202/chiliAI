@@ -38,6 +38,7 @@ from config.schema import (
     GraphDbConfig,
     LlmConfig,
     ObjectStoreConfig,
+    PeerStatsConfig,
     PolicyRulePack,
     RecordFeedConfig,
     RecordsConfig,
@@ -81,8 +82,22 @@ from analytics.metrics.models import (
     EntityMetricSample,
 )
 from analytics.metrics.throttle import MetricsRecomputeThrottle
+from analytics.peerstats.adapters.in_memory import (
+    InMemoryDerivedRiskSignalWriter,
+    InMemoryRecordColumnSource,
+)
+from analytics.peerstats.adapters.postgres import (
+    PostgresDerivedRiskSignalWriter,
+    PostgresRecordColumnSource,
+)
+from analytics.peerstats.adapters.protocols import (
+    DerivedRiskSignalWriterProtocol,
+    RecordColumnSourceProtocol,
+)
+from analytics.peerstats.service import PeerStatsService, create_peerstats_service
+from analytics.peerstats.service_models import PeerStatsComputeRequest
 from analytics.risk.adapters.in_memory import InMemoryRiskHistoryWriter, InMemoryRiskSignalSource
-from analytics.risk.adapters.postgres import PostgresRiskHistoryStore
+from analytics.risk.adapters.postgres import PostgresRiskHistoryStore, PostgresRiskSignalSource
 from analytics.risk.adapters.protocols import RiskHistoryWriter, RiskSignalSourceProtocol
 from analytics.risk.exceptions import RiskError
 from analytics.risk.models import RiskAssessmentRecord, RiskFactor
@@ -194,6 +209,7 @@ from vectorstore.protocols import VectorServiceProtocol
 __all__ = [
     "WORKER_EVENT_TYPES",
     "WorkerDependencies",
+    "assess_entities",
     "build_alert_history_writer",
     "build_connection_provider",
     "build_embedder",
@@ -206,6 +222,7 @@ __all__ = [
     "build_monitoring_observation_source",
     "build_object_store",
     "build_observation_writer",
+    "build_peerstats_service",
     "build_policy_item_repository",
     "build_policy_service",
     "build_raw_record_store",
@@ -230,6 +247,7 @@ __all__ = [
     "handle_vectors_indexed",
     "main",
     "run_handler_with_retry",
+    "run_peerstats_stage",
     "run_worker",
 ]
 
@@ -277,6 +295,9 @@ class WorkerDependencies:
     llm_client: LlmClientProtocol
     gnn_service: GnnService
     risk_service: RiskService
+    peerstats_service: PeerStatsService
+    peer_stats_config: PeerStatsConfig
+    peer_stats_enabled: bool
     explainability_service: ExplainabilityService
     monitoring_service: MonitoringService
     records_config: RecordsConfig
@@ -476,10 +497,45 @@ def build_graph_snapshot_source(
     return InMemoryGraphSnapshotSource()
 
 
-def build_risk_signal_source(_config: DomainConfig) -> RiskSignalSourceProtocol:
-    """Return the configured risk signal source adapter."""
+def build_risk_signal_source(
+    provider: ConnectionProvider | None,
+) -> RiskSignalSourceProtocol:
+    """Return the risk signal source: Postgres-derived when a provider exists."""
 
-    return InMemoryRiskSignalSource()
+    if provider is None:
+        return InMemoryRiskSignalSource()
+    return PostgresRiskSignalSource(provider)
+
+
+def build_record_column_source(
+    provider: ConnectionProvider | None,
+) -> RecordColumnSourceProtocol:
+    """Return the peerstats record column source."""
+
+    if provider is None:
+        return InMemoryRecordColumnSource()
+    return PostgresRecordColumnSource(provider)
+
+
+def build_derived_signal_writer(
+    provider: ConnectionProvider | None,
+) -> DerivedRiskSignalWriterProtocol:
+    """Return the peerstats derived-signal writer."""
+
+    if provider is None:
+        return InMemoryDerivedRiskSignalWriter()
+    return PostgresDerivedRiskSignalWriter(provider)
+
+
+def build_peerstats_service(
+    provider: ConnectionProvider | None,
+) -> PeerStatsService:
+    """Assemble the peerstats service from the configured database backend."""
+
+    return create_peerstats_service(
+        build_record_column_source(provider),
+        writer=build_derived_signal_writer(provider),
+    )
 
 
 def build_explainability_context_source(
@@ -744,15 +800,15 @@ def build_worker_dependencies() -> WorkerDependencies:
             else None
         ),
     )
+    connection_provider = build_connection_provider(config)
     risk_service = create_risk_service(
-        build_risk_signal_source(config),
+        build_risk_signal_source(connection_provider),
         event_bus=event_bus,
     )
     explainability_service = create_explainability_service(
         build_explainability_context_source(config),
         event_bus=event_bus,
     )
-    connection_provider = build_connection_provider(config)
     monitoring_config = config.monitoring
     monitoring_service = create_monitoring_service(
         build_monitoring_observation_source(connection_provider),
@@ -788,6 +844,8 @@ def build_worker_dependencies() -> WorkerDependencies:
         min_interval_seconds=analytics_config.metrics_recompute_min_interval_seconds
     )
     records_config = config.records or RecordsConfig()
+    peer_stats_config = config.peer_stats or PeerStatsConfig()
+    peerstats_service = build_peerstats_service(connection_provider)
 
     return WorkerDependencies(
         event_bus=event_bus,
@@ -802,6 +860,9 @@ def build_worker_dependencies() -> WorkerDependencies:
         llm_client=llm_client,
         gnn_service=gnn_service,
         risk_service=risk_service,
+        peerstats_service=peerstats_service,
+        peer_stats_config=peer_stats_config,
+        peer_stats_enabled=config.capabilities.peer_stats,
         explainability_service=explainability_service,
         monitoring_service=monitoring_service,
         records_config=records_config,
@@ -1787,6 +1848,65 @@ def handle_alerts_created_for_graph(
     return len(records)
 
 
+def run_peerstats_stage(
+    *,
+    peerstats_service: PeerStatsService,
+    peer_stats_config: PeerStatsConfig,
+    knowledge_base_id: str,
+    record_type: str,
+    correlation_id: str,
+) -> list[str]:
+    """Compute peer z-scores for every spec matching this feed's record type.
+
+    Computes over all intervals (``interval_starts=[]``) — recompute-all is
+    idempotent (upsert) and avoids a time-basis mismatch when a spec uses a
+    ``time_column`` that differs from ``ingested_at``. Returns the deduped,
+    sorted entity ids that received signals so the caller assesses each once.
+    """
+
+    affected: set[str] = set()
+    for spec in peer_stats_config.metrics:
+        if spec.record_type != record_type:
+            continue
+        response = peerstats_service.compute(
+            PeerStatsComputeRequest(
+                knowledge_base_id=knowledge_base_id,
+                spec=spec,
+                interval_starts=[],
+                correlation_id=correlation_id,
+            )
+        )
+        affected.update(response.affected_entity_ids)
+    return sorted(affected)
+
+
+def assess_entities(
+    *,
+    risk_service: RiskService,
+    knowledge_base_id: str,
+    entity_ids: list[str],
+) -> int:
+    """Assess each entity once; tolerate entities with insufficient signals.
+
+    Each successful assess publishes one RiskScoredEvent (existing Flow 3),
+    persisted to risk_score_history. RiskError (insufficient signals / config /
+    source) is logged and skipped so one bad entity never aborts the batch.
+    """
+
+    assessed = 0
+    for entity_id in entity_ids:
+        try:
+            risk_service.assess(
+                RiskAssessmentRequest(
+                    knowledge_base_id=knowledge_base_id, entity_id=entity_id
+                )
+            )
+            assessed += 1
+        except RiskError as exc:
+            logger.info("Skipping risk assess for entity=%s: %s", entity_id, exc)
+    return assessed
+
+
 def handle_records_ingested(
     event: RecordsIngestedEvent,
     *,
@@ -1799,6 +1919,10 @@ def handle_records_ingested(
     policy_rules: list[PolicyRulePack] | None = None,
     policy_service: PolicyService | None = None,
     metrics_throttle: MetricsRecomputeThrottle | None = None,
+    peerstats_service: PeerStatsService | None = None,
+    peer_stats_config: PeerStatsConfig | None = None,
+    risk_service: RiskService | None = None,
+    peer_stats_enabled: bool = False,
 ) -> int:
     """Flow 1 — fan a structured-records batch out to the graph and observations.
 
@@ -1893,6 +2017,33 @@ def handle_records_ingested(
             graph_service=graph_service,
             metrics_throttle=metrics_throttle,
         )
+
+    if (
+        peer_stats_enabled
+        and peerstats_service is not None
+        and peer_stats_config is not None
+        and peer_stats_config.metrics
+    ):
+        try:
+            affected = run_peerstats_stage(
+                peerstats_service=peerstats_service,
+                peer_stats_config=peer_stats_config,
+                knowledge_base_id=event.knowledge_base_id,
+                record_type=feed.record_type,
+                correlation_id=event.correlation_id,
+            )
+            if risk_service is not None and affected:
+                assess_entities(
+                    risk_service=risk_service,
+                    knowledge_base_id=event.knowledge_base_id,
+                    entity_ids=affected,
+                )
+        except Exception:  # noqa: BLE001 - best-effort: never break ingest
+            logger.exception(
+                "Peerstats stage failed for kb=%s correlation=%s",
+                event.knowledge_base_id,
+                event.correlation_id,
+            )
     return len(records)
 
 
@@ -2355,6 +2506,9 @@ def handle_event(
     alert_history_writer: AlertHistoryWriter | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
     graph_embeddings_enabled: bool = False,
+    peerstats_service: PeerStatsService | None = None,
+    peer_stats_config: PeerStatsConfig | None = None,
+    peer_stats_enabled: bool = False,
     vector_service: VectorServiceProtocol | None = None,
     kb_repository: KnowledgeBaseRepository | None = None,
 ) -> int:
@@ -2401,6 +2555,9 @@ def handle_event(
             risk_history_writer=risk_history_writer,
             alert_history_writer=alert_history_writer,
             graph_embeddings_enabled=graph_embeddings_enabled,
+            peerstats_service=peerstats_service,
+            peer_stats_config=peer_stats_config,
+            peer_stats_enabled=peer_stats_enabled,
             vector_service=vector_service,
             kb_repository=kb_repository,
         )
@@ -2438,6 +2595,9 @@ def _dispatch_event(
     risk_history_writer: RiskHistoryWriter | None,
     alert_history_writer: AlertHistoryWriter | None,
     graph_embeddings_enabled: bool,
+    peerstats_service: PeerStatsService | None = None,
+    peer_stats_config: PeerStatsConfig | None = None,
+    peer_stats_enabled: bool = False,
     vector_service: VectorServiceProtocol | None = None,
     kb_repository: KnowledgeBaseRepository | None = None,
 ) -> int:
@@ -2586,6 +2746,10 @@ def _dispatch_event(
             policy_rules=policy_rules,
             policy_service=policy_service,
             metrics_throttle=policy_metrics_throttle,
+            peerstats_service=peerstats_service,
+            peer_stats_config=peer_stats_config,
+            risk_service=risk_service,
+            peer_stats_enabled=peer_stats_enabled,
         )
     if isinstance(event, KnowledgeBaseDeletedEvent):
         if (
@@ -2706,6 +2870,9 @@ async def drain_ingestion_events(
     policy_metrics_throttle: MetricsRecomputeThrottle | None = None,
     risk_history_writer: RiskHistoryWriter | None = None,
     alert_history_writer: AlertHistoryWriter | None = None,
+    peerstats_service: PeerStatsService | None = None,
+    peer_stats_config: PeerStatsConfig | None = None,
+    peer_stats_enabled: bool = False,
     consumer_group: str,
     consumer_name: str,
     limit: int = 10,
@@ -2779,6 +2946,9 @@ async def drain_ingestion_events(
                 alert_history_writer=alert_history_writer,
                 workflow_tracker=workflow_tracker,
                 graph_embeddings_enabled=graph_embeddings_enabled,
+                peerstats_service=peerstats_service,
+                peer_stats_config=peer_stats_config,
+                peer_stats_enabled=peer_stats_enabled,
                 vector_service=vector_service,
                 kb_repository=kb_repository,
             )
@@ -2919,6 +3089,9 @@ async def run_worker(
                 policy_metrics_throttle=deps.policy_metrics_throttle,
                 risk_history_writer=deps.risk_history_writer,
                 alert_history_writer=deps.alert_history_writer,
+                peerstats_service=deps.peerstats_service,
+                peer_stats_config=deps.peer_stats_config,
+                peer_stats_enabled=deps.peer_stats_enabled,
                 consumer_group=deps.event_settings.consumer_group,
                 consumer_name=deps.event_settings.consumer_name(),
                 limit=deps.event_settings.batch_size,

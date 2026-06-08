@@ -83,6 +83,7 @@ from analytics.gnn.adapters.protocols import GraphSnapshotSourceProtocol
 from analytics.gnn.protocols import GnnServiceProtocol
 from analytics.gnn.service import create_gnn_service
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
+from analytics.risk.adapters.postgres import PostgresRiskSignalSource
 from analytics.risk.adapters.protocols import RiskSignalSourceProtocol
 from analytics.risk.protocols import RiskServiceProtocol
 from analytics.risk.service import create_risk_service
@@ -1026,8 +1027,11 @@ def get_monitoring_service() -> MonitoringServiceProtocol:
 
 @lru_cache(maxsize=1)
 def get_risk_signal_source() -> RiskSignalSourceProtocol:
-    """Return the risk signal source. In-memory by default."""
-    return InMemoryRiskSignalSource()
+    """Return the risk signal source: Postgres-derived signals when a DB is configured."""
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemoryRiskSignalSource()
+    return PostgresRiskSignalSource(provider)
 
 
 @lru_cache(maxsize=1)

@@ -26,6 +26,7 @@ For the live, dependency-ordered list of production-readiness work per backend m
 - **`ingestion/`** — Parser orchestration, document chunking, extraction, validation, and registration flows.
 - **`graph/`, `vectorstore/`, `embeddings/`, `llm/`, `rag/`** — Service/protocol boundaries with in-memory adapters and selected production-facing adapters.
 - **`analytics/` and `monitoring/`** — Heuristic timeseries, GNN, risk, explainability, alert, and monitoring services.
+- **`analytics/peerstats/`** — Config-driven cross-sectional peer-group z-score analytics. Aggregates `raw_records` JSONB per entity/interval, z-scores each entity against its peer cohort, and upserts `DerivedRiskSignal` rows to the `entity_derived_signals` table. Gated on `capabilities.peer_stats`. `PostgresRiskSignalSource` (in `analytics/risk`) reads those signals so the risk service incorporates them without change to the risk module. See [`analytics/peerstats/README.md`](analytics/peerstats/README.md).
 - **`analytics/README.md`** — Contributor guide for turning Postgres-backed scripts and notebook algorithms into typed analytics services, adapters, tests, and API/worker wiring.
 - **`analytics/metrics/`** — Entity-metric persistence package (no service layer, no events). `EntityMetricRepository` protocol backed by `InMemoryEntityMetricRepository` (tests/local) or `PostgresEntityMetricRepository` (Postgres). `MetricsRecomputeThrottle` limits per-KB recompute rate. Graph-scope metrics use sentinel `entity_id = "__graph__"`.
 - **`storage/`** — In-memory, local filesystem, and S3-compatible object-store adapters.
@@ -59,7 +60,8 @@ backend/
 │   ├── gnn/         # GNN link prediction, clustering
 │   ├── risk/        # Risk scoring engine
 │   ├── explainability/  # Evidence pack generation, subgraph extraction
-│   └── metrics/     # Entity-metric persistence (entity_metric_history / entity_metrics_current)
+│   ├── metrics/     # Entity-metric persistence (entity_metric_history / entity_metrics_current)
+│   └── peerstats/   # Cross-sectional peer-group z-scores → derived risk signals (entity_derived_signals)
 ├── agent/           # Workflow coordinator — async state machine for multi-step pipelines
 ├── monitoring/      # Active monitoring — claim stream consumer, alert generation
 ├── shared/          # Domain types, protocols, utilities (dependency-light, no business logic)
@@ -227,3 +229,4 @@ cfg = load_config("config/defaults/medicare_fraud.yaml")
 
 - GNN analysis is controlled by the domain `capabilities.gnn` flag. When the capability is disabled, the worker skips GNN Flow B without emitting `analysis.failed`.
 - Fresh knowledge bases may not have a registered graph snapshot yet. Missing snapshots are treated as a controlled skip, not a failed analytics stage, so document/vector Flow A remains quiet and successful while GNN waits for a configured snapshot source.
+- Peer-group z-score analytics (`analytics/peerstats/`) are controlled by the domain `capabilities.peer_stats` flag. When enabled, the worker runs `run_peerstats_stage` best-effort on every `RecordsIngestedEvent`. Results are written to the `entity_derived_signals` table; `PostgresRiskSignalSource` (in `analytics/risk`) reads them to assemble risk profiles. The medicare default config enables this capability with two provider billing specs (`weekly_provider_billing`, `weekly_provider_claim_count`) that flag outlier billing volume and claim count. A `peer_stats:` top-level YAML section (list of `PeerMetricSpec`) is required when the capability is enabled.

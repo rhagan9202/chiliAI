@@ -61,6 +61,7 @@ const domainConfig: DomainConfig = {
     risk_scoring: true,
     rag_chat: true,
     explainability: true,
+    peer_stats: false,
   },
   ingestion: {},
   alerts: { thresholds: {} },

@@ -24,6 +24,7 @@ _EXPECTED_TABLES = {
     "entity_metrics_current",
     "risk_score_history",
     "alert_history",
+    "entity_derived_signals",
 }
 _EXPECTED_HYPERTABLES = {"observations", "entity_metric_history"}
 _BASELINE_MIGRATION = "database.migrations.versions.0001_persistence_baseline"

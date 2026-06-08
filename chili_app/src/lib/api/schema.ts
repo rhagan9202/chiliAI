@@ -1130,6 +1130,11 @@ export interface components {
              */
             gnn: boolean;
             /**
+             * Peer Stats
+             * @default false
+             */
+            peer_stats: boolean;
+            /**
              * Rag Chat
              * @default false
              */
@@ -1594,6 +1599,8 @@ export interface components {
             llm: components["schemas"]["LlmConfig"] | null;
             /** @default null */
             monitoring: components["schemas"]["MonitoringConfig"] | null;
+            /** @default null */
+            peer_stats: components["schemas"]["PeerStatsConfig"] | null;
             /** Policy Rules */
             policy_rules?: components["schemas"]["PolicyRulePack"][];
             /** @default null */
@@ -2205,6 +2212,73 @@ export interface components {
             page_size: number;
             /** Total Items */
             total_items: number;
+        };
+        /**
+         * PeerMetricSpec
+         * @description One cross-sectional peer-group z-score metric derived from a record column.
+         */
+        PeerMetricSpec: {
+            /**
+             * Aggregation
+             * @enum {string}
+             */
+            aggregation: "sum" | "mean" | "count" | "max" | "min";
+            /**
+             * Direction
+             * @default high
+             * @enum {string}
+             */
+            direction: "high" | "low" | "two_sided";
+            /** Entity Id Field */
+            entity_id_field: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Group By */
+            group_by?: string[];
+            /**
+             * Interval
+             * @enum {string}
+             */
+            interval: "day" | "week" | "month";
+            /**
+             * Min Peers
+             * @default 5
+             */
+            min_peers: number;
+            /** Name */
+            name: string;
+            /**
+             * Rationale Template
+             * @default {name}: z={z:.2f} vs {peer_group} peers
+             */
+            rationale_template: string;
+            /** Record Type */
+            record_type: string;
+            /**
+             * Time Column
+             * @default null
+             */
+            time_column: string | null;
+            /** Value Column */
+            value_column: string;
+            /**
+             * Weight
+             * @default 1
+             */
+            weight: number;
+            /**
+             * Z Cap
+             * @default 4
+             */
+            z_cap: number;
+        };
+        /**
+         * PeerStatsConfig
+         * @description Collection of peer-group z-score metric specs for a domain.
+         */
+        PeerStatsConfig: {
+            /** Metrics */
+            metrics?: components["schemas"]["PeerMetricSpec"][];
         };
         /**
          * PolicyCitation

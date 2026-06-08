@@ -65,6 +65,7 @@ capabilities:
   rag_chat: true
   explainability: true
   structured_ingestion: true
+  peer_stats: true
 
 ingestion:
   chunking:
@@ -111,6 +112,33 @@ records:
           entity_type: claim
           score_field: anomaly_score
           rationale: "Anomaly score derived from the structured claims feed."
+
+peer_stats:
+  metrics:
+    - name: weekly_provider_billing
+      record_type: claim_record
+      entity_type: provider
+      entity_id_field: provider_npi
+      value_column: billed_amount
+      aggregation: sum
+      interval: week
+      time_column: service_date
+      direction: high
+      z_cap: 4.0
+      weight: 1.6
+      min_peers: 5
+    - name: weekly_provider_claim_count
+      record_type: claim_record
+      entity_type: provider
+      entity_id_field: provider_npi
+      value_column: billed_amount
+      aggregation: count
+      interval: week
+      time_column: service_date
+      direction: high
+      z_cap: 4.0
+      weight: 1.0
+      min_peers: 5
 
 policy_rules:
   - id: billing_thresholds

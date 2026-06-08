@@ -18,6 +18,7 @@ const defaultMockConfig: DomainConfig = {
     risk_scoring: false,
     rag_chat: false,
     explainability: false,
+    peer_stats: false,
   },
   ingestion: {},
   alerts: { thresholds: {} },
