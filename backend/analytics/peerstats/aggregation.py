@@ -29,7 +29,9 @@ def bucket_start(observed_at: datetime, interval: Interval) -> datetime:
         return midnight - timedelta(days=midnight.weekday())
     if interval == "month":
         return midnight.replace(day=1)
-    raise PeerStatsConfigurationError(f"Unknown interval '{interval}'.")
+    raise PeerStatsConfigurationError(  # pragma: no cover - unreachable under Interval
+        f"Unknown interval '{interval}'."
+    )
 
 
 def apply_aggregation(values: list[float], fn: Aggregation) -> float:
@@ -47,7 +49,9 @@ def apply_aggregation(values: list[float], fn: Aggregation) -> float:
         return float(max(values))
     if fn == "min":
         return float(min(values))
-    raise PeerStatsConfigurationError(f"Unknown aggregation '{fn}'.")
+    raise PeerStatsConfigurationError(  # pragma: no cover - unreachable under Aggregation
+        f"Unknown aggregation '{fn}'."
+    )
 
 
 def peer_group_key(entity_type: str, group_values: list[str]) -> str:

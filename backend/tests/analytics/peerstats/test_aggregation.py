@@ -7,11 +7,13 @@ from datetime import datetime, timezone
 import pytest
 
 from analytics.peerstats.aggregation import (
+    Aggregation,
     apply_aggregation,
     bucket_start,
     peer_group_key,
     z_to_signal,
 )
+from analytics.peerstats.exceptions import PeerStatsConfigurationError
 
 
 def _dt(y: int, m: int, d: int, h: int = 0) -> datetime:
@@ -35,8 +37,13 @@ def test_bucket_start_month_floors_to_first() -> None:
     ("fn", "expected"),
     [("sum", 6.0), ("mean", 2.0), ("count", 3.0), ("max", 3.0), ("min", 1.0)],
 )
-def test_apply_aggregation(fn: str, expected: float) -> None:
+def test_apply_aggregation(fn: Aggregation, expected: float) -> None:
     assert apply_aggregation([1.0, 2.0, 3.0], fn) == expected
+
+
+def test_apply_aggregation_empty_raises() -> None:
+    with pytest.raises(PeerStatsConfigurationError, match="empty"):
+        apply_aggregation([], "sum")
 
 
 def test_peer_group_key_type_only_when_no_group_cols() -> None:
