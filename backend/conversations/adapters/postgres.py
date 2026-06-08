@@ -41,6 +41,10 @@ _UPSERT_SQL = f"""
         updated_at = EXCLUDED.updated_at
 """
 
+_DELETE_BY_KB_SQL = """
+    DELETE FROM conversations WHERE knowledge_base_id = %s
+"""
+
 
 class PostgresConversationRepository:
     """A ``ConversationRepository`` backed by the ``conversations`` table."""
@@ -73,6 +77,17 @@ class PostgresConversationRepository:
         except Exception as exc:
             raise ConversationPersistenceError("Failed to save conversation.") from exc
         return conversation
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        try:
+            with self._provider.connection() as conn:
+                cursor = conn.execute(_DELETE_BY_KB_SQL, (knowledge_base_id,))
+                conn.commit()
+                return cursor.rowcount
+        except Exception as exc:
+            raise ConversationPersistenceError(
+                "Failed to delete conversations by knowledge base."
+            ) from exc
 
     @staticmethod
     def _row_params(conversation: Conversation) -> tuple[object, ...]:

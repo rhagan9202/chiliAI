@@ -51,3 +51,20 @@ class InMemoryEntityMetricRepository:
             if kb == knowledge_base_id and ent == entity_id
         ]
         return sorted(matches, key=lambda value: value.metric_name)
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Remove all history and current entries for *knowledge_base_id*.
+
+        Returns the number of history rows removed. Idempotent.
+        """
+        before = len(self._history)
+        self._history = [
+            s for s in self._history if s.knowledge_base_id != knowledge_base_id
+        ]
+        removed_history = before - len(self._history)
+        keys_to_delete = [
+            key for key in self._current if key[0] == knowledge_base_id
+        ]
+        for key in keys_to_delete:
+            del self._current[key]
+        return removed_history

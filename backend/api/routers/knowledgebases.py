@@ -16,16 +16,18 @@ from api._kb_projection import (
     project_knowledge_base,
 )
 from knowledgebases import DocumentRecord, KnowledgeBaseRepository
-from analytics.peerstats.adapters.protocols import DerivedRiskSignalWriterProtocol
+from api._kb_cleanup import (
+    KbDeletionStores,
+    get_kb_deletion_stores,
+    kb_deletion_steps,
+)
 from api.dependencies import (
-    get_derived_signal_store,
     get_event_bus,
     get_domain_config,
     get_graph_service,
     get_ingestion_service,
     get_knowledge_base_repository,
     get_object_store,
-    get_raw_record_store,
     get_vector_service,
     get_workflow_tracker,
 )
@@ -36,7 +38,6 @@ from events.types import KnowledgeBaseCreatedEvent, KnowledgeBaseDeletedEvent
 from graph.protocols import GraphServiceProtocol
 from ingestion.protocols import IngestionServiceProtocol
 from ingestion.service_models import DocumentReceipt, DocumentSubmission
-from records.adapters.protocols import RawRecordStore
 from shared.types import KnowledgeBase
 from shared.utils import generate_id, utc_now
 from shared.validation import sanitize_filename, validate_content_type
@@ -176,17 +177,14 @@ async def read_knowledge_base(
 async def delete_knowledge_base(
     knowledge_base_id: str,
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
-    graph_service: GraphServiceProtocol = Depends(get_graph_service),
-    vector_service: VectorServiceProtocol = Depends(get_vector_service),
-    raw_record_store: RawRecordStore = Depends(get_raw_record_store),
-    derived_signal_store: DerivedRiskSignalWriterProtocol = Depends(
-        get_derived_signal_store
-    ),
-    object_store: ObjectStore = Depends(get_object_store),
+    stores: KbDeletionStores = Depends(get_kb_deletion_stores),
     workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
     event_bus: EventBus = Depends(get_event_bus),
 ) -> Response:
-    """Cascade-delete a KB across graph, vector, raw_records, derived signals, object store, and metadata."""
+    """Cascade-delete a KB across every per-KB durable store + metadata.
+
+    The full step list lives in `api._kb_cleanup.kb_deletion_steps`.
+    """
     existing_kb = repository.get(knowledge_base_id)
     if existing_kb is None:
         raise HTTPException(
@@ -214,17 +212,8 @@ async def delete_knowledge_base(
             pending_cleanup = True
             steps.append({"step": step_name, "status": "failed", "error": str(exc)})
 
-    _run("graph", lambda: graph_service.delete_knowledge_base(knowledge_base_id))
-    _run("vector", lambda: vector_service.delete_knowledge_base(knowledge_base_id))
-    _run("raw_records", lambda: raw_record_store.delete_by_kb(knowledge_base_id))
-    _run(
-        "derived_signals",
-        lambda: derived_signal_store.delete_by_kb(knowledge_base_id),
-    )
-    _run(
-        "object_store",
-        lambda: _delete_object_store_prefix(object_store, knowledge_base_id),
-    )
+    for step_name, deletion in kb_deletion_steps(stores, knowledge_base_id):
+        _run(step_name, deletion)
 
     if pending_cleanup:
         repository.mark_pending_cleanup(knowledge_base_id)
@@ -251,15 +240,6 @@ async def delete_knowledge_base(
         )
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-def _delete_object_store_prefix(
-    object_store: ObjectStore, knowledge_base_id: str
-) -> None:
-    """Remove all object-store keys under the KB prefix."""
-    prefix = f"knowledgebases/{knowledge_base_id}/"
-    for key in object_store.list_keys(prefix):
-        object_store.delete(key)
 
 
 @router.get(

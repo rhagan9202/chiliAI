@@ -26,6 +26,13 @@ class EntityMetricRepository(Protocol):
         """Return the latest value of every metric for one entity."""
         ...
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Delete all metric history and current snapshots for a KB.
+
+        Returns the count of rows removed from the history table. Idempotent.
+        """
+        ...
+
 
 __all__ = [
     "EntityMetricRepository",

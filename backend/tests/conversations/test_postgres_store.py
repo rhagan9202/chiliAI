@@ -76,3 +76,54 @@ def test_create_is_idempotent(
     stored = repo.get("conv-pg")
     assert stored is not None
     assert stored.title == "Provider anomaly review"
+
+
+def test_delete_by_kb_removes_rows_and_returns_count(
+    database_url: str,
+) -> None:
+    from config.schema import DatabaseConfig
+    from database.runtime import create_connection_provider
+
+    unique_kb = "kb-delete-test-unique-001"
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    repo = PostgresConversationRepository(provider)
+    try:
+        conv_a = Conversation(
+            id="conv-del-a",
+            title="Delete test A",
+            knowledge_base_id=unique_kb,
+        )
+        conv_b = Conversation(
+            id="conv-del-b",
+            title="Delete test B",
+            knowledge_base_id=unique_kb,
+        )
+        conv_other = Conversation(
+            id="conv-del-other",
+            title="Other KB",
+            knowledge_base_id="kb-other-unique-001",
+        )
+        repo.create(conv_a)
+        repo.create(conv_b)
+        repo.create(conv_other)
+
+        count = repo.delete_by_kb(unique_kb)
+
+        assert count == 2
+        assert repo.get("conv-del-a") is None
+        assert repo.get("conv-del-b") is None
+        # row from a different KB must survive
+        assert repo.get("conv-del-other") is not None
+
+        # idempotent: second call returns 0
+        second = repo.delete_by_kb(unique_kb)
+        assert second == 0
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM conversations WHERE conversation_id IN (%s, %s, %s)",
+                ("conv-del-a", "conv-del-b", "conv-del-other"),
+            )
+            conn.commit()
+        provider.close()

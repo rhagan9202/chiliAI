@@ -50,3 +50,45 @@ def test_count_open_alerts_filters_by_entity_and_status() -> None:
     assert (
         writer.count_open_alerts(knowledge_base_id="kb-1", entity_id="claim:other") == 0
     )
+
+
+def _record_for_kb(alert_id: str, *, knowledge_base_id: str) -> AlertHistoryRecord:
+    return AlertHistoryRecord(
+        knowledge_base_id=knowledge_base_id,
+        alert_id=alert_id,
+        entity_id="claim:c1",
+        entity_type="claim",
+        severity="high",
+        status="open",
+        title="Anomalous claim",
+        reasoning="score exceeded threshold",
+        metric_name="claim_anomaly",
+        created_at=datetime(2026, 5, 16, tzinfo=timezone.utc),
+    )
+
+
+def test_delete_by_kb_removes_only_matching_kb_alerts() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    writer.write_alerts([
+        _record_for_kb("a-keep", knowledge_base_id="kb-keep"),
+        _record_for_kb("a-del-1", knowledge_base_id="kb-delete"),
+        _record_for_kb("a-del-2", knowledge_base_id="kb-delete"),
+    ])
+
+    count = writer.delete_by_kb("kb-delete")
+
+    assert count == 2
+    assert (
+        writer.count_open_alerts(knowledge_base_id="kb-delete", entity_id="claim:c1") == 0
+    )
+    assert (
+        writer.count_open_alerts(knowledge_base_id="kb-keep", entity_id="claim:c1") == 1
+    )
+
+
+def test_delete_by_kb_is_idempotent_for_alert_history() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    writer.write_alerts([_record_for_kb("a-1", knowledge_base_id="kb-delete")])
+    writer.delete_by_kb("kb-delete")
+
+    assert writer.delete_by_kb("kb-delete") == 0

@@ -57,6 +57,8 @@ _RANKED_SQL = """
     ORDER BY entity_id, assessed_at DESC
 """
 
+_DELETE_BY_KB_SQL = "DELETE FROM risk_score_history WHERE knowledge_base_id = %s"
+
 
 def _factor_to_dict(factor: RiskFactor) -> dict[str, object]:
     return {
@@ -111,6 +113,19 @@ class PostgresRiskHistoryStore:
         if row is None:
             return None
         return float(cast(float, row[0]))
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Delete all risk-score history for a knowledge base; return rows removed."""
+
+        try:
+            with self._provider.connection() as conn:
+                cursor = conn.execute(_DELETE_BY_KB_SQL, (knowledge_base_id,))
+                conn.commit()
+                return cursor.rowcount
+        except Exception as exc:
+            raise RiskHistoryError(
+                "Failed to delete risk score history."
+            ) from exc
 
 
 class PostgresRiskSignalSource:

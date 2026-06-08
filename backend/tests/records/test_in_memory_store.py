@@ -65,3 +65,74 @@ def test_submission_dedup_is_scoped_by_kb_and_hash() -> None:
     assert (
         store.was_submitted(knowledge_base_id="kb-1", submission_hash="sub-2") is False
     )
+
+
+def test_delete_by_kb_clears_submissions_and_records() -> None:
+    """delete_by_kb removes both raw_records and submission hashes for the KB."""
+    store = InMemoryRawRecordStore()
+    store.record_submission(
+        knowledge_base_id="kb-del", submission_hash="sub-del", correlation_id="corr-del"
+    )
+    store.persist([
+        RawRecord(
+            knowledge_base_id="kb-del",
+            record_type="claim_record",
+            record_id="r1",
+            payload={"claim_id": "r1"},
+            source_type="file_upload",
+            source_ref=None,
+            correlation_id="corr-del",
+            content_hash=content_hash_for({"claim_id": "r1"}),
+        )
+    ])
+
+    removed = store.delete_by_kb("kb-del")
+
+    assert removed == 1
+    assert store.was_submitted(knowledge_base_id="kb-del", submission_hash="sub-del") is False
+    assert store.load_batch(knowledge_base_id="kb-del", correlation_id="corr-del") == []
+
+
+def test_delete_by_kb_isolates_other_kbs() -> None:
+    """delete_by_kb must not touch records or submissions belonging to other KBs."""
+    store = InMemoryRawRecordStore()
+
+    # KB to be deleted.
+    store.record_submission(
+        knowledge_base_id="kb-del", submission_hash="sub-del", correlation_id="corr-del"
+    )
+    store.persist([
+        RawRecord(
+            knowledge_base_id="kb-del",
+            record_type="claim_record",
+            record_id="r-del",
+            payload={"claim_id": "r-del"},
+            source_type="file_upload",
+            source_ref=None,
+            correlation_id="corr-del",
+            content_hash=content_hash_for({"claim_id": "r-del"}),
+        )
+    ])
+
+    # KB that should survive.
+    store.record_submission(
+        knowledge_base_id="kb-keep", submission_hash="sub-keep", correlation_id="corr-keep"
+    )
+    store.persist([
+        RawRecord(
+            knowledge_base_id="kb-keep",
+            record_type="claim_record",
+            record_id="r-keep",
+            payload={"claim_id": "r-keep"},
+            source_type="file_upload",
+            source_ref=None,
+            correlation_id="corr-keep",
+            content_hash=content_hash_for({"claim_id": "r-keep"}),
+        )
+    ])
+
+    store.delete_by_kb("kb-del")
+
+    # Surviving KB's data is intact.
+    assert store.was_submitted(knowledge_base_id="kb-keep", submission_hash="sub-keep") is True
+    assert len(store.load_batch(knowledge_base_id="kb-keep", correlation_id="corr-keep")) == 1

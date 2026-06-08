@@ -48,6 +48,32 @@ def test_create_is_idempotent_on_id() -> None:
     assert stored.title == "Provider anomaly review"
 
 
+def test_delete_by_kb_removes_matching_and_returns_count() -> None:
+    repo = InMemoryConversationRepository()
+    repo.create(_conversation("conv-a").model_copy(update={"knowledge_base_id": "kb-x"}))
+    repo.create(_conversation("conv-b").model_copy(update={"knowledge_base_id": "kb-x"}))
+    repo.create(_conversation("conv-c").model_copy(update={"knowledge_base_id": "kb-y"}))
+
+    count = repo.delete_by_kb("kb-x")
+
+    assert count == 2
+    assert repo.get("conv-a") is None
+    assert repo.get("conv-b") is None
+    # kb-y must be untouched
+    assert repo.get("conv-c") is not None
+
+
+def test_delete_by_kb_is_idempotent() -> None:
+    repo = InMemoryConversationRepository()
+    repo.create(_conversation("conv-d").model_copy(update={"knowledge_base_id": "kb-z"}))
+
+    first = repo.delete_by_kb("kb-z")
+    second = repo.delete_by_kb("kb-z")
+
+    assert first == 1
+    assert second == 0
+
+
 def test_save_persists_appended_messages_with_citations() -> None:
     repo = InMemoryConversationRepository()
     created = repo.create(_conversation())

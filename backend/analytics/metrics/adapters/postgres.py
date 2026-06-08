@@ -36,6 +36,14 @@ _CURRENT_SELECT_SQL = """
     ORDER BY metric_name
 """
 
+_HISTORY_DELETE_BY_KB_SQL = """
+    DELETE FROM entity_metric_history WHERE knowledge_base_id = %s
+"""
+
+_CURRENT_DELETE_BY_KB_SQL = """
+    DELETE FROM entity_metrics_current WHERE knowledge_base_id = %s
+"""
+
 
 class PostgresEntityMetricRepository:
     """An ``EntityMetricRepository`` backed by the two metric tables."""
@@ -88,6 +96,26 @@ class PostgresEntityMetricRepository:
         except Exception as exc:
             raise MetricsRepositoryError("Failed to load current metrics.") from exc
         return [_row_to_value(row) for row in rows]
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Delete all history and current rows for *knowledge_base_id*.
+
+        Returns the number of rows removed from ``entity_metric_history``.
+        Idempotent.
+        """
+        try:
+            with self._provider.connection() as conn:
+                history_cursor = conn.execute(
+                    _HISTORY_DELETE_BY_KB_SQL, (knowledge_base_id,)
+                )
+                removed = history_cursor.rowcount
+                conn.execute(_CURRENT_DELETE_BY_KB_SQL, (knowledge_base_id,))
+                conn.commit()
+        except Exception as exc:
+            raise MetricsRepositoryError(
+                "Failed to delete entity metrics by knowledge base."
+            ) from exc
+        return removed
 
 
 def _row_to_value(row: Row) -> EntityMetricValue:

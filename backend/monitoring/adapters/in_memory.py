@@ -40,6 +40,15 @@ class InMemoryObservationWriter:
         self.written.append((batch, correlation_id))
         return len(batch.observations)
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        before = len(self.written)
+        self.written = [
+            (batch, corr_id)
+            for batch, corr_id in self.written
+            if batch.knowledge_base_id != knowledge_base_id
+        ]
+        return before - len(self.written)
+
 
 class InMemoryAlertRepository:
     """A simple in-memory store of alerts keyed by alert id.
@@ -88,3 +97,11 @@ class InMemoryAlertHistoryWriter:
             and record.entity_id == entity_id
             and record.status == "open"
         )
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        keys_to_delete = [
+            key for key in self._records if key[0] == knowledge_base_id
+        ]
+        for key in keys_to_delete:
+            del self._records[key]
+        return len(keys_to_delete)

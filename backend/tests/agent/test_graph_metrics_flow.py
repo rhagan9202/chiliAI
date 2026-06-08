@@ -47,6 +47,9 @@ class _CountingMetricRepository:
             knowledge_base_id=knowledge_base_id, entity_id=entity_id
         )
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        return self._inner.delete_by_kb(knowledge_base_id)
+
 
 def _build_graph_service(event_bus: InMemoryEventBus, entity_count: int) -> GraphService:
     service = create_graph_service(

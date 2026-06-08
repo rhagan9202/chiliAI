@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from typing import cast
 
 import pytest
 
@@ -30,6 +31,66 @@ def _sample(metric: str, value: float) -> EntityMetricSample:
         value=value,
         correlation_id="corr-metrics-1",
     )
+
+
+def _sample_for_kb(kb: str, metric: str, value: float) -> EntityMetricSample:
+    return EntityMetricSample(
+        knowledge_base_id=kb,
+        entity_id="__graph__",
+        metric_name=metric,
+        value=value,
+        correlation_id="corr-del",
+    )
+
+
+TEST_KB = "kb-metrics-delete-test"
+
+
+def test_delete_by_kb_purges_both_tables(database_url: str) -> None:
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    repo = PostgresEntityMetricRepository(provider)
+    try:
+        # Seed two metrics for the test KB.
+        repo.record_metrics([
+            _sample_for_kb(TEST_KB, "entity_count", 3.0),
+            _sample_for_kb(TEST_KB, "edge_count", 7.0),
+        ])
+
+        removed = repo.delete_by_kb(TEST_KB)
+
+        assert removed == 2
+
+        # entity_metric_history should have 0 rows for this KB.
+        with provider.connection() as conn:
+            hist_rows = conn.execute(
+                "SELECT COUNT(*) FROM entity_metric_history WHERE knowledge_base_id = %s",
+                (TEST_KB,),
+            ).fetchone()
+            assert hist_rows is not None
+            assert cast(int, hist_rows[0]) == 0
+
+            curr_rows = conn.execute(
+                "SELECT COUNT(*) FROM entity_metrics_current WHERE knowledge_base_id = %s",
+                (TEST_KB,),
+            ).fetchone()
+            assert curr_rows is not None
+            assert cast(int, curr_rows[0]) == 0
+
+        # Idempotent — second call returns 0.
+        assert repo.delete_by_kb(TEST_KB) == 0
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM entity_metric_history WHERE knowledge_base_id = %s",
+                (TEST_KB,),
+            )
+            conn.execute(
+                "DELETE FROM entity_metrics_current WHERE knowledge_base_id = %s",
+                (TEST_KB,),
+            )
+            conn.commit()
+        provider.close()
 
 
 def test_record_metrics_round_trip_and_idempotent(database_url: str) -> None:

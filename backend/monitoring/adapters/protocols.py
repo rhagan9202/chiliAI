@@ -36,6 +36,10 @@ class ObservationWriter(Protocol):
         """Persist a batch's observations idempotently; return the row count written."""
         ...
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Delete all observations for a knowledge base; return rows removed."""
+        ...
+
 
 @runtime_checkable
 class AlertHistoryWriter(Protocol):
@@ -49,6 +53,10 @@ class AlertHistoryWriter(Protocol):
         self, *, knowledge_base_id: str, entity_id: str
     ) -> int:
         """Return how many ``open`` alerts the log holds for one entity."""
+        ...
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Delete all alert history for a knowledge base; return rows removed."""
         ...
 
 

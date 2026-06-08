@@ -92,3 +92,13 @@ class InMemoryRiskHistoryWriter:
             return None
         latest = max(matches, key=lambda record: record.assessed_at)
         return latest.overall_score
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        keys = [
+            request_id
+            for request_id, record in self._records.items()
+            if record.knowledge_base_id == knowledge_base_id
+        ]
+        for key in keys:
+            del self._records[key]
+        return len(keys)

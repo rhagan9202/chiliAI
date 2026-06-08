@@ -82,9 +82,18 @@ from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
 from analytics.gnn.adapters.protocols import GraphSnapshotSourceProtocol
 from analytics.gnn.protocols import GnnServiceProtocol
 from analytics.gnn.service import create_gnn_service
-from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
-from analytics.risk.adapters.postgres import PostgresRiskSignalSource
-from analytics.risk.adapters.protocols import RiskSignalSourceProtocol
+from analytics.metrics.adapters.in_memory import InMemoryEntityMetricRepository
+from analytics.metrics.adapters.postgres import PostgresEntityMetricRepository
+from analytics.metrics.adapters.protocols import EntityMetricRepository
+from analytics.risk.adapters.in_memory import (
+    InMemoryRiskHistoryWriter,
+    InMemoryRiskSignalSource,
+)
+from analytics.risk.adapters.postgres import (
+    PostgresRiskHistoryStore,
+    PostgresRiskSignalSource,
+)
+from analytics.risk.adapters.protocols import RiskHistoryWriter, RiskSignalSourceProtocol
 from analytics.risk.protocols import RiskServiceProtocol
 from analytics.risk.service import create_risk_service
 from analytics.timeseries.adapters.in_memory import InMemoryTimeSeriesHistorySource
@@ -111,9 +120,21 @@ from llm.adapters.protocols import LlmClientProtocol
 from llm.factory import create_llm_client
 from llm.protocols import LlmServiceProtocol
 from llm.service import create_llm_service
-from monitoring.adapters.in_memory import InMemoryObservationSource
-from monitoring.adapters.postgres import PostgresObservationSource
-from monitoring.adapters.protocols import ObservationSourceProtocol
+from monitoring.adapters.in_memory import (
+    InMemoryAlertHistoryWriter,
+    InMemoryObservationSource,
+    InMemoryObservationWriter,
+)
+from monitoring.adapters.postgres import (
+    PostgresAlertHistoryStore,
+    PostgresObservationSource,
+    PostgresObservationStore,
+)
+from monitoring.adapters.protocols import (
+    AlertHistoryWriter,
+    ObservationSourceProtocol,
+    ObservationWriter,
+)
 from monitoring.protocols import MonitoringServiceProtocol
 from monitoring.service import create_monitoring_service
 from database.protocols import ConnectionProvider
@@ -1132,6 +1153,46 @@ def get_derived_signal_store() -> DerivedRiskSignalWriterProtocol:
     if provider is None:
         return InMemoryDerivedRiskSignalWriter()
     return PostgresDerivedRiskSignalWriter(provider)
+
+
+# Analytics/monitoring write stores — used by the KB-delete cascade to purge the
+# per-consumer durable tables (Postgres when a DB is configured, else in-memory).
+
+
+@lru_cache(maxsize=1)
+def get_risk_history_writer() -> RiskHistoryWriter:
+    """Return the risk-history store (purges ``risk_score_history`` on KB delete)."""
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemoryRiskHistoryWriter()
+    return PostgresRiskHistoryStore(provider)
+
+
+@lru_cache(maxsize=1)
+def get_observation_writer() -> ObservationWriter:
+    """Return the observation store (purges ``observations`` on KB delete)."""
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemoryObservationWriter()
+    return PostgresObservationStore(provider)
+
+
+@lru_cache(maxsize=1)
+def get_alert_history_writer() -> AlertHistoryWriter:
+    """Return the alert-history store (purges ``alert_history`` on KB delete)."""
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemoryAlertHistoryWriter()
+    return PostgresAlertHistoryStore(provider)
+
+
+@lru_cache(maxsize=1)
+def get_entity_metric_repository() -> EntityMetricRepository:
+    """Return the entity-metric repository (purges metric tables on KB delete)."""
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemoryEntityMetricRepository()
+    return PostgresEntityMetricRepository(provider)
 
 
 def get_records_service(

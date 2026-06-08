@@ -44,7 +44,10 @@ class InMemoryRawRecordStore:
         )
 
     def delete_by_kb(self, knowledge_base_id: str) -> int:
-        """Delete all records for a knowledge base; return the count removed."""
+        """Delete all records and submission hashes for a knowledge base.
+
+        Returns the count of raw_records rows removed.
+        """
         keys_to_remove = [
             key
             for key, record in self._records.items()
@@ -52,6 +55,13 @@ class InMemoryRawRecordStore:
         ]
         for key in keys_to_remove:
             del self._records[key]
+        submission_keys_to_remove = [
+            sub_key
+            for sub_key in self._submissions
+            if sub_key[0] == knowledge_base_id
+        ]
+        for sub_key in submission_keys_to_remove:
+            self._submissions.discard(sub_key)
         return len(keys_to_remove)
 
     def was_submitted(

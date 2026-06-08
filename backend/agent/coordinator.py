@@ -2131,6 +2131,15 @@ def handle_knowledge_base_deleted(
     The worker picks up the ``KnowledgeBaseDeletedEvent`` and retries each
     store in order.  All calls are idempotent; the coordinator's retry/DLQ
     wrapper handles any exceptions that bubble up.
+
+    NOTE: the authoritative, complete cascade is the API endpoint
+    (``api._kb_cleanup.kb_deletion_steps`` — graph/vector/raw_records/derived
+    signals/risk history/observations/alert history/metrics/conversations/cases/
+    policy/evidence/object store). This worker retry covers only the core
+    namespaced stores; aligning it with the full step list (and wiring its
+    ``vector_service``/``kb_repository`` deps, which ``run_worker`` does not yet
+    pass) is tracked separately — the module boundary prevents importing the
+    api-side step list here.
     """
 
     if not event.cleanup_pending:

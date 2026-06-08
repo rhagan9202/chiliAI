@@ -23,5 +23,9 @@ class ConversationRepository(Protocol):
         """Upsert a conversation (e.g. after appending messages) and return it."""
         ...
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Delete all conversations for a knowledge base; return rows removed."""
+        ...
+
 
 __all__ = ["ConversationRepository"]

@@ -38,6 +38,11 @@ _DELETE_BY_KB_SQL = """
     WHERE knowledge_base_id = %s
 """
 
+_DELETE_SUBMISSIONS_BY_KB_SQL = """
+    DELETE FROM record_submissions
+    WHERE knowledge_base_id = %s
+"""
+
 _WAS_SUBMITTED_SQL = """
     SELECT 1 FROM record_submissions
     WHERE knowledge_base_id = %s AND submission_hash = %s
@@ -97,10 +102,15 @@ class PostgresRawRecordStore:
         return [_row_to_record(row) for row in rows]
 
     def delete_by_kb(self, knowledge_base_id: str) -> int:
-        """Delete all records for a knowledge base; return the count removed."""
+        """Delete all records and submission hashes for a knowledge base.
+
+        Both ``raw_records`` and ``record_submissions`` rows are removed in a
+        single transaction.  Returns the count of ``raw_records`` rows removed.
+        """
         try:
             with self._provider.connection() as conn:
                 cursor = conn.execute(_DELETE_BY_KB_SQL, (knowledge_base_id,))
+                conn.execute(_DELETE_SUBMISSIONS_BY_KB_SQL, (knowledge_base_id,))
                 conn.commit()
                 return cursor.rowcount
         except Exception as exc:

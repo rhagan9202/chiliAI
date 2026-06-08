@@ -35,3 +35,40 @@ def test_in_memory_writer_records_written_batches() -> None:
     batch, correlation_id = writer.written[0]
     assert batch.batch_id == "corr-1"
     assert correlation_id == "corr-1"
+
+
+def _batch_for_kb(knowledge_base_id: str) -> MonitoringBatch:
+    return MonitoringBatch(
+        knowledge_base_id=knowledge_base_id,
+        batch_id="corr-x",
+        observations=[
+            MonitoringObservation(
+                entity_id="claim:c1",
+                entity_type="claim",
+                metric_name="claim_anomaly",
+                score=0.5,
+                rationale="test",
+            )
+        ],
+    )
+
+
+def test_delete_by_kb_removes_only_matching_kb() -> None:
+    writer = InMemoryObservationWriter()
+    writer.write_observations(_batch_for_kb("kb-keep"), correlation_id="corr-keep")
+    writer.write_observations(_batch_for_kb("kb-delete"), correlation_id="corr-del")
+    assert len(writer.written) == 2
+
+    count = writer.delete_by_kb("kb-delete")
+
+    assert count == 1
+    assert len(writer.written) == 1
+    assert writer.written[0][0].knowledge_base_id == "kb-keep"
+
+
+def test_delete_by_kb_is_idempotent_for_observations() -> None:
+    writer = InMemoryObservationWriter()
+    writer.write_observations(_batch_for_kb("kb-delete"), correlation_id="corr-del")
+    writer.delete_by_kb("kb-delete")
+
+    assert writer.delete_by_kb("kb-delete") == 0

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
+from typing import cast
 
 import pytest
 
@@ -41,6 +42,9 @@ def _record(request_id: str, *, score: float, assessed_at: datetime) -> RiskAsse
         ],
         assessed_at=assessed_at,
     )
+
+
+_KB_DEL = "kb-risk-del-test"
 
 
 def test_write_and_load_latest_score(database_url: str) -> None:
@@ -85,6 +89,49 @@ def test_write_and_load_latest_score(database_url: str) -> None:
             conn.execute(
                 "DELETE FROM risk_score_history "
                 "WHERE knowledge_base_id = 'kb-risk-test'"
+            )
+            conn.commit()
+        provider.close()
+
+
+def test_delete_by_kb(database_url: str) -> None:
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresRiskHistoryStore(provider)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM risk_score_history WHERE knowledge_base_id = %s",
+                (_KB_DEL,),
+            )
+            conn.commit()
+
+        record = _record(
+            "req-risk-del-1",
+            score=0.6,
+            assessed_at=datetime(2026, 5, 20, tzinfo=timezone.utc),
+        )
+        record = record.model_copy(update={"knowledge_base_id": _KB_DEL})
+        assert store.write_assessment(record) is True
+
+        removed = store.delete_by_kb(_KB_DEL)
+        assert removed == 1
+
+        with provider.connection() as conn:
+            rows = conn.execute(
+                "SELECT count(*) FROM risk_score_history "
+                "WHERE knowledge_base_id = %s",
+                (_KB_DEL,),
+            ).fetchall()
+            assert int(cast(int, rows[0][0])) == 0
+
+        # Idempotent: second call removes nothing.
+        assert store.delete_by_kb(_KB_DEL) == 0
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM risk_score_history WHERE knowledge_base_id = %s",
+                (_KB_DEL,),
             )
             conn.commit()
         provider.close()

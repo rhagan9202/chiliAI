@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import datetime, timezone
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,6 +23,7 @@ from analytics.peerstats.adapters.in_memory import InMemoryDerivedRiskSignalWrit
 from analytics.peerstats.models import DerivedRiskSignal
 from api.dependencies import (
     get_derived_signal_store,
+    get_risk_history_writer,
     get_event_bus,
     get_domain_config,
     get_graph_service,
@@ -447,3 +449,37 @@ def test_delete_kb_purges_derived_signals(
         )
         == []
     )
+
+
+def test_delete_kb_207_when_a_durable_store_step_fails(
+    cascade_harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+        InMemoryGraphRepository,
+        InMemoryVectorStore,
+        InMemoryRawRecordStore,
+        WorkflowEventTracker,
+    ],
+) -> None:
+    """A failure in one of the per-KB durable stores surfaces in the 207 body."""
+    client, *_ = cascade_harness
+    failing = MagicMock()
+    failing.delete_by_kb.side_effect = RuntimeError("risk-history outage")
+    client.app.dependency_overrides[get_risk_history_writer] = lambda: failing
+
+    created = client.post(
+        "/knowledgebases", json={"name": "risk-fail", "description": ""}
+    )
+    assert created.status_code == 201
+    kb_id: str = created.json()["id"]
+
+    response = client.delete(f"/knowledgebases/{kb_id}")
+    assert response.status_code == 207
+    statuses = {step["step"]: step["status"] for step in response.json()["steps"]}
+    assert statuses["risk_history"] == "failed"
+    # Other steps still ran (best-effort cascade).
+    assert statuses["graph"] == "succeeded"
+    assert statuses["conversations"] == "succeeded"
+    failing.delete_by_kb.assert_called_once_with(kb_id)

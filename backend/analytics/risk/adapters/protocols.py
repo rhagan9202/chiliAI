@@ -53,6 +53,10 @@ class RiskHistoryWriter(Protocol):
         """Return the most recent overall risk score for one entity, if any."""
         ...
 
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Delete all risk-score history for a knowledge base; return rows removed."""
+        ...
+
 
 __all__ = [
     "RiskHistoryWriter",

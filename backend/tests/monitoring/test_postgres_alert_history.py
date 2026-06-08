@@ -64,3 +64,49 @@ def test_write_and_count_round_trip(database_url: str) -> None:
             )
             conn.commit()
         provider.close()
+
+
+def test_delete_by_kb_removes_alert_history(database_url: str) -> None:
+    kb_id = "kb-alert-delete-test-unique"
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresAlertHistoryStore(provider)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+
+        record = AlertHistoryRecord(
+            knowledge_base_id=kb_id,
+            alert_id="a-del-1",
+            entity_id="claim:c1",
+            entity_type="claim",
+            severity="high",
+            status="open",
+            title="Anomalous claim",
+            reasoning="score exceeded threshold",
+            metric_name="claim_anomaly",
+        )
+        store.write_alerts([record])
+
+        count = store.delete_by_kb(kb_id)
+        assert count == 1
+
+        with provider.connection() as conn:
+            rows = conn.execute(
+                "SELECT count(*) FROM alert_history WHERE knowledge_base_id = %s",
+                (kb_id,),
+            ).fetchone()
+            assert rows is not None and rows[0] == 0
+
+        # Idempotent second call.
+        assert store.delete_by_kb(kb_id) == 0
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+        provider.close()

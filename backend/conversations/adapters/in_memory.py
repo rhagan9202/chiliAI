@@ -25,3 +25,13 @@ class InMemoryConversationRepository:
         updated = conversation.model_copy(update={"updated_at": utc_now()})
         self._conversations[updated.id] = updated
         return updated
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        to_delete = [
+            cid
+            for cid, c in self._conversations.items()
+            if c.knowledge_base_id == knowledge_base_id
+        ]
+        for cid in to_delete:
+            del self._conversations[cid]
+        return len(to_delete)

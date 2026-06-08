@@ -110,3 +110,73 @@ def test_submission_dedup_round_trip(database_url: str) -> None:
             )
             conn.commit()
         provider.close()
+
+
+def test_delete_by_kb_clears_both_tables(database_url: str) -> None:
+    """delete_by_kb removes raw_records AND record_submissions for the KB."""
+    kb_id = "kb-delete-by-kb-test"
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresRawRecordStore(provider)
+    try:
+        # Seed: one raw_record and one submission hash for the KB.
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM raw_records WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.execute(
+                "DELETE FROM record_submissions WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+
+        store.persist([_record("rec-1", correlation_id="corr-delbykb")])
+        # Override kb_id to our unique test KB.
+        with provider.connection() as conn:
+            conn.execute(
+                "UPDATE raw_records SET knowledge_base_id = %s "
+                "WHERE knowledge_base_id = 'kb-records-test' AND record_id = 'rec-1'",
+                (kb_id,),
+            )
+            conn.commit()
+        store.record_submission(
+            knowledge_base_id=kb_id,
+            submission_hash="sub-delbykb-1",
+            correlation_id="corr-delbykb",
+        )
+
+        # Verify seed is in place.
+        with provider.connection() as conn:
+            rr_count = conn.execute(
+                "SELECT COUNT(*) FROM raw_records WHERE knowledge_base_id = %s", (kb_id,)
+            ).fetchone()
+            rs_count = conn.execute(
+                "SELECT COUNT(*) FROM record_submissions WHERE knowledge_base_id = %s",
+                (kb_id,),
+            ).fetchone()
+        assert rr_count is not None and rr_count[0] == 1
+        assert rs_count is not None and rs_count[0] == 1
+
+        # delete_by_kb must atomically remove both.
+        removed = store.delete_by_kb(kb_id)
+        assert removed == 1
+
+        with provider.connection() as conn:
+            rr_after = conn.execute(
+                "SELECT COUNT(*) FROM raw_records WHERE knowledge_base_id = %s", (kb_id,)
+            ).fetchone()
+            rs_after = conn.execute(
+                "SELECT COUNT(*) FROM record_submissions WHERE knowledge_base_id = %s",
+                (kb_id,),
+            ).fetchone()
+        assert rr_after is not None and rr_after[0] == 0, "raw_records not cleared"
+        assert rs_after is not None and rs_after[0] == 0, "record_submissions not cleared"
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM raw_records WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.execute(
+                "DELETE FROM record_submissions WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+        provider.close()

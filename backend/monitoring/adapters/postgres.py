@@ -43,6 +43,10 @@ _ALERT_COUNT_OPEN_SQL = """
     WHERE knowledge_base_id = %s AND entity_id = %s AND status = 'open'
 """
 
+_DELETE_OBSERVATIONS_BY_KB_SQL = "DELETE FROM observations WHERE knowledge_base_id = %s"
+
+_DELETE_ALERT_HISTORY_BY_KB_SQL = "DELETE FROM alert_history WHERE knowledge_base_id = %s"
+
 
 class PostgresObservationStore:
     """An ``ObservationWriter`` backed by the ``observations`` hypertable."""
@@ -77,6 +81,17 @@ class PostgresObservationStore:
         except Exception as exc:
             raise MonitoringSourceError("Failed to write observations.") from exc
         return written
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        try:
+            with self._provider.connection() as conn:
+                cursor = conn.execute(
+                    _DELETE_OBSERVATIONS_BY_KB_SQL, (knowledge_base_id,)
+                )
+                conn.commit()
+                return cursor.rowcount
+        except Exception as exc:
+            raise MonitoringSourceError("Failed to delete observations.") from exc
 
 
 class PostgresObservationSource:
@@ -168,6 +183,17 @@ class PostgresAlertHistoryStore:
         except Exception as exc:
             raise MonitoringSourceError("Failed to count open alerts.") from exc
         return 0 if row is None else int(cast(int, row[0]))
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        try:
+            with self._provider.connection() as conn:
+                cursor = conn.execute(
+                    _DELETE_ALERT_HISTORY_BY_KB_SQL, (knowledge_base_id,)
+                )
+                conn.commit()
+                return cursor.rowcount
+        except Exception as exc:
+            raise MonitoringSourceError("Failed to delete alert history.") from exc
 
 
 __all__ = [
