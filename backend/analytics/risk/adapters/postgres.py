@@ -160,6 +160,15 @@ class PostgresRiskSignalSource:
         entity_type: str | None,
         limit: int,
     ) -> list[RankedRiskEntry]:
+        """Return entities ranked by latest score.
+
+        The SQL returns the latest score per entity; ``entity_type`` filtering,
+        ranking, and ``limit`` slicing are applied in Python, mirroring
+        ``InMemoryRiskSignalSource`` (``entity_type`` is derived from the id and
+        is not a column on ``risk_score_history``). For large entity counts this
+        ordering/limiting could be pushed into SQL.
+        """
+
         try:
             with self._provider.connection() as conn:
                 rows = conn.execute(_RANKED_SQL, (knowledge_base_id,)).fetchall()

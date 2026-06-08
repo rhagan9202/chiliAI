@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from analytics.risk.adapters.postgres import PostgresRiskSignalSource
+from analytics.risk.exceptions import RiskSourceError
 
 
 class _FakeCursor:
@@ -41,6 +42,39 @@ class _FakeProvider:
 
     def connection(self) -> _FakeConn:
         return _FakeConn(self._rows)
+
+
+class _ErrorProvider:
+    def connection(self) -> _FakeConn:
+        raise RuntimeError("db down")
+
+
+def test_load_profile_wraps_db_error() -> None:
+    source = PostgresRiskSignalSource(_ErrorProvider())  # type: ignore[arg-type]
+    with pytest.raises(RiskSourceError):
+        source.load_profile(knowledge_base_id="kb1", entity_id="provider:1")
+
+
+def test_list_ranked_entries_wraps_db_error() -> None:
+    source = PostgresRiskSignalSource(_ErrorProvider())  # type: ignore[arg-type]
+    with pytest.raises(RiskSourceError):
+        source.list_ranked_entries(
+            knowledge_base_id="kb1", entity_type=None, limit=10
+        )
+
+
+def test_load_historical_score_wraps_db_error() -> None:
+    source = PostgresRiskSignalSource(_ErrorProvider())  # type: ignore[arg-type]
+    with pytest.raises(RiskSourceError):
+        source.load_historical_score(knowledge_base_id="kb1", entity_id="provider:1")
+
+
+def test_load_historical_score_returns_none_when_no_row() -> None:
+    source = PostgresRiskSignalSource(_FakeProvider([]))  # type: ignore[arg-type]
+    assert (
+        source.load_historical_score(knowledge_base_id="kb1", entity_id="provider:x")
+        is None
+    )
 
 
 def test_load_profile_builds_signals_from_rows() -> None:
