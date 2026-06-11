@@ -1596,6 +1596,7 @@ def _run_explainability_stage(
         knowledge_base_id=knowledge_base_id,
         alert_id=response.alert_id,
         entity_id=entity_id,
+        entity_type=context.alert.entity_type,
         severity=risk_response.risk_level,
         evidence_pack_id=response.evidence_pack.id,
         status="open",

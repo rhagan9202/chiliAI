@@ -2848,6 +2848,9 @@ def test_handle_event_dispatches_analytics_pipeline_for_graph_updated() -> None:
     ]
     assert len(alert_events) == 1
     assert alert_events[0].alerts[0].entity_id == "provider-1"
+    # entity_type is propagated from the focal graph entity (not left blank) so
+    # alert_history records a real type for analytics-pipeline alerts.
+    assert alert_events[0].alerts[0].entity_type == "claim"
     # Risk + GNN properties were written back to the graph (E7-S11 self-loop).
     updated = graph_repository.get_entity(["kb-1"], "provider-1")
     assert updated is not None
