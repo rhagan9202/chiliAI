@@ -2530,6 +2530,9 @@ def _load_validation_report_from_graph_artifact(
     try:
         return _load_validation_report(object_store, validation_storage_key)
     except KeyError:
+        # A missing object is ``KeyError`` for every ObjectStore adapter
+        # (contract documented on ObjectStoreProtocol.get_bytes), so this
+        # fallback is portable across in-memory / local FS / S3 backends.
         # Fall back to an empty report; downstream consumers tolerate missing
         # entity-type metadata. The graph_update payload is still authoritative
         # for IDs so we synthesize empty placeholders.
@@ -2933,12 +2936,22 @@ async def run_handler_with_retry(
     safe. Callers that ACK inside a broad ``except`` MUST NOT catch and
     swallow DLQ publish failures; doing so would silently drop events.
     See ``drain_ingestion_events`` for the canonical caller pattern.
+
+    Execution thread
+    ----------------
+    ``handler`` is synchronous and may be CPU-heavy (GNN/embeddings) or do
+    blocking I/O (graph/object-store/DB). Each attempt is therefore run in a
+    worker thread via ``asyncio.to_thread`` so the event loop — and with it
+    the ``/health`` server and SIGTERM/SIGINT handlers — stays responsive
+    while a long stage runs. ``drain_ingestion_events`` still awaits each
+    delivery in turn, so this changes the execution thread, not the
+    one-handler-at-a-time ordering.
     """
 
     last_exc: BaseException | None = None
     for attempt in range(retry_policy.max_retries + 1):
         try:
-            return handler()
+            return await asyncio.to_thread(handler)
         except Exception as exc:  # noqa: BLE001 - we route to DLQ
             last_exc = exc
             if attempt >= retry_policy.max_retries:

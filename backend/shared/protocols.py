@@ -49,7 +49,15 @@ class ObjectStoreProtocol(Protocol):
         metadata: dict[str, object] | None = None,
     ) -> StoredObjectWriteResult: ...
 
-    def get_bytes(self, key: str) -> StoredObject: ...
+    def get_bytes(self, key: str) -> StoredObject:
+        """Return the stored object for ``key``.
+
+        Raises:
+            KeyError: if no object exists for ``key``. Every adapter
+                (in-memory, local FS, S3/MinIO) normalizes a missing object to
+                ``KeyError`` so callers can branch on it portably.
+        """
+        ...
 
     def delete(self, key: str) -> None: ...
 

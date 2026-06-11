@@ -1864,6 +1864,33 @@ def test_run_handler_with_retry_routes_to_dlq_after_exhaustion() -> None:
     assert "transient failure" in entry.error.error_message
 
 
+def test_run_handler_with_retry_runs_handler_off_event_loop_thread() -> None:
+    """The handler is offloaded to a worker thread so the event loop (and the
+    /health server + signal handlers) stays responsive during a long stage."""
+    import threading
+
+    event_bus = InMemoryEventBus()
+    main_thread_id = threading.get_ident()
+    captured: dict[str, int] = {}
+
+    def handler() -> int:
+        captured["thread_id"] = threading.get_ident()
+        return 7
+
+    result = asyncio.run(
+        run_handler_with_retry(
+            handler,
+            event=KnowledgeBaseCreatedEvent(knowledge_base_id="kb-1"),
+            event_bus=event_bus,
+            retry_policy=RetryPolicy(max_retries=0),
+            sleep=_instant_sleep,
+        )
+    )
+
+    assert result == 7
+    assert captured["thread_id"] != main_thread_id
+
+
 def test_retry_policy_delay_for_attempt() -> None:
     policy = RetryPolicy(max_retries=3, base_delay_seconds=1.0, backoff_multiplier=2.0)
     assert policy.delay_for_attempt(0) == 0.0
