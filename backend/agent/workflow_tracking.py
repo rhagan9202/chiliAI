@@ -64,9 +64,6 @@ _TERMINAL_SUCCESS_EVENT_TYPES: frozenset[str] = frozenset(
     {"vectors.indexed", "kb.ready", "risk.scored", "records.ingested"}
 )
 _TERMINAL_FAILURE_EVENT_TYPES: frozenset[str] = frozenset({"documents.failed"})
-_SYSTEM_METADATA_KEYS: frozenset[str] = frozenset(
-    {"correlation_id", "source_event_type", "last_event_type", "last_error"}
-)
 
 
 @dataclass(frozen=True, slots=True)

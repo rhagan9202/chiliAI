@@ -11,7 +11,6 @@ import pytest
 import agent.coordinator as coordinator
 from agent.coordinator import (
     WORKER_EVENT_TYPES,
-    build_derived_signal_writer,
     build_worker_dependencies,
     drain_ingestion_events,
     handle_embeddings_complete,
@@ -2011,7 +2010,6 @@ def test_drain_ingestion_events_marks_records_workflow_failed_after_retry_exhaus
         object_store,
         records_config=RecordsConfig(),
         raw_record_store=InMemoryRawRecordStore(),
-        derived_signal_store=build_derived_signal_writer(None),
         observation_writer=InMemoryObservationWriter(),
         consumer_group="test-workers",
         consumer_name="worker-1",
@@ -2135,6 +2133,7 @@ def test_graceful_shutdown_finishes_in_flight_event(
         document_extractor=create_document_extractor([]),
         extraction_validator=create_extraction_validator([], []),
         graph_service=graph_service,
+        graph_repository=graph_repository,
         embeddings_service=embeddings_service,
         object_store=object_store,
         vector_store=vector_store,
@@ -3524,7 +3523,6 @@ def test_drain_records_dead_letter_in_health_not_success() -> None:
             object_store,
             records_config=RecordsConfig(),
             raw_record_store=InMemoryRawRecordStore(),
-            derived_signal_store=build_derived_signal_writer(None),
             observation_writer=InMemoryObservationWriter(),
             consumer_group="test-workers",
             consumer_name="worker-1",

@@ -219,7 +219,6 @@ from storage.protocols import ObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 from vectorstore.adapters.protocols import VectorStoreProtocol
 from vectorstore.models import VectorRecord
-from vectorstore.protocols import VectorServiceProtocol
 
 __all__ = [
     "WORKER_EVENT_TYPES",
@@ -307,6 +306,7 @@ class WorkerDependencies:
     document_extractor: DocumentExtractorProtocol
     extraction_validator: ExtractionResultValidator
     graph_service: GraphService
+    graph_repository: GraphRepository
     embeddings_service: EmbeddingsServiceProtocol
     object_store: ObjectStore
     vector_store: VectorStoreProtocol
@@ -947,6 +947,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         document_extractor=extractor,
         extraction_validator=validator,
         graph_service=graph_service,
+        graph_repository=graph_repository,
         embeddings_service=embeddings_service,
         object_store=object_store,
         vector_store=vector_store,
@@ -1663,7 +1664,7 @@ def build_explanation_context(
         severity=risk_response.risk_level,
         title=f"{risk_response.risk_level.title()} risk: {entity_id}",
         reasoning=f"{risk_response.risk_level.title()} risk identified for {entity_id}.",
-        created_at=__datetime__.now(tz=__timezone__.utc),
+        created_at=datetime.now(tz=timezone.utc),
     )
     return ExplanationContext(
         knowledge_base_id=knowledge_base_id,
@@ -1691,7 +1692,7 @@ def _persist_graph_metrics_for_event(
 
     if entity_metric_repository is None or metrics_throttle is None:
         return
-    now = __datetime__.now(tz=__timezone__.utc)
+    now = datetime.now(tz=timezone.utc)
     seen: set[str] = set()
     for document in event.documents:
         knowledge_base_id = document.knowledge_base_id
@@ -1753,7 +1754,7 @@ def _write_analytics_properties_to_graph(
     properties: dict[str, object] = {
         "risk_score": float(risk_response.overall_score),
         "risk_level": risk_response.risk_level,
-        "risk_assessed_at": __datetime__.now(tz=__timezone__.utc).isoformat(),
+        "risk_assessed_at": datetime.now(tz=timezone.utc).isoformat(),
     }
     centrality_score = _resolve_centrality_score(gnn_response, entity_id)
     if centrality_score is not None:
@@ -1814,7 +1815,7 @@ def handle_risk_scored(
     processed = 0
     for assessment in event.assessments:
         try:
-            response = monitoring_service.evaluate(
+            monitoring_service.evaluate(
                 MonitoringEvaluationRequest(
                     knowledge_base_id=assessment.knowledge_base_id,
                     batch_id=assessment.request_id,
@@ -1841,8 +1842,7 @@ def handle_risk_scored(
 
         # MonitoringService.evaluate() publishes AlertsCreatedEvent itself when
         # alerts > 0; the coordinator only counts processed assessments here.
-        if response.alert_count >= 0:
-            processed += 1
+        processed += 1
     return processed
 
 
@@ -1860,7 +1860,7 @@ def handle_risk_scored_for_graph(
     so it cannot re-trigger the analytics pipeline.
     """
 
-    assessed_at = __datetime__.now(tz=__timezone__.utc)
+    assessed_at = datetime.now(tz=timezone.utc)
     processed = 0
     for assessment in event.assessments:
         record = RiskAssessmentRecord(
@@ -1917,7 +1917,7 @@ def handle_alerts_created_for_graph(
     event, so it cannot re-trigger the analytics pipeline.
     """
 
-    created_at = __datetime__.now(tz=__timezone__.utc)
+    created_at = datetime.now(tz=timezone.utc)
     records: list[AlertHistoryRecord] = []
     severity_by_entity: dict[tuple[str, str], str] = {}
     for alert in event.alerts:
@@ -2638,7 +2638,6 @@ def handle_event(
     monitoring_service: MonitoringService | None = None,
     records_config: RecordsConfig | None = None,
     raw_record_store: RawRecordStore | None = None,
-    derived_signal_store: DerivedRiskSignalWriterProtocol | None = None,
     observation_writer: ObservationWriter | None = None,
     policy_service: PolicyService | None = None,
     policy_rules: list[PolicyRulePack] | None = None,
@@ -2652,7 +2651,6 @@ def handle_event(
     peerstats_service: PeerStatsService | None = None,
     peer_stats_config: PeerStatsConfig | None = None,
     peer_stats_enabled: bool = False,
-    vector_service: VectorServiceProtocol | None = None,
     kb_repository: KnowledgeBaseRepository | None = None,
     kb_deletion_stores: KbDeletionStores | None = None,
 ) -> int:
@@ -2690,7 +2688,6 @@ def handle_event(
             monitoring_service=monitoring_service,
             records_config=records_config,
             raw_record_store=raw_record_store,
-            derived_signal_store=derived_signal_store,
             observation_writer=observation_writer,
             policy_service=policy_service,
             policy_rules=policy_rules,
@@ -2703,7 +2700,6 @@ def handle_event(
             peerstats_service=peerstats_service,
             peer_stats_config=peer_stats_config,
             peer_stats_enabled=peer_stats_enabled,
-            vector_service=vector_service,
             kb_repository=kb_repository,
             kb_deletion_stores=kb_deletion_stores,
         )
@@ -2732,7 +2728,6 @@ def _dispatch_event(
     monitoring_service: MonitoringService | None,
     records_config: RecordsConfig | None,
     raw_record_store: RawRecordStore | None,
-    derived_signal_store: DerivedRiskSignalWriterProtocol | None,
     observation_writer: ObservationWriter | None,
     policy_service: PolicyService | None,
     policy_rules: list[PolicyRulePack] | None,
@@ -2745,7 +2740,6 @@ def _dispatch_event(
     peerstats_service: PeerStatsService | None = None,
     peer_stats_config: PeerStatsConfig | None = None,
     peer_stats_enabled: bool = False,
-    vector_service: VectorServiceProtocol | None = None,
     kb_repository: KnowledgeBaseRepository | None = None,
     kb_deletion_stores: KbDeletionStores | None = None,
 ) -> int:
@@ -3000,7 +2994,6 @@ async def drain_ingestion_events(
     monitoring_service: MonitoringService | None = None,
     records_config: RecordsConfig | None = None,
     raw_record_store: RawRecordStore | None = None,
-    derived_signal_store: DerivedRiskSignalWriterProtocol | None = None,
     observation_writer: ObservationWriter | None = None,
     policy_service: PolicyService | None = None,
     policy_rules: list[PolicyRulePack] | None = None,
@@ -3021,7 +3014,6 @@ async def drain_ingestion_events(
     health_state: HealthState | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
     graph_embeddings_enabled: bool = False,
-    vector_service: VectorServiceProtocol | None = None,
     kb_repository: KnowledgeBaseRepository | None = None,
     kb_deletion_stores: KbDeletionStores | None = None,
     sleep: Callable[[float], "asyncio.Future[None] | object"] = asyncio.sleep,
@@ -3076,7 +3068,6 @@ async def drain_ingestion_events(
                 monitoring_service=monitoring_service,
                 records_config=records_config,
                 raw_record_store=raw_record_store,
-                derived_signal_store=derived_signal_store,
                 observation_writer=observation_writer,
                 policy_service=policy_service,
                 policy_rules=policy_rules,
@@ -3090,7 +3081,6 @@ async def drain_ingestion_events(
                 peerstats_service=peerstats_service,
                 peer_stats_config=peer_stats_config,
                 peer_stats_enabled=peer_stats_enabled,
-                vector_service=vector_service,
                 kb_repository=kb_repository,
                 kb_deletion_stores=kb_deletion_stores,
             )
@@ -3189,14 +3179,13 @@ async def _drain_once(
         deps.object_store,
         embeddings_service=deps.embeddings_service,
         vector_store=deps.vector_store,
-        graph_repository=_resolve_graph_repository(deps.graph_service),
+        graph_repository=deps.graph_repository,
         gnn_service=deps.gnn_service,
         risk_service=deps.risk_service,
         explainability_service=deps.explainability_service,
         monitoring_service=deps.monitoring_service,
         records_config=deps.records_config,
         raw_record_store=deps.raw_record_store,
-        derived_signal_store=deps.derived_signal_store,
         kb_deletion_stores=deps.kb_deletion_stores,
         kb_repository=deps.kb_repository,
         observation_writer=deps.observation_writer,
@@ -3318,15 +3307,6 @@ def _positive_int_from_env(name: str, default: int) -> int:
     return value if value > 0 else 0
 
 
-def _resolve_graph_repository(graph_service: GraphService) -> GraphRepository:
-    """Return the underlying graph repository used by the graph service."""
-
-    repository = getattr(graph_service, "_repository", None)
-    if not isinstance(repository, GraphRepository):  # pragma: no cover - defensive
-        raise TypeError("GraphService is missing a GraphRepository instance.")
-    return repository
-
-
 def main() -> None:
     """Entry point for `python -m agent.coordinator`."""
     logger.info("chiliAI pipeline worker starting")
@@ -3336,10 +3316,6 @@ def main() -> None:
         logger.info("Worker interrupted — exiting")
         sys.exit(0)
 
-
-# Re-export ``datetime`` for tests that monkeypatch via this module.
-__datetime__ = datetime
-__timezone__ = timezone
 
 if __name__ == "__main__":
     main()
