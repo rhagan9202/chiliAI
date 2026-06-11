@@ -19,6 +19,8 @@ class IngestionServiceProtocol(Protocol):
         self,
         knowledge_base_id: str,
         submissions: list[DocumentSubmission],
+        *,
+        correlation_id: str | None = None,
     ) -> list[DocumentReceipt]: ...
 
     def ingest_task(self, task: IngestionTask) -> ParseResult | DocumentParseFailure: ...

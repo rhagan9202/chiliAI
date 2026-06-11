@@ -1,9 +1,23 @@
-import { render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { fireEvent, render as tlRender, screen, waitFor, within } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { describe, expect, it, vi } from 'vitest'
 
+import { apiFetch } from '../../../api/client'
 import type { WorkflowRunResponse } from '../../../api/contracts'
 import type { IngestionReceiptEntry } from '../../../lib/ingestion/types'
 import { RunTimeline } from '../RunTimeline'
+
+vi.mock('../../../api/client', () => ({
+  apiFetch: vi.fn().mockResolvedValue({ id: 'workflow-1', status: 'cancelled' }),
+}))
+
+const apiFetchMock = vi.mocked(apiFetch)
+
+function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return tlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
+}
 
 const workflows: WorkflowRunResponse[] = [
   {
@@ -166,5 +180,33 @@ describe('RunTimeline', () => {
     }]} receipts={[]} />)
 
     expect(screen.getByRole('alert')).toHaveTextContent('Parser failed after retries.')
+  })
+
+  it('shows a cancel control only for non-terminal workflows', () => {
+    render(<RunTimeline workflows={workflows} receipts={[]} />)
+    expect(screen.getByRole('button', { name: /cancel ingestion workflow/i })).toBeInTheDocument()
+  })
+
+  it('hides the cancel control for terminal workflows', () => {
+    render(
+      <RunTimeline
+        workflows={[{ ...workflows[0], status: 'completed', current_step: 'ready' }]}
+        receipts={[]}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument()
+  })
+
+  it('cancels the workflow via the API when the cancel control is clicked', async () => {
+    apiFetchMock.mockClear()
+    render(<RunTimeline workflows={workflows} receipts={[]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel ingestion workflow/i }))
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith('/workflows/workflow-1/cancel', {
+        method: 'POST',
+      })
+    })
   })
 })

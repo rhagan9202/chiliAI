@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import pytest
 from fastapi import FastAPI
@@ -652,6 +652,7 @@ def test_list_documents_returns_paginated_summaries(
         InMemoryObjectStore,
         InMemoryKnowledgeBaseRepository,
     ],
+    complete_inflight_workflows: Callable[[TestClient], None],
 ) -> None:
     client, _, _, _ = harness
 
@@ -674,6 +675,9 @@ def test_list_documents_returns_paginated_summaries(
                 )
             ],
         )
+        # Each upload starts a workflow run (one per KB); finish it so the next
+        # upload is not rejected by the busy guard.
+        complete_inflight_workflows(client)
 
     response = client.get(
         f"/knowledgebases/{kb_id}/documents",
@@ -700,6 +704,7 @@ def test_delete_document_removes_artifacts(
         InMemoryObjectStore,
         InMemoryKnowledgeBaseRepository,
     ],
+    complete_inflight_workflows: Callable[[TestClient], None],
 ) -> None:
     client, _, object_store, _ = harness
 
@@ -713,6 +718,9 @@ def test_delete_document_removes_artifacts(
         files=[("files", ("victim.json", b'{"x": 1}', "application/json"))],
     )
     document_id = upload.json()["documents"][0]["source_document_id"]
+    # The upload started a workflow run; finish it so the delete is not blocked
+    # by the busy guard.
+    complete_inflight_workflows(client)
     assert object_store.list_keys(
         f"knowledgebases/{kb_id}/documents/{document_id}/"
     )

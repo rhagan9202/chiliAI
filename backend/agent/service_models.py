@@ -19,6 +19,11 @@ class WorkflowSubmissionRequest(BaseModel):
     requested_steps: list[str] = Field(default_factory=list)
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
     idempotency_key: str | None = None
+    # The pipeline correlation id this run tracks. When the API starts a run for
+    # an ingestion/records trigger it passes the same correlation id it puts on
+    # the published event, so the worker's tracker advances this run instead of
+    # creating a fallback. Omitted/None -> the service generates one.
+    correlation_id: str | None = None
 
     @model_validator(mode="after")
     def _validate_steps(self) -> WorkflowSubmissionRequest:

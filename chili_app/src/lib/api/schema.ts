@@ -678,7 +678,9 @@ export interface paths {
         post?: never;
         /**
          * Delete Knowledge Base
-         * @description Cascade-delete a KB across graph, vector, raw_records, object store, and metadata.
+         * @description Cascade-delete a KB across every per-KB durable store + metadata.
+         *
+         *     The full step list lives in `api._kb_cleanup.kb_deletion_steps`.
          */
         delete: operations["delete_knowledge_base_knowledgebases__knowledge_base_id__delete"];
         options?: never;
@@ -861,6 +863,49 @@ export interface paths {
         get: operations["list_workflows_workflows_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflows/{workflow_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workflow
+         * @description Return a single workflow run by id.
+         */
+        get: operations["get_workflow_workflows__workflow_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflows/{workflow_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Workflow
+         * @description Request cancellation of a non-terminal workflow run.
+         *
+         *     Cancellation is cooperative: the worker honours it at the next stage / loop
+         *     boundary, so an already-running synchronous stage may still finish.
+         */
+        post: operations["cancel_workflow_workflows__workflow_id__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4513,6 +4558,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workflow_workflows__workflow_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_workflow_workflows__workflow_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowRunResponse"];
                 };
             };
             /** @description Validation Error */

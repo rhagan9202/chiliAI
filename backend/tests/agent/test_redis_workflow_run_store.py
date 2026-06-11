@@ -236,3 +236,48 @@ def test_redis_workflow_run_store_deletes_run_and_indexes() -> None:
         idempotency_key="abc-123",
     ) is None
     assert store.list_runs() == []
+
+
+def _run_corr(
+    *, workflow_id: str = "workflow-1", correlation_id: str = "corr-1"
+) -> WorkflowRun:
+    return WorkflowRun(
+        workflow_id=workflow_id,
+        knowledge_base_id="kb-1",
+        trigger_event_type="documents.uploaded",
+        steps=[WorkflowStepState(step_name="parse")],
+        metadata={"correlation_id": correlation_id},
+    )
+
+
+def test_redis_workflow_run_store_finds_by_correlation_id() -> None:
+    store = _store()
+    store.save_run(_run_corr(correlation_id="corr-xyz"))
+
+    found = store.find_by_correlation_id("corr-xyz")
+    assert found is not None
+    assert found.workflow_id == "workflow-1"
+    assert store.find_by_correlation_id("missing") is None
+
+
+def test_redis_workflow_run_store_delete_clears_correlation_index() -> None:
+    store = _store()
+    store.save_run(_run_corr(correlation_id="corr-del"))
+
+    store.delete_run("workflow-1")
+
+    assert store.find_by_correlation_id("corr-del") is None
+
+
+def test_redis_workflow_run_store_status_only_cas_guards_cancelled() -> None:
+    store = _store()
+    store.save_run(_run(status=WorkflowRunStatus.CANCELLED))
+
+    result = store.update_run_if_current(
+        "workflow-1",
+        WorkflowRunUpdate(status=WorkflowRunStatus.COMPLETED),
+        expected_statuses={WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING},
+    )
+
+    assert result is None
+    assert store.get_run("workflow-1").status is WorkflowRunStatus.CANCELLED

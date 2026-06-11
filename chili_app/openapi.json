@@ -6325,7 +6325,7 @@
     },
     "/knowledgebases/{knowledge_base_id}": {
       "delete": {
-        "description": "Cascade-delete a KB across graph, vector, raw_records, object store, and metadata.",
+        "description": "Cascade-delete a KB across every per-KB durable store + metadata.\n\nThe full step list lives in `api._kb_cleanup.kb_deletion_steps`.",
         "operationId": "delete_knowledge_base_knowledgebases__knowledge_base_id__delete",
         "parameters": [
           {
@@ -6972,6 +6972,92 @@
           }
         },
         "summary": "List Workflows",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/workflows/{workflow_id}": {
+      "get": {
+        "description": "Return a single workflow run by id.",
+        "operationId": "get_workflow_workflows__workflow_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Workflow",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/workflows/{workflow_id}/cancel": {
+      "post": {
+        "description": "Request cancellation of a non-terminal workflow run.\n\nCancellation is cooperative: the worker honours it at the next stage / loop\nboundary, so an already-running synchronous stage may still finish.",
+        "operationId": "cancel_workflow_workflows__workflow_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Workflow",
         "tags": [
           "workflows"
         ]

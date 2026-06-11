@@ -68,6 +68,24 @@ TERMINAL_RUN_STATUSES: frozenset[WorkflowRunStatus] = frozenset(
     }
 )
 
+# Metadata keys the platform writes onto a run (the service at submission and
+# the worker's WorkflowEventTracker as events flow). Idempotency comparison must
+# exclude these so a re-submit with the same key is not flagged as conflicting
+# just because the tracker has since annotated the run.
+SYSTEM_METADATA_KEYS: frozenset[str] = frozenset(
+    {
+        "correlation_id",
+        "publish_error",
+        "source_event_type",
+        "last_event_type",
+        "last_error",
+        "entity_count",
+        "relationship_count",
+        "vector_count",
+        "reason",
+    }
+)
+
 
 class WorkflowStepState(BaseModel):
     """A single named step tracked within a workflow run."""
@@ -118,6 +136,7 @@ __all__ = [
     "HealthSettings",
     "MetadataValue",
     "RetryPolicy",
+    "SYSTEM_METADATA_KEYS",
     "WorkflowRun",
     "WorkflowRunStatus",
     "WorkflowRunUpdate",

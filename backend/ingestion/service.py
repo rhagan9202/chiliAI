@@ -50,7 +50,16 @@ class IngestionService:
         self,
         knowledge_base_id: str,
         submissions: list[DocumentSubmission],
+        *,
+        correlation_id: str | None = None,
     ) -> list[DocumentReceipt]:
+        """Persist documents and publish ``documents.uploaded``.
+
+        When ``correlation_id`` is provided it is stamped on the published
+        event so a workflow run started by the API for the same correlation is
+        advanced by the worker's tracker (rather than a fallback run). When
+        omitted, a fresh correlation id is generated as before.
+        """
         document_references: list[DocumentReference] = []
         content_hashes_by_source_document_id: dict[str, str | None] = {}
         receipts: list[DocumentReceipt] = []
@@ -166,7 +175,10 @@ class IngestionService:
             )
 
         if document_references:
-            event = DocumentsUploadedEvent(documents=document_references)
+            event = DocumentsUploadedEvent(
+                correlation_id=correlation_id or generate_id(),
+                documents=document_references,
+            )
             try:
                 self._event_bus.publish(event)
             except Exception as exc:

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { apiFetch } from '../client'
-import { getWorkflows, workflowsListQueryKey, workflowsQueryKey } from '../workflows'
+import { cancelWorkflow, getWorkflows, workflowsListQueryKey, workflowsQueryKey } from '../workflows'
 
 vi.mock('../client', () => ({
   apiFetch: vi.fn(),
@@ -39,5 +39,15 @@ describe('workflows API', () => {
     expect(apiFetchMock).toHaveBeenCalledWith(
       '/workflows?knowledge_base_id=kb-1&status=running&limit=25&offset=50',
     )
+  })
+
+  it('cancels a workflow via POST to the cancel path', async () => {
+    apiFetchMock.mockResolvedValue({ id: 'workflow-1', status: 'cancelled' })
+
+    await cancelWorkflow('workflow-1')
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/workflows/workflow-1/cancel', {
+      method: 'POST',
+    })
   })
 })

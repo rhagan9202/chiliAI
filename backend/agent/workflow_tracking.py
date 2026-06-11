@@ -33,7 +33,7 @@ from events.types import (
 )
 from shared.utils import generate_id, utc_now
 
-__all__ = ["WorkflowEventTracker"]
+__all__ = ["WorkflowEventTracker", "default_steps_for_trigger"]
 
 _STEP_BY_EVENT_TYPE: dict[str, str] = {
     "documents.uploaded": "parse",
@@ -64,6 +64,27 @@ _TERMINAL_SUCCESS_EVENT_TYPES: frozenset[str] = frozenset(
     {"vectors.indexed", "kb.ready", "risk.scored", "records.ingested"}
 )
 _TERMINAL_FAILURE_EVENT_TYPES: frozenset[str] = frozenset({"documents.failed"})
+_ACTIVE_RUN_STATUSES: frozenset[WorkflowRunStatus] = frozenset(
+    {WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING}
+)
+
+
+def default_steps_for_trigger(trigger_event_type: str) -> list[str]:
+    """Return the declared step-name plan for a pipeline trigger event.
+
+    Single source of truth (the same step maps the tracker uses) shared with
+    the API: when a route starts a run via ``AgentService`` it declares these
+    steps so a service-created run and a tracker fallback agree on shape. A
+    document trigger expands to the full canonical sequence; a records trigger
+    is a single step; an unknown trigger defaults to the full sequence.
+    """
+
+    first_step = _STEP_BY_EVENT_TYPE.get(trigger_event_type)
+    if first_step is None:
+        return list(_DEFAULT_STEP_SEQUENCE)
+    if first_step in _DEFAULT_STEP_SEQUENCE:
+        return list(_DEFAULT_STEP_SEQUENCE)
+    return [first_step]
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,7 +118,10 @@ class WorkflowEventTracker:
         )
         metadata = dict(tracked.run.metadata)
         metadata["last_event_type"] = event.event_type
-        self._run_store.update_run(
+        # CAS on non-terminal status so a cancel that lands between resolving
+        # the run and this write is never clobbered: if the run is now CANCELLED
+        # the update is a no-op and we report the step as skipped.
+        updated = self._run_store.update_run_if_current(
             tracked.run.workflow_id,
             WorkflowRunUpdate(
                 status=WorkflowRunStatus.RUNNING,
@@ -105,8 +129,9 @@ class WorkflowEventTracker:
                 metadata=metadata,
                 updated_at=utc_now(),
             ),
+            expected_statuses=_ACTIVE_RUN_STATUSES,
         )
-        return True
+        return updated is not None
 
     def complete_event(self, event: AnyEvent) -> None:
         """Mark the current workflow step complete after handler success."""
@@ -132,7 +157,8 @@ class WorkflowEventTracker:
             status = WorkflowRunStatus.COMPLETED
         else:
             status = WorkflowRunStatus.RUNNING
-        self._run_store.update_run(
+        # CAS on non-terminal status so a concurrent cancel is not overwritten.
+        self._run_store.update_run_if_current(
             tracked.run.workflow_id,
             WorkflowRunUpdate(
                 status=status,
@@ -140,6 +166,7 @@ class WorkflowEventTracker:
                 metadata=metadata,
                 updated_at=utc_now(),
             ),
+            expected_statuses=_ACTIVE_RUN_STATUSES,
         )
 
     def fail_event(self, event: AnyEvent, error: BaseException) -> None:
@@ -156,7 +183,9 @@ class WorkflowEventTracker:
         metadata = dict(tracked.run.metadata)
         metadata["last_event_type"] = event.event_type
         metadata["last_error"] = str(error)
-        self._run_store.update_run(
+        # CAS on non-terminal status: a user cancel takes precedence over a
+        # retry-exhaustion failure rather than being overwritten by it.
+        self._run_store.update_run_if_current(
             tracked.run.workflow_id,
             WorkflowRunUpdate(
                 status=WorkflowRunStatus.FAILED,
@@ -164,6 +193,7 @@ class WorkflowEventTracker:
                 metadata=metadata,
                 updated_at=utc_now(),
             ),
+            expected_statuses=_ACTIVE_RUN_STATUSES,
         )
 
     def is_busy(self, knowledge_base_id: str) -> bool:
@@ -249,11 +279,17 @@ class WorkflowEventTracker:
                 return None
         return _TrackedEvent(run=run, step_name=step_name)
 
+    def is_run_cancelled(self, correlation_id: str) -> bool:
+        """Return True when the run for ``correlation_id`` has been cancelled.
+
+        Used by long worker handlers to abort cooperatively at loop boundaries.
+        """
+
+        run = self._run_store.find_by_correlation_id(correlation_id)
+        return run is not None and run.status is WorkflowRunStatus.CANCELLED
+
     def _find_by_correlation_id(self, correlation_id: str) -> WorkflowRun | None:
-        for run in self._run_store.list_runs(limit=1000):
-            if run.metadata.get("correlation_id") == correlation_id:
-                return run
-        return None
+        return self._run_store.find_by_correlation_id(correlation_id)
 
     def _create_fallback_run(self, event: AnyEvent) -> WorkflowRun | None:
         knowledge_base_id = _knowledge_base_id_for_event(event)

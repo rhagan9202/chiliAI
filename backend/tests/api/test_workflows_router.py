@@ -51,6 +51,7 @@ def _app_with_workflows_and_auth(
     app = create_app()
     store = InMemorySessionStore()
     _save_session(store, session_id="sid-viewer", roles=["viewer"])
+    _save_session(store, session_id="sid-analyst", roles=["analyst"])
     _save_session(store, session_id="sid-no-role", roles=[])
     run_store = InMemoryWorkflowRunStore(
         runs=runs
@@ -141,3 +142,77 @@ def test_list_workflows_applies_query_filters_when_auth_enabled() -> None:
 
     assert response.status_code == 200
     assert [item["id"] for item in response.json()["items"]] == ["target"]
+
+
+def test_get_workflow_returns_run_for_viewer() -> None:
+    app = _app_with_workflows_and_auth()
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-viewer")
+        response = client.get("/workflows/workflow-1")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == "workflow-1"
+    assert body["status"] == "running"
+
+
+def test_get_workflow_returns_404_for_unknown_id() -> None:
+    app = _app_with_workflows_and_auth()
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-viewer")
+        response = client.get("/workflows/missing")
+
+    assert response.status_code == 404
+
+
+def test_cancel_workflow_transitions_running_to_cancelled() -> None:
+    app = _app_with_workflows_and_auth()
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-analyst")
+        response = client.post("/workflows/workflow-1/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "cancelled"
+
+
+def test_cancel_workflow_requires_analyst_role() -> None:
+    app = _app_with_workflows_and_auth()
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-viewer")
+        response = client.post("/workflows/workflow-1/cancel")
+
+    assert response.status_code == 403
+
+
+def test_cancel_workflow_returns_404_for_unknown_id() -> None:
+    app = _app_with_workflows_and_auth()
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-analyst")
+        response = client.post("/workflows/missing/cancel")
+
+    assert response.status_code == 404
+
+
+def test_cancel_workflow_returns_409_when_already_terminal() -> None:
+    app = _app_with_workflows_and_auth(
+        runs=[
+            WorkflowRun(
+                workflow_id="done-1",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.COMPLETED,
+                steps=[WorkflowStepState(step_name="ready")],
+            )
+        ]
+    )
+
+    with TestClient(app) as client:
+        client.cookies.set("chiliai_session", "sid-analyst")
+        response = client.post("/workflows/done-1/cancel")
+
+    assert response.status_code == 409

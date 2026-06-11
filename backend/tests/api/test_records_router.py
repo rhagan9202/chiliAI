@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -97,8 +98,13 @@ def test_push_records_reports_invalid_rows_as_rejected(client: TestClient) -> No
 
 def test_push_records_duplicate_resubmission_returns_200(
     monkeypatch: pytest.MonkeyPatch,
+    complete_inflight_workflows: Callable[[TestClient], None],
 ) -> None:
-    """A re-pushed identical batch is a duplicate no-op at HTTP 200 (BL-015)."""
+    """A re-pushed identical batch is a duplicate no-op at HTTP 200 (BL-015).
+
+    The first push starts a workflow run (one per KB); the duplicate-200
+    guarantee holds once the KB is idle, so we finish the run before resubmit.
+    """
     monkeypatch.setenv("CHILI_ENV", "local")
     monkeypatch.setenv("CHILI_CONFIG_PATH", _MEDICARE_CONFIG_PATH)
     app = create_app()
@@ -124,6 +130,9 @@ def test_push_records_duplicate_resubmission_returns_200(
     first = shared_client.post("/records/kb-1/push", json=payload)
     assert first.status_code == 202, first.text
     assert first.json()["duplicate"] is False
+
+    # Finish the run started by the first push so the KB is idle for the retry.
+    complete_inflight_workflows(shared_client)
 
     second = shared_client.post("/records/kb-1/push", json=payload)
     assert second.status_code == 200, second.text
@@ -508,3 +517,45 @@ def test_push_records_records_error_returns_422(client: TestClient) -> None:
         json={"feed_name": "claims_feed", "rows": [{"claim_id": "c1"}]},
     )
     assert response.status_code == 422
+
+
+def test_push_records_starts_one_tracked_workflow(
+    monkeypatch: pytest.MonkeyPatch,
+    complete_inflight_workflows: Callable[[TestClient], None],
+) -> None:
+    """A successful push starts exactly one service-tracked run; a later
+    duplicate (post-completion) does not add a second."""
+    monkeypatch.setenv("CHILI_ENV", "local")
+    monkeypatch.setenv("CHILI_CONFIG_PATH", _MEDICARE_CONFIG_PATH)
+    app = create_app()
+    shared_store = InMemoryRawRecordStore()
+    app.dependency_overrides[get_raw_record_store] = lambda: shared_store
+    app.dependency_overrides[get_knowledge_base_repository] = _seeded_repository
+    client = TestClient(app)
+
+    payload = {
+        "feed_name": "claims_feed",
+        "rows": [
+            {
+                "claim_id": "c-wf",
+                "provider_npi": "1234567890",
+                "billed_amount": 50.0,
+                "service_date": "2026-01-15",
+                "anomaly_score": 0.5,
+            }
+        ],
+    }
+    assert client.post("/records/kb-1/push", json=payload).status_code == 202
+
+    listed = client.get("/workflows", params={"knowledge_base_id": "kb-1"})
+    assert listed.status_code == 200
+    items = listed.json()["items"]
+    assert len(items) == 1
+    assert items[0]["status"] == "running"
+    assert items[0]["knowledge_base_id"] == "kb-1"
+
+    # A duplicate resubmission (after the run finishes) starts no new run.
+    complete_inflight_workflows(client)
+    assert client.post("/records/kb-1/push", json=payload).status_code == 200
+    again = client.get("/workflows", params={"knowledge_base_id": "kb-1"})
+    assert len(again.json()["items"]) == 1

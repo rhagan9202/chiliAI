@@ -7,12 +7,17 @@ from pydantic import BaseModel, Field
 
 from api._kb_busy import KbBusyError, WorkflowBusyTracker, ensure_kb_idle
 from api.dependencies import (
+    get_agent_service,
     get_domain_config,
     get_knowledge_base_repository,
     get_records_service,
     get_workflow_tracker,
 )
 from api.middleware.rbac import require_role
+from agent.protocols import AgentServiceProtocol
+from agent.service_models import WorkflowSubmissionRequest
+from agent.workflow_tracking import default_steps_for_trigger
+from shared.utils import generate_id
 from config.schema import DomainConfig, ValidationConfig
 from knowledgebases import KnowledgeBaseRepository
 from records.adapters.sources.file_source import CsvFileSource, JsonlFileSource
@@ -57,6 +62,32 @@ def _resolve_feed_formats(config: DomainConfig, feed_name: str) -> list[str] | N
     return None
 
 
+def _start_records_workflow(
+    agent_service: AgentServiceProtocol,
+    *,
+    knowledge_base_id: str,
+    correlation_id: str,
+    receipt: RecordIngestReceipt,
+) -> None:
+    """Start a tracked workflow run when records were actually ingested.
+
+    A duplicate/empty submission publishes no ``records.ingested`` event, so we
+    skip it to avoid an orphan run. start_workflow is create-or-get by
+    correlation, so a worker that already fallback-created the run is adopted.
+    """
+
+    if receipt.duplicate or receipt.accepted_count <= 0:
+        return
+    agent_service.start_workflow(
+        WorkflowSubmissionRequest(
+            knowledge_base_id=knowledge_base_id,
+            trigger_event_type="records.ingested",
+            requested_steps=default_steps_for_trigger("records.ingested"),
+            correlation_id=correlation_id,
+        )
+    )
+
+
 @router.post(
     "/{knowledge_base_id}/files",
     status_code=status.HTTP_202_ACCEPTED,
@@ -72,6 +103,7 @@ async def upload_record_file(
     config: DomainConfig = Depends(get_domain_config),
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
     workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
+    agent_service: AgentServiceProtocol = Depends(get_agent_service),
 ) -> RecordIngestReceipt:
     """Ingest a CSV or JSONL upload into the named feed."""
     existing_kb = repository.get(knowledge_base_id)
@@ -111,6 +143,7 @@ async def upload_record_file(
 
     try:
         rows = source.read_rows(content)
+        correlation_id = generate_id()
         receipt = service.register_records(
             knowledge_base_id,
             RecordSubmission(
@@ -119,6 +152,13 @@ async def upload_record_file(
                 source_type="file_upload",
                 source_ref=filename,
             ),
+            correlation_id=correlation_id,
+        )
+        _start_records_workflow(
+            agent_service,
+            knowledge_base_id=knowledge_base_id,
+            correlation_id=correlation_id,
+            receipt=receipt,
         )
         if receipt.duplicate:
             response.status_code = status.HTTP_200_OK
@@ -151,6 +191,7 @@ async def push_records(
     service: RecordsServiceProtocol = Depends(get_records_service),
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
     workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
+    agent_service: AgentServiceProtocol = Depends(get_agent_service),
 ) -> RecordIngestReceipt:
     """Ingest a JSON array of record rows into the named feed."""
     existing_kb = repository.get(knowledge_base_id)
@@ -174,6 +215,7 @@ async def push_records(
         ) from exc
 
     try:
+        correlation_id = generate_id()
         receipt = service.register_records(
             knowledge_base_id,
             RecordSubmission(
@@ -182,6 +224,13 @@ async def push_records(
                 source_type="api_push",
                 source_ref=None,
             ),
+            correlation_id=correlation_id,
+        )
+        _start_records_workflow(
+            agent_service,
+            knowledge_base_id=knowledge_base_id,
+            correlation_id=correlation_id,
+            receipt=receipt,
         )
         if receipt.duplicate:
             response.status_code = status.HTTP_200_OK

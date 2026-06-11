@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiFetch } from './client'
 import type { WorkflowRunListResponse, WorkflowRunResponse } from './contracts'
@@ -33,6 +33,21 @@ export function getWorkflows(filters: WorkflowFilters = {}): Promise<WorkflowRun
 
   const query = params.toString()
   return apiFetch<WorkflowRunListResponse>(query ? `/workflows?${query}` : '/workflows')
+}
+
+export function cancelWorkflow(workflowId: string): Promise<WorkflowRunResponse> {
+  return apiFetch<WorkflowRunResponse>(`/workflows/${workflowId}/cancel`, { method: 'POST' })
+}
+
+export function useCancelWorkflow() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (workflowId: string) => cancelWorkflow(workflowId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: workflowsQueryKey })
+    },
+  })
 }
 
 export function useWorkflows(

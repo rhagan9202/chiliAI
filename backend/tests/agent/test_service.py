@@ -351,3 +351,77 @@ def test_start_workflow_same_key_under_different_kb_creates_independent_runs() -
         e for e in event_bus.published_events if isinstance(e, AgentWorkflowStartedEvent)
     ]
     assert len(started_events) == 2
+
+
+def test_start_workflow_honors_supplied_correlation_id() -> None:
+    service, run_store, _ = _service()
+
+    response = service.start_workflow(
+        WorkflowSubmissionRequest(
+            knowledge_base_id="kb-1",
+            trigger_event_type="documents.uploaded",
+            requested_steps=["parse"],
+            correlation_id="corr-supplied",
+        )
+    )
+
+    stored = run_store.get_run(response.workflow_id)
+    assert stored.metadata["correlation_id"] == "corr-supplied"
+    found = run_store.find_by_correlation_id("corr-supplied")
+    assert found is not None
+    assert found.workflow_id == response.workflow_id
+
+
+def test_start_workflow_adopts_existing_run_for_same_correlation() -> None:
+    # Simulates the worker's tracker winning the race and fallback-creating a
+    # run before the API calls start_workflow: the service must adopt it, not
+    # create a duplicate or re-publish a started event.
+    existing = WorkflowRun(
+        workflow_id="fallback-1",
+        knowledge_base_id="kb-1",
+        trigger_event_type="documents.uploaded",
+        status=WorkflowRunStatus.RUNNING,
+        steps=[WorkflowStepState(step_name="parse")],
+        metadata={"correlation_id": "corr-pre", "source_event_type": "documents.uploaded"},
+    )
+    service, run_store, event_bus = _service(runs=[existing])
+
+    response = service.start_workflow(
+        WorkflowSubmissionRequest(
+            knowledge_base_id="kb-1",
+            trigger_event_type="documents.uploaded",
+            requested_steps=["parse", "chunk"],
+            correlation_id="corr-pre",
+        )
+    )
+
+    assert response.workflow_id == "fallback-1"
+    assert len(run_store.list_runs()) == 1
+    assert [
+        e for e in event_bus.published_events if isinstance(e, AgentWorkflowStartedEvent)
+    ] == []
+
+
+def test_idempotency_match_ignores_tracker_written_metadata() -> None:
+    service, run_store, _ = _service()
+    first = service.start_workflow(
+        _submit(metadata={"priority": "high"}, idempotency_key="abc-123")
+    )
+
+    # Tracker annotates the run with system metadata as events flow.
+    run_store.update_run(
+        first.workflow_id,
+        WorkflowRunUpdate(
+            metadata={
+                "priority": "high",
+                "correlation_id": "corr-x",
+                "last_event_type": "documents.chunked",
+            }
+        ),
+    )
+
+    # Re-submitting the same logical request must return the original, not conflict.
+    second = service.start_workflow(
+        _submit(metadata={"priority": "high"}, idempotency_key="abc-123")
+    )
+    assert second.workflow_id == first.workflow_id

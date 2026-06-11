@@ -18,6 +18,8 @@ class WorkflowRunStoreProtocol(Protocol):
     must enforce uniqueness for ``(knowledge_base_id, idempotency_key)`` when
     an idempotency key is present. ``list_runs`` returns newest-first results
     ordered by ``created_at``. ``delete_run`` is idempotent for missing IDs.
+    ``find_by_correlation_id`` returns the run whose ``metadata["correlation_id"]``
+    matches (indexed, not a scan); at most one run exists per correlation id.
     In-process stores must protect reads and writes that touch shared indexes.
     """
 
@@ -45,7 +47,7 @@ class WorkflowRunStoreProtocol(Protocol):
         update: WorkflowRunUpdate,
         *,
         expected_statuses: set[WorkflowRunStatus] | frozenset[WorkflowRunStatus],
-        updated_before: datetime,
+        updated_before: datetime | None = None,
     ) -> WorkflowRun | None: ...
 
     def delete_run(self, workflow_id: str) -> None: ...
@@ -56,6 +58,8 @@ class WorkflowRunStoreProtocol(Protocol):
         knowledge_base_id: str,
         idempotency_key: str,
     ) -> WorkflowRun | None: ...
+
+    def find_by_correlation_id(self, correlation_id: str) -> WorkflowRun | None: ...
 
 
 __all__ = [

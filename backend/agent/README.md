@@ -37,8 +37,29 @@ Each step is idempotent so the handler is safe to retry on transient failures. I
 - **handle_risk_scored_for_graph** (Flow 3) — Writes risk assessments to `risk_score_history` and snapshots scores onto graph entities.
 - **handle_alerts_created_for_graph** (Flow 4) — Writes alerts to `alert_history` and snapshots alert counts onto graph entities.
 
+## Workflow submission & lifecycle
+
+Workflow runs are created **intentionally** by `AgentService.start_workflow`, wired into the two pipeline entry points in the API gateway:
+
+- **`POST /knowledgebases/{kb}/documents`** → starts a `documents.uploaded` run (full canonical step plan).
+- **`POST /records/{kb}/files` and `/push`** → starts a `records.ingested` run (single `records_ingest` step) when records were actually ingested (duplicate/empty submissions start no run).
+
+The API passes the run's `correlation_id` into the published pipeline event, so the worker's `WorkflowEventTracker` advances *that* run. `start_workflow` is **create-or-get keyed by correlation id**: if the worker won the race and `WorkflowEventTracker` already minted a fallback run, the service adopts it instead of creating a duplicate. The fallback path is retained as a safety net (events with an unknown correlation id still surface). Step plans come from one source of truth: `agent.workflow_tracking.default_steps_for_trigger`.
+
+Because a run is created synchronously at submit, the KB is **busy** (`ensure_kb_idle`) for the duration of the run — one ingestion workflow per KB at a time. A second mutation while a run is non-terminal returns `409`; the duplicate-resubmission no-op (`200`) holds once the KB is idle.
+
+**Cross-cutting prerequisite:** API and worker must share the run store (`CHILI_WORKFLOW_RUN_STORE_BACKEND=redis`) for submission and tracking to converge. With the in-memory backend the two are distinct.
+
+### Cancellation
+
+`POST /workflows/{id}/cancel` (analyst role) marks a non-terminal run `CANCELLED`; `GET /workflows/{id}` returns a single run; `GET /workflows` lists them (viewer role). Cancellation is **cooperative**:
+
+- The tracker honours it at each event boundary (`begin_event` skips a cancelled run's remaining steps).
+- Long handlers (`handle_graph_updated_for_analytics`, `handle_records_ingested`) re-check `WorkflowEventTracker.is_run_cancelled` at loop/stage boundaries and stop early — a single in-flight synchronous stage still finishes.
+- Tracker writes use a status-only compare-and-set (`update_run_if_current` with `expected_statuses={QUEUED, RUNNING}`), so a concurrent cancel is never clobbered back to `RUNNING`/`COMPLETED`.
+
 ## WorkflowRunStore
 
-The `WorkflowRunStoreProtocol` is implemented by `InMemoryWorkflowRunStore` (tests/local) and `RedisWorkflowRunStore` (dev/prod stack). Select via `CHILI_WORKFLOW_RUN_STORE_BACKEND=in_memory|redis`.
+The `WorkflowRunStoreProtocol` is implemented by `InMemoryWorkflowRunStore` (tests/local) and `RedisWorkflowRunStore` (dev/prod stack). Select via `CHILI_WORKFLOW_RUN_STORE_BACKEND=in_memory|redis`. The store maintains a `correlation_id → workflow_id` index (`find_by_correlation_id`) so the tracker and `start_workflow` resolve runs without a full scan.
 
 See [`docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md`](../../docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md) for the end-to-end demo context.

@@ -12,7 +12,11 @@ class RecordsServiceProtocol(Protocol):
     """Service boundary for structured-record ingestion consumed by the API."""
 
     def register_records(
-        self, knowledge_base_id: str, submission: RecordSubmission
+        self,
+        knowledge_base_id: str,
+        submission: RecordSubmission,
+        *,
+        correlation_id: str | None = None,
     ) -> RecordIngestReceipt: ...
 
 

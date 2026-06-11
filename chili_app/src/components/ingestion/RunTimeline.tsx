@@ -1,10 +1,15 @@
 import { Chip } from '../ui/Chip'
 import { EmptyState } from '../ui/EmptyState'
+import { useCancelWorkflow } from '../../api/workflows'
 import type { RecordIngestReceipt, WorkflowRunResponse } from '../../api/contracts'
 import type { IngestionReceiptEntry } from '../../lib/ingestion/types'
 import './ingestion.css'
 
 const MAX_REJECTED_ROWS_SHOWN = 5
+
+function isCancellable(status: WorkflowRunResponse['status']): boolean {
+  return status === 'running' || status === 'queued'
+}
 
 function receiptCountsSummary(receipt: RecordIngestReceipt): string {
   return [
@@ -77,6 +82,8 @@ function buildTimelineItems(
 }
 
 export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
+  const cancelWorkflow = useCancelWorkflow()
+
   if (receipts.length === 0 && workflows.length === 0) {
     return (
       <EmptyState
@@ -108,6 +115,17 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
                   <div className="ingestion-run-timeline__header">
                     <span className="ingestion-run-timeline__title">{workflow.workflow_type}</span>
                     <Chip tone={workflowTone(workflow.status)} label={workflow.status} />
+                    {isCancellable(workflow.status) ? (
+                      <button
+                        type="button"
+                        className="page-button page-button--secondary"
+                        aria-label={`Cancel ${workflow.workflow_type} workflow`}
+                        disabled={cancelWorkflow.isPending}
+                        onClick={() => cancelWorkflow.mutate(workflow.id)}
+                      >
+                        Cancel
+                      </button>
+                    ) : null}
                   </div>
                   <dl className="ingestion-run-timeline__meta" aria-label={`${workflow.id} workflow details`}>
                     <div>

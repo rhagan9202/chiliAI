@@ -1,13 +1,14 @@
-"""Workflow status router exposing pipeline run summaries."""
+"""Workflow status router exposing pipeline run summaries and cancellation."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
+from agent.exceptions import WorkflowAlreadyTerminalError, WorkflowRunNotFoundError
 from agent.protocols import AgentServiceProtocol
 from agent.service_models import WorkflowRunStatus
-from api._workflow_projection import project_workflow_runs
-from api.contracts import WorkflowRunListResponse
+from api._workflow_projection import project_workflow_run, project_workflow_runs
+from api.contracts import WorkflowRunListResponse, WorkflowRunResponse
 from api.dependencies import get_agent_service
 from api.middleware.rbac import require_role
 
@@ -37,3 +38,49 @@ async def list_workflows(
             offset=offset,
         )
     )
+
+
+@router.get(
+    "/{workflow_id}",
+    response_model=WorkflowRunResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
+async def get_workflow(
+    workflow_id: str = Path(...),
+    agent_service: AgentServiceProtocol = Depends(get_agent_service),
+) -> WorkflowRunResponse:
+    """Return a single workflow run by id."""
+    try:
+        run = agent_service.get_workflow_status(workflow_id)
+    except WorkflowRunNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    return project_workflow_run(run)
+
+
+@router.post(
+    "/{workflow_id}/cancel",
+    response_model=WorkflowRunResponse,
+    dependencies=[Depends(require_role("analyst"))],
+)
+async def cancel_workflow(
+    workflow_id: str = Path(...),
+    agent_service: AgentServiceProtocol = Depends(get_agent_service),
+) -> WorkflowRunResponse:
+    """Request cancellation of a non-terminal workflow run.
+
+    Cancellation is cooperative: the worker honours it at the next stage / loop
+    boundary, so an already-running synchronous stage may still finish.
+    """
+    try:
+        run = agent_service.cancel_workflow(workflow_id)
+    except WorkflowRunNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    except WorkflowAlreadyTerminalError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    return project_workflow_run(run)

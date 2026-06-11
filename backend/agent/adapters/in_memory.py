@@ -19,16 +19,21 @@ class InMemoryWorkflowRunStore:
         self._lock = RLock()
         self._runs: dict[str, WorkflowRun] = {}
         self._idempotency_index: dict[tuple[str, str], str] = {}
+        self._correlation_index: dict[str, str] = {}
         for run in runs or []:
             self.save_run(run)
 
     def save_run(self, run: WorkflowRun) -> WorkflowRun:
         with self._lock:
             previous = self._runs.get(run.workflow_id)
-            if previous is not None and previous.idempotency_key is not None:
-                self._idempotency_index.pop(
-                    (previous.knowledge_base_id, previous.idempotency_key), None
-                )
+            if previous is not None:
+                if previous.idempotency_key is not None:
+                    self._idempotency_index.pop(
+                        (previous.knowledge_base_id, previous.idempotency_key), None
+                    )
+                previous_correlation_id = previous.metadata.get("correlation_id")
+                if isinstance(previous_correlation_id, str):
+                    self._correlation_index.pop(previous_correlation_id, None)
             if run.idempotency_key is not None:
                 idempotency_key = (run.knowledge_base_id, run.idempotency_key)
                 indexed_workflow_id = self._idempotency_index.get(idempotency_key)
@@ -46,6 +51,9 @@ class InMemoryWorkflowRunStore:
                 self._idempotency_index[
                     (stored.knowledge_base_id, stored.idempotency_key)
                 ] = stored.workflow_id
+            correlation_id = stored.metadata.get("correlation_id")
+            if isinstance(correlation_id, str):
+                self._correlation_index[correlation_id] = stored.workflow_id
             return self._copy_run(stored)
 
     def get_run(self, workflow_id: str) -> WorkflowRun:
@@ -98,7 +106,7 @@ class InMemoryWorkflowRunStore:
         update: WorkflowRunUpdate,
         *,
         expected_statuses: set[WorkflowRunStatus] | frozenset[WorkflowRunStatus],
-        updated_before: datetime,
+        updated_before: datetime | None = None,
     ) -> WorkflowRun | None:
         with self._lock:
             existing = self._runs.get(workflow_id)
@@ -106,7 +114,7 @@ class InMemoryWorkflowRunStore:
                 return None
             if existing.status not in expected_statuses:
                 return None
-            if existing.updated_at >= updated_before:
+            if updated_before is not None and existing.updated_at >= updated_before:
                 return None
             patch = update.model_dump(exclude_none=True)
             if not patch:
@@ -121,10 +129,14 @@ class InMemoryWorkflowRunStore:
     def delete_run(self, workflow_id: str) -> None:
         with self._lock:
             removed = self._runs.pop(workflow_id, None)
-            if removed is not None and removed.idempotency_key is not None:
-                self._idempotency_index.pop(
-                    (removed.knowledge_base_id, removed.idempotency_key), None
-                )
+            if removed is not None:
+                if removed.idempotency_key is not None:
+                    self._idempotency_index.pop(
+                        (removed.knowledge_base_id, removed.idempotency_key), None
+                    )
+                correlation_id = removed.metadata.get("correlation_id")
+                if isinstance(correlation_id, str):
+                    self._correlation_index.pop(correlation_id, None)
 
     def find_by_idempotency_key(
         self,
@@ -136,6 +148,16 @@ class InMemoryWorkflowRunStore:
             workflow_id = self._idempotency_index.get(
                 (knowledge_base_id, idempotency_key)
             )
+            if workflow_id is None:
+                return None
+            run = self._runs.get(workflow_id)
+            if run is None:
+                return None
+            return self._copy_run(run)
+
+    def find_by_correlation_id(self, correlation_id: str) -> WorkflowRun | None:
+        with self._lock:
+            workflow_id = self._correlation_index.get(correlation_id)
             if workflow_id is None:
                 return None
             run = self._runs.get(workflow_id)

@@ -62,5 +62,12 @@ test.describe('Ingestion Studio records flow', () => {
     ).toBeVisible()
     // The receipt carries an "accepted" status chip plus the counts summary.
     await expect(timeline.getByText(/\d+ accepted, \d+ duplicate, \d+ rejected/)).toBeVisible()
+
+    // The API starts a tracked workflow run synchronously at submit time, so a
+    // real "ingestion" run (created via AgentService.start_workflow, not a
+    // worker fallback) surfaces in the timeline via the workflow poll.
+    await expect(
+      timeline.getByText('ingestion', { exact: true }).first(),
+    ).toBeVisible({ timeout: 15000 })
   })
 })

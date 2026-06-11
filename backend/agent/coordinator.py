@@ -18,6 +18,7 @@ import time
 import traceback
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from datetime import datetime, timezone
 from typing import cast
 
@@ -1358,6 +1359,7 @@ def handle_graph_updated_for_analytics(
     object_store: ObjectStore | None = None,
     entity_metric_repository: EntityMetricRepository | None = None,
     metrics_throttle: MetricsRecomputeThrottle | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> int:
     """Run Flow B (GNN -> risk -> explainability -> alerts.created).
 
@@ -1376,6 +1378,12 @@ def handle_graph_updated_for_analytics(
 
     alerts: list[AlertCreatedReference] = []
     for document in event.documents:
+        if is_cancelled is not None and is_cancelled():
+            logger.info(
+                "Analytics flow cancelled; stopping. correlation_id=%s",
+                event.correlation_id,
+            )
+            break
         knowledge_base_id = document.knowledge_base_id
         upserted_entity_ids = _resolve_upserted_entity_ids(
             document, object_store=object_store
@@ -1393,6 +1401,12 @@ def handle_graph_updated_for_analytics(
             continue
 
         for entity_id in upserted_entity_ids:
+            if is_cancelled is not None and is_cancelled():
+                logger.info(
+                    "Analytics flow cancelled mid-fan-out; stopping. correlation_id=%s",
+                    event.correlation_id,
+                )
+                break
             risk_response = _run_risk_stage(
                 event=event,
                 risk_service=risk_service,
@@ -2055,6 +2069,7 @@ def handle_records_ingested(
     peer_stats_config: PeerStatsConfig | None = None,
     risk_service: RiskService | None = None,
     peer_stats_enabled: bool = False,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> int:
     """Flow 1 — fan a structured-records batch out to the graph and observations.
 
@@ -2149,6 +2164,13 @@ def handle_records_ingested(
             graph_service=graph_service,
             metrics_throttle=metrics_throttle,
         )
+
+    if is_cancelled is not None and is_cancelled():
+        logger.info(
+            "Records ingest cancelled before peerstats stage; correlation_id=%s",
+            event.correlation_id,
+        )
+        return len(records)
 
     if (
         peer_stats_enabled
@@ -2673,6 +2695,13 @@ def handle_event(
                 event.correlation_id,
             )
             return 0
+        # Cooperative cancellation probe for long handlers: re-reads run status
+        # by correlation so a cancel that lands mid-stage stops further work.
+        is_cancelled: Callable[[], bool] | None = (
+            partial(workflow_tracker.is_run_cancelled, event.correlation_id)
+            if workflow_tracker is not None
+            else None
+        )
         processed = _dispatch_event(
             event=event,
             delivery=delivery,
@@ -2706,6 +2735,7 @@ def handle_event(
             peer_stats_enabled=peer_stats_enabled,
             kb_repository=kb_repository,
             kb_deletion_stores=kb_deletion_stores,
+            is_cancelled=is_cancelled,
         )
         if workflow_tracker is not None:
             workflow_tracker.complete_event(event)
@@ -2746,6 +2776,7 @@ def _dispatch_event(
     peer_stats_enabled: bool = False,
     kb_repository: KnowledgeBaseRepository | None = None,
     kb_deletion_stores: KbDeletionStores | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> int:
     del delivery  # reserved for future stream offsets / dlq metadata
     if isinstance(event, DocumentsUploadedEvent):
@@ -2803,6 +2834,7 @@ def _dispatch_event(
                     object_store=object_store,
                     entity_metric_repository=entity_metric_repository,
                     metrics_throttle=metrics_throttle,
+                    is_cancelled=is_cancelled,
                 )
             except Exception as exc:  # noqa: BLE001 - analytics must not re-run Flow A
                 # Kept best-effort intentionally: GraphUpdatedEvent already ran
@@ -2893,6 +2925,7 @@ def _dispatch_event(
             peer_stats_config=peer_stats_config,
             risk_service=risk_service,
             peer_stats_enabled=peer_stats_enabled,
+            is_cancelled=is_cancelled,
         )
     if isinstance(event, KnowledgeBaseDeletedEvent):
         if kb_deletion_stores is None or kb_repository is None:

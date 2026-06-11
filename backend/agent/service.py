@@ -10,6 +10,7 @@ from agent.exceptions import (
     WorkflowAlreadyTerminalError,
 )
 from agent.models import (
+    SYSTEM_METADATA_KEYS,
     TERMINAL_RUN_STATUSES,
     WorkflowRun,
     WorkflowRunStatus,
@@ -44,8 +45,16 @@ class AgentService:
                 self._verify_idempotency_match(cached, request)
                 return self._response_from_run(cached)
 
+        # Create-or-get by correlation id: if the worker's tracker already minted
+        # a fallback run for this correlation (it won the race), adopt it instead
+        # of creating a duplicate. This makes call ordering relative to the
+        # pipeline event publish irrelevant.
+        correlation_id = request.correlation_id or generate_id()
+        existing = self._run_store.find_by_correlation_id(correlation_id)
+        if existing is not None:
+            return self._response_from_run(existing)
+
         workflow_id = generate_id()
-        correlation_id = generate_id()
         metadata = dict(request.metadata)
         metadata["correlation_id"] = correlation_id
 
@@ -153,7 +162,7 @@ class AgentService:
         user_metadata = {
             key: value
             for key, value in run.metadata.items()
-            if key not in {"correlation_id", "publish_error"}
+            if key not in SYSTEM_METADATA_KEYS
         }
         if user_metadata != request.metadata:
             raise IdempotencyKeyConflictError(

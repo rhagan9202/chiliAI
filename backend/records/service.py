@@ -32,12 +32,16 @@ class RecordsService:
         self._records_config = records_config
 
     def register_records(
-        self, knowledge_base_id: str, submission: RecordSubmission
+        self,
+        knowledge_base_id: str,
+        submission: RecordSubmission,
+        *,
+        correlation_id: str | None = None,
     ) -> RecordIngestReceipt:
         feed = self._resolve_feed(submission.feed_name)
         coerced_rows, rejected = validate_rows_partition(feed, submission.rows)
 
-        correlation_id = generate_id()
+        correlation_id = correlation_id or generate_id()
         ingested_at = utc_now()
         raw_records: list[RawRecord] = []
         for row in coerced_rows:

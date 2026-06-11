@@ -111,6 +111,65 @@ def test_tracker_uses_service_published_correlation_without_fallback() -> None:
     assert run.steps[0].status is WorkflowStepStatus.RUNNING
 
 
+def test_is_run_cancelled_reflects_store_state() -> None:
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-1",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                metadata={"correlation_id": "corr-1"},
+            )
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+
+    assert tracker.is_run_cancelled("corr-1") is False
+    assert tracker.is_run_cancelled("missing") is False
+
+    run_store.update_run(
+        "workflow-1", WorkflowRunUpdate(status=WorkflowRunStatus.CANCELLED)
+    )
+    assert tracker.is_run_cancelled("corr-1") is True
+
+
+def test_complete_event_does_not_clobber_cancelled_run() -> None:
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-1",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.CANCELLED,
+                steps=[WorkflowStepState(step_name="ready")],
+                metadata={"correlation_id": "corr-1"},
+            )
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+    event = VectorsIndexedEvent(
+        correlation_id="corr-1",
+        documents=[
+            VectorsIndexedDocumentReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-1",
+                parsed_document_id="parsed-1",
+                extraction_result_id="extraction-1",
+                validation_report_id="validation-1",
+                vector_count=1,
+                embeddings_storage_key="ek",
+                record_ids=["r-1"],
+            )
+        ],
+    )
+
+    tracker.complete_event(event)
+
+    assert run_store.get_run("workflow-1").status is WorkflowRunStatus.CANCELLED
+
+
 def test_tracker_marks_terminal_success_for_vector_indexed_event() -> None:
     run_store = InMemoryWorkflowRunStore(
         runs=[
@@ -498,7 +557,7 @@ def test_reconcile_stale_runs_does_not_overwrite_completed_run_after_listing() -
             update: WorkflowRunUpdate,
             *,
             expected_statuses: set[WorkflowRunStatus] | frozenset[WorkflowRunStatus],
-            updated_before: datetime,
+            updated_before: datetime | None = None,
         ) -> WorkflowRun | None:
             assert workflow_id == "workflow-raced"
             assert expected_statuses == {
@@ -506,6 +565,7 @@ def test_reconcile_stale_runs_does_not_overwrite_completed_run_after_listing() -
                 WorkflowRunStatus.RUNNING,
             }
             assert update.status is WorkflowRunStatus.FAILED
+            assert updated_before is not None
             assert listed_run.updated_at < updated_before
             return None
 

@@ -22,6 +22,7 @@ class RedisWorkflowRunStore:
 
     WORKFLOW_PREFIX = "workflow:"
     IDEMPOTENCY_PREFIX = "workflow:idempotency:"
+    CORRELATION_PREFIX = "workflow:correlation:"
     CREATED_INDEX = "workflow:index:created_at"
 
     def __init__(
@@ -70,6 +71,19 @@ class RedisWorkflowRunStore:
             self._client.set(
                 self._idempotency_key(stored.knowledge_base_id, stored.idempotency_key),
                 stored.workflow_id,
+            )
+        previous_correlation_id = (
+            previous.metadata.get("correlation_id") if previous is not None else None
+        )
+        stored_correlation_id = stored.metadata.get("correlation_id")
+        if (
+            isinstance(previous_correlation_id, str)
+            and previous_correlation_id != stored_correlation_id
+        ):
+            self._client.delete(self._correlation_key(previous_correlation_id))
+        if isinstance(stored_correlation_id, str):
+            self._client.set(
+                self._correlation_key(stored_correlation_id), stored.workflow_id
             )
         return stored.model_copy(deep=True)
 
@@ -127,7 +141,7 @@ class RedisWorkflowRunStore:
         update: WorkflowRunUpdate,
         *,
         expected_statuses: set[WorkflowRunStatus] | frozenset[WorkflowRunStatus],
-        updated_before: datetime,
+        updated_before: datetime | None = None,
     ) -> WorkflowRun | None:
         workflow_key = self._workflow_key(workflow_id)
         for _ in range(3):
@@ -142,7 +156,7 @@ class RedisWorkflowRunStore:
                 )
                 if existing.status not in expected_statuses:
                     return None
-                if existing.updated_at >= updated_before:
+                if updated_before is not None and existing.updated_at >= updated_before:
                     return None
                 patch = update.model_dump(exclude_none=True)
                 if not patch:
@@ -163,10 +177,16 @@ class RedisWorkflowRunStore:
 
     def delete_run(self, workflow_id: str) -> None:
         existing = self._get_optional(workflow_id)
-        if existing is not None and existing.idempotency_key is not None:
-            self._client.delete(
-                self._idempotency_key(existing.knowledge_base_id, existing.idempotency_key)
-            )
+        if existing is not None:
+            if existing.idempotency_key is not None:
+                self._client.delete(
+                    self._idempotency_key(
+                        existing.knowledge_base_id, existing.idempotency_key
+                    )
+                )
+            correlation_id = existing.metadata.get("correlation_id")
+            if isinstance(correlation_id, str):
+                self._client.delete(self._correlation_key(correlation_id))
         self._client.delete(self._workflow_key(workflow_id))
         self._client.zrem(self._key(self.CREATED_INDEX), workflow_id)
 
@@ -179,6 +199,12 @@ class RedisWorkflowRunStore:
         workflow_id = self._get_string(
             self._idempotency_key(knowledge_base_id, idempotency_key)
         )
+        if workflow_id is None:
+            return None
+        return self._get_optional(workflow_id)
+
+    def find_by_correlation_id(self, correlation_id: str) -> WorkflowRun | None:
+        workflow_id = self._get_string(self._correlation_key(correlation_id))
         if workflow_id is None:
             return None
         return self._get_optional(workflow_id)
@@ -202,6 +228,9 @@ class RedisWorkflowRunStore:
         return self._key(
             f"{self.IDEMPOTENCY_PREFIX}{knowledge_base_id}:{idempotency_key}"
         )
+
+    def _correlation_key(self, correlation_id: str) -> str:
+        return self._key(f"{self.CORRELATION_PREFIX}{correlation_id}")
 
     def _key(self, suffix: str) -> str:
         return f"{self._prefix}{suffix}"

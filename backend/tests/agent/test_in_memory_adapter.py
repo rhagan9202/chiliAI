@@ -472,3 +472,76 @@ def test_save_run_allows_same_key_under_different_knowledge_base() -> None:
         knowledge_base_id="kb-2",
         idempotency_key="shared-key",
     ) == kb2
+
+
+def _run_with_correlation(
+    *, workflow_id: str = "workflow-1", correlation_id: str = "corr-1"
+) -> WorkflowRun:
+    return WorkflowRun(
+        workflow_id=workflow_id,
+        knowledge_base_id="kb-1",
+        trigger_event_type="documents.uploaded",
+        steps=[WorkflowStepState(step_name="parse")],
+        metadata={"correlation_id": correlation_id},
+    )
+
+
+def test_find_by_correlation_id_returns_persisted_run() -> None:
+    run = _run_with_correlation(correlation_id="corr-xyz")
+    store = InMemoryWorkflowRunStore(runs=[run])
+
+    assert store.find_by_correlation_id("corr-xyz") == run
+
+
+def test_find_by_correlation_id_returns_none_for_unknown_or_unindexed() -> None:
+    # _run() has no correlation_id in metadata, so it is not indexed.
+    store = InMemoryWorkflowRunStore(runs=[_run()])
+
+    assert store.find_by_correlation_id("missing") is None
+
+
+def test_delete_run_clears_correlation_index() -> None:
+    store = InMemoryWorkflowRunStore(runs=[_run_with_correlation(correlation_id="c1")])
+
+    store.delete_run("workflow-1")
+
+    assert store.find_by_correlation_id("c1") is None
+
+
+def test_update_run_preserves_correlation_lookup() -> None:
+    store = InMemoryWorkflowRunStore(runs=[_run_with_correlation(correlation_id="c1")])
+
+    store.update_run("workflow-1", WorkflowRunUpdate(status=WorkflowRunStatus.COMPLETED))
+
+    found = store.find_by_correlation_id("c1")
+    assert found is not None
+    assert found.status is WorkflowRunStatus.COMPLETED
+
+
+def test_update_run_if_current_without_updated_before_is_status_only_cas() -> None:
+    # Cancellation guard: a CANCELLED run is never re-written by a RUNNING-only CAS.
+    cancelled = _run(status=WorkflowRunStatus.CANCELLED)
+    store = InMemoryWorkflowRunStore(runs=[cancelled])
+
+    result = store.update_run_if_current(
+        "workflow-1",
+        WorkflowRunUpdate(status=WorkflowRunStatus.COMPLETED),
+        expected_statuses={WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING},
+    )
+
+    assert result is None
+    assert store.get_run("workflow-1").status is WorkflowRunStatus.CANCELLED
+
+
+def test_update_run_if_current_without_updated_before_updates_when_status_matches() -> None:
+    running = _run(status=WorkflowRunStatus.RUNNING)
+    store = InMemoryWorkflowRunStore(runs=[running])
+
+    result = store.update_run_if_current(
+        "workflow-1",
+        WorkflowRunUpdate(status=WorkflowRunStatus.COMPLETED),
+        expected_statuses={WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING},
+    )
+
+    assert result is not None
+    assert result.status is WorkflowRunStatus.COMPLETED

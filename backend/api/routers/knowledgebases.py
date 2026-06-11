@@ -22,6 +22,7 @@ from api._kb_cleanup import (
     kb_deletion_steps,
 )
 from api.dependencies import (
+    get_agent_service,
     get_event_bus,
     get_domain_config,
     get_graph_service,
@@ -32,6 +33,9 @@ from api.dependencies import (
     get_workflow_tracker,
 )
 from api.middleware.rbac import require_role
+from agent.protocols import AgentServiceProtocol
+from agent.service_models import WorkflowSubmissionRequest
+from agent.workflow_tracking import default_steps_for_trigger
 from config.schema import DomainConfig, ValidationConfig
 from events.protocols import EventBus
 from events.types import KnowledgeBaseCreatedEvent, KnowledgeBaseDeletedEvent
@@ -358,6 +362,7 @@ async def register_knowledge_base_documents(
     object_store: ObjectStore = Depends(get_object_store),
     config: DomainConfig = Depends(get_domain_config),
     workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
+    agent_service: AgentServiceProtocol = Depends(get_agent_service),
 ) -> DocumentRegistrationResponse:
     """Register uploaded documents and enqueue ingestion work."""
     existing_kb = repository.get(knowledge_base_id)
@@ -432,7 +437,26 @@ async def register_knowledge_base_documents(
             (filename, upload.content_type, len(content), content_hash, replaced_document_id)
         )
 
-    receipts = ingestion_service.register_documents(knowledge_base_id, submissions)
+    correlation_id = generate_id()
+    receipts = ingestion_service.register_documents(
+        knowledge_base_id, submissions, correlation_id=correlation_id
+    )
+
+    # Start a tracked workflow run for this ingestion. register_documents
+    # republishes documents.uploaded under `correlation_id` whenever there is
+    # work (the router pre-deletes on content-hash dedup, so a non-empty
+    # submission always publishes), so the worker's tracker advances this run.
+    # start_workflow is create-or-get by correlation, so a worker that already
+    # fallback-created the run is adopted rather than duplicated.
+    if receipts:
+        agent_service.start_workflow(
+            WorkflowSubmissionRequest(
+                knowledge_base_id=knowledge_base_id,
+                trigger_event_type="documents.uploaded",
+                requested_steps=default_steps_for_trigger("documents.uploaded"),
+                correlation_id=correlation_id,
+            )
+        )
 
     final_receipts: list[DocumentReceipt] = []
     for receipt, (filename, content_type, size_bytes, content_hash, replaced_document_id) in zip(

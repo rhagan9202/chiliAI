@@ -2986,6 +2986,66 @@ def test_analytics_handler_emits_analysis_failed_when_risk_profile_missing() -> 
     assert failures[0].entity_id == "provider-1"
 
 
+def test_analytics_handler_stops_immediately_when_cancelled() -> None:
+    """A cancelled run aborts Flow B at the first loop boundary: no GNN/risk/
+    explainability work runs and no alerts.created / analysis.failed is published."""
+    from typing import cast
+
+    from agent.coordinator import handle_graph_updated_for_analytics
+    from analytics.explainability.service import ExplainabilityService
+    from analytics.gnn.service import GnnService
+    from analytics.risk.service import RiskService
+    from graph.service import GraphService
+
+    class _Boom:
+        def __getattr__(self, name: str) -> object:
+            raise AssertionError(f"service used despite cancellation: {name}")
+
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    object_store.put_bytes(
+        "gk",
+        GraphUpsertResult(
+            knowledge_base_id="kb-1",
+            source_document_id="doc-A",
+            parsed_document_id="parsed-A",
+            extraction_result_id="extract-A",
+            validation_report_id="validate-A",
+            upserted_entity_ids=["provider-1"],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    alerts = handle_graph_updated_for_analytics(
+        GraphUpdatedEvent(
+            correlation_id="corr-cancel",
+            documents=[
+                GraphUpdatedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-A",
+                    parsed_document_id="parsed-A",
+                    extraction_result_id="extract-A",
+                    validation_report_id="validate-A",
+                    upserted_entity_count=1,
+                    upserted_relationship_count=0,
+                    validation_storage_key="vk",
+                    graph_update_storage_key="gk",
+                )
+            ],
+        ),
+        gnn_service=cast(GnnService, _Boom()),
+        risk_service=cast(RiskService, _Boom()),
+        explainability_service=cast(ExplainabilityService, _Boom()),
+        graph_service=cast(GraphService, _Boom()),
+        event_bus=event_bus,
+        object_store=object_store,
+        is_cancelled=lambda: True,
+    )
+
+    assert alerts == 0
+    assert event_bus.published_events == []
+
+
 def test_analytics_handler_skips_missing_gnn_snapshot_without_failing_flow_a() -> None:
     """Missing GNN snapshots are controlled skips while Flow A still publishes."""
 
