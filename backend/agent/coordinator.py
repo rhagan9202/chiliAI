@@ -28,6 +28,11 @@ from agent.embeddings_graph_bridge import GnnGraphEmbeddingProvider
 from agent.exceptions import ConfigurationError
 from agent.health import HealthState, start_health_server
 from agent.models import HealthSettings, RetryPolicy
+from agent.policy import (
+    StagePolicy,
+    StagePolicyRegistry,
+    load_stage_policy_registry_from_env,
+)
 from agent.workflow_tracking import WorkflowEventTracker
 from config.loader import load_config
 from config.schema import (
@@ -283,6 +288,7 @@ DRAIN_ERROR_BACKOFF_SECONDS = 1.0
 WORKER_EVENT_TYPES: tuple[str, ...] = (
     "documents.uploaded",
     "documents.parsed",
+    "documents.failed",
     "documents.chunked",
     "entities.extracted",
     "entities.validated",
@@ -2317,6 +2323,54 @@ def _publish_analysis_failed(
     )
 
 
+def _publish_analytics_fanout_failed(
+    *,
+    event: GraphUpdatedEvent,
+    event_bus: EventBus,
+    object_store: ObjectStore,
+    error_message: str,
+) -> None:
+    published = False
+    for document in event.documents:
+        entity_ids: list[str] = []
+        if document.graph_update_storage_key:
+            try:
+                graph_update = _load_graph_update(
+                    object_store, document.graph_update_storage_key
+                )
+                entity_ids = graph_update.upserted_entity_ids
+            except Exception as exc:  # noqa: BLE001 - fallback keeps failure visible
+                logger.warning(
+                    "Could not resolve analytics fan-out failure entity ids "
+                    "for kb=%s document=%s: %s",
+                    document.knowledge_base_id,
+                    document.source_document_id,
+                    exc,
+                )
+        if not entity_ids:
+            entity_ids = [document.source_document_id]
+        for entity_id in entity_ids:
+            _publish_analysis_failed(
+                event_bus=event_bus,
+                correlation_id=event.correlation_id,
+                knowledge_base_id=document.knowledge_base_id,
+                entity_id=entity_id,
+                stage="analytics_fanout",
+                error_message=error_message,
+            )
+            published = True
+
+    if not published:
+        _publish_analysis_failed(
+            event_bus=event_bus,
+            correlation_id=event.correlation_id,
+            knowledge_base_id="unknown",
+            entity_id="unknown",
+            stage="analytics_fanout",
+            error_message=error_message,
+        )
+
+
 def handle_embeddings_complete(
     event: EmbeddingsCompleteEvent,
     *,
@@ -2840,15 +2894,17 @@ def _dispatch_event(
                 # Kept best-effort intentionally: GraphUpdatedEvent already ran
                 # Flow A (embeddings) in this same dispatch, so propagating a Flow B
                 # failure would re-run the expensive embedding pipeline on retry.
-                # Durability for the analytics *outputs* is provided by their own
-                # retryable events — the RiskScoredEvent and AlertsCreatedEvent
-                # branches now propagate write-back failures. The residual gap (a
-                # fan-out failure BEFORE those events are published) would be closed
-                # by splitting Flow B into its own retryable consumer — tracked
-                # separately.
+                # Publishing this visibility event is intentionally not swallowed:
+                # if it fails too, the retry/DLQ wrapper must see that failure.
                 logger.warning(
                     "Flow B analytics handler raised; Flow A already completed. error=%s",
                     exc,
+                )
+                _publish_analytics_fanout_failed(
+                    event=event,
+                    event_bus=event_bus,
+                    object_store=object_store,
+                    error_message=str(exc),
                 )
         return processed
     if isinstance(event, EmbeddingsCompleteEvent):
@@ -2947,7 +3003,8 @@ async def run_handler_with_retry(
     *,
     event: AnyEvent,
     event_bus: EventBus,
-    retry_policy: RetryPolicy,
+    retry_policy: RetryPolicy | None = None,
+    stage_policy: StagePolicy | None = None,
     sleep: Callable[[float], "asyncio.Future[None] | object"] = asyncio.sleep,
     on_failure: Callable[[BaseException], None] | None = None,
 ) -> int:
@@ -2981,12 +3038,29 @@ async def run_handler_with_retry(
     one-handler-at-a-time ordering.
     """
 
+    policy = stage_policy or StagePolicy(retry_policy=retry_policy or RetryPolicy())
+    retry_policy = policy.retry_policy
     last_exc: BaseException | None = None
+    retries_attempted = 0
     for attempt in range(retry_policy.max_retries + 1):
         try:
-            return await asyncio.to_thread(handler)
+            handler_task = asyncio.to_thread(handler)
+            if policy.timeout_seconds is not None:
+                return await asyncio.wait_for(
+                    handler_task, timeout=policy.timeout_seconds
+                )
+            return await handler_task
+        except asyncio.TimeoutError as exc:
+            last_exc = exc
+            retries_attempted = attempt
+            break
         except Exception as exc:  # noqa: BLE001 - we route to DLQ
             last_exc = exc
+            retries_attempted = attempt
+            if policy.fatal_exception_types and isinstance(
+                exc, policy.fatal_exception_types
+            ):
+                break
             if attempt >= retry_policy.max_retries:
                 break
             delay = retry_policy.delay_for_attempt(attempt + 1)
@@ -3007,7 +3081,7 @@ async def run_handler_with_retry(
         traceback="".join(
             traceback.format_exception(type(last_exc), last_exc, last_exc.__traceback__)
         ),
-        retry_count=retry_policy.max_retries,
+        retry_count=retries_attempted,
     )
     logger.error(
         "Handler exhausted retries; routing to DLQ. event_type=%s correlation_id=%s "
@@ -3058,6 +3132,7 @@ async def drain_ingestion_events(
     block_ms: int | None = None,
     reclaim_min_idle_ms: int | None = None,
     retry_policy: RetryPolicy | None = None,
+    stage_policy_registry: StagePolicyRegistry | None = None,
     health_state: HealthState | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
     graph_embeddings_enabled: bool = False,
@@ -3068,6 +3143,7 @@ async def drain_ingestion_events(
     """Consume and process available ingestion events with retry/DLQ semantics."""
 
     policy = retry_policy or RetryPolicy()
+    policies = stage_policy_registry or StagePolicyRegistry(default_retry_policy=policy)
     processed = 0
     event_types = list(WORKER_EVENT_TYPES)
     event_bus.ensure_consumer_group(event_types, consumer_group=consumer_group)
@@ -3148,6 +3224,7 @@ async def drain_ingestion_events(
             event=delivery.event,
             event_bus=event_bus,
             retry_policy=policy,
+            stage_policy=policies.get(delivery.event.event_type),
             sleep=sleep,
             on_failure=_record_failure,
         )
@@ -3207,6 +3284,7 @@ async def _drain_once(
     deps: WorkerDependencies,
     *,
     policy: RetryPolicy,
+    stage_policy_registry: StagePolicyRegistry,
     health_state: HealthState,
 ) -> int:
     """Run one drain iteration with the full worker dependency set.
@@ -3252,6 +3330,7 @@ async def _drain_once(
         block_ms=deps.event_settings.block_ms,
         reclaim_min_idle_ms=deps.event_settings.reclaim_min_idle_ms,
         retry_policy=policy,
+        stage_policy_registry=stage_policy_registry,
         health_state=health_state,
         workflow_tracker=deps.workflow_tracker,
         graph_embeddings_enabled=deps.graph_embeddings_enabled,
@@ -3271,6 +3350,9 @@ async def run_worker(
     deps = build_worker_dependencies()
 
     policy = retry_policy or RetryPolicy()
+    stage_policy_registry = load_stage_policy_registry_from_env(
+        default_retry_policy=policy
+    )
     settings = health_settings or HealthSettings()
     health_state = HealthState(settings=settings)
 
@@ -3312,7 +3394,10 @@ async def run_worker(
                             "Reconciled %s stale workflow run(s)", reconciled
                         )
                 processed = await _drain_once(
-                    deps, policy=policy, health_state=health_state
+                    deps,
+                    policy=policy,
+                    stage_policy_registry=stage_policy_registry,
+                    health_state=health_state,
                 )
                 health_state.record_drain_success()
             except asyncio.CancelledError:

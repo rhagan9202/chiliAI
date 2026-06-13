@@ -8,11 +8,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from knowledgebases import (
-    DocumentRecord,
-    InMemoryKnowledgeBaseRepository,
-    ObjectStoreKnowledgeBaseRepository,
-)
+from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
+from knowledgebases.adapters.object_store import ObjectStoreKnowledgeBaseRepository
+from knowledgebases.models import DocumentRecord
 from api.app import create_app
 from api.dependencies import (
     get_event_bus,

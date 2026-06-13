@@ -9,15 +9,17 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import datetime, timezone
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowStepState
 from agent.workflow_tracking import WorkflowEventTracker
-from knowledgebases import InMemoryKnowledgeBaseRepository
+from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from api.app import create_app
 from analytics.peerstats.adapters.in_memory import InMemoryDerivedRiskSignalWriter
 from analytics.peerstats.models import DerivedRiskSignal
@@ -423,7 +425,8 @@ def test_delete_kb_purges_derived_signals(
     """The KB-delete cascade purges entity_derived_signals (peerstats)."""
     client, *_ = cascade_harness
     derived_signal_store = InMemoryDerivedRiskSignalWriter()
-    client.app.dependency_overrides[get_derived_signal_store] = (
+    app = cast(FastAPI, client.app)
+    app.dependency_overrides[get_derived_signal_store] = (
         lambda: derived_signal_store
     )
 
@@ -467,7 +470,8 @@ def test_delete_kb_207_when_a_durable_store_step_fails(
     client, *_ = cascade_harness
     failing = MagicMock()
     failing.delete_by_kb.side_effect = RuntimeError("risk-history outage")
-    client.app.dependency_overrides[get_risk_history_writer] = lambda: failing
+    app = cast(FastAPI, client.app)
+    app.dependency_overrides[get_risk_history_writer] = lambda: failing
 
     created = client.post(
         "/knowledgebases", json={"name": "risk-fail", "description": ""}

@@ -6,7 +6,7 @@ from typing import Protocol, runtime_checkable
 
 from graph.models import GraphDeleteByProvenance, GraphMetrics, SubgraphResult
 from graph.service_models import GraphBuildReceipt, GraphBuildTask
-from shared.types import Entity
+from shared.types import Entity, Relationship
 
 
 @runtime_checkable
@@ -37,6 +37,13 @@ class GraphServiceProtocol(Protocol):
         seed_entity_ids: list[str],
         depth: int = 1,
     ) -> SubgraphResult: ...
+
+    def get_neighbors(
+        self,
+        knowledge_base_id: str,
+        entity_id: str,
+        depth: int = 1,
+    ) -> tuple[list[Entity], list[Relationship]]: ...
 
     def search_entities(
         self,

@@ -38,7 +38,7 @@ from cases.models import Case
 from conversations.adapters.protocols import ConversationRepository
 from conversations.models import Conversation, ConversationMessage
 from graph.adapters.protocols import GraphRepository
-from knowledgebases import KnowledgeBaseRepository
+from knowledgebases.protocols import KnowledgeBaseRepository
 from shared.types import Alert, Entity, EvidencePack, KnowledgeBase, Relationship
 from shared.utils import generate_id, utc_now
 

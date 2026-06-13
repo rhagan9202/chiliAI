@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from agent.adapters.protocols import WorkflowRunStoreProtocol
+from agent.definitions import default_workflow_registry
 from agent.exceptions import WorkflowRunNotFoundError
 from agent.models import (
     TERMINAL_RUN_STATUSES,
@@ -35,31 +36,7 @@ from shared.utils import generate_id, utc_now
 
 __all__ = ["WorkflowEventTracker", "default_steps_for_trigger"]
 
-_STEP_BY_EVENT_TYPE: dict[str, str] = {
-    "documents.uploaded": "parse",
-    "documents.parsed": "chunk",
-    "documents.failed": "parse",
-    "records.ingested": "records_ingest",
-    "documents.chunked": "extract",
-    "entities.extracted": "validate",
-    "entities.validated": "graph_build",
-    "graph.updated": "embed",
-    "embeddings.complete": "vector_index",
-    "vectors.indexed": "ready",
-    "kb.ready": "ready",
-    "risk.scored": "monitoring",
-}
-_DEFAULT_STEP_SEQUENCE: tuple[str, ...] = (
-    "parse",
-    "chunk",
-    "extract",
-    "validate",
-    "graph_build",
-    "embed",
-    "vector_index",
-    "ready",
-    "monitoring",
-)
+_WORKFLOW_REGISTRY = default_workflow_registry()
 _TERMINAL_SUCCESS_EVENT_TYPES: frozenset[str] = frozenset(
     {"vectors.indexed", "kb.ready", "risk.scored", "records.ingested"}
 )
@@ -79,11 +56,11 @@ def default_steps_for_trigger(trigger_event_type: str) -> list[str]:
     is a single step; an unknown trigger defaults to the full sequence.
     """
 
-    first_step = _STEP_BY_EVENT_TYPE.get(trigger_event_type)
+    first_step = _WORKFLOW_REGISTRY.step_for_event_type(trigger_event_type)
     if first_step is None:
-        return list(_DEFAULT_STEP_SEQUENCE)
-    if first_step in _DEFAULT_STEP_SEQUENCE:
-        return list(_DEFAULT_STEP_SEQUENCE)
+        return _WORKFLOW_REGISTRY.default_step_names()
+    if first_step in _WORKFLOW_REGISTRY.default_step_names():
+        return _WORKFLOW_REGISTRY.default_step_names()
     return [first_step]
 
 
@@ -208,7 +185,7 @@ class WorkflowEventTracker:
                 status=status,
                 limit=1,
             )
-            if runs:
+            if runs.items:
                 return True
         return False
 
@@ -234,10 +211,12 @@ class WorkflowEventTracker:
                     limit=batch_size,
                     offset=offset,
                 )
-                if not runs:
+                if not runs.items:
                     break
-                candidates.extend(run.workflow_id for run in runs)
-                offset += batch_size
+                candidates.extend(run.workflow_id for run in runs.items)
+                if not runs.has_more or runs.next_offset is None:
+                    break
+                offset = runs.next_offset
 
         reconciled = 0
         for workflow_id in candidates:
@@ -269,7 +248,7 @@ class WorkflowEventTracker:
         return reconciled
 
     def _resolve_tracked_event(self, event: AnyEvent) -> _TrackedEvent | None:
-        step_name = _STEP_BY_EVENT_TYPE.get(event.event_type)
+        step_name = _WORKFLOW_REGISTRY.step_for_event_type(event.event_type)
         if step_name is None:
             return None
         run = self._find_by_correlation_id(event.correlation_id)
@@ -295,7 +274,9 @@ class WorkflowEventTracker:
         knowledge_base_id = _knowledge_base_id_for_event(event)
         if knowledge_base_id is None:
             return None
-        step_name = _STEP_BY_EVENT_TYPE[event.event_type]
+        step_name = _WORKFLOW_REGISTRY.step_for_event_type(event.event_type)
+        if step_name is None:
+            return None
         steps = _fallback_steps(step_name)
         metadata: dict[str, MetadataValue] = {
             "correlation_id": event.correlation_id,
@@ -335,7 +316,8 @@ def _steps_with_status(
 
 
 def _fallback_steps(current_step: str) -> list[WorkflowStepState]:
-    if current_step not in _DEFAULT_STEP_SEQUENCE:
+    default_step_sequence = _WORKFLOW_REGISTRY.default_step_names()
+    if current_step not in default_step_sequence:
         return [
             WorkflowStepState(
                 step_name=current_step,
@@ -343,11 +325,12 @@ def _fallback_steps(current_step: str) -> list[WorkflowStepState]:
             )
         ]
     steps: list[WorkflowStepState] = []
-    for step_name in _DEFAULT_STEP_SEQUENCE:
+    current_step_index = default_step_sequence.index(current_step)
+    for index, step_name in enumerate(default_step_sequence):
         status = WorkflowStepStatus.PENDING
         if step_name == current_step:
             status = WorkflowStepStatus.RUNNING
-        elif _DEFAULT_STEP_SEQUENCE.index(step_name) < _DEFAULT_STEP_SEQUENCE.index(current_step):
+        elif index < current_step_index:
             status = WorkflowStepStatus.COMPLETED
         steps.append(WorkflowStepState(step_name=step_name, status=status))
     return steps

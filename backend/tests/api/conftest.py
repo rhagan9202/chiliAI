@@ -28,7 +28,7 @@ def complete_inflight_workflows() -> Callable[[TestClient], None]:
         store = getattr(app.state, "workflow_run_store", None)
         if not isinstance(store, WorkflowRunStoreProtocol):
             return
-        for run in store.list_runs():
+        for run in store.list_runs().items:
             if run.status in (WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING):
                 store.update_run(
                     run.workflow_id,

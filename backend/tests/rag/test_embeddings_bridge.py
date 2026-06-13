@@ -13,6 +13,7 @@ from api._rag_bridges import ServiceContextRetriever, ServiceQueryEmbedder
 from rag.adapters.protocols import QueryEmbedderProtocol
 from rag.exceptions import RagConfigurationError
 from vectorstore.service_models import (
+    VectorDeleteResponse,
     VectorIndexReceipt,
     VectorIndexRequest,
     VectorSearchMatch,
@@ -58,6 +59,34 @@ class _RecordingVectorService:
                 )
             ],
         )
+
+    def batch_search(
+        self, requests: list[VectorSearchRequest]
+    ) -> list[VectorSearchResponse]:
+        return [self.search(request) for request in requests]
+
+    def get_record(self, knowledge_base_id: str, record_id: str) -> None:
+        del knowledge_base_id, record_id
+        return None
+
+    def count(self, knowledge_base_id: str) -> int:
+        del knowledge_base_id
+        return 0
+
+    def delete_record(self, knowledge_base_id: str, record_id: str) -> bool:
+        del knowledge_base_id, record_id
+        return False
+
+    def delete_knowledge_base(self, knowledge_base_id: str) -> VectorDeleteResponse:
+        return VectorDeleteResponse(knowledge_base_id=knowledge_base_id, deleted_count=0)
+
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> VectorDeleteResponse:
+        del source_document_id
+        return VectorDeleteResponse(knowledge_base_id=knowledge_base_id, deleted_count=0)
 
 
 def _make_response(

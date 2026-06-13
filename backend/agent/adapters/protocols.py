@@ -2,10 +2,34 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol, runtime_checkable
+from typing import Generic, Literal, Protocol, TypeVar, runtime_checkable
 
 from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowRunUpdate
+
+T = TypeVar("T")
+
+
+@dataclass(frozen=True)
+class StoreHealth:
+    """Health check result for workflow run store adapters."""
+
+    status: Literal["ok", "unhealthy"]
+    latency_ms: float | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class PageResult(Generic[T]):
+    """Offset-based page of persisted records."""
+
+    items: list[T]
+    has_more: bool
+    next_offset: int | None
+
+
+WorkflowRunPage = PageResult[WorkflowRun]
 
 
 @runtime_checkable
@@ -37,7 +61,7 @@ class WorkflowRunStoreProtocol(Protocol):
         status: WorkflowRunStatus | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> list[WorkflowRun]: ...
+    ) -> WorkflowRunPage: ...
 
     def update_run(self, workflow_id: str, update: WorkflowRunUpdate) -> WorkflowRun: ...
 
@@ -61,7 +85,12 @@ class WorkflowRunStoreProtocol(Protocol):
 
     def find_by_correlation_id(self, correlation_id: str) -> WorkflowRun | None: ...
 
+    def check_health(self) -> StoreHealth: ...
+
 
 __all__ = [
+    "PageResult",
+    "StoreHealth",
+    "WorkflowRunPage",
     "WorkflowRunStoreProtocol",
 ]

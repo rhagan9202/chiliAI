@@ -12,6 +12,7 @@ def test_inpatient_and_outpatient_feeds_load() -> None:
     feed_names = {feed.name for feed in (config.records.feeds if config.records else [])}
     assert "inpatient_claims" in feed_names
     assert "outpatient_claims" in feed_names
+    assert config.records is not None
 
     inpatient = next(f for f in config.records.feeds if f.name == "inpatient_claims")
     rel_types = {r.relationship_type for r in inpatient.relationships}

@@ -5,9 +5,8 @@ from __future__ import annotations
 import pytest
 
 from ingestion.models import DocumentFormat, SourceDocument, SourceType
-from ingestion.parsers import create_default_registry
 from ingestion.parsers.exceptions import UnsupportedFormatError
-from ingestion.parsers.registry import ParserRegistry
+from ingestion.parsers.registry import ParserRegistry, create_default_registry
 from ingestion.parsers.txt import TextParser
 
 

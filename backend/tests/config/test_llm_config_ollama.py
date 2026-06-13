@@ -45,4 +45,4 @@ def test_nested_fallback_chain_is_accepted() -> None:
 
 def test_unknown_provider_rejected() -> None:
     with pytest.raises(ValidationError):
-        LlmConfig(provider="vllm")  # not in the Literal
+        LlmConfig.model_validate({"provider": "vllm"})

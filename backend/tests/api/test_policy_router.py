@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import cast
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.app import create_app
@@ -28,10 +30,11 @@ def seed_policy_item(client: TestClient) -> Callable[..., str]:
     """
 
     def _seed(*, kb: str = "kb-1") -> str:
-        repository = getattr(client.app.state, "policy_repository", None)
+        app = cast(FastAPI, client.app)
+        repository = getattr(app.state, "policy_repository", None)
         if not isinstance(repository, InMemoryPolicyItemRepository):
             repository = InMemoryPolicyItemRepository()
-            client.app.state.policy_repository = repository
+            app.state.policy_repository = repository
         now = utc_now()
         item = PolicyItem(
             id=generate_id(),

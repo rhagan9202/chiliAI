@@ -13,8 +13,9 @@ from api._graph_entity_payload import build_graph_entity_detail
 from config.loader import load_config
 from config.schema import DomainConfig
 from events.adapters.in_memory import InMemoryEventBus
-from graph import InMemoryGraphRepository, create_graph_service
-from knowledgebases import InMemoryKnowledgeBaseRepository
+from graph.adapters.in_memory import InMemoryGraphRepository
+from graph.service import create_graph_service
+from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from shared.types import Entity, KnowledgeBase
 from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore

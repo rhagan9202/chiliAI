@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from threading import RLock
 
+from agent.adapters.protocols import StoreHealth, WorkflowRunPage
 from agent.exceptions import WorkflowRunNotFoundError
 from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowRunUpdate
 from shared.utils import utc_now
@@ -26,14 +27,6 @@ class InMemoryWorkflowRunStore:
     def save_run(self, run: WorkflowRun) -> WorkflowRun:
         with self._lock:
             previous = self._runs.get(run.workflow_id)
-            if previous is not None:
-                if previous.idempotency_key is not None:
-                    self._idempotency_index.pop(
-                        (previous.knowledge_base_id, previous.idempotency_key), None
-                    )
-                previous_correlation_id = previous.metadata.get("correlation_id")
-                if isinstance(previous_correlation_id, str):
-                    self._correlation_index.pop(previous_correlation_id, None)
             if run.idempotency_key is not None:
                 idempotency_key = (run.knowledge_base_id, run.idempotency_key)
                 indexed_workflow_id = self._idempotency_index.get(idempotency_key)
@@ -45,6 +38,22 @@ class InMemoryWorkflowRunStore:
                         "Workflow idempotency key already exists for this "
                         "knowledge base."
                     )
+            correlation_id = run.metadata.get("correlation_id")
+            if isinstance(correlation_id, str):
+                indexed_workflow_id = self._correlation_index.get(correlation_id)
+                if (
+                    indexed_workflow_id is not None
+                    and indexed_workflow_id != run.workflow_id
+                ):
+                    raise ValueError("Workflow correlation id already exists.")
+            if previous is not None:
+                if previous.idempotency_key is not None:
+                    self._idempotency_index.pop(
+                        (previous.knowledge_base_id, previous.idempotency_key), None
+                    )
+                previous_correlation_id = previous.metadata.get("correlation_id")
+                if isinstance(previous_correlation_id, str):
+                    self._correlation_index.pop(previous_correlation_id, None)
             stored = self._copy_run(run)
             self._runs[stored.workflow_id] = stored
             if stored.idempotency_key is not None:
@@ -70,7 +79,7 @@ class InMemoryWorkflowRunStore:
         status: WorkflowRunStatus | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> list[WorkflowRun]:
+    ) -> WorkflowRunPage:
         if limit < 0:
             raise ValueError("limit must be non-negative.")
         if offset < 0:
@@ -83,7 +92,14 @@ class InMemoryWorkflowRunStore:
                 and (status is None or run.status == status)
             ]
             runs.sort(key=lambda run: run.created_at, reverse=True)
-            return [self._copy_run(run) for run in runs[offset : offset + limit]]
+            page_runs = runs[offset : offset + limit + 1]
+            has_more = len(page_runs) > limit
+            items = [self._copy_run(run) for run in page_runs[:limit]]
+            return WorkflowRunPage(
+                items=items,
+                has_more=has_more,
+                next_offset=offset + len(items) if has_more else None,
+            )
 
     def update_run(self, workflow_id: str, update: WorkflowRunUpdate) -> WorkflowRun:
         with self._lock:
@@ -164,6 +180,9 @@ class InMemoryWorkflowRunStore:
             if run is None:
                 return None
             return self._copy_run(run)
+
+    def check_health(self) -> StoreHealth:
+        return StoreHealth(status="ok")
 
     @staticmethod
     def _copy_run(run: WorkflowRun) -> WorkflowRun:

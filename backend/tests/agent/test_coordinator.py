@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
+from types import SimpleNamespace
 
 from collections.abc import Sequence
 
@@ -32,6 +35,7 @@ from agent.models import (
     WorkflowStepState,
     WorkflowStepStatus,
 )
+from agent.policy import StagePolicy, StagePolicyRegistry
 from agent.workflow_tracking import WorkflowEventTracker
 from config.loader import load_config
 from config.schema import (
@@ -59,9 +63,12 @@ from events.protocols import DlqErrorInfo, EventDelivery
 from events.runtime import EventBusSettings
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import (
+    AnalysisFailedEvent,
     AnyEvent,
     ChunkedDocumentReference,
+    DocumentFailureReference,
     DocumentsChunkedEvent,
+    DocumentsFailedEvent,
     DocumentsParsedEvent,
     EmbeddingsCompleteDocumentReference,
     EmbeddingsCompleteEvent,
@@ -101,6 +108,10 @@ from vectorstore.adapters.in_memory import InMemoryVectorStore
 
 def test_worker_event_types_include_kb_ready_for_workflow_tracking() -> None:
     assert "kb.ready" in WORKER_EVENT_TYPES
+
+
+def test_worker_event_types_include_documents_failed_for_workflow_tracking() -> None:
+    assert "documents.failed" in WORKER_EVENT_TYPES
 
 
 def test_drain_ingestion_events_completes_kb_ready_workflow() -> None:
@@ -161,6 +172,65 @@ def test_drain_ingestion_events_completes_kb_ready_workflow() -> None:
     assert processed == 0
     assert run.status is WorkflowRunStatus.COMPLETED
     assert run.steps[0].status is WorkflowStepStatus.COMPLETED
+
+
+def test_drain_ingestion_events_marks_documents_failed_workflow_failed() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    workflow_run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-doc-failed",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[WorkflowStepState(step_name="parse")],
+                metadata={"correlation_id": "corr-doc-failed"},
+            )
+        ]
+    )
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+    event_bus.publish(
+        DocumentsFailedEvent(
+            correlation_id="corr-doc-failed",
+            documents=[
+                DocumentFailureReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    error_message="parse failed",
+                )
+            ],
+        )
+    )
+
+    processed = asyncio.run(drain_ingestion_events(
+        event_bus,
+        IngestionService(
+            DocumentParsingOrchestrator(
+                create_default_registry(),
+                fetcher=HttpxRemoteDocumentFetcher(),
+            ),
+            object_store=object_store,
+            event_bus=event_bus,
+        ),
+        create_document_chunker(),
+        create_document_extractor([]),
+        create_extraction_validator([], []),
+        graph_service,
+        object_store,
+        consumer_group="test-workers",
+        consumer_name="worker-1",
+        workflow_tracker=WorkflowEventTracker(workflow_run_store),
+    ))
+
+    run = workflow_run_store.get_run("workflow-doc-failed")
+    assert processed == 0
+    assert run.status is WorkflowRunStatus.FAILED
+    assert run.steps[0].status is WorkflowStepStatus.FAILED
 
 
 
@@ -1864,6 +1934,77 @@ def test_run_handler_with_retry_routes_to_dlq_after_exhaustion() -> None:
     assert "transient failure" in entry.error.error_message
 
 
+def test_run_handler_with_retry_does_not_retry_fatal_stage_exception() -> None:
+    class FatalStageError(RuntimeError):
+        pass
+
+    event_bus = InMemoryEventBus()
+    calls = 0
+
+    def handler() -> int:
+        nonlocal calls
+        calls += 1
+        raise FatalStageError("fatal stage failure")
+
+    result = asyncio.run(
+        run_handler_with_retry(
+            handler,
+            event=KnowledgeBaseCreatedEvent(
+                correlation_id="corr-fatal", knowledge_base_id="kb-1"
+            ),
+            event_bus=event_bus,
+            retry_policy=RetryPolicy(max_retries=3, base_delay_seconds=0.0),
+            stage_policy=StagePolicy(
+                retry_policy=RetryPolicy(max_retries=3, base_delay_seconds=0.0),
+                fatal_exception_types=(FatalStageError,),
+            ),
+            sleep=_instant_sleep,
+        )
+    )
+
+    assert result == 0
+    assert calls == 1
+    assert len(event_bus.dlq_entries) == 1
+    assert event_bus.dlq_entries[0].error.retry_count == 0
+
+
+def test_run_handler_with_retry_routes_timed_out_stage_attempt_to_dlq_without_retry() -> None:
+    event_bus = InMemoryEventBus()
+    calls = 0
+    lock = threading.Lock()
+
+    def handler() -> int:
+        nonlocal calls
+        with lock:
+            calls += 1
+        time.sleep(0.05)
+        return 99
+
+    result = asyncio.run(
+        run_handler_with_retry(
+            handler,
+            event=KnowledgeBaseCreatedEvent(
+                correlation_id="corr-timeout", knowledge_base_id="kb-1"
+            ),
+            event_bus=event_bus,
+            retry_policy=RetryPolicy(max_retries=0, base_delay_seconds=0.0),
+            stage_policy=StagePolicy(
+                retry_policy=RetryPolicy(max_retries=1, base_delay_seconds=0.0),
+                timeout_seconds=0.01,
+            ),
+            sleep=_instant_sleep,
+        )
+    )
+
+    assert result == 0
+    assert calls == 1
+    assert len(event_bus.dlq_entries) == 1
+    entry = event_bus.dlq_entries[0]
+    assert entry.event.correlation_id == "corr-timeout"
+    assert entry.error.retry_count == 0
+    assert "TimeoutError" in entry.error.traceback
+
+
 def test_run_handler_with_retry_runs_handler_off_event_loop_thread() -> None:
     """The handler is offloaded to a worker thread so the event loop (and the
     /health server + signal handlers) stays responsive during a long stage."""
@@ -2045,7 +2186,7 @@ def test_drain_ingestion_events_marks_records_workflow_failed_after_retry_exhaus
         sleep=_instant_sleep,
     ))
 
-    runs = workflow_run_store.list_runs()
+    runs = workflow_run_store.list_runs().items
     assert processed == 0
     assert len(event_bus.dlq_entries) == 1
     assert len(runs) == 1
@@ -3161,6 +3302,154 @@ def test_analytics_handler_skips_missing_gnn_snapshot_without_failing_flow_a() -
     assert failures == []
 
 
+def test_handle_event_emits_analysis_failed_when_analytics_fanout_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from typing import cast
+
+    from analytics.explainability.service import ExplainabilityService
+    from analytics.gnn.service import GnnService
+    from analytics.risk.service import RiskService
+    from events.types import EmbeddingsCompleteEvent
+
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    embeddings_service = _FakeEmbeddingsService()
+    graph_event = _graph_updated_event_with_valid_entity(
+        knowledge_base_id="kb-1",
+        entity_id="provider-1",
+        object_store=object_store,
+    ).model_copy(update={"correlation_id": "corr-analytics-fanout"})
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+    service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(),
+            fetcher=HttpxRemoteDocumentFetcher(),
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    def _raise_analytics_fanout(*args: object, **kwargs: object) -> int:
+        raise RuntimeError("fanout unavailable")
+
+    monkeypatch.setattr(
+        coordinator,
+        "handle_graph_updated_for_analytics",
+        _raise_analytics_fanout,
+    )
+
+    processed = handle_event(
+        EventDelivery(event=graph_event),
+        service,
+        document_chunker=create_document_chunker(),
+        document_extractor=create_document_extractor([]),
+        extraction_validator=create_extraction_validator([], []),
+        graph_service=graph_service,
+        object_store=object_store,
+        event_bus=event_bus,
+        embeddings_service=embeddings_service,
+        gnn_service=cast(GnnService, object()),
+        risk_service=cast(RiskService, object()),
+        explainability_service=cast(ExplainabilityService, object()),
+    )
+
+    assert processed == 1
+    embedding_events = [
+        e for e in event_bus.published_events if isinstance(e, EmbeddingsCompleteEvent)
+    ]
+    assert len(embedding_events) == 1
+    failures = [
+        e for e in event_bus.published_events if isinstance(e, AnalysisFailedEvent)
+    ]
+    assert len(failures) == 1
+    assert failures[0].correlation_id == "corr-analytics-fanout"
+    assert failures[0].knowledge_base_id == "kb-1"
+    assert failures[0].entity_id == "provider-1"
+    assert failures[0].stage == "analytics_fanout"
+
+
+def test_handle_event_propagates_analytics_fanout_failure_publish_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from typing import cast
+
+    from analytics.explainability.service import ExplainabilityService
+    from analytics.gnn.service import GnnService
+    from analytics.risk.service import RiskService
+    from events.types import EmbeddingsCompleteEvent
+
+    class _AnalysisFailedPublishError(RuntimeError):
+        pass
+
+    class _AnalysisFailedPublishFailingEventBus(InMemoryEventBus):
+        def publish(self, event: AnyEvent) -> None:
+            if isinstance(event, AnalysisFailedEvent):
+                raise _AnalysisFailedPublishError("analysis.failed publish failed")
+            super().publish(event)
+
+    event_bus = _AnalysisFailedPublishFailingEventBus()
+    object_store = InMemoryObjectStore()
+    embeddings_service = _FakeEmbeddingsService()
+    graph_event = _graph_updated_event_with_valid_entity(
+        knowledge_base_id="kb-1",
+        entity_id="provider-1",
+        object_store=object_store,
+    ).model_copy(update={"correlation_id": "corr-analytics-fanout-publish-fails"})
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+    service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(),
+            fetcher=HttpxRemoteDocumentFetcher(),
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    def _raise_analytics_fanout(*args: object, **kwargs: object) -> int:
+        raise RuntimeError("fanout unavailable")
+
+    monkeypatch.setattr(
+        coordinator,
+        "handle_graph_updated_for_analytics",
+        _raise_analytics_fanout,
+    )
+
+    with pytest.raises(
+        _AnalysisFailedPublishError, match="analysis.failed publish failed"
+    ):
+        handle_event(
+            EventDelivery(event=graph_event),
+            service,
+            document_chunker=create_document_chunker(),
+            document_extractor=create_document_extractor([]),
+            extraction_validator=create_extraction_validator([], []),
+            graph_service=graph_service,
+            object_store=object_store,
+            event_bus=event_bus,
+            embeddings_service=embeddings_service,
+            gnn_service=cast(GnnService, object()),
+            risk_service=cast(RiskService, object()),
+            explainability_service=cast(ExplainabilityService, object()),
+        )
+
+    embedding_events = [
+        e for e in event_bus.published_events if isinstance(e, EmbeddingsCompleteEvent)
+    ]
+    assert len(embedding_events) == 1
+    assert not any(
+        isinstance(e, AnalysisFailedEvent) for e in event_bus.published_events
+    )
+
+
 # ---------------------------------------------------------------------------
 # E8-S07 — Monitoring stream consumer
 # ---------------------------------------------------------------------------
@@ -3675,3 +3964,67 @@ def test_run_worker_survives_transient_drain_error(
     asyncio.run(_run())
     # The loop kept invoking drain across repeated failures rather than crashing.
     assert calls["n"] >= 2
+
+
+def test_run_worker_passes_configured_stage_policy_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent.coordinator import run_worker
+    from agent.models import HealthSettings
+
+    monkeypatch.setenv(
+        "CHILI_STAGE_POLICY_JSON",
+        '{"documents.parsed": {"max_retries": 1, "timeout_seconds": 0.5}}',
+    )
+    monkeypatch.setenv("CHILI_WORKFLOW_STALE_MAX_AGE_SECONDS", "0")
+    monkeypatch.setattr(
+        "agent.coordinator.build_worker_dependencies",
+        lambda: SimpleNamespace(
+            workflow_tracker=SimpleNamespace(reconcile_stale_runs=lambda **_: 0),
+            event_settings=SimpleNamespace(backend="in-memory"),
+        ),
+    )
+
+    async def _skip_health_server(_state: object) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "agent.coordinator.start_health_server_safely",
+        _skip_health_server,
+    )
+
+    captured: dict[str, StagePolicyRegistry] = {}
+
+    async def _drain_once(*_args: object, **kwargs: object) -> int:
+        registry = kwargs["stage_policy_registry"]
+        assert isinstance(registry, StagePolicyRegistry)
+        captured["stage_policy_registry"] = registry
+        task = asyncio.current_task()
+        assert task is not None
+        task.cancel()
+        return 0
+
+    monkeypatch.setattr("agent.coordinator._drain_once", _drain_once)
+
+    async def _run() -> None:
+        task = asyncio.create_task(
+            run_worker(
+                retry_policy=RetryPolicy(max_retries=5, base_delay_seconds=0.125),
+                health_settings=HealthSettings(host="127.0.0.1", port=1),
+            )
+        )
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(_run())
+
+    registry = captured["stage_policy_registry"]
+    policy = registry.get("documents.parsed")
+    assert policy.retry_policy.max_retries == 1
+    assert policy.timeout_seconds == 0.5
+    fallback_policy = registry.get("graph.updated")
+    assert fallback_policy.retry_policy.max_retries == 5
+    assert fallback_policy.retry_policy.base_delay_seconds == 0.125
+    assert fallback_policy.timeout_seconds is None

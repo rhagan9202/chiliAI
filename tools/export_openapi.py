@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import sys
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, Callable, NoReturn, Protocol, cast
+
+from fastapi import FastAPI
 
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
 DEFAULT_CONFIG = BACKEND / "config" / "defaults" / "medicare_fraud.yaml"
+
+
+class _JsonSchemaModel(Protocol):
+    @classmethod
+    def model_json_schema(cls, *, ref_template: str) -> dict[str, Any]: ...
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -49,11 +57,17 @@ def main(argv: list[str] | None = None) -> int:
     os.environ["CHILI_ENV"] = "local"
     os.environ["CHILI_CONFIG_PATH"] = str(config_path)
 
-    from api.app import create_app
-    from config.schema import DomainConfig
+    create_app = cast(
+        Callable[[], FastAPI],
+        getattr(importlib.import_module("api.app"), "create_app"),
+    )
+    domain_config_type = cast(
+        type[_JsonSchemaModel],
+        getattr(importlib.import_module("config.schema"), "DomainConfig"),
+    )
 
     schema = create_app().openapi()
-    domain_config_schema = DomainConfig.model_json_schema(
+    domain_config_schema = domain_config_type.model_json_schema(
         ref_template="#/components/schemas/{model}"
     )
     domain_config_defs = domain_config_schema.pop("$defs", {})

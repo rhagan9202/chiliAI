@@ -15,7 +15,8 @@ from api._kb_projection import (
     document_status_for_knowledge_base,
     project_knowledge_base,
 )
-from knowledgebases import DocumentRecord, KnowledgeBaseRepository
+from knowledgebases.models import DocumentRecord
+from knowledgebases.protocols import KnowledgeBaseRepository
 from api._kb_cleanup import (
     KbDeletionStores,
     get_kb_deletion_stores,

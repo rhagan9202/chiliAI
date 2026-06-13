@@ -76,6 +76,7 @@ SYSTEM_METADATA_KEYS: frozenset[str] = frozenset(
     {
         "correlation_id",
         "publish_error",
+        "workflow_started_publish_error",
         "source_event_type",
         "last_event_type",
         "last_error",

@@ -12,9 +12,10 @@ from api.dependencies import (
     get_knowledge_base_repository,
 )
 from events.adapters.in_memory import InMemoryEventBus
-from graph import InMemoryGraphRepository, create_graph_service
+from graph.adapters.in_memory import InMemoryGraphRepository
+from graph.service import create_graph_service
 from graph.protocols import GraphServiceProtocol
-from knowledgebases import InMemoryKnowledgeBaseRepository
+from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from knowledgebases.protocols import KnowledgeBaseRepository
 from shared.types import Alert, Entity, KnowledgeBase
 from shared.utils import utc_now

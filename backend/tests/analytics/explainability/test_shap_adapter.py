@@ -7,6 +7,7 @@ skip cleanly when either is missing.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 
 import pytest
 
@@ -24,6 +25,7 @@ linear_model = pytest.importorskip("sklearn.linear_model")
 from analytics.explainability.adapters.shap_adapter import (  # noqa: E402
     ShapAlertInput,
     ShapExplainabilityContextSource,
+    ShapModelProtocol,
 )
 
 
@@ -40,7 +42,7 @@ def _build_alert(alert_id: str = "alert-1") -> Alert:
 
 
 def _train_logistic_model() -> (
-    tuple[object, list[list[float]], list[str], list[list[float]]]
+    tuple[ShapModelProtocol, list[list[float]], list[str], list[list[float]]]
 ):
     rng = np.random.default_rng(seed=42)
     feature_names = ["claim_count", "avg_amount", "denial_rate", "tenure_days"]
@@ -53,7 +55,7 @@ def _train_logistic_model() -> (
     model.fit(feature_matrix, labels)
     sample_features = [[0.7, -0.3, 0.4, 0.1]]
     background = feature_matrix.tolist()
-    return model, sample_features, feature_names, background
+    return cast(ShapModelProtocol, model), sample_features, feature_names, background
 
 
 def test_shap_context_source_produces_explanation_items() -> None:
@@ -215,7 +217,7 @@ def test_resolve_callable_target_raises_when_no_callable_method() -> None:
         predict_proba = None
 
     with pytest.raises(ExplainabilityConfigurationError):
-        _resolve_callable_target(_UncallableModel())
+        _resolve_callable_target(cast(ShapModelProtocol, _UncallableModel()))
 
 
 def test_invoke_explainer_falls_back_to_legacy_shap_values() -> None:

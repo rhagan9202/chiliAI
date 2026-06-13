@@ -8,6 +8,7 @@ import pytest
 
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.exceptions import (
+    AgentConfigurationError,
     AgentStateStoreError,
     IdempotencyKeyConflictError,
     WorkflowAlreadyTerminalError,
@@ -121,22 +122,39 @@ def test_agent_service_persists_queued_state_before_running() -> None:
     assert run_store.get_run(response.workflow_id).status is WorkflowRunStatus.RUNNING
 
 
-def test_agent_service_records_failed_run_when_publish_fails() -> None:
+def test_agent_service_keeps_run_running_when_started_publish_fails() -> None:
     run_store = InMemoryWorkflowRunStore()
     service = create_agent_service(run_store, event_bus=_FailingEventBus())
 
-    with pytest.raises(AgentStateStoreError):
+    response = service.start_workflow(
+        WorkflowSubmissionRequest(
+            knowledge_base_id="kb-1",
+            trigger_event_type="documents.uploaded",
+            requested_steps=["parse"],
+        )
+    )
+
+    [stored_run] = run_store.list_runs().items
+    assert response.status is WorkflowRunStatus.RUNNING
+    assert stored_run.status is WorkflowRunStatus.RUNNING
+    assert stored_run.metadata["workflow_started_publish_error"] == "publish_failed"
+    assert "publish unavailable" not in stored_run.metadata.values()
+
+
+def test_agent_service_rejects_unknown_requested_step_name() -> None:
+    service, run_store, event_bus = _service()
+
+    with pytest.raises(AgentConfigurationError, match="Unknown workflow step"):
         service.start_workflow(
             WorkflowSubmissionRequest(
                 knowledge_base_id="kb-1",
                 trigger_event_type="documents.uploaded",
-                requested_steps=["parse"],
+                requested_steps=["parse", "invented_step"],
             )
         )
 
-    [stored_run] = run_store.list_runs()
-    assert stored_run.status is WorkflowRunStatus.FAILED
-    assert stored_run.metadata["publish_error"] == "publish unavailable"
+    assert run_store.list_runs().items == []
+    assert event_bus.published_events == []
 
 
 def test_get_workflow_status_returns_persisted_run() -> None:
@@ -160,7 +178,9 @@ def test_list_workflows_returns_runs_newest_first() -> None:
 
     listed = service.list_workflows()
 
-    assert [run.workflow_id for run in listed] == ["newer", "older"]
+    assert [run.workflow_id for run in listed.items] == ["newer", "older"]
+    assert listed.has_more is False
+    assert listed.next_offset is None
 
 
 def test_list_workflows_filters_by_knowledge_base_and_status() -> None:
@@ -180,7 +200,7 @@ def test_list_workflows_filters_by_knowledge_base_and_status() -> None:
         knowledge_base_id="kb-1", status=WorkflowRunStatus.COMPLETED
     )
 
-    assert [run.workflow_id for run in listed] == ["target"]
+    assert [run.workflow_id for run in listed.items] == ["target"]
 
 
 def test_list_workflows_honours_limit_and_offset() -> None:
@@ -196,7 +216,9 @@ def test_list_workflows_honours_limit_and_offset() -> None:
     page = service.list_workflows(limit=2, offset=1)
 
     # newest-first: w-3, w-2, w-1, w-0 → offset 1 limit 2 → w-2, w-1
-    assert [run.workflow_id for run in page] == ["w-2", "w-1"]
+    assert [run.workflow_id for run in page.items] == ["w-2", "w-1"]
+    assert page.has_more is True
+    assert page.next_offset == 3
 
 
 def test_cancel_workflow_transitions_running_to_cancelled() -> None:
@@ -259,6 +281,7 @@ def _submit(
     requested_steps: list[str] | None = None,
     metadata: dict[str, str | int | float | bool] | None = None,
     idempotency_key: str | None = None,
+    correlation_id: str | None = None,
 ) -> WorkflowSubmissionRequest:
     return WorkflowSubmissionRequest(
         knowledge_base_id=knowledge_base_id,
@@ -266,6 +289,7 @@ def _submit(
         requested_steps=requested_steps or ["parse", "chunk"],
         metadata=metadata or {"priority": "high"},
         idempotency_key=idempotency_key,
+        correlation_id=correlation_id,
     )
 
 
@@ -284,7 +308,7 @@ def test_start_workflow_with_repeated_key_returns_original_response() -> None:
     second = service.start_workflow(_submit(idempotency_key="abc-123"))
 
     assert second.workflow_id == first.workflow_id
-    assert len(run_store.list_runs()) == 1
+    assert len(run_store.list_runs().items) == 1
     # Only one StartedEvent should have been published — retries must not re-fire it.
     started_events = [
         e for e in event_bus.published_events if isinstance(e, AgentWorkflowStartedEvent)
@@ -346,7 +370,7 @@ def test_start_workflow_same_key_under_different_kb_creates_independent_runs() -
     )
 
     assert first.workflow_id != second.workflow_id
-    assert len(run_store.list_runs()) == 2
+    assert len(run_store.list_runs().items) == 2
     started_events = [
         e for e in event_bus.published_events if isinstance(e, AgentWorkflowStartedEvent)
     ]
@@ -381,7 +405,7 @@ def test_start_workflow_adopts_existing_run_for_same_correlation() -> None:
         knowledge_base_id="kb-1",
         trigger_event_type="documents.uploaded",
         status=WorkflowRunStatus.RUNNING,
-        steps=[WorkflowStepState(step_name="parse")],
+        steps=[WorkflowStepState(step_name="parse"), WorkflowStepState(step_name="chunk")],
         metadata={"correlation_id": "corr-pre", "source_event_type": "documents.uploaded"},
     )
     service, run_store, event_bus = _service(runs=[existing])
@@ -396,10 +420,114 @@ def test_start_workflow_adopts_existing_run_for_same_correlation() -> None:
     )
 
     assert response.workflow_id == "fallback-1"
-    assert len(run_store.list_runs()) == 1
+    assert len(run_store.list_runs().items) == 1
     assert [
         e for e in event_bus.published_events if isinstance(e, AgentWorkflowStartedEvent)
     ] == []
+
+
+def test_start_workflow_rejects_correlation_reuse_for_different_knowledge_base() -> None:
+    service, _, _ = _service(
+        runs=[
+            WorkflowRun(
+                workflow_id="fallback-1",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[
+                    WorkflowStepState(step_name="parse"),
+                    WorkflowStepState(step_name="chunk"),
+                ],
+                metadata={"correlation_id": "corr-pre"},
+            )
+        ]
+    )
+
+    with pytest.raises(AgentConfigurationError, match="knowledge_base_id"):
+        service.start_workflow(_submit(knowledge_base_id="kb-2", correlation_id="corr-pre"))
+
+
+def test_start_workflow_rejects_correlation_reuse_for_different_trigger_event_type() -> None:
+    service, _, _ = _service(
+        runs=[
+            WorkflowRun(
+                workflow_id="fallback-1",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[
+                    WorkflowStepState(step_name="parse"),
+                    WorkflowStepState(step_name="chunk"),
+                ],
+                metadata={"correlation_id": "corr-pre"},
+            )
+        ]
+    )
+
+    with pytest.raises(AgentConfigurationError, match="trigger_event_type"):
+        service.start_workflow(
+            _submit(trigger_event_type="documents.deleted", correlation_id="corr-pre")
+        )
+
+
+def test_start_workflow_rejects_correlation_reuse_for_different_idempotency_key() -> None:
+    service, _, _ = _service(
+        runs=[
+            WorkflowRun(
+                workflow_id="fallback-1",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[
+                    WorkflowStepState(step_name="parse"),
+                    WorkflowStepState(step_name="chunk"),
+                ],
+                metadata={"correlation_id": "corr-pre"},
+                idempotency_key="original-key",
+            )
+        ]
+    )
+
+    with pytest.raises(AgentConfigurationError, match="idempotency_key"):
+        service.start_workflow(
+            _submit(idempotency_key="replacement-key", correlation_id="corr-pre")
+        )
+
+
+def test_start_workflow_rejects_correlation_reuse_for_different_requested_steps() -> None:
+    service, _, _ = _service(
+        runs=[
+            WorkflowRun(
+                workflow_id="fallback-1",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.RUNNING,
+                steps=[
+                    WorkflowStepState(step_name="parse"),
+                    WorkflowStepState(step_name="chunk"),
+                ],
+                metadata={"correlation_id": "corr-pre"},
+            )
+        ]
+    )
+
+    with pytest.raises(AgentConfigurationError, match="requested_steps"):
+        service.start_workflow(
+            _submit(requested_steps=["chunk", "parse"], correlation_id="corr-pre")
+        )
+
+
+def test_start_workflow_checks_idempotency_key_before_correlation_conflict() -> None:
+    service, _, _ = _service()
+    first = service.start_workflow(
+        _submit(idempotency_key="abc-123", correlation_id="corr-original")
+    )
+
+    second = service.start_workflow(
+        _submit(idempotency_key="abc-123", correlation_id="corr-different")
+    )
+
+    assert second.workflow_id == first.workflow_id
 
 
 def test_idempotency_match_ignores_tracker_written_metadata() -> None:

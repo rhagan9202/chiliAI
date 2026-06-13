@@ -13,7 +13,7 @@ time. If `shap` is missing when the adapter is constructed, an
 from __future__ import annotations
 
 import importlib
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Protocol, cast
 
 from analytics.explainability.exceptions import (
@@ -194,10 +194,7 @@ def _resolve_background(
     return numpy_module.asarray(background, dtype=float)
 
 
-def _invoke_explainer(
-    explainer: ShapExplainerProtocol,
-    features: Sequence[Sequence[float]],
-) -> object:
+def _invoke_explainer(explainer: object, features: Sequence[Sequence[float]]) -> object:
     """Invoke a SHAP explainer using the new callable interface or legacy API."""
 
     try:
@@ -217,7 +214,7 @@ def _invoke_explainer(
     )
 
 
-def _load_shap_explainer_factory() -> object:
+def _load_shap_explainer_factory() -> Callable[..., object]:
     try:
         shap_module = importlib.import_module("shap")
     except ImportError as exc:
@@ -232,7 +229,7 @@ def _load_shap_explainer_factory() -> object:
         )
     if not callable(explainer):
         raise ExplainabilityConfigurationError("`shap.Explainer` is not callable.")
-    return explainer
+    return cast(Callable[..., object], explainer)
 
 
 def _aggregate_shap_values(raw: object) -> list[float]:

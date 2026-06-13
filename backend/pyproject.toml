@@ -94,7 +94,7 @@ pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
-extraPaths = [".."]
+extraPaths = [".", ".."]
 include = [
     "agent",
     "conversations",

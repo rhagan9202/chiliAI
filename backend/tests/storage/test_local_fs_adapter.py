@@ -339,5 +339,5 @@ def test_local_fs_object_store_reserved_sidecar_suffix_cannot_corrupt_metadata(
 
 
 def test_local_fs_object_store_exports_are_available() -> None:
-    assert storage.LocalFsObjectStore is LocalFsObjectStore
-    assert storage.adapters.LocalFsObjectStore is LocalFsObjectStore
+    assert getattr(storage, "LocalFsObjectStore") is LocalFsObjectStore
+    assert getattr(storage.adapters, "LocalFsObjectStore") is LocalFsObjectStore

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
+from agent.adapters.protocols import WorkflowRunPage
 from agent.models import (
     WorkflowRun,
     WorkflowRunStatus,
@@ -15,7 +16,8 @@ from agent.models import (
 from agent.service import create_agent_service
 from agent.service_models import WorkflowSubmissionRequest
 from events.adapters.in_memory import InMemoryEventBus
-from agent.workflow_tracking import WorkflowEventTracker
+from agent.definitions import default_workflow_registry
+from agent.workflow_tracking import WorkflowEventTracker, default_steps_for_trigger
 from events.types import (
     AgentWorkflowStartedEvent,
     DocumentFailureReference,
@@ -71,13 +73,22 @@ def test_tracker_marks_existing_run_step_running_then_completed() -> None:
     assert completed_step.steps[0].status is WorkflowStepStatus.COMPLETED
 
 
+def test_default_steps_for_trigger_matches_registered_default_plan() -> None:
+    registry = default_workflow_registry()
+
+    assert default_steps_for_trigger("documents.uploaded") == registry.default_step_names()
+    assert default_steps_for_trigger("documents.parsed") == registry.default_step_names()
+    assert default_steps_for_trigger("records.ingested") == ["records_ingest"]
+    assert default_steps_for_trigger("unknown.event") == registry.default_step_names()
+
+
 def test_tracker_creates_fallback_run_for_untracked_pipeline_event() -> None:
     run_store = InMemoryWorkflowRunStore()
     tracker = WorkflowEventTracker(run_store)
 
     assert tracker.begin_event(_uploaded_event(correlation_id="new-corr")) is True
 
-    [run] = run_store.list_runs()
+    [run] = run_store.list_runs().items
     assert run.knowledge_base_id == "kb-1"
     assert run.metadata["correlation_id"] == "new-corr"
     assert run.steps[0].step_name == "parse"
@@ -103,7 +114,7 @@ def test_tracker_uses_service_published_correlation_without_fallback() -> None:
         _uploaded_event(correlation_id=started_event.correlation_id)
     ) is True
 
-    [run] = run_store.list_runs()
+    [run] = run_store.list_runs().items
     assert run.workflow_id == response.workflow_id
     assert run.metadata["correlation_id"] == started_event.correlation_id
     assert run.status is WorkflowRunStatus.RUNNING
@@ -295,7 +306,7 @@ def test_tracker_creates_completed_records_workflow_for_untracked_event() -> Non
     assert tracker.begin_event(event) is True
     tracker.complete_event(event)
 
-    [run] = run_store.list_runs()
+    [run] = run_store.list_runs().items
     assert run.knowledge_base_id == "kb-1"
     assert run.status is WorkflowRunStatus.COMPLETED
     assert run.trigger_event_type == "records.ingested"
@@ -542,10 +553,14 @@ def test_reconcile_stale_runs_does_not_overwrite_completed_run_after_listing() -
             status: WorkflowRunStatus | None = None,
             limit: int = 50,
             offset: int = 0,
-        ) -> list[WorkflowRun]:
+        ) -> WorkflowRunPage:
             if status is WorkflowRunStatus.RUNNING and offset == 0:
-                return [listed_run]
-            return []
+                return WorkflowRunPage(
+                    items=[listed_run],
+                    has_more=False,
+                    next_offset=None,
+                )
+            return WorkflowRunPage(items=[], has_more=False, next_offset=None)
 
         def get_run(self, workflow_id: str) -> WorkflowRun:
             assert workflow_id == "workflow-raced"
@@ -610,5 +625,6 @@ def test_reconcile_stale_runs_pages_through_all_stale_workflows() -> None:
 
     assert reconciled == 3
     assert all(
-        run.status is WorkflowRunStatus.FAILED for run in run_store.list_runs(limit=10)
+        run.status is WorkflowRunStatus.FAILED
+        for run in run_store.list_runs(limit=10).items
     )

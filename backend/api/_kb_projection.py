@@ -9,7 +9,8 @@ consistent after API reloads.
 
 from __future__ import annotations
 
-from knowledgebases import DocumentRecord, KnowledgeBaseRepository
+from knowledgebases.models import DocumentRecord
+from knowledgebases.protocols import KnowledgeBaseRepository
 from graph.models import GraphMetrics
 from graph.protocols import GraphServiceProtocol
 from shared.types import KnowledgeBase

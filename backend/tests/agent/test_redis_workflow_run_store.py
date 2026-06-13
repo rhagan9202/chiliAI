@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 
 import pytest
+from redis.exceptions import RedisError
 
 from agent.adapters.redis_store import RedisWorkflowRunStore
 from agent.exceptions import WorkflowRunNotFoundError
@@ -14,12 +16,22 @@ from agent.models import (
     WorkflowRunUpdate,
     WorkflowStepState,
 )
+from shared.utils import generate_id
 
 
 class _FakeRedis:
     def __init__(self) -> None:
         self.values: dict[str, str] = {}
         self.sorted_sets: dict[str, dict[str, float]] = {}
+        self.zrevrange_calls: list[tuple[str, int, int]] = []
+        self.ping_error: RedisError | None = None
+        self.ping_count = 0
+
+    def ping(self) -> bool:
+        self.ping_count += 1
+        if self.ping_error is not None:
+            raise self.ping_error
+        return True
 
     def set(self, key: str, value: str, nx: bool = False) -> bool:
         if nx and key in self.values:
@@ -45,6 +57,7 @@ class _FakeRedis:
         return added
 
     def zrevrange(self, key: str, start: int, end: int) -> list[str]:
+        self.zrevrange_calls.append((key, start, end))
         members = sorted(
             self.sorted_sets.get(key, {}),
             key=lambda member: self.sorted_sets[key][member],
@@ -138,6 +151,82 @@ def test_redis_workflow_run_store_saves_and_loads_detached_run() -> None:
     assert "mutated" not in loaded.metadata
 
 
+def test_redis_workflow_run_store_health_pings_client() -> None:
+    client = _FakeRedis()
+    store = RedisWorkflowRunStore(
+        redis_url="redis://unused",
+        client=client,  # pyright: ignore[reportArgumentType]
+    )
+
+    health = store.check_health()
+
+    assert health.status == "ok"
+    assert health.latency_ms is not None
+    assert health.latency_ms >= 0
+    assert health.error is None
+    assert client.ping_count == 1
+
+
+def test_redis_workflow_run_store_health_reports_redis_error() -> None:
+    client = _FakeRedis()
+    client.ping_error = RedisError("redis unavailable")
+    store = RedisWorkflowRunStore(
+        redis_url="redis://unused",
+        client=client,  # pyright: ignore[reportArgumentType]
+    )
+
+    health = store.check_health()
+
+    assert health.status == "unhealthy"
+    assert health.latency_ms is not None
+    assert health.latency_ms >= 0
+    assert health.error == "redis unavailable"
+
+
+def test_redis_workflow_run_store_configures_default_timeouts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    client = _FakeRedis()
+
+    def from_url(redis_url: str, **kwargs: object) -> _FakeRedis:
+        captured["redis_url"] = redis_url
+        captured.update(kwargs)
+        return client
+
+    monkeypatch.setattr("agent.adapters.redis_store.Redis.from_url", from_url)
+
+    store = RedisWorkflowRunStore(redis_url="redis://localhost:6379/0")
+
+    assert store.check_health().status == "ok"
+    assert captured == {
+        "redis_url": "redis://localhost:6379/0",
+        "decode_responses": True,
+        "socket_connect_timeout": 2.0,
+        "socket_timeout": 2.0,
+        "retry_on_timeout": True,
+    }
+
+
+def test_redis_workflow_run_store_uses_injected_client_without_recreating(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def from_url(redis_url: str, **kwargs: object) -> _FakeRedis:
+        raise AssertionError("Redis.from_url should not be called")
+
+    monkeypatch.setattr("agent.adapters.redis_store.Redis.from_url", from_url)
+
+    store = RedisWorkflowRunStore(
+        redis_url="redis://unused",
+        client=_FakeRedis(),  # pyright: ignore[reportArgumentType]
+        socket_connect_timeout=9.0,
+        socket_timeout=8.0,
+        retry_on_timeout=False,
+    )
+
+    assert store.check_health().status == "ok"
+
+
 def test_redis_workflow_run_store_lists_newest_first_and_filters() -> None:
     store = _store()
     older = _run(
@@ -155,9 +244,145 @@ def test_redis_workflow_run_store_lists_newest_first_and_filters() -> None:
     store.save_run(older)
     store.save_run(newer)
 
-    assert [run.workflow_id for run in store.list_runs()] == ["newer", "older"]
-    assert [run.workflow_id for run in store.list_runs(knowledge_base_id="kb-1")] == ["older"]
-    assert [run.workflow_id for run in store.list_runs(status=WorkflowRunStatus.COMPLETED)] == ["newer"]
+    assert [run.workflow_id for run in store.list_runs().items] == ["newer", "older"]
+    assert [run.workflow_id for run in store.list_runs(knowledge_base_id="kb-1").items] == ["older"]
+    assert [run.workflow_id for run in store.list_runs(status=WorkflowRunStatus.COMPLETED).items] == ["newer"]
+
+
+def test_redis_workflow_run_store_returns_page_metadata() -> None:
+    store = _store()
+    for index in range(3):
+        store.save_run(
+            _run(
+                workflow_id=f"w-{index}",
+                created_at=datetime(2026, 1, index + 1, tzinfo=timezone.utc),
+            )
+        )
+
+    page = store.list_runs(limit=2, offset=0)
+
+    assert [run.workflow_id for run in page.items] == ["w-2", "w-1"]
+    assert page.has_more is True
+    assert page.next_offset == 2
+
+
+def test_redis_workflow_run_store_scans_past_stale_index_entries() -> None:
+    client = _FakeRedis()
+    store = RedisWorkflowRunStore(
+        redis_url="redis://unused",
+        client=client,  # pyright: ignore[reportArgumentType]
+    )
+    store.save_run(
+        _run(
+            workflow_id="valid-new",
+            created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+        )
+    )
+    store.save_run(
+        _run(
+            workflow_id="valid-old",
+            created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        )
+    )
+    index_key = "chiliai:workflow:index:created_at"
+    client.zadd(
+        index_key,
+        {"missing-newest": 9_999_999_999.0, "missing-next": 9_999_999_998.0},
+    )
+
+    page = store.list_runs(limit=1)
+
+    assert [run.workflow_id for run in page.items] == ["valid-new"]
+    assert page.has_more is True
+    assert page.next_offset == 1
+    assert "missing-newest" not in client.sorted_sets[index_key]
+    assert "missing-next" not in client.sorted_sets[index_key]
+
+    next_page = store.list_runs(limit=1, offset=page.next_offset)
+
+    assert [run.workflow_id for run in next_page.items] == ["valid-old"]
+    assert next_page.has_more is False
+    assert next_page.next_offset is None
+
+
+def test_redis_workflow_run_store_scans_filtered_index_past_stale_entries() -> None:
+    client = _FakeRedis()
+    store = RedisWorkflowRunStore(
+        redis_url="redis://unused",
+        client=client,  # pyright: ignore[reportArgumentType]
+    )
+    store.save_run(
+        _run(
+            workflow_id="target",
+            knowledge_base_id="kb-1",
+            created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        )
+    )
+    store.save_run(
+        _run(
+            workflow_id="wrong-kb",
+            knowledge_base_id="kb-2",
+            created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+        )
+    )
+    index_key = "chiliai:workflow:index:knowledge_base:kb-1"
+    client.zadd(
+        index_key,
+        {"missing": 9_999_999_999.0, "wrong-kb": 9_999_999_998.0},
+    )
+
+    page = store.list_runs(knowledge_base_id="kb-1", limit=1)
+
+    assert [run.workflow_id for run in page.items] == ["target"]
+    assert page.has_more is False
+    assert page.next_offset is None
+    assert "missing" not in client.sorted_sets[index_key]
+    assert "wrong-kb" in client.sorted_sets[index_key]
+
+
+def test_redis_workflow_run_store_uses_narrowest_filtered_index() -> None:
+    client = _FakeRedis()
+    store = RedisWorkflowRunStore(
+        redis_url="redis://unused",
+        client=client,  # pyright: ignore[reportArgumentType]
+    )
+    store.save_run(_run(workflow_id="target", knowledge_base_id="kb-1"))
+    store.save_run(_run(workflow_id="other-kb", knowledge_base_id="kb-2"))
+
+    page = store.list_runs(knowledge_base_id="kb-1", limit=1)
+
+    assert [run.workflow_id for run in page.items] == ["target"]
+    assert client.zrevrange_calls[-1] == (
+        "chiliai:workflow:index:knowledge_base:kb-1",
+        0,
+        1,
+    )
+
+
+def test_redis_workflow_run_store_removes_stale_filtered_indexes_on_update() -> None:
+    store = _store()
+    store.save_run(
+        _run(
+            workflow_id="workflow-1",
+            knowledge_base_id="kb-1",
+            status=WorkflowRunStatus.RUNNING,
+        )
+    )
+
+    store.save_run(
+        _run(
+            workflow_id="workflow-1",
+            knowledge_base_id="kb-2",
+            status=WorkflowRunStatus.COMPLETED,
+        )
+    )
+
+    assert store.list_runs(knowledge_base_id="kb-1").items == []
+    assert store.list_runs(status=WorkflowRunStatus.RUNNING).items == []
+    assert store.list_runs(
+        knowledge_base_id="kb-2",
+        status=WorkflowRunStatus.COMPLETED,
+    ).items[0].workflow_id == "workflow-1"
 
 
 def test_redis_workflow_run_store_updates_run_and_timestamp() -> None:
@@ -235,7 +460,7 @@ def test_redis_workflow_run_store_deletes_run_and_indexes() -> None:
         knowledge_base_id="kb-1",
         idempotency_key="abc-123",
     ) is None
-    assert store.list_runs() == []
+    assert store.list_runs().items == []
 
 
 def _run_corr(
@@ -260,6 +485,67 @@ def test_redis_workflow_run_store_finds_by_correlation_id() -> None:
     assert store.find_by_correlation_id("missing") is None
 
 
+def test_redis_workflow_run_store_enforces_unique_correlation_id() -> None:
+    store = _store()
+    original = _run_corr(workflow_id="workflow-1", correlation_id="shared-corr")
+    duplicate = _run_corr(workflow_id="workflow-2", correlation_id="shared-corr")
+    store.save_run(original)
+
+    with pytest.raises(ValueError, match="correlation id"):
+        store.save_run(duplicate)
+
+    found = store.find_by_correlation_id("shared-corr")
+    assert found is not None
+    assert found.workflow_id == "workflow-1"
+
+
+def test_redis_workflow_run_store_rolls_back_new_idempotency_claim_on_correlation_conflict() -> None:
+    store = _store()
+    original = _run_corr(workflow_id="workflow-1", correlation_id="shared-corr")
+    conflict = _run_corr(
+        workflow_id="workflow-2",
+        correlation_id="shared-corr",
+    ).model_copy(update={"idempotency_key": "new-key"}, deep=True)
+    valid = _run_corr(
+        workflow_id="workflow-3",
+        correlation_id="other-corr",
+    ).model_copy(update={"idempotency_key": "new-key"}, deep=True)
+    store.save_run(original)
+
+    with pytest.raises(ValueError, match="correlation id"):
+        store.save_run(conflict)
+
+    assert store.find_by_idempotency_key(
+        knowledge_base_id="kb-1",
+        idempotency_key="new-key",
+    ) is None
+
+    store.save_run(valid)
+
+    found = store.find_by_idempotency_key(
+        knowledge_base_id="kb-1",
+        idempotency_key="new-key",
+    )
+    assert found is not None
+    assert found.workflow_id == "workflow-3"
+
+
+def test_redis_workflow_run_store_allows_same_run_to_keep_correlation_id() -> None:
+    store = _store()
+    original = _run_corr(workflow_id="workflow-1", correlation_id="shared-corr")
+    replacement = original.model_copy(
+        update={"status": WorkflowRunStatus.COMPLETED}, deep=True
+    )
+    store.save_run(original)
+
+    store.save_run(replacement)
+
+    found = store.find_by_correlation_id("shared-corr")
+    assert found is not None
+    assert found.workflow_id == "workflow-1"
+    assert found.status is WorkflowRunStatus.COMPLETED
+
+
 def test_redis_workflow_run_store_delete_clears_correlation_index() -> None:
     store = _store()
     store.save_run(_run_corr(correlation_id="corr-del"))
@@ -281,3 +567,90 @@ def test_redis_workflow_run_store_status_only_cas_guards_cancelled() -> None:
 
     assert result is None
     assert store.get_run("workflow-1").status is WorkflowRunStatus.CANCELLED
+
+
+@pytest.mark.integration
+def test_redis_workflow_run_store_real_redis_contract() -> None:
+    redis_url = os.environ.get("REDIS_URL")
+    if redis_url is None:
+        pytest.skip(
+            "REDIS_URL is not set; skipping Redis workflow run store integration test."
+        )
+
+    key_prefix = f"test:{generate_id()}:"
+    store = RedisWorkflowRunStore(redis_url=redis_url, key_prefix=key_prefix)
+    health = store.check_health()
+    if health.status != "ok":
+        pytest.skip(f"Redis is unavailable at REDIS_URL: {health.error}")
+    workflow_id = f"workflow-{generate_id()}"
+    other_workflow_id = f"workflow-{generate_id()}"
+    target = _run(
+        workflow_id=workflow_id,
+        knowledge_base_id="kb-real-1",
+        status=WorkflowRunStatus.RUNNING,
+        created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        idempotency_key="idem-real-1",
+    )
+    other = _run(
+        workflow_id=other_workflow_id,
+        knowledge_base_id="kb-real-2",
+        status=WorkflowRunStatus.COMPLETED,
+        created_at=datetime(2026, 6, 2, tzinfo=timezone.utc),
+        idempotency_key="idem-real-2",
+    )
+
+    try:
+        saved = store.save_run(target)
+        store.save_run(other)
+
+        assert store.get_run(workflow_id) == saved
+        assert [run.workflow_id for run in store.list_runs().items] == [
+            other_workflow_id,
+            workflow_id,
+        ]
+        assert [
+            run.workflow_id
+            for run in store.list_runs(knowledge_base_id="kb-real-1").items
+        ] == [workflow_id]
+        assert [
+            run.workflow_id
+            for run in store.list_runs(status=WorkflowRunStatus.RUNNING).items
+        ] == [workflow_id]
+
+        updated = store.update_run(
+            workflow_id,
+            WorkflowRunUpdate(status=WorkflowRunStatus.COMPLETED),
+        )
+
+        assert updated.status is WorkflowRunStatus.COMPLETED
+        assert store.list_runs(status=WorkflowRunStatus.RUNNING).items == []
+        assert [
+            run.workflow_id
+            for run in store.list_runs(
+                knowledge_base_id="kb-real-1",
+                status=WorkflowRunStatus.COMPLETED,
+            ).items
+        ] == [workflow_id]
+
+        store.delete_run(workflow_id)
+
+        with pytest.raises(WorkflowRunNotFoundError):
+            store.get_run(workflow_id)
+        assert store.find_by_idempotency_key(
+            knowledge_base_id="kb-real-1",
+            idempotency_key="idem-real-1",
+        ) is None
+        assert store.list_runs(knowledge_base_id="kb-real-1").items == []
+        assert store.list_runs(status=WorkflowRunStatus.COMPLETED).items == [other]
+
+        store.delete_run(other_workflow_id)
+        assert store.list_runs().items == []
+        assert store.list_runs(knowledge_base_id="kb-real-2").items == []
+        assert store.list_runs(status=WorkflowRunStatus.COMPLETED).items == []
+    finally:
+        try:
+            keys = list(store._client.scan_iter(match=f"{key_prefix}*"))
+            if keys:
+                store._client.delete(*keys)
+        except RedisError:
+            pass

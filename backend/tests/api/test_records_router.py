@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from api.app import create_app
 from api.dependencies import get_knowledge_base_repository, get_raw_record_store
-from knowledgebases import InMemoryKnowledgeBaseRepository
+from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from records.adapters.in_memory import InMemoryRawRecordStore
 from shared.types import KnowledgeBase
 
@@ -157,6 +157,20 @@ def test_push_records_rejects_missing_knowledge_base(client: TestClient) -> None
                 }
             ],
         },
+    )
+
+    assert response.status_code == 404
+
+
+def test_upload_file_rejects_missing_knowledge_base(client: TestClient) -> None:
+    csv_body = (
+        "claim_id,provider_npi,billed_amount,service_date,anomaly_score\n"
+        "c-missing,1234567890,99.0,2026-01-15,0.8\n"
+    )
+    response = client.post(
+        "/records/missing-kb/files",
+        data={"feed": "claims_feed"},
+        files={"file": ("claims.csv", io.BytesIO(csv_body.encode()), "text/csv")},
     )
 
     assert response.status_code == 404
@@ -350,6 +364,7 @@ def test_upload_rejects_file_exceeding_size_limit() -> None:
         mp.setenv("CHILI_CONFIG_PATH", _MEDICARE_CONFIG_PATH)
         app = create_app()
         app.dependency_overrides[get_raw_record_store] = InMemoryRawRecordStore
+        app.dependency_overrides[get_knowledge_base_repository] = _seeded_repository
         app.dependency_overrides[get_domain_config] = lambda: tiny_config
         tiny_client = TC(app)
 

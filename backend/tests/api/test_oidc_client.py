@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import cast
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -81,7 +82,7 @@ def test_build_end_session_url_includes_id_token_hint(auth_config: AuthConfig) -
         id_token="id-tok-1",
         post_logout_redirect_uri="https://app.example.com/",
     )
-    qs = parse_qs(urlparse(url).query)
+    qs = parse_qs(cast(str, urlparse(url).query))
     assert qs["id_token_hint"] == ["id-tok-1"]
     assert qs["post_logout_redirect_uri"] == ["https://app.example.com/"]
 

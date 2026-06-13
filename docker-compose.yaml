@@ -24,6 +24,10 @@ services:
       - "${API_PORT:-8000}:8000"
     env_file:
       - .env
+    environment:
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - CHILI_EVENT_BUS_BACKEND=${CHILI_EVENT_BUS_BACKEND:-redis}
+      - CHILI_WORKFLOW_RUN_STORE_BACKEND=${CHILI_WORKFLOW_RUN_STORE_BACKEND:-redis}
     depends_on:
       redis:
         condition: service_healthy
@@ -43,6 +47,10 @@ services:
     command: python -m agent.coordinator
     env_file:
       - .env
+    environment:
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - CHILI_EVENT_BUS_BACKEND=${CHILI_EVENT_BUS_BACKEND:-redis}
+      - CHILI_WORKFLOW_RUN_STORE_BACKEND=${CHILI_WORKFLOW_RUN_STORE_BACKEND:-redis}
     depends_on:
       redis:
         condition: service_healthy

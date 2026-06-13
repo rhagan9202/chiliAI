@@ -6,7 +6,7 @@ import pytest
 
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
 from analytics.risk.adapters.postgres import PostgresRiskSignalSource
-from api import dependencies
+import api.dependencies as dependencies
 
 
 def test_in_memory_when_no_provider(monkeypatch: pytest.MonkeyPatch) -> None:

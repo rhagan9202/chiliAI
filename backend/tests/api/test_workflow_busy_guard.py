@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from io import BytesIO
+from typing import cast
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowStepState
 from agent.workflow_tracking import WorkflowEventTracker
-from knowledgebases import InMemoryKnowledgeBaseRepository  # noqa: F401 (also used in pending_cleanup tests)
+from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository  # noqa: F401 (also used in pending_cleanup tests)
 from api.app import create_app
 from api.dependencies import (
     get_domain_config,
@@ -247,7 +249,7 @@ def test_document_upload_returns_409_when_pending_cleanup(
     # Get the overridden kb_repository from the app's dependency overrides.
     from fastapi.testclient import TestClient as _TC
     assert isinstance(client, _TC)
-    app = client.app
+    app = cast(FastAPI, client.app)
     override_fn = app.dependency_overrides.get(get_knowledge_base_repository)
     assert override_fn is not None, "kb_repository override not found"
     kb_repo = override_fn()
@@ -273,7 +275,7 @@ def test_records_upload_returns_409_when_pending_cleanup(
     kb_id: str = create.json()["id"]
 
     from api.dependencies import get_knowledge_base_repository
-    app = client.app
+    app = cast(FastAPI, client.app)
     override_fn = app.dependency_overrides.get(get_knowledge_base_repository)
     assert override_fn is not None
     kb_repo = override_fn()
@@ -307,7 +309,7 @@ def test_document_delete_returns_409_when_pending_cleanup(
     doc_id: str = upload.json()["documents"][0]["source_document_id"]
 
     from api.dependencies import get_knowledge_base_repository
-    app = client.app
+    app = cast(FastAPI, client.app)
     override_fn = app.dependency_overrides.get(get_knowledge_base_repository)
     assert override_fn is not None
     kb_repo = override_fn()
@@ -338,7 +340,7 @@ def test_kb_delete_is_reentrant_when_pending_cleanup(
     kb_id: str = create.json()["id"]
 
     from api.dependencies import get_knowledge_base_repository
-    app = client.app
+    app = cast(FastAPI, client.app)
     override_fn = app.dependency_overrides.get(get_knowledge_base_repository)
     assert override_fn is not None
     kb_repo = override_fn()

@@ -118,12 +118,18 @@ def test_current_step_uses_terminal_label_even_with_pending_steps() -> None:
 
 
 def test_project_workflow_runs_wraps_items() -> None:
-    response = project_workflow_runs([
-        _run(workflow_id="workflow-1"),
-        _run(workflow_id="workflow-2", status=WorkflowRunStatus.QUEUED),
-    ])
+    response = project_workflow_runs(
+        [
+            _run(workflow_id="workflow-1"),
+            _run(workflow_id="workflow-2", status=WorkflowRunStatus.QUEUED),
+        ],
+        has_more=True,
+        next_offset=2,
+    )
 
     assert [item.id for item in response.items] == ["workflow-1", "workflow-2"]
+    assert response.has_more is True
+    assert response.next_offset == 2
 
 
 def test_project_workflow_run_exposes_last_error() -> None:
@@ -138,11 +144,11 @@ def test_project_workflow_run_exposes_last_error() -> None:
     assert response.last_error == "parser exploded"
 
 
-def test_count_running_workflows_counts_only_running() -> None:
+def test_count_running_workflows_counts_queued_and_running_as_active() -> None:
     runs = [
         _run(workflow_id="queued", status=WorkflowRunStatus.QUEUED),
         _run(workflow_id="running", status=WorkflowRunStatus.RUNNING),
-        _run(workflow_id="failed", status=WorkflowRunStatus.FAILED),
+        _run(workflow_id="completed", status=WorkflowRunStatus.COMPLETED),
     ]
 
-    assert count_running_workflows(runs) == 1
+    assert count_running_workflows(runs) == 2

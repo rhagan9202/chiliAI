@@ -19,7 +19,7 @@ from agent.service_models import WorkflowSubmissionRequest
 from agent.workflow_tracking import default_steps_for_trigger
 from shared.utils import generate_id
 from config.schema import DomainConfig, ValidationConfig
-from knowledgebases import KnowledgeBaseRepository
+from knowledgebases.protocols import KnowledgeBaseRepository
 from records.adapters.sources.file_source import CsvFileSource, JsonlFileSource
 from records.exceptions import RecordFeedNotFoundError, RecordPersistenceError, RecordsError
 from records.protocols import RecordsServiceProtocol
@@ -107,7 +107,12 @@ async def upload_record_file(
 ) -> RecordIngestReceipt:
     """Ingest a CSV or JSONL upload into the named feed."""
     existing_kb = repository.get(knowledge_base_id)
-    if existing_kb is not None and existing_kb.pending_cleanup:
+    if existing_kb is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Knowledge base '{knowledge_base_id}' was not found.",
+        )
+    if existing_kb.pending_cleanup:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Knowledge base '{knowledge_base_id}' has pending cleanup; cannot mutate until resolved.",

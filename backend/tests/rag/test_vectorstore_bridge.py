@@ -54,6 +54,14 @@ class _RecordingVectorService:
     def delete_knowledge_base(self, knowledge_base_id: str) -> VectorDeleteResponse:
         return VectorDeleteResponse(knowledge_base_id=knowledge_base_id, deleted_count=0)
 
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> VectorDeleteResponse:
+        del source_document_id
+        return VectorDeleteResponse(knowledge_base_id=knowledge_base_id, deleted_count=0)
+
 
 def _make_response(
     *,

@@ -43,6 +43,33 @@ def test_redis_backend_with_redis_url_returns_redis_store(
     assert isinstance(store, RedisWorkflowRunStore)
 
 
+def test_redis_backend_passes_timeout_env_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class CapturingRedisWorkflowRunStore:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setenv("CHILI_WORKFLOW_RUN_STORE_BACKEND", "redis")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+    monkeypatch.setenv("CHILI_WORKFLOW_REDIS_SOCKET_TIMEOUT_SECONDS", "4.5")
+    monkeypatch.setenv("CHILI_WORKFLOW_REDIS_CONNECT_TIMEOUT_SECONDS", "1.25")
+    monkeypatch.setattr(
+        "agent.adapters.runtime.RedisWorkflowRunStore",
+        CapturingRedisWorkflowRunStore,
+    )
+
+    create_workflow_run_store_from_env()
+
+    assert captured == {
+        "redis_url": "redis://localhost:6379/0",
+        "socket_timeout": 4.5,
+        "socket_connect_timeout": 1.25,
+    }
+
+
 def test_redis_backend_without_redis_url_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

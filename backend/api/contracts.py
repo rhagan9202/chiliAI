@@ -344,6 +344,8 @@ class WorkflowRunListResponse(BaseModel):
     """Collection of workflow runs."""
 
     items: list[WorkflowRunResponse] = Field(default_factory=lambda: cast(list[WorkflowRunResponse], []))
+    has_more: bool = False
+    next_offset: int | None = None
 
 
 class RiskFactorResponse(BaseModel):

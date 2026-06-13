@@ -22,11 +22,18 @@ WorkflowStatusValue = Literal["queued", "running", "completed", "failed", "cance
 WorkflowTypeValue = Literal["ingestion", "graph_build", "analytics", "monitoring"]
 
 
-def project_workflow_runs(runs: list[WorkflowRun]) -> WorkflowRunListResponse:
+def project_workflow_runs(
+    runs: list[WorkflowRun],
+    *,
+    has_more: bool = False,
+    next_offset: int | None = None,
+) -> WorkflowRunListResponse:
     """Project workflow run models into the frontend collection contract."""
 
     return WorkflowRunListResponse(
-        items=[project_workflow_run(run) for run in runs]
+        items=[project_workflow_run(run) for run in runs],
+        has_more=has_more,
+        next_offset=next_offset,
     )
 
 
@@ -46,9 +53,10 @@ def project_workflow_run(run: WorkflowRun) -> WorkflowRunResponse:
 
 
 def count_running_workflows(runs: list[WorkflowRun]) -> int:
-    """Return the number of non-terminal workflow runs currently running."""
+    """Return the number of workflow runs currently active."""
 
-    return sum(1 for run in runs if run.status is WorkflowRunStatus.RUNNING)
+    active_statuses = {WorkflowRunStatus.QUEUED, WorkflowRunStatus.RUNNING}
+    return sum(1 for run in runs if run.status in active_statuses)
 
 
 def _workflow_status(status: WorkflowRunStatus) -> WorkflowStatusValue:

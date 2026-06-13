@@ -48,6 +48,16 @@ def test_in_memory_workflow_run_store_returns_seeded_run() -> None:
     assert loaded == run
 
 
+def test_in_memory_workflow_run_store_health_is_ok() -> None:
+    store = InMemoryWorkflowRunStore()
+
+    health = store.check_health()
+
+    assert health.status == "ok"
+    assert health.latency_ms is None
+    assert health.error is None
+
+
 def test_get_run_returns_detached_copy() -> None:
     run = _run()
     store = InMemoryWorkflowRunStore(runs=[run])
@@ -96,14 +106,16 @@ def test_list_runs_returns_newest_first() -> None:
 
     listed = store.list_runs()
 
-    assert [run.workflow_id for run in listed] == ["newer", "older"]
+    assert [run.workflow_id for run in listed.items] == ["newer", "older"]
+    assert listed.has_more is False
+    assert listed.next_offset is None
 
 
 def test_list_runs_returns_detached_copies() -> None:
     store = InMemoryWorkflowRunStore(runs=[_run()])
 
     listed = store.list_runs()
-    listed[0].metadata["mutated"] = True
+    listed.items[0].metadata["mutated"] = True
 
     reloaded = store.get_run("workflow-1")
     assert "mutated" not in reloaded.metadata
@@ -116,7 +128,7 @@ def test_list_runs_filters_by_knowledge_base_id() -> None:
 
     listed = store.list_runs(knowledge_base_id="kb-2")
 
-    assert [run.workflow_id for run in listed] == ["b"]
+    assert [run.workflow_id for run in listed.items] == ["b"]
 
 
 def test_list_runs_filters_by_status() -> None:
@@ -126,7 +138,7 @@ def test_list_runs_filters_by_status() -> None:
 
     listed = store.list_runs(status=WorkflowRunStatus.COMPLETED)
 
-    assert [run.workflow_id for run in listed] == ["b"]
+    assert [run.workflow_id for run in listed.items] == ["b"]
 
 
 def test_list_runs_combines_filters() -> None:
@@ -151,7 +163,7 @@ def test_list_runs_combines_filters() -> None:
         knowledge_base_id="kb-1", status=WorkflowRunStatus.COMPLETED
     )
 
-    assert [run.workflow_id for run in listed] == ["target"]
+    assert [run.workflow_id for run in listed.items] == ["target"]
 
 
 def test_list_runs_honours_limit_and_offset() -> None:
@@ -167,13 +179,34 @@ def test_list_runs_honours_limit_and_offset() -> None:
     page = store.list_runs(limit=2, offset=1)
 
     # Newest-first: w-4, w-3, w-2, w-1, w-0 → offset 1, limit 2 → w-3, w-2
-    assert [run.workflow_id for run in page] == ["w-3", "w-2"]
+    assert [run.workflow_id for run in page.items] == ["w-3", "w-2"]
+    assert page.has_more is True
+    assert page.next_offset == 3
+
+
+def test_list_runs_returns_pagination_metadata() -> None:
+    runs = [
+        _run(
+            workflow_id=f"w-{i}",
+            created_at=datetime(2026, 1, i + 1, tzinfo=timezone.utc),
+        )
+        for i in range(3)
+    ]
+    store = InMemoryWorkflowRunStore(runs=runs)
+
+    page = store.list_runs(limit=2, offset=0)
+
+    assert [run.workflow_id for run in page.items] == ["w-2", "w-1"]
+    assert page.has_more is True
+    assert page.next_offset == 2
 
 
 def test_list_runs_with_zero_limit_returns_empty() -> None:
     store = InMemoryWorkflowRunStore(runs=[_run()])
 
-    assert store.list_runs(limit=0) == []
+    page = store.list_runs(limit=0)
+
+    assert page.items == []
 
 
 def test_list_runs_rejects_negative_limit() -> None:
@@ -491,6 +524,35 @@ def test_find_by_correlation_id_returns_persisted_run() -> None:
     store = InMemoryWorkflowRunStore(runs=[run])
 
     assert store.find_by_correlation_id("corr-xyz") == run
+
+
+def test_save_run_rejects_duplicate_correlation_id_for_different_run() -> None:
+    original = _run_with_correlation(
+        workflow_id="workflow-1", correlation_id="shared-corr"
+    )
+    duplicate = _run_with_correlation(
+        workflow_id="workflow-2", correlation_id="shared-corr"
+    )
+    store = InMemoryWorkflowRunStore(runs=[original])
+
+    with pytest.raises(ValueError, match="correlation id"):
+        store.save_run(duplicate)
+
+    assert store.find_by_correlation_id("shared-corr") == original
+
+
+def test_save_run_allows_same_run_to_keep_correlation_id() -> None:
+    original = _run_with_correlation(
+        workflow_id="workflow-1", correlation_id="shared-corr"
+    )
+    replacement = original.model_copy(
+        update={"status": WorkflowRunStatus.COMPLETED}, deep=True
+    )
+    store = InMemoryWorkflowRunStore(runs=[original])
+
+    store.save_run(replacement)
+
+    assert store.find_by_correlation_id("shared-corr") == replacement
 
 
 def test_find_by_correlation_id_returns_none_for_unknown_or_unindexed() -> None:

@@ -10,11 +10,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from knowledgebases import (
-    DocumentRecord,
-    InMemoryKnowledgeBaseRepository,
-    ObjectStoreKnowledgeBaseRepository,
-)
+from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
+from knowledgebases.adapters.object_store import ObjectStoreKnowledgeBaseRepository
+from knowledgebases.models import DocumentRecord
 from knowledgebases.snapshots import KnowledgeBaseStoreSnapshot
 from shared.types import KnowledgeBase
 from storage.adapters.in_memory import InMemoryObjectStore

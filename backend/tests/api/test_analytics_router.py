@@ -241,7 +241,7 @@ def test_unexpected_risk_errors_are_not_converted_to_unavailable() -> None:
             del request
             raise RuntimeError("risk backend unavailable")
 
-    state._risk_service = BrokenRiskService()
+    setattr(state, "_risk_service", BrokenRiskService())
 
     with pytest.raises(RuntimeError, match="risk backend unavailable"):
         state.get_risk_score("provider-1", knowledge_base_id="kb-live")
@@ -331,7 +331,7 @@ def test_unexpected_timeseries_errors_are_not_converted_to_unavailable() -> None
             del kwargs
             raise RuntimeError("timeseries backend unavailable")
 
-    state._timeseries_source = BrokenTimeseriesSource()
+    setattr(state, "_timeseries_source", BrokenTimeseriesSource())
 
     with pytest.raises(RuntimeError, match="timeseries backend unavailable"):
         state.get_timeseries("provider-1", knowledge_base_id="kb-live")
@@ -413,7 +413,7 @@ def test_default_router_returns_empty_results_with_no_seed_data() -> None:
     surface that domain-specific demo data; they must return empty when
     nothing has been written for the active domain.
     """
-    from api import dependencies
+    import api.dependencies as dependencies
 
     # The DI lru_caches may be populated from earlier tests — clear them
     # so we observe a truly empty default for this assertion.

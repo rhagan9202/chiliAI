@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from agent.adapters.protocols import WorkflowRunPage
 from agent.models import WorkflowRun, WorkflowRunStatus
 from agent.service_models import WorkflowSubmissionRequest, WorkflowSubmissionResponse
 
@@ -26,7 +27,7 @@ class AgentServiceProtocol(Protocol):
         status: WorkflowRunStatus | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> list[WorkflowRun]: ...
+    ) -> WorkflowRunPage: ...
 
     def cancel_workflow(self, workflow_id: str) -> WorkflowRun: ...
 

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from agent.adapters.protocols import WorkflowRunStoreProtocol
+from agent.adapters.protocols import WorkflowRunPage, WorkflowRunStoreProtocol
+from agent.definitions import default_workflow_registry
 from agent.exceptions import (
     AgentConfigurationError,
     AgentStateStoreError,
@@ -36,6 +37,11 @@ class AgentService:
         self._event_bus = event_bus
 
     def start_workflow(self, request: WorkflowSubmissionRequest) -> WorkflowSubmissionResponse:
+        try:
+            default_workflow_registry().validate_step_names(request.requested_steps)
+        except ValueError as exc:
+            raise AgentConfigurationError(str(exc)) from exc
+
         if request.idempotency_key is not None:
             cached = self._run_store.find_by_idempotency_key(
                 knowledge_base_id=request.knowledge_base_id,
@@ -52,6 +58,7 @@ class AgentService:
         correlation_id = request.correlation_id or generate_id()
         existing = self._run_store.find_by_correlation_id(correlation_id)
         if existing is not None:
+            self._verify_correlation_match(existing, request, correlation_id)
             return self._response_from_run(existing)
 
         workflow_id = generate_id()
@@ -90,31 +97,34 @@ class AgentService:
                     ],
                 )
             )
-        except Exception as exc:
-            failed_metadata = dict(run.metadata)
-            failed_metadata["publish_error"] = str(exc)
+        except Exception:
+            publish_warning_metadata = dict(run.metadata)
+            publish_warning_metadata["workflow_started_publish_error"] = "publish_failed"
             try:
-                self._run_store.update_run(
+                run = self._run_store.update_run(
                     run.workflow_id,
                     WorkflowRunUpdate(
-                        status=WorkflowRunStatus.FAILED,
+                        status=WorkflowRunStatus.RUNNING,
                         updated_at=utc_now(),
-                        metadata=failed_metadata,
+                        metadata=publish_warning_metadata,
                     ),
                 )
             except Exception as update_exc:
                 raise AgentStateStoreError(
-                    "Failed to publish workflow event and record failure state."
+                    "Failed to record workflow started publish warning."
                 ) from update_exc
-            raise AgentStateStoreError("Failed to publish workflow event.") from exc
+            return self._response_from_run(run)
 
-        run = self._run_store.update_run(
-            run.workflow_id,
-            WorkflowRunUpdate(
-                status=WorkflowRunStatus.RUNNING,
-                updated_at=utc_now(),
+        try:
+            run = self._run_store.update_run(
+                run.workflow_id,
+                WorkflowRunUpdate(
+                    status=WorkflowRunStatus.RUNNING,
+                    updated_at=utc_now(),
+                )
             )
-        )
+        except Exception as exc:
+            raise AgentStateStoreError("Failed to mark workflow run as running.") from exc
         return self._response_from_run(run)
 
     def get_workflow_status(self, workflow_id: str) -> WorkflowRun:
@@ -127,7 +137,7 @@ class AgentService:
         status: WorkflowRunStatus | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> list[WorkflowRun]:
+    ) -> WorkflowRunPage:
         return self._run_store.list_runs(
             knowledge_base_id=knowledge_base_id,
             status=status,
@@ -167,6 +177,33 @@ class AgentService:
         if user_metadata != request.metadata:
             raise IdempotencyKeyConflictError(
                 request.idempotency_key, conflicting_field="metadata"
+            )
+
+    @staticmethod
+    def _verify_correlation_match(
+        run: WorkflowRun,
+        request: WorkflowSubmissionRequest,
+        correlation_id: str,
+    ) -> None:
+        if run.knowledge_base_id != request.knowledge_base_id:
+            raise AgentConfigurationError(
+                f"Workflow correlation id '{correlation_id}' already belongs to a "
+                "different value for 'knowledge_base_id'."
+            )
+        if run.trigger_event_type != request.trigger_event_type:
+            raise AgentConfigurationError(
+                f"Workflow correlation id '{correlation_id}' already belongs to a "
+                "different value for 'trigger_event_type'."
+            )
+        if [step.step_name for step in run.steps] != list(request.requested_steps):
+            raise AgentConfigurationError(
+                f"Workflow correlation id '{correlation_id}' already belongs to a "
+                "different value for 'requested_steps'."
+            )
+        if run.idempotency_key != request.idempotency_key:
+            raise AgentConfigurationError(
+                f"Workflow correlation id '{correlation_id}' already belongs to a "
+                "different value for 'idempotency_key'."
             )
 
     @staticmethod

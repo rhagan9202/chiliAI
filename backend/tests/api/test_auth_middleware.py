@@ -531,7 +531,7 @@ class TestCookiePath:
         domain = _build_minimal_config(auth=auth_cfg)
         store = InMemorySessionStore()
 
-        jwks = {"keys": [_public_jwk_from_pem(rsa_pem)]}
+        jwks: dict[str, object] = {"keys": [_public_jwk_from_pem(rsa_pem)]}
         set_jwks_fetcher(lambda _uri: jwks)
 
         token = _make_token(
