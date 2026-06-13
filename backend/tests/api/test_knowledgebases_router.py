@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Iterator
+from typing import cast
 
+import anyio
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.testclient import TestClient
 
 from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
@@ -19,6 +22,7 @@ from api.dependencies import (
     get_ingestion_service,
     get_knowledge_base_repository,
     get_object_store,
+    get_vector_service,
 )
 from config.schema import (
     AlertsConfig,
@@ -35,14 +39,18 @@ from events.types import (
     KnowledgeBaseCreatedEvent,
     KnowledgeBaseDeletedEvent,
 )
+from ingestion.models import IngestionStatus
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
 from ingestion.service import IngestionService
-from graph.models import GraphMetrics
+from ingestion.service_models import DocumentReceipt, DocumentSubmission
+from graph.models import GraphDeleteByProvenance, GraphMetrics
 from shared.types import KnowledgeBase
 from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore
+from api.routers.knowledgebases import _read_upload_file_with_limit
+from vectorstore.service_models import VectorDeleteResponse
 
 
 def _build_config() -> DomainConfig:
@@ -72,6 +80,44 @@ class _MetricsOnlyGraphService:
 
     def delete_knowledge_base(self, knowledge_base_id: str) -> None:
         self.deleted_knowledge_base_ids.append(knowledge_base_id)
+
+
+class _RecordingReplacementGraphService(_MetricsOnlyGraphService):
+    def __init__(self) -> None:
+        super().__init__(
+            GraphMetrics(entity_count=0, relationship_count=0, avg_degree=0.0)
+        )
+        self.source_documents: set[tuple[str, str]] = set()
+        self.deleted_source_documents: list[tuple[str, str]] = []
+
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> GraphDeleteByProvenance:
+        self.deleted_source_documents.append((knowledge_base_id, source_document_id))
+        self.source_documents.discard((knowledge_base_id, source_document_id))
+        return GraphDeleteByProvenance(
+            knowledge_base_id=knowledge_base_id,
+            source_document_id=source_document_id,
+            entity_count=1,
+            relationship_count=0,
+        )
+
+
+class _RecordingReplacementVectorService:
+    def __init__(self) -> None:
+        self.source_documents: set[tuple[str, str]] = set()
+        self.deleted_source_documents: list[tuple[str, str]] = []
+
+    def delete_by_source_document(
+        self,
+        knowledge_base_id: str,
+        source_document_id: str,
+    ) -> VectorDeleteResponse:
+        self.deleted_source_documents.append((knowledge_base_id, source_document_id))
+        self.source_documents.discard((knowledge_base_id, source_document_id))
+        return VectorDeleteResponse(knowledge_base_id=knowledge_base_id, deleted_count=1)
 
 
 def _skip_policy_audit(app: FastAPI) -> None:
@@ -536,6 +582,302 @@ def test_register_documents_returns_202_and_publishes_event(
     assert detail.json()["document_count"] == 1
 
 
+def test_register_documents_does_not_start_workflow_when_receipt_not_enqueued(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, _, _ = harness
+
+    class SuppressedIngestionService:
+        def register_documents(
+            self,
+            knowledge_base_id: str,
+            submissions: list[DocumentSubmission],
+            *,
+            correlation_id: str | None = None,
+        ) -> list[DocumentReceipt]:
+            del submissions, correlation_id
+            return [
+                DocumentReceipt(
+                    knowledge_base_id=knowledge_base_id,
+                    source_document_id="doc-suppressed",
+                    filename="claims.json",
+                    status=IngestionStatus.PENDING,
+                    storage_key="knowledgebases/kb/documents/doc-suppressed/source",
+                    enqueued=False,
+                )
+            ]
+
+    app = cast(FastAPI, client.app)
+    app.dependency_overrides[get_ingestion_service] = lambda: SuppressedIngestionService()
+    created = client.post(
+        "/knowledgebases", json={"name": "DocKb", "description": ""}
+    )
+    kb_id = created.json()["id"]
+
+    response = client.post(
+        f"/knowledgebases/{kb_id}/documents",
+        files=[("files", ("claims.json", b'{"claim_id": "42"}', "application/json"))],
+    )
+
+    assert response.status_code == 202
+    assert response.json()["documents"][0]["enqueued"] is False
+    run_store = getattr(app.state, "workflow_run_store", None)
+    assert run_store is None or run_store.list_runs().items == []
+
+
+def test_register_documents_preserves_existing_replacement_when_registration_fails(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, object_store, repository = harness
+    graph_service = _RecordingReplacementGraphService()
+    vector_service = _RecordingReplacementVectorService()
+
+    class FailingIngestionService:
+        def register_documents(
+            self,
+            knowledge_base_id: str,
+            submissions: list[DocumentSubmission],
+            *,
+            correlation_id: str | None = None,
+        ) -> list[DocumentReceipt]:
+            del knowledge_base_id, submissions, correlation_id
+            raise RuntimeError("publish failed")
+
+    app = cast(FastAPI, client.app)
+    app.dependency_overrides[get_graph_service] = lambda: graph_service
+    app.dependency_overrides[get_vector_service] = lambda: vector_service
+    app.dependency_overrides[get_ingestion_service] = lambda: FailingIngestionService()
+
+    created = client.post(
+        "/knowledgebases", json={"name": "DocKb", "description": ""}
+    )
+    kb_id = created.json()["id"]
+    content = b'{"claim_id": "42"}'
+    content_hash = hashlib.sha256(content).hexdigest()
+    old_document_id = "old-doc"
+    old_source_key = f"knowledgebases/{kb_id}/documents/{old_document_id}/source"
+    old_artifact_key = f"knowledgebases/{kb_id}/documents/{old_document_id}/artifact.json"
+    repository.add_document(
+        DocumentRecord(
+            id=old_document_id,
+            knowledge_base_id=kb_id,
+            filename="claims.json",
+            content_type="application/json",
+            size_bytes=len(content),
+            status=IngestionStatus.PENDING.value,
+            storage_key=old_source_key,
+            content_hash=content_hash,
+        )
+    )
+    object_store.put_bytes(old_source_key, content, media_type="application/json")
+    object_store.put_bytes(old_artifact_key, b"{}", media_type="application/json")
+    graph_service.source_documents.add((kb_id, old_document_id))
+    vector_service.source_documents.add((kb_id, old_document_id))
+
+    with pytest.raises(RuntimeError, match="publish failed"):
+        client.post(
+            f"/knowledgebases/{kb_id}/documents",
+            files=[("files", ("claims.json", content, "application/json"))],
+        )
+
+    assert repository.get_document(kb_id, old_document_id) is not None
+    assert object_store.exists(old_source_key)
+    assert object_store.exists(old_artifact_key)
+    assert graph_service.source_documents == {(kb_id, old_document_id)}
+    assert vector_service.source_documents == {(kb_id, old_document_id)}
+    assert graph_service.deleted_source_documents == []
+    assert vector_service.deleted_source_documents == []
+
+
+def test_register_documents_cleans_replacement_after_successful_enqueue(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, object_store, repository = harness
+    graph_service = _RecordingReplacementGraphService()
+    vector_service = _RecordingReplacementVectorService()
+
+    class SuccessfulIngestionService:
+        def __init__(self, *, source_document_id: str, storage_key: str) -> None:
+            self._source_document_id = source_document_id
+            self._storage_key = storage_key
+
+        def register_documents(
+            self,
+            knowledge_base_id: str,
+            submissions: list[DocumentSubmission],
+            *,
+            correlation_id: str | None = None,
+        ) -> list[DocumentReceipt]:
+            del submissions, correlation_id
+            return [
+                DocumentReceipt(
+                    knowledge_base_id=knowledge_base_id,
+                    source_document_id=self._source_document_id,
+                    filename="claims.json",
+                    status=IngestionStatus.PENDING,
+                    storage_key=self._storage_key,
+                    enqueued=True,
+                )
+            ]
+
+    created = client.post(
+        "/knowledgebases", json={"name": "DocKb", "description": ""}
+    )
+    kb_id = created.json()["id"]
+    content = b'{"claim_id": "42"}'
+    content_hash = hashlib.sha256(content).hexdigest()
+    old_document_id = "old-doc"
+    old_source_key = f"knowledgebases/{kb_id}/documents/{old_document_id}/source"
+    old_artifact_key = f"knowledgebases/{kb_id}/documents/{old_document_id}/artifact.json"
+    repository.add_document(
+        DocumentRecord(
+            id=old_document_id,
+            knowledge_base_id=kb_id,
+            filename="old-name.json",
+            content_type="application/json",
+            size_bytes=len(content),
+            status=IngestionStatus.PENDING.value,
+            storage_key=old_source_key,
+            content_hash=content_hash,
+        )
+    )
+    object_store.put_bytes(old_source_key, content, media_type="application/json")
+    object_store.put_bytes(old_artifact_key, b"{}", media_type="application/json")
+    graph_service.source_documents.add((kb_id, old_document_id))
+    vector_service.source_documents.add((kb_id, old_document_id))
+
+    app = cast(FastAPI, client.app)
+    app.dependency_overrides[get_graph_service] = lambda: graph_service
+    app.dependency_overrides[get_vector_service] = lambda: vector_service
+    app.dependency_overrides[get_ingestion_service] = lambda: SuccessfulIngestionService(
+        source_document_id=old_document_id,
+        storage_key=old_source_key,
+    )
+
+    response = client.post(
+        f"/knowledgebases/{kb_id}/documents",
+        files=[("files", ("claims.json", content, "application/json"))],
+    )
+
+    assert response.status_code == 202
+    receipt = response.json()["documents"][0]
+    assert receipt["source_document_id"] == old_document_id
+    assert receipt["replaced_document_id"] == old_document_id
+    assert receipt["enqueued"] is True
+    updated_document = repository.get_document(kb_id, old_document_id)
+    assert updated_document is not None
+    assert updated_document.filename == "claims.json"
+    assert object_store.exists(old_source_key)
+    assert not object_store.exists(old_artifact_key)
+    assert graph_service.deleted_source_documents == [(kb_id, old_document_id)]
+    assert vector_service.deleted_source_documents == [(kb_id, old_document_id)]
+    assert graph_service.source_documents == set()
+    assert vector_service.source_documents == set()
+
+
+def test_register_documents_cleanup_failure_returns_500_and_preserves_new_source(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, object_store, repository = harness
+    vector_service = _RecordingReplacementVectorService()
+
+    class FailingGraphService(_RecordingReplacementGraphService):
+        def delete_by_source_document(
+            self,
+            knowledge_base_id: str,
+            source_document_id: str,
+        ) -> GraphDeleteByProvenance:
+            del knowledge_base_id, source_document_id
+            raise RuntimeError("graph offline")
+
+    class SuccessfulIngestionService:
+        def __init__(self, *, source_document_id: str, storage_key: str) -> None:
+            self._source_document_id = source_document_id
+            self._storage_key = storage_key
+
+        def register_documents(
+            self,
+            knowledge_base_id: str,
+            submissions: list[DocumentSubmission],
+            *,
+            correlation_id: str | None = None,
+        ) -> list[DocumentReceipt]:
+            del submissions, correlation_id
+            return [
+                DocumentReceipt(
+                    knowledge_base_id=knowledge_base_id,
+                    source_document_id=self._source_document_id,
+                    filename="claims.json",
+                    status=IngestionStatus.PENDING,
+                    storage_key=self._storage_key,
+                    enqueued=True,
+                )
+            ]
+
+    created = client.post(
+        "/knowledgebases", json={"name": "DocKb", "description": ""}
+    )
+    kb_id = created.json()["id"]
+    content = b'{"claim_id": "42"}'
+    content_hash = hashlib.sha256(content).hexdigest()
+    old_document_id = "old-doc"
+    old_source_key = f"knowledgebases/{kb_id}/documents/{old_document_id}/source"
+    repository.add_document(
+        DocumentRecord(
+            id=old_document_id,
+            knowledge_base_id=kb_id,
+            filename="old-name.json",
+            content_type="application/json",
+            size_bytes=len(content),
+            status=IngestionStatus.PENDING.value,
+            storage_key=old_source_key,
+            content_hash=content_hash,
+        )
+    )
+    object_store.put_bytes(old_source_key, content, media_type="application/json")
+
+    app = cast(FastAPI, client.app)
+    app.dependency_overrides[get_graph_service] = lambda: FailingGraphService()
+    app.dependency_overrides[get_vector_service] = lambda: vector_service
+    app.dependency_overrides[get_ingestion_service] = lambda: SuccessfulIngestionService(
+        source_document_id=old_document_id,
+        storage_key=old_source_key,
+    )
+
+    response = client.post(
+        f"/knowledgebases/{kb_id}/documents",
+        files=[("files", ("claims.json", content, "application/json"))],
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == (
+        f"Failed to clean up replaced document '{old_document_id}'."
+    )
+    assert object_store.exists(old_source_key)
+    assert repository.get_document(kb_id, old_document_id) is not None
+    assert vector_service.deleted_source_documents == []
+
+
 def test_register_documents_returns_404_for_missing_kb_without_side_effects(
     harness: tuple[
         TestClient,
@@ -601,6 +943,36 @@ def test_register_documents_rejects_oversized_file(
     )
 
     assert response.status_code == 413
+
+
+def test_document_upload_reader_stops_when_size_limit_is_exceeded() -> None:
+    class ChunkedUpload:
+        filename = "large.txt"
+
+        def __init__(self) -> None:
+            self.chunks = [b"aa", b"aa", b"tail"]
+            self.read_count = 0
+
+        async def read(self, size: int = -1) -> bytes:
+            assert size > 0
+            self.read_count += 1
+            return self.chunks.pop(0) if self.chunks else b""
+
+    upload = ChunkedUpload()
+
+    async def read_upload() -> None:
+        await _read_upload_file_with_limit(
+            cast(UploadFile, upload),
+            max_bytes=3,
+            detail="too large",
+        )
+
+    with pytest.raises(HTTPException) as exc_info:
+        anyio.run(read_upload)
+
+    assert exc_info.value.status_code == 413
+    assert upload.read_count == 2
+    assert upload.chunks == [b"tail"]
 
 
 def test_register_documents_sanitizes_filenames(

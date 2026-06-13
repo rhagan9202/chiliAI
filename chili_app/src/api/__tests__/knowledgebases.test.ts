@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { apiDelete } from '../client'
-import { deleteKnowledgeBase, deleteKnowledgeBaseDocument } from '../knowledgebases'
+import { apiDelete, apiFetch } from '../client'
+import {
+  deleteKnowledgeBase,
+  deleteKnowledgeBaseDocument,
+  getKnowledgeBaseDocuments,
+} from '../knowledgebases'
 
 vi.mock('../client', () => ({
   apiDelete: vi.fn(),
@@ -11,6 +15,7 @@ vi.mock('../client', () => ({
 }))
 
 const apiDeleteMock = vi.mocked(apiDelete)
+const apiFetchMock = vi.mocked(apiFetch)
 
 describe('knowledge bases API deletes', () => {
   it('returns void for backend 204 knowledge-base deletion responses', async () => {
@@ -27,5 +32,15 @@ describe('knowledge bases API deletes', () => {
     await expect(deleteKnowledgeBaseDocument('kb-1', 'doc-1')).resolves.toBeUndefined()
 
     expect(apiDeleteMock).toHaveBeenCalledWith('/knowledgebases/kb-1/documents/doc-1')
+  })
+})
+
+describe('knowledge bases API documents', () => {
+  it('sends pagination query parameters when listing documents', async () => {
+    apiFetchMock.mockResolvedValue({ items: [], total: 0, limit: 25, offset: 50 })
+
+    await getKnowledgeBaseDocuments('kb-1', { limit: 25, offset: 50 })
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/knowledgebases/kb-1/documents?limit=25&offset=50')
   })
 })

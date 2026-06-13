@@ -114,7 +114,7 @@ from graph.service import create_graph_service
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import ParserRegistry, create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
-from ingestion.recovery import InMemoryIngestionRecoveryStore
+from ingestion.recovery import IngestionRecoveryStore, ObjectStoreIngestionRecoveryStore
 from ingestion.service import IngestionService
 from llm.adapters.protocols import LlmClientProtocol
 from llm.factory import create_llm_client
@@ -1111,9 +1111,9 @@ def get_gnn_service() -> GnnServiceProtocol:
 
 
 @lru_cache(maxsize=1)
-def get_ingestion_recovery_store() -> InMemoryIngestionRecoveryStore:
+def get_ingestion_recovery_store() -> IngestionRecoveryStore:
     """Return the recovery marker store for ingestion publish failures."""
-    return InMemoryIngestionRecoveryStore()
+    return ObjectStoreIngestionRecoveryStore(get_object_store())
 
 
 @lru_cache(maxsize=1)

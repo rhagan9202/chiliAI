@@ -175,7 +175,7 @@ from ingestion.models import ExtractionResult, ParsedDocument, ValidationReport
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
-from ingestion.recovery import InMemoryIngestionRecoveryStore
+from ingestion.recovery import ObjectStoreIngestionRecoveryStore
 from ingestion.service import IngestionService
 from ingestion.validator import ExtractionResultValidator, create_extraction_validator
 from llm.adapters.protocols import LlmClientProtocol
@@ -861,7 +861,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         orchestrator,
         object_store=object_store,
         event_bus=event_bus,
-        recovery_store=InMemoryIngestionRecoveryStore(),
+        recovery_store=ObjectStoreIngestionRecoveryStore(object_store),
     )
     chunker = create_document_chunker(config.ingestion.chunking)
     extractor = create_document_extractor(config.entities, config.relationships)
@@ -3370,10 +3370,21 @@ async def run_worker(
         DEFAULT_WORKFLOW_RECONCILE_INTERVAL_SECONDS,
     )
     last_workflow_reconcile_at: float | None = None
+    recovery_replay_complete = False
 
     try:
         while not shutdown_event.is_set():
             try:
+                if not recovery_replay_complete:
+                    replayed_recovery_markers = (
+                        deps.ingestion_service.replay_recovery_markers()
+                    )
+                    recovery_replay_complete = True
+                    if replayed_recovery_markers:
+                        logger.info(
+                            "Replayed %s ingestion recovery marker(s)",
+                            replayed_recovery_markers,
+                        )
                 now_monotonic = time.monotonic()
                 should_reconcile_workflows = (
                     stale_workflow_max_age_seconds > 0

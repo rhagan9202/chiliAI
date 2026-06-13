@@ -12,12 +12,23 @@ import type {
 
 export const knowledgeBasesQueryKey = ['knowledge-bases'] as const
 
+export interface KnowledgeBaseDocumentsOptions {
+  limit?: number
+  offset?: number
+}
+
 export function knowledgeBaseDetailQueryKey(knowledgeBaseId: string) {
   return ['knowledge-bases', knowledgeBaseId] as const
 }
 
-export function knowledgeBaseDocumentsQueryKey(knowledgeBaseId: string) {
-  return ['knowledge-bases', knowledgeBaseId, 'documents'] as const
+export function knowledgeBaseDocumentsQueryKey(
+  knowledgeBaseId: string,
+  options: KnowledgeBaseDocumentsOptions = {},
+) {
+  const hasPagination = options.limit !== undefined || options.offset !== undefined
+  return hasPagination
+    ? ['knowledge-bases', knowledgeBaseId, 'documents', options] as const
+    : ['knowledge-bases', knowledgeBaseId, 'documents'] as const
 }
 
 export function getKnowledgeBases(): Promise<KnowledgeBaseListResponse> {
@@ -42,8 +53,18 @@ export function deleteKnowledgeBase(knowledgeBaseId: string): Promise<void> {
 
 export function getKnowledgeBaseDocuments(
   knowledgeBaseId: string,
+  options: KnowledgeBaseDocumentsOptions = {},
 ): Promise<KnowledgeBaseDocumentListResponse> {
-  return apiFetch<KnowledgeBaseDocumentListResponse>(`/knowledgebases/${knowledgeBaseId}/documents`)
+  const searchParams = new URLSearchParams()
+  if (options.limit !== undefined) {
+    searchParams.set('limit', String(options.limit))
+  }
+  if (options.offset !== undefined) {
+    searchParams.set('offset', String(options.offset))
+  }
+  const queryString = searchParams.toString()
+  const path = `/knowledgebases/${knowledgeBaseId}/documents${queryString ? `?${queryString}` : ''}`
+  return apiFetch<KnowledgeBaseDocumentListResponse>(path)
 }
 
 export function deleteKnowledgeBaseDocument(
@@ -84,10 +105,13 @@ export function useKnowledgeBase(knowledgeBaseId: string | null) {
   })
 }
 
-export function useKnowledgeBaseDocuments(knowledgeBaseId: string | null) {
+export function useKnowledgeBaseDocuments(
+  knowledgeBaseId: string | null,
+  options: KnowledgeBaseDocumentsOptions = {},
+) {
   return useQuery({
-    queryKey: knowledgeBaseDocumentsQueryKey(knowledgeBaseId ?? 'missing'),
-    queryFn: () => getKnowledgeBaseDocuments(knowledgeBaseId ?? ''),
+    queryKey: knowledgeBaseDocumentsQueryKey(knowledgeBaseId ?? 'missing', options),
+    queryFn: () => getKnowledgeBaseDocuments(knowledgeBaseId ?? '', options),
     enabled: Boolean(knowledgeBaseId),
   })
 }

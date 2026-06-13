@@ -38,6 +38,7 @@ class DocumentReceipt(BaseModel):
     uri: str | None = None
     document_format: DocumentFormat | None = None
     replaced_document_id: str | None = None
+    enqueued: bool = False
     created_at: datetime = Field(default_factory=utc_now)
 
 

@@ -99,6 +99,57 @@ class DocumentListResponse(BaseModel):
 
 
 router = APIRouter(prefix="/knowledgebases", tags=["knowledge-bases"])
+_UPLOAD_READ_CHUNK_SIZE = 64 * 1024
+
+
+async def _read_upload_file_with_limit(
+    upload: UploadFile,
+    *,
+    max_bytes: int,
+    detail: str,
+) -> bytes:
+    """Read an upload incrementally and fail as soon as it exceeds the limit."""
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await upload.read(_UPLOAD_READ_CHUNK_SIZE)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=detail,
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _cleanup_replaced_document(
+    *,
+    knowledge_base_id: str,
+    replacement: DocumentRecord,
+    receipt: DocumentReceipt,
+    repository: KnowledgeBaseRepository,
+    graph_service: GraphServiceProtocol,
+    vector_service: VectorServiceProtocol,
+    object_store: ObjectStore,
+) -> None:
+    """Remove old derived artifacts after the replacement was safely enqueued."""
+    try:
+        graph_service.delete_by_source_document(knowledge_base_id, replacement.id)
+        vector_service.delete_by_source_document(knowledge_base_id, replacement.id)
+        protected_keys = {receipt.storage_key} if receipt.storage_key is not None else set()
+        prefix = f"knowledgebases/{knowledge_base_id}/documents/{replacement.id}/"
+        for key in object_store.list_keys(prefix):
+            if key not in protected_keys:
+                object_store.delete(key)
+        repository.delete_document(knowledge_base_id, replacement.id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clean up replaced document '{replacement.id}'.",
+        ) from exc
 
 
 @router.post(
@@ -391,7 +442,7 @@ async def register_knowledge_base_documents(
     max_bytes = validation.max_file_size_mb * 1024 * 1024
     allowed_content_types = set(validation.allowed_content_types)
     submissions: list[DocumentSubmission] = []
-    raw_metadata: list[tuple[str, str | None, int, str, str | None]] = []
+    raw_metadata: list[tuple[str, str | None, int, str, DocumentRecord | None]] = []
     for upload in files:
         if not validate_content_type(upload.content_type, allowed_content_types):
             raise HTTPException(
@@ -399,33 +450,21 @@ async def register_knowledge_base_documents(
                 detail=f"Content type '{upload.content_type}' not allowed.",
             )
 
-        content = await upload.read()
-        if len(content) > max_bytes:
-            raise HTTPException(
-                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-                detail=(
-                    f"File '{upload.filename or 'upload'}' exceeds the "
-                    f"configured {validation.max_file_size_mb} MB limit."
-                ),
-            )
+        content = await _read_upload_file_with_limit(
+            upload,
+            max_bytes=max_bytes,
+            detail=(
+                f"File '{upload.filename or 'upload'}' exceeds the "
+                f"configured {validation.max_file_size_mb} MB limit."
+            ),
+        )
 
         filename = sanitize_filename(upload.filename or "document")
         content_hash = hashlib.sha256(content).hexdigest()
 
-        # Dedup: if a document with this content hash already exists, cascade-
-        # delete its graph nodes, vector points, and metadata record before
-        # re-ingesting, and surface the replaced id in the receipt.
-        replaced_document_id: str | None = None
+        # Dedup: identify the document this upload will replace, but defer all
+        # destructive cleanup until registration and event publication succeed.
         existing = repository.get_document_by_content_hash(knowledge_base_id, content_hash)
-        if existing is not None:
-            graph_service.delete_by_source_document(knowledge_base_id, existing.id)
-            vector_service.delete_by_source_document(knowledge_base_id, existing.id)
-            repository.delete_document(knowledge_base_id, existing.id)
-            # Also drop the source object so register_documents re-publishes the event.
-            prefix = f"knowledgebases/{knowledge_base_id}/documents/{existing.id}/"
-            for key in object_store.list_keys(prefix):
-                object_store.delete(key)
-            replaced_document_id = existing.id
 
         submissions.append(
             DocumentSubmission(
@@ -435,7 +474,7 @@ async def register_knowledge_base_documents(
             )
         )
         raw_metadata.append(
-            (filename, upload.content_type, len(content), content_hash, replaced_document_id)
+            (filename, upload.content_type, len(content), content_hash, existing)
         )
 
     correlation_id = generate_id()
@@ -443,13 +482,12 @@ async def register_knowledge_base_documents(
         knowledge_base_id, submissions, correlation_id=correlation_id
     )
 
-    # Start a tracked workflow run for this ingestion. register_documents
-    # republishes documents.uploaded under `correlation_id` whenever there is
-    # work (the router pre-deletes on content-hash dedup, so a non-empty
-    # submission always publishes), so the worker's tracker advances this run.
+    # Start a tracked workflow run for this ingestion only when registration
+    # actually published documents.uploaded under `correlation_id`, so the
+    # worker's tracker can advance the run.
     # start_workflow is create-or-get by correlation, so a worker that already
     # fallback-created the run is adopted rather than duplicated.
-    if receipts:
+    if any(receipt.enqueued for receipt in receipts):
         agent_service.start_workflow(
             WorkflowSubmissionRequest(
                 knowledge_base_id=knowledge_base_id,
@@ -460,9 +498,20 @@ async def register_knowledge_base_documents(
         )
 
     final_receipts: list[DocumentReceipt] = []
-    for receipt, (filename, content_type, size_bytes, content_hash, replaced_document_id) in zip(
+    for receipt, (filename, content_type, size_bytes, content_hash, replacement) in zip(
         receipts, raw_metadata, strict=True
     ):
+        replaced_document_id = replacement.id if replacement is not None else None
+        if replacement is not None and receipt.enqueued:
+            _cleanup_replaced_document(
+                knowledge_base_id=knowledge_base_id,
+                replacement=replacement,
+                receipt=receipt,
+                repository=repository,
+                graph_service=graph_service,
+                vector_service=vector_service,
+                object_store=object_store,
+            )
         if repository.get_document(knowledge_base_id, receipt.source_document_id) is None:
             repository.add_document(
                 DocumentRecord(

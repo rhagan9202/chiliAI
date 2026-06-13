@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 
+import httpx
 import pytest
 
 from events.adapters.in_memory import InMemoryEventBus
@@ -11,7 +12,11 @@ from events.protocols import DlqErrorInfo, EventDelivery
 from events.types import AnyEvent
 from events.types import DocumentReference, DocumentsFailedEvent, DocumentsParsedEvent, DocumentsUploadedEvent
 from ingestion.models import ParsedDocument
-from ingestion.recovery import InMemoryIngestionRecoveryStore
+from ingestion.recovery import (
+    IngestionRecoveryMarker,
+    InMemoryIngestionRecoveryStore,
+    ObjectStoreIngestionRecoveryStore,
+)
 from ingestion.models import DocumentFormat, SourceDocument, SourceType
 from ingestion.orchestrators.protocols import DocumentParseFailure, ParseResult
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
@@ -116,6 +121,8 @@ def test_register_documents_deduplicates_repeated_content() -> None:
 
     assert second[0].source_document_id == first[0].source_document_id
     assert second[0].storage_key == first[0].storage_key
+    assert first[0].enqueued is True
+    assert second[0].enqueued is False
     assert len(event_bus.published_events) == 1
     assert object_store.list_keys("knowledgebases/kb-1/documents/") == [
         first[0].storage_key
@@ -152,6 +159,33 @@ def test_register_documents_deduplicates_repeated_content_with_different_filenam
     assert object_store.list_keys("knowledgebases/kb-1/documents/") == [
         first[0].storage_key
     ]
+
+
+def test_register_documents_ignores_unrelated_objects_under_document_prefix() -> None:
+    service, event_bus, object_store = _service()
+    submission = DocumentSubmission(
+        filename="claims.json",
+        content=b'{"claim_id": "42"}',
+        content_type="application/json",
+    )
+    source_document_id = "doc-sha256-" + sha256(submission.content or b"").hexdigest()[:24]
+    object_store.put_bytes(
+        f"knowledgebases/kb-1/documents/{source_document_id}/parsed.json",
+        b"{}",
+        media_type="application/json",
+    )
+
+    receipts = service.register_documents("kb-1", [submission])
+
+    assert receipts[0].source_document_id == source_document_id
+    assert receipts[0].storage_key == (
+        f"knowledgebases/kb-1/documents/{source_document_id}/source"
+    )
+    assert receipts[0].enqueued is True
+    assert object_store.get_bytes(receipts[0].storage_key or "").content == (
+        b'{"claim_id": "42"}'
+    )
+    assert len(event_bus.published_events) == 1
 
 
 def test_register_documents_records_recovery_marker_when_publish_fails() -> None:
@@ -192,6 +226,176 @@ def test_register_documents_records_recovery_marker_when_publish_fails() -> None
     assert marker.event_type == "documents.uploaded"
     assert "redis unavailable" in marker.failure_reason
     assert marker.created_at is not None
+
+
+def test_register_documents_republishes_duplicate_with_recovery_marker() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    recovery_store = InMemoryIngestionRecoveryStore()
+    service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(),
+            fetcher=HttpxRemoteDocumentFetcher(),
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+        recovery_store=recovery_store,
+    )
+    submission = DocumentSubmission(
+        filename="claim.txt",
+        content=b"claim body",
+        content_type="text/plain",
+        document_format=DocumentFormat.TXT,
+    )
+    first = service.register_documents("kb-1", [submission])
+    recovery_store.add_marker(
+        IngestionRecoveryMarker(
+            marker_id="marker-1",
+            knowledge_base_id="kb-1",
+            source_document_id=first[0].source_document_id,
+            storage_key=first[0].storage_key,
+            content_hash=sha256(b"claim body").hexdigest(),
+            correlation_id="corr-retry",
+            event_type="documents.uploaded",
+            failure_reason="publish failed",
+        )
+    )
+
+    second = service.register_documents("kb-1", [submission], correlation_id="corr-retry")
+
+    assert second[0].source_document_id == first[0].source_document_id
+    assert second[0].storage_key == first[0].storage_key
+    assert second[0].enqueued is True
+    upload_events = [
+        event
+        for event in event_bus.published_events
+        if isinstance(event, DocumentsUploadedEvent)
+    ]
+    assert len(upload_events) == 2
+    assert upload_events[-1].correlation_id == "corr-retry"
+    assert upload_events[-1].documents[0].source_document_id == first[0].source_document_id
+    assert recovery_store.find_marker(
+        event_type="documents.uploaded",
+        knowledge_base_id="kb-1",
+        source_document_id=first[0].source_document_id,
+        content_hash=sha256(b"claim body").hexdigest(),
+    ) is None
+
+
+def test_object_store_recovery_markers_survive_new_store_instance() -> None:
+    object_store = InMemoryObjectStore()
+    first_store = ObjectStoreIngestionRecoveryStore(object_store)
+    marker = IngestionRecoveryMarker(
+        marker_id="marker-1",
+        knowledge_base_id="kb-1",
+        source_document_id="doc-1",
+        storage_key="knowledgebases/kb-1/documents/doc-1/source",
+        content_hash="hash-1",
+        correlation_id="corr-1",
+        event_type="documents.uploaded",
+        failure_reason="publish failed",
+    )
+
+    first_store.add_marker(marker)
+    second_store = ObjectStoreIngestionRecoveryStore(object_store)
+
+    assert second_store.list_markers() == [marker]
+    assert second_store.find_marker(
+        event_type="documents.uploaded",
+        knowledge_base_id="kb-1",
+        source_document_id="doc-1",
+        content_hash="hash-1",
+    ) == marker
+
+
+def test_replay_recovery_markers_publishes_uploaded_event_and_removes_marker() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    recovery_store = ObjectStoreIngestionRecoveryStore(object_store)
+    storage_key = "knowledgebases/kb-1/documents/doc-1/source"
+    object_store.put_bytes(
+        storage_key,
+        b"claim body",
+        media_type="text/plain",
+        metadata={
+            "knowledge_base_id": "kb-1",
+            "source_document_id": "doc-1",
+            "checksum": "hash-1",
+            "filename": "claim.txt",
+            "document_format": DocumentFormat.TXT.value,
+            "source_type": SourceType.FILE_UPLOAD.value,
+        },
+    )
+    recovery_store.add_marker(
+        IngestionRecoveryMarker(
+            marker_id="marker-1",
+            knowledge_base_id="kb-1",
+            source_document_id="doc-1",
+            storage_key=storage_key,
+            content_hash="hash-1",
+            correlation_id="corr-1",
+            event_type="documents.uploaded",
+            failure_reason="publish failed",
+        )
+    )
+    service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(),
+            fetcher=HttpxRemoteDocumentFetcher(),
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+        recovery_store=recovery_store,
+    )
+
+    replayed = service.replay_recovery_markers()
+
+    assert replayed == 1
+    assert recovery_store.list_markers() == []
+    published = event_bus.published_events[-1]
+    assert isinstance(published, DocumentsUploadedEvent)
+    assert published.correlation_id == "corr-1"
+    assert published.documents[0].knowledge_base_id == "kb-1"
+    assert published.documents[0].source_document_id == "doc-1"
+    assert published.documents[0].filename == "claim.txt"
+    assert published.documents[0].content_type == "text/plain"
+    assert published.documents[0].storage_key == storage_key
+    assert published.documents[0].document_format == DocumentFormat.TXT.value
+    assert published.documents[0].source_type == SourceType.FILE_UPLOAD.value
+    assert published.documents[0].size_bytes == len(b"claim body")
+
+
+def test_replay_recovery_markers_leaves_marker_when_publish_fails() -> None:
+    event_bus = FailingPublishBus()
+    object_store = InMemoryObjectStore()
+    recovery_store = ObjectStoreIngestionRecoveryStore(object_store)
+    storage_key = "knowledgebases/kb-1/documents/doc-1/source"
+    object_store.put_bytes(storage_key, b"claim body", media_type="text/plain")
+    marker = IngestionRecoveryMarker(
+        marker_id="marker-1",
+        knowledge_base_id="kb-1",
+        source_document_id="doc-1",
+        storage_key=storage_key,
+        content_hash="hash-1",
+        correlation_id="corr-1",
+        event_type="documents.uploaded",
+        failure_reason="publish failed",
+    )
+    recovery_store.add_marker(marker)
+    service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(),
+            fetcher=HttpxRemoteDocumentFetcher(),
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+        recovery_store=recovery_store,
+    )
+
+    with pytest.raises(RuntimeError, match="redis unavailable"):
+        service.replay_recovery_markers()
+
+    assert recovery_store.list_markers() == [marker]
 
 
 def test_register_documents_deduplicates_repeated_remote_uri() -> None:
@@ -267,6 +471,56 @@ def test_process_documents_uploaded_publishes_failure_for_unresolved_format() ->
     assert event_bus.published_events[-1].correlation_id == "corr-failed-1"
     assert isinstance(outcomes[0], DocumentParseFailure)
     assert outcomes[0].error_type == "RemoteFetchError"
+
+
+def test_process_documents_uploaded_publishes_failure_for_malformed_remote_content_length() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/csv", "content-length": "invalid"},
+            content=b"id,name\n1,Alice\n",
+            request=request,
+        )
+
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(),
+            fetcher=HttpxRemoteDocumentFetcher(
+                client=httpx.Client(
+                    transport=httpx.MockTransport(handler),
+                    follow_redirects=True,
+                )
+            ),
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+    uploaded = DocumentsUploadedEvent(
+        correlation_id="corr-invalid-length",
+        documents=[
+            DocumentReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-invalid-length",
+                filename="claims.csv",
+                content_type=None,
+                storage_key=None,
+                uri="https://example.com/claims.csv",
+                document_format=None,
+                size_bytes=None,
+            )
+        ],
+    )
+
+    outcomes = service.process_documents_uploaded(uploaded)
+
+    assert len(outcomes) == 1
+    assert isinstance(outcomes[0], DocumentParseFailure)
+    assert outcomes[0].error_type == "RemoteFetchError"
+    assert "invalid content-length" in outcomes[0].error_message
+    assert isinstance(event_bus.published_events[-1], DocumentsFailedEvent)
+    assert event_bus.published_events[-1].correlation_id == "corr-invalid-length"
 
 
 def test_process_documents_uploaded_preserves_event_source_metadata() -> None:

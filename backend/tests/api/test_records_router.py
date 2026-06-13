@@ -6,12 +6,16 @@ import io
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import cast
 
+import anyio
 import pytest
+from fastapi import HTTPException, UploadFile
 from fastapi.testclient import TestClient
 
 from api.app import create_app
 from api.dependencies import get_knowledge_base_repository, get_raw_record_store
+from api.routers.records import _read_upload_file_with_limit
 from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from records.adapters.in_memory import InMemoryRawRecordStore
 from shared.types import KnowledgeBase
@@ -376,6 +380,36 @@ def test_upload_rejects_file_exceeding_size_limit() -> None:
         files={"file": ("claims.csv", io.BytesIO(oversized), "text/csv")},
     )
     assert response.status_code == 413
+
+
+def test_record_upload_reader_stops_when_size_limit_is_exceeded() -> None:
+    class ChunkedUpload:
+        filename = "claims.csv"
+
+        def __init__(self) -> None:
+            self.chunks = [b"aa", b"aa", b"tail"]
+            self.read_count = 0
+
+        async def read(self, size: int = -1) -> bytes:
+            assert size > 0
+            self.read_count += 1
+            return self.chunks.pop(0) if self.chunks else b""
+
+    upload = ChunkedUpload()
+
+    async def read_upload() -> None:
+        await _read_upload_file_with_limit(
+            cast(UploadFile, upload),
+            max_bytes=3,
+            detail="too large",
+        )
+
+    with pytest.raises(HTTPException) as exc_info:
+        anyio.run(read_upload)
+
+    assert exc_info.value.status_code == 413
+    assert upload.read_count == 2
+    assert upload.chunks == [b"tail"]
 
 
 def test_upload_file_feed_not_found_returns_404(client: TestClient) -> None:

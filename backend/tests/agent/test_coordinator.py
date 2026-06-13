@@ -97,7 +97,7 @@ from ingestion.models import ExtractionResult, ParsedDocument, ValidationReport
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
-from ingestion.recovery import InMemoryIngestionRecoveryStore
+from ingestion.recovery import ObjectStoreIngestionRecoveryStore
 from ingestion.service import IngestionService
 from ingestion.service_models import DocumentSubmission
 from ingestion.validator import create_extraction_validator
@@ -492,7 +492,7 @@ def test_build_worker_dependencies_assembles_ingestion_pipeline(
     assert isinstance(deps.embeddings_service, EmbeddingsService)
     assert deps.llm_client is not None
     assert deps.event_settings.backend == "in-memory"
-    assert isinstance(deps.ingestion_service._recovery_store, InMemoryIngestionRecoveryStore)  # pyright: ignore[reportPrivateUsage]
+    assert isinstance(deps.ingestion_service._recovery_store, ObjectStoreIngestionRecoveryStore)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_build_worker_dependencies_wires_policy(
@@ -3980,6 +3980,7 @@ def test_run_worker_passes_configured_stage_policy_registry(
     monkeypatch.setattr(
         "agent.coordinator.build_worker_dependencies",
         lambda: SimpleNamespace(
+            ingestion_service=SimpleNamespace(replay_recovery_markers=lambda: 0),
             workflow_tracker=SimpleNamespace(reconcile_stale_runs=lambda **_: 0),
             event_settings=SimpleNamespace(backend="in-memory"),
         ),
@@ -4028,3 +4029,118 @@ def test_run_worker_passes_configured_stage_policy_registry(
     assert fallback_policy.retry_policy.max_retries == 5
     assert fallback_policy.retry_policy.base_delay_seconds == 0.125
     assert fallback_policy.timeout_seconds is None
+
+
+def test_run_worker_replays_recovery_markers_before_drain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent.coordinator import run_worker
+    from agent.models import HealthSettings
+
+    calls: list[str] = []
+
+    class FakeIngestionService:
+        def replay_recovery_markers(self) -> int:
+            calls.append("replay")
+            return 1
+
+    monkeypatch.setenv("CHILI_WORKFLOW_STALE_MAX_AGE_SECONDS", "0")
+    monkeypatch.setattr(
+        "agent.coordinator.build_worker_dependencies",
+        lambda: SimpleNamespace(
+            ingestion_service=FakeIngestionService(),
+            workflow_tracker=SimpleNamespace(reconcile_stale_runs=lambda **_: 0),
+            event_settings=SimpleNamespace(backend="in-memory"),
+        ),
+    )
+
+    async def _skip_health_server(_state: object) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "agent.coordinator.start_health_server_safely",
+        _skip_health_server,
+    )
+
+    async def _drain_once(*_args: object, **_kwargs: object) -> int:
+        calls.append("drain")
+        task = asyncio.current_task()
+        assert task is not None
+        task.cancel()
+        return 0
+
+    monkeypatch.setattr("agent.coordinator._drain_once", _drain_once)
+
+    async def _run() -> None:
+        task = asyncio.create_task(
+            run_worker(health_settings=HealthSettings(host="127.0.0.1", port=1))
+        )
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(_run())
+
+    assert calls == ["replay", "drain"]
+
+
+def test_run_worker_retries_recovery_replay_failure_before_drain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent.coordinator import run_worker
+    from agent.models import HealthSettings
+
+    calls: list[str] = []
+
+    class FakeIngestionService:
+        def __init__(self) -> None:
+            self.replay_attempts = 0
+
+        def replay_recovery_markers(self) -> int:
+            self.replay_attempts += 1
+            calls.append("replay")
+            if self.replay_attempts == 1:
+                raise RuntimeError("transient event bus outage")
+            return 1
+
+    monkeypatch.setenv("CHILI_WORKFLOW_STALE_MAX_AGE_SECONDS", "0")
+    monkeypatch.setattr("agent.coordinator.DRAIN_ERROR_BACKOFF_SECONDS", 0.01)
+    monkeypatch.setattr(
+        "agent.coordinator.build_worker_dependencies",
+        lambda: SimpleNamespace(
+            ingestion_service=FakeIngestionService(),
+            workflow_tracker=SimpleNamespace(reconcile_stale_runs=lambda **_: 0),
+            event_settings=SimpleNamespace(backend="in-memory"),
+        ),
+    )
+
+    async def _skip_health_server(_state: object) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "agent.coordinator.start_health_server_safely",
+        _skip_health_server,
+    )
+
+    async def _drain_once(*_args: object, **_kwargs: object) -> int:
+        calls.append("drain")
+        task = asyncio.current_task()
+        assert task is not None
+        task.cancel()
+        return 0
+
+    monkeypatch.setattr("agent.coordinator._drain_once", _drain_once)
+
+    async def _run() -> None:
+        task = asyncio.create_task(
+            run_worker(health_settings=HealthSettings(host="127.0.0.1", port=1))
+        )
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(_run())
+
+    assert calls == ["replay", "replay", "drain"]

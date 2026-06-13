@@ -28,6 +28,7 @@ from records.service_models import RecordIngestReceipt, RecordSubmission
 __all__ = ["RecordPushRequest", "router"]
 
 router = APIRouter(prefix="/records", tags=["records"])
+_UPLOAD_READ_CHUNK_SIZE = 64 * 1024
 
 
 class RecordPushRequest(BaseModel):
@@ -35,6 +36,29 @@ class RecordPushRequest(BaseModel):
 
     feed_name: str = Field(min_length=1)
     rows: list[dict[str, object]] = Field(min_length=1)
+
+
+async def _read_upload_file_with_limit(
+    upload: UploadFile,
+    *,
+    max_bytes: int,
+    detail: str,
+) -> bytes:
+    """Read an upload incrementally and fail as soon as it exceeds the limit."""
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await upload.read(_UPLOAD_READ_CHUNK_SIZE)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=detail,
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _select_file_source(
@@ -137,14 +161,12 @@ async def upload_record_file(
                 f"Accepted formats: {', '.join(accepted_formats)}."
             ),
         )
-    content = await file.read()
-
     validation = config.validation or ValidationConfig()
-    if len(content) > validation.max_file_size_mb * 1024 * 1024:
-        raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"File exceeds the configured {validation.max_file_size_mb} MB limit.",
-        )
+    content = await _read_upload_file_with_limit(
+        file,
+        max_bytes=validation.max_file_size_mb * 1024 * 1024,
+        detail=f"File exceeds the configured {validation.max_file_size_mb} MB limit.",
+    )
 
     try:
         rows = source.read_rows(content)

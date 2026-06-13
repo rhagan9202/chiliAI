@@ -10,7 +10,7 @@ from ingestion.orchestrators.protocols import (
     ParseResult,
     ParserOrchestrator,
 )
-from ingestion.recovery import IngestionRecoveryMarker, InMemoryIngestionRecoveryStore
+from ingestion.recovery import IngestionRecoveryMarker, IngestionRecoveryStore
 from ingestion.service_models import DocumentReceipt, DocumentSubmission, IngestionTask
 from events.protocols import EventBus
 from events.types import (
@@ -39,7 +39,7 @@ class IngestionService:
         *,
         object_store: ObjectStoreProtocol,
         event_bus: EventBus,
-        recovery_store: InMemoryIngestionRecoveryStore | None = None,
+        recovery_store: IngestionRecoveryStore | None = None,
     ) -> None:
         self._parser_orchestrator = parser_orchestrator
         self._object_store = object_store
@@ -62,6 +62,7 @@ class IngestionService:
         """
         document_references: list[DocumentReference] = []
         content_hashes_by_source_document_id: dict[str, str | None] = {}
+        recovery_markers_by_source_document_id: dict[str, IngestionRecoveryMarker] = {}
         receipts: list[DocumentReceipt] = []
 
         for submission in submissions:
@@ -100,7 +101,21 @@ class IngestionService:
                 if existing_storage_key is not None:
                     storage_key = existing_storage_key
                 already_registered = existing_storage_key is not None
-                should_publish = not already_registered
+                recovery_marker = (
+                    self._recovery_store.find_marker(
+                        event_type="documents.uploaded",
+                        knowledge_base_id=knowledge_base_id,
+                        source_document_id=source_document.id,
+                        content_hash=checksum,
+                    )
+                    if already_registered and self._recovery_store is not None
+                    else None
+                )
+                if recovery_marker is not None:
+                    recovery_markers_by_source_document_id[source_document.id] = (
+                        recovery_marker
+                    )
+                should_publish = not already_registered or recovery_marker is not None
                 stored = (
                     self._object_store.get_bytes(storage_key)
                     if already_registered
@@ -112,6 +127,13 @@ class IngestionService:
                             "knowledge_base_id": knowledge_base_id,
                             "source_document_id": source_document.id,
                             "checksum": checksum or "",
+                            "filename": source_document.filename or "",
+                            "document_format": (
+                                source_document.document_format.value
+                                if source_document.document_format is not None
+                                else ""
+                            ),
+                            "source_type": source_document.source_type.value,
                             "idempotency_strategy": "sha256",
                         },
                     )
@@ -198,7 +220,65 @@ class IngestionService:
                             )
                         )
                 raise
+            enqueued_source_document_ids = {
+                reference.source_document_id for reference in document_references
+            }
+            receipts = [
+                receipt.model_copy(update={"enqueued": True})
+                if receipt.source_document_id in enqueued_source_document_ids
+                else receipt
+                for receipt in receipts
+            ]
+            if self._recovery_store is not None:
+                for marker in recovery_markers_by_source_document_id.values():
+                    self._recovery_store.remove_marker(marker.marker_id)
         return receipts
+
+    def replay_recovery_markers(self) -> int:
+        """Republish durable ``documents.uploaded`` markers.
+
+        Markers are removed only after the event bus accepts the reconstructed
+        event. If the source object is missing, the marker stays in place for
+        operator inspection or a later repair.
+        """
+
+        if self._recovery_store is None:
+            return 0
+
+        replayed = 0
+        for marker in self._recovery_store.list_markers(event_type="documents.uploaded"):
+            if marker.storage_key is None:
+                continue
+            try:
+                stored = self._object_store.get_bytes(marker.storage_key)
+            except KeyError:
+                continue
+
+            event = DocumentsUploadedEvent(
+                correlation_id=marker.correlation_id,
+                documents=[
+                    DocumentReference(
+                        knowledge_base_id=marker.knowledge_base_id,
+                        source_document_id=marker.source_document_id,
+                        filename=_metadata_string(stored.metadata.get("filename")),
+                        content_type=stored.media_type,
+                        storage_key=marker.storage_key,
+                        uri=_metadata_string(stored.metadata.get("uri")),
+                        document_format=_metadata_string(
+                            stored.metadata.get("document_format")
+                        ),
+                        source_type=(
+                            _metadata_string(stored.metadata.get("source_type"))
+                            or SourceType.FILE_UPLOAD.value
+                        ),
+                        size_bytes=stored.size_bytes,
+                    )
+                ],
+            )
+            self._event_bus.publish(event)
+            self._recovery_store.remove_marker(marker.marker_id)
+            replayed += 1
+        return replayed
 
     def ingest_task(
         self,
@@ -321,9 +401,8 @@ class IngestionService:
         knowledge_base_id: str,
         source_document_id: str,
     ) -> str | None:
-        prefix = f"knowledgebases/{knowledge_base_id}/documents/{source_document_id}/"
-        existing_keys = self._object_store.list_keys(prefix)
-        return existing_keys[0] if existing_keys else None
+        storage_key = self._build_storage_key(knowledge_base_id, source_document_id)
+        return storage_key if self._object_store.exists(storage_key) else None
 
     @staticmethod
     def _build_remote_marker_key(
@@ -347,6 +426,12 @@ class IngestionService:
         parsed_document_id: str,
     ) -> str:
         return f"knowledgebases/{knowledge_base_id}/parsed/{parsed_document_id}.json"
+
+
+def _metadata_string(value: object) -> str | None:
+    if not isinstance(value, str) or value == "":
+        return None
+    return value
 
 
 __all__ = [

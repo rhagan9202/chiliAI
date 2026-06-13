@@ -17,6 +17,18 @@ from ingestion.parsers.utils import infer_format_from_content_type, infer_format
 __all__ = ["HttpxRemoteDocumentFetcher", "parse_remote_document"]
 
 
+def _parse_content_length(value: str | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        content_length = int(value)
+    except ValueError as exc:
+        raise RemoteFetchError("Remote response has invalid content-length.") from exc
+    if content_length < 0:
+        raise RemoteFetchError("Remote response has invalid content-length.")
+    return content_length
+
+
 class HttpxRemoteDocumentFetcher(RemoteDocumentFetcher):
     """Fetch remote document bytes over HTTPS using httpx."""
 
@@ -41,26 +53,32 @@ class HttpxRemoteDocumentFetcher(RemoteDocumentFetcher):
         client = self._client or httpx.Client(timeout=self._timeout_seconds, follow_redirects=True)
         close_client = self._client is None
         try:
-            response = client.get(source.uri)
-            response.raise_for_status()
-            declared_size = response.headers.get("content-length")
-            if declared_size is not None and int(declared_size) > self._max_bytes:
-                raise RemoteFetchError("Remote response exceeds configured size limit.")
-            content = response.content
-            if len(content) > self._max_bytes:
-                raise RemoteFetchError("Remote response exceeds configured size limit.")
+            with client.stream("GET", source.uri, follow_redirects=True) as response:
+                if urlparse(str(response.url)).scheme.lower() != "https":
+                    raise RemoteFetchError("Remote document fetch only supports HTTPS URIs.")
+                response.raise_for_status()
+                declared_size = _parse_content_length(response.headers.get("content-length"))
+                if declared_size is not None and declared_size > self._max_bytes:
+                    raise RemoteFetchError("Remote response exceeds configured size limit.")
 
-            filename = source.filename or PurePosixPath(urlparse(str(response.url)).path).name or None
-            media_type = response.headers.get("content-type")
-            inferred_format = infer_format_from_content_type(media_type) or infer_format_from_filename(filename)
-            return RemoteDocumentPayload(
-                content=content,
-                final_url=str(response.url),
-                media_type=media_type,
-                filename=filename,
-                size_bytes=len(content),
-                inferred_format=inferred_format,
-            )
+                content_buffer = bytearray()
+                for chunk in response.iter_bytes():
+                    if len(content_buffer) + len(chunk) > self._max_bytes:
+                        raise RemoteFetchError("Remote response exceeds configured size limit.")
+                    content_buffer.extend(chunk)
+
+                content = bytes(content_buffer)
+                filename = source.filename or PurePosixPath(urlparse(str(response.url)).path).name or None
+                media_type = response.headers.get("content-type")
+                inferred_format = infer_format_from_content_type(media_type) or infer_format_from_filename(filename)
+                return RemoteDocumentPayload(
+                    content=content,
+                    final_url=str(response.url),
+                    media_type=media_type,
+                    filename=filename,
+                    size_bytes=len(content),
+                    inferred_format=inferred_format,
+                )
         except httpx.HTTPError as exc:
             raise RemoteFetchError(f"Unable to fetch remote document: {exc}") from exc
         finally:

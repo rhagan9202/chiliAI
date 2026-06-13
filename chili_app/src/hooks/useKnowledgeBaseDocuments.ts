@@ -34,25 +34,48 @@ export const MAX_DOCUMENT_SIZE_BYTES = 50 * 1024 * 1024
 
 export function knowledgeBaseDocumentsQueryKey(
   kbId: string,
+  options: KnowledgeBaseDocumentsPaginationOptions = {},
 ): readonly unknown[] {
-  return ['knowledge-bases', kbId, 'documents'] as const
+  const hasPagination = options.limit !== undefined || options.offset !== undefined
+  return hasPagination
+    ? ['knowledge-bases', kbId, 'documents', options] as const
+    : ['knowledge-bases', kbId, 'documents'] as const
+}
+
+export interface KnowledgeBaseDocumentsPaginationOptions {
+  limit?: number
+  offset?: number
 }
 
 export interface UseKnowledgeBaseDocumentsOptions {
   enabled?: boolean
+  limit?: number
+  offset?: number
 }
 
 export function useKnowledgeBaseDocuments(
   kbId: string | undefined,
   options: UseKnowledgeBaseDocumentsOptions = {},
 ): UseQueryResult<DocumentListResponse, Error> {
+  const pagination = {
+    limit: options.limit,
+    offset: options.offset,
+  }
+  const searchParams = new URLSearchParams()
+  if (pagination.limit !== undefined) {
+    searchParams.set('limit', String(pagination.limit))
+  }
+  if (pagination.offset !== undefined) {
+    searchParams.set('offset', String(pagination.offset))
+  }
+  const queryString = searchParams.toString()
   return useQuery<DocumentListResponse, Error>({
     queryKey: kbId
-      ? knowledgeBaseDocumentsQueryKey(kbId)
+      ? knowledgeBaseDocumentsQueryKey(kbId, pagination)
       : ['knowledge-bases', 'documents', 'idle'],
     queryFn: () =>
       apiRequest<DocumentListResponse>(
-        `/knowledgebases/${kbId ?? ''}/documents`,
+        `/knowledgebases/${kbId ?? ''}/documents${queryString ? `?${queryString}` : ''}`,
       ),
     enabled: Boolean(kbId) && (options.enabled ?? true),
   })

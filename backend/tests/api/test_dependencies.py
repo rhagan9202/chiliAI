@@ -25,7 +25,7 @@ from embeddings.service import EmbeddingsService
 from events.adapters.in_memory import InMemoryEventBus
 from events.adapters.redis_streams import RedisStreamsEventBus
 from graph.service import GraphService
-from ingestion.recovery import InMemoryIngestionRecoveryStore
+from ingestion.recovery import ObjectStoreIngestionRecoveryStore
 from llm.service import LlmService
 from monitoring.adapters.in_memory import InMemoryObservationSource
 from monitoring.adapters.postgres import PostgresObservationSource
@@ -543,7 +543,8 @@ def test_get_ingestion_service_wires_recovery_store(
 
     service = dependencies.get_ingestion_service()
 
-    assert isinstance(service._recovery_store, InMemoryIngestionRecoveryStore)  # pyright: ignore[reportPrivateUsage]
+    assert isinstance(service._recovery_store, ObjectStoreIngestionRecoveryStore)  # pyright: ignore[reportPrivateUsage]
+    assert service._recovery_store._object_store is dependencies.get_object_store()  # pyright: ignore[reportPrivateUsage]
 
 
 # ---------------------------------------------------------------------------
