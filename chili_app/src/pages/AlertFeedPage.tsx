@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import { useAcknowledgeAlert, useAlerts } from '../api/alerts'
 import { useEvidencePack } from '../api/evidence'
@@ -22,15 +23,19 @@ const filters = [
 ]
 
 export function AlertFeedPage() {
+  const [searchParams] = useSearchParams()
   const [activeFilterId, setActiveFilterId] = useState('all')
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
-  const alertsQuery = useAlerts()
+  const selectedKnowledgeBaseId = searchParams.get('kb')
+  const alertsQuery = useAlerts({
+    knowledgeBaseId: selectedKnowledgeBaseId ?? undefined,
+  })
   const acknowledgeMutation = useAcknowledgeAlert()
+  const alertItems = alertsQuery.data?.items ?? []
 
   // Resolve the selected alert's evidence pack (KB-scoped). Hooks must run
   // unconditionally, so derive from the (possibly undefined) query data.
-  const selectedAlert =
-    alertsQuery.data?.items.find((alert) => alert.id === selectedAlertId) ?? null
+  const selectedAlert = alertItems.find((alert) => alert.id === selectedAlertId) ?? null
   const evidenceQuery = useEvidencePack(
     selectedAlert?.evidence_pack_id ?? null,
     selectedAlert?.knowledge_base_id ?? null,
@@ -48,7 +53,7 @@ export function AlertFeedPage() {
     return <LoadingState label="Waiting for alert feed data" />
   }
 
-  const alerts = alertsQuery.data.items.filter((alert) => {
+  const alerts = alertItems.filter((alert) => {
     if (activeFilterId === 'all') {
       return true
     }

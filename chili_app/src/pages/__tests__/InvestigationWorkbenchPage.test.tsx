@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DomainConfig, RuntimeEntity } from '../../api/contracts'
@@ -21,8 +22,6 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   routeEntityId: null as string | null,
   riskUnavailableReason: 'No risk profile has been generated for this entity.' as string | null,
-  setSearchParams: vi.fn(),
-  searchParams: new URLSearchParams(),
 }))
 
 const analyticsCalls = vi.hoisted(() => ({
@@ -76,11 +75,14 @@ const domainConfig: DomainConfig = {
   },
 }
 
-vi.mock('react-router-dom', () => ({
-  useParams: () => (mocks.routeEntityId ? { entityId: mocks.routeEntityId } : {}),
-  useNavigate: () => mocks.navigate,
-  useSearchParams: () => [mocks.searchParams, mocks.setSearchParams],
-}))
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return {
+    ...actual,
+    useParams: () => (mocks.routeEntityId ? { entityId: mocks.routeEntityId } : {}),
+    useNavigate: () => mocks.navigate,
+  }
+})
 
 vi.mock('../../api/config', () => ({
   useDomainConfig: () => ({ isLoading: false, isError: false, data: domainConfig }),
@@ -162,6 +164,14 @@ vi.mock('../../api/evidence', () => ({
   useEvidencePack: () => ({ isLoading: false, isError: false, data: undefined }),
 }))
 
+function renderInvestigationWorkbench(initialEntry = '/investigation') {
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <InvestigationWorkbenchPage />
+    </MemoryRouter>,
+  )
+}
+
 describe('InvestigationWorkbenchPage', () => {
   beforeEach(() => {
     mocks.knowledgeBases = []
@@ -170,21 +180,19 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.navigate.mockReset()
     mocks.routeEntityId = null
     mocks.riskUnavailableReason = 'No risk profile has been generated for this entity.'
-    mocks.setSearchParams.mockReset()
-    mocks.searchParams = new URLSearchParams()
     analyticsCalls.risk = []
     analyticsCalls.timeseries = []
   })
 
   it('renders a live no-KB state instead of seeded graph data', () => {
-    render(<InvestigationWorkbenchPage />)
+    renderInvestigationWorkbench()
 
     expect(screen.getByText('No graph-ready knowledge base')).toBeInTheDocument()
     expect(screen.getByText(/queries the graph through a selected knowledge base/i)).toBeInTheDocument()
   })
 
   it('renders a Create Knowledge Base CTA on the no-KB empty state that navigates to /knowledge-bases', async () => {
-    render(<InvestigationWorkbenchPage />)
+    renderInvestigationWorkbench()
 
     const cta = await screen.findByRole('button', {
       name: /create knowledge base/i,
@@ -226,7 +234,7 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.selectedEntity = provider
     mocks.routeEntityId = 'provider-204'
 
-    render(<InvestigationWorkbenchPage />)
+    renderInvestigationWorkbench()
 
     await userEvent.type(screen.getByRole('searchbox', { name: 'Entity search' }), '123')
     await userEvent.click(await screen.findByRole('button', { name: /1234567890/i }))
@@ -269,7 +277,7 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.selectedEntity = provider
     mocks.routeEntityId = 'provider-204'
 
-    render(<InvestigationWorkbenchPage />)
+    renderInvestigationWorkbench()
 
     expect(analyticsCalls.risk.at(-1)).toEqual(['kb-live', 'provider-204'])
     expect(analyticsCalls.timeseries.at(-1)).toEqual(['kb-live', 'provider-204'])
@@ -304,9 +312,38 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.routeEntityId = 'provider-204'
     mocks.riskUnavailableReason = null
 
-    render(<InvestigationWorkbenchPage />)
+    renderInvestigationWorkbench()
 
     expect(screen.getByText(/Risk scoring is unavailable until an entity is selected and analytics respond/i)).toBeInTheDocument()
     expect(screen.queryByText('Composite risk')).not.toBeInTheDocument()
+  })
+
+  it('selects the knowledge base from the incoming kb query parameter', () => {
+    mocks.knowledgeBases = [
+      {
+        id: 'kb-first',
+        name: 'First KB',
+        description: 'Default fallback',
+        status: 'ready',
+        document_count: 1,
+        entity_count: 1,
+        relationship_count: 0,
+        created_at: '2026-05-10T00:00:00Z',
+      },
+      {
+        id: 'kb-claims',
+        name: 'Claims KB',
+        description: 'Query-selected KB',
+        status: 'ready',
+        document_count: 2,
+        entity_count: 3,
+        relationship_count: 1,
+        created_at: '2026-05-11T00:00:00Z',
+      },
+    ]
+
+    renderInvestigationWorkbench('/investigation?kb=kb-claims')
+
+    expect(screen.getByLabelText('Knowledge base')).toHaveValue('kb-claims')
   })
 })

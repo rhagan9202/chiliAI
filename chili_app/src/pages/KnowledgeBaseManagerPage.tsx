@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { useDomainConfig } from '../api/config'
 import {
@@ -41,6 +42,7 @@ import { useIngestionStudioStore } from '../stores/ingestionStudioStore'
 import './pages.css'
 
 export function KnowledgeBaseManagerPage() {
+  const navigate = useNavigate()
   const studio = useIngestionStudioStore()
   const knowledgeBasesQuery = useKnowledgeBases()
   const domainConfigQuery = useDomainConfig()
@@ -65,6 +67,7 @@ export function KnowledgeBaseManagerPage() {
   const knowledgeBaseDetailQuery = useKnowledgeBase(activeKnowledgeBaseId)
   const documentsQuery = useKnowledgeBaseDocuments(activeKnowledgeBaseId)
   const documents = documentsQuery.data?.items ?? []
+  const workflows = workflowsQuery.data?.items ?? []
   const activeDocumentId = documents.some((document) => document.id === selectedDocumentId)
     ? selectedDocumentId
     : documents[0]?.id ?? null
@@ -315,6 +318,7 @@ export function KnowledgeBaseManagerPage() {
   ])
   const errorStepIds = new Set(contentErrors.length > 0 ? (['validate'] as const) : [])
 
+  const activeKnowledgeBaseSearch = knowledgeBaseSearch(activeKnowledgeBaseId)
 
   return (
     <section className="page-grid">
@@ -474,9 +478,30 @@ export function KnowledgeBaseManagerPage() {
           </Card>
 
           <Card>
+            <NextActionsPanel
+              activeKnowledgeBaseId={activeKnowledgeBaseId}
+              hasReceipts={studio.receipts.length > 0}
+              hasWorkflows={workflows.length > 0}
+              onInvestigateEntities={() => {
+                if (!activeKnowledgeBaseSearch) {
+                  return
+                }
+                navigate({ pathname: '/investigation', search: activeKnowledgeBaseSearch })
+              }}
+              onReviewAlerts={() => {
+                if (!activeKnowledgeBaseSearch) {
+                  return
+                }
+                navigate({ pathname: '/alerts', search: activeKnowledgeBaseSearch })
+              }}
+              onWatchRuns={() => studio.setCurrentStep('runs')}
+            />
+          </Card>
+
+          <Card>
             <RunTimeline
               receipts={studio.receipts}
-              workflows={workflowsQuery.data?.items ?? []}
+              workflows={workflows}
             />
           </Card>
 
@@ -494,6 +519,69 @@ export function KnowledgeBaseManagerPage() {
             />
           </Card>
         </aside>
+      </div>
+    </section>
+  )
+}
+
+function knowledgeBaseSearch(knowledgeBaseId: string | null): string | null {
+  return knowledgeBaseId ? `kb=${encodeURIComponent(knowledgeBaseId)}` : null
+}
+
+function NextActionsPanel({
+  activeKnowledgeBaseId,
+  hasReceipts,
+  hasWorkflows,
+  onInvestigateEntities,
+  onReviewAlerts,
+  onWatchRuns,
+}: {
+  activeKnowledgeBaseId: string | null
+  hasReceipts: boolean
+  hasWorkflows: boolean
+  onInvestigateEntities: () => void
+  onReviewAlerts: () => void
+  onWatchRuns: () => void
+}) {
+  const disabled = !activeKnowledgeBaseId
+  const message = hasWorkflows
+    ? 'Runs are updating for this knowledge base.'
+    : hasReceipts
+      ? 'Submission accepted. Watch for queued or running workflow updates.'
+      : 'Submit documents or records to unlock the handoff path.'
+
+  return (
+    <section className="ingestion-next-actions" aria-labelledby="ingestion-next-actions-title">
+      <div className="metric-row metric-row--stacked">
+        <strong id="ingestion-next-actions-title">Next actions</strong>
+        <p className="page-copy-block">{message}</p>
+      </div>
+
+      <div className="ingestion-next-actions__buttons">
+        <button
+          className="page-button page-button--secondary"
+          disabled={disabled}
+          onClick={onWatchRuns}
+          type="button"
+        >
+          Watch runs
+        </button>
+        <button
+          className="page-button page-button--secondary"
+          disabled={disabled}
+          onClick={onInvestigateEntities}
+          type="button"
+        >
+          Investigate entities
+        </button>
+        <button
+          className="page-button page-button--secondary"
+          disabled={disabled}
+          onClick={onReviewAlerts}
+          type="button"
+        >
+          Review alerts
+        </button>
       </div>
     </section>
   )

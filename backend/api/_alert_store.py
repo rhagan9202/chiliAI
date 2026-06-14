@@ -236,13 +236,34 @@ def project_alert_feed(
     *,
     limit: int = 100,
     offset: int = 0,
+    status: str | None = None,
+    knowledge_base_id: str | None = None,
 ) -> AlertListResponse:
     """Return a paginated frontend alert feed from projection records."""
 
-    records, total = repository.list(limit=limit, offset=offset)
+    if status is None and knowledge_base_id is None:
+        records, total = repository.list(limit=limit, offset=offset)
+    else:
+        first_page, total_records = repository.list(limit=1, offset=0)
+        all_records = first_page
+        if total_records > 1:
+            all_records, _ = repository.list(limit=total_records, offset=0)
+        filtered_records = [
+            record
+            for record in all_records
+            if (status is None or record.alert.status == status)
+            and (
+                knowledge_base_id is None
+                or record.knowledge_base_id == knowledge_base_id
+            )
+        ]
+        total = len(filtered_records)
+        records = filtered_records[offset : offset + limit]
+
+    page = (offset // limit) + 1
     return AlertListResponse(
         items=[_to_alert_item(record) for record in records],
-        page=PageInfo(page=1, page_size=max(limit, 1), total_items=total),
+        page=PageInfo(page=page, page_size=max(limit, 1), total_items=total),
     )
 
 

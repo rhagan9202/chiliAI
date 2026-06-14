@@ -1563,6 +1563,11 @@ export interface components {
              */
             created_at?: string;
             document_format?: components["schemas"]["DocumentFormat"] | null;
+            /**
+             * Enqueued
+             * @default false
+             */
+            enqueued: boolean;
             /** Filename */
             filename?: string | null;
             /** Knowledge Base Id */
@@ -3055,8 +3060,15 @@ export interface components {
          * @description Collection of workflow runs.
          */
         WorkflowRunListResponse: {
+            /**
+             * Has More
+             * @default false
+             */
+            has_more: boolean;
             /** Items */
             items?: components["schemas"]["WorkflowRunResponse"][];
+            /** Next Offset */
+            next_offset?: number | null;
         };
         /**
          * WorkflowRunResponse
@@ -3129,7 +3141,12 @@ export interface operations {
     };
     list_alerts_alerts_get: {
         parameters: {
-            query?: never;
+            query?: {
+                kb?: string | null;
+                status?: string | null;
+                limit?: number;
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3143,6 +3160,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AlertListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

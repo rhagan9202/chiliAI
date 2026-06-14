@@ -18,6 +18,7 @@ export function AiAssistantPanel() {
           as backend chat endpoints come online.
         </p>
       </div>
+      {/* TODO(future-development): wire this composer to the chat API with workspace context. */}
       <form className="ai-panel__composer">
         <input aria-label="Ask the AI investigator" placeholder="Ask about this workspace..." />
         <button aria-label="Send message" type="button">

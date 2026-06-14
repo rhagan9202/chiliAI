@@ -39,10 +39,8 @@ export function EvidencePanel({
       {!collapsed && (
         <div id="evidence-body" className={styles.body}>
           <p className={styles.notice}>
-            Evidence Pack API endpoint
-            <code> /investigation/entities/{'{'}entity_id{'}'}/evidence </code>
-            is not yet implemented. Showing static placeholder data sourced
-            from the alert pipeline.
+            Evidence data is shown when alert-linked evidence packs are provided by
+            the active investigation view.
           </p>
           {entityId === null && (
             <p className={styles.placeholder}>

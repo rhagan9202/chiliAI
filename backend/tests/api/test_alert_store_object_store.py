@@ -40,12 +40,13 @@ def _alert(
 def _record(
     alert_id: str,
     *,
+    knowledge_base_id: str = "kb-1",
     severity: str = "high",
     status: str = "open",
     created_at: datetime | None = None,
 ) -> AlertProjectionRecord:
     return AlertProjectionRecord(
-        knowledge_base_id="kb-1",
+        knowledge_base_id=knowledge_base_id,
         alert=_alert(
             alert_id,
             severity=severity,
@@ -152,3 +153,72 @@ def test_projection_helpers_shape_feed_and_detail() -> None:
     assert item.evidence_pack_id == "evidence-a-1"
     assert detail.related_entity_ids == ["provider-a-1", "claim-1"]
     assert detail.policy_citations[0].citation_id == "policy-1"
+
+
+def test_project_alert_feed_filters_status_before_paginating() -> None:
+    repository = ObjectStoreAlertProjectionRepository(InMemoryObjectStore())
+    repository.upsert(
+        _record(
+            "ack",
+            status="acknowledged",
+            created_at=datetime(2026, 1, 5, tzinfo=timezone.utc),
+        )
+    )
+    repository.upsert(
+        _record(
+            "new-open",
+            status="open",
+            created_at=datetime(2026, 1, 4, tzinfo=timezone.utc),
+        )
+    )
+    repository.upsert(
+        _record(
+            "old-open",
+            status="open",
+            created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+        )
+    )
+
+    feed = project_alert_feed(repository, limit=1, offset=1, status="open")
+
+    assert feed.page.total_items == 2
+    assert feed.page.page == 2
+    assert feed.page.page_size == 1
+    assert [item.id for item in feed.items] == ["old-open"]
+
+
+def test_project_alert_feed_filters_knowledge_base_before_paginating() -> None:
+    repository = ObjectStoreAlertProjectionRepository(InMemoryObjectStore())
+    repository.upsert(
+        _record(
+            "kb-other-new",
+            knowledge_base_id="kb-other",
+            created_at=datetime(2026, 1, 5, tzinfo=timezone.utc),
+        )
+    )
+    repository.upsert(
+        _record(
+            "kb-target-new",
+            knowledge_base_id="kb-target",
+            created_at=datetime(2026, 1, 4, tzinfo=timezone.utc),
+        )
+    )
+    repository.upsert(
+        _record(
+            "kb-target-old",
+            knowledge_base_id="kb-target",
+            created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+        )
+    )
+
+    feed = project_alert_feed(
+        repository,
+        limit=1,
+        offset=1,
+        knowledge_base_id="kb-target",
+    )
+
+    assert feed.page.total_items == 2
+    assert feed.page.page == 2
+    assert feed.page.page_size == 1
+    assert [item.id for item in feed.items] == ["kb-target-old"]

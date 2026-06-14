@@ -67,8 +67,56 @@ describe('RunTimeline', () => {
     const workflowItem = within(list).getByText('ingestion').closest('li')
 
     expect(workflowItem).not.toBeNull()
-    expect(within(workflowItem as HTMLElement).getByText('running')).toBeInTheDocument()
+    expect(within(workflowItem as HTMLElement).getByText('Running')).toBeInTheDocument()
     expect(within(workflowItem as HTMLElement).getByText('extract_text')).toBeInTheDocument()
+  })
+
+  it('renders workflow status labels and descriptions', () => {
+    const statusCopy = [
+      {
+        status: 'queued',
+        label: 'Queued',
+        description: 'The run is waiting for a worker.',
+      },
+      {
+        status: 'running',
+        label: 'Running',
+        description: 'The backend is processing this run.',
+      },
+      {
+        status: 'completed',
+        label: 'Completed',
+        description: 'Investigation data is ready to review.',
+      },
+      {
+        status: 'failed',
+        label: 'Failed',
+        description: 'Review the error and retry when fixed.',
+      },
+      {
+        status: 'cancelled',
+        label: 'Cancelled',
+        description: 'The run was stopped before completion.',
+      },
+    ] as const
+
+    render(
+      <RunTimeline
+        workflows={statusCopy.map(({ status }, index) => ({
+          ...workflows[0],
+          id: `workflow-${status}`,
+          status,
+          updated_at: `2026-05-17T12:0${index}:00Z`,
+          current_step: `step-${status}`,
+        }))}
+        receipts={[]}
+      />,
+    )
+
+    for (const { label, description } of statusCopy) {
+      expect(screen.getByText(label)).toBeInTheDocument()
+      expect(screen.getByText(description)).toBeInTheDocument()
+    }
   })
 
   it('renders receipt source type, status, and message', () => {
@@ -78,8 +126,41 @@ describe('RunTimeline', () => {
     const receiptItem = within(list).getByText('records').closest('li')
 
     expect(receiptItem).not.toBeNull()
-    expect(within(receiptItem as HTMLElement).getByText('accepted')).toBeInTheDocument()
+    expect(within(receiptItem as HTMLElement).getByText('Accepted')).toBeInTheDocument()
     expect(within(receiptItem as HTMLElement).getByText('Accepted 2 claim records.')).toBeInTheDocument()
+  })
+
+  it('renders receipt status labels and descriptions', () => {
+    const statusCopy = [
+      {
+        status: 'accepted',
+        label: 'Accepted',
+        description: 'Submission accepted. Watch for queued or running workflow updates.',
+      },
+      {
+        status: 'failed',
+        label: 'Failed',
+        description: 'Submission failed before a run could start.',
+      },
+    ] as const
+
+    render(
+      <RunTimeline
+        workflows={[]}
+        receipts={statusCopy.map(({ status }, index) => ({
+          ...receipts[0],
+          id: `receipt-${status}`,
+          status,
+          createdAt: `2026-05-17T12:0${index}:00Z`,
+          message: `${status} receipt message`,
+        }))}
+      />,
+    )
+
+    for (const { label, description } of statusCopy) {
+      expect(screen.getByText(label)).toBeInTheDocument()
+      expect(screen.getByText(description)).toBeInTheDocument()
+    }
   })
 
   it('sorts workflows and receipts by timestamp with newest first', () => {

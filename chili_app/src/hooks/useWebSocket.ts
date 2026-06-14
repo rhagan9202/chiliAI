@@ -3,6 +3,8 @@
 // The hook owns the lifecycle of a single `WebSocket`. Incoming messages are
 // JSON-decoded and forwarded to `onMessage`. Disconnects trigger an
 // exponential-backoff reconnect loop bounded by `maxRetries`.
+// TODO(future-development): route alert/pipeline live-feed UI through this hook
+// when the product needs websocket-specific interactions beyond the SSE stream.
 
 import { useEffect, useRef, useState } from 'react'
 

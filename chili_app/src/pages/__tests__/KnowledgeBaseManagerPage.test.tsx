@@ -2,10 +2,23 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useIngestionStudioStore } from '../../stores/ingestionStudioStore'
 import { KnowledgeBaseManagerPage } from '../KnowledgeBaseManagerPage'
+
+const routerMocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+}))
+
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return {
+    ...actual,
+    useNavigate: () => routerMocks.navigate,
+  }
+})
 
 function renderWithClient(node: React.ReactElement) {
   const client = new QueryClient({
@@ -13,7 +26,11 @@ function renderWithClient(node: React.ReactElement) {
   })
 
   function Wrapper({ children }: { children: ReactNode }): React.ReactElement {
-    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    return (
+      <QueryClientProvider client={client}>
+        <MemoryRouter>{children}</MemoryRouter>
+      </QueryClientProvider>
+    )
   }
 
   return render(node, { wrapper: Wrapper })
@@ -367,6 +384,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
 
   beforeEach(() => {
     useIngestionStudioStore.getState().reset()
+    routerMocks.navigate.mockReset()
     installFetchMock()
   })
 
@@ -397,6 +415,43 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Submit documents' }))
 
     expect(await screen.findByText('1 document accepted.')).toBeInTheDocument()
+  })
+
+  it('shows next actions after document submission', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('Ingestion Studio')
+    await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
+    await userEvent.upload(
+      screen.getByLabelText('Document files'),
+      new File(['policy'], 'policy.txt', { type: 'text/plain' }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Submit documents' }))
+
+    expect(await screen.findByText('1 document accepted.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /watch runs/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /investigate entities/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /review alerts/i })).toBeInTheDocument()
+  })
+
+  it('navigates to investigation with the selected knowledge base after document submission', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('Ingestion Studio')
+    await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
+    await userEvent.upload(
+      screen.getByLabelText('Document files'),
+      new File(['policy'], 'policy.txt', { type: 'text/plain' }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Submit documents' }))
+
+    expect(await screen.findByText('1 document accepted.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /investigate entities/i }))
+
+    expect(routerMocks.navigate).toHaveBeenCalledWith({
+      pathname: '/investigation',
+      search: 'kb=kb-1',
+    })
   })
 
   it('parses and submits records through a configured feed', async () => {

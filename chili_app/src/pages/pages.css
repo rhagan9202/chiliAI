@@ -315,9 +315,16 @@
 .ingestion-studio-main,
 .ingestion-studio-context,
 .ingestion-studio-summary,
+.ingestion-next-actions,
 .ingestion-studio-documents {
   display: grid;
   gap: 16px;
+}
+
+.ingestion-next-actions__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .policy-layout {

@@ -6,7 +6,6 @@ import { useChatStore } from '../stores/chatStore'
 
 export interface SendMessageArgs {
   conversationId: string
-  kbId: string
   content: string
 }
 
@@ -58,7 +57,7 @@ export function useChatMessages(): UseChatMessagesResult {
   }, [])
 
   const send = useCallback(
-    async ({ conversationId, kbId, content }: SendMessageArgs): Promise<void> => {
+    async ({ conversationId, content }: SendMessageArgs): Promise<void> => {
       if (content.trim().length === 0) return
 
       const userMessage: ChatMessage = {
@@ -97,7 +96,7 @@ export function useChatMessages(): UseChatMessagesResult {
             'Content-Type': 'application/json',
             Accept: 'text/event-stream',
           },
-          body: JSON.stringify({ content, kb_id: kbId }),
+          body: JSON.stringify({ content }),
           signal: controller.signal,
         })
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -24,6 +25,7 @@ from api.dependencies import (
     get_knowledge_base_repository,
     get_risk_service,
 )
+from api.routers.alerts import list_alerts as list_alerts_route
 from events.adapters.in_memory import InMemoryEventBus
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.service import create_graph_service
@@ -68,7 +70,7 @@ def _seed_alert_repository() -> InMemoryAlertProjectionRepository:
     )
     repository.upsert(
         AlertProjectionRecord(
-            knowledge_base_id="kb-1",
+            knowledge_base_id="kb-2",
             alert=Alert(
                 id="alert-002",
                 entity_type="provider",
@@ -142,6 +144,43 @@ def test_get_alerts_returns_paginated_feed() -> None:
     payload = response.json()
     assert payload["page"]["total_items"] >= 1
     assert payload["items"][0]["entity_type"] == "provider"
+
+
+def test_list_alerts_route_passes_status_and_pagination() -> None:
+    repository = _seed_alert_repository()
+    acknowledge_alert = repository.acknowledge("alert-001")
+    assert acknowledge_alert is not None
+
+    payload = asyncio.run(
+        list_alerts_route(
+            status_filter="open",
+            limit=1,
+            offset=0,
+            repository=repository,
+        )
+    )
+
+    assert payload.page.total_items == 1
+    assert payload.page.page_size == 1
+    assert [item.id for item in payload.items] == ["alert-002"]
+
+
+def test_list_alerts_route_passes_knowledge_base_filter() -> None:
+    repository = _seed_alert_repository()
+
+    payload = asyncio.run(
+        list_alerts_route(
+            knowledge_base_id="kb-2",
+            status_filter=None,
+            limit=1,
+            offset=0,
+            repository=repository,
+        )
+    )
+
+    assert payload.page.total_items == 1
+    assert payload.page.page_size == 1
+    assert [item.id for item in payload.items] == ["alert-002"]
 
 
 def test_get_alert_detail_returns_related_context() -> None:

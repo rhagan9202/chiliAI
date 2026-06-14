@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
 from api._alert_store import (
     AlertProjectionRepository,
@@ -25,10 +27,20 @@ router = APIRouter(prefix="/alerts", tags=["alerts"])
     dependencies=[Depends(require_role("viewer"))],
 )
 async def list_alerts(
+    knowledge_base_id: Annotated[str | None, Query(alias="kb")] = None,
+    status_filter: Annotated[str | None, Query(alias="status")] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
     repository: AlertProjectionRepository = Depends(get_alert_repository),
 ) -> AlertListResponse:
     """Return the alert feed in the api.contracts shape (items + page)."""
-    return project_alert_feed(repository)
+    return project_alert_feed(
+        repository,
+        limit=limit,
+        offset=offset,
+        status=status_filter,
+        knowledge_base_id=knowledge_base_id,
+    )
 
 
 @router.get(

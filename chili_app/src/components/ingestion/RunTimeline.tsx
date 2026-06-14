@@ -7,6 +7,46 @@ import './ingestion.css'
 
 const MAX_REJECTED_ROWS_SHOWN = 5
 
+const workflowStatusCopy: Record<
+  WorkflowRunResponse['status'],
+  { label: string; description: string }
+> = {
+  queued: {
+    label: 'Queued',
+    description: 'The run is waiting for a worker.',
+  },
+  running: {
+    label: 'Running',
+    description: 'The backend is processing this run.',
+  },
+  completed: {
+    label: 'Completed',
+    description: 'Investigation data is ready to review.',
+  },
+  failed: {
+    label: 'Failed',
+    description: 'Review the error and retry when fixed.',
+  },
+  cancelled: {
+    label: 'Cancelled',
+    description: 'The run was stopped before completion.',
+  },
+}
+
+const receiptStatusCopy: Record<
+  IngestionReceiptEntry['status'],
+  { label: string; description: string }
+> = {
+  accepted: {
+    label: 'Accepted',
+    description: 'Submission accepted. Watch for queued or running workflow updates.',
+  },
+  failed: {
+    label: 'Failed',
+    description: 'Submission failed before a run could start.',
+  },
+}
+
 function isCancellable(status: WorkflowRunResponse['status']): boolean {
   return status === 'running' || status === 'queued'
 }
@@ -107,6 +147,7 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
         {timelineItems.map((item) => {
           if (item.type === 'workflow') {
             const { workflow } = item
+            const statusCopy = workflowStatusCopy[workflow.status]
 
             return (
               <li className="ingestion-run-timeline__item" key={item.id}>
@@ -114,7 +155,7 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
                 <div className="ingestion-run-timeline__body">
                   <div className="ingestion-run-timeline__header">
                     <span className="ingestion-run-timeline__title">{workflow.workflow_type}</span>
-                    <Chip tone={workflowTone(workflow.status)} label={workflow.status} />
+                    <Chip tone={workflowTone(workflow.status)} label={statusCopy.label} />
                     {isCancellable(workflow.status) ? (
                       <button
                         type="button"
@@ -127,6 +168,7 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
                       </button>
                     ) : null}
                   </div>
+                  <p className="ingestion-run-timeline__message">{statusCopy.description}</p>
                   <dl className="ingestion-run-timeline__meta" aria-label={`${workflow.id} workflow details`}>
                     <div>
                       <dt>Current step</dt>
@@ -148,6 +190,7 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
           }
 
           const { receipt } = item
+          const statusCopy = receiptStatusCopy[receipt.status]
 
           return (
             <li className="ingestion-run-timeline__item" key={item.id}>
@@ -155,8 +198,9 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
               <div className="ingestion-run-timeline__body">
                 <div className="ingestion-run-timeline__header">
                   <span className="ingestion-run-timeline__title">{receipt.sourceType}</span>
-                  <Chip tone={receiptTone(receipt.status)} label={receipt.status} />
+                  <Chip tone={receiptTone(receipt.status)} label={statusCopy.label} />
                 </div>
+                <p className="ingestion-run-timeline__message">{statusCopy.description}</p>
                 <p className="ingestion-run-timeline__message">{receipt.message}</p>
                 {receipt.receipt ? (
                   <ReceiptDetails receipt={receipt.receipt} entryId={receipt.id} />

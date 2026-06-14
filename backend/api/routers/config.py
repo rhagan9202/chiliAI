@@ -17,7 +17,7 @@ __all__ = ["router"]
 
 router = APIRouter(prefix="/config", tags=["configuration"])
 
-# TODO(production): Add config management endpoints:
+# TODO(future-development): add config management endpoints:
 # - POST /config/domain — update config (with validation)
 # - POST /config/reload — force reload from disk
 # Add ETag / Last-Modified headers for caching. Add change audit logging.

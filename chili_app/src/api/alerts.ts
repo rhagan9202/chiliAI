@@ -5,12 +5,37 @@ import type { AlertDetailResponse, AlertListResponse, ApiEnvelope } from './cont
 
 export const alertsQueryKey = ['alerts'] as const
 
+export type AlertFeedFilters = {
+  knowledgeBaseId?: string
+  status?: string
+  limit?: number
+  offset?: number
+}
+
 export function alertDetailQueryKey(alertId: string) {
   return ['alerts', alertId] as const
 }
 
-export function getAlerts(): Promise<AlertListResponse> {
-  return apiFetch<AlertListResponse>('/alerts')
+export function alertListQueryKey(filters: AlertFeedFilters = {}) {
+  return ['alerts', filters] as const
+}
+
+export function getAlerts(filters: AlertFeedFilters = {}): Promise<AlertListResponse> {
+  const searchParams = new URLSearchParams()
+  if (filters.knowledgeBaseId) {
+    searchParams.set('kb', filters.knowledgeBaseId)
+  }
+  if (filters.status) {
+    searchParams.set('status', filters.status)
+  }
+  if (filters.limit !== undefined) {
+    searchParams.set('limit', String(filters.limit))
+  }
+  if (filters.offset !== undefined) {
+    searchParams.set('offset', String(filters.offset))
+  }
+  const queryString = searchParams.toString()
+  return apiFetch<AlertListResponse>(queryString ? `/alerts?${queryString}` : '/alerts')
 }
 
 export function getAlert(alertId: string): Promise<AlertDetailResponse> {
@@ -21,10 +46,10 @@ export function acknowledgeAlert(alertId: string): Promise<ApiEnvelope> {
   return apiPost<ApiEnvelope, Record<string, never>>(`/alerts/${alertId}/acknowledge`, {})
 }
 
-export function useAlerts() {
+export function useAlerts(filters: AlertFeedFilters = {}) {
   return useQuery({
-    queryKey: alertsQueryKey,
-    queryFn: getAlerts,
+    queryKey: alertListQueryKey(filters),
+    queryFn: () => getAlerts(filters),
   })
 }
 
