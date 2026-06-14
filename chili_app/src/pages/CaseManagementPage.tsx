@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 
 import { useAlerts } from '../api/alerts'
 import { useAddCaseFeedback, useCase, useCases, usePromoteCase, useUpdateCase } from '../api/cases'
+import type { CaseFeedbackCreateRequest } from '../api/contracts'
 import { useKnowledgeBases } from '../api/knowledgebases'
 import { showToast } from '../components/common/toastStore'
 import { Card } from '../components/ui/Card'
@@ -33,7 +34,7 @@ export function CaseManagementPage() {
     : knowledgeBases[0]?.id ?? null
 
   const casesQuery = useCases(knowledgeBaseId)
-  const alertsQuery = useAlerts()
+  const alertsQuery = useAlerts({ knowledgeBaseId: knowledgeBaseId ?? undefined })
   const promoteMutation = usePromoteCase(knowledgeBaseId)
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -41,6 +42,10 @@ export function CaseManagementPage() {
   const caseQuery = useCase(knowledgeBaseId, activeCaseId)
   const updateCaseMutation = useUpdateCase(knowledgeBaseId, activeCaseId)
   const feedbackMutation = useAddCaseFeedback(knowledgeBaseId, activeCaseId)
+  const [feedbackLabel, setFeedbackLabel] = useState<CaseFeedbackCreateRequest['label']>('suspicious')
+  const [evidenceAdequacy, setEvidenceAdequacy] =
+    useState<CaseFeedbackCreateRequest['evidence_adequacy']>('high')
+  const [missingEvidence, setMissingEvidence] = useState('')
   const [feedbackNotes, setFeedbackNotes] = useState('')
 
   if (knowledgeBasesQuery.isLoading) {
@@ -87,7 +92,7 @@ export function CaseManagementPage() {
       ? casesQuery.data.items
       : casesQuery.data.items.filter((caseItem) => caseItem.status === statusFilter)
 
-  const unpromotedAlert = alertsQuery.data.items.find(
+  const unpromotedAlerts = alertsQuery.data.items.filter(
     (alert) => !casesQuery.data.items.some((existingCase) => existingCase.alert_ids.includes(alert.id)),
   )
 
@@ -136,17 +141,18 @@ export function CaseManagementPage() {
             {visibleCases.length === 0 ? (
               <EmptyState description="No cases match the current filter." title="Empty queue" />
             ) : null}
-            {unpromotedAlert ? (
+            {unpromotedAlerts.map((alert) => (
               <button
                 className="page-button"
                 disabled={promoteMutation.isPending}
+                key={alert.id}
                 onClick={() =>
                   promoteMutation.mutate(
-                    { alert_id: unpromotedAlert.id },
+                    { alert_id: alert.id },
                     {
                       onSuccess: (detail) => {
                         setSelectedCaseId(detail.case.id)
-                        showToast('success', `Promoted ${unpromotedAlert.entity_label} to a case.`)
+                        showToast('success', `Promoted ${alert.entity_label} to a case.`)
                       },
                       onError: () => showToast('error', 'Could not promote the alert.'),
                     },
@@ -154,9 +160,9 @@ export function CaseManagementPage() {
                 }
                 type="button"
               >
-                Promote {unpromotedAlert.entity_label} to case
+                Promote {alert.entity_label} to case
               </button>
-            ) : null}
+            ))}
           </div>
         </Card>
 
@@ -198,21 +204,65 @@ export function CaseManagementPage() {
               </div>
               <div className="metric-stack">
                 <strong>Submit analyst feedback</strong>
-                <textarea
-                  className="page-textarea"
-                  onChange={(event) => setFeedbackNotes(event.target.value)}
-                  placeholder="Document the current evidence assessment"
-                  value={feedbackNotes}
-                />
+                <label className="metric-stack">
+                  <span className="metric-row__label">Feedback label</span>
+                  <select
+                    className="page-input"
+                    onChange={(event) =>
+                      setFeedbackLabel(event.target.value as CaseFeedbackCreateRequest['label'])
+                    }
+                    value={feedbackLabel}
+                  >
+                    <option value="suspicious">suspicious</option>
+                    <option value="not_suspicious">not_suspicious</option>
+                    <option value="insufficient_evidence">insufficient_evidence</option>
+                  </select>
+                </label>
+                <label className="metric-stack">
+                  <span className="metric-row__label">Evidence adequacy</span>
+                  <select
+                    className="page-input"
+                    onChange={(event) =>
+                      setEvidenceAdequacy(
+                        event.target.value as CaseFeedbackCreateRequest['evidence_adequacy'],
+                      )
+                    }
+                    value={evidenceAdequacy}
+                  >
+                    <option value="high">high</option>
+                    <option value="medium">medium</option>
+                    <option value="low">low</option>
+                  </select>
+                </label>
+                <label className="metric-stack">
+                  <span className="metric-row__label">Missing evidence</span>
+                  <input
+                    className="page-input"
+                    onChange={(event) => setMissingEvidence(event.target.value)}
+                    value={missingEvidence}
+                  />
+                </label>
+                <label className="metric-stack">
+                  <span className="metric-row__label">Feedback notes</span>
+                  <textarea
+                    className="page-textarea"
+                    onChange={(event) => setFeedbackNotes(event.target.value)}
+                    placeholder="Document the current evidence assessment"
+                    value={feedbackNotes}
+                  />
+                </label>
                 <button
                   className="page-button"
                   disabled={feedbackNotes.trim().length === 0}
                   onClick={() => {
                     feedbackMutation.mutate(
                       {
-                        label: 'suspicious',
-                        evidence_adequacy: 'high',
-                        missing_evidence: [],
+                        label: feedbackLabel,
+                        evidence_adequacy: evidenceAdequacy,
+                        missing_evidence: missingEvidence
+                          .split(',')
+                          .map((item) => item.trim())
+                          .filter(Boolean),
                         notes: feedbackNotes,
                       },
                       {
@@ -220,11 +270,12 @@ export function CaseManagementPage() {
                         onError: () => showToast('error', 'Could not save feedback.'),
                       },
                     )
+                    setMissingEvidence('')
                     setFeedbackNotes('')
                   }}
                   type="button"
                 >
-                  Save suspicious finding
+                  Save feedback
                 </button>
               </div>
               <div className="metric-stack">
@@ -233,7 +284,15 @@ export function CaseManagementPage() {
                   caseQuery.data.feedback_history.map((feedback) => (
                     <div className="metric-row metric-row--stacked" key={feedback.submitted_at}>
                       <strong>{feedback.label.replace(/_/g, ' ')}</strong>
+                      <span className="metric-row__label">Evidence adequacy: {feedback.evidence_adequacy}</span>
                       <span className="metric-row__label">{feedback.notes}</span>
+                      {(feedback.missing_evidence ?? []).length > 0 ? (
+                        <ul className="metric-row__label">
+                          {(feedback.missing_evidence ?? []).map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </div>
                   ))
                 ) : (

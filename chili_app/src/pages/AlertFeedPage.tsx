@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { useAcknowledgeAlert, useAlerts } from '../api/alerts'
+import { useCases, usePromoteAlertToCase } from '../api/cases'
 import { useEvidencePack } from '../api/evidence'
+import { showToast } from '../components/common/toastStore'
 import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { Chip } from '../components/ui/Chip'
 import { ConfidenceBar } from '../components/ui/ConfidenceBar'
@@ -26,12 +28,18 @@ export function AlertFeedPage() {
   const [searchParams] = useSearchParams()
   const [activeFilterId, setActiveFilterId] = useState('all')
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
+  const [promotedAlertIds, setPromotedAlertIds] = useState<Set<string>>(() => new Set())
   const selectedKnowledgeBaseId = searchParams.get('kb')
   const alertsQuery = useAlerts({
     knowledgeBaseId: selectedKnowledgeBaseId ?? undefined,
   })
+  const casesQuery = useCases(selectedKnowledgeBaseId)
   const acknowledgeMutation = useAcknowledgeAlert()
+  const promoteMutation = usePromoteAlertToCase()
   const alertItems = alertsQuery.data?.items ?? []
+  const durablePromotedAlertIds = new Set(
+    casesQuery.data?.items.flatMap((caseItem) => caseItem.alert_ids) ?? [],
+  )
 
   // Resolve the selected alert's evidence pack (KB-scoped). Hooks must run
   // unconditionally, so derive from the (possibly undefined) query data.
@@ -75,47 +83,83 @@ export function AlertFeedPage() {
       <FilterBar activeFilterId={activeFilterId} filters={filters} onChange={setActiveFilterId} />
 
       {alerts.length > 0 ? (
-        alerts.map((alert) => (
-          <Card className="alert-row-card" compact key={alert.id}>
-            <div className="alert-row-card__header">
-              <div className="alert-row-card__header-info">
-                <div className="alert-row-card__title">{alert.entity_label}</div>
-                <div className="alert-row-card__meta">
-                  <Chip label={alert.severity} tone={alert.severity === 'critical' ? 'danger' : 'warning'} />
-                  <Chip label={alert.status} tone={alert.status === 'acknowledged' ? 'success' : 'info'} />
-                  {(alert.tags ?? []).map((tag) => (
-                    <Chip key={tag} label={tag.replace(/-/g, ' ')} tone="default" />
-                  ))}
+        alerts.map((alert) => {
+          const isPromoted =
+            promotedAlertIds.has(alert.id) || durablePromotedAlertIds.has(alert.id)
+
+          return (
+            <Card className="alert-row-card" compact key={alert.id}>
+              <div className="alert-row-card__header">
+                <div className="alert-row-card__header-info">
+                  <div className="alert-row-card__title">{alert.entity_label}</div>
+                  <div className="alert-row-card__meta">
+                    <Chip label={alert.severity} tone={alert.severity === 'critical' ? 'danger' : 'warning'} />
+                    <Chip label={alert.status} tone={alert.status === 'acknowledged' ? 'success' : 'info'} />
+                    {(alert.tags ?? []).map((tag) => (
+                      <Chip key={tag} label={tag.replace(/-/g, ' ')} tone="default" />
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <div className="alert-row-card__header-actions">
-                <RiskBadge score={Math.round(alert.confidence * 100)} />
-                {alert.evidence_pack_id ? (
-                  <button
+                <div className="alert-row-card__header-actions">
+                  <RiskBadge score={Math.round(alert.confidence * 100)} />
+                  <Link
+                    aria-label={`Investigate ${alert.entity_label}`}
                     className="page-button page-button--sm page-button--secondary"
+                    to={`/investigation/${encodeURIComponent(alert.entity_id)}?kb=${encodeURIComponent(alert.knowledge_base_id)}`}
+                  >
+                    Investigate entity
+                  </Link>
+                  {alert.evidence_pack_id ? (
+                    <button
+                      className="page-button page-button--sm page-button--secondary"
+                      onClick={() =>
+                        setSelectedAlertId((current) => (current === alert.id ? null : alert.id))
+                      }
+                      type="button"
+                    >
+                      {selectedAlertId === alert.id ? 'Hide evidence' : 'View evidence'}
+                    </button>
+                  ) : null}
+                  <button
+                    aria-label={`${isPromoted ? 'Promoted' : 'Promote'} ${alert.entity_label} to case`}
+                    className="page-button page-button--sm"
+                    disabled={isPromoted || promoteMutation.isPending}
                     onClick={() =>
-                      setSelectedAlertId((current) => (current === alert.id ? null : alert.id))
+                      promoteMutation.mutate(
+                        { knowledgeBaseId: alert.knowledge_base_id, alertId: alert.id },
+                        {
+                          onSuccess: () => {
+                            setPromotedAlertIds((current) => {
+                              const next = new Set(current)
+                              next.add(alert.id)
+                              return next
+                            })
+                            showToast('success', `Promoted ${alert.entity_label} to a case.`)
+                          },
+                          onError: () => showToast('error', 'Could not promote the alert.'),
+                        },
+                      )
                     }
                     type="button"
                   >
-                    {selectedAlertId === alert.id ? 'Hide evidence' : 'View evidence'}
+                    {isPromoted ? 'Promoted to case' : 'Promote to case'}
                   </button>
-                ) : null}
-                <button
-                  aria-label={alert.status === 'acknowledged' ? 'Acknowledged' : 'Acknowledge'}
-                  className="page-button page-button--sm"
-                  disabled={alert.status === 'acknowledged' || acknowledgeMutation.isPending}
-                  onClick={() => acknowledgeMutation.mutate(alert.id)}
-                  type="button"
-                >
-                  {alert.status === 'acknowledged' ? '✓' : 'Ack'}
-                </button>
+                  <button
+                    aria-label={alert.status === 'acknowledged' ? 'Acknowledged' : 'Acknowledge'}
+                    className="page-button page-button--sm"
+                    disabled={alert.status === 'acknowledged' || acknowledgeMutation.isPending}
+                    onClick={() => acknowledgeMutation.mutate(alert.id)}
+                    type="button"
+                  >
+                    {alert.status === 'acknowledged' ? '✓' : 'Ack'}
+                  </button>
+                </div>
               </div>
-            </div>
-            <div className="alert-row-card__reasoning">{alert.reasoning}</div>
-            <ConfidenceBar value={Math.round(alert.confidence * 100)} />
-          </Card>
-        ))
+              <div className="alert-row-card__reasoning">{alert.reasoning}</div>
+              <ConfidenceBar value={Math.round(alert.confidence * 100)} />
+            </Card>
+          )
+        })
       ) : (
         <EmptyState description="No alerts match the current filter." title="No matching alerts" />
       )}

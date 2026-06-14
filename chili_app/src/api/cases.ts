@@ -74,6 +74,20 @@ export function promoteCase(
   )
 }
 
+export type PromoteAlertToCaseInput = {
+  knowledgeBaseId: string
+  alertId: string
+  notes?: string
+}
+
+export function promoteAlertToCase({
+  knowledgeBaseId,
+  alertId,
+  notes,
+}: PromoteAlertToCaseInput): Promise<CaseDetailResponse> {
+  return promoteCase(knowledgeBaseId, { alert_id: alertId, notes })
+}
+
 export function useCases(knowledgeBaseId: string | null) {
   return useQuery({
     queryKey: casesQueryKey(knowledgeBaseId ?? 'missing'),
@@ -133,5 +147,15 @@ export function usePromoteCase(knowledgeBaseId: string | null) {
   return useMutation({
     mutationFn: (payload: CasePromoteRequest) => promoteCase(knowledgeBaseId ?? '', payload),
     onSuccess: invalidate,
+  })
+}
+
+export function usePromoteAlertToCase() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: promoteAlertToCase,
+    onSuccess: (_detail, variables) => {
+      void queryClient.invalidateQueries({ queryKey: casesQueryKey(variables.knowledgeBaseId) })
+    },
   })
 }

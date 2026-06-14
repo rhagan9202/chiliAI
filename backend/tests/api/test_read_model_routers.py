@@ -366,12 +366,15 @@ def test_get_cases_returns_kb_scoped_queue() -> None:
 
 
 def test_get_case_detail_returns_durable_case() -> None:
-    client = TestClient(create_app())
+    app = create_app()
+    alert_repository = _seed_alert_repository()
+    app.dependency_overrides[get_alert_repository] = lambda: alert_repository
+    client = TestClient(app)
 
     created = client.post(
         "/cases",
         params={"knowledge_base_id": "kb-1"},
-        json={"title": "Escalation", "priority": "high", "alert_ids": []},
+        json={"title": "Escalation", "priority": "high", "alert_ids": ["alert-001"]},
     )
     case_id = created.json()["case"]["id"]
 
@@ -383,6 +386,10 @@ def test_get_case_detail_returns_durable_case() -> None:
     payload = response.json()
     assert payload["case"]["id"] == case_id
     assert payload["case"]["knowledge_base_id"] == "kb-1"
+    assert payload["alerts"][0]["id"] == "alert-001"
+    assert payload["alerts"][0]["knowledge_base_id"] == "kb-1"
+    assert payload["alerts"][0]["entity_label"] == "Redwood DME Group"
+    assert payload["alerts"][0]["tags"] == ["billing", "peer-deviation"]
 
     # Unknown case (or wrong KB) is a 404.
     assert (

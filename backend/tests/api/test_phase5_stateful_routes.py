@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from typing import cast
+
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api._alert_store import AlertProjectionRecord, InMemoryAlertProjectionRepository
@@ -91,14 +94,25 @@ def test_create_and_update_case_and_append_feedback() -> None:
         f"/cases/{case_id}/feedback",
         params=kb,
         json={
-            "label": "suspicious",
-            "evidence_adequacy": "high",
-            "missing_evidence": [],
-            "notes": "Evidence is sufficient for escalation.",
+            "label": "insufficient_evidence",
+            "evidence_adequacy": "low",
+            "missing_evidence": ["prior authorization records"],
+            "notes": "Need authorization records before escalation.",
         },
     )
     assert feedback.status_code == 200
-    assert feedback.json()["feedback_history"][-1]["label"] == "suspicious"
+    assert feedback.json()["feedback_history"][-1]["label"] == "insufficient_evidence"
+
+    # Fresh detail must be backed by the durable case record, not the legacy
+    # app-state feedback cache.
+    cast(FastAPI, client.app).state.case_feedback = {}
+    detail = client.get(f"/cases/{case_id}", params=kb)
+    assert detail.status_code == 200
+    saved_feedback = detail.json()["feedback_history"][-1]
+    assert saved_feedback["label"] == "insufficient_evidence"
+    assert saved_feedback["evidence_adequacy"] == "low"
+    assert saved_feedback["missing_evidence"] == ["prior authorization records"]
+    assert saved_feedback["notes"] == "Need authorization records before escalation."
 
 
 def test_promote_alert_to_case_captures_origin_and_evidence() -> None:
@@ -118,8 +132,15 @@ def test_promote_alert_to_case_captures_origin_and_evidence() -> None:
     assert case["priority"] == "critical"  # mapped from alert severity
     assert case["status"] == "open"
     assert case["knowledge_base_id"] == "kb-1"
+    assert promoted.json()["alerts"][0]["id"] == "alert-001"
+    assert promoted.json()["alerts"][0]["knowledge_base_id"] == "kb-1"
     # Timeline snapshot captured from the originating alert.
     assert promoted.json()["entity_timeline"][0]["label"] == "alert_raised"
+
+    detail = client.get(f"/cases/{case['id']}", params={"knowledge_base_id": "kb-1"})
+    assert detail.status_code == 200
+    assert detail.json()["alerts"][0]["id"] == "alert-001"
+    assert detail.json()["alerts"][0]["knowledge_base_id"] == "kb-1"
 
     # The promoted case is now listed under its KB.
     listed = client.get("/cases", params={"knowledge_base_id": "kb-1"}).json()
@@ -136,6 +157,23 @@ def test_promote_unknown_alert_returns_404() -> None:
     )
 
     assert response.status_code == 404
+
+
+def test_promote_alert_from_different_knowledge_base_returns_404_without_case() -> None:
+    client = _client_with_alert_projection()
+
+    response = client.post(
+        "/cases/promote",
+        params={"knowledge_base_id": "kb-2"},
+        json={"alert_id": "alert-001"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Alert not found."
+
+    listed = client.get("/cases", params={"knowledge_base_id": "kb-2"})
+    assert listed.status_code == 200
+    assert listed.json()["items"] == []
 
 
 def test_create_conversation_and_add_message() -> None:

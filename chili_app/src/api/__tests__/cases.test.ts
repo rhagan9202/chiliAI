@@ -7,6 +7,7 @@ import {
   createCase,
   getCase,
   getCases,
+  promoteAlertToCase,
   promoteCase,
   updateCase,
 } from '../cases'
@@ -75,5 +76,15 @@ describe('cases API', () => {
       '/cases/case-1/feedback?knowledge_base_id=kb-1',
       feedbackPayload,
     )
+  })
+
+  it('promotes the selected alert into a case scoped by knowledge base', async () => {
+    apiPostMock.mockResolvedValue({ case: { id: 'case-1' } })
+
+    await promoteAlertToCase({ knowledgeBaseId: 'kb-1', alertId: 'alert-2' })
+
+    expect(apiPostMock).toHaveBeenCalledWith('/cases/promote?knowledge_base_id=kb-1', {
+      alert_id: 'alert-2',
+    })
   })
 })

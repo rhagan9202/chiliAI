@@ -59,6 +59,34 @@ def test_update_missing_raises() -> None:
         service.update(knowledge_base_id="kb-1", case_id="ghost", status="closed")
 
 
+def test_add_feedback_persists_on_case() -> None:
+    service = create_case_service(InMemoryCaseRepository())
+    created = service.create(
+        knowledge_base_id="kb-1", title="Manual case", priority="medium"
+    )
+
+    updated = service.add_feedback(
+        knowledge_base_id="kb-1",
+        case_id=created.id,
+        label="insufficient_evidence",
+        evidence_adequacy="medium",
+        missing_evidence=["prior authorization records"],
+        notes="Need prior authorization before closing.",
+    )
+
+    assert len(updated.feedback_history) == 1
+    persisted = service.get(knowledge_base_id="kb-1", case_id=created.id)
+    assert persisted is not None
+    assert len(persisted.feedback_history) == 1
+    feedback = persisted.feedback_history[0]
+    assert feedback.case_id == created.id
+    assert feedback.label == "insufficient_evidence"
+    assert feedback.evidence_adequacy == "medium"
+    assert feedback.missing_evidence == ["prior authorization records"]
+    assert feedback.notes == "Need prior authorization before closing."
+    assert updated.updated_at > created.updated_at
+
+
 def test_promote_from_alert_captures_evidence_and_timeline() -> None:
     service = create_case_service(InMemoryCaseRepository())
     timeline = [

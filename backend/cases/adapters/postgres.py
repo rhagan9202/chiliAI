@@ -1,8 +1,8 @@
 """Postgres-backed case repository.
 
 Depends only on the psycopg-free ``database.ConnectionProvider`` protocol. The
-``alert_ids`` and ``timeline`` columns are jsonb, written with explicit
-``::jsonb`` casts over serialized-JSON text parameters.
+``alert_ids``, ``timeline``, and ``feedback_history`` columns are jsonb,
+written with explicit ``::jsonb`` casts over serialized-JSON text parameters.
 """
 
 from __future__ import annotations
@@ -12,18 +12,24 @@ from datetime import datetime
 from typing import cast
 
 from cases.exceptions import CaseNotFoundError, CasePersistenceError
-from cases.models import Case, CasePriority, CaseStatus, CaseTimelineEvent
+from cases.models import (
+    AnalystFeedback,
+    Case,
+    CasePriority,
+    CaseStatus,
+    CaseTimelineEvent,
+)
 from database.protocols import ConnectionProvider, Row
 
 _COLUMNS = (
     "knowledge_base_id, case_id, title, status, priority, assignee, "
-    "originating_alert_id, evidence_pack_id, alert_ids, timeline, "
+    "originating_alert_id, evidence_pack_id, alert_ids, timeline, feedback_history, "
     "created_at, updated_at"
 )
 
 _INSERT_SQL = f"""
     INSERT INTO cases ({_COLUMNS})
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s)
     ON CONFLICT (knowledge_base_id, case_id) DO NOTHING
 """
 
@@ -37,7 +43,8 @@ _UPDATE_SQL = """
     UPDATE cases
     SET title = %s, status = %s, priority = %s, assignee = %s,
         originating_alert_id = %s, evidence_pack_id = %s,
-        alert_ids = %s::jsonb, timeline = %s::jsonb, updated_at = %s
+        alert_ids = %s::jsonb, timeline = %s::jsonb,
+        feedback_history = %s::jsonb, updated_at = %s
     WHERE knowledge_base_id = %s AND case_id = %s
 """
 
@@ -121,6 +128,7 @@ class PostgresCaseRepository:
                         case.evidence_pack_id,
                         json.dumps(case.alert_ids, default=str),
                         _timeline_to_json(case.timeline),
+                        _feedback_history_to_json(case.feedback_history),
                         case.updated_at,
                         case.knowledge_base_id,
                         case.id,
@@ -157,6 +165,7 @@ class PostgresCaseRepository:
             case.evidence_pack_id,
             json.dumps(case.alert_ids, default=str),
             _timeline_to_json(case.timeline),
+            _feedback_history_to_json(case.feedback_history),
             case.created_at,
             case.updated_at,
         )
@@ -165,6 +174,13 @@ class PostgresCaseRepository:
 def _timeline_to_json(timeline: list[CaseTimelineEvent]) -> str:
     return json.dumps(
         [event.model_dump(mode="json") for event in timeline], default=str
+    )
+
+
+def _feedback_history_to_json(feedback_history: list[AnalystFeedback]) -> str:
+    return json.dumps(
+        [feedback.model_dump(mode="json") for feedback in feedback_history],
+        default=str,
     )
 
 
@@ -188,8 +204,9 @@ def _row_to_case(row: Row) -> Case:
         evidence_pack_id=None if row[7] is None else str(row[7]),
         alert_ids=_decode_str_list(row[8]),
         timeline=_decode_timeline(row[9]),
-        created_at=cast(datetime, row[10]),
-        updated_at=cast(datetime, row[11]),
+        feedback_history=_decode_feedback_history(row[10]),
+        created_at=cast(datetime, row[11]),
+        updated_at=cast(datetime, row[12]),
     )
 
 
@@ -207,6 +224,19 @@ def _decode_timeline(raw: object) -> list[CaseTimelineEvent]:
     if not isinstance(raw, list):
         raise CasePersistenceError("cases.timeline did not decode to a list.")
     return [CaseTimelineEvent.model_validate(item) for item in cast(list[object], raw)]
+
+
+def _decode_feedback_history(raw: object) -> list[AnalystFeedback]:
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise CasePersistenceError(
+                "cases.feedback_history did not decode to a list."
+            ) from exc
+    if not isinstance(raw, list):
+        raise CasePersistenceError("cases.feedback_history did not decode to a list.")
+    return [AnalystFeedback.model_validate(item) for item in cast(list[object], raw)]
 
 
 __all__ = ["PostgresCaseRepository"]

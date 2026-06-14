@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from cases.adapters.protocols import CaseRepository
 from cases.exceptions import CaseNotFoundError
-from cases.models import Case, CasePriority, CaseStatus, CaseTimelineEvent
+from cases.models import (
+    AnalystFeedback,
+    Case,
+    CasePriority,
+    CaseStatus,
+    CaseTimelineEvent,
+    EvidenceAdequacy,
+    FeedbackLabel,
+)
 from shared.types import Alert
 from shared.utils import generate_id, utc_now
 
@@ -92,6 +100,38 @@ class CaseService:
         if assignee is not None:
             changes["assignee"] = assignee
         return self._repository.update(existing.model_copy(update=changes))
+
+    def add_feedback(
+        self,
+        *,
+        knowledge_base_id: str,
+        case_id: str,
+        label: FeedbackLabel,
+        evidence_adequacy: EvidenceAdequacy,
+        missing_evidence: list[str],
+        notes: str,
+    ) -> Case:
+        existing = self._repository.get(
+            knowledge_base_id=knowledge_base_id, case_id=case_id
+        )
+        if existing is None:
+            raise CaseNotFoundError(knowledge_base_id, case_id)
+
+        feedback = AnalystFeedback(
+            case_id=case_id,
+            label=label,
+            evidence_adequacy=evidence_adequacy,
+            missing_evidence=list(missing_evidence),
+            notes=notes,
+        )
+        return self._repository.update(
+            existing.model_copy(
+                update={
+                    "feedback_history": [*existing.feedback_history, feedback],
+                    "updated_at": utc_now(),
+                }
+            )
+        )
 
     def promote_from_alert(
         self,

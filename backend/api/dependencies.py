@@ -11,6 +11,7 @@ from fastapi import Depends, HTTPException, Path, Query, Request
 from api.contracts import (
     AnalystFeedbackResponse,
     AnalyticsOverviewResponse,
+    AlertListItem,
     CaseCreateRequest,
     CaseDetailResponse,
     CaseFeedbackCreateRequest,
@@ -35,6 +36,12 @@ from api.contracts import (
     RiskScoreResponse,
 )
 from api._analytics_overview import build_analytics_overview
+from api._alert_store import (
+    AlertProjectionRecord,
+    AlertProjectionRepository,
+    InMemoryAlertProjectionRepository,
+    ObjectStoreAlertProjectionRepository,
+)
 from api._graph_entity_payload import build_graph_entity_detail
 from api._conversation_payloads import (
     build_assistant_message,
@@ -49,6 +56,7 @@ from conversations.adapters.postgres import PostgresConversationRepository
 from conversations.adapters.protocols import ConversationRepository
 from conversations.service import ConversationService, create_conversation_service
 from rag.service_models import RagQueryRequest
+from shared.alerts import normalize_severity
 from shared.kb_scope import resolve_kb_scope
 from cases.exceptions import CaseNotFoundError
 from cases.models import Case, CasePriority, CaseTimelineEvent
@@ -326,18 +334,29 @@ def get_case_service(
     return create_case_service(repository)
 
 
-def get_case_feedback_store(request: Request) -> dict[str, list[AnalystFeedbackResponse]]:
-    """Return the per-app, in-memory analyst-feedback store.
+def get_alert_repository(request: Request) -> AlertProjectionRepository:
+    """Return the per-app alert projection repository used by alert routes."""
+    repository = getattr(request.app.state, "alert_repository", None)
+    if isinstance(repository, AlertProjectionRepository):
+        return repository
 
-    Feedback durability is out of scope for BL-010; it is kept ephemeral per app
-    instance, decoupled from the durable case repository.
-    """
-    store = getattr(request.app.state, "case_feedback", None)
-    if isinstance(store, dict):
-        return cast(dict[str, list[AnalystFeedbackResponse]], store)
-    new_store: dict[str, list[AnalystFeedbackResponse]] = {}
-    request.app.state.case_feedback = new_store
-    return new_store
+    repository = _create_alert_repository()
+    request.app.state.alert_repository = repository
+    return repository
+
+
+def _create_alert_repository() -> AlertProjectionRepository:
+    """Create the alert projection repository selected by environment."""
+    backend = os.environ.get("CHILI_ALERT_REPOSITORY_BACKEND", "in_memory").strip().lower()
+    if backend in {"in_memory", "memory"}:
+        return InMemoryAlertProjectionRepository()
+    if backend in {"object_store", "object-store", "objectstore"}:
+        return ObjectStoreAlertProjectionRepository(get_object_store())
+    _raise_unsupported_backend(
+        "alert repository",
+        backend,
+        ("in_memory", "object_store"),
+    )
 
 
 def _case_to_summary(case: Case) -> CaseSummaryResponse:
@@ -355,11 +374,58 @@ def _case_to_summary(case: Case) -> CaseSummaryResponse:
     )
 
 
+def _alert_record_to_list_item(record: AlertProjectionRecord) -> AlertListItem:
+    alert = record.alert
+    return AlertListItem(
+        id=alert.id,
+        knowledge_base_id=record.knowledge_base_id,
+        entity_id=alert.entity_id,
+        entity_type=alert.entity_type,
+        entity_label=record.entity_label or alert.entity_id,
+        severity=normalize_severity(alert.severity, record.confidence),
+        status=alert.status,
+        title=alert.title,
+        reasoning=alert.reasoning,
+        confidence=record.confidence,
+        evidence_pack_id=alert.evidence_pack_id,
+        created_at=alert.created_at,
+        tags=list(record.tags),
+    )
+
+
+def _linked_case_alerts(
+    case: Case,
+    *,
+    alert_repository: AlertProjectionRepository,
+) -> list[AlertListItem]:
+    linked_alerts: list[AlertListItem] = []
+    for alert_id in case.alert_ids:
+        record = alert_repository.get(alert_id)
+        if record is None or record.knowledge_base_id != case.knowledge_base_id:
+            continue
+        linked_alerts.append(_alert_record_to_list_item(record))
+    return linked_alerts
+
+
+def _case_feedback_to_response(case: Case) -> list[AnalystFeedbackResponse]:
+    return [
+        AnalystFeedbackResponse(
+            case_id=feedback.case_id,
+            label=feedback.label,
+            evidence_adequacy=feedback.evidence_adequacy,
+            missing_evidence=list(feedback.missing_evidence),
+            notes=feedback.notes,
+            submitted_at=feedback.submitted_at,
+        )
+        for feedback in case.feedback_history
+    ]
+
+
 def _assemble_case_detail(
     case: Case,
     *,
     evidence_repository: EvidencePackRepository,
-    feedback_store: dict[str, list[AnalystFeedbackResponse]],
+    alert_repository: AlertProjectionRepository,
 ) -> CaseDetailResponse:
     evidence_pack: EvidencePackResponse | None = None
     if case.evidence_pack_id:
@@ -368,9 +434,7 @@ def _assemble_case_detail(
             evidence_pack = _evidence_pack_to_response(pack)
     return CaseDetailResponse(
         case=_case_to_summary(case),
-        # Rich alert resolution on case detail is a follow-on; alert linkage is
-        # preserved via CaseSummaryResponse.alert_ids.
-        alerts=[],
+        alerts=_linked_case_alerts(case, alert_repository=alert_repository),
         evidence_pack=evidence_pack,
         entity_timeline=[
             CaseTimelineEventResponse(
@@ -378,7 +442,7 @@ def _assemble_case_detail(
             )
             for event in case.timeline
         ],
-        feedback_history=list(feedback_store.get(case.id, [])),
+        feedback_history=_case_feedback_to_response(case),
     )
 
 
@@ -407,14 +471,14 @@ def get_case_detail_payload(
     knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
     service: CaseService = Depends(get_case_service),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
-    feedback_store: dict[str, list[AnalystFeedbackResponse]] = Depends(get_case_feedback_store),
+    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
 ) -> CaseDetailResponse:
     """Return one KB-scoped case detail read model."""
     case = service.get(knowledge_base_id=knowledge_base_id, case_id=case_id)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found.")
     return _assemble_case_detail(
-        case, evidence_repository=evidence_repository, feedback_store=feedback_store
+        case, evidence_repository=evidence_repository, alert_repository=alert_repository
     )
 
 
@@ -423,7 +487,7 @@ def get_case_create_payload(
     knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
     service: CaseService = Depends(get_case_service),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
-    feedback_store: dict[str, list[AnalystFeedbackResponse]] = Depends(get_case_feedback_store),
+    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
 ) -> CaseDetailResponse:
     """Create and return a durable, KB-scoped case."""
     case = service.create(
@@ -434,7 +498,7 @@ def get_case_create_payload(
         alert_ids=list(payload.alert_ids),
     )
     return _assemble_case_detail(
-        case, evidence_repository=evidence_repository, feedback_store=feedback_store
+        case, evidence_repository=evidence_repository, alert_repository=alert_repository
     )
 
 
@@ -444,7 +508,7 @@ def get_case_update_payload(
     knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
     service: CaseService = Depends(get_case_service),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
-    feedback_store: dict[str, list[AnalystFeedbackResponse]] = Depends(get_case_feedback_store),
+    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
 ) -> CaseDetailResponse:
     """Patch and return a durable, KB-scoped case."""
     try:
@@ -459,7 +523,7 @@ def get_case_update_payload(
     except CaseNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Case not found.") from exc
     return _assemble_case_detail(
-        case, evidence_repository=evidence_repository, feedback_store=feedback_store
+        case, evidence_repository=evidence_repository, alert_repository=alert_repository
     )
 
 
@@ -469,23 +533,22 @@ def get_case_feedback_payload(
     knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
     service: CaseService = Depends(get_case_service),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
-    feedback_store: dict[str, list[AnalystFeedbackResponse]] = Depends(get_case_feedback_store),
+    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
 ) -> CaseDetailResponse:
     """Append analyst feedback to a case and return the updated detail."""
-    case = service.get(knowledge_base_id=knowledge_base_id, case_id=case_id)
-    if case is None:
-        raise HTTPException(status_code=404, detail="Case not found.")
-    feedback = AnalystFeedbackResponse(
-        case_id=case_id,
-        label=payload.label,
-        evidence_adequacy=payload.evidence_adequacy,
-        missing_evidence=list(payload.missing_evidence),
-        notes=payload.notes,
-        submitted_at=utc_now(),
-    )
-    feedback_store.setdefault(case_id, []).append(feedback)
+    try:
+        case = service.add_feedback(
+            knowledge_base_id=knowledge_base_id,
+            case_id=case_id,
+            label=payload.label,
+            evidence_adequacy=payload.evidence_adequacy,
+            missing_evidence=list(payload.missing_evidence),
+            notes=payload.notes,
+        )
+    except CaseNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Case not found.") from exc
     return _assemble_case_detail(
-        case, evidence_repository=evidence_repository, feedback_store=feedback_store
+        case, evidence_repository=evidence_repository, alert_repository=alert_repository
     )
 
 
@@ -1208,11 +1271,6 @@ def get_records_service(
     )
 
 
-from api._alert_store import (  # noqa: E402  (intentional bottom-of-file import)
-    AlertProjectionRepository,
-    InMemoryAlertProjectionRepository,
-    ObjectStoreAlertProjectionRepository,
-)
 from agent.adapters.protocols import (  # noqa: E402  (intentional bottom-of-file import)
     WorkflowRunStoreProtocol,
 )
@@ -1249,17 +1307,6 @@ def get_knowledge_base_repository() -> KnowledgeBaseRepository:
         backend,
         ("in_memory", "object_store"),
     )
-
-
-def get_alert_repository(request: Request) -> AlertProjectionRepository:
-    """Return the per-app alert projection repository used by alert routes."""
-    repository = getattr(request.app.state, "alert_repository", None)
-    if isinstance(repository, AlertProjectionRepository):
-        return repository
-
-    repository = _create_alert_repository()
-    request.app.state.alert_repository = repository
-    return repository
 
 
 def get_graph_entity_detail_payload(
@@ -1303,11 +1350,10 @@ def get_case_promote_payload(
     service: CaseService = Depends(get_case_service),
     alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
-    feedback_store: dict[str, list[AnalystFeedbackResponse]] = Depends(get_case_feedback_store),
 ) -> CaseDetailResponse:
     """Promote an alert into a durable, KB-scoped case capturing its evidence."""
     record = alert_repository.get(payload.alert_id)
-    if record is None:
+    if record is None or record.knowledge_base_id != knowledge_base_id:
         raise HTTPException(status_code=404, detail="Alert not found.")
     alert = record.alert
     timeline = [
@@ -1324,21 +1370,7 @@ def get_case_promote_payload(
         notes=payload.notes,
     )
     return _assemble_case_detail(
-        case, evidence_repository=evidence_repository, feedback_store=feedback_store
-    )
-
-
-def _create_alert_repository() -> AlertProjectionRepository:
-    """Create the alert projection repository selected by environment."""
-    backend = os.environ.get("CHILI_ALERT_REPOSITORY_BACKEND", "in_memory").strip().lower()
-    if backend in {"in_memory", "memory"}:
-        return InMemoryAlertProjectionRepository()
-    if backend in {"object_store", "object-store", "objectstore"}:
-        return ObjectStoreAlertProjectionRepository(get_object_store())
-    _raise_unsupported_backend(
-        "alert repository",
-        backend,
-        ("in_memory", "object_store"),
+        case, evidence_repository=evidence_repository, alert_repository=alert_repository
     )
 
 

@@ -7,12 +7,19 @@ import { AlertFeedPage } from '../AlertFeedPage'
 
 const mocks = vi.hoisted(() => ({
   acknowledge: vi.fn(),
+  promoteAlertToCase: vi.fn(),
   useAlerts: vi.fn(),
+  useCases: vi.fn(),
 }))
 
 vi.mock('../../api/alerts', () => ({
   useAcknowledgeAlert: () => ({ isPending: false, mutate: mocks.acknowledge }),
   useAlerts: mocks.useAlerts,
+}))
+
+vi.mock('../../api/cases', () => ({
+  useCases: mocks.useCases,
+  usePromoteAlertToCase: () => ({ isPending: false, mutate: mocks.promoteAlertToCase }),
 }))
 
 vi.mock('../../api/evidence', () => ({
@@ -86,7 +93,9 @@ function alertsForKnowledgeBase(knowledgeBaseId: string | undefined) {
 describe('AlertFeedPage', () => {
   beforeEach(() => {
     mocks.acknowledge.mockReset()
+    mocks.promoteAlertToCase.mockReset()
     mocks.useAlerts.mockReset()
+    mocks.useCases.mockReset()
     mocks.useAlerts.mockImplementation(
       (filters?: { knowledgeBaseId?: string }) => ({
         isLoading: false,
@@ -94,6 +103,11 @@ describe('AlertFeedPage', () => {
         data: alertsForKnowledgeBase(filters?.knowledgeBaseId),
       }),
     )
+    mocks.useCases.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: { items: [], page: { page: 1, page_size: 0, total_items: 0 } },
+    })
   })
 
   function renderAlertFeed(initialEntry = '/alerts') {
@@ -114,6 +128,87 @@ describe('AlertFeedPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Acknowledge' }))
 
     expect(mocks.acknowledge).toHaveBeenCalledWith('alert-1')
+  })
+
+  it('promotes the selected alert row to a case', () => {
+    renderAlertFeed()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Promote North Harbor Imaging to case' }))
+
+    expect(mocks.promoteAlertToCase).toHaveBeenCalledWith(
+      { knowledgeBaseId: 'kb-harbor', alertId: 'alert-2' },
+      expect.objectContaining({
+        onSuccess: expect.any(Function),
+        onError: expect.any(Function),
+      }),
+    )
+  })
+
+  it('disables a promoted alert row after promotion succeeds', () => {
+    mocks.promoteAlertToCase.mockImplementation((_variables, options) => {
+      options.onSuccess()
+    })
+    renderAlertFeed()
+
+    const promoteButton = screen.getByRole('button', {
+      name: 'Promote North Harbor Imaging to case',
+    })
+
+    fireEvent.click(promoteButton)
+
+    const promotedButton = screen.getByRole('button', {
+      name: 'Promoted North Harbor Imaging to case',
+    })
+    expect(promotedButton).toBeDisabled()
+
+    fireEvent.click(promotedButton)
+
+    expect(mocks.promoteAlertToCase).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables an alert row already represented by an existing case in the selected knowledge base', () => {
+    mocks.useCases.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        items: [
+          {
+            id: 'case-2',
+            knowledge_base_id: 'kb-harbor',
+            title: 'North Harbor Imaging escalation',
+            status: 'open',
+            priority: 'high',
+            assignee: null,
+            alert_ids: ['alert-2'],
+            updated_at: '2026-05-12T00:00:00Z',
+          },
+        ],
+        page: { page: 1, page_size: 1, total_items: 1 },
+      },
+    })
+
+    renderAlertFeed('/alerts?kb=kb-harbor')
+
+    expect(mocks.useCases).toHaveBeenCalledWith('kb-harbor')
+
+    const promotedButton = screen.getByRole('button', {
+      name: 'Promoted North Harbor Imaging to case',
+    })
+    expect(promotedButton).toBeDisabled()
+
+    fireEvent.click(promotedButton)
+
+    expect(mocks.promoteAlertToCase).not.toHaveBeenCalled()
+  })
+
+  it('links each alert row to the entity investigation view with unique labels', () => {
+    renderAlertFeed()
+
+    const redwoodLink = screen.getByRole('link', { name: 'Investigate Redwood DME Group' })
+    const harborLink = screen.getByRole('link', { name: 'Investigate North Harbor Imaging' })
+
+    expect(redwoodLink).toHaveAttribute('href', '/investigation/provider-204?kb=kb-redwood')
+    expect(harborLink).toHaveAttribute('href', '/investigation/provider-118?kb=kb-harbor')
   })
 
   it('filters the feed and renders an empty state', () => {

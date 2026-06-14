@@ -11,6 +11,8 @@ from shared.utils import utc_now
 
 CaseStatus = Literal["open", "in_review", "closed"]
 CasePriority = Literal["low", "medium", "high", "critical"]
+FeedbackLabel = Literal["suspicious", "not_suspicious", "insufficient_evidence"]
+EvidenceAdequacy = Literal["low", "medium", "high"]
 
 
 class CaseTimelineEvent(BaseModel):
@@ -19,6 +21,17 @@ class CaseTimelineEvent(BaseModel):
     occurred_at: datetime
     label: str
     detail: str
+
+
+class AnalystFeedback(BaseModel):
+    """Analyst judgment captured against an investigation case."""
+
+    case_id: str
+    label: FeedbackLabel
+    evidence_adequacy: EvidenceAdequacy
+    missing_evidence: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    notes: str
+    submitted_at: datetime = Field(default_factory=utc_now)
 
 
 class Case(BaseModel):
@@ -36,12 +49,18 @@ class Case(BaseModel):
     timeline: list[CaseTimelineEvent] = Field(
         default_factory=lambda: cast(list[CaseTimelineEvent], [])
     )
+    feedback_history: list[AnalystFeedback] = Field(
+        default_factory=lambda: cast(list[AnalystFeedback], [])
+    )
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 
 
 __all__ = [
+    "AnalystFeedback",
     "Case",
+    "EvidenceAdequacy",
+    "FeedbackLabel",
     "CasePriority",
     "CaseStatus",
     "CaseTimelineEvent",
