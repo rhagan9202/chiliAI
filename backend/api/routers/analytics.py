@@ -35,9 +35,6 @@ __all__ = ["router"]
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
-# TODO(future-development): expose these collection analytics routes in routed
-# frontend views; the current UI consumes overview and entity-specific analytics.
-
 @router.get(
     "/risk-scores",
     response_model=RiskScoreListResponse,

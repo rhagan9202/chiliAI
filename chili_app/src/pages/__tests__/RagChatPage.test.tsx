@@ -197,6 +197,20 @@ describe('RagChatPage', () => {
     )
   })
 
+  it('refreshes the draft when the launch question changes on the mounted route', () => {
+    mocks.knowledgeBases = [KB_ONE]
+    mocks.searchParams = new URLSearchParams('kb=kb-1&q=First+question')
+
+    const { rerender } = render(<RagChatPage />)
+
+    expect(screen.getByDisplayValue('First question')).toBeInTheDocument()
+
+    mocks.searchParams = new URLSearchParams('kb=kb-1&q=Second+question')
+    rerender(<RagChatPage />)
+
+    expect(screen.getByDisplayValue('Second question')).toBeInTheDocument()
+  })
+
   it('clears the consumed launch question after contextual start succeeds', async () => {
     mocks.knowledgeBases = [KB_ONE]
     mocks.searchParams = new URLSearchParams(

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useKnowledgeBases } from '../api/knowledgebases'
@@ -69,7 +69,11 @@ export function RagChatPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const launchContext = useMemo(() => parseRagLaunchContext(searchParams), [searchParams])
   const [conversationId, setConversationId] = useState<string | null>(null)
-  const [draft, setDraft] = useState(() => launchContext.question ?? '')
+  const launchQuestion = launchContext.question ?? ''
+  const [draftState, setDraftState] = useState(() => ({
+    launchQuestion,
+    value: launchQuestion,
+  }))
   const [retryFilters, setRetryFilters] = useState<Record<string, string | number | boolean> | null>(null)
   const [showContextualRetryMessage, setShowContextualRetryMessage] = useState(false)
   const knowledgeBasesQuery = useKnowledgeBases()
@@ -82,7 +86,9 @@ export function RagChatPage() {
   const createConversationMutation = useCreateConversation()
   const startContextualThreadMutation = useStartConversationWithMessage()
   const addMessageMutation = useAddMessage(conversationId)
-  const contextQuestion = launchContext.question?.trim() ?? ''
+  const draft = draftState.launchQuestion === launchQuestion ? draftState.value : launchQuestion
+  const setDraftForLaunchQuestion = (value: string) => setDraftState({ launchQuestion, value })
+  const contextQuestion = launchQuestion.trim()
   const contextChips = [
     launchContext.source,
     launchContext.alertId,
@@ -91,10 +97,6 @@ export function RagChatPage() {
     launchContext.evidencePackId,
   ].filter((value): value is string => typeof value === 'string' && value.length > 0)
   const canStartContextualThread = !conversationId && contextQuestion.length > 0
-
-  useEffect(() => {
-    setDraft(launchContext.question ?? '')
-  }, [launchContext.question])
 
   if (knowledgeBasesQuery.isLoading || (conversationId && conversationQuery.isLoading)) {
     return <LoadingState label="Loading RAG conversation" />
@@ -156,7 +158,7 @@ export function RagChatPage() {
               next.set('kb', event.target.value)
               setSearchParams(next)
               setConversationId(null)
-              setDraft('')
+              setDraftForLaunchQuestion('')
               setRetryFilters(null)
               setShowContextualRetryMessage(false)
             }}
@@ -215,7 +217,7 @@ export function RagChatPage() {
                     },
                     onSuccess: (updated) => {
                       setConversationId(updated.id)
-                      setDraft('')
+                      setDraftForLaunchQuestion('')
                       setRetryFilters(null)
                       setShowContextualRetryMessage(false)
                     },
@@ -316,7 +318,7 @@ export function RagChatPage() {
         <div className="chat-page__compose-row">
           <textarea
             className="page-textarea"
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => setDraftForLaunchQuestion(event.target.value)}
             placeholder="Ask the investigation assistant about an entity, alert, or evidence trail"
             value={draft}
           />
@@ -327,9 +329,9 @@ export function RagChatPage() {
               addMessageMutation.mutate({
                 content: draft,
                 include_graph_context: true,
-                filters: retryFilters ?? {},
-              })
-              setDraft('')
+              filters: retryFilters ?? {},
+            })
+              setDraftForLaunchQuestion('')
               setRetryFilters(null)
               setShowContextualRetryMessage(false)
             }}

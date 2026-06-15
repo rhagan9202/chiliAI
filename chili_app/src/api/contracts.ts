@@ -178,6 +178,9 @@ export type WorkflowRunListResponse = RequireFields<Schemas['WorkflowRunListResp
 
 export type RiskFactorResponse = Schemas['RiskFactorResponse']
 export type RiskScoreResponse = RequireFields<Schemas['RiskScoreResponse'], 'factors'>
+export type RiskScoreListResponse = Schemas['RiskScoreListResponse']
 export type TimeseriesPointResponse = Schemas['EntityTimeseriesPointResponse']
 export type TimeseriesResponse = RequireFields<Schemas['EntityTimeseriesResponse'], 'points'>
+export type MetricTimeseriesResponse = Schemas['MetricTimeseriesResponse']
+export type GnnClusterResponse = Schemas['GnnClusterResponse']
 export type AnalyticsOverviewResponse = Schemas['AnalyticsOverviewResponse']
