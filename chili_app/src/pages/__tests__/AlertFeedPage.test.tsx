@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { act } from 'react'
-import { BrowserRouter, MemoryRouter } from 'react-router-dom'
+import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AlertFeedPage } from '../AlertFeedPage'
@@ -90,6 +90,12 @@ function alertsForKnowledgeBase(knowledgeBaseId: string | undefined) {
   }
 }
 
+function LocationProbe({ onChange }: { onChange: (location: string) => void }) {
+  const location = useLocation()
+  onChange(`${location.pathname}${location.search}`)
+  return null
+}
+
 describe('AlertFeedPage', () => {
   beforeEach(() => {
     mocks.acknowledge.mockReset()
@@ -116,6 +122,17 @@ describe('AlertFeedPage', () => {
         <AlertFeedPage />
       </MemoryRouter>,
     )
+  }
+
+  function renderAlertFeedWithLocationProbe(initialEntry = '/alerts') {
+    const locations: string[] = []
+    render(
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <AlertFeedPage />
+        <LocationProbe onChange={(location) => locations.push(location)} />
+      </MemoryRouter>,
+    )
+    return locations
   }
 
   it('renders alert feed rows and acknowledgement action', () => {
@@ -209,6 +226,16 @@ describe('AlertFeedPage', () => {
 
     expect(redwoodLink).toHaveAttribute('href', '/investigation/provider-204?kb=kb-redwood')
     expect(harborLink).toHaveAttribute('href', '/investigation/provider-118?kb=kb-harbor')
+  })
+
+  it('launches Ask AI with the selected alert context', () => {
+    const locations = renderAlertFeedWithLocationProbe()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ask AI for Redwood DME Group' }))
+
+    expect(locations.at(-1)).toBe(
+      '/rag-chat?kb=kb-redwood&source=alert&alert=alert-1&entity=provider-204&evidence=evidence-1&q=Why+is+this+high+risk%3F',
+    )
   })
 
   it('filters the feed and renders an empty state', () => {

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CaseManagementPage } from '../CaseManagementPage'
@@ -38,6 +38,7 @@ const caseSummary = {
   priority: 'high',
   assignee: 'J. Chen',
   alert_ids: ['alert-1'],
+  evidence_pack_id: 'evidence-1',
   updated_at: '2026-05-12T00:00:00Z',
 }
 
@@ -86,6 +87,23 @@ function renderPage() {
   )
 }
 
+function LocationProbe({ onChange }: { onChange: (location: string) => void }) {
+  const location = useLocation()
+  onChange(`${location.pathname}${location.search}`)
+  return null
+}
+
+function renderPageWithLocationProbe(initialEntry = '/cases?kb=kb-1&case=case-1') {
+  const locations: string[] = []
+  render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <CaseManagementPage />
+      <LocationProbe onChange={(location) => locations.push(location)} />
+    </MemoryRouter>,
+  )
+  return locations
+}
+
 describe('CaseManagementPage', () => {
   beforeEach(() => {
     mocks.addFeedback.mockReset()
@@ -111,7 +129,7 @@ describe('CaseManagementPage', () => {
       isError: false,
       data: {
         case: caseSummary,
-        alerts: [alert],
+        alerts: [{ ...alert, evidence_pack_id: 'alert-evidence-should-not-be-used' }],
         evidence_pack: null,
         entity_timeline: [
           { occurred_at: '2026-05-12T00:00:00Z', label: 'alert_raised', detail: 'Outlier billing concentration' },
@@ -151,6 +169,35 @@ describe('CaseManagementPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Promote Cedar Ridge Pharmacy to case' }))
 
     expect(mocks.promote).toHaveBeenCalledWith({ alert_id: 'alert-3' }, expect.any(Object))
+  })
+
+  it('updates the case query parameter after promoting an alert while another valid case is selected', () => {
+    mocks.promote.mockImplementation((_payload, options) => {
+      options.onSuccess({
+        case: {
+          ...caseSummary,
+          id: 'case-new',
+          title: 'North Harbor Imaging escalation',
+          alert_ids: ['alert-2'],
+          evidence_pack_id: 'evidence-2',
+        },
+      })
+    })
+    const locations = renderPageWithLocationProbe('/cases?kb=kb-1&case=case-1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Promote North Harbor Imaging to case' }))
+
+    expect(locations.at(-1)).toBe('/cases?kb=kb-1&case=case-new')
+  })
+
+  it('launches Ask AI with the active case context', () => {
+    const locations = renderPageWithLocationProbe()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ask AI for Redwood DME escalation' }))
+
+    expect(locations.at(-1)).toBe(
+      '/rag-chat?kb=kb-1&source=case&alert=alert-1&case=case-1&evidence=evidence-1&q=Why+is+this+high+risk%3F',
+    )
   })
 
   it('loads alerts for the selected knowledge base and hides out-of-scope promote actions', () => {

@@ -17,6 +17,14 @@ const mocks = vi.hoisted(() => ({
     relationship_count: number
     created_at: string
   }>,
+  alerts: [] as Array<{
+    id: string
+    entity_id: string
+    knowledge_base_id: string
+    severity: string
+    evidence_pack_id: string | null
+  }>,
+  useAlerts: vi.fn(),
   searchItems: [] as RuntimeEntity[],
   selectedEntity: null as RuntimeEntity | null,
   navigate: vi.fn(),
@@ -121,11 +129,7 @@ vi.mock('../../api/investigation', () => ({
 }))
 
 vi.mock('../../api/alerts', () => ({
-  useAlerts: () => ({
-    isLoading: false,
-    isError: false,
-    data: { items: [], page: { page: 1, page_size: 0, total_items: 0 } },
-  }),
+  useAlerts: mocks.useAlerts,
 }))
 
 vi.mock('../../api/analytics', () => ({
@@ -175,6 +179,18 @@ function renderInvestigationWorkbench(initialEntry = '/investigation') {
 describe('InvestigationWorkbenchPage', () => {
   beforeEach(() => {
     mocks.knowledgeBases = []
+    mocks.alerts = []
+    mocks.useAlerts.mockReset()
+    mocks.useAlerts.mockImplementation((filters?: { knowledgeBaseId?: string }) => {
+      const items = filters?.knowledgeBaseId
+        ? mocks.alerts.filter((alert) => alert.knowledge_base_id === filters.knowledgeBaseId)
+        : mocks.alerts
+      return {
+        isLoading: false,
+        isError: false,
+        data: { items, page: { page: 1, page_size: items.length, total_items: items.length } },
+      }
+    })
     mocks.searchItems = []
     mocks.selectedEntity = null
     mocks.navigate.mockReset()
@@ -345,5 +361,94 @@ describe('InvestigationWorkbenchPage', () => {
     renderInvestigationWorkbench('/investigation?kb=kb-claims')
 
     expect(screen.getByLabelText('Knowledge base')).toHaveValue('kb-claims')
+  })
+
+  it('launches Ask AI with the selected entity context', async () => {
+    const provider: RuntimeEntity = {
+      id: 'provider-204',
+      type: 'provider',
+      properties: { npi: '1234567890' },
+      metadata: {},
+      created_at: '2026-05-10T00:00:00Z',
+      updated_at: null,
+      version: 1,
+    }
+    mocks.knowledgeBases = [
+      {
+        id: 'kb-live',
+        name: 'Live Fraud KB',
+        description: 'Live KB',
+        status: 'ready',
+        document_count: 1,
+        entity_count: 1,
+        relationship_count: 0,
+        created_at: '2026-05-10T00:00:00Z',
+      },
+    ]
+    mocks.alerts = [
+      {
+        id: 'alert-1',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'critical',
+        evidence_pack_id: 'evidence-1',
+      },
+    ]
+    mocks.selectedEntity = provider
+    mocks.routeEntityId = 'provider-204'
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ask AI' }))
+
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      '/rag-chat?kb=kb-live&source=entity&alert=alert-1&entity=provider-204&evidence=evidence-1&q=Why+is+this+high+risk%3F',
+    )
+  })
+
+  it('loads alerts in the active knowledge base scope for entity Ask AI context', () => {
+    const provider: RuntimeEntity = {
+      id: 'provider-204',
+      type: 'provider',
+      properties: { npi: '1234567890' },
+      metadata: {},
+      created_at: '2026-05-10T00:00:00Z',
+      updated_at: null,
+      version: 1,
+    }
+    mocks.knowledgeBases = [
+      {
+        id: 'kb-live',
+        name: 'Live Fraud KB',
+        description: 'Live KB',
+        status: 'ready',
+        document_count: 1,
+        entity_count: 1,
+        relationship_count: 0,
+        created_at: '2026-05-10T00:00:00Z',
+      },
+    ]
+    mocks.alerts = [
+      {
+        id: 'alert-other-kb',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-other',
+        severity: 'critical',
+        evidence_pack_id: 'evidence-other',
+      },
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: 'evidence-live',
+      },
+    ]
+    mocks.selectedEntity = provider
+    mocks.routeEntityId = 'provider-204'
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
+
+    expect(mocks.useAlerts).toHaveBeenCalledWith({ knowledgeBaseId: 'kb-live' })
   })
 })

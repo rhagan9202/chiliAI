@@ -23,6 +23,7 @@ import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
 import { LoadingState } from '../components/ui/LoadingState'
 import { RiskBadge } from '../components/ui/RiskBadge'
+import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
 import {
   getEntityChips,
   getEntitySubtitle,
@@ -38,7 +39,6 @@ export function InvestigationWorkbenchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const domainConfigQuery = useDomainConfig()
   const knowledgeBasesQuery = useKnowledgeBases()
-  const alertsQuery = useAlerts()
   const [searchTerm, setSearchTerm] = useState('')
   const selectedEntityId = entityId ?? null
   const selectedKnowledgeBaseId = searchParams.get('kb')
@@ -49,6 +49,7 @@ export function InvestigationWorkbenchPage() {
     ? selectedKnowledgeBaseId
     : knowledgeBases[0]?.id ?? null
 
+  const alertsQuery = useAlerts({ knowledgeBaseId: activeKnowledgeBaseId ?? undefined })
   const searchQuery = useInvestigationEntitySearch(activeKnowledgeBaseId, searchTerm)
   const entityQuery = useInvestigationEntity(activeKnowledgeBaseId, selectedEntityId)
   const neighborhoodQuery = useInvestigationNeighborhood(activeKnowledgeBaseId, selectedEntityId, depth)
@@ -221,6 +222,22 @@ export function InvestigationWorkbenchPage() {
                     <Chip key={chip} label={chip} tone="default" />
                   ))}
                 </div>
+                <button
+                  className="page-button page-button--secondary"
+                  onClick={() =>
+                    navigate(buildRagChatUrl({
+                      knowledgeBaseId: activeKnowledgeBaseId,
+                      source: 'entity',
+                      entityId: selectedEntityId,
+                      alertId: selectedAlert?.id,
+                      evidencePackId: selectedAlert?.evidence_pack_id,
+                      question: DEFAULT_RISK_QUESTION,
+                    }))
+                  }
+                  type="button"
+                >
+                  Ask AI
+                </button>
                 <p className="page-copy-block">{entitySubtitle ?? entity.id}</p>
               </div>
             </Card>

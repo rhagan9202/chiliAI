@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useAcknowledgeAlert, useAlerts } from '../api/alerts'
 import { useCases, usePromoteAlertToCase } from '../api/cases'
@@ -15,6 +15,7 @@ import { Card } from '../components/ui/Card'
 import { LoadingState } from '../components/ui/LoadingState'
 import { RiskBadge } from '../components/ui/RiskBadge'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
 import './pages.css'
 
 const filters = [
@@ -25,11 +26,12 @@ const filters = [
 ]
 
 export function AlertFeedPage() {
-  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [activeFilterId, setActiveFilterId] = useState('all')
-  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
   const [promotedAlertIds, setPromotedAlertIds] = useState<Set<string>>(() => new Set())
   const selectedKnowledgeBaseId = searchParams.get('kb')
+  const requestedAlertId = searchParams.get('alert')
   const alertsQuery = useAlerts({
     knowledgeBaseId: selectedKnowledgeBaseId ?? undefined,
   })
@@ -43,11 +45,22 @@ export function AlertFeedPage() {
 
   // Resolve the selected alert's evidence pack (KB-scoped). Hooks must run
   // unconditionally, so derive from the (possibly undefined) query data.
-  const selectedAlert = alertItems.find((alert) => alert.id === selectedAlertId) ?? null
+  const selectedAlert = alertItems.find((alert) => alert.id === requestedAlertId) ?? null
+  const selectedAlertId = selectedAlert?.id ?? null
   const evidenceQuery = useEvidencePack(
     selectedAlert?.evidence_pack_id ?? null,
     selectedAlert?.knowledge_base_id ?? null,
   )
+
+  const selectEvidenceAlert = (alertId: string) => {
+    const nextSearchParams = new URLSearchParams(searchParams)
+    if (selectedAlertId === alertId) {
+      nextSearchParams.delete('alert')
+    } else {
+      nextSearchParams.set('alert', alertId)
+    }
+    setSearchParams(nextSearchParams, { preventScrollReset: true })
+  }
 
   if (alertsQuery.isLoading) {
     return <LoadingState label="Loading alert feed" />
@@ -109,12 +122,27 @@ export function AlertFeedPage() {
                   >
                     Investigate entity
                   </Link>
+                  <button
+                    aria-label={`Ask AI for ${alert.entity_label}`}
+                    className="page-button page-button--sm page-button--secondary"
+                    onClick={() =>
+                      navigate(buildRagChatUrl({
+                        knowledgeBaseId: alert.knowledge_base_id,
+                        source: 'alert',
+                        alertId: alert.id,
+                        entityId: alert.entity_id,
+                        evidencePackId: alert.evidence_pack_id,
+                        question: DEFAULT_RISK_QUESTION,
+                      }))
+                    }
+                    type="button"
+                  >
+                    Ask AI
+                  </button>
                   {alert.evidence_pack_id ? (
                     <button
                       className="page-button page-button--sm page-button--secondary"
-                      onClick={() =>
-                        setSelectedAlertId((current) => (current === alert.id ? null : alert.id))
-                      }
+                      onClick={() => selectEvidenceAlert(alert.id)}
                       type="button"
                     >
                       {selectedAlertId === alert.id ? 'Hide evidence' : 'View evidence'}

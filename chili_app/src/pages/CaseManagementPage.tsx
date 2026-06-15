@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useAlerts } from '../api/alerts'
 import { useAddCaseFeedback, useCase, useCases, usePromoteCase, useUpdateCase } from '../api/cases'
@@ -13,6 +13,7 @@ import { ErrorState } from '../components/ui/ErrorState'
 import { FilterBar } from '../components/ui/FilterBar'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
 import './pages.css'
 
 type StatusFilter = 'all' | 'open' | 'in_review' | 'closed'
@@ -25,10 +26,12 @@ const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
 ]
 
 export function CaseManagementPage() {
-  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const knowledgeBasesQuery = useKnowledgeBases()
   const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
   const requestedKbId = searchParams.get('kb')
+  const requestedCaseId = searchParams.get('case')
   const knowledgeBaseId = knowledgeBases.some((kb) => kb.id === requestedKbId)
     ? requestedKbId
     : knowledgeBases[0]?.id ?? null
@@ -38,7 +41,9 @@ export function CaseManagementPage() {
   const promoteMutation = usePromoteCase(knowledgeBaseId)
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const activeCaseId = selectedCaseId ?? casesQuery.data?.items[0]?.id ?? null
+  const activeCaseId = casesQuery.data?.items.some((caseItem) => caseItem.id === requestedCaseId)
+    ? requestedCaseId
+    : selectedCaseId ?? casesQuery.data?.items[0]?.id ?? null
   const caseQuery = useCase(knowledgeBaseId, activeCaseId)
   const updateCaseMutation = useUpdateCase(knowledgeBaseId, activeCaseId)
   const feedbackMutation = useAddCaseFeedback(knowledgeBaseId, activeCaseId)
@@ -127,9 +132,14 @@ export function CaseManagementPage() {
             <strong>Case queue</strong>
             {visibleCases.map((caseItem) => (
               <button
-                className={selectedCaseId === caseItem.id ? 'page-list-item page-list-item--active' : 'page-list-item'}
+                className={activeCaseId === caseItem.id ? 'page-list-item page-list-item--active' : 'page-list-item'}
                 key={caseItem.id}
-                onClick={() => setSelectedCaseId(caseItem.id)}
+                onClick={() => {
+                  setSelectedCaseId(caseItem.id)
+                  const nextSearchParams = new URLSearchParams(searchParams)
+                  nextSearchParams.set('case', caseItem.id)
+                  setSearchParams(nextSearchParams, { preventScrollReset: true })
+                }}
                 type="button"
               >
                 <strong>{caseItem.title}</strong>
@@ -152,6 +162,9 @@ export function CaseManagementPage() {
                     {
                       onSuccess: (detail) => {
                         setSelectedCaseId(detail.case.id)
+                        const nextSearchParams = new URLSearchParams(searchParams)
+                        nextSearchParams.set('case', detail.case.id)
+                        setSearchParams(nextSearchParams, { preventScrollReset: true })
                         showToast('success', `Promoted ${alert.entity_label} to a case.`)
                       },
                       onError: () => showToast('error', 'Could not promote the alert.'),
@@ -176,6 +189,23 @@ export function CaseManagementPage() {
                 {caseQuery.data.case.assignee ? <Chip label={caseQuery.data.case.assignee} tone="default" /> : null}
               </div>
               <div className="page-actions-inline">
+                <button
+                  aria-label={`Ask AI for ${caseQuery.data.case.title}`}
+                  className="page-button page-button--secondary"
+                  onClick={() =>
+                    navigate(buildRagChatUrl({
+                      knowledgeBaseId,
+                      source: 'case',
+                      caseId: activeCaseId,
+                      alertId: caseQuery.data.case.alert_ids[0],
+                      evidencePackId: caseQuery.data.case.evidence_pack_id,
+                      question: DEFAULT_RISK_QUESTION,
+                    }))
+                  }
+                  type="button"
+                >
+                  Ask AI
+                </button>
                 <button className="page-button" onClick={() => handleUpdate('in_review')} type="button">
                   Mark in review
                 </button>

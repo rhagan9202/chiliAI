@@ -25,7 +25,51 @@ export function addMessage(
   conversationId: string,
   payload: ChatMessageCreateRequest,
 ): Promise<ChatConversationResponse> {
+  if (!conversationId) {
+    return Promise.reject(new Error('Cannot add message without an active conversation.'))
+  }
+
   return apiPost<ChatConversationResponse, ChatMessageCreateRequest>(`/chat/conversations/${conversationId}/messages`, payload)
+}
+
+export class StartConversationWithMessageError extends Error {
+  createdConversation: ChatConversationResponse
+  originalError: unknown
+
+  constructor(createdConversation: ChatConversationResponse, originalError: unknown) {
+    super('Conversation was created, but the initial message could not be added.')
+    this.name = 'StartConversationWithMessageError'
+    this.createdConversation = createdConversation
+    this.originalError = originalError
+  }
+}
+
+export function isStartConversationPartialError(
+  error: unknown,
+): error is StartConversationWithMessageError {
+  return error instanceof StartConversationWithMessageError
+}
+
+export async function startConversationWithMessage(payload: {
+  knowledge_base_id: string
+  title: string
+  content: string
+  filters: Record<string, string | number | boolean>
+}): Promise<ChatConversationResponse> {
+  const created = await createConversation({
+    knowledge_base_id: payload.knowledge_base_id,
+    title: payload.title,
+  })
+
+  try {
+    return await addMessage(created.id, {
+      content: payload.content,
+      include_graph_context: true,
+      filters: payload.filters,
+    })
+  } catch (error) {
+    throw new StartConversationWithMessageError(created, error)
+  }
 }
 
 export function useConversation(conversationId: string | null) {
@@ -54,6 +98,26 @@ export function useAddMessage(conversationId: string | null) {
     mutationFn: (payload: ChatMessageCreateRequest) => addMessage(conversationId ?? '', payload),
     onSuccess: (conversation) => {
       queryClient.setQueryData(conversationQueryKey(conversation.id), conversation)
+    },
+  })
+}
+
+export function useStartConversationWithMessage() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: startConversationWithMessage,
+    onError: (error) => {
+      if (isStartConversationPartialError(error)) {
+        queryClient.setQueryData(
+          conversationQueryKey(error.createdConversation.id),
+          error.createdConversation,
+        )
+      }
+    },
+    onSuccess: (conversation) => {
+      queryClient.setQueryData(conversationQueryKey(conversation.id), conversation)
+      void queryClient.invalidateQueries({ queryKey: conversationQueryKey(conversation.id) })
     },
   })
 }
