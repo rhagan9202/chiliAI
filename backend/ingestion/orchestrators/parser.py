@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from ingestion.models import SourceDocument
 from ingestion.orchestrators.format_resolver import DefaultFormatResolver
 from ingestion.orchestrators.protocols import (
@@ -20,6 +22,8 @@ from ingestion.parsers.protocols import RemoteDocumentFetcher
 from ingestion.parsers.registry import ParserRegistry
 
 __all__ = ["DocumentParsingOrchestrator"]
+
+logger = logging.getLogger(__name__)
 
 
 class DocumentParsingOrchestrator:
@@ -84,12 +88,15 @@ class DocumentParsingOrchestrator:
                 uri=uri,
             )
         except ParserError as exc:
-            failed_source = mark_failed(mark_parsing(source), str(exc))
-            return DocumentParseFailure(
-                source_document=failed_source,
-                error_type=type(exc).__name__,
-                error_message=str(exc),
+            return self._as_failure(source, exc)
+        except Exception as exc:  # noqa: BLE001 - any parse failure becomes a typed result
+            logger.error(
+                "Unexpected parse failure for source_document_id=%s error_class=%s: %s",
+                source.id,
+                type(exc).__name__,
+                exc,
             )
+            return self._as_failure(source, exc)
 
     def parse_source(self, source: SourceDocument) -> ParseResult:
         if self._fetcher is None:
@@ -106,10 +113,23 @@ class DocumentParsingOrchestrator:
     def safe_parse_source(self, source: SourceDocument) -> ParseResult | DocumentParseFailure:
         try:
             return self.parse_source(source)
-        except (ParserError, RemoteFetchError) as exc:
-            failed_source = mark_failed(mark_parsing(source), str(exc))
-            return DocumentParseFailure(
-                source_document=failed_source,
-                error_type=type(exc).__name__,
-                error_message=str(exc),
+        except ParserError as exc:
+            return self._as_failure(source, exc)
+        except Exception as exc:  # noqa: BLE001 - any parse/fetch failure becomes a typed result
+            logger.error(
+                "Unexpected parse failure for source_document_id=%s error_class=%s: %s",
+                source.id,
+                type(exc).__name__,
+                exc,
             )
+            return self._as_failure(source, exc)
+
+    @staticmethod
+    def _as_failure(source: SourceDocument, exc: Exception) -> DocumentParseFailure:
+        """Convert an exception into a typed parse failure with a failed source."""
+        failed_source = mark_failed(mark_parsing(source), str(exc))
+        return DocumentParseFailure(
+            source_document=failed_source,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )

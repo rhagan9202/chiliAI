@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from hashlib import sha256
 
 from ingestion.models import DocumentFormat, SourceDocument, SourceType
@@ -10,6 +11,7 @@ from ingestion.orchestrators.protocols import (
     ParseResult,
     ParserOrchestrator,
 )
+from ingestion.orchestrators.source_documents import mark_failed, mark_parsing
 from ingestion.recovery import IngestionRecoveryMarker, IngestionRecoveryStore
 from ingestion.service_models import DocumentReceipt, DocumentSubmission, IngestionTask
 from events.protocols import EventBus
@@ -23,6 +25,8 @@ from events.types import (
 )
 from shared.protocols import ObjectStoreProtocol
 from shared.utils import generate_id
+
+logger = logging.getLogger(__name__)
 
 
 class IngestionService:
@@ -286,15 +290,32 @@ class IngestionService:
         *,
         correlation_id: str | None = None,
     ) -> ParseResult | DocumentParseFailure:
+        outcome: ParseResult | DocumentParseFailure
         if task.storage_key is not None:
-            stored = self._object_store.get_bytes(task.storage_key)
-            outcome = self._parser_orchestrator.safe_parse_content(
-                task.source_document,
-                stored.content,
-                content_type=stored.media_type or task.content_type,
-                filename=task.source_document.filename,
-                uri=task.source_document.uri,
-            )
+            try:
+                stored = self._object_store.get_bytes(task.storage_key)
+            except Exception as exc:  # noqa: BLE001 - read failure becomes a typed failure
+                logger.error(
+                    "Failed to read source object for source_document_id=%s "
+                    "storage_key=%s error_class=%s: %s",
+                    task.source_document.id,
+                    task.storage_key,
+                    type(exc).__name__,
+                    exc,
+                )
+                outcome = DocumentParseFailure(
+                    source_document=mark_failed(mark_parsing(task.source_document), str(exc)),
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                )
+            else:
+                outcome = self._parser_orchestrator.safe_parse_content(
+                    task.source_document,
+                    stored.content,
+                    content_type=stored.media_type or task.content_type,
+                    filename=task.source_document.filename,
+                    uri=task.source_document.uri,
+                )
         else:
             outcome = self._parser_orchestrator.safe_parse_source(task.source_document)
 

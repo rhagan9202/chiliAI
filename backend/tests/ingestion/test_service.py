@@ -17,7 +17,7 @@ from ingestion.recovery import (
     InMemoryIngestionRecoveryStore,
     ObjectStoreIngestionRecoveryStore,
 )
-from ingestion.models import DocumentFormat, SourceDocument, SourceType
+from ingestion.models import DocumentFormat, IngestionStatus, SourceDocument, SourceType
 from ingestion.orchestrators.protocols import DocumentParseFailure, ParseResult
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
@@ -545,3 +545,69 @@ def test_process_documents_uploaded_preserves_event_source_metadata() -> None:
 
     assert outcomes[0].source_document.source_type is SourceType.BATCH_LOAD
     assert outcomes[0].source_document.size_bytes == 123
+
+
+def test_ingest_task_publishes_failure_when_source_object_missing() -> None:
+    service, event_bus, _object_store = _service()
+
+    outcome = service.ingest_task(
+        IngestionTask(
+            knowledge_base_id="kb-1",
+            source_document=SourceDocument(
+                id="doc-missing",
+                source_type=SourceType.FILE_UPLOAD,
+                filename="claims.json",
+            ),
+            storage_key="knowledgebases/kb-1/documents/doc-missing/source",
+            content_type="application/json",
+        ),
+        correlation_id="corr-missing-1",
+    )
+
+    assert isinstance(outcome, DocumentParseFailure)
+    assert outcome.source_document.status is IngestionStatus.FAILED
+    assert outcome.error_type == "KeyError"
+    failed_event = event_bus.published_events[-1]
+    assert isinstance(failed_event, DocumentsFailedEvent)
+    assert failed_event.correlation_id == "corr-missing-1"
+    assert failed_event.documents[0].source_document_id == "doc-missing"
+
+
+def test_process_documents_uploaded_isolates_missing_object_failure() -> None:
+    service, event_bus, object_store = _service()
+    good_key = "knowledgebases/kb-1/documents/doc-good/source"
+    object_store.put_bytes(good_key, b'{"claim_id": "42"}', media_type="application/json")
+
+    uploaded = DocumentsUploadedEvent(
+        correlation_id="corr-mixed-1",
+        documents=[
+            DocumentReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-missing",
+                filename="missing.json",
+                content_type="application/json",
+                storage_key="knowledgebases/kb-1/documents/doc-missing/source",
+                uri=None,
+                document_format=DocumentFormat.JSON.value,
+                size_bytes=None,
+            ),
+            DocumentReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-good",
+                filename="good.json",
+                content_type="application/json",
+                storage_key=good_key,
+                uri=None,
+                document_format=DocumentFormat.JSON.value,
+                size_bytes=None,
+            ),
+        ],
+    )
+
+    outcomes = service.process_documents_uploaded(uploaded)
+
+    assert isinstance(outcomes[0], DocumentParseFailure)
+    assert isinstance(outcomes[1], ParseResult)
+    published_types = [type(event) for event in event_bus.published_events]
+    assert DocumentsFailedEvent in published_types
+    assert DocumentsParsedEvent in published_types
