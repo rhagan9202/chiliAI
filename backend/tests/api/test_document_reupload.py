@@ -1,10 +1,13 @@
 """Tests for document re-upload idempotency (content-hash dedup).
 
-Uploading the same bytes twice to a KB should:
-  1. Cascade-delete the original document's graph nodes and vector points.
-  2. Re-register the document under a new source_document_id.
-  3. Surface the old id as ``replaced_document_id`` in the receipt.
-  4. Trigger a new DocumentsUploadedEvent so the worker re-extracts entities.
+Uploading the same bytes twice to a KB is an idempotent no-op:
+  1. The content-addressed source_document_id is unchanged.
+  2. The existing document, its graph/vector provenance, and object-store
+     artifacts are preserved (no destructive cleanup).
+  3. The receipt is deduplicated (``enqueued`` is False) and still surfaces the
+     existing id as ``replaced_document_id``.
+  4. No second DocumentsUploadedEvent is published, so the worker does not
+     reprocess identical bytes.
 
 Uploading *different* bytes should create a fresh document with no replacement.
 """
@@ -129,6 +132,7 @@ class ReuploadHarness:
                     self.object_store,
                     embeddings_service=embeddings_service,
                     vector_store=self.vector_store,
+                    graph_repository=self.graph_repository,
                     consumer_group="reupload-workers",
                     consumer_name="reupload-worker-1",
                 )
@@ -198,7 +202,7 @@ def api_client(reupload_harness: ReuploadHarness) -> TestClient:
     return reupload_harness.client
 
 
-def test_reuploading_same_document_replaces_extraction(
+def test_reuploading_same_document_is_idempotent_noop(
     reupload_harness: ReuploadHarness,
 ) -> None:
     client = reupload_harness.client
@@ -247,33 +251,33 @@ def test_reuploading_same_document_replaces_extraction(
     assert docs_resp.json()["total"] == 1
     assert docs_resp.json()["items"][0]["id"] == new_doc_id
 
-    # Drain the worker after the second upload: the fix ensures the source object
-    # was deleted so register_documents re-publishes DocumentsUploadedEvent and
-    # the worker re-extracts entities.  Graph + vector must be repopulated (>= 0
-    # but critically the event was re-published, i.e. the pipeline ran again).
+    # Drain after the second upload. Per the idempotency contract, an identical
+    # re-upload deduplicates (enqueued=False): no new DocumentsUploadedEvent is
+    # published and the existing graph/vector data is preserved untouched.
     reupload_harness.drain()
 
-    # Verify the DocumentsUploadedEvent was published for both uploads.
+    # Only the first upload published a DocumentsUploadedEvent; the identical
+    # re-upload is a deduplicated no-op.
     from events.types import DocumentsUploadedEvent
     uploaded_events = [
         e for e in reupload_harness.event_bus.published_events
         if isinstance(e, DocumentsUploadedEvent)
     ]
-    assert len(uploaded_events) == 2, (
-        f"Expected 2 DocumentsUploadedEvents (one per upload), got {len(uploaded_events)}. "
-        "This means the source object was not deleted before re-registration."
+    assert len(uploaded_events) == 1, (
+        f"Expected 1 DocumentsUploadedEvent (identical re-upload is a deduplicated "
+        f"no-op), got {len(uploaded_events)}."
     )
 
-    # After draining, graph + vector should be repopulated (count >= count from first drain).
+    # The preserved graph + vector data is unchanged from the first drain.
     entity_count_after_second = reupload_harness.graph_repository.count_entities(kb_id)
     vector_count_after_second = reupload_harness.vector_store.count_records(kb_id)
-    assert entity_count_after_second >= entity_count_after_first, (
-        f"Graph entities after re-upload ({entity_count_after_second}) should be >= "
-        f"after first upload ({entity_count_after_first}); KB ended up with fewer entities."
+    assert entity_count_after_second == entity_count_after_first, (
+        f"Graph entities after identical re-upload ({entity_count_after_second}) should "
+        f"equal the preserved count ({entity_count_after_first})."
     )
-    assert vector_count_after_second >= vector_count_after_first, (
-        f"Vector records after re-upload ({vector_count_after_second}) should be >= "
-        f"after first upload ({vector_count_after_first}); KB ended up with fewer vectors."
+    assert vector_count_after_second == vector_count_after_first, (
+        f"Vector records after identical re-upload ({vector_count_after_second}) should "
+        f"equal the preserved count ({vector_count_after_first})."
     )
 
 

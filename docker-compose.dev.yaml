@@ -172,7 +172,9 @@ services:
       - "7474:7474"
       - "7687:7687"
     environment:
-      - NEO4J_AUTH=none
+      # Defaults to disabled auth for local dev; CI overrides with NEO4J_AUTH
+      # (e.g. "neo4j/<password>") so the Neo4j integration tests can authenticate.
+      - NEO4J_AUTH=${NEO4J_AUTH:-none}
     volumes:
       - neo4j-data:/data
     healthcheck:

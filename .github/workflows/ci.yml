@@ -19,6 +19,22 @@ jobs:
   backend:
     name: Backend (lint, typecheck, tests, audit)
     runs-on: ubuntu-latest
+    # The full service stack is brought up before any test runs (see the
+    # "Bring up the service stack" step), and these env vars point the
+    # integration/e2e tests at the published localhost ports so they execute
+    # against real services instead of self-skipping.
+    env:
+      DATABASE_URL: postgresql://chili:chili@localhost:5432/chili
+      REDIS_URL: redis://localhost:6379
+      CHILI_TEST_REDIS_URL: redis://localhost:6379
+      QDRANT_URL: http://localhost:6333
+      NEO4J_AUTH: neo4j/ci_password
+      NEO4J_TEST_URI: bolt://localhost:7687
+      NEO4J_TEST_USERNAME: neo4j
+      NEO4J_TEST_PASSWORD: ci_password
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
     defaults:
       run:
         working-directory: backend
@@ -39,12 +55,25 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
+      - name: Bring up the service stack
+        # Single source of truth: the same infra services defined in the dev
+        # compose file. --wait blocks until every container reports healthy, so
+        # tests never start before the stack is ready. NEO4J_AUTH (job env)
+        # enables Neo4j auth for the integration tests.
+        working-directory: ${{ github.workspace }}
+        run: docker compose -f docker-compose.dev.yaml up -d --wait redis postgres neo4j qdrant minio
+
       - name: Install backend with all extras
+        # Every optional adapter is always installed; no silent fallback. If the
+        # full install fails, CI fails here rather than quietly running a partial
+        # dependency set.
         run: |
           python -m pip install --upgrade pip
           pip install uv
-          pip install -e ".[dev,neo4j,qdrant,openai,anthropic,s3,sentence-transformers,analytics,postgres]" \
-            || pip install -e ".[dev]"
+          pip install -e ".[dev,neo4j,qdrant,openai,anthropic,s3,sentence-transformers,analytics,auth,postgres,observability]"
+
+      - name: Apply database migrations
+        run: alembic upgrade head
 
       - name: Lint with ruff
         run: ruff check .
@@ -85,6 +114,11 @@ jobs:
             --ignore-vuln GHSA-0000-0000-0000 \
             || pip-audit --skip-editable
 
+      - name: Tear down the service stack
+        if: always()
+        working-directory: ${{ github.workspace }}
+        run: docker compose -f docker-compose.dev.yaml down -v
+
   api-contracts:
     name: API contracts (OpenAPI + frontend schema drift)
     runs-on: ubuntu-latest
@@ -98,10 +132,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install backend dev dependencies
+      - name: Install backend with all extras
+        # Full extras: export_openapi imports the application, which may load
+        # optional adapters at import time. No fallback — fail loudly if the
+        # full install breaks.
         run: |
           python -m pip install --upgrade pip
-          pip install -e "backend[dev]"
+          pip install -e "backend[dev,neo4j,qdrant,openai,anthropic,s3,sentence-transformers,analytics,auth,postgres,observability]"
 
       - name: Set up Node 20
         uses: actions/setup-node@v4
@@ -110,7 +147,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: chili_app
-        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+        run: npm ci --legacy-peer-deps
 
       - name: Export OpenAPI and regenerate frontend schema
         run: |
