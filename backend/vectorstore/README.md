@@ -20,6 +20,7 @@ The 1.0 service contract is synchronous:
 - `count(knowledge_base_id)`
 - `delete_record(knowledge_base_id, record_id)`
 - `delete_knowledge_base(knowledge_base_id)`
+- `delete_by_source_document(knowledge_base_id, source_document_id)`
 
 `delete_record` is idempotent and returns `False` for missing records.
 `delete_knowledge_base` is idempotent and returns a `VectorDeleteResponse` with the deleted count.
@@ -66,4 +67,4 @@ QDRANT_URL=http://localhost:6333 uv run --project backend pytest backend/tests/v
 
 ## Non-Goals
 
-1.0 does not include async contracts, pgvector, Weaviate, hybrid search, advanced metadata filters, public API endpoint expansion, RAG behavior changes, or cross-module document provenance cleanup.
+1.0 does not include async contracts, pgvector, Weaviate, hybrid search, advanced metadata filters, public API endpoint expansion, RAG behavior changes, or vector snapshot/restore tooling. Source-document vector cleanup is implemented through `delete_by_source_document`.

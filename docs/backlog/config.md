@@ -19,7 +19,7 @@
 
 ### Current State
 - `DomainConfig` (`backend/config/schema.py:363-398`) exposes 17 sub-models; only `monitoring`, `analytics`, `records`, `auth`, `events`, `storage`, `graph`, `vectorstore`, `llm`, `embeddings`, `database`, `ui`, and `validation` are wired through DI in `backend/api/dependencies.py`.
-- `IngestionConfig.chunking` (`backend/config/schema.py:90-94`) is parsed but never read — `chunk_size`/`chunk_overlap` defaults live in `backend/ingestion/service.py` code.
+- `IngestionConfig.chunking` is parsed and default configs declare it, but the API DI path still constructs `DocumentParsingOrchestrator` without passing `DomainConfig.ingestion.chunking`; `backend/ingestion/chunker.py` can build a configured chunker, but YAML values are not yet wired into the API/worker ingestion service.
 - `RagConfig.top_k`/`expansion_depth`/`reranking_enabled` (`backend/config/schema.py:205-211`) are not threaded into `RagService`; `ServiceGraphContextExpander.__init__(depth=1)` is constructed with a literal default at `backend/api/_rag_bridges.py:152-157`.
 - `AlertsConfig.thresholds` (`backend/config/schema.py:214-220`) is declared as `dict[str, dict[str, float]]` but `MonitoringService` reads only `MonitoringConfig.medium_threshold`/`high_threshold` (`backend/api/dependencies.py:605-613`); `grep -rn "AlertsConfig\|alerts.thresholds" backend/monitoring/` returns nothing.
 - Auditor (Wave 1) flagged the per-entity `AlertsConfig.thresholds` dict as the canonical example of declared-but-unread config.

@@ -18,17 +18,18 @@
 **so that** a worker crash mid-handler does not strand events in the consumer-group pending list forever.
 
 ### Current State
-- `RedisStreamsEventBus.consume` only issues `XREADGROUP ">"` (`backend/events/adapters/redis_streams.py:72-82`), which returns only never-delivered entries.
-- `RedisStreamsEventBus.ack` carries an explicit `TODO(production): Add XPENDING/XCLAIM for reprocessing stale messages` (`backend/events/adapters/redis_streams.py:99`).
+- `RedisStreamsEventBus.consume` issues `XREADGROUP ">"` for never-delivered entries, while `RedisStreamsEventBus.reclaim_stale_pending` uses `XAUTOCLAIM` to recover stale pending deliveries when called by the worker.
+- `EventBusSettings.reclaim_min_idle_ms` is loaded from `CHILI_EVENT_RECLAIM_MIN_IDLE_MS`, can be supplied through `DomainConfig.events.reclaim_min_idle_ms`, and is passed into `agent.coordinator.drain_ingestion_events`, which reclaims before normal reads.
 - `InMemoryEventBus` tracks `delivered` per entry but does not model the Redis Streams Pending Entries List (PEL), so the in-memory adapter cannot exercise reclaim semantics (`backend/events/adapters/in_memory.py:13-77`).
 - The agent worker's retry/DLQ wrapper (`backend/agent/coordinator.py:2345-2412 run_handler_with_retry`) only protects in-flight handler invocations; once the process exits abnormally, the entry stays pending.
 
 ### Acceptance Criteria
-- [x] `RedisStreamsEventBus.consume` polls XPENDING for entries idle longer than a configurable `min_idle_ms` and reclaims them via XCLAIM before reading new entries with `>`, so a healthy consumer recovers crashed-peer deliveries. _(landed via `reclaim_stale_pending` / XAUTOCLAIM, consumed in `agent/coordinator.py` before the `>` read.)_
-- [ ] A new `EventBusSettings.claim_min_idle_ms: int = 60000` field is wired through `events/runtime.py` and reflected in `EventBus.consume` (default off when 0, on otherwise); the field is documented in `backend/events/__init__.py` module docstring.
+- [x] `RedisStreamsEventBus.reclaim_stale_pending` reclaims entries idle longer than a configurable `min_idle_ms` via `XAUTOCLAIM`, so a healthy consumer can recover crashed-peer deliveries. _(Worker drains call this before `consume` when `reclaim_min_idle_ms` is set.)_
+- [x] `EventBusSettings.reclaim_min_idle_ms` is wired through `events/runtime.py`, `DomainConfig.events`, API/worker dependency resolution, and `agent/coordinator.py`.
+- [ ] `backend/events/__init__.py` module docstring documents the reclaim setting and worker call order.
 - [x] Reclaimed entries surface to the caller as `EventDelivery` instances with the original `event_id`/`stream`/`consumer_group`, identical to first-time deliveries, so handlers do not need to differentiate.
 - [ ] `RedisStreamsEventBus` exposes a typed counter for reclaim attempts and successes (or a callback hook) suitable for binding to a Prometheus counter in a follow-up observability story.
-- [ ] The XPENDING/XCLAIM TODO comment is removed from `backend/events/adapters/redis_streams.py:99` and replaced with a one-line reference to this story's design note.
+- [x] The XPENDING/XCLAIM TODO comment is removed from `backend/events/adapters/redis_streams.py`.
 - [ ] `tests/events/test_redis_streams.py` adds an integration test (marked `@pytest.mark.integration`) that publishes an event, simulates a crashed consumer by reading without ack from one consumer name, then verifies a second consumer name reclaims the entry after `min_idle_ms`.
 - [ ] `pyright --strict` clean on `backend/events/`.
 - [ ] Backend coverage for `backend/events/` stays ≥ 85%.
@@ -41,7 +42,7 @@
 
 ### Code touch points
 - `backend/events/adapters/redis_streams.py` (modify)
-- `backend/events/runtime.py` (modify — add `claim_min_idle_ms` setting)
+- `backend/events/runtime.py` (modify - add/maintain `reclaim_min_idle_ms` setting)
 - `backend/events/protocols.py` (modify — extend `consume` docstring if signature unchanged)
 - `backend/tests/events/test_redis_streams.py` (modify)
 
@@ -60,15 +61,17 @@
 **so that** event volume cannot exhaust Redis memory and retention is an explicit, observable contract instead of an accident.
 
 ### Current State
-- `RedisStreamsEventBus.publish` invokes `xadd(stream, encode_event(event))` with no `maxlen=`/`minid=` argument (`backend/events/adapters/redis_streams.py:39-43`).
-- The TODO at `backend/events/adapters/redis_streams.py:38` reads `Add MAXLEN/XTRIM to prevent unbounded stream growth`.
+- `RedisStreamsEventBus.publish` accepts `stream_maxlen` and passes `maxlen=` / `approximate=True` to main-stream `xadd` calls when configured.
+- `EventBusSettings.stream_maxlen` is loaded from `CHILI_EVENT_STREAM_MAXLEN`, can be supplied through `DomainConfig.events.stream_maxlen`, and is passed into `RedisStreamsEventBus`.
 - DLQ streams (`<stream>.dlq` at `backend/events/adapters/redis_streams.py:120`) suffer the same gap.
-- `EventBusSettings` (`backend/events/runtime.py:14-32`) has no retention fields.
+- There is no configurable approximate/exact retention flag, per-event override map, or DLQ-specific retention setting.
 - The event catalog (`docs/ledger/event-catalog.md`) documents publishers/consumers but not per-event retention bounds.
 
 ### Acceptance Criteria
-- [ ] `EventBusSettings` gains `stream_maxlen: int | None = None` and `stream_maxlen_approximate: bool = True` fields, wired through `load_event_bus_settings()` from `CHILI_EVENT_STREAM_MAXLEN` / `CHILI_EVENT_STREAM_MAXLEN_APPROXIMATE`.
-- [ ] `RedisStreamsEventBus.__init__` accepts the resolved retention configuration and applies `maxlen=`/`approximate=` on every `xadd` (both main and DLQ streams) when `stream_maxlen` is set; behaviour is unchanged when `None`.
+- [x] `EventBusSettings` gains `stream_maxlen: int | None = None`, wired through `load_event_bus_settings()` from `CHILI_EVENT_STREAM_MAXLEN`.
+- [ ] `EventBusSettings` gains `stream_maxlen_approximate: bool = True`, wired through `CHILI_EVENT_STREAM_MAXLEN_APPROXIMATE`.
+- [x] `RedisStreamsEventBus.__init__` accepts the resolved main-stream retention configuration and applies `maxlen=`/`approximate=True` on main-stream `xadd` when `stream_maxlen` is set; behaviour is unchanged when `None`.
+- [ ] DLQ streams apply retention when configured.
 - [ ] A per-event-type override map (`stream_maxlen_overrides: dict[str, int]`) is supported in `EventBusSettings` so high-volume streams (e.g. `pipeline.progress`) can have tighter bounds than low-volume lifecycle streams (e.g. `kb.create`).
 - [ ] DLQ streams use a separately configurable `dlq_stream_maxlen` (or default to `10 * stream_maxlen`) so DLQ history outlives the source stream.
 - [ ] `docs/ledger/event-catalog.md` gains a "Retention" column per event with a default bound and per-event overrides recorded.
@@ -277,7 +280,7 @@
 - [ ] `InMemoryEventBus` tracks state as `{(stream, consumer_group): {entry_id: PendingEntry(consumer_name, delivered_at, ack_count)}}` so each consumer group has independent PEL and offset.
 - [ ] `consume` returns each entry exactly once per consumer group (matches Redis `XREADGROUP ">"`); a second group reading the same event types sees the same entries.
 - [ ] Re-consuming with the same consumer name without ack returns the entry from the PEL on the next call (mirrors Redis behaviour when consumer reconnects).
-- [ ] `consume` supports the same `claim_min_idle_ms` semantics from events.01: a different consumer name reclaims pending entries older than the threshold.
+- [ ] `consume` or an explicit reclaim helper supports the same `reclaim_min_idle_ms` semantics from events.01: a different consumer name reclaims pending entries older than the threshold.
 - [ ] `ack` removes entries from the PEL only for the matching `(stream, consumer_group)`; an unack'd entry stays visible to its group via reclaim.
 - [ ] The TODO at `backend/events/adapters/in_memory.py:43` is removed.
 - [ ] New tests in `tests/events/test_in_memory.py` cover: two consumer groups each get every event; reclaim across consumer names; per-group offset isolation.

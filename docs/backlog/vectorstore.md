@@ -19,9 +19,10 @@
 **so that** payload encoding, deterministic point IDs, filter translation, and dimension-mismatch behavior cannot regress silently behind fake-client coverage.
 
 ### Current State
-- Only two `@pytest.mark.integration` tests run against a live Qdrant — `test_qdrant_vector_store_round_trip_search` and `test_qdrant_vector_store_live_delete_namespace` (`backend/tests/vectorstore/test_qdrant_adapter.py:598`, `:650`).
-- `get_record`, `count_records`, `delete_record`, `delete_by_source_document`, filter translation, dimension-mismatch rejection, and missing-collection behavior have only fake-client coverage in the same file.
-- The float `gte`/`lte` range encoding (`backend/vectorstore/adapters/qdrant_adapter.py:443-446`) is unverified against a real Qdrant server.
+- Two `@pytest.mark.integration` tests run against a live Qdrant: `test_qdrant_vector_store_round_trip_search` and `test_qdrant_vector_store_live_delete_namespace`.
+- The live round-trip test now covers search with a string filter, `get_record`, `count_records`, and `delete_record`; live namespace deletion covers `delete_namespace`.
+- `delete_by_source_document`, numeric/float filter translation, dimension-mismatch rejection, and missing-collection behavior still have fake-client/unit coverage only.
+- The float `gte`/`lte` range encoding in `backend/vectorstore/adapters/qdrant_adapter.py` is unverified against a real Qdrant server.
 - 1.0 spec § "Testing And Release Gates" required live coverage of *all* protocol methods (`docs/superpowers/specs/2026-05-19-vectorstore-1-0-design.md:167`).
 
 ### Acceptance Criteria

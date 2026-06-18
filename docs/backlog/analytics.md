@@ -317,8 +317,9 @@ Graph storage and workflows exist, but analytics inference is still represented 
 
 ### Current State
 - `RiskSignalSourceProtocol` carries a `TODO(production)` for graph + vectorstore signal computation (`backend/analytics/risk/adapters/protocols.py:14-17`).
-- Only `InMemoryRiskSignalSource` exists (`backend/analytics/risk/adapters/in_memory.py:10-67`).
-- `get_risk_signal_source` always returns the in-memory adapter (`backend/api/dependencies.py:626-629`).
+- `InMemoryRiskSignalSource` and `PostgresRiskSignalSource` exist. The Postgres source reads `entity_derived_signals` for profiles and `risk_score_history` for ranked lists/history (`backend/analytics/risk/adapters/postgres.py`).
+- `get_risk_signal_source` selects `PostgresRiskSignalSource(provider)` when a connection provider exists, otherwise `InMemoryRiskSignalSource()` (`backend/api/dependencies.py`).
+- Graph-derived and vectorstore-derived signal adapters are still not implemented.
 
 ### Acceptance Criteria
 - [ ] `GraphRiskSignalSource` adapter at `backend/analytics/risk/adapters/graph_backed.py` consumes `GraphServiceProtocol.get_subgraph` (graph.05) to compute degree / neighborhood-risk signals.
@@ -352,18 +353,18 @@ Graph storage and workflows exist, but analytics inference is still represented 
 **so that** trend computation survives restarts and is sourced from the durable Plan C log.
 
 ### Current State
-- `PostgresRiskHistoryStore` is writer-only with a single `load_historical_score` point read (`backend/analytics/risk/adapters/postgres.py:45-87`).
-- `RiskHistoryWriter` protocol (`backend/analytics/risk/adapters/protocols.py:37-54`) explicitly defers full `RiskSignalSourceProtocol` backing per architecture §6.4 deviations (`docs/architecture.md:715`).
-- `InMemoryRiskSignalSource.load_historical_score` (`backend/analytics/risk/adapters/in_memory.py:10-67`) is the only path read by `RiskService._load_previous_score` today.
+- `PostgresRiskSignalSource.load_historical_score(...)` reads the latest score from `risk_score_history`.
+- `PostgresRiskSignalSource.list_ranked_entries(...)` also ranks entities from `risk_score_history`.
+- `get_risk_signal_source` returns `PostgresRiskSignalSource(provider)` when a DB connection provider exists.
 
 ### Acceptance Criteria
-- [ ] `PostgresRiskSignalSource` (or extension of the composite from analytics.10) routes `load_historical_score` through `PostgresRiskHistoryStore`.
-- [ ] Round-trip test inserts an assessment via `write_assessment`, reads it back via `load_historical_score`, and asserts the trend computation matches.
-- [ ] `RiskService` documentation in `backend/analytics/README.md` updated to reflect Postgres-backed history reads.
+- [x] `PostgresRiskSignalSource` routes `load_historical_score` through `risk_score_history`.
+- [x] Unit coverage asserts `load_historical_score` returns the latest score and wraps DB errors.
+- [ ] A live-DB round-trip test inserts an assessment via the writer and reads it back through `PostgresRiskSignalSource`.
+- [x] `backend/analytics/peerstats/README.md` and analytics wiring docs reflect the Postgres-derived signal/history path.
 
 ### Verification
-- `pytest -m integration backend/tests/analytics/risk/test_postgres_history.py -q` green.
-- `pyright` clean.
+- Covered by `backend/tests/analytics/risk/test_postgres_signal_source.py`.
 
 ### Code touch points
 - `backend/analytics/risk/adapters/composite.py` (modify) *or* `backend/analytics/risk/adapters/postgres_signal.py` (new)
@@ -918,22 +919,23 @@ Graph storage and workflows exist, but analytics inference is still represented 
 
 ---
 
-## Story analytics.28: Analytics API: Remove deterministic-payload shortcut endpoints
+## Story analytics.28: Analytics API: Remove remaining deterministic-payload shortcut endpoints
 **ID:** analytics.28
 **Status:** planned
 **Prerequisites:** [api.29, frontend.04]
 **Unblocks:** []
 **Estimated size:** M
 **As a** API maintainer,
-**I need** `/analytics/overview`, `/analytics/risk-scores/{entity_id}`, and `/analytics/timeseries/{entity_id}` to read from the live service + persistence layer rather than the seeded in-memory payloads in `ApiState`,
+**I need** `/analytics/risk-scores/{entity_id}` and `/analytics/timeseries/{entity_id}` to read from the live service + persistence layer rather than the seeded in-memory payloads in `ApiState`,
 **so that** the dashboard and entity-detail views reflect real data and the seeded fallback can be removed.
 
 ### Current State
-- `/analytics/overview`, `/analytics/risk-scores/{entity_id}`, `/analytics/timeseries/{entity_id}` read from `state.get_analytics_overview_payload` / `state.get_risk_score_payload` / `state.get_timeseries_payload` (`backend/api/routers/analytics.py:99-132`).
-- These payloads come from `ApiState` deterministic seeded read models (`backend/api/state.py:351-407`).
+- `/analytics/overview` now uses `get_analytics_overview_payload` and `build_analytics_overview(...)` to aggregate durable alert projections, durable cases, and KB metadata (`backend/api/dependencies.py`, `backend/api/_analytics_overview.py`).
+- `/analytics/risk-scores/{entity_id}` and `/analytics/timeseries/{entity_id}` still read from `ApiState.get_risk_score` / `ApiState.get_timeseries` (`backend/api/dependencies.py`).
+- Seeded `ApiState` analytics helpers remain for the entity-scoped shortcuts.
 
 ### Acceptance Criteria
-- [ ] Each endpoint switches to a DI factory that composes the live analytics services and persistence (`get_risk_service`, `get_timeseries_service`, the metric repository).
+- [ ] Remaining entity-scoped endpoints switch to DI factories that compose the live analytics services and persistence (`get_risk_service`, `get_timeseries_service`, the metric repository).
 - [ ] Deprecation note in `backend/api/AGENT.md` (if present) or `backend/api/state.py` docstring.
 - [ ] `ApiState` seeded analytics payloads removed once api.01 ships (or moved to a `tools/seed_demo_state.py`).
 - [ ] Frontend Dashboard/EntityDetail (frontend.04) confirmed to render correctly on live data.
@@ -962,7 +964,8 @@ Graph storage and workflows exist, but analytics inference is still represented 
 **so that** misconfigured prod deployments fail loudly at startup instead of silently serving empty data.
 
 ### Current State
-- `get_risk_signal_source` (`backend/api/dependencies.py:626-629`), `get_timeseries_history_source` (`:644-647`), and `get_graph_snapshot_source` (`:660-662`) return in-memory adapters unconditionally.
+- `get_risk_signal_source` selects `PostgresRiskSignalSource` when a DB connection provider exists; it falls back to `InMemoryRiskSignalSource` otherwise.
+- `get_timeseries_history_source` and `get_graph_snapshot_source` still return in-memory adapters unconditionally.
 - No production guardrail in `backend/api/dependencies.py`; explainability has no DI helper at all today.
 
 ### Acceptance Criteria

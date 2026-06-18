@@ -11,9 +11,10 @@ Routed React 19 + TypeScript workbench prototype. `src/App.tsx` mounts
 defined in `src/app/router.tsx`. The Phase 5 page tree under
 `src/pages/*Page.tsx` is the live one. Knowledge Base Manager uses the live
 backend KB repository, and Investigation Workbench uses KB-scoped live graph
-search/detail/neighborhood endpoints. Some Dashboard, alert, analytics, RAG,
-and evidence surfaces still include seeded/demo read models until their live
-projections are migrated.
+search/detail/neighborhood endpoints. Alerts, cases, evidence packs, policy
+items, workflows, and RAG conversations are backed by the current backend
+repository/service paths. Remaining live-data gaps are concentrated in
+entity-scoped analytics shortcuts and production hardening of projections.
 
 The Knowledge Base Manager supports document upload and config-defined
 structured record feeds. File-upload record feeds parse selected `.csv` and
@@ -48,7 +49,7 @@ indicator, and a bounded list of rejected-row reasons.
 | **Knowledge Base Manager** | List, create, delete KBs; document inventory, add/remove docs, and show a selected-KB-scoped ingestion workflow timeline |
 | **Alert Feed** | Streaming alert list, severity filtering, acknowledgment workflow |
 | **Investigation Workbench** | Core analyst view — active KB selection, live entity search/detail/neighborhood, evidence packs, timeline |
-| **RAG Chat** | Conversational interface for querying knowledge bases; current API path uses seeded/local RAG responses while service-backed vector/LLM wiring is pending |
+| **RAG Chat** | Conversational interface for querying knowledge bases through the backend RAG service and durable conversation routes |
 | **Configuration** | Domain configuration editor |
 
 ## Implemented Routes
@@ -66,16 +67,16 @@ domain-configured page id that doesn't yet have a built component.
 | `/investigation`, `/investigation/:entityId` | Graph workbench |
 | `/cases` | Case management queue |
 | `/knowledge-bases` | Knowledge base list, detail, document inventory |
-| `/policy` | Policy intelligence gap queue |
+| `/policy` | Policy intelligence item queue |
 | `/rag-chat` | RAG chat shell backed by the selected knowledge base |
 | `/configuration` | Read-only domain configuration editor |
 
 ## Known Prototype Gaps
 
 - Configuration save is disabled until `PUT /config/domain` is implemented.
-- Persisted evidence-pack endpoint and some non-Investigation graph/entity discovery flows are still incomplete.
-- Dashboard, alerts, cases, and portions of analytics still rely on seeded/demo read models and should be migrated to live projections in follow-up work.
-- RAG chat may use stubbed/local responses depending on backend configuration.
+- Some non-Investigation graph/entity discovery flows are still incomplete.
+- Entity-scoped analytics shortcuts still use the remaining `ApiState` analytics composition until they migrate to the same persistence-backed query path as overview/list routes.
+- RAG chat uses the configured backend RAG service in the app factory; direct test construction can still use deterministic in-memory fallbacks.
 - Production bundle size should be revisited with route-level code splitting as the UI grows.
 
 For the live, dependency-ordered list of production-readiness work for the SPA, see [`../docs/backlog/frontend.md`](../docs/backlog/frontend.md) (rolled up in [`../docs/backlog/README.md`](../docs/backlog/README.md)).

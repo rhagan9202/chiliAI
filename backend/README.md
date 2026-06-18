@@ -13,7 +13,7 @@ For the live, dependency-ordered list of production-readiness work per backend m
 ### What's functional
 
 - **`shared/`** — Generic platform types (`Entity`, `Relationship`, `Alert`, `EvidencePack`, `KnowledgeBase`), config-definition types (`EntityDefinition`, `PropertyDefinition`, `PropertyType`, `RelationshipDefinition`), protocols (`Configurable`), and utilities. **No hardcoded domain-specific types** — all domain entities use `Entity(type, properties)` validated against config.
-- **`config/`** — Domain configuration schema (`DomainConfig` Pydantic model with cross-field validation), YAML/JSON loader, and two default configs (`medicare_fraud.yaml`, `food_supply_chain.yaml`).
+- **`config/`** — Domain configuration schema (`DomainConfig` Pydantic model with cross-field validation), YAML/JSON loader, and default domain configs (`medicare_fraud.yaml`, `medicare_fraud_dev.yaml`, `medicare_fraud_cms_desynpuf.yaml`, `food_supply_chain.yaml`).
 - **`api/app.py`** — FastAPI app factory with `/health`, CORS, metrics instrumentation, and all API routers.
 - **`api/routers/config.py`** — `GET /config/domain` returns the active domain configuration as JSON.
 - **`api/dependencies.py`** — Dependency injection wiring. `get_domain_config()` loads config once and process-caches (cleared at the top of `create_app()` for test isolation). `get_api_state()` reads from `request.app.state.api_state`, attached per-app in `create_app()`. Graph, vectorstore, storage, embedding, and LLM adapters are selected from config with lazy optional imports.
@@ -182,6 +182,7 @@ cfg = load_config("config/defaults/medicare_fraud.yaml")
 |------|--------|
 | `config/defaults/medicare_fraud.yaml` | Medicare fraud detection (4 entities, 4 relationships, all capabilities) |
 | `config/defaults/medicare_fraud_dev.yaml` | Medicare fraud variant wired for the dev Compose stack (Neo4j graph, Redis event bus, object-store KB/alert repos, Redis workflow run store) |
+| `config/defaults/medicare_fraud_cms_desynpuf.yaml` | CMS DE-SynPUF Medicare fraud demo domain with wider records/feed mappings |
 | `config/defaults/food_supply_chain.yaml` | Food supply chain monitoring (4 entities, 3 relationships, partial capabilities) |
 
 ### Creating a new domain

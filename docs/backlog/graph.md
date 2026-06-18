@@ -183,11 +183,11 @@
 **so that** evidence-pack construction is one round-trip per alert instead of one neighborhood query per seed.
 
 ### Current State
-- `GraphServiceProtocol`'s `TODO(production)` (`backend/graph/protocols.py:16-17`) explicitly calls out the missing `get_subgraph(kb_id, entity_ids) -> SubgraphResult` surface.
-- `GraphRepository` only exposes `get_neighbors` (single root, `protocols.py:47-53`) and `get_entities` (full KB, `protocols.py:34`); there is no efficient multi-seed cross-edge fetcher.
-- `SubgraphResult` (`graph/models.py:34-38`) already exists and is the right return type.
-- Neo4j composite index `(:Entity {knowledge_base_id, entity_id})` (`neo4j_adapter.py:141-143`) already supports `WHERE entity.entity_id IN $entity_ids` lookups efficiently.
-- Evidence-pack assembly today iterates `get_neighbors` per seed in caller code — see `monitoring/` and `analytics/explainability/` consumers.
+- `GraphService`, `GraphServiceProtocol`, and `GraphRepository` now expose `get_subgraph(knowledge_base_id, seed_entity_ids, depth=1) -> SubgraphResult`.
+- Both in-memory and Neo4j adapters implement the shipped method as a single-KB deduplicated union of seed neighborhoods; tests cover empty seeds, unknown seeds, KB scoping, and service delegation.
+- Residual gap: the shipped method is not the richer contract requested here. It does not accept `knowledge_base_ids: list[str]`, `include_internal_relationships`, or `expansion_depth=0` seed-internal edge semantics.
+- `SubgraphResult` (`graph/models.py`) remains the right return type.
+- Neo4j composite index `(:Entity {knowledge_base_id, entity_id})` still supports efficient seed lookup.
 
 ### Acceptance Criteria
 - [ ] `GraphServiceProtocol` and `GraphRepository` add `get_subgraph(knowledge_base_ids: list[str], entity_ids: list[str], *, include_internal_relationships: bool = True, expansion_depth: int = 0) -> SubgraphResult`.

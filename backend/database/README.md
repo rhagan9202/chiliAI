@@ -23,9 +23,12 @@ migration. It contains no domain logic and no business logic.
 Core tables (see `docs/architecture.md` and the design spec for details):
 `raw_records`, `observations` (hypertable), `entity_metric_history`
 (hypertable), `entity_metrics_current`, `risk_score_history`, `alert_history`
-(0001 baseline). Later migrations add `cases` (0002, BL-010), `policy_items`
-(0003, BL-011), `record_submissions` (0004 — submission-level records dedup,
-BL-015), and `conversations` (0005 — durable RAG chat persistence, BL-012).
+(0001 baseline). Later migrations add `cases` (0002, BL-010),
+`policy_items` (0003, BL-011), `record_submissions` (0004 —
+submission-level records dedup, BL-015), `conversations` (0005 — durable RAG
+chat persistence, BL-012), and `entity_derived_signals` (0006 — peer-group
+z-score risk signals). Migration 0007 adds `cases.feedback_history` for
+analyst feedback history.
 
 ## Commands
 

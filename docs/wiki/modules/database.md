@@ -1,6 +1,6 @@
 # Module: database
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** 2026-06-16
 **Source:** `backend/database/`
 
 ## Purpose
@@ -67,13 +67,27 @@ Executes a lightweight `SELECT 1` to verify the connection pool is reachable.
 
 - Alembic config: `backend/alembic.ini` (points `script_location` → `database/migrations/`)
 - `database/migrations/` — Alembic `env.py` + versioned raw-SQL migration files
-- Current migrations: `0001_persistence_baseline.py`
+- Current migrations:
+  - `0001_persistence_baseline.py`
+  - `0002_cases.py`
+  - `0003_policy.py`
+  - `0004_record_submissions.py`
+  - `0005_conversations.py`
+  - `0006_entity_derived_signals.py`
+  - `0007_case_feedback.py`
 
 Schema owned by migrations (partial list):
 - `raw_records` table — structured record landing zone
-- `risk_history` hypertable (TimescaleDB) — risk score history
-- `entity_metrics` hypertable — entity metric observations
+- `observations` hypertable (TimescaleDB) — scored monitoring observations
+- `entity_metric_history` hypertable — entity metric history
+- `entity_metrics_current` table — latest entity metric snapshot
+- `risk_score_history` table — risk assessment history
 - `alert_history` table — persisted alert records
+- `cases` table — durable, KB-scoped case management; `feedback_history` added in 0007
+- `policy_items` table — durable, KB-scoped policy intelligence
+- `record_submissions` table — records submission-level deduplication
+- `conversations` table — durable RAG chat persistence
+- `entity_derived_signals` table — peer-group z-score risk signals
 
 ---
 

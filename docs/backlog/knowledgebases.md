@@ -530,10 +530,13 @@
 **so that** a mid-cascade failure does not leave the KB with deleted metadata and orphaned graph/vector points, and so I can audit what document Y replaced what document X at time T.
 
 ### Current State
-- The re-upload idempotency path (`backend/api/routers/knowledgebases.py:424-450`) handles the happy path: on a matching `content_hash`, it cascade-deletes graph, vector, metadata row, and object payload of the old document, then re-registers.
-- Open edges: (a) if `graph_service.delete_by_source_document` succeeds and `vector_service.delete_by_source_document` fails, the metadata row + object payload are still deleted at lines 434-438, leaving an inconsistent partial state with no `pending_cleanup` flag and no `replaced_document_id` in any audit trail; (b) the `replaced_document_id` is surfaced only on the receipt (line 472) — there is no persisted `document_replacements` history; (c) `repository.get_document_by_content_hash` is O(n) on the object-store snapshot (`backend/knowledgebases/adapters/object_store.py:191-198`); (d) no test covers a concurrent double-upload of the same content racing two API workers on the same `content_hash`.
+- The re-upload idempotency path records a matching `content_hash` as a replacement candidate, calls `register_documents()`, and only runs graph/vector/object-store/metadata cleanup after the returned receipt is enqueued.
+- Landed safety slices: registration failure preserves the existing document and artifacts; `enqueued=False` suppresses workflow startup and replacement cleanup; cleanup protects the receipt's current `storage_key`.
+- Open edges: (a) cleanup failure returns 500 rather than a 207 step report and can still leave partially deleted graph/vector state; (b) `replaced_document_id` is surfaced only on the receipt - there is no persisted `document_replacements` history; (c) `repository.get_document_by_content_hash` is O(n) on the object-store snapshot (`backend/knowledgebases/adapters/object_store.py:191-198`); (d) no test covers a concurrent double-upload of the same content racing two API workers on the same `content_hash`.
 
 ### Acceptance Criteria
+- [x] Re-upload identifies replacement candidates before registration and skips all destructive cleanup unless the new receipt is enqueued.
+- [x] Tests cover registration failure preserving the old replacement, successful cleanup after enqueue, cleanup failure preserving the current source, and `enqueued=False` not starting a workflow.
 - [ ] Re-upload becomes transactional: graph + vector + metadata + object-store cascade-delete runs through a single try-block; on any step failure, the entire re-upload is rolled back (metadata row + object payload restored) and the API returns 207 with a `steps[]` body mirroring `knowledgebases.02`.
 - [ ] New `document_replacements` table / repository (`old_id`, `new_id`, `kb_id`, `tenant_id`, `replaced_at`, `actor`, `content_hash`) backed by the Postgres adapter from `knowledgebases.01`.
 - [ ] `replaced_document_id` continues to appear on the receipt **and** is queryable via `GET /knowledgebases/{id}/documents/{doc_id}/history`.

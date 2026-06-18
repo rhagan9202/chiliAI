@@ -1,6 +1,6 @@
 # chiliAI Developer Wiki
 
-**Verified against codebase:** 2026-05-20
+**Verified against codebase:** partially refreshed 2026-06-16; individual pages carry their own verification stamps.
 
 This wiki is the authoritative technical reference for the chiliAI codebase. It documents exact current contracts — signatures, payload shapes, route paths, adapter inventories — so agents and developers can make changes without reading the entire codebase.
 

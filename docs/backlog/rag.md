@@ -18,17 +18,17 @@
 **so that** answers reflect ingested data and configured providers instead of the canned `"Answer based on N context items: <question>"` echo.
 
 ### Current State
-- `ApiState.__init__` builds the production `RagService` from `InMemoryQueryEmbedder()` + `InMemoryContextRetriever(records=self._build_context_records())` + `InMemoryAnswerGenerator(provider="in-memory", model_name="seeded-rag-model")` + `InMemoryGraphContextExpander()` at `backend/api/state.py:172-178`.
-- `backend/api/_rag_bridges.py` already ships `ServiceQueryEmbedder` (`:55-101`), `ServiceContextRetriever` (`:104-142`), `ServiceGraphContextExpander` (`:145-211`), `ServiceAnswerGenerator` (`:214-279`) — all unit-tested, none referenced from `backend/api/dependencies.py`.
-- Seed context is two Medicare provider strings hardcoded in `backend/api/state.py:830-846`.
-- `InMemoryAnswerGenerator._compose_answer` at `backend/rag/adapters/in_memory.py:220-225` echoes `"Answer based on N context items: <question>"`.
-- `create_rag_service` factory exists at `backend/rag/service.py:232-250` but is only ever called with in-memory adapters.
+- `get_rag_service()` in `backend/api/dependencies.py` composes the live embeddings -> vectorstore -> graph -> LLM pipeline through `ServiceQueryEmbedder`, `ServiceContextRetriever`, `ServiceGraphContextExpander`, and `ServiceAnswerGenerator`.
+- `api.app.create_app()` injects that live service into `ApiState` when composition succeeds.
+- `ApiState` still falls back to the seeded in-memory RAG pipeline when constructed without DI or when live composition fails.
+- `ServiceContextRetriever` forwards a flat scalar `filters` dict and forces `embedding_channel="text"` before calling vector search.
+- The seeded context builder remains for the fallback/test path.
 
 ### Acceptance Criteria
-- [ ] New `get_rag_service()` DI factory added to `backend/api/dependencies.py` that composes `ServiceQueryEmbedder`, `ServiceContextRetriever`, `ServiceGraphContextExpander`, `ServiceAnswerGenerator` against the configured `EmbeddingsServiceProtocol`, `VectorServiceProtocol`, graph neighborhood service, and `LlmServiceProtocol`.
-- [ ] `ApiState.__init__` at `backend/api/state.py:172-178` constructs `RagService` via the new factory (no `InMemory*` adapters in the production path).
+- [x] New `get_rag_service()` DI factory added to `backend/api/dependencies.py` that composes `ServiceQueryEmbedder`, `ServiceContextRetriever`, `ServiceGraphContextExpander`, `ServiceAnswerGenerator` against the configured `EmbeddingsServiceProtocol`, `VectorServiceProtocol`, graph neighborhood service, and `LlmServiceProtocol`.
+- [ ] `ApiState.__init__` keeps `InMemory*` adapters only as an explicit fallback/test path, and production startup fails loudly instead of silently falling back when live RAG composition fails.
 - [ ] `InMemoryRagService` and the four `InMemory*` RAG adapters are kept only for tests (no production import); a lint or boundary test asserts they are not imported under `backend/api/`.
-- [ ] Chat router (`backend/api/routers/rag.py`) and `ApiState.add_message` / `ApiState.stream_answer` route through the wired live `RagService` without behavior regressions on the existing pytest suite.
+- [x] Chat routes use the `ApiState.rag_service` injected by `create_app()` when live composition succeeds.
 - [ ] `_build_context_records` (`backend/api/state.py:830-846`) is deleted or moved to a test-only fixture.
 - [ ] An integration test (skipped without `[neo4j,qdrant,openai]` extras) demonstrates an end-to-end answer that includes a citation pointing at an ingested document.
 
@@ -65,8 +65,8 @@
 - `_build_generation_request` passes the same scalar to the generator (`backend/rag/service.py:166-173`).
 - `_expand_graph_context` passes `state.knowledge_base_ids[0]` only (`backend/rag/service.py:199-202`).
 - `_publish_completed_event` flattens to `response.knowledge_base_ids[0]` on the event reference (`backend/rag/service.py:217-228`).
-- `VectorSearchRequest` already accepts `knowledge_base_ids: list[...]` (used by `ServiceContextRetriever` at `backend/api/_rag_bridges.py:121-126`) so retrieval has a native multi-KB path; embedder and graph expander protocols do not.
-- The reference KB is fetched at the router (`backend/api/routers/rag.py:97`) and then silently dropped at the first line of `_prepare_state`.
+- `VectorSearchRequest` already accepts `knowledge_base_ids: list[...]`, but `ServiceContextRetriever` still wraps one scalar `knowledge_base_id` into a single-item list, so retrieval has not adopted the native multi-KB path.
+- The chat dependency resolves the conversation KB scope before calling RAG, but the RAG service still projects to the first KB internally.
 
 ### Acceptance Criteria
 - [ ] `ContextRetrieverProtocol.retrieve` / `ServiceContextRetriever.retrieve` accept the full `knowledge_base_ids` list and call the vector service once with the multi-KB request (no per-KB Python fan-out unless required by adapter limits).

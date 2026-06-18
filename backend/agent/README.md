@@ -18,18 +18,25 @@ Triggered by `documents.uploaded`. Runs the ingestion pipeline: parse → chunk 
 
 ### handle_records_ingested
 
-Triggered by `RecordsIngestedEvent`. Maps raw records to `Entity`/`Relationship` objects and upserts them into the graph via `GraphService.upsert_records_graph`. Also embeds and indexes records-derived entities into the vector store so they are retrievable by RAG queries alongside document-derived content.
+Triggered by `RecordsIngestedEvent`. Maps raw records to `Entity`/`Relationship`
+objects and upserts them into the graph via `GraphService.upsert_records_graph`.
+Also embeds and indexes records-derived entities into the vector store so they
+are retrievable by RAG queries alongside document-derived content. When wired,
+the handler then runs best-effort policy-rule evaluation over stored entities
+and throttled graph metrics, and a best-effort peerstats stage that can persist
+derived risk signals and reassess affected entities.
 
 ### handle_knowledge_base_deleted (retry handler)
 
-Triggered by `kb.delete`. Executes the full KB-delete cascade with retry semantics:
+Triggered by `kb.delete`. Executes the full KB-delete cascade with retry
+semantics. The step list is centralized in `knowledgebases.cleanup` and purges
+graph, vector, raw records, derived signals, risk history, observations, alert
+history, metrics, conversations, cases, policy items, evidence, and object-store
+payloads before deleting KB metadata.
 
-1. Graph namespace cleanup — `GraphService.delete_knowledge_base(kb_id)`
-2. Vector namespace cleanup — `VectorService.delete_knowledge_base(kb_id)`
-3. Raw-records cleanup — `RawRecordStore.delete_by_kb(kb_id)`
-4. Object-store payload cleanup — iterates and deletes all stored artifacts under the KB prefix
-
-Each step is idempotent so the handler is safe to retry on transient failures. If a workflow run is active for the KB at delete time, the API returns a 409 and the handler is not dispatched until the active run completes.
+Each step is idempotent so the handler is safe to retry on transient failures.
+If a workflow run is active for the KB at delete time, the API returns a 409 and
+the handler is not dispatched until the active run completes.
 
 ### Plan C Persistence Handlers
 

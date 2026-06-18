@@ -1,6 +1,6 @@
 # Module: rag
 
-**Verified against codebase:** 2026-05-28
+**Verified against codebase:** 2026-06-16
 **Source:** `backend/rag/`
 
 ## Purpose
@@ -117,11 +117,32 @@ class RagService:
 
 ---
 
+## Current API Wiring
+
+`api.dependencies.get_rag_service()` composes the live embeddings, vectorstore,
+graph, and LLM services through the bridge adapters in `api/_rag_bridges.py`.
+`api.app.create_app()` injects that live service into `ApiState` when composition
+succeeds; direct `ApiState()` construction and live-composition failures still
+fall back to the seeded in-memory RAG pipeline.
+
+Chat message filters are a flat scalar metadata map (`str | int | float | bool`
+values). The chat dependency forwards `ChatMessageCreateRequest.filters` to
+`RagQueryRequest.filters`, and `ServiceContextRetriever` adds
+`embedding_channel="text"` before vector search.
+
+Multi-KB scope is not fully consumed inside `RagService` yet: the chat layer can
+resolve a conversation KB to a list, but embedding, retrieval, graph expansion,
+generation, and `RagCompletedEvent` publication still use
+`knowledge_base_ids[0]`.
+
+---
+
 ## Adapters
 
 | Backend | File | Notes |
 |---------|------|-------|
 | In-memory | `adapters/in_memory.py` | Test/dev stubs for retrieval and generation |
+| API bridges | `api/_rag_bridges.py` | Live service adapters for embeddings, vectorstore, graph, and LLM |
 
 `adapters/protocols.py` defines the inner sub-protocols.
 

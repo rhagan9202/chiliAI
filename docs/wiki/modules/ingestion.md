@@ -1,13 +1,13 @@
 # Module: ingestion
 
-**Verified against codebase:** 2026-05-28
+**Verified against codebase:** 2026-06-16
 **Source:** `backend/ingestion/`
 
 ## Purpose
 
-Document parsing, chunking, and entity/relationship extraction. Accepts raw file bytes or URIs, produces `ParsedDocument` → `ChunkingResult` → `ExtractionResult` → `ValidationReport`. Triggered by the worker via `DocumentsUploadedEvent`.
+Document registration, parsing, chunking, and entity/relationship extraction. Accepts raw file bytes or URIs, produces `DocumentReceipt` / `DocumentsUploadedEvent`, then `ParsedDocument` -> `ChunkingResult` -> `ExtractionResult` -> `ValidationReport`. Worker parsing is triggered by `DocumentsUploadedEvent`.
 
-Does **not** own: graph writes (graph module), vector indexing (vectorstore/embeddings modules), event publishing (those happen in the worker/coordinator).
+Does **not** own: graph writes (graph module) or vector indexing (vectorstore/embeddings modules). The ingestion service does publish document upload, parse-success, and parse-failure events; later pipeline events are emitted by the worker/coordinator and downstream services.
 
 ---
 
@@ -20,6 +20,8 @@ class IngestionServiceProtocol(Protocol):
         self,
         knowledge_base_id: str,
         submissions: list[DocumentSubmission],
+        *,
+        correlation_id: str | None = None,
     ) -> list[DocumentReceipt]: ...
 
     def ingest_task(self, task: IngestionTask) -> ParseResult | DocumentParseFailure: ...
@@ -78,8 +80,9 @@ class DocumentReceipt(BaseModel):
     storage_key: str | None
     uri: str | None
     document_format: DocumentFormat | None
+    replaced_document_id: str | None = None
+    enqueued: bool = False
     created_at: datetime
-    replaced_document_id: str | None = None  # set when content-hash idempotent re-upload replaced a prior doc
 ```
 
 ### `IngestionTask`
@@ -107,7 +110,7 @@ Key types:
 
 ## Extractor Classes (`ingestion/extractor.py`)
 
-Last verified: 2026-05-22
+Last verified: 2026-06-16
 
 Two concrete implementations of `DocumentExtractorProtocol`:
 
@@ -162,7 +165,7 @@ Returns `LlmDocumentExtractor` when `llm_client` is provided; otherwise returns 
 
 ## Provenance Stamping (`ingestion/validator.py`)
 
-Last verified: 2026-05-22
+Last verified: 2026-06-16
 
 `_entity_from_candidate` and `_relationship_from_candidate` helpers (called by `ExtractionResultValidator`) stamp the following provenance metadata on every validated `Entity` and `Relationship` using constants from [`shared/provenance.py`](shared.md#provenancepy):
 
@@ -187,10 +190,21 @@ class DocumentReceipt(BaseModel):
     uri: str | None
     document_format: DocumentFormat | None
     created_at: datetime
-    replaced_document_id: str | None = None  # set when a prior doc with same content hash was replaced
+    replaced_document_id: str | None = None
+    enqueued: bool = False
 ```
 
-`replaced_document_id` is populated by the API router (`POST /knowledgebases/{id}/documents`) when a content-hash idempotent re-upload replaces an existing document.
+`enqueued` is set by `IngestionService.register_documents` only for references that were included in the published `documents.uploaded` event. The API router (`POST /knowledgebases/{id}/documents`) uses it to decide whether to start a workflow and whether it is safe to clean up a replacement candidate. `replaced_document_id` is populated by the API router when an existing document with the same content hash was a replacement candidate.
+
+## Registration Safety
+
+Local file submissions are stored at `knowledgebases/{kb_id}/documents/{source_document_id}/source`. Duplicate content checks that exact source key with `object_store.exists()`; unrelated artifacts under the same document prefix do not suppress ingestion. If publishing `documents.uploaded` fails after storage, a configured `IngestionRecoveryStore` writes a durable marker under `recovery/ingestion/`. `replay_recovery_markers()` removes a marker only after the event bus accepts the reconstructed event.
+
+The KB upload route reads incoming files in 64 KiB chunks and raises 413 immediately after the configured byte cap is exceeded. For re-upload cleanup, it records the replacement candidate before registration but deletes old graph/vector/object-store artifacts only after an enqueued receipt is returned.
+
+## Remote Fetch Safety
+
+`HttpxRemoteDocumentFetcher` streams remote responses, supports HTTPS only, re-validates the final redirected URL scheme, enforces `max_bytes` while iterating chunks, and turns malformed or negative `content-length` values into `RemoteFetchError` so the service can publish `DocumentsFailedEvent`.
 
 ---
 
@@ -199,6 +213,7 @@ class DocumentReceipt(BaseModel):
 ```
 ingestion/
   service.py          # IngestionService: orchestrates register + ingest
+  recovery.py         # Durable recovery markers for storage-then-publish failures
   service_models.py   # DocumentSubmission, DocumentReceipt, IngestionTask
   protocols.py        # IngestionServiceProtocol + sub-protocols
   models.py           # DocumentFormat, ParsedDocument, ExtractionResult, etc.

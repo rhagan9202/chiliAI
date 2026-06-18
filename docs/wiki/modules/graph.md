@@ -1,6 +1,6 @@
 # Module: graph
 
-**Verified against codebase:** 2026-05-22
+**Verified against codebase:** 2026-06-16
 **Source:** `backend/graph/`
 
 ## Purpose
@@ -26,6 +26,12 @@ class GraphServiceProtocol(Protocol):
         knowledge_base_id: str,
         entity_id: str,
         depth: int,
+    ) -> SubgraphResult: ...
+    def get_subgraph(
+        self,
+        knowledge_base_id: str,
+        seed_entity_ids: list[str],
+        depth: int = 1,
     ) -> SubgraphResult: ...
     def search_entities(
         self,
@@ -144,7 +150,7 @@ class GraphDeleteByProvenance(BaseModel):
 | In-memory | `adapters/in_memory.py` | `GraphDbConfig.backend = "in_memory"` |
 | Neo4j | `adapters/neo4j_adapter.py` | `backend = "neo4j"`, `uri`, `auth_env_var` |
 
-Inner adapter protocol: `adapters/protocols.py` (structural subset consumed by the service).
+Inner adapter protocol: `adapters/protocols.py` (structural subset consumed by the service). It includes `get_subgraph(knowledge_base_id, seed_entity_ids, depth=1)` for a single-KB deduplicated union of seed neighborhoods.
 
 Neo4j adapter uses lazy import via `importlib` to avoid hard dependency without `[neo4j]` extra.
 

@@ -96,6 +96,15 @@ These feeds are config-only additions — no application code was changed. To ad
 
 The Tennessee subset materializer at `tools/sample_data/build_tennessee_subset.py` filters the full NPPES CSV and DE-SynPUF JSONL down to Tennessee providers and their associated claims. Run `python -m tools.sample_data.build_tennessee_subset --help` to see options.
 
+## CMS Feed Inventory
+
+`config/defaults/medicare_fraud_cms_desynpuf.yaml` declares the wider CMS
+DE-SynPUF feed set used by the CMS fixtures. The `pde` feed is kept and wired
+to the Plan-C graph path: rows validate from `pde_sample.csv`, map to `claim`
+and `beneficiary` entities, and emit `billed_for` relationships. It does not
+currently declare an `observations` mapping, so PDE rows do not produce
+monitoring observations.
+
 ## KB-Scoped Delete
 
 `RawRecordStore` exposes `delete_by_kb(kb_id)` which bulk-removes all `raw_records` rows belonging to the given knowledge base. This is the raw-records leg of the KB-delete cascade triggered by `DELETE /knowledgebases/{id}`. Both `InMemoryRawRecordStore` and `PostgresRawRecordStore` implement this method.

@@ -21,11 +21,11 @@
 ### Current State
 - `agent/adapters/runtime.py:18-29` only accepts `in_memory` and `redis` for `CHILI_WORKFLOW_RUN_STORE_BACKEND`; there is no `postgres` branch.
 - `RedisWorkflowRunStore` (`agent/adapters/redis_store.py`) encodes the canonical hash layout (one run per key, per-update history list, idempotency-key index) but is the only durable backend.
-- `database/migrations/versions/0001_persistence_baseline.py` defines six Plan-C tables only — no `workflow_runs`, `workflow_run_history`, or `workflow_run_idempotency` table exists.
+- The current migration chain through `0007_case_feedback.py` defines Plan-C persistence tables plus cases, policy items, record submissions, conversations, derived signals, and case feedback — no `workflow_runs`, `workflow_run_history`, or `workflow_run_idempotency` table exists.
 - `agent/adapters/protocols.py` `WorkflowRunStoreProtocol` exposes `save_run`, `get_run`, `list_runs`, `update_run`, `find_by_correlation_id`, `find_by_idempotency_key`, `record_idempotency` — every method must round-trip through SQL.
 
 ### Acceptance Criteria
-- [ ] Alembic revision `0002_workflow_runs.py` adds `workflow_runs`, `workflow_run_history`, `workflow_run_idempotency` tables keyed by `(knowledge_base_id, run_id)` with composite indexes on `correlation_id`, `idempotency_key`, and `created_at DESC`; raw-SQL only (no ORM).
+- [ ] A new Alembic revision after the current head adds `workflow_runs`, `workflow_run_history`, `workflow_run_idempotency` tables keyed by `(knowledge_base_id, run_id)` with composite indexes on `correlation_id`, `idempotency_key`, and `created_at DESC`; raw-SQL only (no ORM).
 - [ ] `backend/agent/adapters/postgres_store.py` ships `PostgresWorkflowRunStore` implementing `WorkflowRunStoreProtocol`; every write uses `INSERT … ON CONFLICT` upserts and goes through a `ConnectionProvider`.
 - [ ] `agent/adapters/runtime.py:create_workflow_run_store_from_env` accepts `CHILI_WORKFLOW_RUN_STORE_BACKEND=postgres`, requires a `ConnectionProvider`, and raises `AgentConfigurationError` when the DSN is missing.
 - [ ] `make migrate` against a fresh dev compose stack succeeds; `pytest -m integration backend/tests/agent/test_postgres_store.py` passes with ≥ 85% line coverage on the new adapter file.
@@ -37,7 +37,7 @@
 - `pyright --strict` clean for `backend/agent/` and `backend/database/`.
 
 ### Code touch points
-- backend/database/migrations/versions/0002_workflow_runs.py (new)
+- backend/database/migrations/versions/<next>_workflow_runs.py (new)
 - backend/agent/adapters/postgres_store.py (new)
 - backend/agent/adapters/runtime.py (modify)
 - backend/agent/adapters/__init__.py (modify)
@@ -66,9 +66,10 @@
 - `architecture.md:1369` explicitly flags "Add a production-grade KB metadata adapter/migration path" as an open production gap.
 - `api/dependencies.py:740-760` selects the backend from `CHILI_KB_REPOSITORY_BACKEND` with only two valid values (`in_memory`, `object_store`).
 - The KB metadata schema (knowledge_bases, documents, document_versions) does not yet exist in any Alembic revision.
+- Current database migration head is `0007_case_feedback`; earlier numeric revision names `0002` and `0003` are already used for cases and policy tables.
 
 ### Acceptance Criteria
-- [ ] Alembic revision `0003_kb_metadata.py` adds `knowledge_bases`, `documents`, and `document_versions` tables with appropriate FKs, status/timestamp columns matching `shared/types.py::KnowledgeBase`, and indexes on `(knowledge_base_id, created_at DESC)` for listing.
+- [ ] A new Alembic revision after the current head adds `knowledge_bases`, `documents`, and `document_versions` tables with appropriate FKs, status/timestamp columns matching `shared/types.py::KnowledgeBase`, and indexes on `(knowledge_base_id, created_at DESC)` for listing.
 - [ ] `backend/knowledgebases/adapters/postgres.py` defines `PostgresKnowledgeBaseRepository` implementing the existing `KnowledgeBaseRepository` protocol; reads and writes go through a `ConnectionProvider`; mutations are `INSERT … ON CONFLICT` upserts.
 - [ ] `api/dependencies.py:get_knowledge_base_repository` accepts `CHILI_KB_REPOSITORY_BACKEND=postgres`, injects the shared `ConnectionProvider`, and fails fast with a clear error when no DSN is configured.
 - [ ] `pytest -m integration backend/tests/knowledgebases/test_postgres_repository.py` covers create / list / get / delete / register_document / delete_document and runs ≥ 85% line coverage on the new adapter.
@@ -80,7 +81,7 @@
 - `pyright --strict` clean for `backend/knowledgebases/` and `backend/api/`.
 
 ### Code touch points
-- backend/database/migrations/versions/0003_kb_metadata.py (new)
+- backend/database/migrations/versions/<next>_kb_metadata.py (new)
 - backend/knowledgebases/adapters/postgres.py (new)
 - backend/knowledgebases/adapters/__init__.py (modify)
 - backend/api/dependencies.py (modify get_knowledge_base_repository)

@@ -1,11 +1,11 @@
 # Module: analytics
 
-**Verified against codebase:** 2026-05-28
+**Verified against codebase:** 2026-06-16
 **Source:** `backend/analytics/`
 
 ## Purpose
 
-ML/AI capability modules. Five sub-modules, each following the standard module shape (`protocols.py`, `service_models.py`, `service.py`, `adapters/`):
+ML/AI capability modules. Six sub-modules, most following the standard module shape (`protocols.py`, `service_models.py`, `service.py`, `adapters/`):
 
 | Sub-module | Responsibility |
 |-----------|---------------|
@@ -14,6 +14,7 @@ ML/AI capability modules. Five sub-modules, each following the standard module s
 | `risk/` | Risk scoring engine — linear combination of weighted signals |
 | `explainability/` | Evidence pack generation (SHAP-based or in-memory stub) |
 | `metrics/` | Entity-metric persistence; no events, no service entrypoint |
+| `peerstats/` | Record-column peer z-score analytics that persist derived risk signals |
 
 ---
 
@@ -21,7 +22,7 @@ ML/AI capability modules. Five sub-modules, each following the standard module s
 
 ### Protocol
 
-Last verified: 2026-05-20
+Last verified: 2026-06-16
 
 ```python
 class TimeseriesServiceProtocol(Protocol):
@@ -70,7 +71,7 @@ class MetricTimeseriesResponse(BaseModel):
 | Backend | File |
 |---------|------|
 | In-memory | `adapters/in_memory.py::InMemoryTimeSeriesHistorySource` |
-| Postgres | `adapters/postgres.py::PostgresObservationStore` / `PostgresObservationSource` |
+| Postgres | `adapters/postgres.py::PostgresTimeSeriesHistorySource` |
 
 ---
 
@@ -78,7 +79,7 @@ class MetricTimeseriesResponse(BaseModel):
 
 ### Protocol
 
-Last verified: 2026-05-20
+Last verified: 2026-06-16
 
 ```python
 class GnnServiceProtocol(Protocol):
@@ -136,7 +137,7 @@ Inner protocol: `adapters/protocols.py::GraphSnapshotSourceProtocol`.
 
 ### Protocol
 
-Last verified: 2026-05-20
+Last verified: 2026-06-16
 
 ```python
 class RiskServiceProtocol(Protocol):
@@ -150,7 +151,7 @@ class RiskScoringStrategyProtocol(Protocol):
 
 ### Internal Models (`analytics/risk/models.py`)
 
-Last verified: 2026-05-20
+Last verified: 2026-06-16
 
 ```python
 class RiskSignal(BaseModel):
@@ -251,6 +252,7 @@ class RiskScoreListResponse(BaseModel):
 | In-memory history writer | `adapters/in_memory.py::InMemoryRiskHistoryWriter` |
 | Linear strategy | `adapters/linear_strategy.py` |
 | Postgres history | `adapters/postgres.py::PostgresRiskHistoryStore` |
+| Postgres signal/history source | `adapters/postgres.py::PostgresRiskSignalSource` |
 
 Inner protocols: `adapters/protocols.py::RiskHistoryWriter`, `RiskSignalSourceProtocol`.
 
@@ -260,7 +262,7 @@ Inner protocols: `adapters/protocols.py::RiskHistoryWriter`, `RiskSignalSourcePr
 
 ### Protocol
 
-Last verified: 2026-05-20
+Last verified: 2026-06-16
 
 ```python
 class ExplainabilityServiceProtocol(Protocol):
@@ -303,7 +305,7 @@ No service entrypoint, no events. Purely persistence + throttling.
 
 ### Models (`analytics/metrics/models.py`)
 
-Last verified: 2026-05-20
+Last verified: 2026-06-16
 
 ```python
 GRAPH_SCOPE_ENTITY_ID = "__graph__"   # sentinel for KB-level metrics with no single owner
@@ -326,7 +328,7 @@ class EntityMetricValue(BaseModel):
 
 ### Protocol (`analytics/metrics/adapters/protocols.py`)
 
-Last verified: 2026-05-20
+Last verified: 2026-06-16
 
 ```python
 class EntityMetricRepository(Protocol):
@@ -371,7 +373,7 @@ See [contracts/api-routes.md](../contracts/api-routes.md) for full route table.
 
 **Source:** `backend/api/dependencies.py` — analytics dependency factories
 
-Last verified: 2026-05-28
+Last verified: 2026-06-16
 
 The analytics API router now depends on service factories from `api/dependencies.py`:
 
@@ -379,9 +381,9 @@ The analytics API router now depends on service factories from `api/dependencies
 - `get_timeseries_service()` builds `TimeseriesService` from `get_timeseries_history_source()`.
 - `get_gnn_service()` builds `GnnService` and honors the active `capabilities.gnn` flag.
 
-The default sources are still empty in-memory implementations (`InMemoryRiskSignalSource`, `InMemoryTimeSeriesHistorySource`, `InMemoryGraphSnapshotSource`) unless tests or future persistence wiring override them. The remaining static read-model gap is limited to the legacy entity-scoped routes backed by `ApiState`: `/analytics/overview`, `/analytics/risk-scores/{entity_id}`, and `/analytics/timeseries/{entity_id}`. Response shapes for these routes are documented in [contracts/api-routes.md — Static payload shapes](../contracts/api-routes.md#static-payload-shapes-apicontractspy).
+`get_risk_signal_source()` selects `PostgresRiskSignalSource` when a DB connection provider exists; otherwise it falls back to `InMemoryRiskSignalSource`. The default timeseries and GNN sources are still empty in-memory implementations (`InMemoryTimeSeriesHistorySource`, `InMemoryGraphSnapshotSource`) unless tests override them. `/analytics/overview` is now computed from durable alert projections, durable cases, and KB metadata. The remaining static read-model gap is limited to the entity-scoped routes backed by `ApiState`: `/analytics/risk-scores/{entity_id}` and `/analytics/timeseries/{entity_id}`. Response shapes for these routes are documented in [contracts/api-routes.md - Static payload shapes](../contracts/api-routes.md#static-payload-shapes-apicontractspy).
 
-**Implication for callers:** List-style analytics routes (`/risk-scores`, `/timeseries`, `/gnn/clusters`) go through real services but return empty data until backed by live stores. The entity-scoped dashboard/read-model routes still reflect seeded `ApiState` data until migrated to the same persistence-backed query path.
+**Implication for callers:** List-style risk routes can read persisted risk history when Postgres is configured; list-style timeseries and GNN routes still return empty data until backed by live stores. The entity-scoped risk/timeseries read-model routes still reflect seeded `ApiState` data until migrated to the same persistence-backed query path.
 
 ---
 

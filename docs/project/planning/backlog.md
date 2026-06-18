@@ -43,16 +43,16 @@
 
 ---
 
-## Reconciliation pass (2026-06-04)
+## Reconciliation pass (updated 2026-06-16)
 
-A code-level audit of every non-done BL story was run on 2026-06-04 (statuses were systemically stale — multiple "in-progress" 8/13 SP stories were ~95% complete). Verified status and **genuine remaining** effort (judge from code, not the nominal estimate):
+A code-level audit of every non-done BL story was run on 2026-06-04 and refreshed against the current backend state on 2026-06-16. Verified status and **genuine remaining** effort judge current code rather than the nominal estimate:
 
 | BL | Story | Nominal | Verified status | Remaining | Notes |
 |----|-------|---------|-----------------|-----------|-------|
-| BL-012 | De-seed `ApiState` | 5 | partial ~30% | **~4–5 SP** | 6 `_seed_*` remain (`_seed_policy_gaps` already removed); needs conversation repo + workflow-store wiring + unwire graph/alerts detail |
-| BL-013 | Ingestion Studio UI | 8 | **~95% done** | **~3 SP** | full studio shipped (9 components, 89 tests, wired); remaining = upload progress/retry + Playwright e2e |
-| BL-014 | Ingestion E2E demo | 13 | **~95% done** | **~2 SP** | provenance, cascade delete, TN-subset tool + `make demo-tn-subset`, Ollama+fallback, LLM extractor, 6 e2e variants all done; remaining = synthetic policy corpus |
-| BL-015 | Records submission dedup | 5 | partial | **~3 SP** | per-row hash + validation + DB dedup done; remaining = submission idempotency + format-rejection |
+| BL-012 | De-seed `ApiState` | 5 | **done** | 0 | all six `_seed_*` production read models removed; durable conversations, workflow store, graph/evidence/alerts/cases/policy paths, and overview aggregation are service/repository-backed; entity-scoped analytics composition remains documented under api.28/api.29 |
+| BL-013 | Ingestion Studio UI | 8 | **done** | 0 | XHR upload progress + retry, receipt counts, and ingestion-records e2e landed in Sprint 2026-25 |
+| BL-014 | Ingestion E2E demo | 13 | **done** | 0 | 17-doc synthetic policy corpus, policy/procedure_code/regulation_section extraction config, demo/e2e wiring, and TN subset flow landed in Sprint 2026-25 |
+| BL-015 | Records submission dedup | 5 | **done** | 0 | submission-hash dedup, migration `0004_record_submissions`, per-row format rejection, typed receipts, and accepted-format 415 gate landed in Sprint 2026-25 |
 | BL-016 | Config save + wizard (write) | 8 | todo 0% | 8 SP | **contested** — conflicts with REQ-CONFIG-005 (read-only) + post-v1 hot-reload; needs requirements decision + design spec |
 | BL-017 | Graph integrity + version/merge | 8 | todo 0% | 8 SP | explicit TODOs in both adapters; no integrity checks, no merge, no version conflict |
 | BL-018 | Neo4j index strategy | 5 | **done** | 0 | `neo4j_adapter._ensure_schema` ships constraint + 4 indexes + fulltext |
@@ -66,7 +66,7 @@ A code-level audit of every non-done BL story was run on 2026-06-04 (statuses we
 | BL-027 | Resource-level per-KB ACL | 8 | todo 0% | 8 SP | no ACL model/middleware/endpoints; `KnowledgeBase` has no owner/acl |
 | BL-028 | Multi-KB scope in RAG | 5 | todo 0% | 5 SP | request accepts a KB list but service projects to `[0]` (documented limitation) |
 
-**Conclusion — the v1 *feature surface* is essentially complete; what remains is a hardening/DR/security-depth tail (mostly P2) plus the BL-012 de-seed.** All P0 + the P1 user-facing verticals (RAG, citations, graph canvas, evidence, cases, policy, ingestion studio, ingestion demo) are done or ~done. Remaining **P1 v1-required** work ≈ BL-012 (~5) + BL-013 (3) + BL-014 (2) + BL-015 (3) + BL-017 (8) + BL-019 (~7) ≈ **28 SP** (of which Sprint 2026-25 commits 13). Everything else is P2 nice-to-have or P3 post-v1. **Not yet reconciled:** the 24 module backlogs under `docs/backlog/**` (428 finer-grained stories) — a separate, lower-priority pass.
+**Conclusion — the v1 *feature surface* is essentially complete; what remains is a hardening/DR/security-depth tail.** All P0 + the P1 user-facing verticals (RAG, citations, graph canvas, evidence, cases, policy, ingestion studio, ingestion demo, de-seed, records dedup) are done or have only documented hardening tails. Remaining higher-risk backend work is concentrated in graph integrity/versioning (BL-017), embeddings/vectorstore hardening (BL-019), OIDC hardening (BL-022), event replay operations (BL-023), and resource-level per-KB ACL (BL-027). The 24 module backlogs under `docs/backlog/**` were partially reconciled on 2026-06-16 for backend docs; frontend and cross-cutting operational docs still need a separate pass.
 
 ---
 
@@ -185,20 +185,20 @@ A code-level audit of every non-done BL story was run on 2026-06-04 (statuses we
 ### BL-013 — Ingestion Studio UI/UX (file upload progress, retry)
 - **REQ**: REQ-KB-002, REQ-KB-004
 - **Plan**: [docs/superpowers/plans/2026-05-17-ingestion-studio-ui-ux-implementation.md](../../superpowers/plans/)
-- **Status**: in-progress — **~95% done** (verified 2026-06-04; full studio shipped + 89 tests). **done (Sprint 2026-25)** — XHR upload progress + retry, receipt counts, ingestion-records e2e.
-- **Estimate**: 8 SP (nominal) — **~3 SP remaining**
+- **Status**: done (Sprint 2026-25) — XHR upload progress + retry, receipt counts, ingestion-records e2e.
+- **Estimate**: 8 SP (nominal)
 
 ### BL-014 — Ingestion pipeline E2E demo (TN Medicare subset)
 - **REQ**: REQ-KB-003, REQ-REC-001..004, REQ-RAG-002
 - **Plan**: [docs/superpowers/plans/2026-05-22-ingestion-pipeline-e2e-demo.md](../../superpowers/plans/)
-- **Status**: in-progress — **~95% done** (verified 2026-06-04; provenance, cascade delete, TN-subset tool + `make demo-tn-subset`, Ollama+fallback, LLM extractor, 6 e2e variants). **done (Sprint 2026-25)** — 17-doc synthetic policy corpus + policy/procedure_code/regulation_section config entities + demo/e2e wiring.
-- **Estimate**: 13 SP (nominal) — **~2 SP remaining**
+- **Status**: done (Sprint 2026-25) — 17-doc synthetic policy corpus + policy/procedure_code/regulation_section config entities + demo/e2e wiring.
+- **Estimate**: 13 SP (nominal)
 
 ### BL-015 — Records submission-level dedup + format enforcement
 - **REQ**: REQ-REC-001, REQ-REC-003
 - **Module source**: [docs/backlog/records.md](../../backlog/records.md) stories records.01, records.02
-- **Status**: partial (verified 2026-06-04 — per-row hash + validation + DB record-ID dedup done). **done (Sprint 2026-25)** — submission-hash dedup (migration 0004) + per-row format-rejection + typed receipt + accepted_formats 415 gate.
-- **Estimate**: 5 SP (nominal) — **~3 SP remaining**
+- **Status**: done (Sprint 2026-25) — submission-hash dedup (migration 0004) + per-row format-rejection + typed receipt + accepted_formats 415 gate.
+- **Estimate**: 5 SP (nominal)
 
 ### BL-016 — Configuration save endpoint + wizard
 - **REQ**: REQ-CONFIG-005

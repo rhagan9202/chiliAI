@@ -47,7 +47,9 @@ Routed by `api/routers/rag.py` / `api/dependencies.py`:
 
 The API layer (`api/_conversation_payloads.py`) adapts these domain models to
 the frontend `Chat*` contracts and builds the user/assistant turn from a RAG
-answer, keeping this module contract-agnostic.
+answer, keeping this module contract-agnostic. `ChatMessageCreateRequest.filters`
+is a flat scalar metadata dict (`str | int | float | bool` values only); the
+chat dependency forwards it unchanged to `RagQueryRequest.filters`.
 
 ## Tests
 

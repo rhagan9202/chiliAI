@@ -499,18 +499,20 @@
 
 ### Current State
 - `policy_registry.assert_complete` (`backend/api/middleware/policy_registry.py:40-`) walks routes and refuses startup when any non-`/auth/*`, non-`/health`, non-`/docs` route lacks a `require_role`; it does NOT verify the role chosen matches the design spec.
-- `backend/api/routers/records.py:46,114` gate `POST /records/{feed}/push` and similar at `analyst` only — there is no `admin`-only destructive path (deleting a feed's raw records, replaying), so any analyst can ingest unlimited raw_records.
-- `backend/api/routers/knowledgebases.py:172` correctly gates `DELETE /knowledgebases/{id}` at `admin` but `POST /knowledgebases/{id}/documents/{doc_id}/delete` at line 366 is `analyst` — analysts can permanently delete documents with no admin gate.
-- `backend/api/routers/cases.py:25` gates `GET /cases` at viewer, but the case mutation endpoints (created in `api.NN` epics) need their roles re-audited once those routes land.
+- `backend/api/routers/records.py` gates `POST /records/{knowledge_base_id}/files` and `POST /records/{knowledge_base_id}/push` at `analyst` only — there is no `admin`-only destructive path (deleting a feed's raw records, replaying), so any analyst can ingest unlimited raw_records.
+- `backend/api/routers/knowledgebases.py` correctly gates `DELETE /knowledgebases/{id}` at `admin` but `DELETE /knowledgebases/{id}/documents/{doc_id}` is `analyst` — analysts can permanently delete documents with no admin gate.
+- `backend/api/routers/cases.py` gates reads at `viewer` and create/promote/update/feedback at `analyst`; these routes now have explicit roles, but the expected-role table still needs a checked-in drift test.
+- `backend/api/routers/workflows.py` gates list/detail at `viewer` and cancellation at `analyst`; the expected-role table still needs a checked-in drift test.
 - `backend/api/routers/evidence.py:19` only declares one route at `viewer`; evidence mutations (when added) need a policy decision and the evidence router needs at least one `analyst` and one `admin` policy.
 - The 2026-05-08 spec §4 contains the canonical policy table; no checked-in script enforces drift between code and table.
 
 ### Acceptance Criteria
 - [ ] A new test `tests/api/test_policy_table_audit.py` declares the expected `{(method, path) → required_role}` mapping (sourced verbatim from `2026-05-08-auth-rbac-enforcement-design.md` §4 plus the gaps below) and walks `app.routes` asserting each match.
-- [ ] `DELETE /knowledgebases/{kb_id}/documents/{document_id}` is uplifted to `admin` (currently `analyst` at `backend/api/routers/knowledgebases.py:366`).
+- [ ] `DELETE /knowledgebases/{kb_id}/documents/{document_id}` is uplifted to `admin` (currently `analyst` in `backend/api/routers/knowledgebases.py`).
 - [ ] A new `DELETE /records/{feed}` admin-only route is added (or an existing destructive records path is uplifted) and the policy table reflects it.
 - [ ] Evidence-pack mutation endpoints (per `api.NN` epics) receive explicit `analyst`/`admin` policies; the policy-audit test fails until they do.
-- [ ] Cases router mutations (`POST/PUT/DELETE /cases`, `POST /cases/{id}/feedback`) carry explicit `analyst` or `admin` policies per the design-spec hierarchy.
+- [x] Cases router mutations (`POST /cases`, `POST /cases/promote`, `PATCH /cases/{id}`, `POST /cases/{id}/feedback`) carry explicit `analyst` policies.
+- [ ] A policy-table audit test verifies those case policies, workflow cancellation, and future mutations against the design-spec hierarchy.
 - [ ] `policy_registry.assert_complete` is extended to optionally accept the expected-role map and fail startup when a route's policy disagrees (off by default, on under `CHILI_ENV=production`).
 - [ ] `docs/superpowers/specs/2026-05-08-auth-rbac-enforcement-design.md` §4 is updated with the new rows for `records`/`cases`/`evidence`/`workflows` so the spec matches reality (or a follow-up spec amendment lands).
 

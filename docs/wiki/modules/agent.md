@@ -1,6 +1,6 @@
 # Module: agent
 
-**Verified against codebase:** 2026-05-28
+**Verified against codebase:** 2026-06-16
 **Source:** `backend/agent/`
 
 ## Purpose
@@ -22,7 +22,7 @@ class AgentServiceProtocol(Protocol):
         status: WorkflowRunStatus | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> list[WorkflowRun]: ...
+    ) -> WorkflowRunPage: ...
     def cancel_workflow(self, workflow_id: str) -> WorkflowRun: ...
 ```
 
@@ -84,7 +84,7 @@ class WorkflowRunUpdate(BaseModel):
 
 ## Coordinator (`agent/coordinator.py`)
 
-Last verified: 2026-05-22
+Last verified: 2026-06-16
 
 The `coordinator.py` is the worker entry point. It:
 1. Loads `DomainConfig` from env.
@@ -96,9 +96,9 @@ The `coordinator.py` is the worker entry point. It:
 7. Runs an event loop: `event_bus.consume()` → dispatch handler → `event_bus.ack()` or dead-letter.
 8. Handles SIGTERM/SIGINT for graceful shutdown.
 
-### Key handlers (updated 2026-05-22)
+### Key handlers (updated 2026-06-16)
 
-**`handle_records_ingested`** — extended to optionally embed-and-index records-derived entities into the vector store. When `embeddings_service` and `vector_store` are both passed (wired in production), stored entities are embedded using `_build_entity_embedding_text` (shared with the documents path), then indexed as `VectorRecord` objects with `source_kind=record` metadata. No `VectorsIndexedEvent` is published from this path (the event is documents-only).
+**`handle_records_ingested`** - optionally embeds and indexes records-derived entities into the vector store. When `embeddings_service` and `vector_store` are both passed, stored entities are embedded using `_build_entity_embedding_text` (shared with the documents path), then indexed as `VectorRecord` objects with `source_kind=record` metadata. No `VectorsIndexedEvent` is published from this path (the event is documents-only). When wired, the handler also runs best-effort policy-rule evaluation over stored entities and throttled graph metrics, then a best-effort peerstats stage that can persist derived risk signals and reassess affected entities.
 
 ```python
 def handle_records_ingested(
@@ -110,20 +110,25 @@ def handle_records_ingested(
     observation_writer: ObservationWriter,
     embeddings_service: EmbeddingsServiceProtocol | None = None,
     vector_store: VectorStoreProtocol | None = None,
+    policy_rules: list[PolicyRulePack] | None = None,
+    policy_service: PolicyService | None = None,
+    metrics_throttle: MetricsRecomputeThrottle | None = None,
+    peerstats_service: PeerStatsService | None = None,
+    peer_stats_config: PeerStatsConfig | None = None,
+    risk_service: RiskService | None = None,
+    peer_stats_enabled: bool = False,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> int:
 ```
 
-**`handle_knowledge_base_deleted`** — new handler. Subscribes to `"kb.delete"` events. When `event.cleanup_pending=True`, retries the 5-step cascade: `graph.delete_knowledge_base` → `vector.delete_knowledge_base` → `raw_record_store.delete_by_kb` → object_store prefix-delete → `kb_repository.delete`. All calls are idempotent; exceptions bubble to the DLQ wrapper.
+**`handle_knowledge_base_deleted`** - subscribes to `"kb.delete"` events. When `event.cleanup_pending=True`, retries the centralized cascade from `knowledgebases.cleanup` (graph, vector, raw records, derived signals, risk history, observations, alert history, metrics, conversations, cases, policy, evidence, and object-store payloads), then deletes KB metadata. All calls are idempotent; exceptions bubble to the DLQ wrapper.
 
 ```python
 def handle_knowledge_base_deleted(
     event: KnowledgeBaseDeletedEvent,
     *,
-    graph_service: GraphServiceProtocol,
-    vector_service: VectorServiceProtocol,
-    raw_record_store: RawRecordStore,
+    kb_deletion_stores: KbDeletionStores,
     kb_repository: KnowledgeBaseRepository,
-    object_store: ObjectStore | None = None,
 ) -> None:
 ```
 
@@ -142,7 +147,7 @@ The Redis store allows both API and worker containers to observe the same workfl
 
 ### `WorkflowRunStoreProtocol` (`adapters/protocols.py`)
 
-Last verified: 2026-05-20
+Last verified: 2026-06-16
 
 ```python
 class WorkflowRunStoreProtocol(Protocol):
@@ -158,8 +163,8 @@ class WorkflowRunStoreProtocol(Protocol):
         status: WorkflowRunStatus | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> list[WorkflowRun]: ...
-    # Returns newest-first ordered by created_at
+    ) -> WorkflowRunPage: ...
+    # Returns newest-first ordered by created_at with has_more/next_offset metadata
 
     def update_run(self, workflow_id: str, update: WorkflowRunUpdate) -> WorkflowRun: ...
 
@@ -169,7 +174,7 @@ class WorkflowRunStoreProtocol(Protocol):
         update: WorkflowRunUpdate,
         *,
         expected_statuses: set[WorkflowRunStatus] | frozenset[WorkflowRunStatus],
-        updated_before: datetime,
+        updated_before: datetime | None = None,
     ) -> WorkflowRun | None: ...
 
     def delete_run(self, workflow_id: str) -> None: ...
@@ -181,15 +186,17 @@ class WorkflowRunStoreProtocol(Protocol):
         knowledge_base_id: str,
         idempotency_key: str,
     ) -> WorkflowRun | None: ...
+
+    def find_by_correlation_id(self, correlation_id: str) -> WorkflowRun | None: ...
 ```
 
-**Drift note:** The TODO in `adapters/protocols.py` is partially stale: `RedisWorkflowRunStore` now exists and implements shared API/worker state, including idempotency and conditional stale-run reconciliation. A Postgres workflow-run adapter is still not implemented.
+**Drift note:** The TODO in `adapters/protocols.py` is partially stale: `RedisWorkflowRunStore` now exists and implements shared API/worker state, including idempotency, indexed correlation-id lookup, and conditional stale-run reconciliation. A Postgres workflow-run adapter is still not implemented.
 
 ---
 
 ## `WorkflowEventTracker` (`agent/workflow_tracking.py`)
 
-Last verified: 2026-05-22
+Last verified: 2026-06-16
 
 Tracks workflow run state transitions during coordinator dispatch. Writes to `WorkflowRunStoreProtocol`. Implements the `WorkflowBusyTracker` protocol used by the API layer.
 

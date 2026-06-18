@@ -1,7 +1,7 @@
 # API Routes Reference
 
-**Verified against codebase:** 2026-05-28
-**Source:** `backend/api/routers/`, `backend/api/app.py`, `backend/api/contracts.py`
+**Verified against codebase:** 2026-06-16
+**Source:** live `api.app:create_app()` route dump with `CHILI_ENV=local`, plus `backend/api/routers/`, `backend/api/app.py`, `backend/api/contracts.py`
 
 All routes are registered in `api/app.py::create_app()`. RBAC roles follow the hierarchy: `viewer(1) < analyst(2) = service(2) < admin(3)`. When `AuthConfig.enabled=False` (local/dev), all routes are open.
 
@@ -167,6 +167,7 @@ class ApiEnvelope(BaseModel):
 | `GET` | `/cases` | — | `CaseListResponse` | viewer |
 | `GET` | `/cases/{case_id}` | — | `CaseDetailResponse` | viewer |
 | `POST` | `/cases` | `CaseCreateRequest` | `CaseDetailResponse` | analyst |
+| `POST` | `/cases/promote` | `CasePromoteRequest` + `?knowledge_base_id=` | `CaseDetailResponse` | analyst |
 | `PATCH` | `/cases/{case_id}` | `CaseUpdateRequest` | `CaseDetailResponse` | analyst |
 | `POST` | `/cases/{case_id}/feedback` | `CaseFeedbackCreateRequest` | `CaseDetailResponse` | analyst |
 
@@ -180,19 +181,25 @@ class CaseUpdateRequest(BaseModel):
     title: str | None; status: Literal["open","in_review","closed"] | None
     priority: Literal["low","medium","high","critical"] | None; assignee: str | None
 
+class CasePromoteRequest(BaseModel):
+    alert_id: str
+    notes: str | None
+
 class CaseFeedbackCreateRequest(BaseModel):
     label: Literal["suspicious","not_suspicious","insufficient_evidence"]
     evidence_adequacy: Literal["low","medium","high"]
     missing_evidence: list[str]; notes: str
 ```
 
+Case routes are KB-scoped through `knowledge_base_id` query parameters in the dependency layer. `/cases/promote` rejects an alert whose stored `knowledge_base_id` does not match the query scope with 404.
+
 ---
 
 ## Evidence Packs — `/evidence-packs`
 
-| Method | Path | Response | Auth |
-|--------|------|----------|------|
-| `GET` | `/evidence-packs/{evidence_pack_id}` | `EvidencePackResponse` | viewer |
+| Method | Path | Query | Response | Auth |
+|--------|------|-------|----------|------|
+| `GET` | `/evidence-packs/{evidence_pack_id}` | `?knowledge_base_id=` | `EvidencePackResponse` | viewer |
 
 ```python
 class EvidencePackResponse(BaseModel):
@@ -258,8 +265,8 @@ class ChatConversationResponse(BaseModel):
 
 | Method | Path | Request | Response | Auth |
 |--------|------|---------|----------|------|
-| `POST` | `/records/{kb_id}/files` | `multipart/form-data: feed=str, file=.csv/.jsonl` | `RecordIngestReceipt` 202 | analyst |
-| `POST` | `/records/{kb_id}/push` | `RecordPushRequest` | `RecordIngestReceipt` 202 | analyst |
+| `POST` | `/records/{kb_id}/files` | `multipart/form-data: feed=str, file=.csv/.jsonl` | `RecordIngestReceipt` - 202 fresh, 200 duplicate | analyst |
+| `POST` | `/records/{kb_id}/push` | `RecordPushRequest` | `RecordIngestReceipt` - 202 fresh, 200 duplicate | analyst |
 
 ```python
 class RecordPushRequest(BaseModel):
@@ -268,8 +275,18 @@ class RecordPushRequest(BaseModel):
 
 class RecordIngestReceipt(BaseModel):
     knowledge_base_id: str; feed_name: str; record_type: str
-    correlation_id: str; accepted_count: int; created_at: datetime
+    correlation_id: str; accepted_count: int
+    duplicate: bool = False
+    duplicate_count: int = 0
+    rejected_count: int = 0
+    rejected: list[RejectedRow] = []
+    created_at: datetime
 ```
+
+Fresh submissions persist accepted rows and publish `RecordsIngestedEvent` only
+when `accepted_count > 0`. Byte/row-set duplicate submissions return
+`duplicate=True`, `accepted_count=0`, skip persistence and event publication,
+and use HTTP 200 so clients can distinguish no-op duplicates from accepted work.
 
 ---
 
@@ -278,6 +295,8 @@ class RecordIngestReceipt(BaseModel):
 | Method | Path | Query | Response | Auth |
 |--------|------|-------|----------|------|
 | `GET` | `/workflows` | `?knowledge_base_id=&status=&limit=50&offset=0` | `WorkflowRunListResponse` | viewer |
+| `GET` | `/workflows/{workflow_id}` | — | `WorkflowRunResponse` | viewer |
+| `POST` | `/workflows/{workflow_id}/cancel` | — | `WorkflowRunResponse` | analyst |
 
 ```python
 class WorkflowRunResponse(BaseModel):
@@ -286,6 +305,11 @@ class WorkflowRunResponse(BaseModel):
     status: Literal["queued","running","completed","failed","cancelled"]
     knowledge_base_id: str; started_at: datetime; updated_at: datetime
     current_step: str; last_error: str | None
+
+class WorkflowRunListResponse(BaseModel):
+    items: list[WorkflowRunResponse]
+    has_more: bool
+    next_offset: int | None
 ```
 
 ---
@@ -301,7 +325,7 @@ class WorkflowRunResponse(BaseModel):
 | `GET` | `/analytics/risk-scores/{entity_id}` | `?kb_id=` | `RiskScoreResponse` | viewer |
 | `GET` | `/analytics/timeseries/{entity_id}` | `?kb_id=` | `EntityTimeseriesResponse` | viewer |
 
-**Wiring status:** `/analytics/risk-scores`, `/analytics/timeseries`, and `/analytics/gnn/clusters` are served by analytics services from `api/dependencies.py` using empty in-memory sources by default. `/analytics/overview`, `/analytics/risk-scores/{entity_id}`, and `/analytics/timeseries/{entity_id}` remain seeded `ApiState` read models until migrated to live stores. See [modules/analytics.md — Current Wiring Status](../modules/analytics.md#current-wiring-status) for detail.
+**Wiring status:** `/analytics/risk-scores`, `/analytics/timeseries`, and `/analytics/gnn/clusters` are served by analytics services from `api/dependencies.py` using empty in-memory sources by default. `/analytics/overview` is computed from durable alert, case, and KB stores. `/analytics/risk-scores/{entity_id}` and `/analytics/timeseries/{entity_id}` still use the remaining `ApiState` analytics composition, which returns unavailable/empty responses when no generated analytics exists.
 
 ### Static payload shapes (api/contracts.py)
 
@@ -344,12 +368,12 @@ class EntityTimeseriesResponse(BaseModel):
 
 **Note:** `RiskFactorResponse` (from `api/contracts.py`) exposes only `factor_name`, `contribution`, `rationale` — a subset of the internal `RiskFactor` model (`analytics/risk/models.py`) which additionally carries `raw_value` and `weight`. These fields are dropped at the API boundary.
 
-**Dependency chain for entity-scoped routes:**
-- `GET /analytics/overview` → `get_analytics_overview_payload(state)` → `state.get_analytics_overview()` → returns `AnalyticsOverviewResponse`
-- `GET /analytics/risk-scores/{entity_id}?kb_id=...` → `get_risk_score_payload(entity_id, kb_id, state)` → `state.get_risk_score(entity_id, knowledge_base_id=kb_id)` → returns `RiskScoreResponse`
-- `GET /analytics/timeseries/{entity_id}?kb_id=...` → `get_timeseries_payload(entity_id, kb_id, state)` → `state.get_timeseries(entity_id, knowledge_base_id=kb_id)` → returns `EntityTimeseriesResponse`
+**Dependency chain for dashboard/entity-scoped routes:**
+- `GET /analytics/overview` -> `get_analytics_overview_payload(alert_repository, case_service, kb_repository)` -> durable store aggregation.
+- `GET /analytics/risk-scores/{entity_id}?kb_id=...` -> `get_risk_score_payload(entity_id, kb_id, state)` -> `state.get_risk_score(entity_id, knowledge_base_id=kb_id)` -> returns `RiskScoreResponse`.
+- `GET /analytics/timeseries/{entity_id}?kb_id=...` -> `get_timeseries_payload(entity_id, kb_id, state)` -> `state.get_timeseries(entity_id, knowledge_base_id=kb_id)` -> returns `EntityTimeseriesResponse`.
 
-All three read from `ApiState` (per-app mutable state seeded at startup), not from live analytics services.
+Only the two entity-scoped routes read from `ApiState`; overview no longer does.
 
 ---
 
@@ -372,7 +396,7 @@ class RealtimeSnapshotResponse(BaseModel):
 
 ## Investigation — `/investigation`
 
-Last verified: 2026-05-28. Source: `backend/api/routers/investigation.py`.
+Last verified: 2026-06-16. Source: `backend/api/routers/investigation.py`.
 
 All routes require `viewer` role. Backed by `GraphServiceProtocol` (injected via `get_graph_service()`).
 
@@ -404,7 +428,25 @@ Cross-linked to: [modules/graph.md](../modules/graph.md), [modules/api.md](../mo
 
 ## Policy — `/policy`
 
-Policy intelligence read models and brief generation live in `api/routers/policy.py`.
+Policy intelligence items and triage live in `api/routers/policy.py`.
+
+| Method | Path | Query/Request | Response | Auth |
+|--------|------|---------------|----------|------|
+| `GET` | `/policy/items` | `?knowledge_base_id=&status=&limit=50&offset=0` | `PolicyItemListResponse` | viewer |
+| `GET` | `/policy/items/{item_id}` | `?knowledge_base_id=` | `PolicyItemDetailResponse` | viewer |
+| `POST` | `/policy/items/{item_id}/triage` | `PolicyTriageRequest` + `?knowledge_base_id=` | `PolicyItemDetailResponse` | analyst |
+
+Legacy `/policy/gaps` and `/policy/briefs` routes are not registered.
+
+## Dev/E2E Seed - `/admin/dev-seed`
+
+Registered only when `CHILI_ENV != "production"`.
+
+| Method | Path | Response | Auth |
+|--------|------|----------|------|
+| `POST` | `/admin/dev-seed` | `DevSeedResponse` | analyst |
+
+The endpoint writes a deterministic KB, graph subgraph, alert projection, evidence pack, case, policy item, and conversation into the real repositories for local/e2e testing.
 
 ---
 

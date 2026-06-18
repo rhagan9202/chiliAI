@@ -9,10 +9,10 @@ Durable, KB-scoped **policy intelligence** (BL-011). Rule packs defined in the d
 | File | Responsibility |
 |------|----------------|
 | `models.py` | `PolicyItem`, `PolicyDisposition`, `PolicyCitation` domain models; `PolicyItemStatus`, `PolicySeverity`, `PolicyTargetKind`, `TriageAction` literals; `ACTION_TO_STATUS` mapping. |
-| `evaluation.py` | Pure `evaluate(rule_packs, state) -> list[PolicyMatch]` — no I/O. Receives freshly-stored entities + (throttled) graph metrics; returns one `PolicyMatch` per rule hit. |
-| `service.py` | `PolicyService` — `record_match(...)` upserts new items; `triage(...)` records analyst disposition; `get` / `list` delegates to the repository. |
+| `evaluation.py` | Pure `evaluate(rule_packs, state) -> list[PolicyMatch]` - no I/O. Receives freshly-stored entities + (throttled) graph metrics; returns one `PolicyMatch` per rule hit. |
+| `service.py` | `PolicyService` - `record_match(...)` upserts new items; `triage(...)` records analyst disposition; `link_case(...)` attaches an escalated case id; `get` / `list` delegates to the repository. |
 | `exceptions.py` | `PolicyError`, `PolicyPersistenceError`, `PolicyItemNotFoundError`, `PolicyItemAlreadyTriagedError`. |
-| `adapters/protocols.py` | `PolicyItemRepository` protocol — `upsert / get / list / update / delete_by_kb`. |
+| `adapters/protocols.py` | `PolicyItemRepository` protocol - `upsert / get / list / update / delete_by_kb`. |
 | `adapters/in_memory.py` | `InMemoryPolicyItemRepository` (dict keyed by natural key) for tests / local dev. |
 | `adapters/postgres.py` | `PostgresPolicyItemRepository` over `database.ConnectionProvider`; disposition stored as jsonb; migration `0003_policy`. |
 
@@ -30,7 +30,7 @@ Every policy item is uniquely identified by the **natural key** `(knowledge_base
                     │ accept   │ reject   │ defer   │ escalate
                     ▼          ▼          ▼         ▼
                accepted   rejected   deferred  escalated
-                    (terminal — upsert leaves disposed items untouched)
+                    (terminal - upsert leaves disposed items untouched)
 ```
 
 ## evaluate contract
@@ -54,7 +54,7 @@ Each `PolicyMatch` carries `rule_id`, `rule_pack_id`, `target_kind`, `target_ref
 
 ## Escalate-to-case (D-ESCALATE-IMPL)
 
-**Deviation D-ESCALATE-IMPL**: the `escalate` triage action is orchestrated directly in `api/routers/policy.py` via `CaseService.create(...)` with an additive `timeline` parameter. It does not reuse the `POST /cases/promote` alert→case promotion path; the two paths remain independent.
+**Deviation D-ESCALATE-IMPL**: the `escalate` triage action is orchestrated directly in `api/routers/policy.py` via `CaseService.create(...)` with an additive `timeline` parameter. It does not reuse the `POST /cases/promote` alert->case promotion path; the two paths remain independent. The router triages first, creates the case only after that succeeds, then calls `PolicyService.link_case(...)` so the disposition records the created `case_id`.
 
 ## API surface
 
@@ -64,13 +64,13 @@ Routed by `api/routers/policy.py`, all routes require `?knowledge_base_id=`:
 |--------|------|------|-------|
 | `GET` | `/policy/items` | `viewer` | List KB-scoped items; optional `?status=` filter; paginated. |
 | `GET` | `/policy/items/{item_id}` | `viewer` | Item detail (item + disposition + citations). |
-| `POST` | `/policy/items/{item_id}/triage` | `analyst` | Accept / reject / defer / escalate-to-case; persists `PolicyDisposition`; escalate creates a case via `CaseService`. |
+| `POST` | `/policy/items/{item_id}/triage` | `analyst` | Accept / reject / defer / escalate-to-case; persists `PolicyDisposition`; escalate creates a case via `CaseService` and links its `case_id` back onto the disposition. |
 
 ## v1 non-goals
 
-- **Single predicate per rule** — each `PolicyRule` has exactly one `PolicyPredicate`; multi-predicate (AND/OR) rules are deferred.
-- **Alert-target evaluation** — `target_kind = "alert"` rules are parsed and stored in config but not evaluated (`_iter_targets` returns `[]` for alert targets).
-- **Auto-resolution of de-matched items** — when a previously matched entity no longer satisfies the rule predicate, its `PolicyItem` remains in its current status; de-match auto-closure is not implemented.
+- **Single predicate per rule** - each `PolicyRule` has exactly one `PolicyPredicate`; multi-predicate (AND/OR) rules are deferred.
+- **Alert-target evaluation** - `target_kind = "alert"` rules are parsed and stored in config but not evaluated (`_iter_targets` returns `[]` for alert targets).
+- **Auto-resolution of de-matched items** - when a previously matched entity no longer satisfies the rule predicate, its `PolicyItem` remains in its current status; de-match auto-closure is not implemented.
 
 ## Persistence
 
@@ -78,9 +78,9 @@ The `policy_items` table is created by Alembic migration `database/migrations/ve
 
 ## Tests
 
-- `tests/policy/test_in_memory_store.py` — repository CRUD, KB isolation, natural-key upsert semantics, no-reopen invariant.
-- `tests/policy/test_postgres_store.py` — `@pytest.mark.integration` (skipped without `DATABASE_URL`).
-- `tests/policy/test_service.py` — service upsert + triage, already-triaged guard.
-- `tests/policy/test_evaluation.py` — pure evaluator: entity/metric targets, predicate operators, threshold config refs.
-- `tests/api/test_policy_routes.py` — KB-scoped routes + triage flow.
-- `tests/e2e/policy-triage.spec.ts` — Playwright: seed item → triage → escalate-to-case end-to-end.
+- `tests/policy/test_in_memory_store.py` - repository CRUD, KB isolation, natural-key upsert semantics, no-reopen invariant.
+- `tests/policy/test_postgres_store.py` - `@pytest.mark.integration` (skipped without `DATABASE_URL`).
+- `tests/policy/test_service.py` - service upsert + triage, already-triaged guard.
+- `tests/policy/test_evaluation.py` - pure evaluator: entity/metric targets, predicate operators, threshold config refs.
+- `tests/api/test_policy_router.py` - KB-scoped routes + triage flow.
+- `chili_app/e2e/policy-triage.spec.ts` - Playwright: seed item -> triage -> escalate-to-case end-to-end.

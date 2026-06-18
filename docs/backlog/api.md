@@ -8,10 +8,11 @@
 ## Story api.01: Replace seeded API graph and evidence reads
 
 **ID:** api.01
-**Status:** planned
+**Status:** done
 **Prerequisites:** [graph.06, graph.08, ingestion.05, monitoring.01]
 **Unblocks:** [api.28]
 **Estimated size:** L
+**Done:** graph entity reads and evidence-pack reads are service/repository-backed; missing persisted evidence now returns 404 instead of seeded fallback.
 
 ### Narrative
 As an API consumer,
@@ -19,17 +20,17 @@ I want graph and evidence endpoints to read from persisted services,
 so that responses reflect imported data rather than seeded in-memory state.
 
 ### Current State
-Some API routes still depend on `ApiState` demo data even though persisted ingestion and graph services now exist.
+Completed. `GET /graph/entities/{id}` is served by `api/_graph_entity_payload.py` through the graph service, and `GET /evidence-packs/{id}?knowledge_base_id=` reads from `EvidencePackRepository` via `get_evidence_pack_repository`. Regression coverage in `backend/tests/api/test_read_model_routers.py` asserts missing persisted evidence returns 404 instead of seeded fallback.
 
 ### Acceptance Criteria
-- [ ] Replace graph endpoint reads with graph service queries backed by persisted storage.
-- [ ] Replace evidence/document endpoint reads with repository-backed data.
-- [ ] Preserve response contracts used by the frontend and tests.
-- [ ] Add not-found behavior for missing persisted records instead of falling back to seed data.
+- [x] Replace graph endpoint reads with graph service queries backed by persisted storage.
+- [x] Replace evidence/document endpoint reads with repository-backed data.
+- [x] Preserve response contracts used by the frontend and tests.
+- [x] Add not-found behavior for missing persisted records instead of falling back to seed data.
 
 ### Verification
-- [ ] API tests prove graph and evidence responses come from test repositories.
-- [ ] Seeded demo data is not required for these endpoints to pass.
+- [x] API tests prove graph and evidence responses come from test repositories.
+- [x] Seeded demo data is not required for these endpoints to pass.
 
 ### Code touch points
 - `backend/app/api/**`
@@ -50,16 +51,17 @@ Some API routes still depend on `ApiState` demo data even though persisted inges
 **so that** `/cases` no longer loses every case on API restart and works across multiple API processes.
 
 ### Current State
-- `ApiState._cases`, `ApiState._feedback` are process-local dicts protected by `self._lock` (`backend/api/state.py:181-194`).
-- Mutations live in `create_case`/`update_case`/`add_feedback` (`backend/api/state.py:253-294`).
-- `backend/api/routers/cases.py:1-78` exposes GET/POST/PATCH plus `/feedback` and binds via `get_case_*_payload` providers (`backend/api/dependencies.py:193-229`).
-- No protocol, no adapter, no migration exists for cases — no path under `backend/cases/` or `backend/database/migrations/` references a cases table.
+- Case persistence is implemented under `backend/cases/` with in-memory and Postgres repositories, service methods, migrations `0002_cases.py` and `0007_case_feedback.py`, and route DI through `get_case_repository` / `get_case_service`.
+- `/cases` supports KB-scoped list/detail/create/update/feedback plus `POST /cases/promote?knowledge_base_id=...`; cross-KB alert promotion returns 404.
+- Completed de-seeding is covered by `backend/tests/api/test_deseed_regression.py` and case route coverage in `backend/tests/api/test_read_model_routers.py`.
+- Still pending from the original story: tenant/resource-level authorization and durable audit events for every case mutation.
 
 ### Acceptance Criteria
-- [ ] New `backend/cases/protocols.py` (or `backend/api/repositories/cases.py`) declares `CaseRepository` with `create`, `get`, `list`, `update`, `add_feedback`, `delete` (decision recorded in §5.2 of architecture if a new module is created).
-- [ ] In-memory + Postgres adapters implemented; Postgres adapter ships an Alembic migration creating `cases` and `case_feedback` with `tenant_id` columns.
-- [ ] `get_case_*_payload` providers in `backend/api/dependencies.py:193-229` consume the repository, not `ApiState`.
-- [ ] `ApiState._cases`, `ApiState._feedback`, `ApiState._seed_cases` removed.
+- [x] `backend/cases/adapters/protocols.py` declares `CaseRepository` with create/get/list/update/add-feedback operations.
+- [x] In-memory + Postgres adapters implemented; Postgres migrations create `cases` and `case_feedback`.
+- [x] `get_case_*_payload` providers consume the repository and case service, not `ApiState`.
+- [x] `ApiState._cases`, `ApiState._feedback`, `ApiState._seed_cases` removed.
+- [ ] Tenant/resource-level fields and authorization are added to the case persistence contract.
 - [ ] Audit event published on every mutation per `_security.05` audit log shape.
 - [ ] Coverage ≥ 85% on the new module/package.
 
@@ -94,16 +96,17 @@ Some API routes still depend on `ApiState` demo data even though persisted inges
 **so that** `/chat/conversations` survives restarts, supports horizontal scale-out, and persists citation provenance produced by `_rag_bridges.py`.
 
 ### Current State
-- `ApiState._conversations` is a process-local dict (`backend/api/state.py:181-195`).
-- `/chat/conversations` and `/chat/conversations/{id}/messages` (`backend/api/routers/rag.py:42-105`) read/write `ApiState.add_message`/`get_conversation`/`create_conversation`.
-- `get_chat_message_payload` (`backend/api/dependencies.py:248-256`) calls `get_knowledge_base_repository()` directly (no `Depends` — see api.26) and forwards to `ApiState`.
-- `backend/api/_rag_bridges.py:1-383` is tested but not wired into the persistence path (per design-spec auditor note); citation IDs are only stored in memory inside conversation messages.
+- Durable conversation storage is implemented under `backend/conversations/` with in-memory and Postgres repositories and migration `0005_conversations.py`.
+- `/chat/conversations` create/read/append routes use `ConversationService` through DI (`get_conversation_repository`, `get_conversation_service`, `get_chat_message_payload`) and no longer call `ApiState` conversation methods.
+- The live RAG service is composed in `get_rag_service()` through `_rag_bridges.py`; `ApiState` only holds the service handle/fallback for tests.
+- Still pending from the original story: audit-grade citation attachment/provenance persistence beyond the current message/citation response projection.
 
 ### Acceptance Criteria
-- [ ] New `RagConversationRepository` protocol with `create`, `get`, `append_message`, `list`, `attach_citations`; in-memory + Postgres adapters delivered with Alembic migration (`rag_conversations`, `rag_messages`, `rag_message_citations`).
-- [ ] `_rag_bridges.py` becomes the live citation projection consumed by the repo (no longer dead code).
-- [ ] `ApiState._conversations`/`_seed_conversations` removed.
-- [ ] `/chat/conversations[/...]` routes consume the repository via DI; streaming path still works.
+- [x] `backend/conversations/adapters/protocols.py` declares the conversation repository and in-memory + Postgres adapters ship with migration `0005_conversations.py`.
+- [x] `_rag_bridges.py` is in the live `get_rag_service()` composition path.
+- [x] `ApiState._conversations`/`_seed_conversations` removed.
+- [x] `/chat/conversations[/...]` routes consume the repository via DI; streaming path still works.
+- [ ] Citation attachment/provenance is persisted at audit grade rather than only projected in message responses.
 - [ ] Streaming path (`?stream=true` at `backend/api/routers/rag.py:65-105`) persists assistant tokens and citations on completion.
 - [ ] Coverage ≥ 85% on the new repository.
 
@@ -128,7 +131,7 @@ Some API routes still depend on `ApiState` demo data even though persisted inges
 ## Story api.04: Persist policy-intelligence gaps and briefs
 
 **ID:** api.04
-**Status:** planned
+**Status:** dropped
 **Prerequisites:** [api.29, analytics.15, monitoring.16, database.02]
 **Unblocks:** []
 **Estimated size:** L
@@ -138,10 +141,7 @@ Some API routes still depend on `ApiState` demo data even though persisted inges
 **so that** `/policy/gaps` and `/policy/briefs` carry audit history, survive restarts, and reflect actual analytics output instead of seeded `PolicyGapRecord` objects.
 
 ### Current State
-- `ApiState._policy_gaps` is process-local (`backend/api/state.py:194`).
-- `PolicyGapRecord` dataclass + `_seed_policy_gaps` produce demo gaps (`backend/api/state.py:108-122`).
-- `/policy/gaps`, `/policy/gaps/{id}`, `/policy/gaps/{id}/cases`, `/policy/briefs` (`backend/api/routers/policy.py:23-71`) all read from `ApiState` via providers in `backend/api/dependencies.py:258-287`.
-- `list_policy_gaps` ignores `limit`/`offset` despite returning a `PageInfo` (`backend/api/routers/policy.py:31-35` → `ApiState.list_policy_gaps`).
+Superseded by the BL-011 policy item surface. The legacy `/policy/gaps`, `/policy/gaps/{id}`, `/policy/gaps/{id}/cases`, and `/policy/briefs` routes are gone; `backend/tests/api/test_policy_router.py` asserts `/policy/gaps` returns 404 and that the old `PolicyGapRecord` / `_seed_policy_gaps` symbols are absent. The active policy routes are `GET /policy/items`, `GET /policy/items/{item_id}`, and `POST /policy/items/{item_id}/triage`, backed by `backend/policy/` repositories and migration `0003_policy.py`.
 
 ### Acceptance Criteria
 - [ ] `PolicyIntelligenceRepository` protocol (gaps, briefs, citations, trend, affected cases) with in-memory + Postgres adapters.
@@ -381,14 +381,14 @@ Some API routes still depend on `ApiState` demo data even though persisted inges
 - `KbListResponse` returns `items[] + total` (`backend/api/routers/knowledgebases.py:67-71`).
 - `WorkflowRunListResponse` returns `items[]` only with no total (`backend/api/contracts.py:269-272`).
 - `EntitySearchResponse` is `items + total=len(items)` after the search already capped at `limit` (`backend/api/routers/investigation.py:114-115`) — `total` is wrong when paged.
-- `/policy/gaps` returns `items[] + PageInfo` but `ApiState.list_policy_gaps()` ignores limit/offset (`backend/api/routers/policy.py:31-35`).
+- `PolicyItemListResponse` returns `items[] + total` for `/policy/items`; the legacy `/policy/gaps` route is no longer registered.
 - `ApiEnvelope` is the only generic envelope (`backend/api/contracts.py:11-15`).
 
 ### Acceptance Criteria
 - [ ] Decision recorded (cursor vs offset; see Open Question). Pick one and apply consistently.
 - [ ] One `PageInfo` shape used by every list endpoint; every endpoint reports an accurate `total_items`.
 - [ ] `WorkflowRunListResponse`, `KbListResponse`, `EntitySearchResponse` migrated to the uniform shape.
-- [ ] `/policy/gaps` honours `limit`/`offset` (depends on api.04).
+- [ ] `/policy/items` either migrates to the common page shape or the common contract explicitly allows simple `total` responses.
 - [ ] Tests assert that `total_items > len(items)` when paging produces more results.
 
 ### Verification
@@ -1049,7 +1049,9 @@ I want analytics endpoints to read through the analytics service boundary,
 so that seeded analytics fixtures can be retired without coupling API persistence cleanup to later GNN adapter work.
 
 ### Acceptance Criteria
-- [ ] Analytics routes call the existing analytics service/repository boundary instead of `ApiState` seed objects.
+- [x] Collection analytics routes call the existing analytics service/repository boundary instead of route-local seeded stubs.
+- [x] `GET /analytics/overview` is computed from durable alert, case, and KB stores.
+- [ ] Entity-scoped `GET /analytics/risk-scores/{entity_id}` and `GET /analytics/timeseries/{entity_id}` no longer depend on the remaining `ApiState` analytics composition.
 - [ ] Responses preserve provenance and model metadata where available from the service boundary.
 - [ ] Empty-state responses are explicit when no analytics results exist.
 
@@ -1078,8 +1080,10 @@ I want production API routes to stop depending on seeded `ApiState`,
 so that demo fixtures cannot mask missing persistence wiring.
 
 ### Acceptance Criteria
-- [ ] Seed data setup is moved behind test/demo-only fixtures.
-- [ ] Production route dependencies no longer require `ApiState` for graph, evidence, or analytics data.
+- [x] Removed `_seed_*` production read models for alerts, cases, conversations, workflows, evidence packs, policy gaps, and the demo graph.
+- [x] Graph, evidence, alerts, cases, conversations, workflows, and policy items no longer depend on seeded `ApiState` data.
+- [x] Dev/e2e deterministic data lives behind non-production `POST /admin/dev-seed`, which writes the real repositories.
+- [ ] Entity-scoped analytics routes finish moving off the remaining `ApiState` analytics composition.
 - [ ] Documentation identifies any remaining demo-only fixture path.
 
 ### Verification

@@ -2,7 +2,7 @@
 
 This package owns analytical capabilities for chiliAI: time-series anomaly
 detection, GNN-style graph analysis, risk scoring, explainability, and
-entity-metric persistence. It is intentionally friendly to algorithms that begin
+entity-metric and peer-stat persistence. It is intentionally friendly to algorithms that begin
 life as notebooks or scripts, but production code in this package must still
 follow the backend architecture:
 
@@ -39,7 +39,9 @@ analytics/<capability>/
 ```
 
 `analytics/metrics` is intentionally smaller: it is a persistence package with
-repository adapters and no service or events.
+repository adapters and no service or events. `analytics/peerstats` computes
+record-column peer z-scores and persists derived risk signals consumed by
+`analytics/risk`.
 
 ## Where script code belongs
 

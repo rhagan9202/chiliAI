@@ -1,7 +1,7 @@
 # Redis Streams Event Payloads
 
-**Verified against codebase:** 2026-05-28
-**Source:** `backend/events/types.py`, `backend/events/protocols.py`
+**Verified against codebase:** 2026-06-16
+**Source:** `backend/events/types.py`, `backend/events/protocols.py`, `backend/events/runtime.py`, `backend/events/adapters/redis_streams.py`
 
 All events extend `EventBase`. The `AnyEvent` union type covers all concrete event types. Events are serialized/deserialized via `events/codec.py`.
 
@@ -33,6 +33,15 @@ class EventBus(Protocol):
         consumer_name: str | None = None,
         limit: int = 1,
         block_ms: int | None = None,
+    ) -> list[EventDelivery]: ...
+    def reclaim_stale_pending(
+        self,
+        event_types: list[str],
+        *,
+        consumer_group: str,
+        consumer_name: str,
+        min_idle_ms: int,
+        limit: int = 10,
     ) -> list[EventDelivery]: ...
     def ack(self, deliveries: list[EventDelivery]) -> None: ...
     def publish_to_dlq(self, event: AnyEvent, error_info: DlqErrorInfo) -> str | None: ...
@@ -284,4 +293,6 @@ AnyEvent = (
 | In-memory | `events/adapters/in_memory.py::InMemoryEventBus` | `backend = "in_memory"` |
 | Redis Streams | `events/adapters/redis_streams.py` | `backend = "redis"` |
 
-Factory: `events/runtime.py` — reads `EventBusConfig` from `DomainConfig`.
+Factory: `events/runtime.py` loads environment settings (`CHILI_EVENT_BUS_BACKEND`, `REDIS_URL`, `CHILI_EVENT_STREAM_PREFIX`, `CHILI_EVENT_STREAM_MAXLEN`, `CHILI_EVENT_RECLAIM_MIN_IDLE_MS`) and API/worker dependency wiring can override them from `DomainConfig.events`.
+
+Redis Streams publishing applies `stream_maxlen` to main stream `XADD` calls when configured. Worker ingestion drains call `reclaim_stale_pending(..., min_idle_ms=reclaim_min_idle_ms)` before normal `consume(...)` when the setting is present.

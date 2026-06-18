@@ -45,7 +45,7 @@ The analyst can view a summary of ingested documents, add or remove documents, a
 6. Run analytics pipeline — time-series anomaly detection, GNN link prediction and clustering, risk scoring. Results feed back into the knowledge graph (self-reinforcing loop) and forward to the analyst workbench.
 7. Surface alerts with evidence/explainability packs (reasoning, subgraph patterns, confidence scores)
 8. Analyst explores and queries the graph for investigation
-9. Analyst interacts with the knowledge base via the RAG chat interface. The current API path uses seeded/local RAG responses; service-backed vector/LLM wiring for chat is pending.
+9. Analyst interacts with the knowledge base via the RAG chat interface. The current API path persists conversations and calls the configured RAG service; direct `ApiState()` test construction still has a deterministic in-memory fallback.
 
 ## Repository Structure
 

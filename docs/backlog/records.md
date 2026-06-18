@@ -8,7 +8,7 @@
 ## Story records.01: Declare and enforce per-feed allowed file formats
 
 **ID:** records.01
-**Status:** planned
+**Status:** in-progress
 **Prerequisites:** []
 **Unblocks:** [_plugins.01]
 **Estimated size:** M
@@ -18,10 +18,9 @@
 **so that** a misnamed or wrong-format upload is rejected at the boundary instead of dying with a confusing parser error mid-batch.
 
 ### Current State
-- `RecordFeedConfig` (`backend/config/schema.py:331-349`) has no `formats` / `accepted_formats` field — feeds are format-agnostic in config.
-- The router branches on filename extension only (`backend/api/routers/records.py:30-39 _select_file_source`) — a JSONL upload to a feed designed for CSV-only export semantics passes router validation, then `JsonlFileSource.read_rows` (`backend/records/adapters/sources/file_source.py:54-77`) parses it without any feed-level guard.
-- `medicare_fraud_cms_desynpuf.yaml` (`backend/config/defaults/medicare_fraud_cms_desynpuf.yaml:92-409`) declares every feed as `source: file_upload` with no format hint.
-- No 415 mapping exists for "feed does not accept this format" — only for "unsupported extension entirely."
+- `RecordFeedConfig.accepted_formats` exists with default `["csv", "jsonl"]`, and `_resolve_feed_formats` / `upload_record_file` reject mismatched uploads with HTTP 415 before reading the body.
+- Tests cover custom `accepted_formats` on config models and a router-level 415 when a CSV-only feed receives `.jsonl`.
+- Residual gap: `medicare_fraud_cms_desynpuf.yaml` still relies on the default `["csv", "jsonl"]` for its file-upload feeds; it does not explicitly declare `accepted_formats: [csv]` for CMS CSV feeds.
 
 ### Acceptance Criteria
 - [ ] `RecordFeedConfig.accepted_formats: list[Literal["csv", "jsonl"]]` field added with default `["csv", "jsonl"]` (back-compat) in `backend/config/schema.py`.
@@ -49,28 +48,28 @@
 ## Story records.02: Short-circuit identical-file re-uploads with submission-level dedup
 
 **ID:** records.02
-**Status:** planned
+**Status:** done
 **Prerequisites:** [database.01]
 **Unblocks:** [config.13, records.05]
 **Estimated size:** M
+**Done:** implemented with `submission_hash_for`, `record_submissions` migration `0004_record_submissions`, `RawRecordStore.was_submitted` / `record_submission`, duplicate receipts, no event publish on duplicate, and HTTP 200 for duplicate file/push submissions.
 
 **As a** worker operator,
 **I need** the records service to detect a byte-identical (or row-set-identical) re-upload of the same feed and short-circuit before publishing `RecordsIngestedEvent`,
 **so that** an operator who clicks "upload" twice does not re-fire Flow 1 fan-out, re-run graph upserts, and emit a duplicate workflow record.
 
 ### Current State
-- `RecordsService.register_records` always mints a fresh `correlation_id` (`backend/records/service.py:36`).
-- Row-level idempotency works (`backend/records/adapters/postgres.py:20-26` — `ON CONFLICT (knowledge_base_id, record_type, record_id) DO NOTHING`) so re-uploaded rows insert zero rows.
-- But `accepted_count` is included in `RecordsIngestedEvent` (`backend/records/service.py:71-79`) and the event is published unconditionally, so Flow 1 fan-out (`backend/agent/coordinator.py:1597-1690 handle_records_ingested`) re-runs against the existing rows. The handler is idempotent but does pay for the full map_batch + graph upsert + embed every time.
-- `RawRecord` already carries `content_hash` (`backend/records/models.py:30-41`) but there is no submission-level digest aggregating an entire batch.
+- `RecordsService.register_records` computes an order-independent submission hash from the feed name plus per-row content hashes before persisting.
+- On duplicate, the service returns a duplicate receipt and skips both `RawRecordStore.persist` and `RecordsIngestedEvent` publish.
+- File and push endpoints set HTTP 200 when `receipt.duplicate` is true; fresh submissions still return 202.
 
 ### Acceptance Criteria
-- [ ] New `record_submissions` table (or extension of `raw_records` indexing) capturing `(knowledge_base_id, feed_name, submission_hash)` with unique constraint, created via a new Alembic migration under `backend/database/migrations/versions/`.
-- [ ] `RecordsService.register_records` computes a deterministic submission hash over the sorted list of per-row `content_hash` values BEFORE persisting; on a duplicate hit it returns a `RecordIngestReceipt` with `accepted_count=0`, `duplicate=True` and DOES NOT publish `RecordsIngestedEvent`.
-- [ ] `RecordIngestReceipt` (`backend/records/service_models.py`) gets a new `duplicate: bool = False` field.
-- [ ] HTTP response on a duplicate is `200 OK` (not 202) so the SPA can disambiguate "accepted for processing" vs "already ingested" without parsing the body.
-- [ ] Unit test in `backend/tests/records/test_service.py`: re-submitting the same `RecordSubmission` twice yields one event and one `RecordsIngestedEvent` on the bus.
-- [ ] `backend/records/README.md` "Idempotency" section documents the submission-level dedup and links architecture §6.3.
+- [x] New `record_submissions` table captures `(knowledge_base_id, submission_hash)` with a composite primary key via `0004_record_submissions`.
+- [x] `RecordsService.register_records` computes a deterministic submission hash over the sorted list of per-row `content_hash` values BEFORE persisting; on a duplicate hit it returns a `RecordIngestReceipt` with `accepted_count=0`, `duplicate=True` and DOES NOT publish `RecordsIngestedEvent`.
+- [x] `RecordIngestReceipt` includes `duplicate`, `duplicate_count`, `rejected_count`, and `rejected`.
+- [x] HTTP response on a duplicate is `200 OK` (not 202).
+- [x] Unit tests cover duplicate submissions on service/store paths and router status handling.
+- [x] `backend/records/README.md` documents submission-level dedup in "Idempotency, partial acceptance, and format gating (BL-015)".
 
 ### Verification
 - `pytest backend/tests/records -q` green with new dedup tests.
@@ -78,16 +77,19 @@
 - Manual: upload `beneficiary_2008_sample.csv` twice; check Redis stream `records.ingested` has exactly one entry and `duplicate=true` on the second receipt.
 
 ### Code touch points
-- `backend/database/migrations/versions/0003_record_submissions.py` (new — submission-hash index/table)
-- `backend/records/service.py` (modify — compute submission hash, dedup short-circuit)
-- `backend/records/service_models.py` (modify — `duplicate` field on receipt)
-- `backend/records/adapters/protocols.py` (modify — `mark_submission` / `has_submission` methods)
-- `backend/records/adapters/in_memory.py` (modify — set-backed dedup)
-- `backend/records/adapters/postgres.py` (modify — submission insert + lookup)
-- `backend/api/routers/records.py` (modify — 200 vs 202 status flip on `duplicate`)
-- `backend/records/README.md` (modify — idempotency section)
-- `backend/tests/records/test_service.py` (modify — dedup test)
-- `backend/tests/records/test_postgres_adapter.py` (modify — adapter dedup test)
+- `backend/database/migrations/versions/0004_record_submissions.py`
+- `backend/records/models.py`
+- `backend/records/service.py`
+- `backend/records/service_models.py`
+- `backend/records/adapters/protocols.py`
+- `backend/records/adapters/in_memory.py`
+- `backend/records/adapters/postgres.py`
+- `backend/api/routers/records.py`
+- `backend/records/README.md`
+- `backend/tests/records/test_service.py`
+- `backend/tests/records/test_in_memory_store.py`
+- `backend/tests/records/test_postgres_store.py`
+- `backend/tests/api/test_records_router.py`
 
 ---
 
@@ -106,7 +108,7 @@
 ### Current State
 - `medicare_fraud_cms_desynpuf.yaml:349-380` declares `name: pde`, `record_type: pde_record`, `id_field: PDE_ID`, with a `record_schema`. The Tennessee subset materializer (`tools/sample_data/build_tennessee_subset.py`) references PDE rows.
 - **Update (2026-06-01):** the `pde` feed has since been **wired toward the Plan-C path** — it now declares `entities` and a `billed_for` `relationships` block (`medicare_fraud_cms_desynpuf.yaml:375`), so `map_batch` produces graph entities and edges rather than zero. A golden test asserts deterministic entity/relationship counts after the fan-out (`backend/tests/records/test_cms_ingestion.py:268` `test_pde_feed_creates_drug_claims_and_billed_for_edges`), alongside validation and column-count coverage.
-- Residual gap (why this is in-progress, not done): the feed declares no `observations` mapping; the wire-vs-drop **decision is not yet recorded** — `backend/records/README.md` has no "CMS feed inventory" section and `docs/architecture.md` §6.3 has no callout; and no `Done:` line cites the chosen path.
+- Residual gap (why this is in-progress, not done): the feed declares no `observations` mapping. The wire-vs-drop decision is now recorded in `backend/records/README.md` ("CMS Feed Inventory"), but `docs/architecture.md` §6.3 still has no callout and no final `Done:` line closes the story.
 
 ### Acceptance Criteria
 - [ ] Decision recorded in `backend/records/README.md` ("CMS feed inventory" section) and `docs/architecture.md` §6.3 callout: `pde` is either (a) dropped, or (b) wired end-to-end.
@@ -143,9 +145,9 @@
 **so that** CMS-scale files (1–10 GB) can be ingested without OOMing the API container and without raising the 413 cap to a memory-dangerous value.
 
 ### Current State
-- `upload_record_file` calls `content = await file.read()` (`backend/api/routers/records.py:75`) loading the entire payload before parsing.
+- `upload_record_file` now reads in 64 KiB chunks through `_read_upload_file_with_limit`, but still materializes the full payload as `bytes` before parsing.
 - `CsvFileSource.read_rows(raw: bytes)` (`backend/records/adapters/sources/file_source.py:23-48`) and `JsonlFileSource.read_rows(raw: bytes)` (`:54-77`) both take `bytes` and return a fully-materialized `list[dict[str, object]]`.
-- The 413 ceiling is governed by `ValidationConfig.max_file_size_mb` (default 100 MB; `backend/api/routers/records.py:77-82`) — raising it linearly raises API memory pressure.
+- The 413 ceiling is governed by `ValidationConfig.max_file_size_mb`; raising it still linearly raises API memory pressure because chunks are joined before parsing.
 - `RecordsService.register_records` takes a `list[dict[str, object]]` (`backend/records/service.py:30-35`) so the whole batch is in memory anyway — streaming only the parser stage is a no-op without a service refactor.
 
 ### Acceptance Criteria

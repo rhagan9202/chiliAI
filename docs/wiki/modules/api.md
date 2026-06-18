@@ -1,11 +1,11 @@
 # Module: api
 
-**Verified against codebase:** 2026-05-28
+**Verified against codebase:** 2026-06-16
 **Source:** `backend/api/`
 
 ## Purpose
 
-FastAPI gateway layer. Thin HTTP orchestration — no business logic in routers. Routes delegate to service modules via dependency injection. Owns: auth middleware, RBAC enforcement, SSE/WebSocket real-time push, and in-process read projections for alerts/cases/workflows.
+FastAPI gateway layer. Thin HTTP orchestration — no business logic in routers. Routes delegate to service modules via dependency injection. Owns: auth middleware, RBAC enforcement, SSE/WebSocket real-time push, and API-facing projections for alerts, knowledge bases, workflows, graph entities, chat, policy items, and analytics read models.
 
 Does **not** own: any business logic, data persistence, event processing.
 
@@ -39,13 +39,14 @@ api/
     graph.py              # /graph/entities/{id}
     rag.py                # /chat conversations + message streaming
     records.py            # /records file upload + api-push
-    workflows.py          # /workflows list
+    workflows.py          # /workflows list/detail/cancel
     analytics.py          # /analytics risk/timeseries/gnn/overview
     config.py             # /config/domain, /config/features, /config/domain/schema
     events.py             # /events/stream SSE
     ws.py                 # /ws/alerts and /ws/pipeline WebSocket hub
     investigation.py      # /investigation queries
-    policy.py             # Route policy introspection
+    policy.py             # /policy/items list/detail/triage
+    dev_seed.py           # /admin/dev-seed non-production fixture seeder
     _oidc_client.py       # OIDC PKCE helpers (internal to auth router)
 ```
 
@@ -133,16 +134,17 @@ The API maintains lightweight read projections for read-heavy surfaces. Persiste
 |--------|--------------|
 | `knowledgebases` | `IngestionServiceProtocol`, `GraphServiceProtocol`, `KnowledgeBaseRepository`, `ObjectStore`, `EventBus` |
 | `alerts` | `AlertProjectionRepository` |
-| `cases` | In-process stub (DI wired in `dependencies.py`) |
+| `cases` | `CaseService`, `CaseRepository` (in-memory or Postgres) |
 | `rag` | `RagServiceProtocol`, `ApiState` |
 | `records` | `RecordsServiceProtocol` |
 | `workflows` | `AgentServiceProtocol` |
-| `analytics` | `RiskServiceProtocol`, `TimeseriesServiceProtocol`, `GnnServiceProtocol`, plus `ApiState` dashboard/entity read models |
+| `analytics` | `RiskServiceProtocol`, `TimeseriesServiceProtocol`, `GnnServiceProtocol`, durable overview aggregation, plus remaining `ApiState` entity risk/timeseries composition |
 | `config` | `DomainConfig` (loaded once, LRU cached) |
 | `graph` | `GraphServiceProtocol` via dependency |
 | `auth` | `SessionStoreProtocol`, OIDC client, `DomainConfig.auth` |
 | `events` | `AlertProjectionRepository`, `AgentServiceProtocol`, `KnowledgeBaseRepository` |
-| `policy` | `ApiState` policy-gap and policy-brief read/write models |
+| `policy` | `PolicyService`, `PolicyItemRepository` (in-memory or Postgres) |
+| `dev_seed` | Writes deterministic non-production fixtures into the real repositories |
 
 ---
 
@@ -169,6 +171,9 @@ get_knowledge_base_repository() -> KnowledgeBaseRepository
 get_records_service(...) -> RecordsServiceProtocol
 get_agent_service(...) -> AgentServiceProtocol
 get_alert_repository(request) -> AlertProjectionRepository
+get_case_service(...) -> CaseService
+get_conversation_service(...) -> ConversationService
+get_policy_service(...) -> PolicyService
 get_session_store() -> SessionStoreProtocol
 ```
 

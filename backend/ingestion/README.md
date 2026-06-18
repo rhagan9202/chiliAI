@@ -21,7 +21,23 @@ Schema-driven LLM extractor introduced in the `feature/ingestion-pipeline-e2e-de
 
 ## Content-Hash Idempotency
 
-Document registration is idempotent per knowledge base. The ingestion service derives a deterministic `source_document_id` from the SHA-256 hash of the file content (or a URI hash for remote sources). Re-uploading the same bytes produces the same ID and does not publish a duplicate `documents.uploaded` event. The `DocumentUploadReceipt` includes a `replaced_document_id` field when an existing document with the same natural key was superseded (re-upload semantics).
+Document registration is idempotent per knowledge base. The ingestion service derives a deterministic `source_document_id` from the SHA-256 hash of file content (or a URI hash for remote sources). Re-uploading the same bytes produces the same ID and does not publish a duplicate `documents.uploaded` event; the returned `DocumentReceipt.enqueued` flag is `False` for that suppressed duplicate. The KB upload route starts a workflow only when at least one receipt is enqueued.
+
+The KB upload route computes the content hash before registration and records any existing `DocumentRecord` as a replacement candidate. Destructive replacement cleanup is deferred until `register_documents()` returns an enqueued receipt. Registration failures and deduplicated `enqueued=False` receipts preserve the existing document, graph/vector provenance, and object-store artifacts. When cleanup does run, graph/vector source-document data and old document-prefix objects are removed while the receipt's current `storage_key` is protected.
+
+## Upload and Remote Fetch Safety
+
+`POST /knowledgebases/{kb_id}/documents` validates the declared content type against `ValidationConfig.allowed_content_types` and reads uploads in 64 KiB chunks, raising 413 as soon as `max_file_size_mb` is exceeded. The ingestion-service layer still trusts `DocumentSubmission` inputs; MIME sniffing and service-level policy enforcement remain tracked in `docs/backlog/ingestion.md`.
+
+`HttpxRemoteDocumentFetcher` accepts HTTPS URIs only, follows redirects through `httpx.Client.stream()`, re-checks that the final URL is still HTTPS, validates malformed or negative `content-length` as `RemoteFetchError`, and enforces the byte cap while iterating response chunks.
+
+## Publish Recovery
+
+When a `documents.uploaded` publish fails after source bytes were stored, `IngestionService` can persist `IngestionRecoveryMarker` records through `IngestionRecoveryStore`. `replay_recovery_markers()` reconstructs `DocumentsUploadedEvent` from the marker and stored object metadata, and removes the marker only after the event bus accepts the replayed publish. The broader transactional outbox remains backlog work.
+
+## Failure Handling
+
+Every parse-stage failure is converted into a per-document `DocumentsFailedEvent` rather than escaping uncaught. `safe_parse_content`/`safe_parse_source` catch **any** exception (not only `ParserError`): a parser that raises mid-iteration (PDF `extract_text`, CSV/XLSX row iteration), an empty-content `ValidationError` from `ParsedDocument`, and any other unexpected error all become a typed `DocumentParseFailure`. The chosen approach is the **wrapper-level catch** in `orchestrators/parser.py` — individual parsers are not required to widen their own try-blocks. `IngestionService.ingest_task` additionally guards the object-store read so a missing/deleted source object (`KeyError`) produces a `DocumentParseFailure` and a published `DocumentsFailedEvent` instead of an uncaught exception. Unexpected (non-`ParserError`) failures are logged at error level with the `source_document_id` and exception class so they stay debuggable. One malformed document in a batch fails on its own; the rest of the batch is unaffected.
 
 ## Provenance Metadata
 

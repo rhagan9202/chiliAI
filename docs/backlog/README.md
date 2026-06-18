@@ -21,34 +21,36 @@
 | _observability.md | 12 | 1 | 0 | 13 | 0% |
 | _plugins.md | 16 | 0 | 0 | 16 | 0% |
 | _security.md | 12 | 0 | 0 | 12 | 0% |
-| agent.md | 20 | 0 | 0 | 20 | 0% |
+| agent.md | 19 | 0 | 1 | 20 | 5% |
 | analytics.md | 32 | 0 | 0 | 32 | 0% |
-| api.md | 29 | 0 | 0 | 29 | 0% |
+| api.md | 27 | 0 | 1 | 29 | 3% |
 | config.md | 15 | 0 | 0 | 15 | 0% |
 | database.md | 13 | 0 | 0 | 13 | 0% |
 | embeddings.md | 12 | 0 | 0 | 12 | 0% |
 | events.md | 14 | 2 | 0 | 16 | 0% |
 | frontend.md | 26 | 0 | 0 | 26 | 0% |
 | graph.md | 20 | 0 | 0 | 20 | 0% |
-| ingestion.md | 28 | 0 | 1 | 29 | 3% |
+| ingestion.md | 34 | 0 | 1 | 35 | 3% |
 | knowledgebases.md | 13 | 0 | 0 | 13 | 0% |
 | llm.md | 17 | 0 | 0 | 17 | 0% |
 | monitoring.md | 20 | 0 | 0 | 20 | 0% |
 | rag.md | 17 | 0 | 0 | 17 | 0% |
-| records.md | 12 | 1 | 0 | 13 | 0% |
+| records.md | 10 | 2 | 1 | 13 | 7% |
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 13 | 0 | 0 | 13 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 427 | 6 | 1 | 434 | 0% |
+| **Total** | 428 | 7 | 4 | 440 | 0% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
+> **Priority flag (ingestion):** take `ingestion.30` → `ingestion.31` first — they fix graph-corrupting relationship defects (Cartesian-fabricated edges; dropped edges for deduplicated entities) that propagate into RAG/analytics. `ingestion.32` (failure-event escape paths) is the next-most-urgent resilience bug. See [ingestion.md](ingestion.md) stories 30–35.
 <!-- BEGIN: ready-set -->
 - [_cicd.01] _cicd — size S — prereqs done
-- [agent.03] agent — size S — prereqs done
 - [api.26] api — size S — prereqs done
 - [frontend.22] frontend — size S — prereqs done
 - [ingestion.24] ingestion — size S — prereqs done
+- [ingestion.33] ingestion — size S — prereqs done
+- [ingestion.34] ingestion — size S — prereqs done
 - [shared.01] shared — size S — prereqs done
 - [shared.17] shared — size S — prereqs done
 - [_cicd.02] _cicd — size M — prereqs done
@@ -74,7 +76,11 @@
 - [frontend.13] frontend — size M — prereqs done
 - [frontend.14] frontend — size M — prereqs done
 - [ingestion.02] ingestion — size M — prereqs done
-- …22 more
+- [ingestion.30] ingestion — size M — prereqs done
+- [ingestion.32] ingestion — size M — prereqs done
+- [ingestion.35] ingestion — size M — prereqs done
+- [knowledgebases.03] knowledgebases — size M — prereqs done
+- …21 more
 <!-- END: ready-set -->
 
 ## Critical path

@@ -1,6 +1,6 @@
 # Module: records
 
-**Verified against codebase:** 2026-05-28
+**Verified against codebase:** 2026-06-16
 **Source:** `backend/records/`
 
 ## Purpose
@@ -32,9 +32,19 @@ class RawRecordStore(Protocol):
 
     def delete_by_kb(self, knowledge_base_id: str) -> int:
         """Delete all records for a knowledge base; return the count removed."""
+
+    def was_submitted(self, *, knowledge_base_id: str, submission_hash: str) -> bool:
+        """Return True if this submission hash was already registered for the KB."""
+
+    def record_submission(
+        self, *, knowledge_base_id: str, submission_hash: str, correlation_id: str
+    ) -> None:
+        """Record that a submission hash has been accepted for a KB."""
 ```
 
-`InMemoryRawRecordStore` additionally exposes `count_for_kb(kb_id) -> int` (test helper, not on the protocol). `PostgresRawRecordStore` also implements `delete_by_kb`.
+`InMemoryRawRecordStore` additionally exposes `count_for_kb(kb_id) -> int`
+(test helper, not on the protocol). `PostgresRawRecordStore` implements the
+protocol through `raw_records` plus `record_submissions`.
 
 ---
 
@@ -57,6 +67,10 @@ class RecordIngestReceipt(BaseModel):
     record_type: str
     correlation_id: str
     accepted_count: int      # >= 0
+    duplicate: bool = False
+    duplicate_count: int     # >= 0
+    rejected_count: int      # >= 0
+    rejected: list[RejectedRow] = []
     created_at: datetime
 ```
 
@@ -67,6 +81,9 @@ class RecordIngestReceipt(BaseModel):
 - `RawRecord` — individual persisted record row
 - `RecordBatch` — batch of raw records keyed by `correlation_id`
 - `content_hash_for(row)` — deterministic hash for deduplication
+- `submission_hash_for(feed_name, content_hashes)` — order-independent
+  whole-submission hash used for duplicate detection
+- `RejectedRow` — row-indexed format/schema rejection reported in receipts
 
 ---
 
@@ -74,10 +91,16 @@ class RecordIngestReceipt(BaseModel):
 
 ```python
 def coerce_row(row: Mapping[str, object], schema: dict[str, PropertyDefinition]) -> dict[str, object]: ...
+def validate_rows_partition(feed: RecordFeedConfig, rows: list[dict[str, object]]) -> tuple[list[dict[str, object]], list[RejectedRow]]: ...
 def validate_rows(feed: RecordFeedConfig, rows: list[dict[str, object]]) -> list[dict[str, object]]: ...
 ```
 
 Coerces string values to declared `PropertyDefinition` types, accepts CMS compact dates (`YYYYMMDD`) and slash dates (`M/D/YYYY` / `MM/DD/YYYY`), drops empty optional typed fields, validates each row against `RecordFeedConfig.record_schema`, and raises `RecordValidationError` with row-indexed errors on failure.
+
+`RecordsService.register_records()` uses `validate_rows_partition`, so valid
+rows can ingest while bad rows are returned as `RejectedRow` entries. The
+all-or-nothing `validate_rows` function remains available for callers/tests
+that need hard failure.
 
 ---
 
@@ -138,8 +161,20 @@ records/
     sources/
       file_source.py   # CsvFileSource, JsonlFileSource
     in_memory.py       # InMemoryRawRecordStore
-    postgres.py        # PostgresRawRecordStore (writes to raw_records table)
+    postgres.py        # PostgresRawRecordStore (raw_records + record_submissions)
 ```
+
+## Idempotency and Format Gates
+
+`RecordsService.register_records()` computes a `submission_hash_for` value
+before persisting. If the same KB has already registered the hash, the service
+returns `duplicate=True`, `accepted_count=0`, skips persistence, and publishes
+no `RecordsIngestedEvent`. The file and API-push routes return HTTP 200 for
+duplicate submissions; fresh submissions return HTTP 202.
+
+Each `RecordFeedConfig` has `accepted_formats` (default `["csv", "jsonl"]`).
+The file-upload route checks this after extension detection and returns HTTP
+415 when a feed rejects the uploaded format.
 
 ---
 
