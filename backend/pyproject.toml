@@ -22,7 +22,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "moto[s3]>=5.0",
-    "pyright>=1.1",
+    "pyright==1.1.409",
     "pytest>=8.0",
     "pytest-cov>=6.0",
     "ruff>=0.11",

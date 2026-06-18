@@ -28,6 +28,9 @@ jobs:
     # integration/e2e tests at the published localhost ports so they execute
     # against real services instead of self-skipping.
     env:
+      # Pin the pyright binary to match the version pinned in pyproject (dev extra)
+      # so the typecheck gate is deterministic and matches local development.
+      PYRIGHT_PYTHON_FORCE_VERSION: "1.1.409"
       DATABASE_URL: postgresql://chili:chili@localhost:5432/chili
       REDIS_URL: redis://localhost:6379
       CHILI_TEST_REDIS_URL: redis://localhost:6379
