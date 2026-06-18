@@ -31,7 +31,7 @@ describe('EvidencePanel', () => {
       />,
     )
     expect(screen.getByText(/select a node/i)).toBeInTheDocument()
-    expect(screen.getByText(/not yet implemented/i)).toBeInTheDocument()
+    expect(screen.getByText(/evidence data is shown/i)).toBeInTheDocument()
   })
 
   it('shows "no evidence" placeholder when entity is selected but no packs returned', () => {
