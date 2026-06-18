@@ -3,8 +3,12 @@ name: CI
 on:
   push:
     branches:
+      # prod is the repo's mainline/default branch; main is retained for legacy.
       - main
+      - prod
   pull_request:
+  # Manual trigger so CI can be run on demand against the default branch.
+  workflow_dispatch:
   # Nightly dependency-vulnerability sweep — catches newly-disclosed
   # advisories against pinned dependencies between human-driven CI runs.
   # 07:17 UTC offset to avoid the 00:00 hot-window. See BL-004.
