@@ -5,18 +5,18 @@ description = "chiliAI backend — FastAPI gateway, pipeline workers, and analyt
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    # Upper bounds below exclude library versions whose type stubs regress the
-    # strict-pyright gate (verified against the pinned pyright 1.1.409):
-    #   - starlette >= 1.2 makes TestClient request methods return Unknown
-    #   - redis >= 8 changes response stubs so existing casts read as unnecessary
-    # Revisit these caps deliberately (and fix the surfaced typing) when upgrading.
-    "fastapi>=0.115,<0.137",
-    "starlette>=1.0,<1.2",
+    "fastapi>=0.115",
+    # starlette >= 1.3.1 fixes CVE-2026-54282/54283. Its newer TestClient stubs
+    # type request methods as Unknown, which only affects test code; that noise is
+    # scoped off via the tests executionEnvironment in [tool.pyright] below.
+    "starlette>=1.3.1",
     "httpx>=0.28",
     "openpyxl>=3.1",
     "python-multipart>=0.0.9",
     "uvicorn[standard]>=0.34",
     "pypdf>=5.4",
+    # redis < 8: the 8.x response stubs change types so existing casts read as
+    # unnecessary (reportUnnecessaryCast). No redis CVE requires the upgrade.
     "redis>=5.0,<8",
     "pydantic>=2.0",
     "pyyaml>=6.0",
@@ -166,3 +166,14 @@ include = [
     "../tools",
 ]
 exclude = ["**/__pycache__", "chili_backend.egg-info"]
+
+# starlette >= 1.3.x types TestClient request methods (.get/.post/...) as Unknown,
+# which cascades reportUnknown* errors through every test that calls the client.
+# This is third-party stub noise confined to test code — production modules stay
+# fully strict. Scope just those three rules off under tests/ (everything else,
+# incl. missing-imports and general type issues, remains strict for tests).
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
