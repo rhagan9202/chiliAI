@@ -1,5 +1,7 @@
 # chiliAI
 
+[![CI](https://github.com/rhagan9202/chiliAI/actions/workflows/ci.yml/badge.svg?branch=prod)](https://github.com/rhagan9202/chiliAI/actions/workflows/ci.yml)
+
 A **domain-reconfigurable Graph RAG analytics platform**. Combines knowledge-graph construction, vector-based retrieval-augmented generation, graph neural networks, time-series analysis, anomaly detection, and explainable AI in a loosely coupled, modular system operated through a browser-based analyst workbench.
 
 > For the full architecture and design, see [`docs/architecture.md`](docs/architecture.md).
