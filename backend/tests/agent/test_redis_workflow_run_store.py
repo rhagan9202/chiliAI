@@ -648,9 +648,12 @@ def test_redis_workflow_run_store_real_redis_contract() -> None:
         assert store.list_runs(knowledge_base_id="kb-real-2").items == []
         assert store.list_runs(status=WorkflowRunStatus.COMPLETED).items == []
     finally:
+        cleanup_client = store.client
         try:
-            keys = list(store._client.scan_iter(match=f"{key_prefix}*"))
+            keys: list[str] = list(
+                cleanup_client.scan_iter(match=f"{key_prefix}*")  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # redis-py stub gap
+            )
             if keys:
-                store._client.delete(*keys)
+                cleanup_client.delete(*keys)  # pyright: ignore[reportUnknownMemberType]  # redis-py stub gap
         except RedisError:
             pass

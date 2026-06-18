@@ -6,6 +6,7 @@ import json
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import cast
 
 from pydantic import ValidationError
 
@@ -35,13 +36,6 @@ class StagePolicy:
     def __post_init__(self) -> None:
         if self.timeout_seconds is not None and self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be greater than zero.")
-        if not isinstance(self.fatal_exception_types, tuple):
-            object.__setattr__(
-                self, "fatal_exception_types", tuple(self.fatal_exception_types)
-            )
-        for exception_type in self.fatal_exception_types:
-            if not issubclass(exception_type, BaseException):
-                raise TypeError("fatal_exception_types must contain exception types.")
 
 
 class StagePolicyRegistry:
@@ -98,8 +92,9 @@ def load_stage_policy_registry_from_env(
     if not isinstance(parsed, dict):
         raise AgentConfigurationError(f"{STAGE_POLICY_ENV_VAR} must be a JSON object.")
 
+    parsed_obj = cast("dict[object, object]", parsed)
     policies: dict[str, StagePolicy] = {}
-    for event_type, value in parsed.items():
+    for event_type, value in parsed_obj.items():
         if not isinstance(event_type, str) or event_type.strip() == "":
             raise AgentConfigurationError(
                 f"{STAGE_POLICY_ENV_VAR} keys must be non-empty event type strings."
@@ -108,7 +103,9 @@ def load_stage_policy_registry_from_env(
             raise AgentConfigurationError(
                 f"{STAGE_POLICY_ENV_VAR}[{event_type!r}] must be a JSON object."
             )
-        policies[event_type] = _parse_stage_policy(event_type, value)
+        policies[event_type] = _parse_stage_policy(
+            event_type, cast("Mapping[str, object]", value)
+        )
     return StagePolicyRegistry(
         policies,
         default_retry_policy=default_retry_policy,

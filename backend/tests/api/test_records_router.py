@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from api.app import create_app
 from api.dependencies import get_knowledge_base_repository, get_raw_record_store
-from api.routers.records import _read_upload_file_with_limit
+from api.routers.records import read_upload_file_with_limit
 from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from records.adapters.in_memory import InMemoryRawRecordStore
 from shared.types import KnowledgeBase
@@ -398,7 +398,7 @@ def test_record_upload_reader_stops_when_size_limit_is_exceeded() -> None:
     upload = ChunkedUpload()
 
     async def read_upload() -> None:
-        await _read_upload_file_with_limit(
+        await read_upload_file_with_limit(
             cast(UploadFile, upload),
             max_bytes=3,
             detail="too large",

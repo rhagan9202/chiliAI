@@ -9,7 +9,6 @@ import pytest
 from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.exceptions import (
     AgentConfigurationError,
-    AgentStateStoreError,
     IdempotencyKeyConflictError,
     WorkflowAlreadyTerminalError,
     WorkflowRunNotFoundError,

@@ -38,7 +38,7 @@ class RecordPushRequest(BaseModel):
     rows: list[dict[str, object]] = Field(min_length=1)
 
 
-async def _read_upload_file_with_limit(
+async def read_upload_file_with_limit(
     upload: UploadFile,
     *,
     max_bytes: int,
@@ -162,7 +162,7 @@ async def upload_record_file(
             ),
         )
     validation = config.validation or ValidationConfig()
-    content = await _read_upload_file_with_limit(
+    content = await read_upload_file_with_limit(
         file,
         max_bytes=validation.max_file_size_mb * 1024 * 1024,
         detail=f"File exceeds the configured {validation.max_file_size_mb} MB limit.",

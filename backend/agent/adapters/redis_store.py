@@ -51,6 +51,11 @@ class RedisWorkflowRunStore:
         self._prefix = key_prefix
         self._health_timeout_seconds = health_timeout_seconds
 
+    @property
+    def client(self) -> Redis:
+        """Underlying Redis client (exposed for health checks and test cleanup)."""
+        return self._client
+
     def save_run(self, run: WorkflowRun) -> WorkflowRun:
         previous = self._get_optional(run.workflow_id)
         claimed_idempotency_key: str | None = None
@@ -290,7 +295,7 @@ class RedisWorkflowRunStore:
     def check_health(self) -> StoreHealth:
         started_at = monotonic()
         try:
-            self._client.ping()
+            self._client.ping()  # pyright: ignore[reportUnknownMemberType]  # redis-py stub gap
         except RedisError as exc:
             return StoreHealth(
                 status="unhealthy",

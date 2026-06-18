@@ -102,7 +102,7 @@ router = APIRouter(prefix="/knowledgebases", tags=["knowledge-bases"])
 _UPLOAD_READ_CHUNK_SIZE = 64 * 1024
 
 
-async def _read_upload_file_with_limit(
+async def read_upload_file_with_limit(
     upload: UploadFile,
     *,
     max_bytes: int,
@@ -139,7 +139,9 @@ def _cleanup_replaced_document(
     try:
         graph_service.delete_by_source_document(knowledge_base_id, replacement.id)
         vector_service.delete_by_source_document(knowledge_base_id, replacement.id)
-        protected_keys = {receipt.storage_key} if receipt.storage_key is not None else set()
+        protected_keys: set[str] = (
+            {receipt.storage_key} if receipt.storage_key is not None else set()
+        )
         prefix = f"knowledgebases/{knowledge_base_id}/documents/{replacement.id}/"
         for key in object_store.list_keys(prefix):
             if key not in protected_keys:
@@ -450,7 +452,7 @@ async def register_knowledge_base_documents(
                 detail=f"Content type '{upload.content_type}' not allowed.",
             )
 
-        content = await _read_upload_file_with_limit(
+        content = await read_upload_file_with_limit(
             upload,
             max_bytes=max_bytes,
             detail=(

@@ -106,6 +106,11 @@ from storage.adapters.in_memory import InMemoryObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 
 
+def _reconcile_zero(**_: object) -> int:
+    """Typed no-op stand-in for ``WorkflowEventTracker.reconcile_stale_runs``."""
+    return 0
+
+
 def test_worker_event_types_include_kb_ready_for_workflow_tracking() -> None:
     assert "kb.ready" in WORKER_EVENT_TYPES
 
@@ -3981,7 +3986,7 @@ def test_run_worker_passes_configured_stage_policy_registry(
         "agent.coordinator.build_worker_dependencies",
         lambda: SimpleNamespace(
             ingestion_service=SimpleNamespace(replay_recovery_markers=lambda: 0),
-            workflow_tracker=SimpleNamespace(reconcile_stale_runs=lambda **_: 0),
+            workflow_tracker=SimpleNamespace(reconcile_stale_runs=_reconcile_zero),
             event_settings=SimpleNamespace(backend="in-memory"),
         ),
     )
@@ -4049,7 +4054,7 @@ def test_run_worker_replays_recovery_markers_before_drain(
         "agent.coordinator.build_worker_dependencies",
         lambda: SimpleNamespace(
             ingestion_service=FakeIngestionService(),
-            workflow_tracker=SimpleNamespace(reconcile_stale_runs=lambda **_: 0),
+            workflow_tracker=SimpleNamespace(reconcile_stale_runs=_reconcile_zero),
             event_settings=SimpleNamespace(backend="in-memory"),
         ),
     )
@@ -4110,7 +4115,7 @@ def test_run_worker_retries_recovery_replay_failure_before_drain(
         "agent.coordinator.build_worker_dependencies",
         lambda: SimpleNamespace(
             ingestion_service=FakeIngestionService(),
-            workflow_tracker=SimpleNamespace(reconcile_stale_runs=lambda **_: 0),
+            workflow_tracker=SimpleNamespace(reconcile_stale_runs=_reconcile_zero),
             event_settings=SimpleNamespace(backend="in-memory"),
         ),
     )

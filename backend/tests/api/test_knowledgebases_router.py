@@ -49,7 +49,7 @@ from graph.models import GraphDeleteByProvenance, GraphMetrics
 from shared.types import KnowledgeBase
 from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore
-from api.routers.knowledgebases import _read_upload_file_with_limit
+from api.routers.knowledgebases import read_upload_file_with_limit
 from vectorstore.service_models import VectorDeleteResponse
 
 
@@ -961,7 +961,7 @@ def test_document_upload_reader_stops_when_size_limit_is_exceeded() -> None:
     upload = ChunkedUpload()
 
     async def read_upload() -> None:
-        await _read_upload_file_with_limit(
+        await read_upload_file_with_limit(
             cast(UploadFile, upload),
             max_bytes=3,
             detail="too large",
