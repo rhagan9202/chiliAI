@@ -5,13 +5,19 @@ description = "chiliAI backend — FastAPI gateway, pipeline workers, and analyt
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.115",
+    # Upper bounds below exclude library versions whose type stubs regress the
+    # strict-pyright gate (verified against the pinned pyright 1.1.409):
+    #   - starlette >= 1.2 makes TestClient request methods return Unknown
+    #   - redis >= 8 changes response stubs so existing casts read as unnecessary
+    # Revisit these caps deliberately (and fix the surfaced typing) when upgrading.
+    "fastapi>=0.115,<0.137",
+    "starlette>=1.0,<1.2",
     "httpx>=0.28",
     "openpyxl>=3.1",
     "python-multipart>=0.0.9",
     "uvicorn[standard]>=0.34",
     "pypdf>=5.4",
-    "redis>=5.0",
+    "redis>=5.0,<8",
     "pydantic>=2.0",
     "pyyaml>=6.0",
     "python-docx>=1.1",
