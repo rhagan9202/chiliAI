@@ -5,6 +5,8 @@ from __future__ import annotations
 from ingestion.models import (
     CandidateEntity,
     CandidateRelationship,
+    Chunk,
+    ChunkMetadata,
     ExtractionResult,
 )
 from ingestion.validator import ExtractionResultValidator
@@ -13,6 +15,7 @@ from shared.provenance import (
     SOURCE_DOCUMENT_ID_KEY,
     SOURCE_KIND_DOCUMENT,
     SOURCE_KIND_KEY,
+    SOURCE_KIND_RECORD,
 )
 from shared.types import EntityDefinition, PropertyDefinition, PropertyType, RelationshipDefinition
 
@@ -124,6 +127,33 @@ def test_built_relationship_carries_document_provenance() -> None:
     assert rel.metadata[SOURCE_KIND_KEY] == SOURCE_KIND_DOCUMENT
     assert rel.metadata[SOURCE_DOCUMENT_ID_KEY] == "doc-1"
     assert rel.metadata[SOURCE_CHUNK_ID_KEY] == "chunk-7"
+
+
+def test_record_derived_entities_and_relationships_carry_record_provenance() -> None:
+    """Candidates anchored on a record-derived chunk carry source_kind=record."""
+    validator = _make_validator()
+    record_chunk = Chunk(
+        id="chunk-7",
+        content="record 0",
+        metadata=ChunkMetadata(
+            source_document_id="doc-1",
+            chunk_index=0,
+            source_kind=SOURCE_KIND_RECORD,
+        ),
+    )
+    extraction = ExtractionResult(
+        id="extract-1",
+        source_document_id="doc-1",
+        chunks=[record_chunk],
+        candidate_entities=[_candidate_claim(), _candidate_entity()],
+        candidate_relationships=[_candidate_relationship()],
+    )
+    report = validator.validate_extraction(extraction)
+
+    assert {entity.metadata[SOURCE_KIND_KEY] for entity in report.valid_entities} == {
+        SOURCE_KIND_RECORD
+    }
+    assert report.valid_relationships[0].metadata[SOURCE_KIND_KEY] == SOURCE_KIND_RECORD
 
 
 def test_entity_provenance_does_not_overwrite_extra_candidate_metadata() -> None:

@@ -239,18 +239,35 @@ class LlmDocumentExtractor:
 
 	def extract_document(self, chunking_result: ChunkingResult) -> ExtractionResult:
 		all_candidates: list[CandidateEntity] = []
+		all_relationships: list[CandidateRelationship] = []
 		warnings: list[str] = []
-		seen_natural_keys: dict[str, set[tuple[object, ...]]] = {}
+		survivor_by_key: dict[tuple[str, tuple[object, ...]], CandidateEntity] = {}
+		# Maps every candidate id (including deduplicated duplicates) to the id of
+		# the surviving candidate for its (type, natural_key), so relationships
+		# found in any chunk resolve to the document-level survivor (ingestion.31).
+		id_remap: dict[str, str] = {}
+		merged_chunks: dict[str, list[str]] = {}
 
 		for chunk in chunking_result.chunks:
-			chunk_candidates, chunk_warnings = self._extract_chunk(chunking_result, chunk)
+			chunk_candidates, chunk_relationships, chunk_warnings = self._extract_chunk(
+				chunking_result, chunk
+			)
 			warnings.extend(chunk_warnings)
 			for candidate in chunk_candidates:
-				if self._is_duplicate(candidate, seen_natural_keys):
-					continue
-				all_candidates.append(candidate)
+				survivor = self._register_candidate(candidate, survivor_by_key, merged_chunks)
+				id_remap[candidate.id] = survivor.id
+				if survivor is candidate:
+					all_candidates.append(candidate)
+			all_relationships.extend(chunk_relationships)
 
-		all_relationships = self._extract_relationships(chunking_result, all_candidates)
+		for candidate in all_candidates:
+			contributing_chunks = merged_chunks.get(candidate.id)
+			if contributing_chunks is not None:
+				candidate.metadata["merged_chunk_ids"] = contributing_chunks
+
+		resolved_relationships = self._resolve_relationship_endpoints(
+			all_relationships, id_remap, warnings
+		)
 
 		return ExtractionResult(
 			id=generate_id(),
@@ -258,7 +275,7 @@ class LlmDocumentExtractor:
 			parsed_document_id=chunking_result.parsed_document_id,
 			chunks=chunking_result.chunks,
 			candidate_entities=all_candidates,
-			candidate_relationships=all_relationships,
+			candidate_relationships=resolved_relationships,
 			warnings=warnings,
 		)
 
@@ -266,7 +283,7 @@ class LlmDocumentExtractor:
 		self,
 		chunking_result: ChunkingResult,
 		chunk: Chunk,
-	) -> tuple[list[CandidateEntity], list[str]]:
+	) -> tuple[list[CandidateEntity], list[CandidateRelationship], list[str]]:
 		prompt = self._build_prompt(chunk.content)
 		try:
 			result = self._client.generate(
@@ -283,37 +300,192 @@ class LlmDocumentExtractor:
 				)
 			)
 		except LlmProviderError as exc:
-			return [], [f"LLM extraction failed for chunk {chunk.id}: {exc}"]
+			return [], [], [f"LLM extraction failed for chunk {chunk.id}: {exc}"]
 
 		try:
 			parsed: object = json.loads(_strip_json_fences(result.completion))
 		except json.JSONDecodeError as exc:
-			return [], [f"LLM returned non-JSON for chunk {chunk.id}: {exc}"]
+			return [], [], [f"LLM returned non-JSON for chunk {chunk.id}: {exc}"]
 
 		if not isinstance(parsed, dict):
-			return [], [f"LLM returned non-object JSON for chunk {chunk.id}."]
+			return [], [], [f"LLM returned non-object JSON for chunk {chunk.id}."]
 
 		payload = cast(dict[str, object], parsed)
+		candidates, index_to_candidate, warnings = self._parse_entities(
+			chunking_result, chunk, payload
+		)
+		relationships, relationship_warnings = self._parse_relationships(
+			chunking_result, chunk, payload, index_to_candidate
+		)
+		warnings.extend(relationship_warnings)
+		return candidates, relationships, warnings
+
+	def _parse_entities(
+		self,
+		chunking_result: ChunkingResult,
+		chunk: Chunk,
+		payload: dict[str, object],
+	) -> tuple[list[CandidateEntity], list[CandidateEntity | None], list[str]]:
+		"""Build candidates and an index-aligned map (``None`` where dropped).
+
+		The index map mirrors the raw ``entities`` array positions so the
+		relationship pass can resolve ``source_index``/``target_index`` even when
+		some entities were dropped during validation.
+		"""
+
 		raw_entities_field = payload.get("entities")
 		if raw_entities_field is None:
-			return [], []
+			return [], [], []
 		if not isinstance(raw_entities_field, list):
-			return [], [f"LLM 'entities' field is not a list for chunk {chunk.id}."]
+			return [], [], [f"LLM 'entities' field is not a list for chunk {chunk.id}."]
 
 		entity_list = cast(list[object], raw_entities_field)
 		candidates: list[CandidateEntity] = []
-		chunk_warnings: list[str] = []
+		index_to_candidate: list[CandidateEntity | None] = []
+		warnings: list[str] = []
 		for raw_entity in entity_list:
 			if not isinstance(raw_entity, dict):
-				chunk_warnings.append(f"Skipping non-object entity in chunk {chunk.id}.")
+				warnings.append(f"Skipping non-object entity in chunk {chunk.id}.")
+				index_to_candidate.append(None)
 				continue
 			typed_entity = cast(dict[str, object], raw_entity)
 			entity, warning = self._build_candidate(chunking_result, chunk, typed_entity)
+			index_to_candidate.append(entity)
 			if entity is not None:
 				candidates.append(entity)
 			elif warning is not None:
-				chunk_warnings.append(warning)
-		return candidates, chunk_warnings
+				warnings.append(warning)
+		return candidates, index_to_candidate, warnings
+
+	def _parse_relationships(
+		self,
+		chunking_result: ChunkingResult,
+		chunk: Chunk,
+		payload: dict[str, object],
+		index_to_candidate: list[CandidateEntity | None],
+	) -> tuple[list[CandidateRelationship], list[str]]:
+		"""Build relationships from the model's ``relationships`` array.
+
+		Each entry references entities by their position in the chunk's
+		``entities`` array. Out-of-range indices, endpoints dropped during entity
+		validation, unknown relationship types, and endpoint-type mismatches are
+		dropped with a warning rather than silently fabricated.
+		"""
+
+		raw_field = payload.get("relationships")
+		if raw_field is None:
+			return [], []
+		if not isinstance(raw_field, list):
+			return [], [f"LLM 'relationships' field is not a list for chunk {chunk.id}."]
+
+		relationship_list = cast(list[object], raw_field)
+		relationships: list[CandidateRelationship] = []
+		warnings: list[str] = []
+		for raw_relationship in relationship_list:
+			relationship, warning = self._build_relationship(
+				chunking_result, chunk, raw_relationship, index_to_candidate
+			)
+			if relationship is not None:
+				relationships.append(relationship)
+			elif warning is not None:
+				warnings.append(warning)
+		return relationships, warnings
+
+	def _build_relationship(
+		self,
+		chunking_result: ChunkingResult,
+		chunk: Chunk,
+		raw: object,
+		index_to_candidate: list[CandidateEntity | None],
+	) -> tuple[CandidateRelationship | None, str | None]:
+		if not isinstance(raw, dict):
+			return None, f"Skipping non-object relationship in chunk {chunk.id}."
+		typed = cast(dict[str, object], raw)
+		rel_type = typed.get("type")
+		source_index = typed.get("source_index")
+		target_index = typed.get("target_index")
+		if (
+			not isinstance(rel_type, str)
+			or isinstance(source_index, bool)
+			or isinstance(target_index, bool)
+			or not isinstance(source_index, int)
+			or not isinstance(target_index, int)
+		):
+			return None, f"Skipping malformed relationship in chunk {chunk.id}."
+
+		rel_def = next(
+			(definition for definition in self._relationship_definitions if definition.name == rel_type),
+			None,
+		)
+		if rel_def is None:
+			return None, f"Unknown relationship type '{rel_type}' in chunk {chunk.id}."
+
+		count = len(index_to_candidate)
+		if not (0 <= source_index < count) or not (0 <= target_index < count):
+			return None, (
+				f"Relationship '{rel_type}' in chunk {chunk.id} references an "
+				f"out-of-range entity index; skipping."
+			)
+
+		source = index_to_candidate[source_index]
+		target = index_to_candidate[target_index]
+		if source is None or target is None:
+			return None, (
+				f"Relationship '{rel_type}' in chunk {chunk.id} references a "
+				f"dropped entity; skipping."
+			)
+		if source.id == target.id:
+			return None, (
+				f"Skipping self-referential relationship '{rel_type}' in chunk {chunk.id}."
+			)
+		if source.type != rel_def.source or target.type != rel_def.target:
+			return None, (
+				f"Relationship '{rel_type}' in chunk {chunk.id} endpoint types "
+				f"({source.type} -> {target.type}) do not match definition "
+				f"({rel_def.source} -> {rel_def.target}); skipping."
+			)
+
+		return CandidateRelationship(
+			id=generate_id(),
+			source_document_id=chunking_result.source_document_id,
+			chunk_id=chunk.id,
+			type=rel_type,
+			source_candidate_id=source.id,
+			target_candidate_id=target.id,
+			confidence=min(source.confidence, target.confidence),
+			extraction_method=self._extraction_method,
+			evidence=self._model_relationship_evidence(chunk, typed, source, target, rel_type),
+			metadata={
+				"source_entity_type": source.type,
+				"target_entity_type": target.type,
+			},
+		), None
+
+	@staticmethod
+	def _model_relationship_evidence(
+		chunk: Chunk,
+		raw: dict[str, object],
+		source: CandidateEntity,
+		target: CandidateEntity,
+		rel_type: str,
+	) -> list[ExtractionEvidence]:
+		quote = raw.get("evidence")
+		if isinstance(quote, str) and quote.strip():
+			return [
+				ExtractionEvidence(
+					chunk_id=chunk.id,
+					quote=quote,
+					rationale=f"Model-asserted '{rel_type}' relationship.",
+				)
+			]
+		return [
+			ExtractionEvidence(
+				chunk_id=chunk.id,
+				rationale=(
+					f"Model-asserted '{rel_type}' between '{source.type}' and '{target.type}'."
+				),
+			)
+		]
 
 	def _build_prompt(self, content: str) -> dict[str, str]:
 		entity_schemas = [
@@ -334,8 +506,13 @@ class LlmDocumentExtractor:
 			"You extract structured entities and relationships from text. "
 			"Output strict JSON of the form "
 			'{"entities": [{"type": "...", "properties": {...}}], '
-			'"relationships": [{"type": "...", "source_index": 0, "target_index": 1}]}. '
-			"Use only entity types listed in the schema. Omit fields you cannot find."
+			'"relationships": [{"type": "...", "source_index": 0, "target_index": 1, '
+			'"evidence": "supporting quote"}]}. '
+			"source_index and target_index refer to positions in the entities array "
+			"you return. Only emit relationships explicitly supported by the text; "
+			"omit any you cannot ground. Use only entity and relationship types listed "
+			"in the schema. Use only the property names listed in the schema for each "
+			"entity type; do not invent properties. Omit fields you cannot find."
 		)
 		user = (
 			f"Entity schemas: {json.dumps(entity_schemas)}\n"
@@ -383,56 +560,72 @@ class LlmDocumentExtractor:
 			metadata={"llm_model": self._model_name},
 		), None
 
-	def _is_duplicate(
+	def _register_candidate(
 		self,
 		candidate: CandidateEntity,
-		seen: dict[str, set[tuple[object, ...]]],
-	) -> bool:
+		survivor_by_key: dict[tuple[str, tuple[object, ...]], CandidateEntity],
+		merged_chunks: dict[str, list[str]],
+	) -> CandidateEntity:
+		"""Return the surviving candidate for ``candidate``'s natural key.
+
+		Returns ``candidate`` itself when it has no natural key (cannot be
+		deduplicated) or is the first occurrence of its key; otherwise returns the
+		previously-seen survivor and records ``candidate``'s chunk as a
+		contributing chunk on it.
+		"""
+
 		key_fields = self._natural_keys.get(candidate.type)
 		if not key_fields:
-			return False
+			return candidate
 		try:
-			key = tuple(candidate.properties[f] for f in key_fields)
+			key = (candidate.type, tuple(candidate.properties[f] for f in key_fields))
 		except KeyError:
-			return False
-		bucket = seen.setdefault(candidate.type, set())
-		if key in bucket:
-			return True
-		bucket.add(key)
-		return False
+			return candidate
+		survivor = survivor_by_key.get(key)
+		if survivor is None:
+			survivor_by_key[key] = candidate
+			merged_chunks[candidate.id] = [candidate.chunk_id]
+			return candidate
+		contributing_chunks = merged_chunks.setdefault(survivor.id, [survivor.chunk_id])
+		if candidate.chunk_id not in contributing_chunks:
+			contributing_chunks.append(candidate.chunk_id)
+		return survivor
 
-	def _extract_relationships(
-		self,
-		chunking_result: ChunkingResult,
-		candidates: list[CandidateEntity],
+	@staticmethod
+	def _resolve_relationship_endpoints(
+		relationships: list[CandidateRelationship],
+		id_remap: dict[str, str],
+		warnings: list[str],
 	) -> list[CandidateRelationship]:
-		"""Intra-chunk relationship pass — mirrors PatternDocumentExtractor's behavior."""
+		"""Re-point relationship endpoints onto surviving deduplicated candidates.
 
-		relationships: list[CandidateRelationship] = []
-		for chunk in chunking_result.chunks:
-			chunk_candidates = [c for c in candidates if c.chunk_id == chunk.id]
-			for rel_def in self._relationship_definitions:
-				sources = [c for c in chunk_candidates if c.type == rel_def.source]
-				targets = [c for c in chunk_candidates if c.type == rel_def.target]
-				for source in sources:
-					for target in targets:
-						if source.id == target.id:
-							continue
-						relationships.append(
-							CandidateRelationship(
-								id=generate_id(),
-								source_document_id=chunking_result.source_document_id,
-								chunk_id=chunk.id,
-								type=rel_def.name,
-								source_candidate_id=source.id,
-								target_candidate_id=target.id,
-								confidence=min(source.confidence, target.confidence),
-								extraction_method=self._extraction_method,
-								evidence=[],
-								metadata={},
-							)
-						)
-		return relationships
+		Endpoints with no remap entry keep their original id (no regression for
+		entities that cannot be deduplicated). Edges that collapse onto a single
+		survivor become self-loops and are dropped.
+		"""
+
+		resolved: list[CandidateRelationship] = []
+		for relationship in relationships:
+			source_id = id_remap.get(relationship.source_candidate_id, relationship.source_candidate_id)
+			target_id = id_remap.get(relationship.target_candidate_id, relationship.target_candidate_id)
+			if source_id == target_id:
+				warnings.append(
+					f"Dropping self-referential '{relationship.type}' relationship "
+					f"after entity deduplication."
+				)
+				continue
+			if (
+				source_id == relationship.source_candidate_id
+				and target_id == relationship.target_candidate_id
+			):
+				resolved.append(relationship)
+			else:
+				resolved.append(
+					relationship.model_copy(
+						update={"source_candidate_id": source_id, "target_candidate_id": target_id}
+					)
+				)
+		return resolved
 
 
 def create_document_extractor(

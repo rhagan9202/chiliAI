@@ -13,6 +13,7 @@ from typing import cast
 
 from pydantic import BaseModel, Field, model_validator
 
+from shared.provenance import SOURCE_KIND_DOCUMENT
 from shared.types import Entity, Relationship
 from shared.utils import utc_now
 
@@ -110,6 +111,7 @@ class ChunkMetadata(BaseModel):
     end_offset: int | None = Field(default=None, ge=0)
     page_number: int | None = Field(default=None, gt=0)
     section_heading: str | None = None
+    source_kind: str = SOURCE_KIND_DOCUMENT
     parser_metadata: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -218,6 +220,7 @@ class ValidationReport(BaseModel):
     )
     entity_errors: dict[str, list[str]] = Field(default_factory=dict)
     relationship_errors: dict[str, list[str]] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
     validated_at: datetime = Field(default_factory=utc_now)
 
 

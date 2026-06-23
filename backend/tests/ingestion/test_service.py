@@ -168,7 +168,7 @@ def test_register_documents_ignores_unrelated_objects_under_document_prefix() ->
         content=b'{"claim_id": "42"}',
         content_type="application/json",
     )
-    source_document_id = "doc-sha256-" + sha256(submission.content or b"").hexdigest()[:24]
+    source_document_id = "doc-sha256-" + sha256(submission.content or b"").hexdigest()
     object_store.put_bytes(
         f"knowledgebases/kb-1/documents/{source_document_id}/parsed.json",
         b"{}",
@@ -396,6 +396,62 @@ def test_replay_recovery_markers_leaves_marker_when_publish_fails() -> None:
         service.replay_recovery_markers()
 
     assert recovery_store.list_markers() == [marker]
+
+
+def test_register_documents_uses_full_content_digest_for_id() -> None:
+    """Document identity uses the full SHA-256 digest, not a truncated prefix.
+
+    Regression for ingestion.33: a 24-hex (96-bit) prefix could collide and
+    silently route a new upload into the dedup path. The id must retain the
+    full digest so no identity information is discarded.
+    """
+    service, _, _ = _service()
+    content = b'{"claim_id": "42"}'
+
+    receipts = service.register_documents(
+        "kb-1",
+        [DocumentSubmission(filename="c.json", content=content, content_type="application/json")],
+    )
+
+    assert receipts[0].source_document_id == "doc-sha256-" + sha256(content).hexdigest()
+
+
+def test_register_documents_uses_full_uri_digest_for_id() -> None:
+    """Remote-URI identity also uses the full SHA-256 digest (ingestion.33)."""
+    service, _, _ = _service()
+    uri = "https://example.test/policy.json"
+
+    receipts = service.register_documents(
+        "kb-1",
+        [DocumentSubmission(uri=uri, content_type="application/json")],
+    )
+
+    assert receipts[0].source_document_id == "doc-uri-" + sha256(uri.encode("utf-8")).hexdigest()
+
+
+def test_register_documents_distinguishes_contents_sharing_a_digest_prefix() -> None:
+    """Contents whose digests share a 24-hex prefix still get distinct ids.
+
+    Real SHA-256 prefix collisions are infeasible to construct, so this guards
+    the property directly: identity is the full digest, so any two distinct
+    contents map to distinct ids and the dedup path is never falsely entered.
+    """
+    service, _, _ = _service()
+    first = b'{"claim_id": "a"}'
+    second = b'{"claim_id": "b"}'
+
+    first_receipts = service.register_documents(
+        "kb-1",
+        [DocumentSubmission(filename="a.json", content=first, content_type="application/json")],
+    )
+    second_receipts = service.register_documents(
+        "kb-1",
+        [DocumentSubmission(filename="b.json", content=second, content_type="application/json")],
+    )
+
+    assert first_receipts[0].source_document_id != second_receipts[0].source_document_id
+    assert first_receipts[0].source_document_id == "doc-sha256-" + sha256(first).hexdigest()
+    assert second_receipts[0].source_document_id == "doc-sha256-" + sha256(second).hexdigest()
 
 
 def test_register_documents_deduplicates_repeated_remote_uri() -> None:

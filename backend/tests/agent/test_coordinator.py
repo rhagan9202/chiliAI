@@ -68,6 +68,7 @@ from events.types import (
     ChunkedDocumentReference,
     DocumentFailureReference,
     DocumentsChunkedEvent,
+    DocumentsExtractionWarningEvent,
     DocumentsFailedEvent,
     DocumentsParsedEvent,
     EmbeddingsCompleteDocumentReference,
@@ -93,7 +94,12 @@ from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.service import create_graph_service
 from ingestion.chunker import ChunkingResult, create_document_chunker
 from ingestion.extractor import create_document_extractor
-from ingestion.models import ExtractionResult, ParsedDocument, ValidationReport
+from ingestion.models import (
+    CandidateEntity,
+    ExtractionResult,
+    ParsedDocument,
+    ValidationReport,
+)
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
@@ -101,7 +107,7 @@ from ingestion.recovery import ObjectStoreIngestionRecoveryStore
 from ingestion.service import IngestionService
 from ingestion.service_models import DocumentSubmission
 from ingestion.validator import create_extraction_validator
-from shared.types import Entity
+from shared.types import Entity, EntityDefinition, PropertyDefinition, PropertyType
 from storage.adapters.in_memory import InMemoryObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 
@@ -967,9 +973,141 @@ def test_handle_entities_extracted_publishes_entities_validated_event() -> None:
     )
 
     assert processed == 1
-    assert isinstance(event_bus.published_events[-1], EntitiesValidatedEvent)
-    reference = event_bus.published_events[-1].documents[0]
+    validated_events = [
+        event
+        for event in event_bus.published_events
+        if isinstance(event, EntitiesValidatedEvent)
+    ]
+    assert len(validated_events) == 1
+    reference = validated_events[0].documents[0]
     assert reference.validation_storage_key == "knowledgebases/kb-1/validations/extract-1.json"
+
+
+def test_handle_entities_extracted_emits_extraction_warning_for_empty_document() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    extraction_result = ExtractionResult(
+        id="extract-1",
+        source_document_id="doc-1",
+        parsed_document_id="parsed-1",
+        candidate_entities=[
+            CandidateEntity(
+                id="ghost-1",
+                source_document_id="doc-1",
+                chunk_id="chunk-1",
+                type="provider",
+                properties={"npi": "1234567890"},
+                confidence=0.9,
+                extraction_method="pattern_v1",
+            )
+        ],
+    )
+    extraction_storage_key = "knowledgebases/kb-1/extractions/extract-1.json"
+    object_store.put_bytes(
+        extraction_storage_key,
+        extraction_result.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    handle_entities_extracted(
+        EntitiesExtractedEvent(
+            documents=[
+                ExtractedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    extraction_result_id="extract-1",
+                    entity_count=0,
+                    relationship_count=0,
+                    extraction_storage_key=extraction_storage_key,
+                )
+            ]
+        ),
+        # No entity definitions -> the candidate is dropped (unknown type),
+        # leaving zero valid entities and a populated entity_errors map.
+        extraction_validator=create_extraction_validator([], []),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    warning_events = [
+        event
+        for event in event_bus.published_events
+        if isinstance(event, DocumentsExtractionWarningEvent)
+    ]
+    assert len(warning_events) == 1
+    warning = warning_events[0].documents[0]
+    assert warning.source_document_id == "doc-1"
+    assert warning.empty_extraction is True
+    assert warning.valid_entity_count == 0
+    assert warning.dropped_entity_count == 1
+    assert warning.sample_reasons
+    assert any("ghost-1" in reason for reason in warning.sample_reasons)
+    assert warning.validation_storage_key == "knowledgebases/kb-1/validations/extract-1.json"
+
+
+def test_handle_entities_extracted_skips_extraction_warning_for_clean_document() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    extraction_result = ExtractionResult(
+        id="extract-1",
+        source_document_id="doc-1",
+        parsed_document_id="parsed-1",
+        candidate_entities=[
+            CandidateEntity(
+                id="provider-1",
+                source_document_id="doc-1",
+                chunk_id="chunk-1",
+                type="provider",
+                properties={"npi": "1234567890"},
+                confidence=0.9,
+                extraction_method="pattern_v1",
+            )
+        ],
+    )
+    extraction_storage_key = "knowledgebases/kb-1/extractions/extract-1.json"
+    object_store.put_bytes(
+        extraction_storage_key,
+        extraction_result.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    validator = create_extraction_validator(
+        [
+            EntityDefinition(
+                name="provider",
+                display_label="Provider",
+                icon="box",
+                properties={"npi": PropertyDefinition(type=PropertyType.STRING, display="NPI")},
+            )
+        ],
+        [],
+    )
+
+    handle_entities_extracted(
+        EntitiesExtractedEvent(
+            documents=[
+                ExtractedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    extraction_result_id="extract-1",
+                    entity_count=1,
+                    relationship_count=0,
+                    extraction_storage_key=extraction_storage_key,
+                )
+            ]
+        ),
+        extraction_validator=validator,
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    warning_events = [
+        event
+        for event in event_bus.published_events
+        if isinstance(event, DocumentsExtractionWarningEvent)
+    ]
+    assert warning_events == []
 
 
 def test_handle_entities_validated_publishes_graph_updated_event() -> None:
@@ -1218,6 +1356,8 @@ def test_handle_graph_updated_publishes_kb_ready_for_zero_entities() -> None:
     assert ready_reference.entity_count == 0
     assert ready_reference.relationship_count == 0
     assert ready_reference.vector_count == 0
+    assert ready_reference.source_document_id == "doc-1"
+    assert ready_reference.empty_extraction is True
 
 
 def test_handle_event_dispatches_graph_updated_event() -> None:
