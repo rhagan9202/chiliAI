@@ -6,7 +6,7 @@ from io import BytesIO
 
 from pypdf import PdfReader
 
-from ingestion.models import DocumentFormat, ParsedDocument, SourceDocument
+from ingestion.models import DocumentFormat, ParsedDocument, ParserWarning, SourceDocument
 from ingestion.parsers.exceptions import ParserError
 from ingestion.parsers.utils import build_parser_metadata, normalize_newlines
 
@@ -34,12 +34,24 @@ class PdfParser:
         if not text:
             raise ParserError("PDF does not contain extractable text.")
 
+        warnings = [
+            ParserWarning(
+                code="pdf.empty_page",
+                message=f"Page {page_number} contained no extractable text.",
+                severity="warning",
+                page_number=page_number,
+            )
+            for page_number, part in enumerate(page_texts, start=1)
+            if not part.strip()
+        ]
+
         return ParsedDocument(
             id=f"parsed-{source.id}",
             source_document_id=source.id,
             text_content=text,
             parser_name=self.name,
             parser_version=self.version,
+            warnings=warnings,
             parser_metadata=build_parser_metadata(
                 page_count=len(reader.pages),
                 non_empty_pages=sum(1 for part in page_texts if part.strip()),

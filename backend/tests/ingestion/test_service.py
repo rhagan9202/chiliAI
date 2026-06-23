@@ -495,11 +495,39 @@ def test_ingest_task_parses_stored_document_and_publishes_parsed_event() -> None
     parsed_event = event_bus.published_events[-1]
     assert parsed_event.correlation_id == "corr-parse-1"
     assert parsed_event.documents[0].parsed_document_storage_key is not None
+    assert parsed_event.documents[0].warning_count == len(outcome.parsed_document.warnings) == 0
 
     stored = object_store.get_bytes(parsed_event.documents[0].parsed_document_storage_key or "")
     parsed_document = ParsedDocument.model_validate_json(stored.content)
     assert parsed_document.id == outcome.parsed_document.id
     assert parsed_document.records[0].fields["claim_id"] == "42"
+
+
+def test_ingest_task_propagates_parser_warning_count() -> None:
+    service, event_bus, object_store = _service()
+    storage_key = "knowledgebases/kb-1/documents/doc-csv/claims.csv"
+    object_store.put_bytes(storage_key, b"claim_id,amount\n1,100,extra\n", media_type="text/csv")
+
+    outcome = service.ingest_task(
+        IngestionTask(
+            knowledge_base_id="kb-1",
+            source_document=SourceDocument(
+                id="doc-csv",
+                source_type=SourceType.FILE_UPLOAD,
+                filename="claims.csv",
+            ),
+            storage_key=storage_key,
+            content_type="text/csv",
+        ),
+        correlation_id="corr-warn-1",
+    )
+
+    assert isinstance(outcome, ParseResult)
+    assert outcome.parsed_document.warnings  # ragged row produced a warning
+    parsed_event = event_bus.published_events[-1]
+    assert isinstance(parsed_event, DocumentsParsedEvent)
+    assert parsed_event.documents[0].warning_count == len(outcome.parsed_document.warnings)
+    assert parsed_event.documents[0].warning_count >= 1
 
 
 def test_process_documents_uploaded_publishes_failure_for_unresolved_format() -> None:

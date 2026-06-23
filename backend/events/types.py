@@ -55,6 +55,7 @@ class ParsedDocumentReference(BaseModel):
     parser_name: str
     parser_version: str | None = None
     document_format: str | None = None
+    warning_count: int = Field(default=0, ge=0)
     storage_key: str | None = None
     parsed_document_storage_key: str | None = None
 

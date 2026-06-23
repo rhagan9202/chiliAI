@@ -5,9 +5,15 @@ from __future__ import annotations
 import json
 from typing import cast
 
-from ingestion.models import DocumentFormat, ParsedDocument, SourceDocument, StructuredRecord
+from ingestion.models import (
+    DocumentFormat,
+    ParsedDocument,
+    ParserWarning,
+    SourceDocument,
+    StructuredRecord,
+)
 from ingestion.parsers.exceptions import ParserError
-from ingestion.parsers.utils import build_parser_metadata, decode_text_content
+from ingestion.parsers.utils import build_parser_metadata, charset_fallback_warning, decode_text_content
 
 __all__ = ["JsonParser"]
 
@@ -29,6 +35,10 @@ class JsonParser:
         records: list[StructuredRecord] = []
         text_content: str | None = None
         root_type = type(payload).__name__
+        warnings: list[ParserWarning] = []
+        charset = charset_fallback_warning("json", encoding)
+        if charset is not None:
+            warnings.append(charset)
 
         if isinstance(payload, dict):
             fields = cast(dict[str, object], payload)
@@ -47,8 +57,25 @@ class JsonParser:
                 ]
             else:
                 text_content = json.dumps(payload, indent=2, sort_keys=True)
+                warnings.append(
+                    ParserWarning(
+                        code="json.heterogeneous_array",
+                        message=(
+                            "Array contains non-object elements; emitted as text instead "
+                            "of structured records."
+                        ),
+                        severity="warning",
+                    )
+                )
         else:
             text_content = json.dumps(payload, indent=2, sort_keys=True)
+            warnings.append(
+                ParserWarning(
+                    code="json.scalar_root",
+                    message=f"Root JSON value is a scalar ({root_type}); emitted as text.",
+                    severity="info",
+                )
+            )
 
         return ParsedDocument(
             id=f"parsed-{source.id}",
@@ -57,6 +84,7 @@ class JsonParser:
             records=records,
             parser_name=self.name,
             parser_version=self.version,
+            warnings=warnings,
             parser_metadata=build_parser_metadata(
                 encoding=encoding,
                 root_type=root_type,

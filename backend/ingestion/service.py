@@ -349,6 +349,7 @@ class IngestionService:
                                 if outcome.source_document.document_format is not None
                                 else None
                             ),
+                            warning_count=len(outcome.parsed_document.warnings),
                             storage_key=task.storage_key,
                             parsed_document_storage_key=parsed_document_storage_key,
                         )

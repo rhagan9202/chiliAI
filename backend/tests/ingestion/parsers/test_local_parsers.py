@@ -9,7 +9,7 @@ import pytest
 from docx import Document
 from openpyxl import Workbook
 
-from ingestion.models import DocumentFormat, SourceDocument, SourceType
+from ingestion.models import DocumentFormat, ParsedDocument, SourceDocument, SourceType
 from ingestion.parsers.csv import CsvParser
 from ingestion.parsers.docx import DocxParser
 from ingestion.parsers.exceptions import ParserError
@@ -234,3 +234,155 @@ def test_pdf_parser_rejects_encrypted_files(monkeypatch: pytest.MonkeyPatch) -> 
     parser = PdfParser()
     with pytest.raises(ParserError, match="Encrypted PDF"):
         parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"fake pdf")
+
+
+# --- Typed parser warnings (ingestion.24) -------------------------------------
+
+
+def _codes(parsed: ParsedDocument) -> set[str]:
+    return {warning.code for warning in parsed.warnings}
+
+
+def test_text_parser_warns_on_charset_fallback() -> None:
+    parser = TextParser()
+    parsed = parser.parse(_source("doc-txt", DocumentFormat.TXT), b"caf\xe9 latte")
+
+    assert parsed.text_content == "café latte"
+    assert "text.charset_fallback" in _codes(parsed)
+    assert parsed.warnings[0].severity == "info"
+
+
+def test_text_parser_emits_no_warnings_for_clean_utf8() -> None:
+    parser = TextParser()
+    parsed = parser.parse(_source("doc-txt", DocumentFormat.TXT), b"plain ascii")
+
+    assert parsed.warnings == []
+
+
+def test_html_parser_warns_on_charset_fallback() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b"<html><body><p>caf\xe9</p></body></html>",
+    )
+
+    assert "html.charset_fallback" in _codes(parsed)
+
+
+def test_json_parser_warns_on_heterogeneous_array() -> None:
+    parser = JsonParser()
+    parsed = parser.parse(
+        _source("doc-json", DocumentFormat.JSON),
+        b'[1, {"claim_id": "1"}]',
+    )
+
+    assert parsed.records == []
+    assert "json.heterogeneous_array" in _codes(parsed)
+
+
+def test_json_parser_warns_on_scalar_root() -> None:
+    parser = JsonParser()
+    parsed = parser.parse(_source("doc-json", DocumentFormat.JSON), b"42")
+
+    assert "json.scalar_root" in _codes(parsed)
+
+
+def test_csv_parser_warns_on_ragged_row() -> None:
+    parser = CsvParser()
+    parsed = parser.parse(
+        _source("doc-csv", DocumentFormat.CSV),
+        b"claim_id,amount\n1,100,extra\n",
+    )
+
+    ragged = [w for w in parsed.warnings if w.code == "csv.ragged_row"]
+    assert len(ragged) == 1
+    assert ragged[0].row_index == 0
+    # Extra cell dropped; declared columns preserved.
+    assert parsed.records[0].fields == {"claim_id": "1", "amount": "100"}
+
+
+def test_csv_parser_warns_on_dialect_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_sniff(self: object, sample: str, delimiters: str | None = None) -> csv.Dialect:
+        del self, sample, delimiters
+        raise csv.Error("cannot sniff")
+
+    monkeypatch.setattr("csv.Sniffer.sniff", fail_sniff)
+
+    parser = CsvParser()
+    parsed = parser.parse(_source("doc-csv", DocumentFormat.CSV), b"claim_id,amount\n1,100\n")
+
+    assert "csv.dialect_fallback" in _codes(parsed)
+
+
+def test_xlsx_parser_warns_on_blank_row_skipped() -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    assert sheet is not None
+    sheet.title = "Claims"
+    sheet.append(["claim_id", "amount"])
+    sheet.append(["C-1", 42])
+    sheet.append([None, None])
+    sheet.append(["C-2", 43])
+    output = BytesIO()
+    workbook.save(output)
+
+    parser = XlsxParser()
+    parsed = parser.parse(_source("doc-xlsx", DocumentFormat.XLSX), output.getvalue())
+
+    assert len(parsed.records) == 2
+    blank = [w for w in parsed.warnings if w.code == "xlsx.blank_row_skipped"]
+    assert len(blank) == 1
+    assert blank[0].row_index == 2
+
+
+def test_pdf_parser_warns_on_empty_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _PartiallyEmptyReader:
+        def __init__(self, _content: BytesIO) -> None:
+            self.is_encrypted = False
+            self.pages = [_FakePage("First page"), _FakePage("   ")]
+
+    monkeypatch.setattr("ingestion.parsers.pdf.PdfReader", _PartiallyEmptyReader)
+
+    parser = PdfParser()
+    parsed = parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"fake pdf")
+
+    empty = [w for w in parsed.warnings if w.code == "pdf.empty_page"]
+    assert len(empty) == 1
+    assert empty[0].page_number == 2
+
+
+def test_docx_parser_warns_on_empty_paragraphs() -> None:
+    document = Document()
+    document.add_paragraph("   ")
+    document.add_paragraph("Real content")
+    output = BytesIO()
+    document.save(output)
+
+    parser = DocxParser()
+    parsed = parser.parse(_source("doc-docx", DocumentFormat.DOCX), output.getvalue())
+
+    assert "docx.empty_paragraph_skipped" in _codes(parsed)
+
+
+def test_parser_warning_round_trips_through_serialization() -> None:
+    parser = PdfParser()  # any parser; reuse the empty-page warning path
+
+    class _Reader:
+        def __init__(self, _content: BytesIO) -> None:
+            self.is_encrypted = False
+            self.pages = [_FakePage("kept"), _FakePage("")]
+
+    import ingestion.parsers.pdf as pdf_module
+
+    original = pdf_module.PdfReader
+    pdf_module.PdfReader = _Reader  # type: ignore[assignment]
+    try:
+        parsed = parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"fake pdf")
+    finally:
+        pdf_module.PdfReader = original  # type: ignore[assignment]
+
+    restored = ParsedDocument.model_validate_json(parsed.model_dump_json())
+    assert len(restored.warnings) == 1
+    assert restored.warnings[0].code == "pdf.empty_page"
+    assert restored.warnings[0].page_number == 2
+    assert restored.warnings[0].severity == "warning"

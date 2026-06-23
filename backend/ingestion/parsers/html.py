@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from html.parser import HTMLParser
 
-from ingestion.models import DocumentFormat, ParsedDocument, SourceDocument
+from ingestion.models import DocumentFormat, ParsedDocument, ParserWarning, SourceDocument
 from ingestion.parsers.exceptions import ParserError
-from ingestion.parsers.utils import build_parser_metadata, decode_text_content
+from ingestion.parsers.utils import build_parser_metadata, charset_fallback_warning, decode_text_content
 
 __all__ = ["HtmlParser"]
 
@@ -112,12 +112,18 @@ class HtmlParser:
         if not visible_text:
             raise ParserError("HTML content does not contain visible text.")
 
+        warnings: list[ParserWarning] = []
+        charset = charset_fallback_warning("html", encoding)
+        if charset is not None:
+            warnings.append(charset)
+
         return ParsedDocument(
             id=f"parsed-{source.id}",
             source_document_id=source.id,
             text_content=visible_text,
             parser_name=self.name,
             parser_version=self.version,
+            warnings=warnings,
             parser_metadata=build_parser_metadata(
                 encoding=encoding,
                 visible_text_length=len(visible_text),

@@ -887,10 +887,11 @@ Ingestion accepts uploads, but resumable upload session state and chunk assembly
 ## Story ingestion.24: Add typed parser warnings channel on ParsedDocument
 
 **ID:** ingestion.24
-**Status:** planned
+**Status:** done
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** S
+**Done:** 2026-06-23 · ingestion Wave 0 (ready-set) · local working tree
 
 **As a** Ingestion Studio user,
 **I need** parsers to surface typed non-fatal warnings (missing pages, dropped rows, charset fallback) via a dedicated `ParsedDocument.warnings` field instead of free-form `parser_metadata`,
@@ -902,11 +903,11 @@ Ingestion accepts uploads, but resumable upload session state and chunk assembly
 - This story precedes `ingestion.04` because that story consumes the new channel.
 
 ### Acceptance Criteria
-- [ ] `ParserWarning` model (`backend/ingestion/models.py`) carries `code: str`, `message: str`, `severity: Literal["info", "warning", "error"]`, optional `row_index: int | None`, optional `page_number: int | None`, optional `column_name: str | None`.
-- [ ] `ParsedDocument.warnings: list[ParserWarning]` is added (default `[]`); `parser_metadata` is retained for free-form context but warnings move out of it.
-- [ ] All in-tree parsers (`pdf`, `docx`, `csv`, `xlsx`, `html`, `json`, `txt`) emit at least one warning in their existing soft-failure paths (e.g. PDF empty page, HTML missing charset).
-- [ ] The downstream event `DocumentsParsedEvent` (`backend/events/types.py`) carries a `warning_count: int` field for routing without inspecting the payload.
-- [ ] Unit tests cover the new field on every parser plus serialization round-trip.
+- [x] `ParserWarning` model (`backend/ingestion/models.py`) carries `code: str`, `message: str`, `severity: Literal["info", "warning", "error"]`, optional `row_index: int | None`, optional `page_number: int | None`, optional `column_name: str | None`.
+- [x] `ParsedDocument.warnings: list[ParserWarning]` is added (default `[]`); `parser_metadata` is retained for free-form context but warnings move out of it.
+- [x] All in-tree parsers (`pdf`, `docx`, `csv`, `xlsx`, `html`, `json`, `txt`) emit at least one warning in their existing soft-failure paths (e.g. PDF empty page, HTML missing charset).
+- [x] The downstream event `DocumentsParsedEvent` (`backend/events/types.py`) carries a `warning_count: int` field (on `ParsedDocumentReference`) for routing without inspecting the payload.
+- [x] Unit tests cover the new field on every parser plus serialization round-trip.
 
 ### Verification
 - `pytest backend/tests/ingestion/parsers/ -v` green including the new warning assertions.

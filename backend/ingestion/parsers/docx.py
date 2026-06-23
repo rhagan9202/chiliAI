@@ -6,7 +6,7 @@ from io import BytesIO
 
 from docx import Document
 
-from ingestion.models import DocumentFormat, ParsedDocument, SourceDocument
+from ingestion.models import DocumentFormat, ParsedDocument, ParserWarning, SourceDocument
 from ingestion.parsers.exceptions import ParserError
 from ingestion.parsers.utils import build_parser_metadata, normalize_newlines
 
@@ -26,6 +26,7 @@ class DocxParser:
         except Exception as exc:
             raise ParserError(f"Unable to read DOCX content: {exc}") from exc
 
+        total_paragraphs = len(document.paragraphs)
         paragraph_text = [paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()]
         table_text: list[str] = []
         for table in document.tables:
@@ -38,12 +39,24 @@ class DocxParser:
         if not text_parts:
             raise ParserError("DOCX does not contain extractable text.")
 
+        warnings: list[ParserWarning] = []
+        empty_paragraphs = total_paragraphs - len(paragraph_text)
+        if empty_paragraphs > 0:
+            warnings.append(
+                ParserWarning(
+                    code="docx.empty_paragraph_skipped",
+                    message=f"Skipped {empty_paragraphs} empty paragraph(s).",
+                    severity="info",
+                )
+            )
+
         return ParsedDocument(
             id=f"parsed-{source.id}",
             source_document_id=source.id,
             text_content=normalize_newlines("\n\n".join(text_parts)),
             parser_name=self.name,
             parser_version=self.version,
+            warnings=warnings,
             parser_metadata=build_parser_metadata(
                 paragraph_count=len(paragraph_text),
                 table_row_count=len(table_text),

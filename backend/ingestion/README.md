@@ -59,6 +59,10 @@ Every `Entity` and `Relationship` emitted by the extractor carries provenance fi
 
 Parsers for PDF, DOCX, HTML, TXT, JSON, CSV, and XLSX are registered in `parsers/registry.py`. The HTML parser currently normalizes visible text; richer heading/link/table fidelity is tracked separately in `docs/backlog/ingestion.md` as `ingestion.02`.
 
+## Parser Warnings
+
+Parsers surface **non-fatal** diagnostics through a typed `ParsedDocument.warnings: list[ParserWarning]` channel (`ingestion.24`) instead of stuffing them into free-form `parser_metadata`. Each `ParserWarning` carries a stable `code`, a human `message`, a `severity` (`info`/`warning`/`error`), and optional location fields (`row_index`, `page_number`, `column_name`) so the Ingestion Studio can group, count, and link warnings to categories. Every in-tree parser emits warnings on its soft-failure paths — e.g. `pdf.empty_page`, `docx.empty_paragraph_skipped`, `csv.ragged_row` / `csv.dialect_fallback`, `xlsx.blank_row_skipped` / `xlsx.ragged_row`, `json.heterogeneous_array` / `json.scalar_root`, and `<parser>.charset_fallback` when a non-UTF-8 fallback encoding is used. The per-document `DocumentsParsedEvent` reference carries a `warning_count` so consumers can route on warnings without loading the payload.
+
 ## Commands
 
 ```bash
