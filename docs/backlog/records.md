@@ -136,7 +136,7 @@
 
 **ID:** records.04
 **Status:** planned
-**Prerequisites:** [api.10]
+**Prerequisites:** []
 **Unblocks:** [records.05]
 **Estimated size:** L
 
@@ -149,6 +149,7 @@
 - `CsvFileSource.read_rows(raw: bytes)` (`backend/records/adapters/sources/file_source.py:23-48`) and `JsonlFileSource.read_rows(raw: bytes)` (`:54-77`) both take `bytes` and return a fully-materialized `list[dict[str, object]]`.
 - The 413 ceiling is governed by `ValidationConfig.max_file_size_mb`; raising it still linearly raises API memory pressure because chunks are joined before parsing.
 - `RecordsService.register_records` takes a `list[dict[str, object]]` (`backend/records/service.py:30-35`) so the whole batch is in memory anyway — streaming only the parser stage is a no-op without a service refactor.
+- **PM prereq cleanup (2026-06-23):** original prereq `api.10` ("Adopt a uniform paginated-collection contract") was mislabeled — this streaming-upload story has no dependency on the list-pagination contract, and no api streaming-upload story exists. Edge dropped; this is a self-contained records/service refactor.
 
 ### Acceptance Criteria
 - [ ] `RecordSourceProtocol` (`backend/records/adapters/protocols.py`) gets a new method `iter_rows(stream: IO[bytes]) -> Iterator[dict[str, object]]` (keep `read_rows` for back-compat callers; mark deprecated).

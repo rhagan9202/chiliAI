@@ -326,7 +326,7 @@
 
 **ID:** agent.09
 **Status:** planned
-**Prerequisites:** [graph.05, vectorstore.04, embeddings.05, storage.04, database.04, events.05]
+**Prerequisites:** [graph.10, vectorstore.12, embeddings.01, storage.14, database.01, events.06]
 **Unblocks:** [embeddings.10]
 **Estimated size:** M
 
@@ -338,6 +338,7 @@
 - `/health` returns process-only status based on `last_event_processed_at` (`backend/agent/health.py:124-143`).
 - No `/ready` endpoint exists; no dependency probes.
 - `start_health_server_safely` mounts only the existing single endpoint (`backend/agent/coordinator.py:2559-2568`).
+- **PM prereq re-point (2026-06-23):** the original prereqs `[graph.05, vectorstore.04, embeddings.05, storage.04, database.04, events.05]` were almost entirely mislabeled (graph.05 = subgraph extraction, vectorstore.04 = snapshot/backup, embeddings.05 = cost tracking, storage.04 = encryption-at-rest, database.04 = CI migration gate, events.05 = trace context) — none provided the `check_health()` surfaces this readiness probe consumes. Re-pointed to the actual health/foundation stories: graph.10 (`verify_schema`/graph health), vectorstore.12 (vector health probes), embeddings.01 (embedder health-check surface), **storage.14** (new object-store health probe added this run), database.01 (Postgres provider existence — no separate DB-health story exists), events.06 (Redis adapter connection health).
 
 ### Acceptance Criteria
 - [ ] `/live` returns 200 whenever the worker process is responsive (and not in shutdown).
@@ -402,7 +403,7 @@
 **ID:** agent.11
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [embeddings.07]
+**Unblocks:** []
 **Estimated size:** M
 
 **As an** API consumer,
@@ -665,9 +666,11 @@
 
 **ID:** agent.18
 **Status:** planned
-**Prerequisites:** [database.03, database.07]
+**Prerequisites:** [database.03, database.07, database.01]
 **Unblocks:** [agent.06, agent.20]
 **Estimated size:** L
+
+> **Canonical owner of the `PostgresWorkflowRunStore` adapter (2026-06-23 PM decision).** Resolves the prior agent.18 ⟷ database.01 duplicate: the `workflow_runs` schema **migration** is owned by [database.01] (a prerequisite here); this story owns the **adapter** + `postgres` runtime selector that consume it.
 
 **As a** platform engineer,
 **I need** a `PostgresWorkflowRunStore` implementing `WorkflowRunStoreProtocol` so workflow runs persist transactionally to Postgres,
@@ -680,7 +683,7 @@
 
 ### Acceptance Criteria
 - [ ] `PostgresWorkflowRunStore` implementing all `WorkflowRunStoreProtocol` methods, using `ConnectionProvider` from `backend/database/`.
-- [ ] Alembic migration creates `workflow_runs` and supporting indexes (correlation, idempotency, `(kb, status, created_at)`).
+- [ ] Consumes the `workflow_runs` / `workflow_run_history` / `workflow_run_idempotency` schema migration owned by [database.01] (this story does not author the migration).
 - [ ] `runtime.py` accepts `postgres` literal and resolves `ConnectionProvider` via `build_connection_provider`.
 - [ ] All existing in-memory and Redis behavior tests are re-run against the Postgres adapter via a shared test contract.
 - [ ] `check_health()` surface (per `agent.15`) implemented for Postgres adapter.

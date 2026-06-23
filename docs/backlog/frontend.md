@@ -123,7 +123,7 @@ The frontend has operational views, but no mounted wizard experience for configu
 
 **ID:** frontend.04
 **Status:** planned
-**Prerequisites:** [analytics.06, rag.07]
+**Prerequisites:** [api.28, rag.01]
 **Unblocks:** [analytics.28]
 **Estimated size:** M
 
@@ -135,6 +135,7 @@ The frontend has operational views, but no mounted wizard experience for configu
 - `chili_app/src/pages/DashboardPage.tsx:70` renders the sublabel "Entities available in the seeded investigation graph".
 - `chili_app/src/pages/RagChatPage.tsx:76` reads "exercise the backend chat endpoints and seeded RAG service".
 - `chili_app/README.md:66-67` documents the seeded/demo read models remaining for Dashboard, alerts, cases, and RAG.
+- **PM note (2026-06-23):** the analyst-facing "seeded investigation graph" / "seeded RAG service" copy has **already been removed** and is now guarded by a regression test (`chili_app/src/pages/__tests__/AnalystCopy.test.tsx` asserts the strings never reappear); BL-012 de-seed shipped this. The story is kept `planned` because its full AC (live-projection copy explicitly tied to the `analytics.06` / `rag.01` contracts + README strike) is not all verified. Prereq `rag.07` (reranker) was mislabeled and re-pointed to **`rag.01`** (live RagService). **OPEN PM DECISION:** the Dashboard live-projection prereq `analytics.06` ("Timeseries Postgres `load_series`") is a weak/uncertain target — the Dashboard-metrics live-projection source is not cleanly owned by a single analytics story, and re-pointing to analytics.28 would invert this story's own `Unblocks` edge (cycle). Left as-is pending a requirements decision on who owns the Dashboard-metrics projection contract.
 
 ### Acceptance Criteria
 - [ ] Dashboard sublabel and any "seeded" references are replaced with copy that reflects the live KB-scoped projection contract from `analytics.06`.
@@ -161,7 +162,7 @@ The frontend has operational views, but no mounted wizard experience for configu
 
 **ID:** frontend.05
 **Status:** planned
-**Prerequisites:** [rag.07]
+**Prerequisites:** [rag.01]
 **Unblocks:** []
 **Estimated size:** M
 
@@ -173,6 +174,7 @@ The frontend has operational views, but no mounted wizard experience for configu
 - `chili_app/src/components/layout/AiAssistantPanel.tsx:3-29` renders a static composer with a no-op send button.
 - `chili_app/src/components/layout/AppShell.tsx:65` mounts it on every authenticated route.
 - No hookup to `chili_app/src/api/rag.ts` exists; the input does nothing.
+- **PM prereq re-point (2026-06-23):** prereq `rag.07` (reranker stage) was mislabeled — wiring the assistant to the live conversational endpoint depends on **`rag.01`** (live RagService), not the optional reranker.
 
 ### Acceptance Criteria
 - [ ] Decision recorded in `chili_app/README.md`: wire to RAG endpoints or delete.
@@ -237,7 +239,7 @@ The frontend has operational views, but no mounted wizard experience for configu
 
 **ID:** frontend.07
 **Status:** planned
-**Prerequisites:** [api.09, events.06]
+**Prerequisites:** [api.07]
 **Unblocks:** [api.15, frontend.03, frontend.08, frontend.24]
 **Estimated size:** L
 
@@ -251,7 +253,7 @@ The frontend has operational views, but no mounted wizard experience for configu
 - No detection of "long disconnect" vs. transient blip.
 
 ### Acceptance Criteria
-- [ ] On reconnect, the client passes the last seen event id via a query parameter or header that the backend SSE endpoint honors (contract owned by `api.09`/`events.06`).
+- [ ] On reconnect, the client passes the last seen event id via a query parameter or header that the backend SSE endpoint honors (contract owned by **`api.07`** — "Event-driven SSE with reconnect semantics", whose AC adds the `id:` line and honors `Last-Event-ID`; the prior `api.09`/`events.06` references were mislabeled).
 - [ ] After a configurable "long disconnect" threshold (e.g. 60s), the client invalidates every workspace query key (alerts, workflows, KBs, dashboard metrics) and refetches a baseline snapshot before resuming event-driven invalidation.
 - [ ] Connection state ("live" | "reconnecting" | "resyncing") is exposed on `uiStore` and surfaced via the realtime status badge in TopBar.
 - [ ] Vitest covers: short blip preserves snapshot; long disconnect triggers baseline refetch; resume sends `Last-Event-ID`.

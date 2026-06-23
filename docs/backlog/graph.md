@@ -92,7 +92,7 @@
 
 **ID:** graph.03
 **Status:** planned
-**Prerequisites:** [graph.02, events.02]
+**Prerequisites:** [graph.02]
 **Unblocks:** [_observability.09, rag.08]
 **Estimated size:** L
 
@@ -105,6 +105,7 @@
 - `GraphUpsertResult` (`backend/graph/models.py:21-32`) carries only `upserted_entity_ids` / `upserted_relationship_ids`; there is no created/updated/unchanged partition.
 - `Neo4jGraphRepository.upsert_entities` uses `MERGE ... ON CREATE SET ... SET ...` (`neo4j_adapter.py:181-189`) which makes it impossible for the caller to tell created from updated without a follow-up query.
 - No content-fingerprint is computed for entities or relationships; an identical payload bumps `version` and republishes events every time.
+- **PM prereq cleanup (2026-06-23):** prereq `events.02` ("Trim Redis streams with MAXLEN/XTRIM retention") was spurious — this is change-detection + conditional publishing, and `GraphUpdatedEvent` is already fully defined and published (`events/types.py:135`, `graph/service.py:103`). Stream trimming does not gate it. Edge dropped; the only real prerequisite is graph.02.
 
 ### Acceptance Criteria
 - [ ] `Entity` / `Relationship` payload signature (stable hash of `(type, properties, source_id, target_id)`) computed once and stored as `content_hash` (new field on the persisted row, not on `shared.types.Entity`).
@@ -174,7 +175,7 @@
 **ID:** graph.05
 **Status:** planned
 **Prerequisites:** [shared.01]
-**Unblocks:** [agent.09, analytics.10, analytics.16, frontend.01, frontend.15, graph.12, monitoring.06]
+**Unblocks:** [analytics.10, analytics.16, frontend.01, frontend.15, graph.12, monitoring.06]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-21-dual-graph-contract-design.md, docs/superpowers/specs/2026-05-21-neo4j-graph-indexes-design.md
 
@@ -257,7 +258,7 @@
 **ID:** graph.07
 **Status:** planned
 **Prerequisites:** [_observability.02]
-**Unblocks:** [graph.12, ingestion.16, monitoring.02, monitoring.14]
+**Unblocks:** [graph.12, monitoring.02, monitoring.14]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-21-neo4j-graph-indexes-design.md
 
@@ -298,7 +299,7 @@
 **ID:** graph.08
 **Status:** planned
 **Prerequisites:** [graph.04]
-**Unblocks:** [api.01, vectorstore.08]
+**Unblocks:** [api.01]
 **Estimated size:** M
 
 **As a** records-pipeline operator running NPPES / DE-SynPUF loads,
@@ -378,7 +379,7 @@
 **ID:** graph.10
 **Status:** planned
 **Prerequisites:** [_observability.02]
-**Unblocks:** [analytics.01, api.09, graph.09, graph.11, graph.15]
+**Unblocks:** [agent.09, analytics.01, api.09, graph.09, graph.11, graph.15]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-21-neo4j-graph-indexes-design.md
 

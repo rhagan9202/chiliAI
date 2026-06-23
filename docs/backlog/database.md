@@ -5,14 +5,16 @@
 
 ---
 
-## Story database.01: Land Postgres workflow-run store adapter + Plan B migration
+## Story database.01: Land the Plan B `workflow_runs` Postgres schema migration
 
 **ID:** database.01
 **Status:** planned
 **Prerequisites:** [database.03, database.04]
-**Unblocks:** [_multitenancy.05, _security.02, _security.06, llm.08, records.02, records.05, vectorstore.02]
+**Unblocks:** [_multitenancy.05, _observability.10, _security.02, _security.06, agent.09, agent.18, llm.08, records.02, records.05, vectorstore.02]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-14-backend-persistence-design.md
+
+> **Scope (2026-06-23 PM decision):** This story owns the `workflow_runs` / `workflow_run_history` / `workflow_run_idempotency` Alembic **schema migration** only — the persistence baseline its dependents rely on. The `PostgresWorkflowRunStore` **adapter** and the `postgres` runtime selector are owned by [agent.18], which depends on this migration. (Resolves the prior agent.18 ⟷ database.01 duplicate.)
 
 **As a** platform operator running the worker against a multi-replica deployment,
 **I need** workflow run state, history, and idempotency keys persisted in Postgres,
@@ -26,15 +28,13 @@
 
 ### Acceptance Criteria
 - [ ] A new Alembic revision after the current head adds `workflow_runs`, `workflow_run_history`, `workflow_run_idempotency` tables keyed by `(knowledge_base_id, run_id)` with composite indexes on `correlation_id`, `idempotency_key`, and `created_at DESC`; raw-SQL only (no ORM).
-- [ ] `backend/agent/adapters/postgres_store.py` ships `PostgresWorkflowRunStore` implementing `WorkflowRunStoreProtocol`; every write uses `INSERT … ON CONFLICT` upserts and goes through a `ConnectionProvider`.
-- [ ] `agent/adapters/runtime.py:create_workflow_run_store_from_env` accepts `CHILI_WORKFLOW_RUN_STORE_BACKEND=postgres`, requires a `ConnectionProvider`, and raises `AgentConfigurationError` when the DSN is missing.
-- [ ] `make migrate` against a fresh dev compose stack succeeds; `pytest -m integration backend/tests/agent/test_postgres_store.py` passes with ≥ 85% line coverage on the new adapter file.
-- [ ] `backend/database/README.md` and `backend/agent/README.md` document the new backend selector and the schema; `docs/architecture.md` §6.4 / §5.2 are updated to remove the "Plan B not done" note.
+- [ ] `make migrate` against a fresh dev compose stack applies the revision cleanly and is reversible (`downgrade` drops the three tables).
+- [ ] `backend/database/README.md` documents the schema; `docs/architecture.md` §6.4 is updated to remove the "Plan B schema not landed" note.
+- [ ] The `PostgresWorkflowRunStore` adapter and the `postgres` runtime selector that consume this schema are delivered by [agent.18] (not this story).
 
 ### Verification
-- `make migrate && pytest -m integration backend/tests/agent/test_postgres_store.py --cov=backend.agent.adapters.postgres_store` reports ≥ 85% coverage and all tests green.
-- `CHILI_WORKFLOW_RUN_STORE_BACKEND=postgres uvicorn api.app:create_app --factory` starts cleanly with a live Postgres; submitting a workflow via `POST /workflows` returns a run id that `SELECT … FROM workflow_runs WHERE run_id = …` resolves.
-- `pyright --strict` clean for `backend/agent/` and `backend/database/`.
+- `make migrate` against a fresh dev compose stack succeeds; `\d workflow_runs` shows the three tables and their indexes; `downgrade -1` removes them cleanly.
+- `pyright --strict` clean for `backend/database/`.
 
 ### Code touch points
 - backend/database/migrations/versions/<next>_workflow_runs.py (new)
@@ -135,7 +135,7 @@
 **ID:** database.04
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [_cicd.12, agent.09, analytics.20, database.01, database.02, database.08, database.09, ingestion.05, ingestion.18]
+**Unblocks:** [_cicd.12, analytics.20, database.01, database.02, database.08, database.09, ingestion.05, ingestion.18]
 **Estimated size:** M
 
 **As a** developer merging schema-touching PRs,
@@ -174,7 +174,7 @@
 **ID:** database.05
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [_observability.10, analytics.07, analytics.11, api.19, database.06, database.10, storage.10]
+**Unblocks:** [analytics.07, analytics.11, api.19, database.06, database.10, storage.10]
 **Estimated size:** M
 
 **As a** worker / API operator under production concurrency,

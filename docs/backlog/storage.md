@@ -141,7 +141,7 @@
 **ID:** storage.04
 **Status:** planned
 **Prerequisites:** [storage.01, _security.04]
-**Unblocks:** [agent.09, embeddings.12, storage.13]
+**Unblocks:** [embeddings.12, storage.13]
 **Estimated size:** M
 
 **As a** compliance owner for Medicare-PII data,
@@ -350,7 +350,7 @@
 
 **ID:** storage.09
 **Status:** planned
-**Prerequisites:** [storage.01, _observability.04, _observability.10]
+**Prerequisites:** [storage.01, _observability.04, _security.06]
 **Unblocks:** [storage.10, storage.13]
 **Estimated size:** M
 
@@ -561,3 +561,38 @@
 - `backend/agent/coordinator.py` (modify — register lag job)
 - `backend/config/schema.py` (modify — secondary endpoint, threshold)
 - `backend/tests/storage/test_replication.py` (new)
+
+---
+
+## Story storage.14: Add object-store health probes for worker and API readiness
+
+**ID:** storage.14
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** [agent.09]
+**Estimated size:** M
+
+**As a** Kubernetes operator,
+**I need** the object-store adapter to expose a bounded `check_health()` surface that verifies the backend is reachable and writable,
+**so that** the worker/API `/ready` probe (`agent.09`) can fail fast and shed traffic when MinIO/S3 is unavailable instead of accepting ingestion it cannot persist.
+
+### Current State
+- Neither `ObjectStoreProtocol` nor any adapter (`backend/storage/adapters/s3_adapter.py`, local FS adapter) exposes a health/ping method — `grep -niE "health|ping|readiness" backend/storage/` returns no probe surface.
+- There is no storage readiness story anywhere in the backlog; `agent.09` previously cited `storage.04` ("Server-side encryption at rest"), which is unrelated to readiness. This story is created (PM run 2026-06-23) to give the storage leg of the readiness probe a real owner, mirroring `vectorstore.12`.
+
+### Acceptance Criteria
+- [ ] `ObjectStoreProtocol` gains `check_health() -> StorageHealth` returning `{healthy: bool, latency_ms: float, detail: str}`.
+- [ ] S3/MinIO adapter implements it via a lightweight bucket-reachability call (e.g. `head_bucket`); the local FS adapter verifies the base directory is writable.
+- [ ] The probe is bounded by a configurable timeout (default 2s) and never raises — failures are reported as `healthy=False` with a `detail`.
+- [ ] Fully typed (`pyright --strict` clean), no `Any`.
+- [ ] Tests cover: healthy backend, unreachable backend (timeout → `healthy=False`), and read-only/unwritable target.
+
+### Verification
+- `pytest backend/tests/storage/test_health.py -v` green; coverage ≥ 85% on the new surface.
+- Manual: `make dev`, stop MinIO, confirm `check_health()` returns `healthy=False` within the timeout.
+
+### Code touch points
+- `backend/storage/protocols.py` (modify — `check_health`, `StorageHealth`)
+- `backend/storage/adapters/s3_adapter.py` (modify)
+- `backend/storage/adapters/` local FS adapter (modify)
+- `backend/tests/storage/test_health.py` (new)

@@ -10,7 +10,7 @@
 **ID:** rag.01
 **Status:** planned
 **Prerequisites:** [vectorstore.01, embeddings.01, llm.01, graph.01, api.29]
-**Unblocks:** [_plugins.01, analytics.16, llm.07, rag.02, rag.03, rag.04, rag.05, rag.06, rag.08, rag.09, rag.10, rag.11, rag.12, rag.13, rag.14, rag.16]
+**Unblocks:** [_plugins.01, analytics.16, frontend.04, frontend.05, llm.07, rag.02, rag.03, rag.04, rag.05, rag.06, rag.08, rag.09, rag.10, rag.11, rag.12, rag.13, rag.14, rag.16]
 **Estimated size:** L
 
 **As a** chiliAI analyst,
@@ -217,7 +217,7 @@
 
 **ID:** rag.06
 **Status:** planned
-**Prerequisites:** [rag.01, llm.17, api.07]
+**Prerequisites:** [rag.01, llm.01, api.07]
 **Unblocks:** []
 **Estimated size:** M
 
@@ -232,7 +232,7 @@
 - No token-level metadata: chunks carry `chunk_text` and `is_final` only; no `tokens_so_far` or partial-citation surface.
 
 ### Acceptance Criteria
-- [ ] `ServiceAnswerGenerator.stream_generate` calls `LlmServiceProtocol.stream_generate` (from `llm.03`) and yields chunks as they arrive from the provider.
+- [ ] `ServiceAnswerGenerator.stream_generate` calls `LlmServiceProtocol.stream_generate` (from `llm.01` — provider-native token streaming; the prior `llm.03`/`llm.17` references were mislabeled, as those are tool-calling stories) and yields chunks as they arrive from the provider.
 - [ ] `RagStreamChunk` semantics updated: non-final chunks carry token text only; final chunk carries `citations`, `provider`, `model_name`, and (if `rag.11` has landed) `TokenUsage`.
 - [ ] SSE encoder at `backend/api/routers/rag.py:108-122` emits each token chunk as its own `data:` event in order; client receives them as they arrive.
 - [ ] Frontend `RagChatPage.tsx` renders the streamed tokens incrementally (verified in Playwright with `--headed` showing progressive text).
@@ -258,7 +258,7 @@
 **ID:** rag.07
 **Status:** planned
 **Prerequisites:** [rag.03, llm.02, embeddings.03]
-**Unblocks:** [frontend.04, frontend.05]
+**Unblocks:** []
 **Estimated size:** L
 
 **As a** chiliAI domain operator,

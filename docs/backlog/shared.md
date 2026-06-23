@@ -48,7 +48,7 @@
 **ID:** shared.02
 **Status:** planned
 **Prerequisites:** [shared.01]
-**Unblocks:** [_plugins.03, embeddings.02, llm.01, llm.10, llm.11]
+**Unblocks:** [_plugins.03, llm.01, llm.10, llm.11]
 **Estimated size:** S
 
 **As a** contracts owner,
@@ -160,7 +160,7 @@
 **ID:** shared.05
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [embeddings.03, llm.14, rag.14]
+**Unblocks:** [llm.14, rag.14]
 **Estimated size:** M
 
 **As a** platform engineer,
@@ -550,7 +550,7 @@
 **ID:** shared.15
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** []
+**Unblocks:** [embeddings.03]
 **Estimated size:** M
 
 **As a** services author,

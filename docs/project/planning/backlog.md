@@ -1,11 +1,11 @@
 # chiliAI v1 Consolidated Backlog
 
 > Owned by the Project Manager agent. The single source of truth for v1-scoped, prioritized work items.
-> Version: 1 · Last updated: 2026-05-26
+> Version: 1 · Last updated: 2026-06-23
 >
 > This file is a **curated v1 backlog** that consolidates and prioritizes work derived from:
 > - `docs/project/planning/requirements.md` (canonical requirements)
-> - The 24 module backlogs under `docs/backlog/**` (395 raw stories — see [docs/backlog/README.md](../../backlog/README.md))
+> - The 24 module backlogs under `docs/backlog/**` (442 raw stories as of 2026-06-23 — see [docs/backlog/README.md](../../backlog/README.md))
 > - Drift items identified by the PM run on 2026-05-26
 >
 > The module backlogs remain the authoritative per-module breakdown. This file selects, prioritizes, and dependency-orders items for v1.
@@ -67,6 +67,65 @@ A code-level audit of every non-done BL story was run on 2026-06-04 and refreshe
 | BL-028 | Multi-KB scope in RAG | 5 | todo 0% | 5 SP | request accepts a KB list but service projects to `[0]` (documented limitation) |
 
 **Conclusion — the v1 *feature surface* is essentially complete; what remains is a hardening/DR/security-depth tail.** All P0 + the P1 user-facing verticals (RAG, citations, graph canvas, evidence, cases, policy, ingestion studio, ingestion demo, de-seed, records dedup) are done or have only documented hardening tails. Remaining higher-risk backend work is concentrated in graph integrity/versioning (BL-017), embeddings/vectorstore hardening (BL-019), OIDC hardening (BL-022), event replay operations (BL-023), and resource-level per-KB ACL (BL-027). The 24 module backlogs under `docs/backlog/**` were partially reconciled on 2026-06-16 for backend docs; frontend and cross-cutting operational docs still need a separate pass.
+
+---
+
+## Drift resolution — 2026-06-23 PM run (module-backlog dependency-graph cleaning)
+
+A code-verified, platform-wide audit of all 24 module backlogs (`docs/backlog/*.md`, 440 → 442 stories) was run to fix two defect classes surfaced by an ingestion audit: **(A) mislabeled/dangling cross-module prerequisite edges** (a prereq ID names a story whose actual title is unrelated) and **(B) status drift vs. code**. The backlog consistency validator (`scripts/backlog_consistency.py --check`) exits **0** after these edits (DAG acyclic, no dangling prereqs, status invariants hold). The validator does **not** semantically check prereq targets, which is why these slipped through.
+
+### Prerequisite-edge corrections (Class A)
+
+| Story | File | Old prereq | New prereq | Evidence / rationale |
+|---|---|---|---|---|
+| ingestion.16 | ingestion.md | `[api.09, graph.07, vectorstore.05]` | `[vectorstore.09]` | api.09=request-contracts, graph.07=search-relevance, vectorstore.05=namespace-lifecycle — all unrelated. Real vector-cascade story is **vectorstore.09** ("Wire `delete_by_source_document` into the document-delete API"). Graph leg already ships (`graph/service.py:313`); no graph/api story needed — the DELETE route exists (`api/routers/knowledgebases.py:352`) but does not yet call the cascade. |
+| ingestion.19 | ingestion.md | `[ingestion.11, analytics.07, _observability.08]` | `[ingestion.11, analytics.33, _observability.08]` | analytics.07=Timeseries Postgres DI, NOT extraction-quality. No analytics story owned `compute_extraction_quality`; created **analytics.33** (new). |
+| embeddings.02 | embeddings.md | `[shared.02, _infra.05, llm.09]` | `[]` | All three mislabeled (shared.02=retire Alert.acknowledged, _infra.05=Helm values, llm.09=LLM observability); body's "shared Redis pool from shared.02" has no real target story (Redis pool lives in `events/runtime.py`). Edges dropped; folded into story. |
+| embeddings.03 | embeddings.md | `[shared.05]` | `[shared.15]` | shared.05=entity-ID generation; the shared retry/backoff primitive is **shared.15**. |
+| embeddings.06 | embeddings.md | `[vectorstore.06]` | `[]` | vectorstore.06=sharding/replication knobs; no vectorstore record-schema story exists. model_version writes into existing freeform vector metadata — no vectorstore story needed. Edge dropped. |
+| embeddings.07 | embeddings.md | `[embeddings.06, agent.11, vectorstore.06]` | `[embeddings.06]` | agent.11=workflow-listing pagination (no backfill-runner story exists); vectorstore.06=sharding. Both dropped; story builds its own backfill workflow. |
+| rag.06 | rag.md | `[rag.01, llm.17, api.07]` | `[rag.01, llm.01, api.07]` | llm.17=tool-calling loop; provider-native token streaming is **llm.01**. Body's "from llm.03" reference also corrected to llm.01. |
+| vectorstore.08 | vectorstore.md | `[vectorstore.07, graph.08]` | `[vectorstore.07]` | graph.08=graph bulk-write throughput — does not gate vector hybrid search. Edge dropped. |
+| graph.03 | graph.md | `[graph.02, events.02]` | `[graph.02]` | events.02=Redis stream trimming; `GraphUpdatedEvent` already defined+published (`events/types.py:135`). Conditional-publish change-detection needs no stream trimming. Edge dropped. |
+| agent.09 | agent.md | `[graph.05, vectorstore.04, embeddings.05, storage.04, database.04, events.05]` | `[graph.10, vectorstore.12, embeddings.01, storage.14, database.01, events.06]` | Readiness probe needs each dependency's health surface. All six were mislabeled (subgraph/snapshot/cost/encryption/CI-gate/trace-context). Re-pointed to the real health/foundation stories; **storage.14** (new) created for the missing object-store health probe. |
+| records.04 | records.md | `[api.10]` | `[]` | api.10=paginated-collection contract; a streaming-upload story has no pagination dependency and no api streaming story exists. Edge dropped. |
+| frontend.04 | frontend.md | `[analytics.06, rag.07]` | `[api.28, rag.01]` | rag.07=reranker → **rag.01** (live RagService) for the RAG copy. `analytics.06`=timeseries `load_series` was the wrong live-projection source → **api.28** ("Replace seeded API analytics reads", cycle-safe via api.01) per 2026-06-23 PM decision. |
+| frontend.05 | frontend.md | `[rag.07]` | `[rag.01]` | rag.07=reranker; assistant wiring depends on live RagService (**rag.01**). |
+| frontend.07 | frontend.md | `[api.09, events.06]` | `[api.07]` | Last-Event-ID SSE resume is owned by **api.07** ("Event-driven SSE with reconnect semantics"); api.09/events.06 unrelated. |
+| _plugins.04 | _plugins.md | `[_plugins.14, _plugins.03, _security.07, api.02]` | `[_plugins.14, _plugins.03, _security.11, api.02]` | _security.07=PII redaction; admin RBAC is **_security.11** (3-tier RBAC policy table). |
+| _observability.10 | _observability.md | `[…, database.05]` | `[…, database.01]` | database.05=pool tuning; the `audit_log` migration needs the persistence baseline/migration convention (**database.01**). |
+| _cicd.06 | _cicd.md | `[_cicd.05, _security.07]` | `[_cicd.05]` | _security.07=PII redaction; no image-scan-policy story exists. Policy file is owned by _cicd.06's own AC. Edge dropped. |
+| _multitenancy.03 | _multitenancy.md | `[_multitenancy.01, _security.04, api.29]` | `[_multitenancy.01, _security.04]` | api.29=de-seed ApiState — does not gate reading a tenant JWT claim. Edge dropped. |
+
+Also fixed (in-body, non-prereq): ingestion.07 AC cross-referenced `_security.07` as "audit log" → corrected to **`_security.06`** (audit log; _security.07 is PII redaction). Counter-checked and left intact (correct as-cited): ingestion.20 → storage.06 (tenant-scoped key prefixes), knowledgebases citations to _security.07 for *redaction* (correct).
+
+### New stories added
+
+| ID | Title | Why |
+|---|---|---|
+| **analytics.33** | Extraction-quality metric — `compute_extraction_quality(predicted, gold)` | ingestion.19 cited a non-existent analytics extraction-quality story (`analytics.07` is timeseries DI). The metric (`backend/analytics/metrics/extraction_quality.py`) has no home story and is genuinely unimplemented. Prereqs `[]`; unblocks ingestion.19. |
+| **storage.14** | Object-store health probes for worker and API readiness | agent.09's readiness probe needs a storage `check_health()` surface; storage had no readiness story (it cited `storage.04`=encryption). Mirrors vectorstore.12. Prereqs `[]`; unblocks agent.09. |
+
+### Status drift vs. code (Class B) — documented, not flipped
+
+Three stories are **substantially shipped in code** but the validator forbids flipping them to `in-progress` because it requires all prerequisites to be `done`, and their residual ACs depend on still-`planned` foundations. Rather than falsely close prereqs, each carries a dated **PM status note** in its body recording the effective completion:
+- **api.02** (cases persistence) — ~70% done; `backend/cases/` + migration `0002_cases.py` live; tenant-auth/audit tail remains (`_security.05`/`_multitenancy.04`).
+- **api.03** (conversation persistence) — ~60% done; `backend/conversations/` + migration `0005_conversations.py` live; citation-provenance + tenant tail remains.
+- **analytics.11** (Postgres risk history) — 3/4 AC; `PostgresRiskSignalSource` live; only the live-DB round-trip test remains.
+
+All other audited `planned` statuses were verified genuinely unstarted in code (config.04, config.02/06, events.04, shared.06/07, llm.04/06/07, most `_observability.*`/`_multitenancy.*`, graph.01/06/07, vectorstore.02/05/09/12, database.01/02/04). database.04's CI-migration **drift/replay gate** is confirmed NOT shipped (CI does a forward-only `alembic upgrade head` at `ci.yml:83`, but no bidirectional replay or `alembic check` drift gate) — `planned` is correct.
+
+### PM decisions — resolved 2026-06-23
+
+The three items flagged in the dependency-graph cleaning were adjudicated (product-owner decision):
+
+1. **frontend.04 live-projection source** → **`[api.28, rag.01]`**. The Dashboard's "seeded vs live" status is owned by **api.28** ("Replace seeded API analytics reads", prereq `[api.01]` — cycle-safe); the mislabeled `analytics.06` (timeseries) prereq was dropped. `analytics.28` was rejected as the target because it already depends on frontend.04 (would cycle).
+2. **audit-log duplicate** → **`_security.06` is canonical** (security/compliance domain owns audit-of-admin-actions). `_observability.10` marked **`dropped`** (superseded); its sole dependent `storage.09` re-pointed to `_security.06`.
+3. **workflow-run store duplicate** → **`agent.18` owns the `PostgresWorkflowRunStore` adapter** (alongside the existing Redis/in-memory adapters in `agent/adapters/`). **`database.01` refocused** to own the `workflow_runs` schema **migration** only (the persistence anchor its 9 dependents rely on); `agent.18` now depends on `database.01`. No dependents re-pointed.
+
+### Carried over for a future cleanup (noted, not actioned this run)
+- The newer narrative-style stories (most `*.1x`+ stories across graph/api/config/events/analytics/monitoring) cite code-touch-points under a non-existent `backend/app/...` path layout; the real layout is `backend/<module>/`. Systematic doc-convention nit, not a status/prereq defect.
+- **database.08–.13** carry literal Alembic revision IDs (`0004_…`–`0008_…`) that now collide with shipped revisions `0004_record_submissions`…`0007_case_feedback`; must be renumbered at implementation time.
 
 ---
 
@@ -309,7 +368,7 @@ A code-level audit of every non-done BL story was run on 2026-06-04 and refreshe
 
 ## Cross-cutting reference
 
-Module backlogs (395 stories) remain the authoritative per-module work breakdown. The Project Manager agent triages stories from these into the curated list above each sprint:
+Module backlogs (442 stories as of 2026-06-23) remain the authoritative per-module work breakdown. The Project Manager agent triages stories from these into the curated list above each sprint:
 
 - [docs/backlog/_cicd.md](../../backlog/_cicd.md), [_infra.md](../../backlog/_infra.md), [_multitenancy.md](../../backlog/_multitenancy.md), [_observability.md](../../backlog/_observability.md), [_plugins.md](../../backlog/_plugins.md), [_security.md](../../backlog/_security.md)
 - [agent.md](../../backlog/agent.md), [analytics.md](../../backlog/analytics.md), [api.md](../../backlog/api.md), [config.md](../../backlog/config.md), [database.md](../../backlog/database.md), [embeddings.md](../../backlog/embeddings.md), [events.md](../../backlog/events.md), [frontend.md](../../backlog/frontend.md), [graph.md](../../backlog/graph.md), [ingestion.md](../../backlog/ingestion.md), [knowledgebases.md](../../backlog/knowledgebases.md), [llm.md](../../backlog/llm.md), [monitoring.md](../../backlog/monitoring.md), [rag.md](../../backlog/rag.md), [records.md](../../backlog/records.md), [shared.md](../../backlog/shared.md), [storage.md](../../backlog/storage.md), [vectorstore.md](../../backlog/vectorstore.md)

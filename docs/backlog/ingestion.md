@@ -254,7 +254,7 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 - [ ] Credentials (basic auth, bearer tokens) are only attached when the host matches a configured `authenticated_hosts` allowlist; redirects strip credentials by default.
 - [x] `content-length` is not trusted as the only limit; body-size enforcement happens mid-stream in the current synchronous fetcher.
 - [ ] Async backpressure-aware remote streaming lands with the ingestion.06/ingestion.27 work.
-- [ ] Audit log entry on every blocked request (cross-edge to `_security.07` audit log).
+- [ ] Audit log entry on every blocked request (cross-edge to `_security.06` audit log; `_security.07` is PII redaction, not the audit log).
 - [ ] Unit tests cover: blocked private IP, blocked loopback, redirect to private IP, redirect stripping credentials, allowlist hit/miss, oversized streaming abort.
 
 ### Verification
@@ -570,7 +570,7 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 
 **ID:** ingestion.16
 **Status:** planned
-**Prerequisites:** [api.09, graph.07, vectorstore.05]
+**Prerequisites:** [vectorstore.09]
 **Unblocks:** []
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md
@@ -580,15 +580,17 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 **so that** the architecture.md §14.3 milestone "wire `delete_by_source_document` to the document-delete endpoint" is closed.
 
 ### Current State
-- The API has a standalone `DELETE /knowledgebases/{kb_id}/documents/{document_id}` route, but it only deletes object-store keys under the document prefix and then the metadata row; it does not call `graph_service.delete_by_source_document` or `vector_service.delete_by_source_document`.
-- The re-upload path records a replacement candidate by content hash and calls `graph_service.delete_by_source_document` / `vector_service.delete_by_source_document` only after registration returns an enqueued receipt.
+- The API has a standalone `DELETE /knowledgebases/{kb_id}/documents/{document_id}` route (`backend/api/routers/knowledgebases.py:352-400`), but it only deletes object-store keys under the document prefix and then the metadata row; it does not call `graph_service.delete_by_source_document` or `vector_service.delete_by_source_document`.
+- The re-upload path records a replacement candidate by content hash and calls `graph_service.delete_by_source_document` / `vector_service.delete_by_source_document` only after registration returns an enqueued receipt (`knowledgebases.py:140-141`).
+- The graph/vector `delete_by_source_document` capability **is already implemented** in code — `graph/service.py:313`, `graph/adapters/{in_memory.py:275,neo4j_adapter.py:570}`, `vectorstore/service.py:216`, `vectorstore/adapters/{in_memory.py:111,qdrant_adapter.py:261}`. What is missing is the *wiring* of that capability into the standalone delete route, plus the ingestion-owned orchestration contract.
 - Ingestion itself owns no `delete_source_document` / `reindex_source_document` contract.
 - Architecture.md §14.3 carries this as an open milestone for the dedicated route.
+- **PM prereq re-point (2026-06-23):** original prereqs `[api.09, graph.07, vectorstore.05]` were mislabeled — api.09 = "Consolidate request/response contracts", graph.07 = "Improve entity search relevance", vectorstore.05 = "namespace lifecycle", none of which gate this cascade. The single real prerequisite is **vectorstore.09** ("Wire `delete_by_source_document` into the document-delete API and harden edge cases"), which owns the vector leg of the cascade. The graph leg's capability already ships (no graph story needed) and there is no separate api story for the delete route — the route already exists and this story owns wiring the cascade through it.
 
 ### Acceptance Criteria
 - [ ] `IngestionService.delete_source_document(kb_id: str, document_id: str) -> DocumentDeleteReport` exists and orchestrates: graph delete → vector delete → object-store cleanup (source + parsed) → outbox publish of `DocumentDeletedEvent`.
 - [ ] `IngestionService.reindex_source_document(kb_id: str, document_id: str)` is the convenience wrapper used by re-upload (delete + re-ingest).
-- [ ] `DELETE /knowledgebases/{kb_id}/documents/{document_id}` (added in `api.09`) calls the service method and returns 204 on full success, 207 Multi-Status on partial failure with `{step, status, error}` entries.
+- [ ] `DELETE /knowledgebases/{kb_id}/documents/{document_id}` (route already exists at `knowledgebases.py:352`; coordinate the vector leg with `vectorstore.09`) calls the service method and returns 204 on full success, 207 Multi-Status on partial failure with `{step, status, error}` entries.
 - [ ] Status projection (`ingestion.19`) reflects `deleted` transition.
 - [ ] Existing re-upload path in `knowledgebases.py:430-439` is refactored to call `reindex_source_document` rather than performing cascade inline.
 - [ ] Architecture.md §14.3 milestone bullet is updated to `done` and links to the closing PR.
@@ -696,7 +698,7 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 
 **ID:** ingestion.19
 **Status:** planned
-**Prerequisites:** [ingestion.11, analytics.07, _observability.08]
+**Prerequisites:** [ingestion.11, analytics.33, _observability.08]
 **Unblocks:** [ingestion.25]
 **Estimated size:** L
 
@@ -708,12 +710,12 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 - `backend/tests/ingestion/fixtures/policies/` holds two markdown policy fixtures used only by the Ollama integration test (`backend/tests/ingestion/test_documents_e2e_with_ollama.py:39`).
 - No domain-coverage corpus (narrative PDF, narrative DOCX, malformed files, multilingual samples) exists.
 - No precision/recall metric is computed against any gold-standard extraction set.
-- `analytics/metrics/` does not currently expose extraction-quality computation (cross-edge to `analytics.07`).
+- `analytics/metrics/` does not currently expose extraction-quality computation (cross-edge to **`analytics.33`** — new story added by the 2026-06-23 PM run; the prior reference to `analytics.07` was wrong, as `analytics.07` is a timeseries-DI story).
 
 ### Acceptance Criteria
 - [ ] A fixture corpus under `backend/tests/ingestion/fixtures/golden/<domain>/` covers at minimum: 5 narrative PDFs, 5 narrative DOCX, 3 malformed files, 3 multilingual samples (per the multi-language decision from `ingestion.22`).
 - [ ] Each fixture ships with a `.gold.json` companion declaring expected entities (type + natural key + minimal properties) and expected relationships.
-- [ ] A `compute_extraction_quality(predicted, gold) -> QualityReport` function in `backend/analytics/metrics/extraction_quality.py` returns per-type precision/recall/F1 and an overall macro-F1 (cross-edge to `analytics.07`).
+- [ ] A `compute_extraction_quality(predicted, gold) -> QualityReport` function in `backend/analytics/metrics/extraction_quality.py` returns per-type precision/recall/F1 and an overall macro-F1 (cross-edge to `analytics.33`).
 - [ ] A `pytest` marker `@pytest.mark.extraction_quality` runs the corpus through the live extractor and asserts macro-F1 ≥ 0.7 (initial floor; raised once baseline is measured).
 - [ ] Quality metrics are exported to Prometheus when the suite runs in CI (cross-edge to `_observability.08` for fixture-drift dashboards).
 - [ ] A `make ingestion-quality` target invokes the suite locally.
@@ -725,7 +727,7 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 ### Code touch points
 - `backend/tests/ingestion/fixtures/golden/medicare_fraud/` (new fixtures)
 - `backend/tests/ingestion/test_extraction_quality.py` (new)
-- `backend/analytics/metrics/extraction_quality.py` (new — implemented in `analytics.07`, consumed here)
+- `backend/analytics/metrics/extraction_quality.py` (new — implemented in `analytics.33`, consumed here)
 - `Makefile` (modify — `ingestion-quality` target)
 - `backend/pyproject.toml` (modify — register `extraction_quality` marker)
 

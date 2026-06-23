@@ -125,7 +125,7 @@ Plugin behavior is planned, but there is no runtime discovery path or registry o
 
 **ID:** _plugins.04
 **Status:** planned
-**Prerequisites:** [_plugins.14, _plugins.03, _security.07, api.02]
+**Prerequisites:** [_plugins.14, _plugins.03, _security.11, api.02]
 **Unblocks:** [_plugins.09, _plugins.10]
 **Estimated size:** L
 
@@ -136,7 +136,7 @@ Plugin behavior is planned, but there is no runtime discovery path or registry o
 ### Current State
 - No `/plugins/*` router exists (see listing of `backend/api/routers/` — alerts, analytics, auth, cases, config, events, evidence, graph, investigation, knowledgebases, policy, rag, records, workflows, ws — none plugin-related).
 - `PluginProtocol` from _plugins.01 declares `startup(context)` / `shutdown()` placeholders but has no caller.
-- Admin RBAC role exists (added in _security.07 cycle); plugin endpoints must require it.
+- Admin RBAC role exists (the 3-tier RBAC policy table — owned by `_security.11`, NOT `_security.07` which is PII redaction; prereq re-pointed by the 2026-06-23 PM run); plugin endpoints must require the admin role.
 
 ### Acceptance Criteria
 - [ ] Lifecycle states defined as an enum in `backend/plugins/lifecycle.py`: `DISCOVERED → LOADED → ENABLED → DISABLED → UNLOADED`, plus terminal `FAILED` with `failure_reason`.
