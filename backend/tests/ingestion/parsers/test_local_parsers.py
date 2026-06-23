@@ -147,7 +147,7 @@ def test_html_parser_extracts_visible_text() -> None:
         """,
     )
 
-    assert parsed.text_content == "Claim Summary\n\nClaim ID C-1 & amount $42."
+    assert parsed.text_content == "# Claim Summary\n\nClaim ID C-1 & amount $42."
     assert parsed.parser_metadata["encoding"] == "utf-8"
 
 
@@ -234,6 +234,115 @@ def test_pdf_parser_rejects_encrypted_files(monkeypatch: pytest.MonkeyPatch) -> 
     parser = PdfParser()
     with pytest.raises(ParserError, match="Encrypted PDF"):
         parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"fake pdf")
+
+
+# --- HTML structural fidelity (ingestion.02) ----------------------------------
+
+
+def test_html_parser_preserves_heading_markers() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b"<body><h1>Title</h1><h2>Section</h2><h3>Sub</h3><p>Body.</p></body>",
+    )
+
+    assert parsed.text_content == "# Title\n\n## Section\n\n### Sub\n\nBody."
+    assert parsed.parser_metadata["heading_count"] == 3
+
+
+def test_html_parser_preserves_link_targets() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b'<body><p>See <a href="https://example.com/x">the policy</a> now.</p></body>',
+    )
+
+    assert parsed.text_content == "See [the policy](https://example.com/x) now."
+    assert parsed.parser_metadata["link_count"] == 1
+
+
+def test_html_parser_keeps_anchor_text_when_href_missing() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b"<body><p>Plain <a>anchor</a> text.</p></body>",
+    )
+
+    assert parsed.text_content == "Plain anchor text."
+    assert parsed.parser_metadata["link_count"] == 0
+
+
+def test_html_parser_renders_table_as_markdown() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b"""
+        <body>
+          <table>
+            <tr><th>Provider</th><th>NPI</th></tr>
+            <tr><td>Acme</td><td>123</td></tr>
+            <tr><td>Beta</td><td>456</td></tr>
+          </table>
+        </body>
+        """,
+    )
+
+    assert parsed.text_content == (
+        "| Provider | NPI |\n"
+        "| --- | --- |\n"
+        "| Acme | 123 |\n"
+        "| Beta | 456 |"
+    )
+    assert parsed.parser_metadata["table_count"] == 1
+
+
+def test_html_parser_pads_ragged_table_rows() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b"<body><table><tr><th>A</th><th>B</th></tr><tr><td>only</td></tr></table></body>",
+    )
+
+    assert parsed.text_content == "| A | B |\n| --- | --- |\n| only |  |"
+
+
+def test_html_parser_flattens_nested_tables_into_parent_cell() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b"""
+        <body>
+          <table>
+            <tr><th>Outer</th></tr>
+            <tr><td>cell <table><tr><td>inner1</td><td>inner2</td></tr></table></td></tr>
+          </table>
+        </body>
+        """,
+    )
+
+    # Nested table flattened into the parent cell; outer table stays valid markdown.
+    assert parsed.text_content == "| Outer |\n| --- |\n| cell inner1 inner2 |"
+    assert parsed.parser_metadata["table_count"] == 2
+
+
+def test_html_parser_counts_all_structures_in_metadata() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b"""
+        <body>
+          <h1>Report</h1>
+          <p>Visit <a href="https://a.test">A</a> and <a href="https://b.test">B</a>.</p>
+          <table><tr><th>H</th></tr><tr><td>v</td></tr></table>
+        </body>
+        """,
+    )
+
+    assert parsed.parser_metadata["heading_count"] == 1
+    assert parsed.parser_metadata["link_count"] == 2
+    assert parsed.parser_metadata["table_count"] == 1
+    assert (parsed.text_content or "").startswith("# Report")
+    assert "[A](https://a.test)" in (parsed.text_content or "")
 
 
 # --- Typed parser warnings (ingestion.24) -------------------------------------

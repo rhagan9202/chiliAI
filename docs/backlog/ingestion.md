@@ -43,10 +43,11 @@
 ## Story ingestion.02: Strengthen HTML parser fidelity beyond visible text
 
 **ID:** ingestion.02
-**Status:** planned
+**Status:** done
 **Prerequisites:** [ingestion.01]
 **Unblocks:** [ingestion.06]
 **Estimated size:** M
+**Done:** 2026-06-23 · ingestion Wave 0 (ready-set) · local working tree
 
 **As a** policy/news ingestion operator,
 **I need** the HTML parser to preserve headings, links, and table structure (not just visible paragraph text),
@@ -59,12 +60,12 @@
 - `HtmlParser.parse` (`html.py:106-125`) returns only `text_content` and a single `visible_text_length` metadata field.
 
 ### Acceptance Criteria
-- [ ] Headings are preserved with a leading marker (e.g. `# `, `## `) so downstream chunking can detect section boundaries.
-- [ ] Anchor text retains link targets in a normalized form (e.g. `[text](url)` markdown-style) for entity-extraction context.
-- [ ] Tables are emitted as markdown-style pipe tables (or stored as `StructuredRecord` rows on `ParsedDocument.records`) so they survive chunking intact.
-- [ ] `ParsedDocument.parser_metadata` carries counts (`heading_count`, `link_count`, `table_count`) for observability.
-- [ ] New unit tests cover heading fidelity, link extraction, table preservation, nested-table edge cases, and the existing visible-text behavior remains green.
-- [ ] `backend/ingestion/README.md` documents the new fidelity guarantees.
+- [x] Headings are preserved with a leading marker (e.g. `# `, `## `) so downstream chunking can detect section boundaries.
+- [x] Anchor text retains link targets in a normalized form (e.g. `[text](url)` markdown-style) for entity-extraction context.
+- [x] Tables are emitted as markdown-style pipe tables so they survive chunking intact (nested tables flattened into the parent cell).
+- [x] `ParsedDocument.parser_metadata` carries counts (`heading_count`, `link_count`, `table_count`) for observability.
+- [x] New unit tests cover heading fidelity, link extraction, table preservation, nested-table edge cases, and the existing visible-text behavior remains green.
+- [x] `backend/ingestion/README.md` documents the new fidelity guarantees.
 
 ### Verification
 - `pytest backend/tests/ingestion/parsers/test_html_parser.py -v` green; coverage ≥ 85% on `backend/ingestion/parsers/html.py`.

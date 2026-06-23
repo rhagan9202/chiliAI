@@ -30,7 +30,7 @@
 | events.md | 14 | 2 | 0 | 16 | 0% |
 | frontend.md | 26 | 0 | 0 | 26 | 0% |
 | graph.md | 20 | 0 | 0 | 20 | 0% |
-| ingestion.md | 28 | 0 | 7 | 35 | 20% |
+| ingestion.md | 27 | 0 | 8 | 35 | 22% |
 | knowledgebases.md | 13 | 0 | 0 | 13 | 0% |
 | llm.md | 17 | 0 | 0 | 17 | 0% |
 | monitoring.md | 20 | 0 | 0 | 20 | 0% |
@@ -39,7 +39,7 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 423 | 7 | 10 | 442 | 2% |
+| **Total** | 422 | 7 | 11 | 442 | 2% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -74,8 +74,8 @@
 - [frontend.10] frontend — size M — prereqs done
 - [frontend.13] frontend — size M — prereqs done
 - [frontend.14] frontend — size M — prereqs done
-- [ingestion.02] ingestion — size M — prereqs done
-- …26 more
+- [ingestion.35] ingestion — size M — prereqs done
+- …25 more
 <!-- END: ready-set -->
 
 ## Critical path

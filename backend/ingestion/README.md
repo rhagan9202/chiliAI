@@ -57,7 +57,9 @@ Every `Entity` and `Relationship` emitted by the extractor carries provenance fi
 
 ## Parser Registry
 
-Parsers for PDF, DOCX, HTML, TXT, JSON, CSV, and XLSX are registered in `parsers/registry.py`. The HTML parser currently normalizes visible text; richer heading/link/table fidelity is tracked separately in `docs/backlog/ingestion.md` as `ingestion.02`.
+Parsers for PDF, DOCX, HTML, TXT, JSON, CSV, and XLSX are registered in `parsers/registry.py`.
+
+The HTML parser (`parsers/html.py`, v2.0) preserves structural signal beyond flat visible text (`ingestion.02`): headings carry a markdown `#`/`##`/`###` marker so chunking can detect section boundaries; anchors keep their target as `[text](url)`; and tables are emitted as markdown pipe tables (nested tables are flattened into their parent cell). `parser_metadata` carries `heading_count`, `link_count`, and `table_count` for observability. `script`/`style`/`title` content is ignored.
 
 ## Parser Warnings
 
