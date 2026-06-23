@@ -30,7 +30,7 @@
 | events.md | 14 | 2 | 0 | 16 | 0% |
 | frontend.md | 26 | 0 | 0 | 26 | 0% |
 | graph.md | 20 | 0 | 0 | 20 | 0% |
-| ingestion.md | 30 | 0 | 5 | 35 | 14% |
+| ingestion.md | 29 | 0 | 6 | 35 | 17% |
 | knowledgebases.md | 13 | 0 | 0 | 13 | 0% |
 | llm.md | 17 | 0 | 0 | 17 | 0% |
 | monitoring.md | 20 | 0 | 0 | 20 | 0% |
@@ -39,18 +39,16 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 13 | 0 | 0 | 13 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 424 | 7 | 8 | 440 | 2% |
+| **Total** | 423 | 7 | 9 | 440 | 2% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
-> **Priority flag (ingestion):** the graph-corrupting relationship defects are fixed — `ingestion.30` (use the model's relationship output instead of fabricating Cartesian edges), `ingestion.31` (resolve endpoints onto cross-chunk-deduplicated survivors), `ingestion.32` (failure-event escape paths), and `ingestion.33` (full-digest document identity) are all done. Remaining ingestion bugs: `ingestion.34` (record-derived entities mis-stamped `source_kind="document"`) and `ingestion.35` (documents with zero valid entities silently marked ready). See [ingestion.md](ingestion.md) stories 34–35.
+> **Priority flag (ingestion):** the graph-corrupting relationship defects are fixed — `ingestion.30` (use the model's relationship output instead of fabricating Cartesian edges), `ingestion.31` (resolve endpoints onto cross-chunk-deduplicated survivors), `ingestion.32` (failure-event escape paths), and `ingestion.33` (full-digest document identity) are all done. `ingestion.34` (record-derived entities now stamped `source_kind="record"`) is done. `ingestion.35` (documents with zero valid entities silently marked ready) has its core fix shipped — empty/degraded extractions now emit a durable `DocumentsExtractionWarningEvent` and the validator strips hallucinated extra properties instead of dropping entities — but it stays `planned` pending its metrics (`ingestion.17`) and status-projection/API (`ingestion.18`) cross-edges. See [ingestion.md](ingestion.md) story 35.
 <!-- BEGIN: ready-set -->
 - [_cicd.01] _cicd — size S — prereqs done
 - [api.26] api — size S — prereqs done
 - [frontend.22] frontend — size S — prereqs done
 - [ingestion.24] ingestion — size S — prereqs done
-- [ingestion.33] ingestion — size S — prereqs done
-- [ingestion.34] ingestion — size S — prereqs done
 - [shared.01] shared — size S — prereqs done
 - [shared.17] shared — size S — prereqs done
 - [_cicd.02] _cicd — size M — prereqs done
@@ -75,7 +73,9 @@
 - [frontend.10] frontend — size M — prereqs done
 - [frontend.13] frontend — size M — prereqs done
 - [frontend.14] frontend — size M — prereqs done
-- …25 more
+- [ingestion.02] ingestion — size M — prereqs done
+- [ingestion.35] ingestion — size M — prereqs done
+- …22 more
 <!-- END: ready-set -->
 
 ## Critical path

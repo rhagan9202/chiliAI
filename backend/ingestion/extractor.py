@@ -511,7 +511,8 @@ class LlmDocumentExtractor:
 			"source_index and target_index refer to positions in the entities array "
 			"you return. Only emit relationships explicitly supported by the text; "
 			"omit any you cannot ground. Use only entity and relationship types listed "
-			"in the schema. Omit fields you cannot find."
+			"in the schema. Use only the property names listed in the schema for each "
+			"entity type; do not invent properties. Omit fields you cannot find."
 		)
 		user = (
 			f"Entity schemas: {json.dumps(entity_schemas)}\n"

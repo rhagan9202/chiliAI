@@ -810,7 +810,7 @@ Every `Entity` and `Relationship` produced by the document pipeline now carries 
 
 | Field | Source |
 |-------|--------|
-| `source_kind` | `"document"` (ingestion) or `"record"` (records pipeline) |
+| `source_kind` | `"document"` for text-derived chunks or `"record"` for structured-record chunks — stamped by the validator from each chunk's origin (`ChunkMetadata.source_kind`), so records ingested through the document pipeline via `StructuredRecordChunker` are correctly `"record"`, not just those from the records pipeline |
 | `source_document_id` | SHA-256 of source content |
 | `source_chunk_id` | Chunk index within the document |
 | `source_feed` | Feed name (records-derived only) |

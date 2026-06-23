@@ -1232,11 +1232,12 @@ so that interrupted uploads can be completed without starting over.
 ## Story ingestion.34: Stamp the correct source_kind for record-derived entities
 
 **ID:** ingestion.34
-**Status:** planned
+**Status:** done
 **Type:** bug
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** S
+**Done:** 2026-06-23 · ingestion provenance + empty-extraction slice · local working tree
 
 **As a** provenance/audit consumer,
 **I need** entities and relationships derived from structured records (via `StructuredRecordChunker`) to be stamped `source_kind="record"` rather than `source_kind="document"`,
@@ -1248,10 +1249,10 @@ so that interrupted uploads can be completed without starting over.
 - Records ingested through the document pipeline via `StructuredRecordChunker` (`backend/ingestion/chunker.py`) therefore carry an incorrect `source_kind="document"` provenance stamp.
 
 ### Acceptance Criteria
-- [ ] The validator stamps `source_kind` based on the candidate's actual origin (document text vs structured record), using `SOURCE_KIND_RECORD` for record-derived candidates and `SOURCE_KIND_DOCUMENT` for text-derived candidates.
-- [ ] The origin signal is threaded from the chunk/candidate (e.g. a chunk-source-kind field or candidate metadata) to the validator rather than inferred heuristically.
-- [ ] Provenance round-trip is verified: a record-derived entity reports `source_kind="record"` end-to-end.
-- [ ] Unit tests cover both paths (text-derived → `document`, record-derived → `record`) and the relationship variants.
+- [x] The validator stamps `source_kind` based on the candidate's actual origin (document text vs structured record), using `SOURCE_KIND_RECORD` for record-derived candidates and `SOURCE_KIND_DOCUMENT` for text-derived candidates.
+- [x] The origin signal is threaded from the chunk/candidate (e.g. a chunk-source-kind field or candidate metadata) to the validator rather than inferred heuristically. (Explicit `ChunkMetadata.source_kind` set by the chunker, read per-candidate by `chunk_id` in `validate_extraction`.)
+- [x] Provenance round-trip is verified: a record-derived entity reports `source_kind="record"` end-to-end.
+- [x] Unit tests cover both paths (text-derived → `document`, record-derived → `record`) and the relationship variants.
 
 ### Verification
 - `pytest backend/tests/ingestion/test_validator.py -v` green including the source-kind cases.
@@ -1284,11 +1285,11 @@ so that interrupted uploads can be completed without starting over.
 - A document with zero valid entities still emits `KnowledgeBaseReadyEvent` with `vector_count=0` (`backend/agent/coordinator.py:1258-1267`) and is marked ready — there is no "empty extraction" terminal state or warning.
 
 ### Acceptance Criteria
-- [ ] A document that produces zero valid entities reaches a distinct, durable terminal signal (e.g. `EXTRACTED_EMPTY` status or a `ValidationReport`-derived warning), not a silent ready.
-- [ ] `entity_errors` / `relationship_errors` counts (and a bounded sample) are surfaced via the document status projection / API so the UI can show "N entities dropped during validation: <reasons>" (cross-edge to `ingestion.18`).
-- [ ] The "unexpected property drops the whole entity" sharp edge is mitigated: either extra properties are stripped/relegated to metadata before `validate_entity`, or the drop is reported as a typed, user-visible warning rather than a silent loss. (Coordinate with `ingestion.14` normalization.)
-- [ ] Metrics: `ingestion_documents_empty_extraction_total`, `validation_entities_dropped_total{reason}` (cross-edge to `ingestion.17`).
-- [ ] Unit tests cover: zero-valid-entity document (distinct signal emitted), entity dropped for extra property (warning surfaced), report counts propagate to the status surface.
+- [x] A document that produces zero valid entities reaches a distinct, durable terminal signal (the per-document `DocumentsExtractionWarningEvent`, plus `empty_extraction=True` + `source_document_id` on `KnowledgeBaseReadyReference`), not a silent ready.
+- [ ] `entity_errors` / `relationship_errors` counts (and a bounded sample) are surfaced via the document status projection / API so the UI can show "N entities dropped during validation: <reasons>" (cross-edge to `ingestion.18`). _Partially delivered: counts + a bounded `sample_reasons` ride the durable `DocumentsExtractionWarningEvent`, and the full `ValidationReport` is persisted to the object store; the `GET .../documents` projection/API surface remains `ingestion.18`._
+- [x] The "unexpected property drops the whole entity" sharp edge is mitigated: either extra properties are stripped/relegated to metadata before `validate_entity`, or the drop is reported as a typed, user-visible warning rather than a silent loss. (Coordinate with `ingestion.14` normalization.) (Implemented as strip-to-`metadata.extra_properties` + a `ValidationReport.warnings` notice; prompt hardened to discourage extra properties.)
+- [ ] Metrics: `ingestion_documents_empty_extraction_total`, `validation_entities_dropped_total{reason}` (cross-edge to `ingestion.17`). _Deferred: structured worker logs + the durable event ship now; Prometheus counters land with the `ingestion.17` observability registry._
+- [x] Unit tests cover: zero-valid-entity document (distinct signal emitted), entity dropped for extra property (warning surfaced), report counts propagate to the status surface.
 
 ### Verification
 - `pytest backend/tests/ingestion/test_validator.py backend/tests/agent/test_coordinator_ready.py -v` green including the empty/dropped cases.

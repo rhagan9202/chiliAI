@@ -192,11 +192,39 @@ class KnowledgeBaseReadyReference(BaseModel):
     entity_count: int = Field(ge=0)
     relationship_count: int = Field(ge=0)
     vector_count: int = Field(ge=0)
+    source_document_id: str | None = None
+    empty_extraction: bool = False
 
 
 class KnowledgeBaseReadyEvent(EventBase):
     event_type: Literal["kb.ready"] = "kb.ready"
     knowledge_bases: list[KnowledgeBaseReadyReference]
+
+
+class ExtractionWarningReference(BaseModel):
+    """Per-document signal that extraction produced no valid entities or dropped some.
+
+    Surfaces validation outcomes that would otherwise complete as a silent "ready":
+    empty extractions, validation-dropped candidates, and properties relocated to
+    ``metadata.extra_properties``. ``validation_storage_key`` points at the full
+    ``ValidationReport`` for downstream UI/status surfacing (ingestion.18).
+    """
+
+    knowledge_base_id: str
+    source_document_id: str
+    valid_entity_count: int = Field(ge=0)
+    valid_relationship_count: int = Field(ge=0)
+    dropped_entity_count: int = Field(ge=0)
+    dropped_relationship_count: int = Field(ge=0)
+    stripped_property_count: int = Field(ge=0)
+    empty_extraction: bool
+    sample_reasons: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    validation_storage_key: str | None = None
+
+
+class DocumentsExtractionWarningEvent(EventBase):
+    event_type: Literal["documents.extraction_warning"] = "documents.extraction_warning"
+    documents: list[ExtractionWarningReference]
 
 
 class LlmCompletionReference(BaseModel):
@@ -433,6 +461,7 @@ AnyEvent = (
     | PipelineProgressEvent
     | AnalysisFailedEvent
     | DocumentsFailedEvent
+    | DocumentsExtractionWarningEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent
     | RecordsIngestedEvent
@@ -453,6 +482,7 @@ __all__ = [
     "DocumentFailureReference",
     "DocumentReference",
     "DocumentsChunkedEvent",
+    "DocumentsExtractionWarningEvent",
     "DocumentsFailedEvent",
     "DocumentsParsedEvent",
     "DocumentsUploadedEvent",
@@ -466,6 +496,7 @@ __all__ = [
     "ExplainabilityGeneratedEvent",
     "ExplainabilityGeneratedReference",
     "ExtractedDocumentReference",
+    "ExtractionWarningReference",
     "GnnAnalyzedEvent",
     "GnnAnalyzedReference",
     "GraphUpdatedDocumentReference",

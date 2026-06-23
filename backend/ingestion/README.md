@@ -43,7 +43,17 @@ Every parse-stage failure is converted into a per-document `DocumentsFailedEvent
 
 ## Provenance Metadata
 
-Every `Entity` and `Relationship` emitted by the extractor carries provenance fields (`source_kind="document"`, `source_document_id`, `source_chunk_id`) so downstream cascade-delete and audit queries can trace data back to its source. See `backend/graph/README.md` for the full provenance contract.
+Every `Entity` and `Relationship` emitted by the extractor carries provenance fields (`source_kind`, `source_document_id`, `source_chunk_id`) so downstream cascade-delete and audit queries can trace data back to its source. See `backend/graph/README.md` for the full provenance contract.
+
+`source_kind` reflects each candidate's **actual origin**, not a fixed value: text-derived chunks are stamped `source_kind="document"` and structured-record chunks (emitted by `StructuredRecordChunker`) are stamped `source_kind="record"` (`ingestion.34`). The discriminator is threaded explicitly via `ChunkMetadata.source_kind` (set by the chunker) and read back per candidate in `validate_extraction` using the candidate's `chunk_id`; a candidate whose chunk is absent falls back to `source_kind="document"`. This lets cascade-delete and audit queries correctly distinguish record-derived from document-derived data when records are ingested through the document pipeline.
+
+## Extraction Validation and Empty-Extraction Visibility
+
+`ExtractionResultValidator.validate_extraction` converts candidates into validated runtime objects and now surfaces, rather than silently swallows, degraded extractions (`ingestion.35`):
+
+- **Unknown-property stripping** — When an entity's only fault is an unrecognized/hallucinated property, the unknown keys are relocated to `metadata["extra_properties"]` and the entity is admitted on its schema-known properties instead of being dropped wholesale. Each relocation is recorded on `ValidationReport.warnings`. Unknown entity types, missing required properties, and value-type violations still drop the candidate (recorded in `entity_errors`). The LLM prompt is also hardened to ask the model to use only schema-listed property names.
+- **Durable extraction-warning signal** — During `handle_entities_extracted`, any document that produces zero valid entities OR had dropped/stripped candidates emits a per-document `DocumentsExtractionWarningEvent` (carrying valid/dropped counts, `stripped_property_count`, an `empty_extraction` flag, a bounded `sample_reasons` list, and the `validation_storage_key` for full detail) plus a structured worker log line. The zero-entity "ready" path additionally stamps `empty_extraction=True` and `source_document_id` on `KnowledgeBaseReadyReference`, so an empty knowledge base is no longer indistinguishable from a successful one.
+- **Deferred surfacing** — The per-document status projection / `GET .../documents` API (`ingestion.18`) and Prometheus counters / OTEL spans (`ingestion.17`) are tracked separately; the durable event and full `ValidationReport` (persisted to the object store) carry the data those surfaces will consume.
 
 ## Parser Registry
 

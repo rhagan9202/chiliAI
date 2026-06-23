@@ -132,6 +132,7 @@ from events.types import (
     AnyEvent,
     ChunkedDocumentReference,
     DocumentsChunkedEvent,
+    DocumentsExtractionWarningEvent,
     DocumentsParsedEvent,
     DocumentsUploadedEvent,
     EmbeddingsCompleteDocumentReference,
@@ -139,6 +140,7 @@ from events.types import (
     EntitiesExtractedEvent,
     EntitiesValidatedEvent,
     ExtractedDocumentReference,
+    ExtractionWarningReference,
     GraphUpdatedEvent,
     KnowledgeBaseDeletedEvent,
     KnowledgeBaseReadyEvent,
@@ -1120,6 +1122,20 @@ def _build_extraction_storage_key(
     return f"knowledgebases/{knowledge_base_id}/extractions/{extraction_result_id}.json"
 
 
+_MAX_EXTRACTION_WARNING_SAMPLE = 10
+
+
+def _collect_extraction_warning_reasons(report: ValidationReport) -> list[str]:
+    """Flatten validation drops and stripped-property notices into a bounded sample."""
+    reasons: list[str] = []
+    for candidate_id, errors in report.entity_errors.items():
+        reasons.extend(f"entity {candidate_id}: {error}" for error in errors)
+    for candidate_id, errors in report.relationship_errors.items():
+        reasons.extend(f"relationship {candidate_id}: {error}" for error in errors)
+    reasons.extend(report.warnings)
+    return reasons[:_MAX_EXTRACTION_WARNING_SAMPLE]
+
+
 def handle_entities_extracted(
     event: EntitiesExtractedEvent,
     *,
@@ -1129,6 +1145,7 @@ def handle_entities_extracted(
 ) -> int:
     """Validate extracted candidates and publish runtime-ready results."""
     references: list[ValidatedDocumentReference] = []
+    warning_references: list[ExtractionWarningReference] = []
     for document in event.documents:
         if document.extraction_storage_key is None:
             raise ValueError("EntitiesExtractedEvent requires extraction_storage_key for validation.")
@@ -1173,11 +1190,56 @@ def handle_entities_extracted(
                 validation_storage_key=validation_storage_key,
             )
         )
+
+        valid_entity_count = len(validation_report.valid_entities)
+        dropped_entity_count = len(validation_report.entity_errors)
+        dropped_relationship_count = len(validation_report.relationship_errors)
+        stripped_property_count = len(validation_report.warnings)
+        empty_extraction = valid_entity_count == 0
+        if (
+            empty_extraction
+            or dropped_entity_count
+            or dropped_relationship_count
+            or stripped_property_count
+        ):
+            logger.warning(
+                "ingestion extraction warning stage=validate knowledge_base_id=%s "
+                "source_document_id=%s valid_entities=%d dropped_entities=%d "
+                "dropped_relationships=%d stripped_properties=%d empty=%s",
+                document.knowledge_base_id,
+                document.source_document_id,
+                valid_entity_count,
+                dropped_entity_count,
+                dropped_relationship_count,
+                stripped_property_count,
+                empty_extraction,
+            )
+            warning_references.append(
+                ExtractionWarningReference(
+                    knowledge_base_id=document.knowledge_base_id,
+                    source_document_id=document.source_document_id,
+                    valid_entity_count=valid_entity_count,
+                    valid_relationship_count=len(validation_report.valid_relationships),
+                    dropped_entity_count=dropped_entity_count,
+                    dropped_relationship_count=dropped_relationship_count,
+                    stripped_property_count=stripped_property_count,
+                    empty_extraction=empty_extraction,
+                    sample_reasons=_collect_extraction_warning_reasons(validation_report),
+                    validation_storage_key=validation_storage_key,
+                )
+            )
     if references:
         event_bus.publish(
             EntitiesValidatedEvent(
                 correlation_id=event.correlation_id,
                 documents=references,
+            )
+        )
+    if warning_references:
+        event_bus.publish(
+            DocumentsExtractionWarningEvent(
+                correlation_id=event.correlation_id,
+                documents=warning_references,
             )
         )
     return len(references)
@@ -1262,6 +1324,8 @@ def handle_graph_updated(
                     entity_count=document.upserted_entity_count,
                     relationship_count=document.upserted_relationship_count,
                     vector_count=0,
+                    source_document_id=document.source_document_id,
+                    empty_extraction=True,
                 )
             )
             continue
