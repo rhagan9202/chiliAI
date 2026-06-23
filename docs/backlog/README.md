@@ -30,7 +30,7 @@
 | events.md | 14 | 2 | 0 | 16 | 0% |
 | frontend.md | 26 | 0 | 0 | 26 | 0% |
 | graph.md | 20 | 0 | 0 | 20 | 0% |
-| ingestion.md | 33 | 0 | 2 | 35 | 5% |
+| ingestion.md | 30 | 0 | 5 | 35 | 14% |
 | knowledgebases.md | 13 | 0 | 0 | 13 | 0% |
 | llm.md | 17 | 0 | 0 | 17 | 0% |
 | monitoring.md | 20 | 0 | 0 | 20 | 0% |
@@ -39,11 +39,11 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 13 | 0 | 0 | 13 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 427 | 7 | 5 | 440 | 1% |
+| **Total** | 424 | 7 | 8 | 440 | 2% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
-> **Priority flag (ingestion):** take `ingestion.30` → `ingestion.31` first — they fix graph-corrupting relationship defects (Cartesian-fabricated edges; dropped edges for deduplicated entities) that propagate into RAG/analytics. `ingestion.32` (failure-event escape paths) is the next-most-urgent resilience bug. See [ingestion.md](ingestion.md) stories 30–35.
+> **Priority flag (ingestion):** the graph-corrupting relationship defects are fixed — `ingestion.30` (use the model's relationship output instead of fabricating Cartesian edges), `ingestion.31` (resolve endpoints onto cross-chunk-deduplicated survivors), `ingestion.32` (failure-event escape paths), and `ingestion.33` (full-digest document identity) are all done. Remaining ingestion bugs: `ingestion.34` (record-derived entities mis-stamped `source_kind="document"`) and `ingestion.35` (documents with zero valid entities silently marked ready). See [ingestion.md](ingestion.md) stories 34–35.
 <!-- BEGIN: ready-set -->
 - [_cicd.01] _cicd — size S — prereqs done
 - [api.26] api — size S — prereqs done

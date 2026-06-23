@@ -1079,11 +1079,12 @@ so that interrupted uploads can be completed without starting over.
 ## Story ingestion.30: Use the LLM's relationship output instead of fabricating intra-chunk Cartesian edges
 
 **ID:** ingestion.30
-**Status:** planned
+**Status:** done
 **Type:** bug
 **Prerequisites:** []
 **Unblocks:** [ingestion.31]
 **Estimated size:** M
+**Done:** 2026-06-23 · ingestion relationship-fidelity slice · local working tree
 
 **As an** extraction-quality operator,
 **I need** `LlmDocumentExtractor` to parse and use the `relationships` array the model returns (keyed by `source_index`/`target_index`) rather than discarding it and emitting every source-type × target-type pair within a chunk,
@@ -1096,11 +1097,11 @@ so that interrupted uploads can be completed without starting over.
 - Result: in a chunk with N sources and M targets, all N×M edges are created regardless of whether the text supports them; relationship confidence is just `min(source.confidence, target.confidence)` (`extractor.py:429`) with no model grounding.
 
 ### Acceptance Criteria
-- [ ] `_extract_chunk` parses the model's `relationships` array, mapping `source_index`/`target_index` back to the entity candidates produced for that chunk; out-of-range or dangling indices are dropped with a warning, not silently.
-- [ ] `_extract_relationships` is replaced by (or rewired to consume) the model-provided edges; the Cartesian fallback is removed. Only relationships the model emitted (and whose endpoints survived entity validation) are produced.
-- [ ] Each emitted `CandidateRelationship` carries `evidence` (the model's supporting span/quote where available) instead of `evidence=[]`.
-- [ ] Relationship `type` is validated against `RelationshipDefinition.name` and endpoint types against `source`/`target`; mismatches are dropped with a warning.
-- [ ] Unit tests cover: model returns valid relationships (created), model returns out-of-range index (dropped + warning), model returns a relationship whose endpoint was validation-dropped (dropped), model returns no relationships (none created — no Cartesian fallback), endpoint-type mismatch (dropped).
+- [x] `_extract_chunk` parses the model's `relationships` array, mapping `source_index`/`target_index` back to the entity candidates produced for that chunk; out-of-range or dangling indices are dropped with a warning, not silently.
+- [x] `_extract_relationships` is replaced by (or rewired to consume) the model-provided edges; the Cartesian fallback is removed. Only relationships the model emitted (and whose endpoints survived entity validation) are produced.
+- [x] Each emitted `CandidateRelationship` carries `evidence` (the model's supporting span/quote where available) instead of `evidence=[]`.
+- [x] Relationship `type` is validated against `RelationshipDefinition.name` and endpoint types against `source`/`target`; mismatches are dropped with a warning.
+- [x] Unit tests cover: model returns valid relationships (created), model returns out-of-range index (dropped + warning), model returns a relationship whose endpoint was validation-dropped (dropped), model returns no relationships (none created — no Cartesian fallback), endpoint-type mismatch (dropped).
 
 ### Verification
 - `pytest backend/tests/ingestion/test_llm_extractor.py -v` green including the new relationship-sourcing cases.
@@ -1116,11 +1117,12 @@ so that interrupted uploads can be completed without starting over.
 ## Story ingestion.31: Stop dropping relationships for cross-chunk-deduplicated entities
 
 **ID:** ingestion.31
-**Status:** planned
+**Status:** done
 **Type:** bug
 **Prerequisites:** [ingestion.30]
 **Unblocks:** []
 **Estimated size:** M
+**Done:** 2026-06-23 · ingestion relationship-fidelity slice · local working tree
 
 **As an** extraction-quality operator,
 **I need** the relationship pass to resolve endpoints against the document's surviving (deduplicated) entity set rather than the per-chunk candidate list,
@@ -1132,11 +1134,11 @@ so that interrupted uploads can be completed without starting over.
 - Net effect: the more frequently an entity appears (the more important it usually is), the more of its relationships are dropped.
 
 ### Acceptance Criteria
-- [ ] Relationship endpoints resolve to the surviving deduplicated candidate for the entity's `(type, natural_key)`, regardless of which chunk the relationship was found in.
-- [ ] A duplicate mention's relationships are re-pointed to the surviving candidate id rather than dropped.
-- [ ] When an endpoint has no `natural_key` (cannot be deduplicated), existing per-chunk behavior is preserved (no regression).
-- [ ] Surviving candidates accumulate `metadata["merged_chunk_ids"]` (or equivalent) so provenance reflects all contributing chunks.
-- [ ] Unit tests cover: entity deduped in chunk 1, relationship found in chunk 3 → edge created against the chunk-1 survivor; no-natural-key endpoint → unchanged; self-loop avoided.
+- [x] Relationship endpoints resolve to the surviving deduplicated candidate for the entity's `(type, natural_key)`, regardless of which chunk the relationship was found in.
+- [x] A duplicate mention's relationships are re-pointed to the surviving candidate id rather than dropped.
+- [x] When an endpoint has no `natural_key` (cannot be deduplicated), existing per-chunk behavior is preserved (no regression).
+- [x] Surviving candidates accumulate `metadata["merged_chunk_ids"]` (or equivalent) so provenance reflects all contributing chunks.
+- [x] Unit tests cover: entity deduped in chunk 1, relationship found in chunk 3 → edge created against the chunk-1 survivor; no-natural-key endpoint → unchanged; self-loop avoided.
 
 ### Verification
 - `pytest backend/tests/ingestion/test_llm_extractor.py -v` green including the cross-chunk endpoint-resolution cases.
@@ -1194,11 +1196,12 @@ so that interrupted uploads can be completed without starting over.
 ## Story ingestion.33: Use the full content digest for document identity to eliminate dedup collisions
 
 **ID:** ingestion.33
-**Status:** planned
+**Status:** done
 **Type:** bug
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** S
+**Done:** 2026-06-23 · ingestion relationship-fidelity slice · local working tree
 
 **As a** KB operator,
 **I need** `source_document_id` to be derived from the full SHA-256 digest rather than a 24-hex-char (96-bit) prefix,
@@ -1210,10 +1213,10 @@ so that interrupted uploads can be completed without starting over.
 - A prefix collision hits the `already_registered` dedup path and returns the existing object's bytes — silent data loss/corruption with no error surfaced.
 
 ### Acceptance Criteria
-- [ ] `_source_document_id` uses the full hex digest (or a documented, sufficiently-wide encoding) for both the `doc-sha256-` and `doc-uri-` forms.
-- [ ] A migration/compat note documents the id-format change and its effect on existing stored keys (cross-edge to `ingestion.20` storage-key construction); existing documents remain resolvable or a one-time migration is specified.
-- [ ] Dedup correctness is preserved: re-uploading identical bytes still produces the same id and `enqueued=False`.
-- [ ] Unit tests cover: identical content → same id; two contents sharing a 24-char prefix but differing later → distinct ids (regression test for the collision).
+- [x] `_source_document_id` uses the full hex digest (or a documented, sufficiently-wide encoding) for both the `doc-sha256-` and `doc-uri-` forms.
+- [x] A migration/compat note documents the id-format change and its effect on existing stored keys (cross-edge to `ingestion.20` storage-key construction); existing documents remain resolvable or a one-time migration is specified.
+- [x] Dedup correctness is preserved: re-uploading identical bytes still produces the same id and `enqueued=False`.
+- [x] Unit tests cover: identical content → same id; two contents sharing a 24-char prefix but differing later → distinct ids (regression test for the collision).
 
 ### Verification
 - `pytest backend/tests/ingestion/test_service.py -v` green including the prefix-collision regression test.
