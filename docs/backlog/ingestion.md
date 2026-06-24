@@ -82,10 +82,11 @@
 ## Story ingestion.03: Add PDF OCR fallback adapter boundary for scanned documents
 
 **ID:** ingestion.03
-**Status:** planned
+**Status:** done
 **Prerequisites:** []
 **Unblocks:** [ingestion.06]
 **Estimated size:** L
+**Done:** 2026-06-23 · ingestion Wave 0 (ready-set) · local working tree
 
 **As a** Medicare-fraud analyst ingesting scanned policy or claim PDFs,
 **I need** the PDF parser to fall back to an OCR adapter when text extraction yields nothing,
@@ -97,12 +98,12 @@
 - Architecture.md §5/§6 does not currently commit to OCR; this story includes the architectural decision check (Open question 1 from the Wave 1 epic draft).
 
 ### Acceptance Criteria
-- [ ] `OcrAdapterProtocol` lives in `backend/ingestion/parsers/protocols.py` with a `recognize(content: bytes) -> str` (or page-level) signature, dependency-light.
-- [ ] At least one concrete adapter (e.g. `TesseractOcrAdapter`) lives under `backend/ingestion/parsers/adapters/` behind an optional `[ocr]` extra in `pyproject.toml`; the test stub adapter ships in tree for unit tests.
-- [ ] `PdfParser` accepts an optional `ocr_adapter` parameter; when text extraction is empty AND an adapter is configured, it OCRs page-by-page and emits the OCR text with `parser_metadata["ocr_used"] = True`.
-- [ ] When no adapter is configured the parser continues to raise `ParserError` (unchanged behavior) so opt-in is explicit.
-- [ ] `docs/architecture.md` §5/§6 adds a single sentence stating OCR is a supported optional adapter with the operator policy (opt-in per deployment).
-- [ ] Unit tests cover: text-PDF (no OCR), image-PDF with adapter (OCR used), image-PDF without adapter (ParserError), mixed-page PDF (OCR fills empty pages only).
+- [x] `OcrAdapterProtocol` lives in `backend/ingestion/parsers/protocols.py` with a page-level `recognize_page(content: bytes, page_number: int) -> str` signature, dependency-light.
+- [x] A concrete `TesseractOcrAdapter` lives under `backend/ingestion/parsers/adapters/` behind an optional `[ocr]` extra in `pyproject.toml` (lazy `importlib` imports); an in-tree `_StubOcrAdapter` ships in the parser unit tests.
+- [x] `PdfParser` accepts an optional `ocr_adapter` parameter; when a page's text extraction is empty AND an adapter is configured, it OCRs that page and emits the OCR text with `parser_metadata["ocr_used"] = True`.
+- [x] When no adapter is configured the parser continues to raise `ParserError` (unchanged behavior) so opt-in is explicit.
+- [x] `docs/architecture.md` §6.5 states OCR is a supported optional adapter, opt-in per deployment.
+- [x] Unit tests cover: text-PDF (no OCR), image-PDF with adapter (OCR used), image-PDF without adapter (ParserError), mixed-page PDF (OCR fills empty pages only), and OCR-finds-nothing keeps the empty-page warning. (Unit tests live in `test_local_parsers.py`; the `[ocr]`-gated integration test is `test_pdf_ocr_integration.py`.)
 
 ### Verification
 - `pytest backend/tests/ingestion/parsers/test_pdf_parser.py -v` green.

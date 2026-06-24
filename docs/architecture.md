@@ -804,6 +804,8 @@ The following additions landed in `feature/ingestion-pipeline-e2e-demo`. See the
 
 `OllamaLlmClient` in `llm/adapters/` is a new adapter implementing `LlmClientProtocol` via Ollama's OpenAI-compatible endpoint. It is selected by `LlmConfig.provider="ollama"` with `LlmConfig.base_url` pointing at the Ollama host. `FallbackLlmClient` wraps a primary client with an ordered list of fallback clients tried on error.
 
+**Optional PDF OCR fallback** — OCR is a supported **optional** adapter behind the `OcrAdapterProtocol` (`ingestion/parsers/protocols.py`): when a `PdfParser` is constructed with an `ocr_adapter` (e.g. `TesseractOcrAdapter`, behind the `[ocr]` extra), pages that yield no extractable text are OCR'd page-by-page and stamped `parser_metadata["ocr_used"]=True`; it is opt-in per deployment and the default (no adapter) keeps the unchanged "text-less PDF → `ParserError`" behavior (`ingestion.03`).
+
 **Provenance metadata on entities and relationships**
 
 Every `Entity` and `Relationship` produced by the document pipeline now carries provenance fields:

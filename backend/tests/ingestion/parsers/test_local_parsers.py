@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import importlib.util
 from io import BytesIO
 
 import pytest
@@ -495,3 +496,107 @@ def test_parser_warning_round_trips_through_serialization() -> None:
     assert restored.warnings[0].code == "pdf.empty_page"
     assert restored.warnings[0].page_number == 2
     assert restored.warnings[0].severity == "warning"
+
+
+# --- PDF OCR fallback (ingestion.03) ------------------------------------------
+
+
+def _pdf_reader_with_pages(page_texts: list[str]) -> type:
+    class _Reader:
+        def __init__(self, _content: BytesIO) -> None:
+            self.is_encrypted = False
+            self.pages = [_FakePage(text) for text in page_texts]
+
+    return _Reader
+
+
+class _StubOcrAdapter:
+    """In-tree OCR stub: returns canned text per 1-based page; records calls."""
+
+    def __init__(self, page_text: dict[int, str] | None = None) -> None:
+        self.calls: list[int] = []
+        self._page_text = page_text or {}
+
+    def recognize_page(self, content: bytes, page_number: int) -> str:
+        del content
+        self.calls.append(page_number)
+        return self._page_text.get(page_number, "")
+
+
+def test_pdf_parser_ocrs_image_only_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ingestion.parsers.pdf.PdfReader", _pdf_reader_with_pages(["", ""]))
+    adapter = _StubOcrAdapter({1: "Recognized one", 2: "Recognized two"})
+
+    parser = PdfParser(ocr_adapter=adapter)
+    parsed = parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"image pdf")
+
+    assert parsed.text_content == "Recognized one\n\nRecognized two"
+    assert parsed.parser_metadata["ocr_used"] is True
+    assert adapter.calls == [1, 2]
+    assert parsed.warnings == []
+
+
+def test_pdf_parser_ocr_fills_only_empty_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ingestion.parsers.pdf.PdfReader",
+        _pdf_reader_with_pages(["Real page one", ""]),
+    )
+    adapter = _StubOcrAdapter({2: "OCR page two"})
+
+    parser = PdfParser(ocr_adapter=adapter)
+    parsed = parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"mixed pdf")
+
+    assert parsed.text_content == "Real page one\n\nOCR page two"
+    assert adapter.calls == [2]  # OCR invoked only for the empty page
+    assert parsed.parser_metadata["ocr_used"] is True
+
+
+def test_pdf_parser_skips_ocr_when_text_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ingestion.parsers.pdf.PdfReader",
+        _pdf_reader_with_pages(["First page", "Second page"]),
+    )
+    adapter = _StubOcrAdapter({1: "should not be used"})
+
+    parser = PdfParser(ocr_adapter=adapter)
+    parsed = parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"text pdf")
+
+    assert adapter.calls == []
+    assert parsed.parser_metadata["ocr_used"] is False
+
+
+def test_pdf_parser_raises_for_image_pdf_without_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ingestion.parsers.pdf.PdfReader", _pdf_reader_with_pages(["", ""]))
+
+    parser = PdfParser()  # no OCR adapter configured -> opt-in unchanged
+    with pytest.raises(ParserError, match="does not contain extractable text"):
+        parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"image pdf")
+
+
+def test_pdf_parser_keeps_empty_page_warning_when_ocr_finds_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ingestion.parsers.pdf.PdfReader",
+        _pdf_reader_with_pages(["Real page one", ""]),
+    )
+    adapter = _StubOcrAdapter({})  # OCR recognizes nothing on the empty page
+
+    parser = PdfParser(ocr_adapter=adapter)
+    parsed = parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"mixed pdf")
+
+    assert adapter.calls == [2]
+    assert parsed.parser_metadata["ocr_used"] is False
+    assert any(w.code == "pdf.empty_page" and w.page_number == 2 for w in parsed.warnings)
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("pdf2image") is not None,
+    reason="OCR extra installed; covered by test_pdf_ocr_integration.py instead",
+)
+def test_tesseract_adapter_raises_clear_error_without_ocr_extra() -> None:
+    from ingestion.parsers.adapters.tesseract import TesseractOcrAdapter
+
+    adapter = TesseractOcrAdapter()
+    with pytest.raises(ImportError, match="optional OCR dependencies"):
+        adapter.recognize_page(b"pdf bytes", 1)
