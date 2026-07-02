@@ -103,6 +103,9 @@ services:
       - CHILI_DEV_ANONYMOUS_ROLE=${CHILI_DEV_ANONYMOUS_ROLE:-viewer}
       - CHILI_WORKFLOW_RUN_STORE_BACKEND=redis
       - CHILI_EVENT_BUS_BACKEND=redis
+      # Must match the API's repository backend so worker-persisted document
+      # metadata (status, warning counts/reasons) is visible to API reads.
+      - CHILI_KB_REPOSITORY_BACKEND=object_store
       - CHILI_EVENT_BLOCK_MS=500
       - LOG_LEVEL=INFO
       - LOG_FORMAT=console
