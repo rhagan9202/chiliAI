@@ -1,5 +1,7 @@
 # Close Ingestion Verification Gaps Implementation Plan
 
+> **Status: EXECUTED 2026-07-02** — all 12 tasks complete on `fix/ingestion-relationship-fidelity` (commits `2a5785d`..`e761cbc`). Live-stack validation surfaced and fixed two extra defects not in the original plan: the worker was missing `CHILI_KB_REPOSITORY_BACKEND=object_store` in both compose files (warnings persisted to a private in-memory repo), and the `case-feedback` Playwright spec was stale against the real UI (CI never runs Playwright). Full gates green: backend 2086 passed / 97% cov / pyright 0 / ruff clean; frontend 311 Vitest + lint + build; 17/17 Playwright e2e against `make dev`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Close the 5 gaps found by full-story verification of the `fix/ingestion-relationship-fidelity` branch: HTML unuploadable via API, LLM extractor unreachable (coordinator never passes `llm_client`), validator rejecting string decimals, warnings invisible in the UI, and uninterpolated `%s` worker logs.
