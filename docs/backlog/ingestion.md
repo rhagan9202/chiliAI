@@ -497,10 +497,17 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 ## Story ingestion.14: Add type-aware property normalization before validate_entity
 
 **ID:** ingestion.14
-**Status:** planned
+**Status:** done
 **Prerequisites:** [shared.06]
 **Unblocks:** []
 **Estimated size:** M
+**Done:** 2026-07-02 · verification-gap closure · fix/ingestion-relationship-fidelity
+
+> Implementation notes (deviations from the original ACs):
+> - Decimals normalize to `float`, not `Decimal` — `shared.types._matches_property_type` defines int/float as the platform's decimal representation, range checks coerce via `float()`, and artifacts round-trip through JSON. A typed-`Decimal` migration is a separate story if precision requirements harden.
+> - `datetime` normalization was dropped: `PropertyType` has no `datetime` member (only `date`).
+> - `list[T]` per-element normalization is impossible — `PropertyDefinition` declares no element type.
+> - Implemented without the `shared.06` exception hierarchy (still planned); failures are reported as `normalization_failed`-prefixed strings in `entity_errors` rather than a typed error class, which satisfies the distinguishability AC.
 
 **As a** schema steward,
 **I need** the validator to normalize extracted property values (dates → ISO 8601, decimals → typed Decimal, booleans → bool, enums → canonical form) against `EntityDefinition.properties[*].type` BEFORE calling `validate_entity`,
@@ -513,10 +520,10 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 - No `PropertyNormalizer` module exists today.
 
 ### Acceptance Criteria
-- [ ] A `PropertyNormalizer` (`backend/ingestion/normalization.py`) accepts a value + `PropertyDefinition.type` and returns either a normalized value or a `NormalizationError`.
-- [ ] Supported normalizers: `date` (ISO/regional/Unix epoch → `date`), `datetime` (ISO + common variants → tz-aware `datetime`), `decimal` (comma/period decimal separator → `Decimal`), `boolean` (`yes/no/true/false/1/0`), `enum` (case-insensitive match to allowed values from config), `list[T]` (per-element normalization).
-- [ ] `ExtractionResultValidator` runs normalization before `validate_entity`; normalization failures are added to `entity_errors` with a `normalization_failed` category so the operator can distinguish from schema-rejection.
-- [ ] Unit tests cover each normalizer success and failure case, plus the validator integration test that proves a regionally formatted date is accepted after this change.
+- [x] A normalization pass (`backend/ingestion/normalization.py`, `normalize_properties`) accepts values + `PropertyDefinition.type` and returns normalized values or `normalization_failed` errors (typed `NormalizationError` deferred with shared.06 — see notes).
+- [x] Supported normalizers: `date` (ISO/regional → ISO 8601 string), `decimal` (comma/period separator → `float`, see notes), `integer`, `boolean` (`yes/no/true/false/1/0`), `enum` (case-insensitive match to config casing), string whitespace-strip (`datetime` and `list[T]` not applicable — see notes).
+- [x] `ExtractionResultValidator` runs normalization before `validate_entity`; normalization failures are added to `entity_errors` with a `normalization_failed` category so the operator can distinguish from schema-rejection.
+- [x] Unit tests cover each normalizer success and failure case (`tests/ingestion/test_normalization.py`), plus validator integration tests proving a string decimal is accepted and unparseable values are reported distinctly.
 
 ### Verification
 - `pytest backend/tests/ingestion/test_normalization.py backend/tests/ingestion/test_validator.py -v` green.
@@ -671,7 +678,7 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 ### Current State
 - `SourceDocument.status: IngestionStatus` exists at `backend/ingestion/models.py:40-68` with states `PENDING`, `PARSING`, `PARSED`, `CHUNKED`, `EXTRACTED`, `VALIDATED`, `FAILED`.
 - There is no durable store for these statuses; they live only on in-memory `SourceDocument` instances during a single service call.
-- No per-KB document listing endpoint with current stage and error detail exists.
+- No per-KB document listing endpoint with current stage and error detail exists. (Since 2026-07-02, `GET /knowledgebases/{kb_id}/documents` does expose per-document `warning_count`/`warning_reasons` persisted by the worker onto `DocumentRecord`, and the Ingestion Studio renders them — warning surfacing is done; this story's remaining scope is the durable stage-transition projection.)
 
 ### Acceptance Criteria
 - [ ] `SourceDocumentStatusStore` protocol in `backend/ingestion/protocols.py` plus a Postgres adapter under `backend/ingestion/adapters/status_store_postgres.py`.

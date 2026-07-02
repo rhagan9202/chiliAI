@@ -4,9 +4,9 @@
 
 ## Extractors
 
-### PatternDocumentExtractor (default)
+### PatternDocumentExtractor (default for the `local` LLM stub)
 
-Regex/heuristic extractor. Used when no LLM client is configured or as a fast fallback. Produces lower-recall extractions suitable for smoke tests and offline environments.
+Regex/heuristic extractor. Used when no LLM client is configured or as a fast fallback. Produces lower-recall extractions suitable for smoke tests and offline environments. The worker selects it via `agent.coordinator.build_document_extractor` whenever `llm.provider` is `local` (the echo stub cannot produce extraction JSON); any real provider routes extraction through `LlmDocumentExtractor`.
 
 ### LlmDocumentExtractor
 
@@ -17,7 +17,7 @@ Schema-driven LLM extractor introduced in the `feature/ingestion-pipeline-e2e-de
 - **Required-property validation** — After parsing, validates that each extracted entity has all required properties declared in the domain config. Entities failing validation are logged and dropped rather than propagated as malformed data.
 - **Document-wide natural-key deduplication** — Entities that map to the same natural key (type + identifying property values) are merged across the whole document, keeping the first occurrence as the survivor. Surviving candidates accumulate `metadata["merged_chunk_ids"]` so provenance reflects every chunk that mentioned the entity (`ingestion.31`).
 - **Model-sourced relationships** — The extractor uses the `relationships` array the model returns (each entry keyed by `source_index`/`target_index` into that chunk's `entities` array) rather than fabricating every source-type × target-type pair. Relationships whose endpoints fall out of range, were dropped during entity validation, name an unknown type, or whose endpoint types mismatch the `RelationshipDefinition` are dropped with a warning, never silently created (`ingestion.30`). Each emitted edge carries the model's supporting quote as evidence where available. Endpoints are then re-pointed onto the surviving deduplicated candidate, so an edge found in a later chunk that references an entity first seen (and deduplicated) in an earlier chunk is preserved rather than lost; edges that collapse onto a single survivor are dropped as self-loops (`ingestion.31`).
-- **Fallback** — When `IngestionService` is constructed without an `LlmClientProtocol` dependency, it falls back to `PatternDocumentExtractor` automatically. No config change is needed; the fallback is determined by whether a client is injected.
+- **Fallback** — `create_document_extractor` returns `PatternDocumentExtractor` when no `llm_client` is injected. The worker's `build_document_extractor(config, llm_client)` (agent/coordinator.py) passes the client for every provider except `local`, whose echo stub cannot produce extraction JSON.
 
 ## Content-Hash Idempotency
 
@@ -51,9 +51,10 @@ Every `Entity` and `Relationship` emitted by the extractor carries provenance fi
 
 `ExtractionResultValidator.validate_extraction` converts candidates into validated runtime objects and now surfaces, rather than silently swallows, degraded extractions (`ingestion.35`):
 
+- **Type-aware normalization before schema checks** (`ingestion.14`) — `ingestion/normalization.py` converts raw extractor values against `PropertyDefinition.type` before `validate_entity` runs: string decimals (period or comma separator) → `float` (the platform's canonical decimal type), integer strings → `int`, `yes/no/true/false/1/0` → `bool`, common regional date formats → ISO 8601, enum values → the canonical config casing, and strings are whitespace-stripped. This is what lets CSV-sourced records (where every value is a string) produce typed entities. Unconvertible values land in `entity_errors` with a `normalization_failed` category so operators can distinguish them from schema rejections. `list`/`nested` pass through — `PropertyDefinition` declares no element type.
 - **Unknown-property stripping** — When an entity's only fault is an unrecognized/hallucinated property, the unknown keys are relocated to `metadata["extra_properties"]` and the entity is admitted on its schema-known properties instead of being dropped wholesale. Each relocation is recorded on `ValidationReport.warnings`. Unknown entity types, missing required properties, and value-type violations still drop the candidate (recorded in `entity_errors`). The LLM prompt is also hardened to ask the model to use only schema-listed property names.
 - **Durable extraction-warning signal** — During `handle_entities_extracted`, any document that produces zero valid entities OR had dropped/stripped candidates emits a per-document `DocumentsExtractionWarningEvent` (carrying valid/dropped counts, `stripped_property_count`, an `empty_extraction` flag, a bounded `sample_reasons` list, and the `validation_storage_key` for full detail) plus a structured worker log line. The zero-entity "ready" path additionally stamps `empty_extraction=True` and `source_document_id` on `KnowledgeBaseReadyReference`, so an empty knowledge base is no longer indistinguishable from a successful one.
-- **Deferred surfacing** — The per-document status projection / `GET .../documents` API (`ingestion.18`) and Prometheus counters / OTEL spans (`ingestion.17`) are tracked separately; the durable event and full `ValidationReport` (persisted to the object store) carry the data those surfaces will consume.
+- **Per-document surfacing** — The worker persists warning counts and a bounded reason sample onto `DocumentRecord` (`KnowledgeBaseRepository.record_document_warnings`): parse warnings from `ParsedDocumentReference.warning_count`/`warning_samples`, extraction/validation reasons from the warning event data (including extraction-stage warnings such as "LLM returned non-JSON"). `GET /knowledgebases/{id}/documents` exposes them as `DocumentSummary.warning_count`/`warning_reasons`, and the Ingestion Studio renders a warning chip plus a reasons list per document. Prometheus counters / OTEL spans (`ingestion.17`) remain tracked separately.
 
 ## Parser Registry
 
