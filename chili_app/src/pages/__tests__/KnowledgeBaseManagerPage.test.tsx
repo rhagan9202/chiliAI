@@ -296,6 +296,11 @@ function installFetchMock({
               size_bytes: 1024,
               status: 'validated',
               created_at: '2026-05-11T00:00:00Z',
+              warning_count: 2,
+              warning_reasons: [
+                'csv.ragged_row: Row has 4 field(s) but the header declares 3',
+                'entity claim-1: normalization_failed: amount',
+              ],
             },
           ],
           total: 1,
@@ -401,6 +406,20 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     expect(await screen.findAllByText('Fraud KB')).toHaveLength(2)
     expect(screen.getByText('Knowledge base')).toBeInTheDocument()
     expect(screen.getByText('existing-policy.txt')).toBeInTheDocument()
+  })
+
+  it('shows a warning chip and reasons for documents with ingestion warnings', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    const documentRow = await screen.findByRole('button', {
+      name: /existing-policy\.txt/,
+    })
+    expect(within(documentRow).getByText('2 warnings')).toBeInTheDocument()
+
+    await userEvent.click(documentRow)
+    const reasons = await screen.findByTestId('document-warning-reasons')
+    expect(within(reasons).getByText(/csv\.ragged_row/)).toBeInTheDocument()
+    expect(within(reasons).getByText(/normalization_failed/)).toBeInTheDocument()
   })
 
   it('submits documents and stores a receipt in the timeline', async () => {
