@@ -642,6 +642,8 @@ type DocumentInventoryProps = {
     size_bytes?: number | null
     status: string
     created_at: string
+    warning_count?: number
+    warning_reasons?: string[]
   }>
   onDeleteDocument: (documentId: string) => void
   onSelectDocument: (documentId: string) => void
@@ -680,7 +682,23 @@ function DocumentInventory({
               </span>
               <span className="alert-row-card__meta">
                 <Chip label={document.status} tone={toneForDocumentStatus(document.status)} />
+                {(document.warning_count ?? 0) > 0 ? (
+                  <span title={(document.warning_reasons ?? []).join('\n')}>
+                    <Chip
+                      label={`${document.warning_count} warning${document.warning_count === 1 ? '' : 's'}`}
+                      tone="warning"
+                    />
+                  </span>
+                ) : null}
               </span>
+              {activeDocumentId === document.id &&
+              (document.warning_reasons ?? []).length > 0 ? (
+                <ul className="metric-row__label" data-testid="document-warning-reasons">
+                  {(document.warning_reasons ?? []).map((reason) => (
+                    <li key={reason}>{reason}</li>
+                  ))}
+                </ul>
+              ) : null}
             </button>
           ))}
         </div>

@@ -132,6 +132,7 @@ from events.types import (
     AnyEvent,
     ChunkedDocumentReference,
     DocumentsChunkedEvent,
+    DocumentsExtractionWarningEvent,
     DocumentsParsedEvent,
     DocumentsUploadedEvent,
     EmbeddingsCompleteDocumentReference,
@@ -139,6 +140,7 @@ from events.types import (
     EntitiesExtractedEvent,
     EntitiesValidatedEvent,
     ExtractedDocumentReference,
+    ExtractionWarningReference,
     GraphUpdatedEvent,
     KnowledgeBaseDeletedEvent,
     KnowledgeBaseReadyEvent,
@@ -808,6 +810,27 @@ def build_llm_client(config: DomainConfig) -> LlmClientProtocol:
         ) from exc
 
 
+def build_document_extractor(
+    config: DomainConfig,
+    llm_client: LlmClientProtocol,
+) -> DocumentExtractorProtocol:
+    """Select the document extractor for the configured LLM provider.
+
+    The ``local`` provider is the deterministic echo stub
+    (llm/adapters/in_memory.py) and cannot produce extraction JSON, so it
+    keeps the config-driven ``PatternDocumentExtractor`` baseline. Real
+    providers route document extraction through ``LlmDocumentExtractor``.
+    """
+    provider = (config.llm or LlmConfig()).provider
+    if provider == "local":
+        return create_document_extractor(config.entities, config.relationships)
+    return create_document_extractor(
+        config.entities,
+        config.relationships,
+        llm_client=llm_client,
+    )
+
+
 def _resolve_worker_event_bus_settings(config: DomainConfig) -> EventBusSettings:
     env_settings = load_event_bus_settings()
     if "events" not in config.model_fields_set:
@@ -864,7 +887,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         recovery_store=ObjectStoreIngestionRecoveryStore(object_store),
     )
     chunker = create_document_chunker(config.ingestion.chunking)
-    extractor = create_document_extractor(config.entities, config.relationships)
+    extractor = build_document_extractor(config, llm_client)
     validator = create_extraction_validator(config.entities, config.relationships)
     graph_service = create_graph_service(
         graph_repository,
@@ -997,10 +1020,18 @@ def handle_documents_parsed(
     document_chunker: DocumentChunker,
     object_store: ObjectStore,
     event_bus: EventBus,
+    kb_repository: KnowledgeBaseRepository | None = None,
 ) -> int:
     """Chunk parsed documents and publish the next workflow event."""
     references: list[ChunkedDocumentReference] = []
     for document in event.documents:
+        if kb_repository is not None and document.warning_count > 0:
+            kb_repository.record_document_warnings(
+                document.knowledge_base_id,
+                document.source_document_id,
+                additional_count=document.warning_count,
+                reasons=list(document.warning_samples),
+            )
         if document.parsed_document_storage_key is None:
             raise ValueError(
                 "DocumentsParsedEvent requires parsed_document_storage_key for chunking."
@@ -1120,15 +1151,34 @@ def _build_extraction_storage_key(
     return f"knowledgebases/{knowledge_base_id}/extractions/{extraction_result_id}.json"
 
 
+_MAX_EXTRACTION_WARNING_SAMPLE = 10
+
+
+def _collect_extraction_warning_reasons(
+    report: ValidationReport,
+    extraction_warnings: list[str],
+) -> list[str]:
+    """Flatten extraction-stage warnings, validation drops, and stripped-property notices into a bounded sample."""
+    reasons: list[str] = list(extraction_warnings)
+    for candidate_id, errors in report.entity_errors.items():
+        reasons.extend(f"entity {candidate_id}: {error}" for error in errors)
+    for candidate_id, errors in report.relationship_errors.items():
+        reasons.extend(f"relationship {candidate_id}: {error}" for error in errors)
+    reasons.extend(report.warnings)
+    return reasons[:_MAX_EXTRACTION_WARNING_SAMPLE]
+
+
 def handle_entities_extracted(
     event: EntitiesExtractedEvent,
     *,
     extraction_validator: ExtractionResultValidator,
     object_store: ObjectStore,
     event_bus: EventBus,
+    kb_repository: KnowledgeBaseRepository | None = None,
 ) -> int:
     """Validate extracted candidates and publish runtime-ready results."""
     references: list[ValidatedDocumentReference] = []
+    warning_references: list[ExtractionWarningReference] = []
     for document in event.documents:
         if document.extraction_storage_key is None:
             raise ValueError("EntitiesExtractedEvent requires extraction_storage_key for validation.")
@@ -1173,11 +1223,74 @@ def handle_entities_extracted(
                 validation_storage_key=validation_storage_key,
             )
         )
+
+        valid_entity_count = len(validation_report.valid_entities)
+        dropped_entity_count = len(validation_report.entity_errors)
+        dropped_relationship_count = len(validation_report.relationship_errors)
+        stripped_property_count = len(validation_report.warnings)
+        extraction_stage_warnings = list(extraction_result.warnings)
+        empty_extraction = valid_entity_count == 0
+        if (
+            empty_extraction
+            or dropped_entity_count
+            or dropped_relationship_count
+            or stripped_property_count
+            or extraction_stage_warnings
+        ):
+            logger.warning(
+                "ingestion extraction warning stage=validate knowledge_base_id=%s "
+                "source_document_id=%s valid_entities=%d dropped_entities=%d "
+                "dropped_relationships=%d stripped_properties=%d empty=%s",
+                document.knowledge_base_id,
+                document.source_document_id,
+                valid_entity_count,
+                dropped_entity_count,
+                dropped_relationship_count,
+                stripped_property_count,
+                empty_extraction,
+            )
+            sample_reasons = _collect_extraction_warning_reasons(
+                validation_report, extraction_stage_warnings
+            )
+            warning_references.append(
+                ExtractionWarningReference(
+                    knowledge_base_id=document.knowledge_base_id,
+                    source_document_id=document.source_document_id,
+                    valid_entity_count=valid_entity_count,
+                    valid_relationship_count=len(validation_report.valid_relationships),
+                    dropped_entity_count=dropped_entity_count,
+                    dropped_relationship_count=dropped_relationship_count,
+                    stripped_property_count=stripped_property_count,
+                    empty_extraction=empty_extraction,
+                    sample_reasons=sample_reasons,
+                    validation_storage_key=validation_storage_key,
+                )
+            )
+            if kb_repository is not None:
+                warning_total = (
+                    dropped_entity_count
+                    + dropped_relationship_count
+                    + stripped_property_count
+                    + len(extraction_stage_warnings)
+                ) or 1  # an unexplained empty extraction still counts once
+                kb_repository.record_document_warnings(
+                    document.knowledge_base_id,
+                    document.source_document_id,
+                    additional_count=warning_total,
+                    reasons=sample_reasons,
+                )
     if references:
         event_bus.publish(
             EntitiesValidatedEvent(
                 correlation_id=event.correlation_id,
                 documents=references,
+            )
+        )
+    if warning_references:
+        event_bus.publish(
+            DocumentsExtractionWarningEvent(
+                correlation_id=event.correlation_id,
+                documents=warning_references,
             )
         )
     return len(references)
@@ -1262,6 +1375,8 @@ def handle_graph_updated(
                     entity_count=document.upserted_entity_count,
                     relationship_count=document.upserted_relationship_count,
                     vector_count=0,
+                    source_document_id=document.source_document_id,
+                    empty_extraction=True,
                 )
             )
             continue
@@ -2841,6 +2956,7 @@ def _dispatch_event(
             document_chunker=document_chunker,
             object_store=object_store,
             event_bus=event_bus,
+            kb_repository=kb_repository,
         )
     if isinstance(event, DocumentsChunkedEvent):
         return handle_documents_chunked(
@@ -2855,6 +2971,7 @@ def _dispatch_event(
             extraction_validator=extraction_validator,
             object_store=object_store,
             event_bus=event_bus,
+            kb_repository=kb_repository,
         )
     if isinstance(event, EntitiesValidatedEvent):
         return handle_entities_validated(

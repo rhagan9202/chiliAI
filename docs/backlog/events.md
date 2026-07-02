@@ -53,7 +53,7 @@
 **ID:** events.02
 **Status:** in-progress
 **Prerequisites:** []
-**Unblocks:** [_observability.09, api.07, graph.03, ingestion.05, monitoring.01, monitoring.02, rag.02]
+**Unblocks:** [_observability.09, api.07, ingestion.05, monitoring.01, monitoring.02, rag.02]
 **Estimated size:** M
 
 **As a** platform operator,
@@ -177,7 +177,7 @@
 **ID:** events.05
 **Status:** planned
 **Prerequisites:** [_observability.03]
-**Unblocks:** [agent.09, api.05, api.20, monitoring.01, rag.13]
+**Unblocks:** [api.05, api.20, monitoring.01, rag.13]
 **Estimated size:** L
 
 **As a** platform operator triaging a slow ingestion pipeline,
@@ -222,7 +222,7 @@
 **ID:** events.06
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [agent.07, api.19, events.09, events.13, frontend.07]
+**Unblocks:** [agent.07, agent.09, api.19, events.09, events.13]
 **Estimated size:** L
 
 **As a** backend engineer publishing events from an API route,

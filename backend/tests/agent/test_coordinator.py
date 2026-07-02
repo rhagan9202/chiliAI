@@ -6,6 +6,7 @@ import asyncio
 import threading
 import time
 from types import SimpleNamespace
+from typing import Literal
 
 from collections.abc import Sequence
 
@@ -68,6 +69,7 @@ from events.types import (
     ChunkedDocumentReference,
     DocumentFailureReference,
     DocumentsChunkedEvent,
+    DocumentsExtractionWarningEvent,
     DocumentsFailedEvent,
     DocumentsParsedEvent,
     EmbeddingsCompleteDocumentReference,
@@ -93,7 +95,12 @@ from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.service import create_graph_service
 from ingestion.chunker import ChunkingResult, create_document_chunker
 from ingestion.extractor import create_document_extractor
-from ingestion.models import ExtractionResult, ParsedDocument, ValidationReport
+from ingestion.models import (
+    CandidateEntity,
+    ExtractionResult,
+    ParsedDocument,
+    ValidationReport,
+)
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
@@ -101,7 +108,14 @@ from ingestion.recovery import ObjectStoreIngestionRecoveryStore
 from ingestion.service import IngestionService
 from ingestion.service_models import DocumentSubmission
 from ingestion.validator import create_extraction_validator
-from shared.types import Entity
+from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
+from shared.types import (
+    Entity,
+    EntityDefinition,
+    KnowledgeBase,
+    PropertyDefinition,
+    PropertyType,
+)
 from storage.adapters.in_memory import InMemoryObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 
@@ -967,9 +981,141 @@ def test_handle_entities_extracted_publishes_entities_validated_event() -> None:
     )
 
     assert processed == 1
-    assert isinstance(event_bus.published_events[-1], EntitiesValidatedEvent)
-    reference = event_bus.published_events[-1].documents[0]
+    validated_events = [
+        event
+        for event in event_bus.published_events
+        if isinstance(event, EntitiesValidatedEvent)
+    ]
+    assert len(validated_events) == 1
+    reference = validated_events[0].documents[0]
     assert reference.validation_storage_key == "knowledgebases/kb-1/validations/extract-1.json"
+
+
+def test_handle_entities_extracted_emits_extraction_warning_for_empty_document() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    extraction_result = ExtractionResult(
+        id="extract-1",
+        source_document_id="doc-1",
+        parsed_document_id="parsed-1",
+        candidate_entities=[
+            CandidateEntity(
+                id="ghost-1",
+                source_document_id="doc-1",
+                chunk_id="chunk-1",
+                type="provider",
+                properties={"npi": "1234567890"},
+                confidence=0.9,
+                extraction_method="pattern_v1",
+            )
+        ],
+    )
+    extraction_storage_key = "knowledgebases/kb-1/extractions/extract-1.json"
+    object_store.put_bytes(
+        extraction_storage_key,
+        extraction_result.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    handle_entities_extracted(
+        EntitiesExtractedEvent(
+            documents=[
+                ExtractedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    extraction_result_id="extract-1",
+                    entity_count=0,
+                    relationship_count=0,
+                    extraction_storage_key=extraction_storage_key,
+                )
+            ]
+        ),
+        # No entity definitions -> the candidate is dropped (unknown type),
+        # leaving zero valid entities and a populated entity_errors map.
+        extraction_validator=create_extraction_validator([], []),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    warning_events = [
+        event
+        for event in event_bus.published_events
+        if isinstance(event, DocumentsExtractionWarningEvent)
+    ]
+    assert len(warning_events) == 1
+    warning = warning_events[0].documents[0]
+    assert warning.source_document_id == "doc-1"
+    assert warning.empty_extraction is True
+    assert warning.valid_entity_count == 0
+    assert warning.dropped_entity_count == 1
+    assert warning.sample_reasons
+    assert any("ghost-1" in reason for reason in warning.sample_reasons)
+    assert warning.validation_storage_key == "knowledgebases/kb-1/validations/extract-1.json"
+
+
+def test_handle_entities_extracted_skips_extraction_warning_for_clean_document() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    extraction_result = ExtractionResult(
+        id="extract-1",
+        source_document_id="doc-1",
+        parsed_document_id="parsed-1",
+        candidate_entities=[
+            CandidateEntity(
+                id="provider-1",
+                source_document_id="doc-1",
+                chunk_id="chunk-1",
+                type="provider",
+                properties={"npi": "1234567890"},
+                confidence=0.9,
+                extraction_method="pattern_v1",
+            )
+        ],
+    )
+    extraction_storage_key = "knowledgebases/kb-1/extractions/extract-1.json"
+    object_store.put_bytes(
+        extraction_storage_key,
+        extraction_result.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    validator = create_extraction_validator(
+        [
+            EntityDefinition(
+                name="provider",
+                display_label="Provider",
+                icon="box",
+                properties={"npi": PropertyDefinition(type=PropertyType.STRING, display="NPI")},
+            )
+        ],
+        [],
+    )
+
+    handle_entities_extracted(
+        EntitiesExtractedEvent(
+            documents=[
+                ExtractedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    extraction_result_id="extract-1",
+                    entity_count=1,
+                    relationship_count=0,
+                    extraction_storage_key=extraction_storage_key,
+                )
+            ]
+        ),
+        extraction_validator=validator,
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    warning_events = [
+        event
+        for event in event_bus.published_events
+        if isinstance(event, DocumentsExtractionWarningEvent)
+    ]
+    assert warning_events == []
 
 
 def test_handle_entities_validated_publishes_graph_updated_event() -> None:
@@ -1218,6 +1364,8 @@ def test_handle_graph_updated_publishes_kb_ready_for_zero_entities() -> None:
     assert ready_reference.entity_count == 0
     assert ready_reference.relationship_count == 0
     assert ready_reference.vector_count == 0
+    assert ready_reference.source_document_id == "doc-1"
+    assert ready_reference.empty_extraction is True
 
 
 def test_handle_event_dispatches_graph_updated_event() -> None:
@@ -4149,3 +4297,182 @@ def test_run_worker_retries_recovery_replay_failure_before_drain(
     asyncio.run(_run())
 
     assert calls == ["replay", "replay", "drain"]
+
+
+def _config_with_llm_provider(
+    provider: Literal["openai", "anthropic", "local", "ollama"],
+) -> DomainConfig:
+    return _base_config().model_copy(update={"llm": LlmConfig(provider=provider)})
+
+
+def test_build_document_extractor_uses_pattern_extractor_for_local_stub() -> None:
+    from agent.coordinator import build_document_extractor
+    from ingestion.extractor import PatternDocumentExtractor
+    from llm.adapters.in_memory import InMemoryLlmClient
+
+    extractor = build_document_extractor(
+        _config_with_llm_provider("local"), InMemoryLlmClient()
+    )
+    assert isinstance(extractor, PatternDocumentExtractor)
+
+
+def test_build_document_extractor_uses_llm_extractor_for_real_provider() -> None:
+    from agent.coordinator import build_document_extractor
+    from ingestion.extractor import LlmDocumentExtractor
+    from llm.adapters.in_memory import InMemoryLlmClient
+
+    extractor = build_document_extractor(
+        _config_with_llm_provider("ollama"), InMemoryLlmClient()
+    )
+    assert isinstance(extractor, LlmDocumentExtractor)
+
+
+def test_handle_entities_extracted_surfaces_extraction_stage_warnings() -> None:
+    """Extraction-stage warnings (e.g. LLM non-JSON) must reach the warning event."""
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    extraction_result = ExtractionResult(
+        id="extract-warn",
+        source_document_id="doc-1",
+        parsed_document_id="parsed-1",
+        warnings=["LLM returned non-JSON for chunk chunk-1: Expecting value"],
+    )
+    extraction_storage_key = "knowledgebases/kb-1/extractions/extract-warn.json"
+    object_store.put_bytes(
+        extraction_storage_key,
+        extraction_result.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    handle_entities_extracted(
+        EntitiesExtractedEvent(
+            documents=[
+                ExtractedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    extraction_result_id="extract-warn",
+                    entity_count=0,
+                    relationship_count=0,
+                    extraction_storage_key=extraction_storage_key,
+                )
+            ]
+        ),
+        extraction_validator=create_extraction_validator([], []),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    warning_events = [
+        event
+        for event in event_bus.published_events
+        if isinstance(event, DocumentsExtractionWarningEvent)
+    ]
+    assert len(warning_events) == 1
+    reference = warning_events[0].documents[0]
+    assert any("non-JSON" in reason for reason in reference.sample_reasons)
+
+
+def _kb_repository_with_document() -> InMemoryKnowledgeBaseRepository:
+    from knowledgebases.models import DocumentRecord
+    from shared.utils import utc_now
+
+    repository = InMemoryKnowledgeBaseRepository()
+    repository.create(
+        KnowledgeBase(id="kb-1", name="KB", description="", created_at=utc_now())
+    )
+    repository.add_document(
+        DocumentRecord(
+            id="doc-1",
+            knowledge_base_id="kb-1",
+            filename="claims.csv",
+            content_type="text/csv",
+        )
+    )
+    return repository
+
+
+def test_handle_documents_parsed_persists_parser_warnings() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    repository = _kb_repository_with_document()
+    parsed_document = ParsedDocument(
+        id="parsed-1",
+        source_document_id="doc-1",
+        text_content="claim_id: 42",
+        parser_name="test-parser",
+    )
+    storage_key = "knowledgebases/kb-1/parsed/parsed-1.json"
+    object_store.put_bytes(
+        storage_key,
+        parsed_document.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    handle_documents_parsed(
+        DocumentsParsedEvent(
+            documents=[
+                ParsedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    parser_name="test-parser",
+                    warning_count=2,
+                    warning_samples=["csv.ragged_row: row 1", "csv.dialect_fallback: sniff failed"],
+                    parsed_document_storage_key=storage_key,
+                )
+            ]
+        ),
+        document_chunker=create_document_chunker(),
+        object_store=object_store,
+        event_bus=event_bus,
+        kb_repository=repository,
+    )
+
+    record = repository.get_document("kb-1", "doc-1")
+    assert record is not None
+    assert record.warning_count == 2
+    assert "csv.ragged_row: row 1" in record.warning_reasons
+
+
+def test_handle_entities_extracted_persists_extraction_warnings() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    repository = _kb_repository_with_document()
+    extraction_result = ExtractionResult(
+        id="extract-persist",
+        source_document_id="doc-1",
+        parsed_document_id="parsed-1",
+        warnings=["No entity candidates extracted from persisted chunks."],
+    )
+    extraction_storage_key = "knowledgebases/kb-1/extractions/extract-persist.json"
+    object_store.put_bytes(
+        extraction_storage_key,
+        extraction_result.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    handle_entities_extracted(
+        EntitiesExtractedEvent(
+            documents=[
+                ExtractedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    extraction_result_id="extract-persist",
+                    entity_count=0,
+                    relationship_count=0,
+                    extraction_storage_key=extraction_storage_key,
+                )
+            ]
+        ),
+        extraction_validator=create_extraction_validator([], []),
+        object_store=object_store,
+        event_bus=event_bus,
+        kb_repository=repository,
+    )
+
+    record = repository.get_document("kb-1", "doc-1")
+    assert record is not None
+    assert record.warning_count >= 1
+    assert any("No entity candidates" in reason for reason in record.warning_reasons)

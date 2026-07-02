@@ -349,6 +349,11 @@ class IngestionService:
                                 if outcome.source_document.document_format is not None
                                 else None
                             ),
+                            warning_count=len(outcome.parsed_document.warnings),
+                            warning_samples=[
+                                f"{warning.code}: {warning.message}"
+                                for warning in outcome.parsed_document.warnings[:10]
+                            ],
                             storage_key=task.storage_key,
                             parsed_document_storage_key=parsed_document_storage_key,
                         )
@@ -434,11 +439,15 @@ class IngestionService:
 
     @staticmethod
     def _source_document_id(submission: DocumentSubmission) -> str:
+        # Identity uses the full 64-char SHA-256 hex digest. A truncated prefix
+        # (formerly 24 hex / 96 bits) could collide and silently route a new
+        # upload into the dedup path, returning another document's bytes
+        # (ingestion.33).
         if submission.content is not None:
-            return f"doc-sha256-{sha256(submission.content).hexdigest()[:24]}"
+            return f"doc-sha256-{sha256(submission.content).hexdigest()}"
         if submission.uri is not None:
             uri_hash = sha256(submission.uri.encode("utf-8")).hexdigest()
-            return f"doc-uri-{uri_hash[:24]}"
+            return f"doc-uri-{uri_hash}"
         return generate_id()
 
     @staticmethod

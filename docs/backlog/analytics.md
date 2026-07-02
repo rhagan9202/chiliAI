@@ -176,7 +176,7 @@ Graph storage and workflows exist, but analytics inference is still represented 
 **ID:** analytics.06
 **Status:** planned
 **Prerequisites:** [monitoring.02, records.07]
-**Unblocks:** [frontend.04]
+**Unblocks:** []
 **Estimated size:** M
 **As a** fraud-analytics engineer,
 **I need** `TimeSeriesHistorySource.load_series` to return per-entity series populated by the monitoring/records `observations` write path, not only graph-scope metrics keyed on the `__graph__` sentinel,
@@ -210,7 +210,7 @@ Graph storage and workflows exist, but analytics inference is still represented 
 **ID:** analytics.07
 **Status:** planned
 **Prerequisites:** [database.05]
-**Unblocks:** [analytics.08, ingestion.19]
+**Unblocks:** [analytics.08]
 **Estimated size:** S
 **As a** API developer,
 **I need** `get_timeseries_history_source()` to select the Postgres adapter when `DomainConfig.database.backend == "postgres"`,
@@ -356,6 +356,7 @@ Graph storage and workflows exist, but analytics inference is still represented 
 - `PostgresRiskSignalSource.load_historical_score(...)` reads the latest score from `risk_score_history`.
 - `PostgresRiskSignalSource.list_ranked_entries(...)` also ranks entities from `risk_score_history`.
 - `get_risk_signal_source` returns `PostgresRiskSignalSource(provider)` when a DB connection provider exists.
+- **PM status note (2026-06-23):** the implementation is **substantially shipped** (3 of 4 AC checked; `PostgresRiskSignalSource` verified at `backend/analytics/risk/adapters/postgres.py`, wired in `api/dependencies.py`). Only the live-DB round-trip test remains. Kept `planned` (not `in-progress`) because the validator requires prerequisites `done` for `in-progress` and `analytics.10`/`database.05` are not yet done.
 
 ### Acceptance Criteria
 - [x] `PostgresRiskSignalSource` routes `load_historical_score` through `risk_score_history`.
@@ -1070,3 +1071,34 @@ so that downstream features can consume scored entities consistently.
 - `backend/tests/**`
 
 ---
+
+## Story analytics.33: Extraction-quality metric — `compute_extraction_quality(predicted, gold)`
+
+**ID:** analytics.33
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** [ingestion.19]
+**Estimated size:** M
+
+**As an** extraction-quality steward,
+**I need** a pure `compute_extraction_quality(predicted, gold) -> QualityReport` function under `backend/analytics/metrics/` that returns per-entity-type precision/recall/F1 and an overall macro-F1,
+**so that** the ingestion golden-test gate (`ingestion.19`) and any future extractor regression suite have a single, tested scoring primitive rather than ad-hoc inline math.
+
+### Current State
+- No extraction-quality computation exists anywhere in the codebase: `grep -r "compute_extraction_quality\|extraction_quality" backend/` returns nothing, and `backend/analytics/metrics/extraction_quality.py` does not exist.
+- `ingestion.19` (golden tests) originally cited `analytics.07` as the owner of this capability, but `analytics.07` is "Timeseries: Wire production `PostgresTimeSeriesHistorySource` through API DI" — unrelated. This story is created (PM run 2026-06-23) to give the extraction-quality metric a real home in its owning module.
+- `backend/analytics/metrics/` currently holds graph/risk metric helpers but no entity-extraction scoring.
+
+### Acceptance Criteria
+- [ ] `compute_extraction_quality(predicted: ExtractionResult, gold: GoldExtraction) -> QualityReport` lands in `backend/analytics/metrics/extraction_quality.py` as a pure function (no IO, no LLM calls).
+- [ ] `QualityReport` exposes per-type `precision`/`recall`/`f1` plus an overall `macro_f1`, and a relationship-level score block.
+- [ ] Entity matching keys on `(type, natural_key)`; relationship matching keys on `(type, source_natural_key, target_natural_key)`.
+- [ ] Fully typed (`pyright --strict` clean), no `Any`.
+- [ ] Unit tests cover: exact match (F1=1.0), missing prediction (recall drop), spurious prediction (precision drop), per-type aggregation, and empty-gold / empty-predicted edge cases; coverage ≥ 85% on the new module.
+
+### Verification
+- `pytest backend/tests/analytics/metrics/test_extraction_quality.py -v` green; coverage ≥ 85% on `backend/analytics/metrics/extraction_quality.py`.
+
+### Code touch points
+- `backend/analytics/metrics/extraction_quality.py` (new)
+- `backend/tests/analytics/metrics/test_extraction_quality.py` (new)

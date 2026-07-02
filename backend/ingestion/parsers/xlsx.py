@@ -7,7 +7,13 @@ from typing import cast
 
 from openpyxl import load_workbook
 
-from ingestion.models import DocumentFormat, ParsedDocument, SourceDocument, StructuredRecord
+from ingestion.models import (
+    DocumentFormat,
+    ParsedDocument,
+    ParserWarning,
+    SourceDocument,
+    StructuredRecord,
+)
 from ingestion.parsers.exceptions import ParserError
 from ingestion.parsers.utils import build_parser_metadata
 
@@ -29,6 +35,7 @@ class XlsxParser:
 
         records: list[StructuredRecord] = []
         sheet_names: list[str] = []
+        warnings: list[ParserWarning] = []
         record_index = 0
 
         for worksheet in workbook.worksheets:
@@ -46,10 +53,30 @@ class XlsxParser:
 
             for row_number, row in enumerate(row_iter, start=1):
                 if all(value in (None, "") for value in row):
+                    warnings.append(
+                        ParserWarning(
+                            code="xlsx.blank_row_skipped",
+                            message=f"Skipped blank row {row_number} on sheet '{worksheet.title}'.",
+                            severity="info",
+                            row_index=row_number,
+                        )
+                    )
                     continue
+                if len(row) != len(headers):
+                    warnings.append(
+                        ParserWarning(
+                            code="xlsx.ragged_row",
+                            message=(
+                                f"Row {row_number} on sheet '{worksheet.title}' has {len(row)} "
+                                f"cell(s) but the header declares {len(headers)}."
+                            ),
+                            severity="warning",
+                            row_index=row_number,
+                        )
+                    )
                 fields = {
                     headers[index]: cast(object, row[index])
-                    for index in range(len(headers))
+                    for index in range(min(len(headers), len(row)))
                 }
                 records.append(
                     StructuredRecord(
@@ -70,6 +97,7 @@ class XlsxParser:
             records=records,
             parser_name=self.name,
             parser_version=self.version,
+            warnings=warnings,
             parser_metadata=build_parser_metadata(
                 workbook_sheets=sheet_names,
                 row_count=len(records),

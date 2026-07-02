@@ -262,7 +262,7 @@
 **ID:** _security.06
 **Status:** planned
 **Prerequisites:** [_security.03, database.01, events.01]
-**Unblocks:** [_security.08, analytics.27, api.17, config.09, frontend.18, ingestion.07, knowledgebases.06, monitoring.04]
+**Unblocks:** [_security.08, analytics.27, api.17, config.09, frontend.18, ingestion.07, knowledgebases.06, monitoring.04, storage.09]
 **Estimated size:** L
 
 **As a** compliance owner,
@@ -315,7 +315,7 @@
 **ID:** _security.07
 **Status:** planned
 **Prerequisites:** [_observability.01]
-**Unblocks:** [_cicd.06, _plugins.04, api.18, frontend.19]
+**Unblocks:** [api.18, frontend.19]
 **Estimated size:** M
 
 **As an** operator reviewing structured logs,
@@ -489,7 +489,7 @@
 **ID:** _security.11
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [api.23, config.07]
+**Unblocks:** [_plugins.04, api.23, config.07]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-08-auth-rbac-enforcement-design.md
 

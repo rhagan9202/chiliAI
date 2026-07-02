@@ -43,8 +43,22 @@ class RemoteDocumentFetcher(Protocol):
     def fetch(self, source: SourceDocument) -> RemoteDocumentPayload: ...
 
 
+@runtime_checkable
+class OcrAdapterProtocol(Protocol):
+    """Recognize text from a single PDF page that yielded no extractable text.
+
+    Implementations receive the full document ``content`` plus the 1-based
+    ``page_number`` to render and OCR, returning the recognized text (empty
+    string when nothing is found). Kept dependency-light so the heavy OCR
+    libraries live only in concrete adapters behind the optional ``[ocr]`` extra.
+    """
+
+    def recognize_page(self, content: bytes, page_number: int) -> str: ...
+
+
 __all__ = [
     "DocumentParser",
+    "OcrAdapterProtocol",
     "RemoteDocumentFetcher",
     "RemoteDocumentPayload",
 ]

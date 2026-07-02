@@ -199,7 +199,7 @@
 
 **ID:** _cicd.06
 **Status:** planned
-**Prerequisites:** [_cicd.05, _security.07]
+**Prerequisites:** [_cicd.05]
 **Unblocks:** [_cicd.13, _observability.08, api.15, frontend.20, ingestion.25]
 **Estimated size:** M
 
@@ -210,11 +210,11 @@
 ### Current State
 - `.github/workflows/ci.yml` runs only `pip-audit` and `npm audit` against source manifests — never against built images.
 - No Trivy, Grype, or Snyk action configured.
-- `_security.07` (image-scanning policy and severity thresholds) governs which findings block promotion; this epic only wires execution.
+- The image-scanning policy and severity thresholds (`.github/security/image-scan-policy.yaml`) that govern which findings block promotion are **owned by this story** — the prior `_security.07` prereq was mislabeled (`_security.07` is PII/secret redaction, and no separate image-scan-policy story exists). Edge dropped (2026-06-23 PM run); the policy file is defined in this story's AC.
 - Once `_cicd.05` lands, immutable image artifacts exist for scanning.
 
 ### Acceptance Criteria
-- [ ] `.github/workflows/release-images.yml` (from `_cicd.05`) gains a `scan` job that runs Trivy against every just-built image with severity threshold from `.github/security/image-scan-policy.yaml` (owned by `_security.07`).
+- [ ] `.github/workflows/release-images.yml` (from `_cicd.05`) gains a `scan` job that runs Trivy against every just-built image with severity threshold from `.github/security/image-scan-policy.yaml` (defined by this story).
 - [ ] Scan results uploaded as SARIF to GitHub code scanning.
 - [ ] Job fails on findings exceeding the policy threshold, blocking the registry push of higher tags (e.g. `:vX.Y.Z` not published if scan fails; `:sha-*` may still be pushed for forensic analysis).
 - [ ] Allow-list referenced from `.github/security/image-scan-allowlist.yaml` (CVE id + justification + expiry, mirroring `_cicd.03` shape).

@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import cast
+from typing import Literal, cast
 
 from pydantic import BaseModel, Field, model_validator
 
+from shared.provenance import SOURCE_KIND_DOCUMENT
 from shared.types import Entity, Relationship
 from shared.utils import utc_now
 
@@ -77,6 +78,22 @@ class StructuredRecord(BaseModel):
     metadata: dict[str, object] = Field(default_factory=dict)
 
 
+class ParserWarning(BaseModel):
+    """A typed, non-fatal diagnostic surfaced by a parser.
+
+    Carries a stable ``code`` so the UI can group and count warnings by category
+    instead of parsing free-form ``parser_metadata``. Location fields are optional
+    and populated only when the warning is anchored to a specific row/page/column.
+    """
+
+    code: str
+    message: str
+    severity: Literal["info", "warning", "error"] = "warning"
+    row_index: int | None = Field(default=None, ge=0)
+    page_number: int | None = Field(default=None, gt=0)
+    column_name: str | None = None
+
+
 class ParsedDocument(BaseModel):
     """Normalized parser output for one source document."""
 
@@ -89,6 +106,9 @@ class ParsedDocument(BaseModel):
     parser_name: str
     parser_version: str | None = None
     parsed_at: datetime = Field(default_factory=utc_now)
+    warnings: list[ParserWarning] = Field(
+        default_factory=lambda: cast(list[ParserWarning], [])
+    )
     parser_metadata: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -110,6 +130,7 @@ class ChunkMetadata(BaseModel):
     end_offset: int | None = Field(default=None, ge=0)
     page_number: int | None = Field(default=None, gt=0)
     section_heading: str | None = None
+    source_kind: str = SOURCE_KIND_DOCUMENT
     parser_metadata: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -218,6 +239,7 @@ class ValidationReport(BaseModel):
     )
     entity_errors: dict[str, list[str]] = Field(default_factory=dict)
     relationship_errors: dict[str, list[str]] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
     validated_at: datetime = Field(default_factory=utc_now)
 
 
@@ -231,6 +253,7 @@ __all__ = [
     "ExtractionResult",
     "IngestionStatus",
     "ParsedDocument",
+    "ParserWarning",
     "SourceDocument",
     "SourceType",
     "StructuredRecord",

@@ -88,6 +88,7 @@ def configure_logging(
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.stdlib.add_logger_name,
+        structlog.stdlib.PositionalArgumentsFormatter(),
         _correlation_id_processor,
         timestamper,
         structlog.processors.StackInfoRenderer(),

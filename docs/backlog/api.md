@@ -55,6 +55,7 @@ Completed. `GET /graph/entities/{id}` is served by `api/_graph_entity_payload.py
 - `/cases` supports KB-scoped list/detail/create/update/feedback plus `POST /cases/promote?knowledge_base_id=...`; cross-KB alert promotion returns 404.
 - Completed de-seeding is covered by `backend/tests/api/test_deseed_regression.py` and case route coverage in `backend/tests/api/test_read_model_routers.py`.
 - Still pending from the original story: tenant/resource-level authorization and durable audit events for every case mutation.
+- **PM status note (2026-06-23):** the core capability is **substantially shipped** (5 of 7 AC checked; cases module + migrations live — verified `backend/cases/`, `database/migrations/versions/0002_cases.py`). Status is kept `planned` (not `in-progress`) only because the consistency validator requires every prerequisite to be `done` for `in-progress`, and this story's residual AC genuinely depend on `_security.05` (identity) + `_multitenancy.04` (tenant column) which are not yet done. Effective state: ~70% done, tenant-auth/audit tail remaining.
 
 ### Acceptance Criteria
 - [x] `backend/cases/adapters/protocols.py` declares `CaseRepository` with create/get/list/update/add-feedback operations.
@@ -100,6 +101,7 @@ Completed. `GET /graph/entities/{id}` is served by `api/_graph_entity_payload.py
 - `/chat/conversations` create/read/append routes use `ConversationService` through DI (`get_conversation_repository`, `get_conversation_service`, `get_chat_message_payload`) and no longer call `ApiState` conversation methods.
 - The live RAG service is composed in `get_rag_service()` through `_rag_bridges.py`; `ApiState` only holds the service handle/fallback for tests.
 - Still pending from the original story: audit-grade citation attachment/provenance persistence beyond the current message/citation response projection.
+- **PM status note (2026-06-23):** the core capability is **substantially shipped** (conversations module + migration `0005_conversations.py` verified live, 4 of 7 AC checked). Kept `planned` (not `in-progress`) only because the validator requires all prerequisites `done` for `in-progress`, and the residual AC depend on `rag.10` + `_multitenancy.04` (not yet done). Effective state: ~60% done, citation-provenance + tenant tail remaining.
 
 ### Acceptance Criteria
 - [x] `backend/conversations/adapters/protocols.py` declares the conversation repository and in-memory + Postgres adapters ship with migration `0005_conversations.py`.
@@ -250,7 +252,7 @@ Superseded by the BL-011 policy item surface. The legacy `/policy/gaps`, `/polic
 **ID:** api.07
 **Status:** planned
 **Prerequisites:** [events.02, _observability.04]
-**Unblocks:** [frontend.01, frontend.15, rag.06]
+**Unblocks:** [frontend.01, frontend.07, frontend.15, rag.06]
 **Estimated size:** M
 
 **As a** SPA user,
@@ -329,7 +331,7 @@ Superseded by the BL-011 policy item surface. The legacy `/policy/gaps`, `/polic
 **ID:** api.09
 **Status:** planned
 **Prerequisites:** [shared.07, rag.11, graph.10, records.06]
-**Unblocks:** [api.10, api.12, frontend.07, ingestion.16]
+**Unblocks:** [api.10, api.12]
 **Estimated size:** M
 
 **As a** API maintainer,
@@ -369,7 +371,7 @@ Superseded by the BL-011 policy item surface. The legacy `/policy/gaps`, `/polic
 **ID:** api.10
 **Status:** planned
 **Prerequisites:** [api.09]
-**Unblocks:** [analytics.15, analytics.17, api.11, api.12, frontend.16, records.04, records.10, records.13]
+**Unblocks:** [analytics.15, analytics.17, api.11, api.12, frontend.16, records.10, records.13]
 **Estimated size:** M
 
 **As a** API consumer,
@@ -1040,7 +1042,7 @@ Superseded by the BL-011 policy item surface. The legacy `/policy/gaps`, `/polic
 **ID:** api.28
 **Status:** planned
 **Prerequisites:** [api.01]
-**Unblocks:** [api.29]
+**Unblocks:** [api.29, frontend.04]
 **Estimated size:** L
 
 ### Narrative
@@ -1071,7 +1073,7 @@ so that seeded analytics fixtures can be retired without coupling API persistenc
 **ID:** api.29
 **Status:** planned
 **Prerequisites:** [api.28]
-**Unblocks:** [_multitenancy.03, analytics.28, api.02, api.03, api.04, graph.12, rag.01, vectorstore.09]
+**Unblocks:** [analytics.28, api.02, api.03, api.04, graph.12, rag.01, vectorstore.09]
 **Estimated size:** M
 
 ### Narrative

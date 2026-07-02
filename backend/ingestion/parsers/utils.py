@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 
-from ingestion.models import DocumentFormat
+from ingestion.models import DocumentFormat, ParserWarning
 from ingestion.parsers.exceptions import ContentDecodingError
 
 __all__ = [
     "build_parser_metadata",
+    "charset_fallback_warning",
     "decode_text_content",
     "infer_format_from_content_type",
     "infer_format_from_filename",
@@ -71,3 +72,14 @@ def infer_format_from_filename(filename: str | None) -> DocumentFormat | None:
 def build_parser_metadata(**kwargs: object) -> dict[str, object]:
     """Create metadata dict excluding null values."""
     return {key: value for key, value in kwargs.items() if value is not None}
+
+
+def charset_fallback_warning(parser: str, encoding: str) -> ParserWarning | None:
+    """Return a typed warning when text was decoded with a non-UTF-8 fallback."""
+    if encoding == "utf-8":
+        return None
+    return ParserWarning(
+        code=f"{parser}.charset_fallback",
+        message=f"Decoded using fallback encoding '{encoding}' after UTF-8 failed.",
+        severity="info",
+    )

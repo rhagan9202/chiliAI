@@ -296,6 +296,7 @@ class ValidationConfig(BaseModel):
         default_factory=lambda: [
             "text/plain",
             "text/csv",
+            "text/html",
             "application/json",
             "application/pdf",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

@@ -147,7 +147,7 @@
 **ID:** vectorstore.04
 **Status:** planned
 **Prerequisites:** [storage.01, agent.01, _infra.01]
-**Unblocks:** [agent.09, knowledgebases.09]
+**Unblocks:** [knowledgebases.09]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-19-vectorstore-1-0-design.md
 
@@ -195,7 +195,7 @@
 **ID:** vectorstore.05
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [api.19, embeddings.08, ingestion.16]
+**Unblocks:** [api.19, embeddings.08]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-19-vectorstore-1-0-design.md
 
@@ -243,7 +243,7 @@
 **ID:** vectorstore.06
 **Status:** planned
 **Prerequisites:** [_infra.01]
-**Unblocks:** [embeddings.06, embeddings.07]
+**Unblocks:** []
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-19-vectorstore-1-0-design.md
 
@@ -332,7 +332,7 @@
 
 **ID:** vectorstore.08
 **Status:** planned
-**Prerequisites:** [vectorstore.07, graph.08]
+**Prerequisites:** [vectorstore.07]
 **Unblocks:** []
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-19-vectorstore-1-0-design.md
@@ -380,7 +380,7 @@
 **ID:** vectorstore.09
 **Status:** planned
 **Prerequisites:** [api.29, events.01]
-**Unblocks:** []
+**Unblocks:** [ingestion.16]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-19-vectorstore-1-0-design.md
 
@@ -514,7 +514,7 @@
 **ID:** vectorstore.12
 **Status:** planned
 **Prerequisites:** [_observability.01]
-**Unblocks:** []
+**Unblocks:** [agent.09]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-19-vectorstore-1-0-design.md
 

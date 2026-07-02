@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from knowledgebases._helpers import build_knowledge_base_summary_updates
-from knowledgebases.models import DocumentRecord
+from knowledgebases.models import MAX_DOCUMENT_WARNING_REASONS, DocumentRecord
 from shared.types import KnowledgeBase
 from shared.utils import utc_now
 
@@ -134,6 +134,32 @@ class InMemoryKnowledgeBaseRepository:
         if document.status == status:
             return document
         updated = document.model_copy(update={"status": status})
+        kb_documents[document_id] = updated
+        return updated
+
+    def record_document_warnings(
+        self,
+        knowledge_base_id: str,
+        document_id: str,
+        *,
+        additional_count: int,
+        reasons: list[str],
+    ) -> DocumentRecord | None:
+        kb_documents = self._documents.get(knowledge_base_id)
+        if kb_documents is None:
+            return None
+        document = kb_documents.get(document_id)
+        if document is None:
+            return None
+        combined_reasons = (document.warning_reasons + reasons)[
+            :MAX_DOCUMENT_WARNING_REASONS
+        ]
+        updated = document.model_copy(
+            update={
+                "warning_count": document.warning_count + additional_count,
+                "warning_reasons": combined_reasons,
+            }
+        )
         kb_documents[document_id] = updated
         return updated
 

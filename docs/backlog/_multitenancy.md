@@ -86,7 +86,7 @@
 
 **ID:** _multitenancy.03
 **Status:** planned
-**Prerequisites:** [_multitenancy.01, _security.04, api.29]
+**Prerequisites:** [_multitenancy.01, _security.04]
 **Unblocks:** [_multitenancy.04, _multitenancy.14, _observability.12, _security.03, agent.16, api.21, ingestion.20, rag.17, records.09]
 **Estimated size:** M
 
@@ -98,6 +98,7 @@
 - Nothing exists yet. `backend/api/middleware/auth.py:52` `User` carries only `user_id`, `roles`, `email`.
 - No tenant claim is read, validated, or rejected.
 - `build_anonymous_user()` at `backend/api/middleware/auth.py` produces an unauthenticated principal with no tenant — needs an explicit policy.
+- **PM prereq cleanup (2026-06-23):** prereq `api.29` ("Remove seeded ApiState dependency") was spurious — de-seeding the read models does not gate reading a tenant claim from the JWT in auth middleware. Edge dropped; the real prerequisites are `_multitenancy.01` (TenantId primitive/config) and `_security.04` (auth/identity context).
 
 ### Acceptance Criteria
 - [ ] `decode_token` (or its successor) extracts the `tenant_id` claim and populates `User.tenant_id`.

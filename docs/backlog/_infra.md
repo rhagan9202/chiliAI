@@ -191,7 +191,7 @@
 **ID:** _infra.05
 **Status:** planned
 **Prerequisites:** [_infra.02]
-**Unblocks:** [_cicd.07, _cicd.08, _infra.09, _infra.11, _infra.14, embeddings.02, llm.12]
+**Unblocks:** [_cicd.07, _cicd.08, _infra.09, _infra.11, _infra.14, llm.12]
 **Estimated size:** M
 
 **As a** release engineer,

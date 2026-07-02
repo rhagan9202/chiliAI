@@ -123,9 +123,10 @@ The frontend has operational views, but no mounted wizard experience for configu
 
 **ID:** frontend.04
 **Status:** done
-**Prerequisites:** [analytics.06, rag.07]
+**Prerequisites:** [api.28, rag.01]
 **Unblocks:** [analytics.28]
 **Estimated size:** M
+**Done:** 2026-07-02 · docs reconcile (aa7bee0) · analyst-facing seeded/demo copy removed with regression guard
 
 **As a** fraud analyst,
 **I need** the Dashboard and RAG Chat surfaces to clearly reflect live projections rather than "seeded investigation graph" demo language,
@@ -137,11 +138,11 @@ The frontend has operational views, but no mounted wizard experience for configu
 - `chili_app/README.md` now documents the live routed surfaces and read-only configuration status.
 
 ### Acceptance Criteria
-- [ ] Dashboard sublabel and any "seeded" references are replaced with copy that reflects the live KB-scoped projection contract from `analytics.06`.
-- [ ] RAG Chat empty/intro copy reflects the live conversational endpoint contract from `rag.07`.
-- [ ] All hooks consume live endpoints (`useDashboardMetrics`, `useChatMessages`) with no remaining demo fallbacks.
-- [ ] `chili_app/README.md` Current State table strikes the seeded notes for Dashboard and RAG and links to this story id.
-- [ ] Vitest snapshot/text assertions are updated to the new copy.
+- [x] Dashboard sublabel and any "seeded" references are replaced with copy that reflects the live KB-scoped projection contract from `analytics.06`.
+- [x] RAG Chat empty/intro copy reflects the live conversational endpoint contract from `rag.07`.
+- [x] All hooks consume live endpoints (`useDashboardMetrics`, `useChatMessages`) with no remaining demo fallbacks.
+- [x] `chili_app/README.md` Current State table strikes the seeded notes for Dashboard and RAG and links to this story id.
+- [x] Vitest snapshot/text assertions are updated to the new copy.
 
 ### Verification
 - `cd chili_app && npm run lint && npm run test:run`
@@ -161,7 +162,7 @@ The frontend has operational views, but no mounted wizard experience for configu
 
 **ID:** frontend.05
 **Status:** planned
-**Prerequisites:** [rag.07]
+**Prerequisites:** [rag.01]
 **Unblocks:** []
 **Estimated size:** M
 
@@ -173,6 +174,7 @@ The frontend has operational views, but no mounted wizard experience for configu
 - `chili_app/src/components/layout/AiAssistantPanel.tsx:3-29` renders a static composer with a no-op send button.
 - `chili_app/src/components/layout/AppShell.tsx:65` mounts it on every authenticated route.
 - No hookup to `chili_app/src/api/rag.ts` exists; the input does nothing.
+- **PM prereq re-point (2026-06-23):** prereq `rag.07` (reranker stage) was mislabeled — wiring the assistant to the live conversational endpoint depends on **`rag.01`** (live RagService), not the optional reranker.
 
 ### Acceptance Criteria
 - [ ] Decision recorded in `chili_app/README.md`: wire to RAG endpoints or delete.
@@ -237,7 +239,7 @@ The frontend has operational views, but no mounted wizard experience for configu
 
 **ID:** frontend.07
 **Status:** planned
-**Prerequisites:** [api.09, events.06]
+**Prerequisites:** [api.07]
 **Unblocks:** [api.15, frontend.03, frontend.08, frontend.24]
 **Estimated size:** L
 
@@ -251,7 +253,7 @@ The frontend has operational views, but no mounted wizard experience for configu
 - No detection of "long disconnect" vs. transient blip.
 
 ### Acceptance Criteria
-- [ ] On reconnect, the client passes the last seen event id via a query parameter or header that the backend SSE endpoint honors (contract owned by `api.09`/`events.06`).
+- [ ] On reconnect, the client passes the last seen event id via a query parameter or header that the backend SSE endpoint honors (contract owned by **`api.07`** — "Event-driven SSE with reconnect semantics", whose AC adds the `id:` line and honors `Last-Event-ID`; the prior `api.09`/`events.06` references were mislabeled).
 - [ ] After a configurable "long disconnect" threshold (e.g. 60s), the client invalidates every workspace query key (alerts, workflows, KBs, dashboard metrics) and refetches a baseline snapshot before resuming event-driven invalidation.
 - [ ] Connection state ("live" | "reconnecting" | "resyncing") is exposed on `uiStore` and surfaced via the realtime status badge in TopBar.
 - [ ] Vitest covers: short blip preserves snapshot; long disconnect triggers baseline refetch; resume sends `Last-Event-ID`.
@@ -815,6 +817,7 @@ The frontend has operational views, but no mounted wizard experience for configu
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** S
+**Done:** 2026-07-02 · docs reconcile (aa7bee0) · README matches providers.tsx
 
 **As a** new contributor,
 **I need** the frontend README to accurately describe the live provider tree,
@@ -825,9 +828,9 @@ The frontend has operational views, but no mounted wizard experience for configu
 - The only `DomainConfigProvider` in the repo remains the test utility `src/test-utils/MockDomainConfigProvider.tsx`; runtime domain config flows through TanStack Query hooks (`useDomainConfig`, `useDomainFeatures`).
 
 ### Acceptance Criteria
-- [ ] `chili_app/README.md` § "Current State" is rewritten to match `providers.tsx` exactly: lists `QueryClientProvider`, `SessionProvider`, optional `ReactQueryDevtools`.
-- [ ] The README documents that domain config flows through TanStack Query hooks, with a pointer to `api/config.ts`.
-- [ ] If a real `DomainConfigProvider` is desired (decision recorded), a follow-up story is created in this file before merge; otherwise the test-only provider is renamed `MockDomainConfigProvider` (already is) and that fact is noted in the README.
+- [x] `chili_app/README.md` § "Current State" is rewritten to match `providers.tsx` exactly: lists `QueryClientProvider`, `SessionProvider`, optional `ReactQueryDevtools`.
+- [x] The README documents that domain config flows through TanStack Query hooks, with a pointer to `api/config.ts`.
+- [x] If a real `DomainConfigProvider` is desired (decision recorded), a follow-up story is created in this file before merge; otherwise the test-only provider is renamed `MockDomainConfigProvider` (already is) and that fact is noted in the README.
 
 ### Verification
 - `diff` the README claims against `providers.tsx` — must agree.

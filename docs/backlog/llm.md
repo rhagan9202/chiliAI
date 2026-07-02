@@ -10,7 +10,7 @@
 **ID:** llm.01
 **Status:** planned
 **Prerequisites:** [shared.02]
-**Unblocks:** [analytics.01, llm.03, rag.01]
+**Unblocks:** [analytics.01, llm.03, rag.01, rag.06]
 **Estimated size:** L
 
 **As a** RAG chat consumer (frontend or downstream agent),
@@ -356,7 +356,7 @@ LLM abstraction exists, but tool calls and tool results are not first-class prov
 **ID:** llm.09
 **Status:** planned
 **Prerequisites:** [_observability.02, _observability.03]
-**Unblocks:** [embeddings.02]
+**Unblocks:** []
 **Estimated size:** M
 
 **As an** SRE debugging a slow / flapping LLM call path,
@@ -677,7 +677,7 @@ so that agent workflows remain provider-neutral.
 **ID:** llm.17
 **Status:** planned
 **Prerequisites:** [llm.16]
-**Unblocks:** [rag.06]
+**Unblocks:** []
 **Estimated size:** M
 
 ### Narrative

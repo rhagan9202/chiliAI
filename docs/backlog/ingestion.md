@@ -43,10 +43,11 @@
 ## Story ingestion.02: Strengthen HTML parser fidelity beyond visible text
 
 **ID:** ingestion.02
-**Status:** planned
+**Status:** done
 **Prerequisites:** [ingestion.01]
 **Unblocks:** [ingestion.06]
 **Estimated size:** M
+**Done:** 2026-06-23 · ingestion Wave 0 (ready-set) · local working tree
 
 **As a** policy/news ingestion operator,
 **I need** the HTML parser to preserve headings, links, and table structure (not just visible paragraph text),
@@ -59,12 +60,12 @@
 - `HtmlParser.parse` (`html.py:106-125`) returns only `text_content` and a single `visible_text_length` metadata field.
 
 ### Acceptance Criteria
-- [ ] Headings are preserved with a leading marker (e.g. `# `, `## `) so downstream chunking can detect section boundaries.
-- [ ] Anchor text retains link targets in a normalized form (e.g. `[text](url)` markdown-style) for entity-extraction context.
-- [ ] Tables are emitted as markdown-style pipe tables (or stored as `StructuredRecord` rows on `ParsedDocument.records`) so they survive chunking intact.
-- [ ] `ParsedDocument.parser_metadata` carries counts (`heading_count`, `link_count`, `table_count`) for observability.
-- [ ] New unit tests cover heading fidelity, link extraction, table preservation, nested-table edge cases, and the existing visible-text behavior remains green.
-- [ ] `backend/ingestion/README.md` documents the new fidelity guarantees.
+- [x] Headings are preserved with a leading marker (e.g. `# `, `## `) so downstream chunking can detect section boundaries.
+- [x] Anchor text retains link targets in a normalized form (e.g. `[text](url)` markdown-style) for entity-extraction context.
+- [x] Tables are emitted as markdown-style pipe tables so they survive chunking intact (nested tables flattened into the parent cell).
+- [x] `ParsedDocument.parser_metadata` carries counts (`heading_count`, `link_count`, `table_count`) for observability.
+- [x] New unit tests cover heading fidelity, link extraction, table preservation, nested-table edge cases, and the existing visible-text behavior remains green.
+- [x] `backend/ingestion/README.md` documents the new fidelity guarantees.
 
 ### Verification
 - `pytest backend/tests/ingestion/parsers/test_html_parser.py -v` green; coverage ≥ 85% on `backend/ingestion/parsers/html.py`.
@@ -81,10 +82,11 @@
 ## Story ingestion.03: Add PDF OCR fallback adapter boundary for scanned documents
 
 **ID:** ingestion.03
-**Status:** planned
+**Status:** done
 **Prerequisites:** []
 **Unblocks:** [ingestion.06]
 **Estimated size:** L
+**Done:** 2026-06-23 · ingestion Wave 0 (ready-set) · local working tree
 
 **As a** Medicare-fraud analyst ingesting scanned policy or claim PDFs,
 **I need** the PDF parser to fall back to an OCR adapter when text extraction yields nothing,
@@ -96,12 +98,12 @@
 - Architecture.md §5/§6 does not currently commit to OCR; this story includes the architectural decision check (Open question 1 from the Wave 1 epic draft).
 
 ### Acceptance Criteria
-- [ ] `OcrAdapterProtocol` lives in `backend/ingestion/parsers/protocols.py` with a `recognize(content: bytes) -> str` (or page-level) signature, dependency-light.
-- [ ] At least one concrete adapter (e.g. `TesseractOcrAdapter`) lives under `backend/ingestion/parsers/adapters/` behind an optional `[ocr]` extra in `pyproject.toml`; the test stub adapter ships in tree for unit tests.
-- [ ] `PdfParser` accepts an optional `ocr_adapter` parameter; when text extraction is empty AND an adapter is configured, it OCRs page-by-page and emits the OCR text with `parser_metadata["ocr_used"] = True`.
-- [ ] When no adapter is configured the parser continues to raise `ParserError` (unchanged behavior) so opt-in is explicit.
-- [ ] `docs/architecture.md` §5/§6 adds a single sentence stating OCR is a supported optional adapter with the operator policy (opt-in per deployment).
-- [ ] Unit tests cover: text-PDF (no OCR), image-PDF with adapter (OCR used), image-PDF without adapter (ParserError), mixed-page PDF (OCR fills empty pages only).
+- [x] `OcrAdapterProtocol` lives in `backend/ingestion/parsers/protocols.py` with a page-level `recognize_page(content: bytes, page_number: int) -> str` signature, dependency-light.
+- [x] A concrete `TesseractOcrAdapter` lives under `backend/ingestion/parsers/adapters/` behind an optional `[ocr]` extra in `pyproject.toml` (lazy `importlib` imports); an in-tree `_StubOcrAdapter` ships in the parser unit tests.
+- [x] `PdfParser` accepts an optional `ocr_adapter` parameter; when a page's text extraction is empty AND an adapter is configured, it OCRs that page and emits the OCR text with `parser_metadata["ocr_used"] = True`.
+- [x] When no adapter is configured the parser continues to raise `ParserError` (unchanged behavior) so opt-in is explicit.
+- [x] `docs/architecture.md` §6.5 states OCR is a supported optional adapter, opt-in per deployment.
+- [x] Unit tests cover: text-PDF (no OCR), image-PDF with adapter (OCR used), image-PDF without adapter (ParserError), mixed-page PDF (OCR fills empty pages only), and OCR-finds-nothing keeps the empty-page warning. (Unit tests live in `test_local_parsers.py`; the `[ocr]`-gated integration test is `test_pdf_ocr_integration.py`.)
 
 ### Verification
 - `pytest backend/tests/ingestion/parsers/test_pdf_parser.py -v` green.
@@ -254,7 +256,7 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 - [ ] Credentials (basic auth, bearer tokens) are only attached when the host matches a configured `authenticated_hosts` allowlist; redirects strip credentials by default.
 - [x] `content-length` is not trusted as the only limit; body-size enforcement happens mid-stream in the current synchronous fetcher.
 - [ ] Async backpressure-aware remote streaming lands with the ingestion.06/ingestion.27 work.
-- [ ] Audit log entry on every blocked request (cross-edge to `_security.07` audit log).
+- [ ] Audit log entry on every blocked request (cross-edge to `_security.06` audit log; `_security.07` is PII redaction, not the audit log).
 - [ ] Unit tests cover: blocked private IP, blocked loopback, redirect to private IP, redirect stripping credentials, allowlist hit/miss, oversized streaming abort.
 
 ### Verification
@@ -495,10 +497,17 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 ## Story ingestion.14: Add type-aware property normalization before validate_entity
 
 **ID:** ingestion.14
-**Status:** planned
+**Status:** done
 **Prerequisites:** [shared.06]
 **Unblocks:** []
 **Estimated size:** M
+**Done:** 2026-07-02 · verification-gap closure · fix/ingestion-relationship-fidelity
+
+> Implementation notes (deviations from the original ACs):
+> - Decimals normalize to `float`, not `Decimal` — `shared.types._matches_property_type` defines int/float as the platform's decimal representation, range checks coerce via `float()`, and artifacts round-trip through JSON. A typed-`Decimal` migration is a separate story if precision requirements harden.
+> - `datetime` normalization was dropped: `PropertyType` has no `datetime` member (only `date`).
+> - `list[T]` per-element normalization is impossible — `PropertyDefinition` declares no element type.
+> - Implemented without the `shared.06` exception hierarchy (still planned); failures are reported as `normalization_failed`-prefixed strings in `entity_errors` rather than a typed error class, which satisfies the distinguishability AC.
 
 **As a** schema steward,
 **I need** the validator to normalize extracted property values (dates → ISO 8601, decimals → typed Decimal, booleans → bool, enums → canonical form) against `EntityDefinition.properties[*].type` BEFORE calling `validate_entity`,
@@ -511,10 +520,10 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 - No `PropertyNormalizer` module exists today.
 
 ### Acceptance Criteria
-- [ ] A `PropertyNormalizer` (`backend/ingestion/normalization.py`) accepts a value + `PropertyDefinition.type` and returns either a normalized value or a `NormalizationError`.
-- [ ] Supported normalizers: `date` (ISO/regional/Unix epoch → `date`), `datetime` (ISO + common variants → tz-aware `datetime`), `decimal` (comma/period decimal separator → `Decimal`), `boolean` (`yes/no/true/false/1/0`), `enum` (case-insensitive match to allowed values from config), `list[T]` (per-element normalization).
-- [ ] `ExtractionResultValidator` runs normalization before `validate_entity`; normalization failures are added to `entity_errors` with a `normalization_failed` category so the operator can distinguish from schema-rejection.
-- [ ] Unit tests cover each normalizer success and failure case, plus the validator integration test that proves a regionally formatted date is accepted after this change.
+- [x] A normalization pass (`backend/ingestion/normalization.py`, `normalize_properties`) accepts values + `PropertyDefinition.type` and returns normalized values or `normalization_failed` errors (typed `NormalizationError` deferred with shared.06 — see notes).
+- [x] Supported normalizers: `date` (ISO/regional → ISO 8601 string), `decimal` (comma/period separator → `float`, see notes), `integer`, `boolean` (`yes/no/true/false/1/0`), `enum` (case-insensitive match to config casing), string whitespace-strip (`datetime` and `list[T]` not applicable — see notes).
+- [x] `ExtractionResultValidator` runs normalization before `validate_entity`; normalization failures are added to `entity_errors` with a `normalization_failed` category so the operator can distinguish from schema-rejection.
+- [x] Unit tests cover each normalizer success and failure case (`tests/ingestion/test_normalization.py`), plus validator integration tests proving a string decimal is accepted and unparseable values are reported distinctly.
 
 ### Verification
 - `pytest backend/tests/ingestion/test_normalization.py backend/tests/ingestion/test_validator.py -v` green.
@@ -570,7 +579,7 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 
 **ID:** ingestion.16
 **Status:** planned
-**Prerequisites:** [api.09, graph.07, vectorstore.05]
+**Prerequisites:** [vectorstore.09]
 **Unblocks:** []
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md
@@ -580,15 +589,17 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 **so that** the architecture.md §14.3 milestone "wire `delete_by_source_document` to the document-delete endpoint" is closed.
 
 ### Current State
-- The API has a standalone `DELETE /knowledgebases/{kb_id}/documents/{document_id}` route, but it only deletes object-store keys under the document prefix and then the metadata row; it does not call `graph_service.delete_by_source_document` or `vector_service.delete_by_source_document`.
-- The re-upload path records a replacement candidate by content hash and calls `graph_service.delete_by_source_document` / `vector_service.delete_by_source_document` only after registration returns an enqueued receipt.
+- The API has a standalone `DELETE /knowledgebases/{kb_id}/documents/{document_id}` route (`backend/api/routers/knowledgebases.py:352-400`), but it only deletes object-store keys under the document prefix and then the metadata row; it does not call `graph_service.delete_by_source_document` or `vector_service.delete_by_source_document`.
+- The re-upload path records a replacement candidate by content hash and calls `graph_service.delete_by_source_document` / `vector_service.delete_by_source_document` only after registration returns an enqueued receipt (`knowledgebases.py:140-141`).
+- The graph/vector `delete_by_source_document` capability **is already implemented** in code — `graph/service.py:313`, `graph/adapters/{in_memory.py:275,neo4j_adapter.py:570}`, `vectorstore/service.py:216`, `vectorstore/adapters/{in_memory.py:111,qdrant_adapter.py:261}`. What is missing is the *wiring* of that capability into the standalone delete route, plus the ingestion-owned orchestration contract.
 - Ingestion itself owns no `delete_source_document` / `reindex_source_document` contract.
 - Architecture.md §14.3 carries this as an open milestone for the dedicated route.
+- **PM prereq re-point (2026-06-23):** original prereqs `[api.09, graph.07, vectorstore.05]` were mislabeled — api.09 = "Consolidate request/response contracts", graph.07 = "Improve entity search relevance", vectorstore.05 = "namespace lifecycle", none of which gate this cascade. The single real prerequisite is **vectorstore.09** ("Wire `delete_by_source_document` into the document-delete API and harden edge cases"), which owns the vector leg of the cascade. The graph leg's capability already ships (no graph story needed) and there is no separate api story for the delete route — the route already exists and this story owns wiring the cascade through it.
 
 ### Acceptance Criteria
 - [ ] `IngestionService.delete_source_document(kb_id: str, document_id: str) -> DocumentDeleteReport` exists and orchestrates: graph delete → vector delete → object-store cleanup (source + parsed) → outbox publish of `DocumentDeletedEvent`.
 - [ ] `IngestionService.reindex_source_document(kb_id: str, document_id: str)` is the convenience wrapper used by re-upload (delete + re-ingest).
-- [ ] `DELETE /knowledgebases/{kb_id}/documents/{document_id}` (added in `api.09`) calls the service method and returns 204 on full success, 207 Multi-Status on partial failure with `{step, status, error}` entries.
+- [ ] `DELETE /knowledgebases/{kb_id}/documents/{document_id}` (route already exists at `knowledgebases.py:352`; coordinate the vector leg with `vectorstore.09`) calls the service method and returns 204 on full success, 207 Multi-Status on partial failure with `{step, status, error}` entries.
 - [ ] Status projection (`ingestion.19`) reflects `deleted` transition.
 - [ ] Existing re-upload path in `knowledgebases.py:430-439` is refactored to call `reindex_source_document` rather than performing cascade inline.
 - [ ] Architecture.md §14.3 milestone bullet is updated to `done` and links to the closing PR.
@@ -667,7 +678,7 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 ### Current State
 - `SourceDocument.status: IngestionStatus` exists at `backend/ingestion/models.py:40-68` with states `PENDING`, `PARSING`, `PARSED`, `CHUNKED`, `EXTRACTED`, `VALIDATED`, `FAILED`.
 - There is no durable store for these statuses; they live only on in-memory `SourceDocument` instances during a single service call.
-- No per-KB document listing endpoint with current stage and error detail exists.
+- No per-KB document listing endpoint with current stage and error detail exists. (Since 2026-07-02, `GET /knowledgebases/{kb_id}/documents` does expose per-document `warning_count`/`warning_reasons` persisted by the worker onto `DocumentRecord`, and the Ingestion Studio renders them — warning surfacing is done; this story's remaining scope is the durable stage-transition projection.)
 
 ### Acceptance Criteria
 - [ ] `SourceDocumentStatusStore` protocol in `backend/ingestion/protocols.py` plus a Postgres adapter under `backend/ingestion/adapters/status_store_postgres.py`.
@@ -696,7 +707,7 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 
 **ID:** ingestion.19
 **Status:** planned
-**Prerequisites:** [ingestion.11, analytics.07, _observability.08]
+**Prerequisites:** [ingestion.11, analytics.33, _observability.08]
 **Unblocks:** [ingestion.25]
 **Estimated size:** L
 
@@ -708,12 +719,12 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 - `backend/tests/ingestion/fixtures/policies/` holds two markdown policy fixtures used only by the Ollama integration test (`backend/tests/ingestion/test_documents_e2e_with_ollama.py:39`).
 - No domain-coverage corpus (narrative PDF, narrative DOCX, malformed files, multilingual samples) exists.
 - No precision/recall metric is computed against any gold-standard extraction set.
-- `analytics/metrics/` does not currently expose extraction-quality computation (cross-edge to `analytics.07`).
+- `analytics/metrics/` does not currently expose extraction-quality computation (cross-edge to **`analytics.33`** — new story added by the 2026-06-23 PM run; the prior reference to `analytics.07` was wrong, as `analytics.07` is a timeseries-DI story).
 
 ### Acceptance Criteria
 - [ ] A fixture corpus under `backend/tests/ingestion/fixtures/golden/<domain>/` covers at minimum: 5 narrative PDFs, 5 narrative DOCX, 3 malformed files, 3 multilingual samples (per the multi-language decision from `ingestion.22`).
 - [ ] Each fixture ships with a `.gold.json` companion declaring expected entities (type + natural key + minimal properties) and expected relationships.
-- [ ] A `compute_extraction_quality(predicted, gold) -> QualityReport` function in `backend/analytics/metrics/extraction_quality.py` returns per-type precision/recall/F1 and an overall macro-F1 (cross-edge to `analytics.07`).
+- [ ] A `compute_extraction_quality(predicted, gold) -> QualityReport` function in `backend/analytics/metrics/extraction_quality.py` returns per-type precision/recall/F1 and an overall macro-F1 (cross-edge to `analytics.33`).
 - [ ] A `pytest` marker `@pytest.mark.extraction_quality` runs the corpus through the live extractor and asserts macro-F1 ≥ 0.7 (initial floor; raised once baseline is measured).
 - [ ] Quality metrics are exported to Prometheus when the suite runs in CI (cross-edge to `_observability.08` for fixture-drift dashboards).
 - [ ] A `make ingestion-quality` target invokes the suite locally.
@@ -725,7 +736,7 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 ### Code touch points
 - `backend/tests/ingestion/fixtures/golden/medicare_fraud/` (new fixtures)
 - `backend/tests/ingestion/test_extraction_quality.py` (new)
-- `backend/analytics/metrics/extraction_quality.py` (new — implemented in `analytics.07`, consumed here)
+- `backend/analytics/metrics/extraction_quality.py` (new — implemented in `analytics.33`, consumed here)
 - `Makefile` (modify — `ingestion-quality` target)
 - `backend/pyproject.toml` (modify — register `extraction_quality` marker)
 
@@ -885,10 +896,11 @@ Ingestion accepts uploads, but resumable upload session state and chunk assembly
 ## Story ingestion.24: Add typed parser warnings channel on ParsedDocument
 
 **ID:** ingestion.24
-**Status:** planned
+**Status:** done
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** S
+**Done:** 2026-06-23 · ingestion Wave 0 (ready-set) · local working tree
 
 **As a** Ingestion Studio user,
 **I need** parsers to surface typed non-fatal warnings (missing pages, dropped rows, charset fallback) via a dedicated `ParsedDocument.warnings` field instead of free-form `parser_metadata`,
@@ -900,11 +912,11 @@ Ingestion accepts uploads, but resumable upload session state and chunk assembly
 - This story precedes `ingestion.04` because that story consumes the new channel.
 
 ### Acceptance Criteria
-- [ ] `ParserWarning` model (`backend/ingestion/models.py`) carries `code: str`, `message: str`, `severity: Literal["info", "warning", "error"]`, optional `row_index: int | None`, optional `page_number: int | None`, optional `column_name: str | None`.
-- [ ] `ParsedDocument.warnings: list[ParserWarning]` is added (default `[]`); `parser_metadata` is retained for free-form context but warnings move out of it.
-- [ ] All in-tree parsers (`pdf`, `docx`, `csv`, `xlsx`, `html`, `json`, `txt`) emit at least one warning in their existing soft-failure paths (e.g. PDF empty page, HTML missing charset).
-- [ ] The downstream event `DocumentsParsedEvent` (`backend/events/types.py`) carries a `warning_count: int` field for routing without inspecting the payload.
-- [ ] Unit tests cover the new field on every parser plus serialization round-trip.
+- [x] `ParserWarning` model (`backend/ingestion/models.py`) carries `code: str`, `message: str`, `severity: Literal["info", "warning", "error"]`, optional `row_index: int | None`, optional `page_number: int | None`, optional `column_name: str | None`.
+- [x] `ParsedDocument.warnings: list[ParserWarning]` is added (default `[]`); `parser_metadata` is retained for free-form context but warnings move out of it.
+- [x] All in-tree parsers (`pdf`, `docx`, `csv`, `xlsx`, `html`, `json`, `txt`) emit at least one warning in their existing soft-failure paths (e.g. PDF empty page, HTML missing charset).
+- [x] The downstream event `DocumentsParsedEvent` (`backend/events/types.py`) carries a `warning_count: int` field (on `ParsedDocumentReference`) for routing without inspecting the payload.
+- [x] Unit tests cover the new field on every parser plus serialization round-trip.
 
 ### Verification
 - `pytest backend/tests/ingestion/parsers/ -v` green including the new warning assertions.
@@ -1079,11 +1091,12 @@ so that interrupted uploads can be completed without starting over.
 ## Story ingestion.30: Use the LLM's relationship output instead of fabricating intra-chunk Cartesian edges
 
 **ID:** ingestion.30
-**Status:** planned
+**Status:** done
 **Type:** bug
 **Prerequisites:** []
 **Unblocks:** [ingestion.31]
 **Estimated size:** M
+**Done:** 2026-06-23 · ingestion relationship-fidelity slice · local working tree
 
 **As an** extraction-quality operator,
 **I need** `LlmDocumentExtractor` to parse and use the `relationships` array the model returns (keyed by `source_index`/`target_index`) rather than discarding it and emitting every source-type × target-type pair within a chunk,
@@ -1096,11 +1109,11 @@ so that interrupted uploads can be completed without starting over.
 - Result: in a chunk with N sources and M targets, all N×M edges are created regardless of whether the text supports them; relationship confidence is just `min(source.confidence, target.confidence)` (`extractor.py:429`) with no model grounding.
 
 ### Acceptance Criteria
-- [ ] `_extract_chunk` parses the model's `relationships` array, mapping `source_index`/`target_index` back to the entity candidates produced for that chunk; out-of-range or dangling indices are dropped with a warning, not silently.
-- [ ] `_extract_relationships` is replaced by (or rewired to consume) the model-provided edges; the Cartesian fallback is removed. Only relationships the model emitted (and whose endpoints survived entity validation) are produced.
-- [ ] Each emitted `CandidateRelationship` carries `evidence` (the model's supporting span/quote where available) instead of `evidence=[]`.
-- [ ] Relationship `type` is validated against `RelationshipDefinition.name` and endpoint types against `source`/`target`; mismatches are dropped with a warning.
-- [ ] Unit tests cover: model returns valid relationships (created), model returns out-of-range index (dropped + warning), model returns a relationship whose endpoint was validation-dropped (dropped), model returns no relationships (none created — no Cartesian fallback), endpoint-type mismatch (dropped).
+- [x] `_extract_chunk` parses the model's `relationships` array, mapping `source_index`/`target_index` back to the entity candidates produced for that chunk; out-of-range or dangling indices are dropped with a warning, not silently.
+- [x] `_extract_relationships` is replaced by (or rewired to consume) the model-provided edges; the Cartesian fallback is removed. Only relationships the model emitted (and whose endpoints survived entity validation) are produced.
+- [x] Each emitted `CandidateRelationship` carries `evidence` (the model's supporting span/quote where available) instead of `evidence=[]`.
+- [x] Relationship `type` is validated against `RelationshipDefinition.name` and endpoint types against `source`/`target`; mismatches are dropped with a warning.
+- [x] Unit tests cover: model returns valid relationships (created), model returns out-of-range index (dropped + warning), model returns a relationship whose endpoint was validation-dropped (dropped), model returns no relationships (none created — no Cartesian fallback), endpoint-type mismatch (dropped).
 
 ### Verification
 - `pytest backend/tests/ingestion/test_llm_extractor.py -v` green including the new relationship-sourcing cases.
@@ -1116,11 +1129,12 @@ so that interrupted uploads can be completed without starting over.
 ## Story ingestion.31: Stop dropping relationships for cross-chunk-deduplicated entities
 
 **ID:** ingestion.31
-**Status:** planned
+**Status:** done
 **Type:** bug
 **Prerequisites:** [ingestion.30]
 **Unblocks:** []
 **Estimated size:** M
+**Done:** 2026-06-23 · ingestion relationship-fidelity slice · local working tree
 
 **As an** extraction-quality operator,
 **I need** the relationship pass to resolve endpoints against the document's surviving (deduplicated) entity set rather than the per-chunk candidate list,
@@ -1132,11 +1146,11 @@ so that interrupted uploads can be completed without starting over.
 - Net effect: the more frequently an entity appears (the more important it usually is), the more of its relationships are dropped.
 
 ### Acceptance Criteria
-- [ ] Relationship endpoints resolve to the surviving deduplicated candidate for the entity's `(type, natural_key)`, regardless of which chunk the relationship was found in.
-- [ ] A duplicate mention's relationships are re-pointed to the surviving candidate id rather than dropped.
-- [ ] When an endpoint has no `natural_key` (cannot be deduplicated), existing per-chunk behavior is preserved (no regression).
-- [ ] Surviving candidates accumulate `metadata["merged_chunk_ids"]` (or equivalent) so provenance reflects all contributing chunks.
-- [ ] Unit tests cover: entity deduped in chunk 1, relationship found in chunk 3 → edge created against the chunk-1 survivor; no-natural-key endpoint → unchanged; self-loop avoided.
+- [x] Relationship endpoints resolve to the surviving deduplicated candidate for the entity's `(type, natural_key)`, regardless of which chunk the relationship was found in.
+- [x] A duplicate mention's relationships are re-pointed to the surviving candidate id rather than dropped.
+- [x] When an endpoint has no `natural_key` (cannot be deduplicated), existing per-chunk behavior is preserved (no regression).
+- [x] Surviving candidates accumulate `metadata["merged_chunk_ids"]` (or equivalent) so provenance reflects all contributing chunks.
+- [x] Unit tests cover: entity deduped in chunk 1, relationship found in chunk 3 → edge created against the chunk-1 survivor; no-natural-key endpoint → unchanged; self-loop avoided.
 
 ### Verification
 - `pytest backend/tests/ingestion/test_llm_extractor.py -v` green including the cross-chunk endpoint-resolution cases.
@@ -1194,11 +1208,12 @@ so that interrupted uploads can be completed without starting over.
 ## Story ingestion.33: Use the full content digest for document identity to eliminate dedup collisions
 
 **ID:** ingestion.33
-**Status:** planned
+**Status:** done
 **Type:** bug
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** S
+**Done:** 2026-06-23 · ingestion relationship-fidelity slice · local working tree
 
 **As a** KB operator,
 **I need** `source_document_id` to be derived from the full SHA-256 digest rather than a 24-hex-char (96-bit) prefix,
@@ -1210,10 +1225,10 @@ so that interrupted uploads can be completed without starting over.
 - A prefix collision hits the `already_registered` dedup path and returns the existing object's bytes — silent data loss/corruption with no error surfaced.
 
 ### Acceptance Criteria
-- [ ] `_source_document_id` uses the full hex digest (or a documented, sufficiently-wide encoding) for both the `doc-sha256-` and `doc-uri-` forms.
-- [ ] A migration/compat note documents the id-format change and its effect on existing stored keys (cross-edge to `ingestion.20` storage-key construction); existing documents remain resolvable or a one-time migration is specified.
-- [ ] Dedup correctness is preserved: re-uploading identical bytes still produces the same id and `enqueued=False`.
-- [ ] Unit tests cover: identical content → same id; two contents sharing a 24-char prefix but differing later → distinct ids (regression test for the collision).
+- [x] `_source_document_id` uses the full hex digest (or a documented, sufficiently-wide encoding) for both the `doc-sha256-` and `doc-uri-` forms.
+- [x] A migration/compat note documents the id-format change and its effect on existing stored keys (cross-edge to `ingestion.20` storage-key construction); existing documents remain resolvable or a one-time migration is specified.
+- [x] Dedup correctness is preserved: re-uploading identical bytes still produces the same id and `enqueued=False`.
+- [x] Unit tests cover: identical content → same id; two contents sharing a 24-char prefix but differing later → distinct ids (regression test for the collision).
 
 ### Verification
 - `pytest backend/tests/ingestion/test_service.py -v` green including the prefix-collision regression test.
@@ -1229,11 +1244,12 @@ so that interrupted uploads can be completed without starting over.
 ## Story ingestion.34: Stamp the correct source_kind for record-derived entities
 
 **ID:** ingestion.34
-**Status:** planned
+**Status:** done
 **Type:** bug
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** S
+**Done:** 2026-06-23 · ingestion provenance + empty-extraction slice · local working tree
 
 **As a** provenance/audit consumer,
 **I need** entities and relationships derived from structured records (via `StructuredRecordChunker`) to be stamped `source_kind="record"` rather than `source_kind="document"`,
@@ -1245,10 +1261,10 @@ so that interrupted uploads can be completed without starting over.
 - Records ingested through the document pipeline via `StructuredRecordChunker` (`backend/ingestion/chunker.py`) therefore carry an incorrect `source_kind="document"` provenance stamp.
 
 ### Acceptance Criteria
-- [ ] The validator stamps `source_kind` based on the candidate's actual origin (document text vs structured record), using `SOURCE_KIND_RECORD` for record-derived candidates and `SOURCE_KIND_DOCUMENT` for text-derived candidates.
-- [ ] The origin signal is threaded from the chunk/candidate (e.g. a chunk-source-kind field or candidate metadata) to the validator rather than inferred heuristically.
-- [ ] Provenance round-trip is verified: a record-derived entity reports `source_kind="record"` end-to-end.
-- [ ] Unit tests cover both paths (text-derived → `document`, record-derived → `record`) and the relationship variants.
+- [x] The validator stamps `source_kind` based on the candidate's actual origin (document text vs structured record), using `SOURCE_KIND_RECORD` for record-derived candidates and `SOURCE_KIND_DOCUMENT` for text-derived candidates.
+- [x] The origin signal is threaded from the chunk/candidate (e.g. a chunk-source-kind field or candidate metadata) to the validator rather than inferred heuristically. (Explicit `ChunkMetadata.source_kind` set by the chunker, read per-candidate by `chunk_id` in `validate_extraction`.)
+- [x] Provenance round-trip is verified: a record-derived entity reports `source_kind="record"` end-to-end.
+- [x] Unit tests cover both paths (text-derived → `document`, record-derived → `record`) and the relationship variants.
 
 ### Verification
 - `pytest backend/tests/ingestion/test_validator.py -v` green including the source-kind cases.
@@ -1281,11 +1297,11 @@ so that interrupted uploads can be completed without starting over.
 - A document with zero valid entities still emits `KnowledgeBaseReadyEvent` with `vector_count=0` (`backend/agent/coordinator.py:1258-1267`) and is marked ready — there is no "empty extraction" terminal state or warning.
 
 ### Acceptance Criteria
-- [ ] A document that produces zero valid entities reaches a distinct, durable terminal signal (e.g. `EXTRACTED_EMPTY` status or a `ValidationReport`-derived warning), not a silent ready.
-- [ ] `entity_errors` / `relationship_errors` counts (and a bounded sample) are surfaced via the document status projection / API so the UI can show "N entities dropped during validation: <reasons>" (cross-edge to `ingestion.18`).
-- [ ] The "unexpected property drops the whole entity" sharp edge is mitigated: either extra properties are stripped/relegated to metadata before `validate_entity`, or the drop is reported as a typed, user-visible warning rather than a silent loss. (Coordinate with `ingestion.14` normalization.)
-- [ ] Metrics: `ingestion_documents_empty_extraction_total`, `validation_entities_dropped_total{reason}` (cross-edge to `ingestion.17`).
-- [ ] Unit tests cover: zero-valid-entity document (distinct signal emitted), entity dropped for extra property (warning surfaced), report counts propagate to the status surface.
+- [x] A document that produces zero valid entities reaches a distinct, durable terminal signal (the per-document `DocumentsExtractionWarningEvent`, plus `empty_extraction=True` + `source_document_id` on `KnowledgeBaseReadyReference`), not a silent ready.
+- [ ] `entity_errors` / `relationship_errors` counts (and a bounded sample) are surfaced via the document status projection / API so the UI can show "N entities dropped during validation: <reasons>" (cross-edge to `ingestion.18`). _Partially delivered: counts + a bounded `sample_reasons` ride the durable `DocumentsExtractionWarningEvent`, and the full `ValidationReport` is persisted to the object store; the `GET .../documents` projection/API surface remains `ingestion.18`._
+- [x] The "unexpected property drops the whole entity" sharp edge is mitigated: either extra properties are stripped/relegated to metadata before `validate_entity`, or the drop is reported as a typed, user-visible warning rather than a silent loss. (Coordinate with `ingestion.14` normalization.) (Implemented as strip-to-`metadata.extra_properties` + a `ValidationReport.warnings` notice; prompt hardened to discourage extra properties.)
+- [ ] Metrics: `ingestion_documents_empty_extraction_total`, `validation_entities_dropped_total{reason}` (cross-edge to `ingestion.17`). _Deferred: structured worker logs + the durable event ship now; Prometheus counters land with the `ingestion.17` observability registry._
+- [x] Unit tests cover: zero-valid-entity document (distinct signal emitted), entity dropped for extra property (warning surfaced), report counts propagate to the status surface.
 
 ### Verification
 - `pytest backend/tests/ingestion/test_validator.py backend/tests/agent/test_coordinator_ready.py -v` green including the empty/dropped cases.

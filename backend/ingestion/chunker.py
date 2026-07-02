@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from pydantic import BaseModel, Field
 
 from ingestion.models import Chunk, ChunkMetadata, ParsedDocument, StructuredRecord
+from shared.provenance import SOURCE_KIND_DOCUMENT, SOURCE_KIND_RECORD
 
 if TYPE_CHECKING:
 	from config.schema import ChunkingConfig
@@ -314,6 +315,7 @@ class StructuredRecordChunker:
 						source_document_id=source_document_id,
 						chunk_index=start_index + offset,
 						section_heading=self._record_heading(record),
+						source_kind=SOURCE_KIND_RECORD,
 						parser_metadata=dict(parser_metadata),
 					),
 					tokens_estimate=(
@@ -433,6 +435,7 @@ class DocumentChunker:
 						chunk_index=index,
 						start_offset=text_chunk.start_offset,
 						end_offset=text_chunk.end_offset,
+						source_kind=SOURCE_KIND_DOCUMENT,
 						parser_metadata=dict(parser_metadata),
 					),
 					tokens_estimate=self._tokenizer.estimate_tokens(text_chunk.content),

@@ -10,7 +10,7 @@
 **ID:** embeddings.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [embeddings.08, embeddings.09, rag.01, vectorstore.11]
+**Unblocks:** [agent.09, embeddings.08, embeddings.09, rag.01, vectorstore.11]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-19-embeddings-1-0-design.md
 
@@ -52,7 +52,7 @@
 
 **ID:** embeddings.02
 **Status:** planned
-**Prerequisites:** [shared.02, _infra.05, llm.09]
+**Prerequisites:** []
 **Unblocks:** [rag.02, rag.08, rag.16]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-19-embeddings-1-0-design.md
@@ -65,11 +65,12 @@
 - `EmbeddingsService.embed` always invokes the adapter; the service-level `TODO(production)` explicitly calls out the missing content-hash cache and chunking logic (`backend/embeddings/service.py:20-49`).
 - No cache abstraction exists in `backend/embeddings/`; `llm` has no shared cache surface either.
 - The §14.2 endgame implies a single cross-module cache abstraction reused by `llm`.
+- **PM prereq cleanup (2026-06-23):** original prereqs `[shared.02, _infra.05, llm.09]` were all mislabeled — shared.02 = "Retire `Alert.acknowledged`", _infra.05 = "Helm values/chart-test CI", llm.09 = "LLM observability"; none gates an embedding cache adapter. The body had referenced a "shared Redis pool from `shared.02`" but **no shared-redis-pool foundation story exists** (the Redis client/pool lives in `events/runtime.py` + config). The `RedisEmbeddingCache` adapter sources the pool from existing infra at implementation time; prereqs reduced to `[]`.
 
 ### Acceptance Criteria
 - [ ] `EmbeddingCacheProtocol` added to `backend/embeddings/protocols.py` with `get(key) -> list[float] | None` and `set(key, vector, model_name, dimensions, ttl)`.
 - [ ] Cache key derived from `(model_name, provider, dimensions, sha256(normalized_content))`; key derivation lives in a `_cache_key` helper covered by tests.
-- [ ] Two concrete cache adapters in `backend/embeddings/adapters/`: `InMemoryEmbeddingCache` and `RedisEmbeddingCache` (the latter reuses the shared Redis pool from `shared.02`).
+- [ ] Two concrete cache adapters in `backend/embeddings/adapters/`: `InMemoryEmbeddingCache` and `RedisEmbeddingCache` (the latter reuses the existing Redis client/pool established in `events/runtime.py`).
 - [ ] `EmbeddingsService` constructor accepts an optional `EmbeddingCacheProtocol`; service flow checks the cache before invoking the adapter and writes back on miss.
 - [ ] Cache is bypassed for any submission that requests `model_name` not equal to the cached value (no cross-model reuse).
 - [ ] Composition root `get_embeddings_service()` wires the cache implementation from `DomainConfig.embeddings.cache` (new sub-config; off by default for backwards compatibility).
@@ -95,7 +96,7 @@
 
 **ID:** embeddings.03
 **Status:** planned
-**Prerequisites:** [shared.05]
+**Prerequisites:** [shared.15]
 **Unblocks:** [rag.07]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-19-embeddings-1-0-design.md
@@ -111,7 +112,7 @@
 - Service-level `TODO(production)` flags retry-with-backoff as a gap (`backend/embeddings/service.py:20-25`).
 
 ### Acceptance Criteria
-- [ ] Shared retry primitive consumed from `shared.05` (or, if not yet extracted at implementation time, a local `_retry_with_backoff` helper that mirrors the contract and is replaced in a follow-up).
+- [ ] Shared retry primitive consumed from `shared.15` (or, if not yet extracted at implementation time, a local `_retry_with_backoff` helper that mirrors the contract and is replaced in a follow-up).
 - [ ] `SentenceTransformersEmbedder` retries on `RuntimeError` / `torch.cuda.OutOfMemoryError`-class errors with bounded attempts and falls back to a smaller batch before re-raising.
 - [ ] `OpenAIEmbedder` refactored to consume the shared primitive without changing observable retry semantics; `_is_rate_limit_error` stays the trigger and retry budget is configurable via `EmbeddingsConfig.retry_max_attempts` (default 3).
 - [ ] Retry counts and final-failure reasons are exposed for the observability story (embeddings.04) — adapters expose a `last_retry_count` attribute or emit a callback hook on retry.
@@ -176,7 +177,7 @@
 **ID:** embeddings.05
 **Status:** planned
 **Prerequisites:** [_observability.06, embeddings.04]
-**Unblocks:** [agent.09, api.19, llm.05, llm.08, rag.11]
+**Unblocks:** [api.19, llm.05, llm.08, rag.11]
 **Estimated size:** M
 
 **As a** finance / platform owner,
@@ -215,7 +216,7 @@
 
 **ID:** embeddings.06
 **Status:** planned
-**Prerequisites:** [vectorstore.06]
+**Prerequisites:** []
 **Unblocks:** [embeddings.07]
 **Estimated size:** M
 **Spec:** docs/superpowers/specs/2026-05-19-embeddings-1-0-design.md
@@ -234,7 +235,7 @@
 - [ ] OpenAI adapter populates `model_version` from the API response (`response.model` snapshot id like `text-embedding-3-small-2024-01-25`); fallback to configured model when absent.
 - [ ] Sentence-transformers adapter populates `model_version` from the loaded model's commit hash (via `model._modules` / `model.config_keys` introspection) or the package version + model name when commit hash is unavailable.
 - [ ] In-memory adapter uses a deterministic `model_version = "in-memory@<implementation-version>"`.
-- [ ] `embedding_model_version` flows into vectorstore record metadata in `handle_embeddings_complete`; vectorstore record-schema field added per `vectorstore.06`.
+- [ ] `embedding_model_version` flows into vectorstore record metadata in `handle_embeddings_complete` (written into the existing freeform vector `metadata`/`payload` map — no vectorstore schema-change story is required; the prior `vectorstore.06` prereq was mislabeled, as that story is sharding/replication knobs).
 - [ ] Unit tests cover each adapter's `model_version` output including the fallback paths.
 
 ### Verification
@@ -257,7 +258,7 @@
 
 **ID:** embeddings.07
 **Status:** planned
-**Prerequisites:** [embeddings.06, agent.11, vectorstore.06]
+**Prerequisites:** [embeddings.06]
 **Unblocks:** []
 **Estimated size:** L
 
@@ -268,7 +269,7 @@
 ### Current State
 - No backfill job exists; coordinator workflow only embeds content during ingestion (`backend/agent/coordinator.py:1761-1864`).
 - `EmbeddingMetadata` will gain `model_version` in embeddings.06 but nothing acts on a mismatch.
-- `agent.11` will introduce a generic backfill job runner this story plugs into.
+- **PM prereq cleanup (2026-06-23):** original prereqs additionally cited `agent.11` (claimed "generic backfill job runner") and `vectorstore.06`, but agent.11 = "store-level indexes + API pagination for workflow listing" and there is **no backfill-job-runner story** in agent.md; vectorstore.06 = "sharding/replication knobs". Both were dangling — dropped. This story builds its own `BackfillEmbeddingsJob` workflow module directly; the only real prerequisite is embeddings.06 (model_version stamping).
 
 ### Acceptance Criteria
 - [ ] New module `backend/agent/workflows/embedding_backfill.py` defines a `BackfillEmbeddingsJob` that scans vectorstore records by `knowledge_base_id`, identifies records with `embedding_model_version != current_configured_version`, and re-embeds the source content.

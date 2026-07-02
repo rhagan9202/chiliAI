@@ -28,6 +28,9 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - CHILI_EVENT_BUS_BACKEND=${CHILI_EVENT_BUS_BACKEND:-redis}
       - CHILI_WORKFLOW_RUN_STORE_BACKEND=${CHILI_WORKFLOW_RUN_STORE_BACKEND:-redis}
+      # API and worker must agree so worker-persisted document metadata
+      # (status, warning counts/reasons) is visible to API reads.
+      - CHILI_KB_REPOSITORY_BACKEND=${CHILI_KB_REPOSITORY_BACKEND:-object_store}
     depends_on:
       redis:
         condition: service_healthy
@@ -51,6 +54,9 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - CHILI_EVENT_BUS_BACKEND=${CHILI_EVENT_BUS_BACKEND:-redis}
       - CHILI_WORKFLOW_RUN_STORE_BACKEND=${CHILI_WORKFLOW_RUN_STORE_BACKEND:-redis}
+      # API and worker must agree so worker-persisted document metadata
+      # (status, warning counts/reasons) is visible to API reads.
+      - CHILI_KB_REPOSITORY_BACKEND=${CHILI_KB_REPOSITORY_BACKEND:-object_store}
     depends_on:
       redis:
         condition: service_healthy

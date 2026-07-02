@@ -378,10 +378,12 @@
 ## Story _observability.10: Add a structured audit-log subsystem
 
 **ID:** _observability.10
-**Status:** planned
-**Prerequisites:** [_observability.01, _observability.02, _security.05, database.05]
-**Unblocks:** [storage.09]
+**Status:** dropped
+**Prerequisites:** [_observability.01, _observability.02, _security.05, database.01]
+**Unblocks:** []
 **Estimated size:** L
+
+> **Dropped (2026-06-23 PM decision):** Duplicate of [_security.06] ("durable audit log for analyst and admin actions"). The audit-log subsystem is owned by `_security.06` (security/compliance domain). `storage.09` re-pointed to `_security.06`.
 
 **As a** compliance officer,
 **I need** every analyst action (graph query, alert acknowledgement, config change, KB delete, RAG query) to write an immutable audit-log row tagged with the authenticated principal, tenant, correlation ID, target resource, and outcome,
@@ -390,7 +392,8 @@
 ### Current State
 - `grep -rn "audit_log\|AuditLog\|audit-log" backend/` returns no first-party matches — nothing exists.
 - The architecture lists Audit log as Medium-priority future capability (docs/architecture.md:1359).
-- This story resolves the auditor's open question on persistence substrate by choosing **Postgres** (a dedicated `audit_log` table via `database.05`); event-stream and SIEM forwarding are out of scope here (future _security story).
+- This story resolves the auditor's open question on persistence substrate by choosing **Postgres** (a dedicated `audit_log` table). The substrate dependency is the persistence baseline + migration convention from **`database.01`** (the prior `database.05` reference — "connection pool tuning" — was the wrong target; an Alembic migration on the existing schema is what's needed). Event-stream and SIEM forwarding are out of scope here (future _security story).
+- **PM note (2026-06-23):** this story overlaps heavily with `_security.06` ("Add a durable audit log for analyst and admin actions"). The two are near-duplicate audit-log subsystems (`backend/audit/` vs `backend/auditlog/`). **OPEN PM DECISION:** consolidate ownership — pick one as the canonical implementation story and make the other a thin consumer/observability cross-edge — before either is scheduled. Left as two stories pending that decision.
 - Identity capture depends on `_security.05` (RBAC user-identity in request context).
 
 ### Acceptance Criteria

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import csv
+import importlib.util
 from io import BytesIO
 
 import pytest
 from docx import Document
 from openpyxl import Workbook
 
-from ingestion.models import DocumentFormat, SourceDocument, SourceType
+from ingestion.models import DocumentFormat, ParsedDocument, SourceDocument, SourceType
 from ingestion.parsers.csv import CsvParser
 from ingestion.parsers.docx import DocxParser
 from ingestion.parsers.exceptions import ParserError
@@ -147,7 +148,7 @@ def test_html_parser_extracts_visible_text() -> None:
         """,
     )
 
-    assert parsed.text_content == "Claim Summary\n\nClaim ID C-1 & amount $42."
+    assert parsed.text_content == "# Claim Summary\n\nClaim ID C-1 & amount $42."
     assert parsed.parser_metadata["encoding"] == "utf-8"
 
 
@@ -234,3 +235,368 @@ def test_pdf_parser_rejects_encrypted_files(monkeypatch: pytest.MonkeyPatch) -> 
     parser = PdfParser()
     with pytest.raises(ParserError, match="Encrypted PDF"):
         parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"fake pdf")
+
+
+# --- HTML structural fidelity (ingestion.02) ----------------------------------
+
+
+def test_html_parser_preserves_heading_markers() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b"<body><h1>Title</h1><h2>Section</h2><h3>Sub</h3><p>Body.</p></body>",
+    )
+
+    assert parsed.text_content == "# Title\n\n## Section\n\n### Sub\n\nBody."
+    assert parsed.parser_metadata["heading_count"] == 3
+
+
+def test_html_parser_preserves_link_targets() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b'<body><p>See <a href="https://example.com/x">the policy</a> now.</p></body>',
+    )
+
+    assert parsed.text_content == "See [the policy](https://example.com/x) now."
+    assert parsed.parser_metadata["link_count"] == 1
+
+
+def test_html_parser_keeps_anchor_text_when_href_missing() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b"<body><p>Plain <a>anchor</a> text.</p></body>",
+    )
+
+    assert parsed.text_content == "Plain anchor text."
+    assert parsed.parser_metadata["link_count"] == 0
+
+
+def test_html_parser_renders_table_as_markdown() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b"""
+        <body>
+          <table>
+            <tr><th>Provider</th><th>NPI</th></tr>
+            <tr><td>Acme</td><td>123</td></tr>
+            <tr><td>Beta</td><td>456</td></tr>
+          </table>
+        </body>
+        """,
+    )
+
+    assert parsed.text_content == (
+        "| Provider | NPI |\n"
+        "| --- | --- |\n"
+        "| Acme | 123 |\n"
+        "| Beta | 456 |"
+    )
+    assert parsed.parser_metadata["table_count"] == 1
+
+
+def test_html_parser_pads_ragged_table_rows() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b"<body><table><tr><th>A</th><th>B</th></tr><tr><td>only</td></tr></table></body>",
+    )
+
+    assert parsed.text_content == "| A | B |\n| --- | --- |\n| only |  |"
+
+
+def test_html_parser_flattens_nested_tables_into_parent_cell() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b"""
+        <body>
+          <table>
+            <tr><th>Outer</th></tr>
+            <tr><td>cell <table><tr><td>inner1</td><td>inner2</td></tr></table></td></tr>
+          </table>
+        </body>
+        """,
+    )
+
+    # Nested table flattened into the parent cell; outer table stays valid markdown.
+    assert parsed.text_content == "| Outer |\n| --- |\n| cell inner1 inner2 |"
+    assert parsed.parser_metadata["table_count"] == 2
+
+
+def test_html_parser_counts_all_structures_in_metadata() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b"""
+        <body>
+          <h1>Report</h1>
+          <p>Visit <a href="https://a.test">A</a> and <a href="https://b.test">B</a>.</p>
+          <table><tr><th>H</th></tr><tr><td>v</td></tr></table>
+        </body>
+        """,
+    )
+
+    assert parsed.parser_metadata["heading_count"] == 1
+    assert parsed.parser_metadata["link_count"] == 2
+    assert parsed.parser_metadata["table_count"] == 1
+    assert (parsed.text_content or "").startswith("# Report")
+    assert "[A](https://a.test)" in (parsed.text_content or "")
+
+
+# --- Typed parser warnings (ingestion.24) -------------------------------------
+
+
+def _codes(parsed: ParsedDocument) -> set[str]:
+    return {warning.code for warning in parsed.warnings}
+
+
+def test_text_parser_warns_on_charset_fallback() -> None:
+    parser = TextParser()
+    parsed = parser.parse(_source("doc-txt", DocumentFormat.TXT), b"caf\xe9 latte")
+
+    assert parsed.text_content == "café latte"
+    assert "text.charset_fallback" in _codes(parsed)
+    assert parsed.warnings[0].severity == "info"
+
+
+def test_text_parser_emits_no_warnings_for_clean_utf8() -> None:
+    parser = TextParser()
+    parsed = parser.parse(_source("doc-txt", DocumentFormat.TXT), b"plain ascii")
+
+    assert parsed.warnings == []
+
+
+def test_html_parser_warns_on_charset_fallback() -> None:
+    parser = HtmlParser()
+    parsed = parser.parse(
+        _source("doc-html", DocumentFormat.HTML),
+        b"<html><body><p>caf\xe9</p></body></html>",
+    )
+
+    assert "html.charset_fallback" in _codes(parsed)
+
+
+def test_json_parser_warns_on_heterogeneous_array() -> None:
+    parser = JsonParser()
+    parsed = parser.parse(
+        _source("doc-json", DocumentFormat.JSON),
+        b'[1, {"claim_id": "1"}]',
+    )
+
+    assert parsed.records == []
+    assert "json.heterogeneous_array" in _codes(parsed)
+
+
+def test_json_parser_warns_on_scalar_root() -> None:
+    parser = JsonParser()
+    parsed = parser.parse(_source("doc-json", DocumentFormat.JSON), b"42")
+
+    assert "json.scalar_root" in _codes(parsed)
+
+
+def test_csv_parser_warns_on_ragged_row() -> None:
+    parser = CsvParser()
+    parsed = parser.parse(
+        _source("doc-csv", DocumentFormat.CSV),
+        b"claim_id,amount\n1,100,extra\n",
+    )
+
+    ragged = [w for w in parsed.warnings if w.code == "csv.ragged_row"]
+    assert len(ragged) == 1
+    assert ragged[0].row_index == 0
+    # Extra cell dropped; declared columns preserved.
+    assert parsed.records[0].fields == {"claim_id": "1", "amount": "100"}
+
+
+def test_csv_parser_warns_on_dialect_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_sniff(self: object, sample: str, delimiters: str | None = None) -> csv.Dialect:
+        del self, sample, delimiters
+        raise csv.Error("cannot sniff")
+
+    monkeypatch.setattr("csv.Sniffer.sniff", fail_sniff)
+
+    parser = CsvParser()
+    parsed = parser.parse(_source("doc-csv", DocumentFormat.CSV), b"claim_id,amount\n1,100\n")
+
+    assert "csv.dialect_fallback" in _codes(parsed)
+
+
+def test_xlsx_parser_warns_on_blank_row_skipped() -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    assert sheet is not None
+    sheet.title = "Claims"
+    sheet.append(["claim_id", "amount"])
+    sheet.append(["C-1", 42])
+    sheet.append([None, None])
+    sheet.append(["C-2", 43])
+    output = BytesIO()
+    workbook.save(output)
+
+    parser = XlsxParser()
+    parsed = parser.parse(_source("doc-xlsx", DocumentFormat.XLSX), output.getvalue())
+
+    assert len(parsed.records) == 2
+    blank = [w for w in parsed.warnings if w.code == "xlsx.blank_row_skipped"]
+    assert len(blank) == 1
+    assert blank[0].row_index == 2
+
+
+def test_pdf_parser_warns_on_empty_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _PartiallyEmptyReader:
+        def __init__(self, _content: BytesIO) -> None:
+            self.is_encrypted = False
+            self.pages = [_FakePage("First page"), _FakePage("   ")]
+
+    monkeypatch.setattr("ingestion.parsers.pdf.PdfReader", _PartiallyEmptyReader)
+
+    parser = PdfParser()
+    parsed = parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"fake pdf")
+
+    empty = [w for w in parsed.warnings if w.code == "pdf.empty_page"]
+    assert len(empty) == 1
+    assert empty[0].page_number == 2
+
+
+def test_docx_parser_warns_on_empty_paragraphs() -> None:
+    document = Document()
+    document.add_paragraph("   ")
+    document.add_paragraph("Real content")
+    output = BytesIO()
+    document.save(output)
+
+    parser = DocxParser()
+    parsed = parser.parse(_source("doc-docx", DocumentFormat.DOCX), output.getvalue())
+
+    assert "docx.empty_paragraph_skipped" in _codes(parsed)
+
+
+def test_parser_warning_round_trips_through_serialization() -> None:
+    parser = PdfParser()  # any parser; reuse the empty-page warning path
+
+    class _Reader:
+        def __init__(self, _content: BytesIO) -> None:
+            self.is_encrypted = False
+            self.pages = [_FakePage("kept"), _FakePage("")]
+
+    import ingestion.parsers.pdf as pdf_module
+
+    original = pdf_module.PdfReader
+    pdf_module.PdfReader = _Reader  # type: ignore[assignment]
+    try:
+        parsed = parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"fake pdf")
+    finally:
+        pdf_module.PdfReader = original  # type: ignore[assignment]
+
+    restored = ParsedDocument.model_validate_json(parsed.model_dump_json())
+    assert len(restored.warnings) == 1
+    assert restored.warnings[0].code == "pdf.empty_page"
+    assert restored.warnings[0].page_number == 2
+    assert restored.warnings[0].severity == "warning"
+
+
+# --- PDF OCR fallback (ingestion.03) ------------------------------------------
+
+
+def _pdf_reader_with_pages(page_texts: list[str]) -> type:
+    class _Reader:
+        def __init__(self, _content: BytesIO) -> None:
+            self.is_encrypted = False
+            self.pages = [_FakePage(text) for text in page_texts]
+
+    return _Reader
+
+
+class _StubOcrAdapter:
+    """In-tree OCR stub: returns canned text per 1-based page; records calls."""
+
+    def __init__(self, page_text: dict[int, str] | None = None) -> None:
+        self.calls: list[int] = []
+        self._page_text = page_text or {}
+
+    def recognize_page(self, content: bytes, page_number: int) -> str:
+        del content
+        self.calls.append(page_number)
+        return self._page_text.get(page_number, "")
+
+
+def test_pdf_parser_ocrs_image_only_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ingestion.parsers.pdf.PdfReader", _pdf_reader_with_pages(["", ""]))
+    adapter = _StubOcrAdapter({1: "Recognized one", 2: "Recognized two"})
+
+    parser = PdfParser(ocr_adapter=adapter)
+    parsed = parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"image pdf")
+
+    assert parsed.text_content == "Recognized one\n\nRecognized two"
+    assert parsed.parser_metadata["ocr_used"] is True
+    assert adapter.calls == [1, 2]
+    assert parsed.warnings == []
+
+
+def test_pdf_parser_ocr_fills_only_empty_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ingestion.parsers.pdf.PdfReader",
+        _pdf_reader_with_pages(["Real page one", ""]),
+    )
+    adapter = _StubOcrAdapter({2: "OCR page two"})
+
+    parser = PdfParser(ocr_adapter=adapter)
+    parsed = parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"mixed pdf")
+
+    assert parsed.text_content == "Real page one\n\nOCR page two"
+    assert adapter.calls == [2]  # OCR invoked only for the empty page
+    assert parsed.parser_metadata["ocr_used"] is True
+
+
+def test_pdf_parser_skips_ocr_when_text_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ingestion.parsers.pdf.PdfReader",
+        _pdf_reader_with_pages(["First page", "Second page"]),
+    )
+    adapter = _StubOcrAdapter({1: "should not be used"})
+
+    parser = PdfParser(ocr_adapter=adapter)
+    parsed = parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"text pdf")
+
+    assert adapter.calls == []
+    assert parsed.parser_metadata["ocr_used"] is False
+
+
+def test_pdf_parser_raises_for_image_pdf_without_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ingestion.parsers.pdf.PdfReader", _pdf_reader_with_pages(["", ""]))
+
+    parser = PdfParser()  # no OCR adapter configured -> opt-in unchanged
+    with pytest.raises(ParserError, match="does not contain extractable text"):
+        parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"image pdf")
+
+
+def test_pdf_parser_keeps_empty_page_warning_when_ocr_finds_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ingestion.parsers.pdf.PdfReader",
+        _pdf_reader_with_pages(["Real page one", ""]),
+    )
+    adapter = _StubOcrAdapter({})  # OCR recognizes nothing on the empty page
+
+    parser = PdfParser(ocr_adapter=adapter)
+    parsed = parser.parse(_source("doc-pdf", DocumentFormat.PDF), b"mixed pdf")
+
+    assert adapter.calls == [2]
+    assert parsed.parser_metadata["ocr_used"] is False
+    assert any(w.code == "pdf.empty_page" and w.page_number == 2 for w in parsed.warnings)
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("pdf2image") is not None,
+    reason="OCR extra installed; covered by test_pdf_ocr_integration.py instead",
+)
+def test_tesseract_adapter_raises_clear_error_without_ocr_extra() -> None:
+    from ingestion.parsers.adapters.tesseract import TesseractOcrAdapter
+
+    adapter = TesseractOcrAdapter()
+    with pytest.raises(ImportError, match="optional OCR dependencies"):
+        adapter.recognize_page(b"pdf bytes", 1)

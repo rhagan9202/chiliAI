@@ -18,39 +18,35 @@
 | _cicd.md | 20 | 1 | 0 | 21 | 0% |
 | _infra.md | 19 | 0 | 0 | 19 | 0% |
 | _multitenancy.md | 16 | 0 | 0 | 16 | 0% |
-| _observability.md | 12 | 1 | 0 | 13 | 0% |
+| _observability.md | 11 | 1 | 0 | 13 | 0% |
 | _plugins.md | 16 | 0 | 0 | 16 | 0% |
 | _security.md | 12 | 0 | 0 | 12 | 0% |
 | agent.md | 19 | 0 | 1 | 20 | 5% |
-| analytics.md | 32 | 0 | 0 | 32 | 0% |
+| analytics.md | 33 | 0 | 0 | 33 | 0% |
 | api.md | 27 | 0 | 1 | 29 | 3% |
 | config.md | 15 | 0 | 0 | 15 | 0% |
 | database.md | 13 | 0 | 0 | 13 | 0% |
 | embeddings.md | 12 | 0 | 0 | 12 | 0% |
 | events.md | 14 | 2 | 0 | 16 | 0% |
-| frontend.md | 26 | 0 | 0 | 26 | 0% |
+| frontend.md | 24 | 0 | 2 | 26 | 7% |
 | graph.md | 20 | 0 | 0 | 20 | 0% |
-| ingestion.md | 33 | 0 | 2 | 35 | 5% |
+| ingestion.md | 25 | 0 | 10 | 35 | 28% |
 | knowledgebases.md | 13 | 0 | 0 | 13 | 0% |
 | llm.md | 17 | 0 | 0 | 17 | 0% |
 | monitoring.md | 20 | 0 | 0 | 20 | 0% |
 | rag.md | 17 | 0 | 0 | 17 | 0% |
 | records.md | 10 | 2 | 1 | 13 | 7% |
 | shared.md | 17 | 1 | 0 | 18 | 0% |
-| storage.md | 13 | 0 | 0 | 13 | 0% |
+| storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 427 | 7 | 5 | 440 | 1% |
+| **Total** | 418 | 7 | 15 | 442 | 3% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
-> **Priority flag (ingestion):** take `ingestion.30` → `ingestion.31` first — they fix graph-corrupting relationship defects (Cartesian-fabricated edges; dropped edges for deduplicated entities) that propagate into RAG/analytics. `ingestion.32` (failure-event escape paths) is the next-most-urgent resilience bug. See [ingestion.md](ingestion.md) stories 30–35.
+> **Priority flag (ingestion):** the graph-corrupting relationship defects are fixed — `ingestion.30` (use the model's relationship output instead of fabricating Cartesian edges), `ingestion.31` (resolve endpoints onto cross-chunk-deduplicated survivors), `ingestion.32` (failure-event escape paths), and `ingestion.33` (full-digest document identity) are all done. `ingestion.34` (record-derived entities now stamped `source_kind="record"`) is done. `ingestion.35` (documents with zero valid entities silently marked ready) has its core fix shipped — empty/degraded extractions now emit a durable `DocumentsExtractionWarningEvent` and the validator strips hallucinated extra properties instead of dropping entities — but it stays `planned` pending its metrics (`ingestion.17`) and status-projection/API (`ingestion.18`) cross-edges. See [ingestion.md](ingestion.md) story 35.
 <!-- BEGIN: ready-set -->
 - [_cicd.01] _cicd — size S — prereqs done
 - [api.26] api — size S — prereqs done
-- [frontend.22] frontend — size S — prereqs done
-- [ingestion.24] ingestion — size S — prereqs done
-- [ingestion.33] ingestion — size S — prereqs done
-- [ingestion.34] ingestion — size S — prereqs done
 - [shared.01] shared — size S — prereqs done
 - [shared.17] shared — size S — prereqs done
 - [_cicd.02] _cicd — size M — prereqs done
@@ -64,6 +60,7 @@
 - [agent.11] agent — size M — prereqs done
 - [agent.13] agent — size M — prereqs done
 - [agent.15] agent — size M — prereqs done
+- [analytics.33] analytics — size M — prereqs done
 - [config.02] config — size M — prereqs done
 - [config.03] config — size M — prereqs done
 - [database.03] database — size M — prereqs done
@@ -71,11 +68,14 @@
 - [database.05] database — size M — prereqs done
 - [database.07] database — size M — prereqs done
 - [embeddings.01] embeddings — size M — prereqs done
+- [embeddings.06] embeddings — size M — prereqs done
 - [frontend.06] frontend — size M — prereqs done
 - [frontend.10] frontend — size M — prereqs done
 - [frontend.13] frontend — size M — prereqs done
 - [frontend.14] frontend — size M — prereqs done
-- …25 more
+- [ingestion.35] ingestion — size M — prereqs done
+- [knowledgebases.03] knowledgebases — size M — prereqs done
+- …23 more
 <!-- END: ready-set -->
 
 ## Critical path
