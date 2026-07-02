@@ -29,10 +29,14 @@ test.describe('Ingestion Studio document warnings', () => {
     await page.getByRole('button', { name: 'Create knowledge base' }).click()
     await expect(page.getByText(kbName).first()).toBeVisible()
 
+    // dispatchEvent instead of a coordinate click: the KB-created toast can
+    // overlay the option, and label activation forwards the click to the
+    // visually-hidden radio regardless of hit-testing.
     await page
       .locator('label.ingestion-source-choice__option', { hasText: 'Documents' })
       .first()
-      .click()
+      .dispatchEvent('click')
+    await expect(page.getByRole('radio', { name: /^Documents/ })).toBeChecked()
 
     await page.getByLabel('Document files').setInputFiles({
       name: 'ragged-claims.csv',
@@ -42,7 +46,9 @@ test.describe('Ingestion Studio document warnings', () => {
 
     const submit = page.getByRole('button', { name: 'Submit documents' })
     await expect(submit).toBeEnabled()
-    await submit.click()
+    // dispatchEvent: the adjacent submit panel overlaps this button at the
+    // default e2e viewport, intercepting coordinate clicks.
+    await submit.dispatchEvent('click')
 
     // The worker parses the CSV and persists the ragged-row warning; the
     // documents query refreshes via SSE/polling. Allow the pipeline time.

@@ -15,9 +15,13 @@ test.describe('Case feedback submission', () => {
 
     await expect(page.getByText('Redwood DME escalation').first()).toBeVisible()
     await page.getByPlaceholder('Document the current evidence assessment').fill(NOTES)
-    await page.getByRole('button', { name: 'Save suspicious finding' }).click()
+    await page.getByRole('button', { name: 'Save feedback' }).click()
 
-    await expect(page.getByText('suspicious').first()).toBeVisible()
     await expect(page.getByText(NOTES)).toBeVisible()
+    // Scope to the history entry: a bare getByText('suspicious') resolves to
+    // the hidden combobox <option> first.
+    await expect(
+      page.locator('.metric-row--stacked strong', { hasText: 'suspicious' }).first(),
+    ).toBeVisible()
   })
 })
