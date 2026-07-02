@@ -810,6 +810,27 @@ def build_llm_client(config: DomainConfig) -> LlmClientProtocol:
         ) from exc
 
 
+def build_document_extractor(
+    config: DomainConfig,
+    llm_client: LlmClientProtocol,
+) -> DocumentExtractorProtocol:
+    """Select the document extractor for the configured LLM provider.
+
+    The ``local`` provider is the deterministic echo stub
+    (llm/adapters/in_memory.py) and cannot produce extraction JSON, so it
+    keeps the config-driven ``PatternDocumentExtractor`` baseline. Real
+    providers route document extraction through ``LlmDocumentExtractor``.
+    """
+    provider = (config.llm or LlmConfig()).provider
+    if provider == "local":
+        return create_document_extractor(config.entities, config.relationships)
+    return create_document_extractor(
+        config.entities,
+        config.relationships,
+        llm_client=llm_client,
+    )
+
+
 def _resolve_worker_event_bus_settings(config: DomainConfig) -> EventBusSettings:
     env_settings = load_event_bus_settings()
     if "events" not in config.model_fields_set:
@@ -866,7 +887,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         recovery_store=ObjectStoreIngestionRecoveryStore(object_store),
     )
     chunker = create_document_chunker(config.ingestion.chunking)
-    extractor = create_document_extractor(config.entities, config.relationships)
+    extractor = build_document_extractor(config, llm_client)
     validator = create_extraction_validator(config.entities, config.relationships)
     graph_service = create_graph_service(
         graph_repository,
@@ -1125,9 +1146,12 @@ def _build_extraction_storage_key(
 _MAX_EXTRACTION_WARNING_SAMPLE = 10
 
 
-def _collect_extraction_warning_reasons(report: ValidationReport) -> list[str]:
-    """Flatten validation drops and stripped-property notices into a bounded sample."""
-    reasons: list[str] = []
+def _collect_extraction_warning_reasons(
+    report: ValidationReport,
+    extraction_warnings: list[str],
+) -> list[str]:
+    """Flatten extraction-stage warnings, validation drops, and stripped-property notices into a bounded sample."""
+    reasons: list[str] = list(extraction_warnings)
     for candidate_id, errors in report.entity_errors.items():
         reasons.extend(f"entity {candidate_id}: {error}" for error in errors)
     for candidate_id, errors in report.relationship_errors.items():
@@ -1195,12 +1219,14 @@ def handle_entities_extracted(
         dropped_entity_count = len(validation_report.entity_errors)
         dropped_relationship_count = len(validation_report.relationship_errors)
         stripped_property_count = len(validation_report.warnings)
+        extraction_stage_warnings = list(extraction_result.warnings)
         empty_extraction = valid_entity_count == 0
         if (
             empty_extraction
             or dropped_entity_count
             or dropped_relationship_count
             or stripped_property_count
+            or extraction_stage_warnings
         ):
             logger.warning(
                 "ingestion extraction warning stage=validate knowledge_base_id=%s "
@@ -1224,7 +1250,9 @@ def handle_entities_extracted(
                     dropped_relationship_count=dropped_relationship_count,
                     stripped_property_count=stripped_property_count,
                     empty_extraction=empty_extraction,
-                    sample_reasons=_collect_extraction_warning_reasons(validation_report),
+                    sample_reasons=_collect_extraction_warning_reasons(
+                        validation_report, extraction_stage_warnings
+                    ),
                     validation_storage_key=validation_storage_key,
                 )
             )

@@ -6,6 +6,7 @@ import asyncio
 import threading
 import time
 from types import SimpleNamespace
+from typing import Literal
 
 from collections.abc import Sequence
 
@@ -4289,3 +4290,77 @@ def test_run_worker_retries_recovery_replay_failure_before_drain(
     asyncio.run(_run())
 
     assert calls == ["replay", "replay", "drain"]
+
+
+def _config_with_llm_provider(
+    provider: Literal["openai", "anthropic", "local", "ollama"],
+) -> DomainConfig:
+    return _base_config().model_copy(update={"llm": LlmConfig(provider=provider)})
+
+
+def test_build_document_extractor_uses_pattern_extractor_for_local_stub() -> None:
+    from agent.coordinator import build_document_extractor
+    from ingestion.extractor import PatternDocumentExtractor
+    from llm.adapters.in_memory import InMemoryLlmClient
+
+    extractor = build_document_extractor(
+        _config_with_llm_provider("local"), InMemoryLlmClient()
+    )
+    assert isinstance(extractor, PatternDocumentExtractor)
+
+
+def test_build_document_extractor_uses_llm_extractor_for_real_provider() -> None:
+    from agent.coordinator import build_document_extractor
+    from ingestion.extractor import LlmDocumentExtractor
+    from llm.adapters.in_memory import InMemoryLlmClient
+
+    extractor = build_document_extractor(
+        _config_with_llm_provider("ollama"), InMemoryLlmClient()
+    )
+    assert isinstance(extractor, LlmDocumentExtractor)
+
+
+def test_handle_entities_extracted_surfaces_extraction_stage_warnings() -> None:
+    """Extraction-stage warnings (e.g. LLM non-JSON) must reach the warning event."""
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    extraction_result = ExtractionResult(
+        id="extract-warn",
+        source_document_id="doc-1",
+        parsed_document_id="parsed-1",
+        warnings=["LLM returned non-JSON for chunk chunk-1: Expecting value"],
+    )
+    extraction_storage_key = "knowledgebases/kb-1/extractions/extract-warn.json"
+    object_store.put_bytes(
+        extraction_storage_key,
+        extraction_result.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    handle_entities_extracted(
+        EntitiesExtractedEvent(
+            documents=[
+                ExtractedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    extraction_result_id="extract-warn",
+                    entity_count=0,
+                    relationship_count=0,
+                    extraction_storage_key=extraction_storage_key,
+                )
+            ]
+        ),
+        extraction_validator=create_extraction_validator([], []),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    warning_events = [
+        event
+        for event in event_bus.published_events
+        if isinstance(event, DocumentsExtractionWarningEvent)
+    ]
+    assert len(warning_events) == 1
+    reference = warning_events[0].documents[0]
+    assert any("non-JSON" in reason for reason in reference.sample_reasons)
