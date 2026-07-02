@@ -258,6 +258,17 @@ class TestDomainConfigValid:
         assert cfg.vectorstore.dimensions == 384
         assert cfg.vectorstore.distance_metric == "cosine"
 
+    def test_validation_defaults_allow_every_registered_parser_content_type(self) -> None:
+        cfg = _make_config()
+
+        assert cfg.validation is not None
+        allowed = set(cfg.validation.allowed_content_types)
+        # Every content type the parser registry can handle must be uploadable,
+        # otherwise a registered parser is unreachable through the API.
+        assert "text/html" in allowed
+        assert "application/pdf" in allowed
+        assert "text/plain" in allowed
+
     def test_new_subsystem_config_defaults_when_absent(self) -> None:
         cfg = _make_config()
 

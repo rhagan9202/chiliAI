@@ -28,7 +28,13 @@ from shared.validation import (
 )
 
 
-def _build_config() -> DomainConfig:
+def _build_config(validation: ValidationConfig | None = None) -> DomainConfig:
+    if validation is None:
+        validation = ValidationConfig(
+            max_file_size_mb=1,
+            allowed_content_types=["text/plain", "application/json"],
+            max_query_length=20,
+        )
     return DomainConfig(
         domain=DomainInfo(name="t", display_name="T", description="d"),
         entities=[],
@@ -36,18 +42,15 @@ def _build_config() -> DomainConfig:
         capabilities=CapabilitiesConfig(),
         ingestion=IngestionConfig(sources=[]),
         auth=AuthConfig(enabled=False),
-        validation=ValidationConfig(
-            max_file_size_mb=1,
-            allowed_content_types=["text/plain", "application/json"],
-            max_query_length=20,
-        ),
+        validation=validation,
         alerts=AlertsConfig(thresholds={}),
     )
 
 
-def _build_app() -> FastAPI:
+def _build_app(config: DomainConfig | None = None) -> FastAPI:
     app = FastAPI()
-    config = _build_config()
+    if config is None:
+        config = _build_config()
     app.dependency_overrides[get_domain_config] = lambda: config
 
     validation = config.validation
@@ -96,6 +99,16 @@ class TestUploadValidation:
             files={"file": ("big.txt", body, "text/plain")},
         )
         assert response.status_code == 413
+
+    def test_text_html_accepted_with_default_allowlist(self) -> None:
+        # Regression: the default allowlist previously omitted text/html, making
+        # the registered HTML parser unreachable through the upload API.
+        client = TestClient(_build_app(_build_config(ValidationConfig())))
+        response = client.post(
+            "/upload",
+            files={"file": ("policy.html", b"<h1>Policy</h1>", "text/html")},
+        )
+        assert response.status_code == 200
 
     def test_disallowed_content_type_returns_415(self) -> None:
         client = TestClient(_build_app())
