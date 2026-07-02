@@ -6,7 +6,7 @@
 
 **Architecture:** Extend the shared `EmptyState` component with a single optional `action?: ReactNode` prop so both pages can render a primary button below the empty-state description. RAG Chat replaces its hardcoded `knowledgeBases[0]` selection with `useSearchParams`-driven state mirroring Investigation Workbench's existing pattern.
 
-**Tech Stack:** React 19, TypeScript strict, Vite 8, React Router 6, Tanstack Query, Vitest + Testing Library + `@testing-library/user-event`, Playwright e2e.
+**Tech Stack:** React 19, TypeScript strict, Vite 8, React Router 7, Tanstack Query, Vitest + Testing Library + `@testing-library/user-event`, Playwright e2e.
 
 **Spec:** `docs/superpowers/specs/2026-05-21-kb-contextual-entry-points-design.md`
 
@@ -473,7 +473,7 @@ export function RagChatPage() {
       <SectionHeader
         actions={<Chip label={conversation?.title ?? 'No active thread'} tone="info" />}
         eyebrow="Conversational RAG"
-        subtitle="Conversation creation and message submission now exercise the backend chat endpoints and seeded RAG service."
+        subtitle="Conversation creation and message submission now exercise the backend chat endpoints."
         title="RAG Chat"
       />
 

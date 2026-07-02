@@ -14,7 +14,7 @@ Each entry covers: purpose, primary public exports, adapters (if any), and forbi
 **Key files:**
 - `app.py` — `create_app()` factory
 - `dependencies.py` — DI wiring for all services
-- `state.py` — `ApiState` seeded read-model container assembled at startup
+- `state.py` — `ApiState` runtime app-state container assembled at startup
 - `contracts.py` — API-facing request/response models
 - `_kb_busy.py` — workflow/pending-cleanup mutation guard
 - `_kb_projection.py` — KB read projection

@@ -122,7 +122,7 @@ The frontend has operational views, but no mounted wizard experience for configu
 ## Story frontend.04: Migrate seeded Dashboard + RAG copy to live projections
 
 **ID:** frontend.04
-**Status:** planned
+**Status:** done
 **Prerequisites:** [analytics.06, rag.07]
 **Unblocks:** [analytics.28]
 **Estimated size:** M
@@ -132,9 +132,9 @@ The frontend has operational views, but no mounted wizard experience for configu
 **so that** I can trust the numbers I'm shown in real deployments.
 
 ### Current State
-- `chili_app/src/pages/DashboardPage.tsx:70` renders the sublabel "Entities available in the seeded investigation graph".
-- `chili_app/src/pages/RagChatPage.tsx:76` reads "exercise the backend chat endpoints and seeded RAG service".
-- `chili_app/README.md:66-67` documents the seeded/demo read models remaining for Dashboard, alerts, cases, and RAG.
+- Seeded/demo analyst-facing copy has been removed from Dashboard and RAG page surfaces.
+- Regression coverage exists to prevent reintroducing seeded/demo analyst-facing strings.
+- `chili_app/README.md` now documents the live routed surfaces and read-only configuration status.
 
 ### Acceptance Criteria
 - [ ] Dashboard sublabel and any "seeded" references are replaced with copy that reflects the live KB-scoped projection contract from `analytics.06`.
@@ -811,7 +811,7 @@ The frontend has operational views, but no mounted wizard experience for configu
 ## Story frontend.22: Reconcile `chili_app/README.md` with actual `AppProviders` tree
 
 **ID:** frontend.22
-**Status:** planned
+**Status:** done
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** S
@@ -821,9 +821,8 @@ The frontend has operational views, but no mounted wizard experience for configu
 **so that** I don't waste time hunting for a `DomainConfigProvider` that doesn't ship.
 
 ### Current State
-- `chili_app/README.md` § "Current State" claims `<AppProviders>` mounts a `<DomainConfigProvider>`.
-- `chili_app/src/app/providers.tsx:16-47` actually mounts only `QueryClientProvider` + `SessionProvider`.
-- The only `DomainConfigProvider` in the repo is a test utility at `chili_app/src/test-utils/MockDomainConfigProvider.tsx:36`; domain config flows via plain TanStack Query hooks (`useDomainConfig`, `useDomainFeatures`).
+- `chili_app/README.md` now matches the real provider tree in `src/app/providers.tsx` (`QueryClientProvider`, `SessionProvider`, optional `ReactQueryDevtools`).
+- The only `DomainConfigProvider` in the repo remains the test utility `src/test-utils/MockDomainConfigProvider.tsx`; runtime domain config flows through TanStack Query hooks (`useDomainConfig`, `useDomainFeatures`).
 
 ### Acceptance Criteria
 - [ ] `chili_app/README.md` § "Current State" is rewritten to match `providers.tsx` exactly: lists `QueryClientProvider`, `SessionProvider`, optional `ReactQueryDevtools`.

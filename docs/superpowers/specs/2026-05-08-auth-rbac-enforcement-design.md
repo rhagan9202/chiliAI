@@ -64,7 +64,7 @@ chili-api (FastAPI)
 | Router | Endpoint(s) | Min role | Notes |
 |---|---|---|---|
 | `config` | `GET /config/domain` | viewer | All authenticated users need it for dynamic UI |
-| `config` | `PUT /config/domain` (future) | admin | Config writes are governance |
+| `config` | `/config/domain` write endpoint (future; method pending API decision) | admin | Config writes are governance |
 | `knowledgebases` | `GET /knowledgebases`, `GET /knowledgebases/{id}` | viewer | Read browsing |
 | `knowledgebases` | `POST /knowledgebases`, document upload, document delete | analyst | Analysts own their cases |
 | `knowledgebases` | `DELETE /knowledgebases/{id}` | admin | Destructive |

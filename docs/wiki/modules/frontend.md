@@ -5,7 +5,7 @@
 
 ## Purpose
 
-React 19 SPA serving as the analyst workbench. Renders navigation and feature gates from `GET /config/features` / `GET /config/domain`. Built with Vite 8, TypeScript strict mode, React Router v6, and TanStack Query.
+React 19 SPA serving as the analyst workbench. Renders navigation and feature gates from `GET /config/features` / `GET /config/domain`. Built with Vite 8, TypeScript strict mode, React Router v7, and TanStack Query.
 
 ---
 

@@ -14,10 +14,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Never silence errors, suppress warnings, or bypass type checks to get acceptance. Address the underlying issue instead.
 - Correct all errors, warnings and type errors as soon as they are found. Do NOT leave them for later, ignore as pre-existing, mark with TODO, or skip as out of scope or not my code. If you see it, fix it before proceeding. The only exception is ignore import order. This is non-negotiable.
 - DO NOT LEAVE PRE-EXISTING ERRORS. This includes failures you surface by running a suite/build (a red test, a type error, a lint failure in code you did not write): diagnose the root cause and fix it — do not merely flag it as "pre-existing" or "unrelated." You may NOT end your turn with any known error, warning, or failing test outstanding.
-- When finishing a turn, read and update the README.md, AGENT_Instructions.md, and AGENT.md files in the relevant module(s).
+- When finishing a turn, read and update the relevant module README.md files and any applicable instruction files under `.github/` (for example `.github/copilot-instructions.md` and `.github/instructions/*.md`).
 - When finishing a turn update the architecture.md file and the root README.md if the change affects design or cross-cutting concerns.
 - Before committing, read CLAUDE.md, all instruction files in github/, all README.md files in the repo, and all non-archived files in docs/ and update any contradictions or outdated information.
-- When planning a change, search up the directory for the nearest README.md, AGENT_Instructions.md, and AGENT.md files and read them to understand the current state and any relevant instructions.
+- When planning a change, search up the directory for the nearest README.md files and applicable instruction files (CLAUDE.md, `.github/copilot-instructions.md`, `.github/instructions/*.md`) to understand the current state and relevant constraints.
 
 ### Tooling gotchas (cost real time; will recur)
 - `ruff`'s cache dir is not writable in the sandbox — run `backend/.venv/bin/ruff check --no-cache .`.

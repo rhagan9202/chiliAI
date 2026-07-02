@@ -49,14 +49,17 @@ indicator, and a bounded list of rejected-row reasons.
 | **Knowledge Base Manager** | List, create, delete KBs; document inventory, add/remove docs, and show a selected-KB-scoped ingestion workflow timeline |
 | **Alert Feed** | Streaming alert list, severity filtering, acknowledgment workflow |
 | **Investigation Workbench** | Core analyst view — active KB selection, live entity search/detail/neighborhood, evidence packs, timeline |
+| **Case Management** | Queue, inspect, and update investigation cases; promote alerts to cases |
+| **Policy Intelligence** | Review policy items and triage accepted/rejected/deferred/escalated outcomes |
 | **RAG Chat** | Conversational interface for querying knowledge bases through the backend RAG service and durable conversation routes |
-| **Configuration** | Domain configuration editor |
+| **Configuration** | Read-only domain configuration summary (save workflow not wired yet) |
 
 ## Implemented Routes
 
-Routes are defined in `src/app/router.tsx`. The `/` tree is wrapped in
-`<AuthGuard>` + `<DomainConfigProvider>`; unauthenticated requests redirect
-to `/login`. A catch-all under `/` renders `<PagePlaceholder>` for any
+Routes are defined in `src/app/router.tsx`. `AppProviders` wraps the app with
+`QueryClientProvider` + `SessionProvider`, and the `/` route tree is wrapped in
+`<AuthGuard><AppShell /></AuthGuard>`; unauthenticated requests redirect to
+`/login`. A catch-all under `/` renders `<PagePlaceholder>` for any
 domain-configured page id that doesn't yet have a built component.
 
 | Route | View |
@@ -73,10 +76,11 @@ domain-configured page id that doesn't yet have a built component.
 
 ## Known Prototype Gaps
 
-- Configuration save is disabled until `PUT /config/domain` is implemented.
+- Configuration save is disabled until the planned config-management write endpoint for `/config/domain` is implemented.
 - Some non-Investigation graph/entity discovery flows are still incomplete.
 - Entity-scoped analytics shortcuts still use the remaining `ApiState` analytics composition until they migrate to the same persistence-backed query path as overview/list routes.
 - RAG chat uses the configured backend RAG service in the app factory; direct test construction can still use deterministic in-memory fallbacks.
+- There is no standalone `/workflows` page yet; workflow monitoring currently appears in Dashboard counters and the KB Manager run timeline.
 - Production bundle size should be revisited with route-level code splitting as the UI grows.
 
 For the live, dependency-ordered list of production-readiness work for the SPA, see [`../docs/backlog/frontend.md`](../docs/backlog/frontend.md) (rolled up in [`../docs/backlog/README.md`](../docs/backlog/README.md)).

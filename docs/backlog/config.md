@@ -264,7 +264,7 @@
 
 ---
 
-## Story config.07: Write API for domain config (POST/PUT /config/domain with dry-run, ETag, audit event)
+## Story config.07: Write API for domain config (`/config/domain` write endpoint with dry-run, ETag, audit event)
 
 **ID:** config.07
 **Status:** planned
@@ -277,13 +277,13 @@
 **so that** the wizard (config.08) can round-trip drafts and operators have a programmatic CLI path.
 
 ### Current State
-- `backend/api/routers/config.py:18-21` calls out `POST /config/domain` and the dry-run/ETag/audit gaps explicitly.
+- `backend/api/routers/config.py:18-21` calls out a future `/config/domain` write endpoint plus dry-run/ETag/audit gaps explicitly.
 - Today the router is GET-only (`/config/domain`, `/config/features`, `/config/domain/schema`).
 - `require_role("admin")` exists (`backend/api/middleware/rbac.py:53-78`) but is not yet attached to any write endpoint here.
 - `api.25` opens the admin write surface umbrella; `_security.11` audits and tightens the admin-tier RBAC; `config.06` provides the store.
 
 ### Acceptance Criteria
-- [ ] `PUT /config/domain` accepts a full `DomainConfig` payload, validates via `DomainConfig.model_validate`, re-raises `ConfigLoadError` with the same shape as the loader, persists via `DomainConfigStoreProtocol.save`, and returns `{version, etag, change_note, actor_user_id, applied_at}`.
+- [ ] The `/config/domain` write endpoint (HTTP method finalized by API design decision) accepts a full `DomainConfig` payload, validates via `DomainConfig.model_validate`, re-raises `ConfigLoadError` with the same shape as the loader, persists via `DomainConfigStoreProtocol.save`, and returns `{version, etag, change_note, actor_user_id, applied_at}`.
 - [ ] Query param `?validate_only=true` runs validation but does not persist; returns 200 with `{ok: true, version: null}` on success or 422 with the structured error list.
 - [ ] `If-Match: <etag>` header required on writes; mismatched ETag returns 412 Precondition Failed (etag = stable hash of active version + payload).
 - [ ] `require_role("admin")` enforced on writes; `require_role("viewer")` continues to gate reads.
@@ -294,10 +294,10 @@
 
 ### Verification
 - `pytest backend/tests/api/test_config_router.py -q` green; coverage ≥ 85% on `backend/api/routers/config.py`.
-- Manual: PUT a config tweak as admin, observe the `ConfigUpdatedEvent` in the worker log (relies on config.05), confirm `GET /config/domain` reflects the new payload.
+- Manual: call the `/config/domain` write endpoint with a config tweak as admin, observe the `ConfigUpdatedEvent` in the worker log (relies on config.05), confirm `GET /config/domain` reflects the new payload.
 
 ### Code touch points
-- `backend/api/routers/config.py` (modify — add PUT + validate)
+- `backend/api/routers/config.py` (modify — add write + validate endpoint)
 - `backend/api/contracts.py` (modify — `DomainConfigUpdateRequest`, `DomainConfigUpdateResponse`)
 - `backend/events/types.py` (modify — add `ConfigUpdatedEvent`; coordinate with events.04)
 - `backend/config/store.py` (modify — ETag computation helper)
@@ -357,7 +357,7 @@ Configuration endpoints and files exist, but wizard-specific schema slices and d
 - Cross-edge to `database.md` for the audit table migration (covered there).
 
 ### Acceptance Criteria
-- [ ] Each successful `PUT /config/domain` (config.07) emits an audit record with `(actor_user_id, tenant_id, prev_version, new_version, change_note, diff_json, applied_at, source: "api"|"cli")`; failed saves are NOT audited (validation errors are not changes).
+- [ ] Each successful `/config/domain` write (config.07) emits an audit record with `(actor_user_id, tenant_id, prev_version, new_version, change_note, diff_json, applied_at, source: "api"|"cli")`; failed saves are NOT audited (validation errors are not changes).
 - [ ] `GET /config/domain/versions?limit=N` (admin) lists recent versions with summaries.
 - [ ] `GET /config/domain/versions/{version}` returns full payload + audit row.
 - [ ] `POST /config/domain/rollback/{version}` creates a *new* version whose payload equals the named historical version; original audit row preserved (rollback is a forward operation, never a rewrite — keeps DAG monotonic).
@@ -366,7 +366,7 @@ Configuration endpoints and files exist, but wizard-specific schema slices and d
 
 ### Verification
 - `pytest backend/tests/api/test_config_router.py backend/tests/config/ -q` green; coverage ≥ 85%.
-- Manual: PUT a change, then `GET /config/domain/versions`, confirm the audit row carries the right actor and diff.
+- Manual: submit a config change through the `/config/domain` write endpoint, then `GET /config/domain/versions`, confirm the audit row carries the right actor and diff.
 
 ### Code touch points
 - `backend/api/routers/config.py` (modify — add versions + rollback routes)
@@ -439,7 +439,7 @@ Configuration endpoints and files exist, but wizard-specific schema slices and d
 - [ ] `DomainConfigStoreProtocol.load_active(tenant_id: TenantId | None)` extended; Postgres adapter scopes by tenant; filesystem adapter rejects tenant != None with a clear error.
 - [ ] Per-tenant overlay schema documented: the safe-subset of fields a tenant may override (`capabilities`, `alerts.thresholds`, `ui.display_fields`, `ui.navigation`, `rag.*`, others per multitenancy ADR); platform-level fields (`graph`, `vectorstore`, `embeddings`, `database`, `events`, `storage`, `auth`) remain platform-controlled.
 - [ ] `get_domain_config(tenant_id)` keyed on tenant; cache implemented as a bounded `dict[TenantId, DomainConfig]` with explicit `reset_for_tenant` and `reset_all` operations; config.05 reload contract honored per-tenant.
-- [ ] `PUT /config/domain` (config.07) and audit log (config.09) carry tenant context; tenant admins can only write their own overlay, platform admins can write base.
+- [ ] The `/config/domain` write endpoint (config.07) and audit log (config.09) carry tenant context; tenant admins can only write their own overlay, platform admins can write base.
 - [ ] Tests cover (a) two tenants get two distinct configs, (b) tenant overlay merge applies only to whitelisted fields, (c) platform-tier write affects every tenant base, (d) reload invalidates the right tenant cache only, (e) cross-tenant leakage prevented (tenant A cannot read tenant B's overlay).
 
 ### Verification

@@ -18,7 +18,7 @@ For the live, dependency-ordered list of production-readiness work per backend m
 - **`api/routers/config.py`** — `GET /config/domain` returns the active domain configuration as JSON.
 - **`api/dependencies.py`** — Dependency injection wiring. `get_domain_config()` loads config once and process-caches (cleared at the top of `create_app()` for test isolation). `get_api_state()` reads from `request.app.state.api_state`, attached per-app in `create_app()`. Graph, vectorstore, storage, embedding, and LLM adapters are selected from config with lazy optional imports.
 - **`api/routers/`** — Knowledge base, alert, investigation, chat (rag), analytics, config, policy, cases, evidence, graph, workflows, events (SSE), auth, WebSocket, and records routers. Every Phase 5+ route carries `Depends(require_role(...))` (reads = viewer, writes = analyst); `policy_registry.assert_complete` runs on app startup when auth is enabled and refuses to boot if any route is unguarded. Records routes: `POST /records/{knowledge_base_id}/files` (CSV/JSONL file upload) and `POST /records/{knowledge_base_id}/push` (JSON api-push).
-- **`api/_kb_store.py` / `api/_kb_projection.py`** — API-owned KB/document metadata projection. The in-memory repository remains available for tests and isolated local runs; the object-store repository persists dev KB/document metadata across API reloads through the configured `ObjectStore`. Projection reads merge repository metadata with live graph metrics/object-store build artifacts and persist status/count changes back through the repository.
+- **`api/_kb_projection.py`** — API-owned KB/document metadata projection. The in-memory repository remains available for tests and isolated local runs; the object-store repository persists dev KB/document metadata across API reloads through the configured `ObjectStore`. Projection reads merge repository metadata with live graph metrics/object-store build artifacts and persist status/count changes back through the repository.
 - **`api/_alert_store.py`** — API-owned alert read projection for `/alerts` and SSE `active_alerts`. Monitoring/analytics services still own alert generation; this projection preserves the frontend contract while decoupling alert reads from legacy seeded `ApiState`.
 - **`api/_workflow_projection.py`** — API DTO projection for workflow summaries. The `agent/` module owns workflow state behind `WorkflowRunStoreProtocol`; `/workflows` and SSE `running_workflows` read through `AgentServiceProtocol` instead of legacy seeded `ApiState`. The dev stack uses the Redis workflow store so API and worker share lifecycle updates.
 - **`api/routers/events.py`** — SSE workspace heartbeat for alert/workflow/KB status deltas. The heartbeat reads cached API-owned projections only; live graph/object-store reconciliation stays on explicit KB list/detail reads so idle browser tabs do not poll Neo4j every five seconds.
@@ -70,6 +70,8 @@ backend/
 ├── storage/         # Object/file storage abstraction + adapters (S3, MinIO, local FS)
 ├── database/        # Postgres + TimescaleDB connection provider, Alembic migrations
 ├── records/         # structured/tabular ingestion (CSV/JSONL/api-push), raw_records landing
+├── knowledgebases/  # KB/document metadata repository adapters (in-memory, object-store)
+├── conversations/   # durable RAG chat conversations (in-memory, Postgres)
 ├── cases/           # durable, KB-scoped investigation cases (promote-from-alert)
 └── policy/          # durable, KB-scoped policy intelligence (rule-pack items + triage)
 ```

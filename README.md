@@ -129,7 +129,7 @@ python -m agent.coordinator                         # Pipeline worker
 pytest --cov                                        # Run tests with coverage
 ```
 
-> **Current state**: chiliAI is an active local-development prototype. The backend includes the FastAPI gateway, domain config, event bus, ingestion, graph, vector, embeddings, LLM, RAG, analytics, monitoring, storage, auth/RBAC middleware, config-driven adapter selection, CI, and worker orchestration with extensive tests. The frontend includes a routed analyst workbench shell with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration views. See [`docs/architecture.md` §14.3](docs/architecture.md#143-current-state-vs-target) for current state vs. target.
+> **Current state**: chiliAI is an active local-development prototype. The backend includes the FastAPI gateway, domain config, event bus, ingestion, graph, vector, embeddings, LLM, RAG, analytics, monitoring, storage, auth/RBAC middleware, config-driven adapter selection, CI, and worker orchestration with extensive tests. The frontend includes a routed analyst workbench shell with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, Case Management, Policy Intelligence, RAG Chat, and a read-only Configuration view. See [`docs/architecture.md` §14.3](docs/architecture.md#143-current-state-vs-target) for current state vs. target.
 
 ## Key Architectural Decisions
 

@@ -316,7 +316,10 @@ backend/
 │   ├── explainability/         # Evidence pack generation (standard module shape)
 │   │   └── adapters/
 │   │       ├── in_memory.py
-│   │       └── shap_adapter.py
+│   │       ├── shap_adapter.py
+│   │       ├── evidence_in_memory.py
+│   │       ├── evidence_object_store.py
+│   │       └── protocols.py
 │   ├── metrics/                # Entity-metric persistence (no service, no events)
 │   │   ├── __init__.py
 │   │   ├── models.py           # EntityMetric, EntityMetricSnapshot
@@ -486,6 +489,8 @@ conversations/                  # Durable RAG chat conversations (BL-012)
 | `analytics/peerstats` | Cross-sectional peer-group z-scores → `entity_derived_signals` upsert; gated on `capabilities.peer_stats` | `database.ConnectionProvider`, `config` (PeerMetricSpec, capability flag), `records` raw_records (via SQL, not module import) | `api`, `ingestion`, other analytics sub-modules, direct `records` imports |
 | `agent` | Pipeline coordination, state machine | `events` (protocol), `shared.types` | Direct imports of service internals |
 | `monitoring` | Stream consumption, alert generation | `shared.types`, `events` (protocol) | `api`, `ingestion` internals |
+| `knowledgebases` | KB/document metadata persistence, repository adapters, projection snapshots | `shared.types`, `storage` (protocol) | `api`, `ingestion`, `graph`, `vectorstore` internals |
+| `conversations` | Durable chat conversation/message persistence and retrieval | `shared.types`, `database.ConnectionProvider` | `api`, `rag`, `llm` internals |
 | `shared` | Domain types, protocols, utilities | Python stdlib only | Everything — must be leaf dependency |
 | `config` | Configuration loading and validation | `shared.types` | Everything except `shared` |
 | `events` | Event bus abstraction | `shared.types` | Everything except `shared` |
@@ -945,7 +950,7 @@ The platform supports a dual-graph model: a domain-level reference ("policy") KB
 | Graph visualization | `react-force-graph-2d` | Canvas graph explorer in the Investigation Workbench |
 | Styling | CSS Modules + global app CSS | Component-scoped styles for complex UI surfaces |
 
-> **Current state**: `chili_app/` is a routed React 19 workbench prototype with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, RAG Chat, and Configuration views. Knowledge Base Manager uses the live KB repository, and Investigation Workbench uses KB-scoped live `/investigation/*` graph APIs. Dashboard, alerts, cases, and some analytics/evidence surfaces still include seeded/demo read models until their live projections are migrated.
+> **Current state**: `chili_app/` is a routed React 19 workbench prototype with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, Case Management, Policy Intelligence, RAG Chat, and a read-only Configuration view. Knowledge Base Manager uses the live KB repository, Investigation Workbench uses KB-scoped live `/investigation/*` graph APIs, and dashboard/alert/case/policy surfaces are backed by live service/repository projections. Remaining frontend gaps are configuration-write workflows, standalone workflow/evidence navigation surfaces, and production UX/performance hardening.
 
 ### 8.2 Page / view structure
 
@@ -1487,7 +1492,7 @@ Adapter selection is driven by environment configuration, not code changes.
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
 | `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion (LLM-driven `LlmDocumentExtractor` + Ollama adapter + `FallbackLlmClient`; registered PDF/DOCX/HTML/TXT/JSON/CSV/XLSX parsers), graph/vector/embedding/LLM/RAG services, analytics modules (timeseries/gnn/risk/explainability/metrics), monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, `database/` (psycopg 3 + Alembic + TimescaleDB) connection provider, `records/` structured-ingestion pipeline (raw_records + embed+index step + NPPES/DE-SynPUF feeds), KB delete cascade purging every per-KB store (graph/vector/raw_records+submissions/derived signals/risk history/observations/alert history/metrics/conversations/cases/policy/evidence/object store; shared step list in `knowledgebases.cleanup`, replayed by both the API and the worker) with 207 partial-failure + complete worker retry, document re-upload idempotency with `replaced_document_id`, `delete_by_source_document` on graph and vector protocols, `delete_by_kb` on raw records, provenance metadata constants (`shared/provenance.py`), Tennessee subset tooling (`tools/sample_data/build_tennessee_subset.py`), and Plan C per-consumer Postgres adapters with write-back flows in `agent/coordinator.py` | Add a production-grade KB metadata adapter/migration path, wire `delete_by_source_document` to the document-delete endpoint, add production-mode adapter guardrails, add audit-grade workflow history, and strengthen HTML parser fidelity beyond visible text (`ingestion.02`) |
-| `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, live KB-scoped Investigation Workbench, RAG Chat, Configuration Editor, and realtime SSE hook | Complete persisted evidence-pack surface, config save endpoint integration, migrate remaining seeded read models to live projections, and production UX/performance polish |
+| `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, live KB-scoped Investigation Workbench, Case Management, Policy Intelligence, RAG Chat, read-only Configuration summary, and realtime SSE hook | Complete config save endpoint integration, add dedicated workflow/evidence navigation surfaces, and production UX/performance polish |
 | `docs/` | Architecture, onboarding guide, security checklist, live module backlogs, curated project planning, superpowers plans/specs, wiki, ledger, and archived historical material | Keep active docs synchronized with implementation and archive stale snapshots |
 | `infra/` | Docker Compose, flat Kubernetes manifests, and Helm chart | Add cloud-provider Terraform/Pulumi and production hardening as needed |
 | Testing | Extensive backend pytest suite and frontend Vitest suite | Keep CI coverage gates calibrated and add live adapter profiles where services are available |
