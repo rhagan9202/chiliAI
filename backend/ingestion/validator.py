@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ingestion.models import CandidateEntity, CandidateRelationship, ExtractionResult, ValidationReport
+from ingestion.normalization import normalize_properties
 from shared.provenance import (
     SOURCE_CHUNK_ID_KEY,
     SOURCE_DOCUMENT_ID_KEY,
@@ -143,6 +144,14 @@ class ExtractionResultValidator:
                     f"{len(extra_properties)} unrecognized propert{plural} to "
                     f"metadata.extra_properties: {sorted(extra_properties)}."
                 )
+            definition = definitions_by_type.get(candidate.type)
+            if definition is not None:
+                known_properties, normalization_errors = normalize_properties(
+                    known_properties, definition
+                )
+                if normalization_errors:
+                    entity_errors[candidate.id] = normalization_errors
+                    continue
             entity = _entity_from_candidate(
                 candidate,
                 source_kind,

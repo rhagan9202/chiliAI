@@ -370,3 +370,83 @@ def test_validator_strips_unknown_property_and_admits_entity() -> None:
     assert len(report.warnings) == 1
     assert "provider-1" in report.warnings[0]
     assert "halluc" in report.warnings[0]
+
+def test_validator_normalizes_string_decimal_before_schema_check() -> None:
+    """A CSV-sourced string amount must coerce to float and validate (ingestion.14)."""
+    validator = ExtractionResultValidator(
+        [
+            EntityDefinition(
+                name="claim",
+                display_label="Claim",
+                icon="file",
+                properties={
+                    "claim_id": PropertyDefinition(type=PropertyType.STRING, display="Claim ID"),
+                    "amount": PropertyDefinition(type=PropertyType.DECIMAL, display="Amount"),
+                },
+            )
+        ],
+        [],
+    )
+
+    report = validator.validate_extraction(
+        ExtractionResult(
+            id="extract-norm",
+            source_document_id="doc-1",
+            candidate_entities=[
+                CandidateEntity(
+                    id="claim-norm",
+                    source_document_id="doc-1",
+                    chunk_id="chunk-1",
+                    type="claim",
+                    properties={"claim_id": "CLM-1", "amount": "412.00"},
+                    confidence=0.9,
+                    extraction_method="record_map_v1",
+                )
+            ],
+            candidate_relationships=[],
+        )
+    )
+
+    assert report.entity_errors == {}
+    assert len(report.valid_entities) == 1
+    assert report.valid_entities[0].properties["amount"] == 412.0
+
+
+def test_validator_reports_normalization_failure_distinctly() -> None:
+    validator = ExtractionResultValidator(
+        [
+            EntityDefinition(
+                name="claim",
+                display_label="Claim",
+                icon="file",
+                properties={
+                    "amount": PropertyDefinition(type=PropertyType.DECIMAL, display="Amount"),
+                },
+            )
+        ],
+        [],
+    )
+
+    report = validator.validate_extraction(
+        ExtractionResult(
+            id="extract-norm-fail",
+            source_document_id="doc-1",
+            candidate_entities=[
+                CandidateEntity(
+                    id="claim-bad",
+                    source_document_id="doc-1",
+                    chunk_id="chunk-1",
+                    type="claim",
+                    properties={"amount": "four hundred"},
+                    confidence=0.9,
+                    extraction_method="record_map_v1",
+                )
+            ],
+            candidate_relationships=[],
+        )
+    )
+
+    assert "claim-bad" in report.entity_errors
+    joined = " ".join(report.entity_errors["claim-bad"])
+    assert "normalization_failed" in joined
+    assert report.valid_entities == []
