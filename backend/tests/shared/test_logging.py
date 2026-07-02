@@ -73,6 +73,17 @@ class TestJsonOutputStructure:
         assert payload["knowledge_base_id"] == "kb-1"
         assert "timestamp" in payload
 
+    def test_percent_style_positional_args_are_interpolated(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        configure_logging(log_format="json", level=logging.INFO)
+        logger = get_logger("chili.test.logging.percent")
+        logger.info("Processed %s ingestion document(s) for %s", 3, "kb-1")
+        line = _last_log_line(capsys)
+        payload = cast(dict[str, object], json.loads(line))
+        assert payload["event"] == "Processed 3 ingestion document(s) for kb-1"
+        assert "positional_args" not in payload
+
     def test_console_format_does_not_emit_json(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
