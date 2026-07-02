@@ -364,6 +364,12 @@ def test_get_knowledge_base_hydrates_ready_status_from_graph_metrics() -> None:
             storage_key="knowledgebases/kb-ready/documents/doc-1/source.json",
         )
     )
+    repository.record_document_warnings(
+        "kb-ready",
+        "doc-1",
+        additional_count=2,
+        reasons=["csv.ragged_row: row 1 dropped a field"],
+    )
     graph_service = _MetricsOnlyGraphService(
         GraphMetrics(entity_count=4, relationship_count=4, avg_degree=2.0)
     )
@@ -390,6 +396,10 @@ def test_get_knowledge_base_hydrates_ready_status_from_graph_metrics() -> None:
     assert documents.status_code == 200
     document_payload = documents.json()
     assert document_payload["items"][0]["status"] == "ready"
+    assert document_payload["items"][0]["warning_count"] == 2
+    assert document_payload["items"][0]["warning_reasons"] == [
+        "csv.ragged_row: row 1 dropped a field"
+    ]
     persisted_document = repository.get_document("kb-ready", "doc-1")
     assert persisted_document is not None
     assert persisted_document.status == "ready"

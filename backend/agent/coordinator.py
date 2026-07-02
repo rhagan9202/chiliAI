@@ -1020,10 +1020,18 @@ def handle_documents_parsed(
     document_chunker: DocumentChunker,
     object_store: ObjectStore,
     event_bus: EventBus,
+    kb_repository: KnowledgeBaseRepository | None = None,
 ) -> int:
     """Chunk parsed documents and publish the next workflow event."""
     references: list[ChunkedDocumentReference] = []
     for document in event.documents:
+        if kb_repository is not None and document.warning_count > 0:
+            kb_repository.record_document_warnings(
+                document.knowledge_base_id,
+                document.source_document_id,
+                additional_count=document.warning_count,
+                reasons=list(document.warning_samples),
+            )
         if document.parsed_document_storage_key is None:
             raise ValueError(
                 "DocumentsParsedEvent requires parsed_document_storage_key for chunking."
@@ -1166,6 +1174,7 @@ def handle_entities_extracted(
     extraction_validator: ExtractionResultValidator,
     object_store: ObjectStore,
     event_bus: EventBus,
+    kb_repository: KnowledgeBaseRepository | None = None,
 ) -> int:
     """Validate extracted candidates and publish runtime-ready results."""
     references: list[ValidatedDocumentReference] = []
@@ -1240,6 +1249,9 @@ def handle_entities_extracted(
                 stripped_property_count,
                 empty_extraction,
             )
+            sample_reasons = _collect_extraction_warning_reasons(
+                validation_report, extraction_stage_warnings
+            )
             warning_references.append(
                 ExtractionWarningReference(
                     knowledge_base_id=document.knowledge_base_id,
@@ -1250,12 +1262,23 @@ def handle_entities_extracted(
                     dropped_relationship_count=dropped_relationship_count,
                     stripped_property_count=stripped_property_count,
                     empty_extraction=empty_extraction,
-                    sample_reasons=_collect_extraction_warning_reasons(
-                        validation_report, extraction_stage_warnings
-                    ),
+                    sample_reasons=sample_reasons,
                     validation_storage_key=validation_storage_key,
                 )
             )
+            if kb_repository is not None:
+                warning_total = (
+                    dropped_entity_count
+                    + dropped_relationship_count
+                    + stripped_property_count
+                    + len(extraction_stage_warnings)
+                ) or 1  # an unexplained empty extraction still counts once
+                kb_repository.record_document_warnings(
+                    document.knowledge_base_id,
+                    document.source_document_id,
+                    additional_count=warning_total,
+                    reasons=sample_reasons,
+                )
     if references:
         event_bus.publish(
             EntitiesValidatedEvent(
@@ -2933,6 +2956,7 @@ def _dispatch_event(
             document_chunker=document_chunker,
             object_store=object_store,
             event_bus=event_bus,
+            kb_repository=kb_repository,
         )
     if isinstance(event, DocumentsChunkedEvent):
         return handle_documents_chunked(
@@ -2947,6 +2971,7 @@ def _dispatch_event(
             extraction_validator=extraction_validator,
             object_store=object_store,
             event_bus=event_bus,
+            kb_repository=kb_repository,
         )
     if isinstance(event, EntitiesValidatedEvent):
         return handle_entities_validated(

@@ -1485,6 +1485,19 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "warning_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Warning Count",
+            "type": "integer"
+          },
+          "warning_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warning Reasons",
+            "type": "array"
           }
         },
         "required": [

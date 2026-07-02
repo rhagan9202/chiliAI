@@ -1612,6 +1612,13 @@ export interface components {
             size_bytes?: number | null;
             /** Status */
             status: string;
+            /**
+             * Warning Count
+             * @default 0
+             */
+            warning_count: number;
+            /** Warning Reasons */
+            warning_reasons?: string[];
         };
         /**
          * DomainConfig

@@ -108,7 +108,14 @@ from ingestion.recovery import ObjectStoreIngestionRecoveryStore
 from ingestion.service import IngestionService
 from ingestion.service_models import DocumentSubmission
 from ingestion.validator import create_extraction_validator
-from shared.types import Entity, EntityDefinition, PropertyDefinition, PropertyType
+from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
+from shared.types import (
+    Entity,
+    EntityDefinition,
+    KnowledgeBase,
+    PropertyDefinition,
+    PropertyType,
+)
 from storage.adapters.in_memory import InMemoryObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 
@@ -4364,3 +4371,108 @@ def test_handle_entities_extracted_surfaces_extraction_stage_warnings() -> None:
     assert len(warning_events) == 1
     reference = warning_events[0].documents[0]
     assert any("non-JSON" in reason for reason in reference.sample_reasons)
+
+
+def _kb_repository_with_document() -> InMemoryKnowledgeBaseRepository:
+    from knowledgebases.models import DocumentRecord
+    from shared.utils import utc_now
+
+    repository = InMemoryKnowledgeBaseRepository()
+    repository.create(
+        KnowledgeBase(id="kb-1", name="KB", description="", created_at=utc_now())
+    )
+    repository.add_document(
+        DocumentRecord(
+            id="doc-1",
+            knowledge_base_id="kb-1",
+            filename="claims.csv",
+            content_type="text/csv",
+        )
+    )
+    return repository
+
+
+def test_handle_documents_parsed_persists_parser_warnings() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    repository = _kb_repository_with_document()
+    parsed_document = ParsedDocument(
+        id="parsed-1",
+        source_document_id="doc-1",
+        text_content="claim_id: 42",
+        parser_name="test-parser",
+    )
+    storage_key = "knowledgebases/kb-1/parsed/parsed-1.json"
+    object_store.put_bytes(
+        storage_key,
+        parsed_document.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    handle_documents_parsed(
+        DocumentsParsedEvent(
+            documents=[
+                ParsedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    parser_name="test-parser",
+                    warning_count=2,
+                    warning_samples=["csv.ragged_row: row 1", "csv.dialect_fallback: sniff failed"],
+                    parsed_document_storage_key=storage_key,
+                )
+            ]
+        ),
+        document_chunker=create_document_chunker(),
+        object_store=object_store,
+        event_bus=event_bus,
+        kb_repository=repository,
+    )
+
+    record = repository.get_document("kb-1", "doc-1")
+    assert record is not None
+    assert record.warning_count == 2
+    assert "csv.ragged_row: row 1" in record.warning_reasons
+
+
+def test_handle_entities_extracted_persists_extraction_warnings() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    repository = _kb_repository_with_document()
+    extraction_result = ExtractionResult(
+        id="extract-persist",
+        source_document_id="doc-1",
+        parsed_document_id="parsed-1",
+        warnings=["No entity candidates extracted from persisted chunks."],
+    )
+    extraction_storage_key = "knowledgebases/kb-1/extractions/extract-persist.json"
+    object_store.put_bytes(
+        extraction_storage_key,
+        extraction_result.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    handle_entities_extracted(
+        EntitiesExtractedEvent(
+            documents=[
+                ExtractedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    extraction_result_id="extract-persist",
+                    entity_count=0,
+                    relationship_count=0,
+                    extraction_storage_key=extraction_storage_key,
+                )
+            ]
+        ),
+        extraction_validator=create_extraction_validator([], []),
+        object_store=object_store,
+        event_bus=event_bus,
+        kb_repository=repository,
+    )
+
+    record = repository.get_document("kb-1", "doc-1")
+    assert record is not None
+    assert record.warning_count >= 1
+    assert any("No entity candidates" in reason for reason in record.warning_reasons)

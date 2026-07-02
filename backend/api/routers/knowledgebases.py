@@ -89,6 +89,8 @@ class DocumentSummary(BaseModel):
     size_bytes: int | None = None
     status: str
     created_at: datetime
+    warning_count: int = Field(default=0, ge=0)
+    warning_reasons: list[str] = Field(default_factory=list)
 
 
 class DocumentListResponse(BaseModel):
@@ -343,6 +345,8 @@ async def list_knowledge_base_documents(
                 repository,
             ),
             created_at=record.created_at,
+            warning_count=record.warning_count,
+            warning_reasons=record.warning_reasons,
         )
         for record in records
     ]

@@ -56,6 +56,9 @@ class ParsedDocumentReference(BaseModel):
     parser_version: str | None = None
     document_format: str | None = None
     warning_count: int = Field(default=0, ge=0)
+    # Bounded "code: message" sample of parser warnings so consumers can
+    # persist reasons without re-reading the parsed artifact.
+    warning_samples: list[str] = Field(default_factory=list)
     storage_key: str | None = None
     parsed_document_storage_key: str | None = None
 

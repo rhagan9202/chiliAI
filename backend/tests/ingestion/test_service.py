@@ -528,6 +528,11 @@ def test_ingest_task_propagates_parser_warning_count() -> None:
     assert isinstance(parsed_event, DocumentsParsedEvent)
     assert parsed_event.documents[0].warning_count == len(outcome.parsed_document.warnings)
     assert parsed_event.documents[0].warning_count >= 1
+    assert parsed_event.documents[0].warning_samples
+    assert any(
+        sample.startswith("csv.ragged_row")
+        for sample in parsed_event.documents[0].warning_samples
+    )
 
 
 def test_process_documents_uploaded_publishes_failure_for_unresolved_format() -> None:

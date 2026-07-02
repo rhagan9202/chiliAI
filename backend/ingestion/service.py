@@ -350,6 +350,10 @@ class IngestionService:
                                 else None
                             ),
                             warning_count=len(outcome.parsed_document.warnings),
+                            warning_samples=[
+                                f"{warning.code}: {warning.message}"
+                                for warning in outcome.parsed_document.warnings[:10]
+                            ],
                             storage_key=task.storage_key,
                             parsed_document_storage_key=parsed_document_storage_key,
                         )

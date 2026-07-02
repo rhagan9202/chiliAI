@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from knowledgebases._helpers import build_knowledge_base_summary_updates
-from knowledgebases.models import DocumentRecord
+from knowledgebases.models import MAX_DOCUMENT_WARNING_REASONS, DocumentRecord
 from knowledgebases.snapshots import KnowledgeBaseStoreSnapshot
 from shared.types import KnowledgeBase
 from shared.utils import utc_now
@@ -17,10 +17,14 @@ class ObjectStoreKnowledgeBaseRepository:
 
     The repository writes a compact JSON snapshot through ``ObjectStore`` so the
     API process can restart without losing KB/document inventory state. This is
-    intentionally adapter-independent and suitable for local/dev deployments
-    where the API is the single metadata writer. A high-concurrency production
-    metadata store can implement the same ``KnowledgeBaseRepository`` protocol
-    later without changing routers or frontend contracts.
+    intentionally adapter-independent and suitable for local/dev deployments.
+    Both the API (status promotion, registration) and the worker (KB cleanup,
+    per-document warning accumulation) write through this snapshot; the
+    read-modify-write cycle is not concurrency-safe, so interleaved writers can
+    lose an update — acceptable for advisory metadata at this tier. A
+    high-concurrency production metadata store can implement the same
+    ``KnowledgeBaseRepository`` protocol later without changing routers or
+    frontend contracts.
     """
 
     _DEFAULT_KEY = "system/knowledgebases/metadata.json"
@@ -162,6 +166,34 @@ class ObjectStoreKnowledgeBaseRepository:
         if document.status == status:
             return document
         updated = document.model_copy(update={"status": status})
+        kb_documents[document_id] = updated
+        self._save_snapshot(snapshot)
+        return updated
+
+    def record_document_warnings(
+        self,
+        knowledge_base_id: str,
+        document_id: str,
+        *,
+        additional_count: int,
+        reasons: list[str],
+    ) -> DocumentRecord | None:
+        snapshot = self._load_snapshot()
+        kb_documents = snapshot.documents.get(knowledge_base_id)
+        if kb_documents is None:
+            return None
+        document = kb_documents.get(document_id)
+        if document is None:
+            return None
+        combined_reasons = (document.warning_reasons + reasons)[
+            :MAX_DOCUMENT_WARNING_REASONS
+        ]
+        updated = document.model_copy(
+            update={
+                "warning_count": document.warning_count + additional_count,
+                "warning_reasons": combined_reasons,
+            }
+        )
         kb_documents[document_id] = updated
         self._save_snapshot(snapshot)
         return updated

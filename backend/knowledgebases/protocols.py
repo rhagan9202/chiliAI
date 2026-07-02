@@ -56,6 +56,15 @@ class KnowledgeBaseRepository(Protocol):
         status: str,
     ) -> DocumentRecord | None: ...
 
+    def record_document_warnings(
+        self,
+        knowledge_base_id: str,
+        document_id: str,
+        *,
+        additional_count: int,
+        reasons: list[str],
+    ) -> DocumentRecord | None: ...
+
     def delete_document(
         self,
         knowledge_base_id: str,
