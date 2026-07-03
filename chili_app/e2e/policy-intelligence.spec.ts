@@ -14,7 +14,7 @@ test.describe('Policy Intelligence', () => {
 
     await expect(page.getByRole('heading', { name: 'Policy Intelligence' })).toBeVisible()
     await expect(
-      page.getByText('Claim claim-1 exceeds the billing threshold').first(),
+      page.getByText('Claim claim-1 payment exceeds the elevated-review threshold').first(),
     ).toBeVisible()
   })
 })
