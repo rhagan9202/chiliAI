@@ -1247,19 +1247,42 @@ ui:
 ```
 
 - **Backend modules** receive the parsed config at initialization (via dependency injection). The config determines which entity types to extract, which analytics modules to activate, and what alert thresholds to apply.
-- **API** exposes `GET /config/domain` so the frontend can read the active configuration.
-- **Frontend** reads config at startup and caches it. All entity labels, icons, available panels, and feature gates are driven by this config.
+- **API** exposes `GET /config/domain` so the frontend can read the active configuration, plus admin-gated pack management: `GET /config/packs` (discover packs in the allow-listed config directories + active-pack state) and `POST /config/validate|apply|switch` (dry-run validation, re-apply the active pack, or hot-swap to another pack).
+- **Frontend** reads config at startup and caches it. All entity labels, icons, available panels, and feature gates are driven by this config. The Configuration page hosts the Config Manager (pack switcher + active-pack YAML editor with inline dry-run validation).
 
-### 9.3 Reconfiguring for a new domain
+**Which file is active** is resolved by `config.store.resolve_config_path()` with strict precedence:
+
+1. **Active-pack pointer** — `data/config/active_pack.json`, a small JSON state file written atomically (temp file + `os.replace`) by `POST /config/apply|switch`. Both the API and worker containers mount the same `chili-object-data` volume at `/app/data`, so the pointer is the shared channel through which a hot-swap survives restarts and propagates between containers. It deliberately bypasses the config-derived `ObjectStore` (that would be circular — the object-store backend comes from the config being resolved). Relocatable via `CHILI_ACTIVE_PACK_STATE_PATH`; `clear_active_pack()` deletes it.
+2. **`CHILI_CONFIG_PATH`** environment variable — used only when no pointer exists.
+3. Error — no silent default.
+
+Consequence: once a pack has been switched via the UI/API, the persisted pointer **overrides** `CHILI_CONFIG_PATH` on every subsequent boot until it is cleared (switch back, or delete the state file).
+
+### 9.3 Active-pack hot-swap (no-restart domain switch)
+
+`POST /config/apply` (re-apply the on-disk active pack, e.g. after editing it) and `POST /config/switch` (activate a different pack) execute a **swap-once-success** pipeline — a failure at any step leaves the previous domain fully active:
+
+1. **Validate + guardrail.** The candidate pack is loaded through the full `DomainConfig` validator, then `api.dependencies.enforce_production_guardrail` is applied to its `auth` section — under `CHILI_ENV=staging|production` a pack that disables auth (or ships an incomplete OIDC config) is rejected *before* anything mutates. The same guardrail runs at boot in `create_app()`, so neither boot path nor swap path can silently drop auth.
+2. **Persist pointer.** The active-pack pointer is written atomically (see §9.2).
+3. **Atomic DI swap.** `reset_domain_config_caches()` clears `get_domain_config` and every config-keyed factory cache and bumps a monotonic **swap generation** token (`get_config_generation`). Factories are generation-guarded: a build started under an old generation refuses to publish into the new one, so a concurrent request observes a wholly-old or wholly-new dependency graph — never a torn mix.
+4. **Emit `config.updated`.** A typed `ConfigUpdatedEvent` is published on the **pre-swap** event transport (captured before the caches reset) so the worker learns about the swap on the bus it is actually listening to.
+
+**Worker convergence:** the worker (`agent/coordinator.py`) consumes `config.updated` between drain iterations — a rebuild never interleaves with in-flight event handling — and rebuilds its `WorkerDependencies` from the pointer-resolved config. Redelivery is idempotent (`ConfigReloadState` tracks the last applied delivery).
+
+**Constraint — event transport is swap-invariant:** because the reload signal travels on the pre-swap transport and the worker keeps consuming the stream it subscribed to, a pack must **not** change the `events` backend/URI across a hot-swap. Changing the event transport (e.g. redis → in_memory) requires a restart. The shipped packs all pin the same dev-stack transport (`redis://redis:6379`).
+
+Admin RBAC gates the whole surface (`require_role("admin")`), and pack references are confined to allow-listed config directories — no arbitrary filesystem reads. There is intentionally no raw pack read/write endpoint yet: the Config Manager validates edited YAML inline (dry-run with content), but "Apply" re-applies the on-disk file (future config-write work is charted in `docs/backlog/config.md` config.07/config.14).
+
+### 9.4 Reconfiguring for a new domain
 
 To retarget chiliAI from Medicare fraud to food supply chain monitoring:
 
-1. Write a new domain config YAML (e.g., `food_supply_chain.yaml`) defining entities like `supplier`, `shipment`, `inspection`, `facility`, and relationships like `shipped_by`, `inspected_at`.
-2. Set the active config in the deployment's environment or config path.
-3. Restart the backend. The frontend picks up the new config on next load.
+1. Write a new domain config YAML defining entities and relationships — or use the shipped exemplar-parity pack `backend/config/defaults/food_supply_chain.yaml` (8 entities such as `supplier`, `facility`, `product_lot`, `shipment`; 11 relationships such as `shipped_by`, `inspected_at`; 4 records feeds; 3 policy rule packs; full `ui` section).
+2. Select it: `make dev-domain DOMAIN=food_supply_chain` at stack start, **or** hot-swap a running stack from the Configuration page / `POST /config/switch` (no restart; the worker converges via `config.updated`).
+3. The frontend picks up the new config on next load; knowledge bases are stamped with the domain that created them, and the UI badges KBs whose domain mismatches the active one.
 4. Create a new knowledge base and ingest domain-relevant documents.
 
-No application code changes required — only the configuration file.
+No application code changes required — only the configuration file. See `backend/config/README.md` for the pack-authoring contract and switch ergonomics (including the pointer-precedence gotcha).
 
 ---
 
@@ -1285,7 +1308,9 @@ services:
     build: ./backend
     ports: ["8000:8000"]
     environment:
-      - CHILI_CONFIG_PATH=/config/medicare_fraud.yaml
+      # Domain pack selector — parameterized, medicare exemplar default.
+      # Override via `make dev-domain DOMAIN=<pack>` or CHILI_CONFIG_PATH.
+      - CHILI_CONFIG_PATH=${CHILI_CONFIG_PATH:-/app/config/defaults/medicare_fraud_cms_desynpuf.yaml}
       - CHILI_KB_REPOSITORY_BACKEND=object_store
       - CHILI_WORKFLOW_RUN_STORE_BACKEND=redis
       - REDIS_URL=redis://redis:6379
@@ -1294,7 +1319,8 @@ services:
     build: ./backend
     command: python -m agent.coordinator  # or dedicated worker entry point
     environment:
-      - CHILI_CONFIG_PATH=/config/medicare_fraud.yaml
+      # Must match the api service — api and worker move domains together.
+      - CHILI_CONFIG_PATH=${CHILI_CONFIG_PATH:-/app/config/defaults/medicare_fraud_cms_desynpuf.yaml}
       - CHILI_WORKFLOW_RUN_STORE_BACKEND=redis
       - REDIS_URL=redis://redis:6379
     depends_on: [redis]
@@ -1481,7 +1507,7 @@ Adapter selection is driven by environment configuration, not code changes.
 | **CI/CD pipeline** | Baseline lint, type-check, test, build, and dependency audits run in GitHub Actions. | Add deploy/promotion jobs once environments are finalized. |
 | **Authentication & RBAC** | Pluggable auth middleware, role enforcement. See §12. Implemented 2026-05-08; remaining hardening: production IdP profiles, tenant isolation, resource-level authorization. | Medium — production IdP and tenant isolation before multi-user deployment |
 | **Multi-tenancy** | Tenant-isolated data, config, and KB namespaces. | Medium — after auth |
-| **Configuration UI wizard** | Browser-based domain configuration editor instead of manual YAML editing. | Medium |
+| **Configuration UI wizard** | Sectioned, schema-driven configuration wizard. A first Config Manager page exists (pack switcher + raw YAML editor with dry-run validation and hot-swap apply, §9.3); typed per-section forms, drafts, and a config write path remain. | Medium |
 | **Model training pipeline** | Scheduled/triggered GNN training, embedding fine-tuning. | Medium |
 | **Audit log** | Track all analyst actions (graph queries, alert acks, config changes) for compliance. | Medium |
 | **Export / reporting** | Generate PDF/CSV reports of investigations, evidence packs, risk summaries. | Low — after core workbench is functional |

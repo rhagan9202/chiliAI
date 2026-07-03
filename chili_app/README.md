@@ -52,7 +52,7 @@ indicator, and a bounded list of rejected-row reasons.
 | **Case Management** | Queue, inspect, and update investigation cases; promote alerts to cases |
 | **Policy Intelligence** | Review policy items and triage accepted/rejected/deferred/escalated outcomes |
 | **RAG Chat** | Conversational interface for querying knowledge bases through the backend RAG service and durable conversation routes |
-| **Configuration** | Read-only domain configuration summary (save workflow not wired yet) |
+| **Configuration** | Config Manager — active-config summary, domain pack switcher, and active-pack YAML editor with dry-run validation and hot-swap apply (see "Config Manager" below) |
 
 ## Implemented Routes
 
@@ -72,11 +72,13 @@ domain-configured page id that doesn't yet have a built component.
 | `/knowledge-bases` | Knowledge base list, detail, document inventory |
 | `/policy` | Policy intelligence item queue |
 | `/rag-chat` | RAG chat shell backed by the selected knowledge base |
-| `/configuration` | Read-only domain configuration editor |
+| `/configuration` | Config Manager (pack switcher + active-pack YAML editor with validate/apply) |
 
 ## Known Prototype Gaps
 
-- Configuration save is disabled until the planned config-management write endpoint for `/config/domain` is implemented.
+- The Config Manager has no raw pack read/write endpoint yet: "Validate" dry-runs the edited YAML buffer, but "Apply" re-validates and hot-swaps the **on-disk** pack file — edits made in the editor are never persisted (charted as future config-write work in `docs/backlog/config.md` config.07/config.14 and `frontend.25/26`).
+- The KB domain-mismatch badge (`KbDomainBadge`) renders only on the ingestion KB selector and the KB Manager; other KB pickers (Investigation Workbench, RAG chat) do not badge mismatched KBs yet — follow-up work.
+- `src/components/knowledgebase/KbTable.tsx` and `KbDetailView.tsx` are orphaned (not reachable from any routed page); the KB Manager page renders its own table/detail. Fold or remove them when the KB Manager is next reworked.
 - Some non-Investigation graph/entity discovery flows are still incomplete.
 - Entity-scoped analytics shortcuts still use the remaining `ApiState` analytics composition until they migrate to the same persistence-backed query path as overview/list routes.
 - RAG chat uses the configured backend RAG service in the app factory; direct test construction can still use deterministic in-memory fallbacks.
@@ -152,10 +154,20 @@ healthy, POSTs `/admin/dev-seed`, and writes the returned ids to
 - **`POST /admin/dev-seed`** (`backend/api/routers/dev_seed.py`) is a dev-only
   endpoint, registered only when `CHILI_ENV != production`. It writes a
   deterministic scenario directly to the real stores: a ready KB ("E2E Seed KB"),
-  a provider/claim/beneficiary subgraph, an evidence pack, an alert
-  ("Redwood DME Group", confidence 0.96), and an **independent** open case
-  ("Redwood DME escalation", priority `high`) whose `alert_ids` is empty so the
-  seeded alert stays promotable for the promote spec.
+  a hub-and-spoke subgraph, an evidence pack, an alert, a policy item, and an
+  **independent** open case whose `alert_ids` is empty so the seeded alert stays
+  promotable for the promote spec. The scenario is **derived from the active
+  `DomainConfig`** (no hardcoded domain types): entity/relationship shapes come
+  from the pack's declarations, property values are generated from each
+  `PropertyDefinition`, and the policy item comes from the pack's own
+  `policy_rules`. Under the default medicare pack the seeded display values keep
+  the exact strings the suite asserts on ("Redwood DME Group",
+  "Redwood DME escalation", confidence 0.96). Two known limits: property
+  `pattern` generation supports a pragmatic regex subset (literals, `\d`/`\w`/`\s`,
+  character classes, `.`, `{n}`/`{n,m}`/`+`/`*`/`?` — no groups/alternation/negated
+  classes; unsupported patterns fall back), and the demo policy item is generated
+  only from **entity-target** policy rules (packs with only metric-target rules
+  return an empty `policy_item_id`).
 - **`CHILI_DEV_ANONYMOUS_ROLE=analyst`** elevates the anonymous user to the
   analyst role (dev-gated in `api/middleware/auth.py`; ignored when
   `CHILI_ENV=production`), so protected pages render without a login flow.
@@ -186,6 +198,15 @@ not on mutable status, so they are order-independent.
 | `case-promote.spec.ts` | Promoting the seeded alert creates a case (real `/cases/promote`) |
 | `rag-chat.spec.ts` | New thread → send → real assistant reply renders |
 | `policy-intelligence.spec.ts` | Policy gap queue renders from the real API |
+| `config-manager.spec.ts` | Pack switcher + YAML editor: dry-run validation errors, apply, and pack hot-swap round-trip (requires an admin session — skips loudly otherwise) |
+| `kb-domain-mismatch.spec.ts` | Real pack switch via `/config/switch` → mismatch badge on KBs created under the other domain (requires an admin session) |
+
+The two config specs are admin-gated: the pack-management routes require the
+admin role, so bring the stack up with `CHILI_DEV_ANONYMOUS_ROLE=admin`
+(the default `make test-e2e` exports `analyst`; under analyst these specs
+skip with a loud message rather than failing). They also drive the UI as the
+**supervisor** persona, since both stock packs grant the `configuration` page
+to that persona.
 
 ### Configuration
 
@@ -223,6 +244,49 @@ workflow runs when the backend exposes retry-exhaustion details.
 ## Domain-Driven Dynamic UI
 
 The frontend reads domain configuration from `GET /config/domain` at startup. This drives entity labels, icons, relationship labels, enabled analytics panels, and alert thresholds — allowing the same codebase to serve Medicare fraud, food supply chain, or any configured domain without code changes. Investigation display helpers in `src/utils/domainDisplay.ts` derive entity titles, subtitles, chips, and relationship labels from `DomainConfig.ui.display_fields`, `entities`, and `relationships`. See [`docs/architecture.md` §9](../docs/architecture.md#9-domain-configuration-model).
+
+Knowledge bases carry the `domain_name` that created them; `KbDomainBadge`
+(`src/components/knowledgebase/KbDomainBadge.tsx`, predicate in
+`domainMismatch.ts`) renders a warning badge when a KB's domain does not match
+the active pack. It currently appears on the ingestion KB selector and the KB
+Manager (see Known Prototype Gaps for the remaining pickers).
+
+## Config Manager
+
+`/configuration` (`src/pages/ConfigurationPage.tsx`) hosts the Config Manager
+(`src/components/config/`): the read-only active-config summary plus two
+admin surfaces backed by the admin pack-management API:
+
+- **Pack switcher** (`PackSwitcher.tsx`) — lists the packs discovered by
+  `GET /config/packs` (name, domain, validity, active marker) and activates
+  one via `POST /config/switch`. A switch is a **no-restart hot-swap**: the
+  API validates the candidate (including the production auth guardrail),
+  persists the active-pack pointer, atomically rebuilds its dependency
+  graph, and publishes `config.updated` so the worker converges too.
+- **Active-pack YAML editor** (`ActivePackEditor.tsx`) — seeds a YAML buffer
+  from the active config. **Validate is a dry-run**: the edited buffer is
+  sent inline to `POST /config/validate` and field-level errors render
+  without anything being applied. **Apply re-applies the on-disk pack** via
+  `POST /config/apply` — it does *not* persist the edited buffer (there is
+  no raw pack read/write endpoint yet; that is charted as future
+  config-write work). The intended flow for a content change today is: edit
+  the pack file on disk, then Apply to re-validate and hot-swap it.
+  `SwapResultBanner.tsx` reports swap success/failure.
+
+Role gating happens at two levels:
+
+- **API**: `GET /config/packs` and `POST /config/validate|apply|switch` are
+  `require_role("admin")` — the page mirrors this and hides the admin
+  surfaces for non-admin sessions.
+- **Navigation**: the `configuration` page id is granted to the
+  **supervisor** persona in both stock packs' `ui.roles`, so reaching the
+  page in the UI means selecting the supervisor persona while holding an
+  admin-capable session.
+
+One switch-semantics consequence worth knowing while developing: once a pack
+has been applied/switched, the persisted pointer overrides
+`CHILI_CONFIG_PATH` on restart — see the gotcha in
+[`../backend/config/README.md`](../backend/config/README.md).
 
 ## TypeScript Configuration
 

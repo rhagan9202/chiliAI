@@ -10,6 +10,23 @@ python -m agent.coordinator   # starts the Redis Streams consumer loop
 
 The coordinator registers one handler per event type and dispatches to it inside a retry/DLQ wrapper. Workflow state is written through `WorkflowRunStoreProtocol` so API and worker containers share lifecycle updates when `CHILI_WORKFLOW_RUN_STORE_BACKEND=redis`.
 
+## Domain hot-swap convergence (`config.updated`)
+
+The worker builds all of its config-derived dependencies into a single
+`WorkerDependencies` bundle (`build_worker_dependencies`), resolving the active
+domain pack the same way the API does (active-pack pointer > `CHILI_CONFIG_PATH`
+— see `backend/config/README.md`). When an admin hot-swaps the domain via
+`POST /config/apply|switch`, the API publishes a `ConfigUpdatedEvent`
+(`config.updated`); the worker consumes it **between drain iterations**
+(`apply_pending_config_updates`), so a rebuild never interleaves with in-flight
+event handling. Redelivery is idempotent — `ConfigReloadState` tracks the last
+applied delivery so the same event never triggers a second rebuild.
+
+Constraint: the reload signal travels on the pre-swap event transport and the
+worker keeps consuming the stream it subscribed to, so a pack must **not**
+change the `events` backend/URI across a hot-swap (transport changes require a
+restart). See `docs/architecture.md` §9.3.
+
 ## Pipeline Handlers
 
 ### handle_documents_uploaded

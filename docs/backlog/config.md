@@ -139,6 +139,7 @@
 **ID:** config.04
 **Status:** planned
 **Prerequisites:** [config.03]
+**Progress note (2026-07-03, feat/domain-packs-and-config-manager):** overlay layering itself has NOT landed — no `overlay.py`, no `CHILI_CONFIG_OVERLAY_PATH`, no merge ADR. What did land is adjacent switch ergonomics (d466249): `CHILI_CONFIG_PATH` is parameterized in both compose files (api + worker in lockstep, medicare default) and `make dev-domain DOMAIN=<pack>` selects a whole pack. Whole-pack selection reduces but does not remove the duplication this story targets; the ACs below all remain open.
 **Unblocks:** [agent.05, agent.10, config.08, ingestion.08, ingestion.09, ingestion.13, ingestion.15]
 **Estimated size:** M
 
@@ -178,8 +179,13 @@
 ## Story config.05: Add config hot-reload with atomic downstream cache invalidation
 
 **ID:** config.05
-**Status:** planned
+**Status:** in-progress
 **Prerequisites:** [config.07, events.04]
+**Progress note (2026-07-03, feat/domain-packs-and-config-manager):** the core hot-reload mechanics landed as domain hot-swap (524b5bb, 648f413, 410a34c, a8573e5, 5b6646c):
+- `reset_domain_config_caches()` exists in `backend/api/dependencies.py` with a monotonic swap-generation token (`get_config_generation`) and generation-guarded memoizers so an in-flight request sees a wholly-old or wholly-new dependency graph, never a torn one. Swap-once-success atomicity holds: validate (+ production auth guardrail) → persist pointer → reset caches → emit event; failure at any step leaves the prior config active.
+- Reload trigger is admin-only `POST /config/apply` / `POST /config/switch` (not the `POST /config/reload` shape sketched here); a typed `ConfigUpdatedEvent` (`config.updated`) is published on the pre-swap event transport.
+- Worker (`agent/coordinator.py`) consumes `config.updated` between drain iterations and rebuilds `WorkerDependencies` idempotently (redelivery-safe via `ConfigReloadState`).
+Still open: the reload-posture ADR, the `config_reload_total` Prometheus counter (`_observability.04` cross-edge), and a reflection-based audit test asserting every config-keyed cache is covered by the reset helper. Constraint discovered during live verification: a pack must not change the event transport across a hot-swap (the `config.updated` event is published on the pre-swap transport; a transport change requires a restart).
 **Unblocks:** [_plugins.11, analytics.29, config.08, ingestion.21, monitoring.03]
 **Estimated size:** L
 
@@ -222,8 +228,9 @@
 ## Story config.06: DomainConfigStore protocol + Postgres-backed persistence
 
 **ID:** config.06
-**Status:** planned
+**Status:** in-progress
 **Prerequisites:** [database.02]
+**Progress note (2026-07-03, feat/domain-packs-and-config-manager):** a deliberately smaller persistence slice landed (524b5bb): `backend/config/store.py` is a file-backed **active-pack pointer store** (`data/config/active_pack.json` on the shared `chili-object-data` volume, atomic temp-file + `os.replace` writes, `read_active_pack`/`write_active_pack`/`clear_active_pack`/`resolve_config_path`). Boot-time resolution is pointer > `CHILI_CONFIG_PATH` env > error. It is intentionally not the versioned `DomainConfigStoreProtocol` this story specifies — it persists *which pack is active*, not config payloads/versions. All ACs below (protocol, filesystem/Postgres adapters, `domain_config` table + migration, version history, `CHILI_DOMAIN_CONFIG_STORE_BACKEND`) remain open; the pointer store should be reconciled into (or subsumed by) the versioned store when this story is executed.
 **Unblocks:** [config.07, config.09, config.10, config.11, config.13]
 **Estimated size:** L
 
@@ -267,8 +274,13 @@
 ## Story config.07: Write API for domain config (`/config/domain` write endpoint with dry-run, ETag, audit event)
 
 **ID:** config.07
-**Status:** planned
+**Status:** in-progress
 **Prerequisites:** [config.06, _security.11]
+**Progress note (2026-07-03, feat/domain-packs-and-config-manager):** a pack-management API landed (a8573e5, 5b6646c) covering much of this story's intent with a pack-file (not payload-write) shape:
+- `GET /config/packs` (discovery + active-pack state), `POST /config/validate` (dry-run over a pack reference **or** inline content, structured field-level `ConfigValidationIssue` list), `POST /config/apply` (re-validate + hot-swap the on-disk pack, defaulting to the active one), `POST /config/switch` (activate a different pack) — all `require_role("admin")`, DTOs in `backend/api/config_models.py`, contracts regenerated.
+- Successful swaps publish a typed `ConfigUpdatedEvent` (this story's AC) and the production auth guardrail (`api.dependencies.enforce_production_guardrail`) runs against the candidate pack in step 1, so a swap can never disable auth under `CHILI_ENV=staging|production`.
+- Pack references are confined to allow-listed config directories (no arbitrary path reads).
+Still open: a true write endpoint accepting a full `DomainConfig` payload and persisting it (there is deliberately **no raw pack read/write endpoint yet** — the UI validates edited content inline but apply re-applies the on-disk file), ETag/If-Match concurrency, versioned persistence via config.06, and the audit trail (config.09). The `TODO(production)` framing at the top of `backend/api/routers/config.py` is superseded by the shipped routes.
 **Unblocks:** [api.25, config.05, config.09, config.13, monitoring.05]
 **Estimated size:** M
 
@@ -277,9 +289,8 @@
 **so that** the wizard (config.08) can round-trip drafts and operators have a programmatic CLI path.
 
 ### Current State
-- `backend/api/routers/config.py:18-21` calls out a future `/config/domain` write endpoint plus dry-run/ETag/audit gaps explicitly.
-- Today the router is GET-only (`/config/domain`, `/config/features`, `/config/domain/schema`).
-- `require_role("admin")` exists (`backend/api/middleware/rbac.py:53-78`) but is not yet attached to any write endpoint here.
+- The router now serves reads (`/config/domain`, `/config/features`, `/config/domain/schema`, viewer-gated) **and** admin-gated pack management (`GET /config/packs`, `POST /config/validate|apply|switch`) — see progress note above.
+- `require_role("admin")` is attached to the pack-management routes; a payload-write endpoint with ETag/audit remains unbuilt.
 - `api.25` opens the admin write surface umbrella; `_security.11` audits and tightens the admin-tier RBAC; `config.06` provides the store.
 
 ### Acceptance Criteria

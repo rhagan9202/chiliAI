@@ -11,8 +11,21 @@ selection — with **zero code changes**.
   `_validate_cross_references` model validator enforces referential integrity
   (see "Validation" below).
 - `loader.py` — `load_config(path=None)`: resolves the file (explicit `path`
-  argument, else `CHILI_CONFIG_PATH`), parses YAML/JSON, validates, and
-  returns a `DomainConfig`. Raises `ConfigLoadError` on any failure.
+  argument, else the active-pack pointer, else `CHILI_CONFIG_PATH`), parses
+  YAML/JSON, validates, and returns a `DomainConfig`. Raises
+  `ConfigLoadError` on any failure.
+- `store.py` — file-backed **active-pack pointer store**. Persists which
+  pack is active in a small JSON state file, `data/config/active_pack.json`
+  (in containers: `/app/data/config/active_pack.json` on the shared
+  `chili-object-data` volume, so API and worker follow the same pointer).
+  Atomic writes (temp file + `os.replace`). Public surface:
+  `read_active_pack()`, `write_active_pack()`, `clear_active_pack()`,
+  `resolve_config_path()` (precedence: pointer > `CHILI_CONFIG_PATH` >
+  error). `CHILI_ACTIVE_PACK_STATE_PATH` relocates the state file (tests
+  point it at a temp dir). The pointer is written by the admin config API
+  (`POST /config/apply|switch`) only after the candidate pack fully
+  validates; a corrupt pointer file fails loudly rather than silently
+  reverting the deployment to a different domain.
 - `defaults/` — the shipped domain packs:
   - `medicare_fraud_cms_desynpuf.yaml` — the exemplar pack (CMS DE-SynPUF
     Medicare fraud detection). **Default** for `make dev` and `make prod`.
@@ -55,6 +68,28 @@ CHILI_CONFIG_PATH=backend/config/defaults/food_supply_chain.yaml \
 The frontend needs no configuration: it fetches `GET /config/domain` at
 startup and renders entity labels, navigation, and feature gates from the
 active pack.
+
+A running stack can also be hot-swapped without restart from the
+Configuration page (Config Manager) or the admin API
+(`POST /config/switch`); the worker converges via a `config.updated` event.
+See `docs/architecture.md` §9.3 for the swap pipeline and its constraints
+(notably: a pack must not change the `events` transport across a hot-swap).
+
+### Gotcha: the persisted pointer overrides `CHILI_CONFIG_PATH`
+
+After **any** switch or apply through the UI/API, the active-pack pointer is
+persisted to `data/config/active_pack.json` — and on every subsequent boot
+the pointer **wins over** `CHILI_CONFIG_PATH`. Concretely: once you've
+switched domains in the UI, `make dev-domain DOMAIN=...` (or editing
+`CHILI_CONFIG_PATH`) will *not* retarget the stack on restart until the
+pointer is cleared. To clear it, either:
+
+- switch back to the desired pack via the UI / `POST /config/switch`
+  (updates the pointer), or
+- delete the state file (`/app/data/config/active_pack.json` inside the
+  api/worker containers, on the `chili-object-data` volume) or call
+  `config.store.clear_active_pack()` — the stack then falls back to plain
+  env-based `CHILI_CONFIG_PATH` resolution on next boot.
 
 ## Pack-authoring contract
 

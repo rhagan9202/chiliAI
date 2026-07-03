@@ -90,8 +90,9 @@
 ## Story frontend.03: Mount configuration wizard shell with validation reads
 
 **ID:** frontend.03
-**Status:** planned
+**Status:** in-progress
 **Prerequisites:** [config.15, frontend.06, frontend.07]
+**Progress note (2026-07-03, feat/domain-packs-and-config-manager):** a first Config Manager experience landed on `/configuration` (24eb58c): a pack switcher (`PackSwitcher`, driven by `GET /config/packs`) and an active-pack YAML editor (`ActivePackEditor`) with inline dry-run validation (`POST /config/validate` with edited content) and hot-swap apply/switch. This satisfies "route + navigation entry", "loads current configuration", and "validation errors shown inline without applying"; it is a raw-YAML editor + switcher, **not** the sectioned wizard shell — section navigation across environment/storage/graph/LLM/auth/ingestion/monitoring scopes and schema-metadata-driven forms remain open (blocked on config.08/config.15 schema slices).
 **Unblocks:** [frontend.25]
 **Estimated size:** L
 
@@ -920,6 +921,7 @@ The frontend has operational views, but no mounted wizard experience for configu
 **ID:** frontend.25
 **Status:** planned
 **Prerequisites:** [frontend.03, config.14]
+**Progress note (2026-07-03, feat/domain-packs-and-config-manager):** only the "raw YAML view remains available" AC is effectively covered — the Config Manager (24eb58c) ships a raw YAML editor for the active pack. Typed per-section controls and a draft diff have NOT landed; drafts do not exist yet (no config.14 backend).
 **Unblocks:** [frontend.26]
 **Estimated size:** L
 
@@ -946,8 +948,9 @@ so that common changes can be made without editing raw YAML.
 ## Story frontend.26: Complete configuration wizard save/apply flow
 
 **ID:** frontend.26
-**Status:** planned
+**Status:** in-progress
 **Prerequisites:** [frontend.25, config.15]
+**Progress note (2026-07-03, feat/domain-packs-and-config-manager):** the apply flow partially landed without a draft model (24eb58c): the Config Manager validates edited YAML inline (dry-run, backend field-level errors rendered), applies/switches packs via admin-gated `POST /config/apply|switch`, and surfaces success/failure via `SwapResultBanner`. **Semantics gotcha:** "Apply" re-validates and hot-swaps the *on-disk* pack file — the edited buffer is never persisted (no raw pack write endpoint yet; charted under config.07's remaining work). Draft save does not exist. Admin gating verified backend-side; e2e specs (`chili_app/e2e/config-manager.spec.ts`) require `CHILI_DEV_ANONYMOUS_ROLE=admin`. Remaining: draft save/apply lifecycle once config.14/15 land.
 **Unblocks:** [_observability.11]
 **Estimated size:** M
 

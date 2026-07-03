@@ -4,7 +4,7 @@
 **Source:** `backend/config/schema.py`, `backend/config/loader.py`
 **Frontend mirror:** `chili_app/src/types/domainConfig.ts`
 
-The `DomainConfig` Pydantic model is the single configuration surface that retargets the platform to a new domain. It is loaded from a YAML/JSON file at startup, controlled by the `CHILI_CONFIG_PATH` env var.
+The `DomainConfig` Pydantic model is the single configuration surface that retargets the platform to a new domain. It is loaded from a YAML/JSON file ("domain pack") resolved with strict precedence: active-pack pointer (`data/config/active_pack.json`, written by admin hot-swaps) > `CHILI_CONFIG_PATH` env var > error. Packs can be hot-swapped at runtime via `POST /config/apply|switch` (see `docs/architecture.md` §9.3).
 
 ---
 
@@ -263,7 +263,8 @@ class UiConfig(BaseModel):
 
 | Variable | Purpose | Required |
 |----------|---------|---------|
-| `CHILI_CONFIG_PATH` | Path to domain YAML/JSON config file | Yes (loader falls back to default) |
+| `CHILI_CONFIG_PATH` | Path to domain YAML/JSON pack when no active-pack pointer exists | Yes, unless a pointer is persisted (no silent default) |
+| `CHILI_ACTIVE_PACK_STATE_PATH` | Location of the active-pack pointer state file (default `data/config/active_pack.json`) | No |
 | `CHILI_ENV` | Runtime environment: `local`, `dev`, `staging`, `production` | Yes |
 | `DATABASE_URL` | Postgres DSN (overridden by `DatabaseConfig.dsn_env_var`) | When `database.backend=postgres` |
 | `NEO4J_PASSWORD` | Neo4j auth (env var name set in `GraphDbConfig.auth_env_var`) | When `graph.backend=neo4j` |
