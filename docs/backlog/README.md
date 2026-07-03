@@ -23,12 +23,12 @@
 | _security.md | 12 | 0 | 0 | 12 | 0% |
 | agent.md | 19 | 0 | 1 | 20 | 5% |
 | analytics.md | 33 | 0 | 0 | 33 | 0% |
-| api.md | 27 | 0 | 1 | 29 | 3% |
-| config.md | 15 | 0 | 0 | 15 | 0% |
+| api.md | 26 | 1 | 1 | 29 | 3% |
+| config.md | 12 | 3 | 0 | 15 | 0% |
 | database.md | 13 | 0 | 0 | 13 | 0% |
 | embeddings.md | 12 | 0 | 0 | 12 | 0% |
 | events.md | 14 | 2 | 0 | 16 | 0% |
-| frontend.md | 24 | 0 | 2 | 26 | 7% |
+| frontend.md | 22 | 2 | 2 | 26 | 7% |
 | graph.md | 20 | 0 | 0 | 20 | 0% |
 | ingestion.md | 25 | 0 | 10 | 35 | 28% |
 | knowledgebases.md | 13 | 0 | 0 | 13 | 0% |
@@ -39,7 +39,7 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 418 | 7 | 15 | 442 | 3% |
+| **Total** | 412 | 13 | 15 | 442 | 3% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)

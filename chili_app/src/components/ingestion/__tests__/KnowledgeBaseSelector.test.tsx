@@ -97,6 +97,38 @@ describe('KnowledgeBaseSelector', () => {
     expect(props.onDelete).toHaveBeenCalledWith('kb-policy')
   })
 
+  it('flags domain provenance per knowledge base without blocking selection', () => {
+    const props = renderSelector({
+      activeDomainName: 'food_supply_chain',
+      knowledgeBases: [
+        { ...knowledgeBases[0]!, domain: 'medicare_fraud' },
+        { ...knowledgeBases[1]!, domain: null },
+      ],
+    })
+
+    const mismatched = screen.getByRole('button', { name: /policy corpus/i })
+    const legacy = screen.getByRole('button', { name: /claims review/i })
+
+    expect(within(mismatched).getByTestId('kb-domain-mismatch')).toBeInTheDocument()
+    expect(within(mismatched).getByText('Created under medicare_fraud')).toBeInTheDocument()
+    expect(within(legacy).getByTestId('kb-domain-unknown')).toBeInTheDocument()
+    expect(within(legacy).queryByTestId('kb-domain-mismatch')).not.toBeInTheDocument()
+
+    // Warn only — a mismatched knowledge base is still selectable.
+    fireEvent.click(mismatched)
+    expect(props.onSelect).toHaveBeenCalledWith('kb-policy')
+  })
+
+  it('shows no domain badge when the knowledge base matches the active domain', () => {
+    renderSelector({
+      activeDomainName: 'medicare_fraud',
+      knowledgeBases: [{ ...knowledgeBases[0]!, domain: 'medicare_fraud' }],
+    })
+
+    expect(screen.queryByTestId('kb-domain-mismatch')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('kb-domain-unknown')).not.toBeInTheDocument()
+  })
+
   it('renders an empty state and keeps create disabled for blank names', () => {
     renderSelector({
       activeKnowledgeBaseId: null,

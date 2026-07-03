@@ -1,0 +1,165 @@
+/* Config Manager (pack switcher + active-pack editor) — extends pages.css/ui.css primitives. */
+
+.pack-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pack-switcher__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--text, #6b6375);
+}
+
+.pack-switcher__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pack-switcher__item {
+  border: 1px solid var(--border, #e5e4e7);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pack-switcher__item--active {
+  border-color: var(--accent, #aa3bff);
+  background: rgba(170, 59, 255, 0.05);
+}
+
+.pack-switcher__item-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pack-switcher__item-name {
+  font-weight: 600;
+}
+
+.pack-switcher__item-file {
+  font-size: 12px;
+  color: var(--text, #6b6375);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.pack-switcher__badge {
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pack-switcher__badge--active {
+  background: var(--accent, #aa3bff);
+  color: #fff;
+}
+
+.pack-switcher__badge--invalid {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+.pack-switcher__item-error {
+  margin: 0;
+  font-size: 12px;
+  color: #b91c1c;
+  white-space: pre-wrap;
+}
+
+.pack-switcher__item-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pack-switcher__confirm-copy {
+  font-size: 13px;
+}
+
+.pack-switcher__empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text, #6b6375);
+}
+
+.config-manager__editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.config-manager__issues {
+  list-style: none;
+  margin: 0;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.06);
+  border-radius: 6px;
+}
+
+.config-manager__issue {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: #b91c1c;
+}
+
+.config-manager__issue-field {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.config-manager__issue-type {
+  font-size: 11px;
+  color: #991b1b;
+  opacity: 0.8;
+}
+
+.config-manager__error {
+  margin: 0;
+  font-size: 13px;
+  color: #b91c1c;
+}
+
+.config-manager__warning {
+  margin: 0;
+  font-size: 13px;
+  color: #b45309;
+}
+
+.config-manager__swap-result {
+  border: 1px solid rgba(21, 128, 61, 0.35);
+  background: rgba(21, 128, 61, 0.06);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.config-manager__swap-result p {
+  margin: 0;
+}

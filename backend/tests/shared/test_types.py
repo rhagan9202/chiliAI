@@ -350,6 +350,46 @@ class TestKnowledgeBase:
                 }
             )
 
+    def test_domain_defaults_to_none(self) -> None:
+        now = datetime.now(tz=timezone.utc)
+
+        kb = KnowledgeBase(
+            id="kb1",
+            name="Medicare Policies",
+            description="CMS policy docs",
+            created_at=now,
+        )
+
+        assert kb.domain is None
+
+    def test_accepts_domain_stamp(self) -> None:
+        now = datetime.now(tz=timezone.utc)
+
+        kb = KnowledgeBase(
+            id="kb1",
+            name="Medicare Policies",
+            description="CMS policy docs",
+            created_at=now,
+            domain="medicare_fraud",
+        )
+
+        assert kb.domain == "medicare_fraud"
+
+    def test_legacy_payload_without_domain_key_is_valid(self) -> None:
+        """Records persisted before domain stamping must keep deserializing."""
+        now = datetime.now(tz=timezone.utc)
+
+        kb = KnowledgeBase.model_validate(
+            {
+                "id": "kb-legacy",
+                "name": "Legacy KB",
+                "description": "Persisted before the domain field existed",
+                "created_at": now,
+            }
+        )
+
+        assert kb.domain is None
+
 
 # ---------------------------------------------------------------------------
 # validate_entity helper

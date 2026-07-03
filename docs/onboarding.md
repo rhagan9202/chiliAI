@@ -225,7 +225,7 @@ The key environment variables consumed by the backend:
 
 | Variable | Default (dev) | Description |
 |----------|---------------|-------------|
-| `CHILI_CONFIG_PATH` | `/app/config/defaults/medicare_fraud.yaml` | Path to the active domain config YAML |
+| `CHILI_CONFIG_PATH` | `/app/config/defaults/medicare_fraud_cms_desynpuf.yaml` | Domain pack used when no active-pack pointer exists (a persisted pointer from a UI/API pack switch overrides it — see `backend/config/README.md`) |
 | `REDIS_URL` | `redis://redis:6379` | Redis connection string |
 | `NEO4J_URI` | `bolt://neo4j:7687` | Neo4j Bolt URI |
 | `QDRANT_URL` | `http://qdrant:6333` | Qdrant HTTP URL |
@@ -947,20 +947,22 @@ async def run() -> None:
 
 ### 14.1 Where to find it
 
-Default configs live at `backend/config/defaults/`. The active config is selected by the `CHILI_CONFIG_PATH` environment variable.
+Default domain packs live at `backend/config/defaults/`. The active pack is resolved with pointer > env precedence: the persisted active-pack pointer (`data/config/active_pack.json`, written by admin `POST /config/apply|switch` hot-swaps) wins over the `CHILI_CONFIG_PATH` environment variable. See `backend/config/README.md`.
 
 ```
 backend/config/defaults/
-  medicare_fraud.yaml
-  food_supply_chain.yaml   (example — may be partial)
+  medicare_fraud_cms_desynpuf.yaml   (exemplar — default for make dev/prod)
+  food_supply_chain.yaml             (exemplar-parity peer pack)
+  medicare_fraud.yaml                (minimal variant)
+  medicare_fraud_dev.yaml            (dev variant)
 ```
 
 ### 14.2 Adding a new domain
 
 1. Create `backend/config/defaults/my_domain.yaml` using the schema in [`docs/architecture.md §9`](architecture.md#9-domain-configuration-model).
 2. Define `entities`, `relationships`, `capabilities`, `ingestion.sources`, and `alerts.thresholds`.
-3. Set `CHILI_CONFIG_PATH` to point to your new file.
-4. Restart the backend. The frontend reads `GET /config/domain` on startup and renders entity labels, icons, and feature gates driven by the config.
+3. Select it: `make dev-domain DOMAIN=my_domain` at stack start, or hot-swap a running stack from the Configuration page / admin `POST /config/switch` (no restart; the worker converges via `config.updated`).
+4. The frontend reads `GET /config/domain` on startup and renders entity labels, icons, and feature gates driven by the config.
 
 ### 14.3 Accessing config in a backend module
 

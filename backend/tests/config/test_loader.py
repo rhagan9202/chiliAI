@@ -169,6 +169,31 @@ def test_medicare_ships_policy_rules() -> None:
     assert rule.predicate.op in {"eq", "neq", "gt", "gte", "lt", "lte", "in", "not_in"}
 
 
-def test_food_supply_loads_without_policy_rules() -> None:
-    cfg = load_config(DEFAULTS_DIR / "food_supply_chain.yaml")
-    assert cfg.policy_rules == []  # additive/optional — absent block defaults to []
+def test_food_supply_ships_policy_rules() -> None:
+    cfg = load_config(FOOD_YAML)
+    assert cfg.policy_rules, "food_supply_chain.yaml must ship at least one policy rule pack"
+
+
+def test_policy_rules_default_to_empty_when_block_absent(tmp_path: Path) -> None:
+    # additive/optional — a config without a policy_rules block defaults to [].
+    minimal: dict[str, object] = {
+        "domain": {"name": "minimal", "display_name": "Minimal", "description": "d"},
+        "entities": [
+            {
+                "name": "thing",
+                "display_label": "Thing",
+                "icon": "box",
+                "properties": {
+                    "thing_id": {"type": "string", "display": "ID", "required": True}
+                },
+            }
+        ],
+        "relationships": [],
+        "capabilities": {},
+        "ingestion": {"sources": [{"type": "file_upload", "formats": ["csv"]}]},
+        "alerts": {"thresholds": {}},
+    }
+    path = tmp_path / "minimal.json"
+    path.write_text(json.dumps(minimal), encoding="utf-8")
+    cfg = load_config(path)
+    assert cfg.policy_rules == []

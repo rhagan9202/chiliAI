@@ -7,9 +7,14 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.dependencies import (
+    build_api_state,
+    enforce_production_guardrail,
+    load_chili_environment,
+    reset_domain_config_caches,
+)
 from api.middleware.metrics import register_metrics
 from api.middleware.policy_registry import assert_complete
-from api.state import create_api_state
 from api.routers.alerts import router as alerts_router
 from api.routers.analytics import router as analytics_router
 from api.routers.auth import router as auth_router
@@ -27,63 +32,13 @@ from api.routers.records import router as records_router
 from api.routers.workflows import router as workflows_router
 from api.routers.ws import router as ws_router
 from config.loader import load_config
-from config.schema import AuthConfig
+from config.store import read_active_pack
 from shared.logging import configure_logging, get_logger
 from shared.tracing import instrument_fastapi_app, setup_tracing
 
 __all__ = ["create_app"]
 
 logger = get_logger("chili.api")
-
-_ALLOWED_ENVIRONMENTS = frozenset({"local", "dev", "staging", "production"})
-_AUTH_REQUIRED_ENVIRONMENTS = frozenset({"staging", "production"})
-
-
-def _load_chili_environment() -> str:
-    """Return the validated runtime environment name."""
-
-    raw_environment = os.environ.get("CHILI_ENV")
-    if raw_environment is None or raw_environment.strip() == "":
-        allowed = ", ".join(sorted(_ALLOWED_ENVIRONMENTS))
-        raise RuntimeError(
-            "CHILI_ENV must be set to one of "
-            f"{allowed}; use CHILI_ENV=local for local development."
-        )
-
-    environment = raw_environment.strip().lower()
-    if environment not in _ALLOWED_ENVIRONMENTS:
-        allowed = ", ".join(sorted(_ALLOWED_ENVIRONMENTS))
-        raise RuntimeError(
-            f"Unknown CHILI_ENV '{raw_environment}'. Expected one of {allowed}."
-        )
-    return environment
-
-
-def _enforce_production_guardrail(auth: AuthConfig | None) -> None:
-    environment = _load_chili_environment()
-    if environment not in _AUTH_REQUIRED_ENVIRONMENTS:
-        return
-    if auth is None or not auth.enabled:
-        raise RuntimeError(
-            "AuthConfig.enabled must be True under "
-            f"CHILI_ENV={environment}."
-        )
-    required = (
-        ("issuer_url", auth.issuer_url),
-        ("audience", auth.audience),
-        ("jwks_uri", auth.jwks_uri),
-        ("client_id", auth.client_id),
-        ("client_secret_env_var", auth.client_secret_env_var),
-        ("authorize_endpoint", auth.authorize_endpoint),
-        ("token_endpoint", auth.token_endpoint),
-        ("redirect_uri", auth.redirect_uri),
-    )
-    missing = [name for name, value in required if value is None]
-    if missing:
-        raise RuntimeError(
-            "AuthConfig is missing required fields under "
-            f"CHILI_ENV={environment}: {missing}"
-        )
 
 
 def _load_allowed_origins() -> list[str]:
@@ -106,14 +61,19 @@ def create_app() -> FastAPI:
     configure_logging()
     setup_tracing()
 
-    # Reset process-level config cache so each create_app() call (e.g. one
-    # per test) reloads from CHILI_CONFIG_PATH / monkeypatched load_config.
-    from api.dependencies import get_domain_config, get_rag_service
-    get_domain_config.cache_clear()
-    get_rag_service.cache_clear()
+    # Reset every config-derived singleton so each create_app() call (e.g. one
+    # per test, or a fresh process after a domain swap) reloads from the
+    # active-pack pointer / CHILI_CONFIG_PATH / monkeypatched load_config.
+    reset_domain_config_caches()
 
-    config = load_config()
-    _enforce_production_guardrail(config.auth)
+    # Boot-validate the SAME config DI will serve: pointer > CHILI_CONFIG_PATH
+    # (mirroring api.dependencies.get_domain_config), so a poisoned pointer
+    # fails startup loudly and a pointer-only deployment (no CHILI_CONFIG_PATH)
+    # boots. When no pointer exists, the zero-arg load_config() call preserves
+    # the historical ``api.app.load_config`` monkeypatch seam used by tests.
+    pointer = read_active_pack()
+    config = load_config(pointer.config_path) if pointer is not None else load_config()
+    enforce_production_guardrail(config.auth)
 
     app = FastAPI(
         title="chiliAI API",
@@ -131,15 +91,12 @@ def create_app() -> FastAPI:
 
     # Per-app seeded state — see api.dependencies.get_api_state. Each
     # create_app() call yields a fresh ApiState so tests are isolated.
-    # The live RAG service (BL-001) is composed via DI and injected here so
-    # the chat surfaces query real embeddings / vector store / graph / LLM
-    # adapters instead of the seeded in-memory demo pipeline.
-    try:
-        live_rag_service = get_rag_service()
-    except Exception:  # pragma: no cover - defensive: bad config / missing optional deps
-        logger.exception("Failed to compose live RAG service; falling back to seeded in-memory pipeline.")
-        live_rag_service = None
-    app.state.api_state = create_api_state(rag_service=live_rag_service)
+    # build_api_state composes the live RAG service (BL-001) via DI so the
+    # chat surfaces query real embeddings / vector store / graph / LLM
+    # adapters, falling back to the seeded in-memory demo pipeline on
+    # composition failure. Domain hot-swaps rebuild this via
+    # api.dependencies.reset_domain_config_caches(app).
+    app.state.api_state = build_api_state()
 
     register_metrics(app)
     instrument_fastapi_app(app)
@@ -166,7 +123,7 @@ def create_app() -> FastAPI:
     app.include_router(ws_router)
 
     # Dev/e2e-only seed endpoint — never registered in production.
-    if _load_chili_environment() != "production":
+    if load_chili_environment() != "production":
         app.include_router(dev_seed_router)
 
     # Default-deny audit validates route annotations independent of runtime auth

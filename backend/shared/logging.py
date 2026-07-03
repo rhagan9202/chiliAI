@@ -94,17 +94,32 @@ def configure_logging(
         structlog.processors.StackInfoRenderer(),
     ]
 
-    final_processor: Processor
+    # ``format_exc_info`` must only run for non-pretty renderers: the console
+    # renderer formats exceptions itself and warns when ``format_exc_info``
+    # has already consumed ``exc_info`` (structlog's documented guidance).
+    # Pin the plain-text exception formatter: with ``rich`` importable the
+    # console renderer defaults to rich tracebacks with full locals dumps,
+    # which are expensive to render (a worker stuck in an error-backoff loop
+    # would spend most of its time formatting tracebacks) and can leak
+    # sensitive local values into logs.
+    tail_processors: list[Processor]
     if chosen_format == "json":
-        final_processor = structlog.processors.JSONRenderer()
+        tail_processors = [
+            structlog.processors.format_exc_info,
+            structlog.processors.JSONRenderer(),
+        ]
     else:
-        final_processor = structlog.dev.ConsoleRenderer(colors=False)
+        tail_processors = [
+            structlog.dev.ConsoleRenderer(
+                colors=False,
+                exception_formatter=structlog.dev.plain_traceback,
+            )
+        ]
 
     structlog.configure(
         processors=[
             *shared_processors,
-            structlog.processors.format_exc_info,
-            final_processor,
+            *tail_processors,
         ],
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,

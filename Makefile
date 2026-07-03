@@ -4,7 +4,7 @@
 COMPOSE_DEV  = docker compose -f docker-compose.dev.yaml
 COMPOSE_PROD = docker compose
 
-.PHONY: dev down build logs clean prod prod-down api-shell migrate test test-e2e help
+.PHONY: dev dev-domain down build logs clean prod prod-down api-shell migrate test test-e2e help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -13,6 +13,17 @@ help: ## Show this help
 
 dev: ## Start dev stack (hot-reload)
 	$(COMPOSE_DEV) up --build
+
+# Domain packs live in backend/config/defaults/<name>.yaml. The compose files
+# parameterize CHILI_CONFIG_PATH (defaulting to the medicare exemplar), so a
+# single env var retargets both api and worker. See backend/config/README.md.
+dev-domain: ## Start dev stack under a named domain pack (make dev-domain DOMAIN=food_supply_chain)
+ifndef DOMAIN
+	$(error DOMAIN is required, e.g. make dev-domain DOMAIN=food_supply_chain)
+endif
+	@test -f backend/config/defaults/$(DOMAIN).yaml || \
+		{ echo "Unknown domain pack '$(DOMAIN)' — expected backend/config/defaults/$(DOMAIN).yaml"; exit 1; }
+	CHILI_CONFIG_PATH=/app/config/defaults/$(DOMAIN).yaml $(COMPOSE_DEV) up --build
 
 down: ## Stop dev stack
 	$(COMPOSE_DEV) down

@@ -1,43 +1,110 @@
 domain:
   name: food_supply_chain
-  display_name: "Food Supply Chain Monitoring"
-  description: "Safety and compliance monitoring for food supply chain operations"
+  display_name: "Food Supply Chain Integrity"
+  description: "Fraud, contamination, and traceability monitoring for food supply chain operations"
 
+# ---------------------------------------------------------------------------
+# Entity graph.
+#
+# The record-side spine is supplier -> facility -> product_lot -> shipment.
+# Compliance evidence hangs off it: inspections grade facilities, lab tests
+# screen lots for contaminants, and recalls close the traceability loop from
+# a contaminated lot back to the supplier that shipped it.
+# ---------------------------------------------------------------------------
 entities:
   - name: supplier
     display_label: "Supplier"
     icon: factory
+    natural_key: [supplier_id]
     properties:
       supplier_id: { type: string, display: "Supplier ID", required: true }
       name: { type: string, display: "Name" }
       country: { type: string, display: "Country" }
+      region: { type: string, display: "Region" }
       certification: { type: enum, display: "Certification", enum_values: ["organic", "fair_trade", "gmp", "haccp", "none"] }
+      registration_date: { type: date, display: "Registration Date" }
+      approved: { type: boolean, display: "Approved Supplier" }
+
+  - name: facility
+    display_label: "Facility"
+    icon: building
+    natural_key: [facility_id]
+    properties:
+      facility_id: { type: string, display: "Facility ID", required: true }
+      name: { type: string, display: "Name" }
+      facility_type: { type: enum, display: "Facility Type", enum_values: ["farm", "processing_plant", "packing_house", "cold_storage", "distribution_center", "retail"] }
+      city: { type: string, display: "City" }
+      country: { type: string, display: "Country" }
+      license_number: { type: string, display: "License Number" }
+      license_expiry: { type: date, display: "License Expiry" }
+
+  - name: product_lot
+    display_label: "Product Lot"
+    icon: package
+    natural_key: [lot_id]
+    properties:
+      lot_id: { type: string, display: "Lot ID", required: true }
+      product_name: { type: string, display: "Product Name" }
+      category: { type: enum, display: "Category", enum_values: ["produce", "dairy", "meat", "seafood", "grain", "processed", "beverage"] }
+      production_date: { type: date, display: "Production Date" }
+      expiry_date: { type: date, display: "Expiry Date" }
+      quantity_units: { type: integer, display: "Quantity (units)", min_value: 0 }
 
   - name: shipment
     display_label: "Shipment"
     icon: truck
+    natural_key: [tracking_id]
     properties:
       tracking_id: { type: string, display: "Tracking ID", required: true }
       weight_kg: { type: decimal, display: "Weight (kg)", min_value: 0 }
       ship_date: { type: date, display: "Ship Date", required: true }
+      delivery_date: { type: date, display: "Delivery Date" }
+      origin_country: { type: string, display: "Origin Country" }
+      temperature_breach_count: { type: integer, display: "Temperature Breaches", min_value: 0 }
       temperature_log: { type: list, display: "Temperature Log" }
 
   - name: inspection
     display_label: "Inspection"
     icon: clipboard
+    natural_key: [inspection_id]
     properties:
       inspection_id: { type: string, display: "Inspection ID", required: true }
       result: { type: enum, display: "Result", enum_values: ["pass", "fail", "conditional"] }
+      grade: { type: enum, display: "Grade", enum_values: ["A", "B", "C", "F"] }
+      violation_count: { type: integer, display: "Violations", min_value: 0 }
       inspector: { type: string, display: "Inspector" }
+      agency: { type: string, display: "Agency" }
       date: { type: date, display: "Inspection Date" }
 
-  - name: facility
-    display_label: "Facility"
-    icon: building
+  - name: lab_test
+    display_label: "Lab Test"
+    icon: flask
+    natural_key: [test_id]
     properties:
-      facility_id: { type: string, display: "Facility ID", required: true }
-      name: { type: string, display: "Name" }
-      type: { type: string, display: "Facility Type" }
+      test_id: { type: string, display: "Test ID", required: true }
+      test_type: { type: string, display: "Test Type" }
+      result: { type: enum, display: "Result", enum_values: ["positive", "negative", "inconclusive"] }
+      sample_date: { type: date, display: "Sample Date" }
+      lab_name: { type: string, display: "Laboratory" }
+
+  - name: contaminant
+    display_label: "Contaminant"
+    icon: biohazard
+    natural_key: [name]
+    properties:
+      name: { type: string, display: "Contaminant", required: true }
+      contaminant_type: { type: enum, display: "Type", enum_values: ["bacterial", "viral", "chemical", "physical", "allergen"] }
+
+  - name: recall
+    display_label: "Recall"
+    icon: alert-octagon
+    natural_key: [recall_id]
+    properties:
+      recall_id: { type: string, display: "Recall ID", required: true }
+      reason: { type: enum, display: "Reason", enum_values: ["contamination", "mislabeling", "undeclared_allergen", "foreign_material", "adulteration", "other"] }
+      classification: { type: enum, display: "Classification", enum_values: ["class_1", "class_2", "class_3"] }
+      issue_date: { type: date, display: "Issue Date" }
+      status: { type: enum, display: "Status", enum_values: ["ongoing", "completed", "terminated"] }
 
 relationships:
   - name: shipped_by
@@ -45,9 +112,19 @@ relationships:
     source: shipment
     target: supplier
 
-  - name: inspected_at
-    display_label: "Inspected At"
-    source: inspection
+  - name: shipped_from
+    display_label: "Shipped From"
+    source: shipment
+    target: facility
+
+  - name: contains_lot
+    display_label: "Contains Lot"
+    source: shipment
+    target: product_lot
+
+  - name: produced_at
+    display_label: "Produced At"
+    source: product_lot
     target: facility
 
   - name: supplied_by
@@ -55,12 +132,44 @@ relationships:
     source: facility
     target: supplier
 
+  - name: inspected_at
+    display_label: "Inspected At"
+    source: inspection
+    target: facility
+
+  - name: tested_lot
+    display_label: "Tested Lot"
+    source: lab_test
+    target: product_lot
+
+  - name: detected
+    display_label: "Detected"
+    source: lab_test
+    target: contaminant
+
+  - name: recalled_lot
+    display_label: "Recalled Lot"
+    source: recall
+    target: product_lot
+
+  - name: issued_against
+    display_label: "Issued Against"
+    source: recall
+    target: supplier
+
+  # Supplier-network edge for graph analytics: shell/relabeling schemes show
+  # up as dense subcontracting clusters (analogue of medicare referred_by).
+  - name: subcontracts
+    display_label: "Subcontracts"
+    source: supplier
+    target: supplier
+
 capabilities:
   timeseries: true
-  gnn: false
+  gnn: true
   risk_scoring: true
   rag_chat: true
-  explainability: false
+  explainability: true
   structured_ingestion: true
 
 ingestion:
@@ -78,14 +187,26 @@ ingestion:
 
 records:
   feeds:
+    # ------------------------------------------------------------------
+    # Shipments — one row per shipment. Unique id: tracking_id.
+    # Links: supplier via supplier_id, origin facility via origin_facility_id,
+    #        lot via lot_id.
+    # ------------------------------------------------------------------
     - name: shipments_feed
       record_type: shipment_record
       source: file_upload
       id_field: tracking_id
+      allow_extra_fields: true
       record_schema:
         tracking_id: { type: string, display: "Tracking ID", required: true }
         supplier_id: { type: string, display: "Supplier ID", required: true }
+        origin_facility_id: { type: string, display: "Origin Facility ID" }
+        lot_id: { type: string, display: "Lot ID" }
         ship_date: { type: date, display: "Ship Date", required: true }
+        delivery_date: { type: date, display: "Delivery Date" }
+        weight_kg: { type: decimal, display: "Weight (kg)", min_value: 0 }
+        origin_country: { type: string, display: "Origin Country" }
+        temperature_breach_count: { type: integer, display: "Temperature Breaches", min_value: 0 }
         spoilage_score: { type: decimal, display: "Spoilage Score", required: true, min_value: 0, max_value: 1 }
       entities:
         - entity_type: shipment
@@ -93,63 +214,324 @@ records:
           property_fields:
             tracking_id: tracking_id
             ship_date: ship_date
+            delivery_date: delivery_date
+            weight_kg: weight_kg
+            origin_country: origin_country
+            temperature_breach_count: temperature_breach_count
         - entity_type: supplier
           id_field: supplier_id
           property_fields:
             supplier_id: supplier_id
+        - entity_type: facility
+          id_field: origin_facility_id
+          property_fields:
+            facility_id: origin_facility_id
+        - entity_type: product_lot
+          id_field: lot_id
+          property_fields:
+            lot_id: lot_id
       relationships:
         - relationship_type: shipped_by
           source_entity_type: shipment
           target_entity_type: supplier
+        - relationship_type: shipped_from
+          source_entity_type: shipment
+          target_entity_type: facility
+        - relationship_type: contains_lot
+          source_entity_type: shipment
+          target_entity_type: product_lot
       observations:
         - metric_name: shipment_spoilage
           entity_type: shipment
           score_field: spoilage_score
           rationale: "Spoilage score derived from the structured shipments feed."
 
-# graph:
-#   backend: in_memory  # use neo4j for external graph databases
-#   uri: null
-#   pool_size: 10
-#   auth_env_var: GRAPH_DB_AUTH
+    # ------------------------------------------------------------------
+    # Facility inspections — one row per inspection visit.
+    # Unique id: inspection_id. Links: facility via facility_id.
+    # ------------------------------------------------------------------
+    - name: inspections_feed
+      record_type: inspection_record
+      source: file_upload
+      id_field: inspection_id
+      allow_extra_fields: true
+      record_schema:
+        inspection_id: { type: string, display: "Inspection ID", required: true }
+        facility_id: { type: string, display: "Facility ID", required: true }
+        inspection_date: { type: date, display: "Inspection Date", required: true }
+        result: { type: string, display: "Result" }
+        grade: { type: string, display: "Grade" }
+        violation_count: { type: integer, display: "Violations", min_value: 0 }
+        inspector: { type: string, display: "Inspector" }
+        agency: { type: string, display: "Agency" }
+        compliance_risk: { type: decimal, display: "Compliance Risk", required: true, min_value: 0, max_value: 1 }
+      entities:
+        - entity_type: inspection
+          id_field: inspection_id
+          property_fields:
+            inspection_id: inspection_id
+            date: inspection_date
+            result: result
+            grade: grade
+            violation_count: violation_count
+            inspector: inspector
+            agency: agency
+        - entity_type: facility
+          id_field: facility_id
+          property_fields:
+            facility_id: facility_id
+      relationships:
+        - relationship_type: inspected_at
+          source_entity_type: inspection
+          target_entity_type: facility
+      observations:
+        - metric_name: facility_compliance_risk
+          entity_type: facility
+          score_field: compliance_risk
+          rationale: "Compliance risk from the most recent facility inspection."
 
-# vectorstore:
-#   backend: in_memory  # use qdrant for external vector indexes
-#   uri: null
-#   dimensions: 384
-#   distance_metric: cosine
+    # ------------------------------------------------------------------
+    # Lab results — one row per sample test. Unique id: test_id.
+    # Links: lot via lot_id, contaminant via contaminant_name.
+    # ------------------------------------------------------------------
+    - name: lab_results_feed
+      record_type: lab_result_record
+      source: file_upload
+      id_field: test_id
+      allow_extra_fields: true
+      record_schema:
+        test_id: { type: string, display: "Test ID", required: true }
+        lot_id: { type: string, display: "Lot ID", required: true }
+        sample_date: { type: date, display: "Sample Date" }
+        test_type: { type: string, display: "Test Type" }
+        result: { type: string, display: "Result" }
+        contaminant_name: { type: string, display: "Contaminant" }
+        contaminant_type: { type: string, display: "Contaminant Type" }
+        lab_name: { type: string, display: "Laboratory" }
+        contamination_score: { type: decimal, display: "Contamination Score", required: true, min_value: 0, max_value: 1 }
+      entities:
+        - entity_type: lab_test
+          id_field: test_id
+          property_fields:
+            test_id: test_id
+            test_type: test_type
+            result: result
+            sample_date: sample_date
+            lab_name: lab_name
+        - entity_type: product_lot
+          id_field: lot_id
+          property_fields:
+            lot_id: lot_id
+        - entity_type: contaminant
+          id_field: contaminant_name
+          property_fields:
+            name: contaminant_name
+            contaminant_type: contaminant_type
+      relationships:
+        - relationship_type: tested_lot
+          source_entity_type: lab_test
+          target_entity_type: product_lot
+        - relationship_type: detected
+          source_entity_type: lab_test
+          target_entity_type: contaminant
+      observations:
+        - metric_name: lot_contamination
+          entity_type: lab_test
+          score_field: contamination_score
+          rationale: "Contamination score reported by the testing laboratory."
 
-# llm:
-#   provider: local
-#   model: local-default
-#   api_key_env_var: null
-#   temperature: 0.7
-#   max_tokens: 4096
+    # ------------------------------------------------------------------
+    # Recall notices — pushed by regulator integrations (api_push).
+    # Unique id: recall_id. Links: lot via lot_id, supplier via supplier_id.
+    # ------------------------------------------------------------------
+    - name: recalls_feed
+      record_type: recall_record
+      source: api_push
+      id_field: recall_id
+      allow_extra_fields: true
+      record_schema:
+        recall_id: { type: string, display: "Recall ID", required: true }
+        lot_id: { type: string, display: "Lot ID", required: true }
+        supplier_id: { type: string, display: "Supplier ID", required: true }
+        issue_date: { type: date, display: "Issue Date", required: true }
+        reason: { type: string, display: "Reason" }
+        classification: { type: string, display: "Classification" }
+        status: { type: string, display: "Status" }
+        severity_score: { type: decimal, display: "Severity Score", required: true, min_value: 0, max_value: 1 }
+      entities:
+        - entity_type: recall
+          id_field: recall_id
+          property_fields:
+            recall_id: recall_id
+            issue_date: issue_date
+            reason: reason
+            classification: classification
+            status: status
+        - entity_type: product_lot
+          id_field: lot_id
+          property_fields:
+            lot_id: lot_id
+        - entity_type: supplier
+          id_field: supplier_id
+          property_fields:
+            supplier_id: supplier_id
+      relationships:
+        - relationship_type: recalled_lot
+          source_entity_type: recall
+          target_entity_type: product_lot
+        - relationship_type: issued_against
+          source_entity_type: recall
+          target_entity_type: supplier
+      observations:
+        - metric_name: recall_severity
+          entity_type: recall
+          score_field: severity_score
+          rationale: "Regulator-assigned severity of the recall notice."
 
-# embeddings:
-#   provider: sentence_transformers
-#   model: all-MiniLM-L6-v2
-#   dimensions: 384
-#   batch_size: 32
-#   api_key_env_var: null
+# ---------------------------------------------------------------------------
+# Policy Intelligence rule packs.
+#
+# Evaluated by the worker against ingested data; each hit generates a durable
+# KB-scoped policy item. Thresholds are demo-tuned so a small sample ingest
+# produces live items. See docs/adding_rulesets.md for the authoring guide.
+# ---------------------------------------------------------------------------
+policy_rules:
+  # Entity-target rule: a facility inspection accumulating violations past the
+  # review line indicates a systemic sanitation problem, not a one-off finding.
+  - id: facility_compliance
+    name: "Facility compliance review"
+    description: "Inspections whose violation count exceeds the sanitation-review threshold."
+    thresholds:
+      max_violations: 3
+    rules:
+      - id: inspection_violation_volume
+        title_template: "Inspection {target_ref} exceeded the sanitation violation threshold"
+        severity: high
+        target_kind: entity
+        target_selector:
+          entity_type: inspection
+        predicate:
+          field: properties.violation_count
+          op: gt
+          value:
+            config_ref: max_violations
+        citations:
+          - citation_id: fda-fsma-204
+            title: "FDA FSMA Section 204 — enhanced traceability recordkeeping"
+            source_ref: "policy://fda/fsma/section-204"
+            excerpt: "Facilities handling foods on the Food Traceability List must maintain and review sanitation records."
 
-# storage:
-#   backend: local  # use s3 or minio for S3-compatible object storage
-#   endpoint_url: null  # set for MinIO, for example http://minio:9000
-#   bucket: null
-#   base_path: null
-#   credentials_env_var: null
+  # Entity-target rule: any positive laboratory screen is an immediate
+  # contamination event and must be surfaced regardless of score.
+  - id: contamination_watch
+    name: "Contamination watch"
+    description: "Laboratory screens that returned a positive contaminant result."
+    thresholds: {}
+    rules:
+      - id: lab_positive_result
+        title_template: "Lab test {target_ref} returned a positive contaminant screen"
+        severity: critical
+        target_kind: entity
+        target_selector:
+          entity_type: lab_test
+        predicate:
+          field: properties.result
+          op: eq
+          value:
+            literal: positive
+        citations:
+          - citation_id: fda-rfr
+            title: "FDA Reportable Food Registry — 21 U.S.C. 350f"
+            source_ref: "policy://fda/rfr/350f"
+            excerpt: "A responsible party shall submit a report when there is a reasonable probability that an article of food will cause serious adverse health consequences."
 
-# events:
-#   backend: in_memory
-#   uri: null
-#   stream_prefix: chili
-#   consumer_group: chili-workers
+  # Metric-target rule: periodic integrity sweep once a KB's graph grows past
+  # the watch line (entity_count is supplied by the worker from graph metrics).
+  - id: graph_scale_watch
+    name: "Graph growth watch"
+    description: "Surfaces a periodic traceability-sweep item once a KB accumulates many entities."
+    thresholds:
+      max_entities: 50
+    rules:
+      - id: kb_entity_volume
+        title_template: "Knowledge base {target_ref} crossed the entity-volume watch line"
+        severity: medium
+        target_kind: metric
+        target_selector:
+          metric_name: entity_count
+        predicate:
+          field: metric.entity_count
+          op: gt
+          value:
+            config_ref: max_entities
 
-# monitoring:
-#   evaluation_interval_seconds: 300
-#   dedup_window_seconds: 3600
-#   max_alerts_per_entity: 10
+graph:
+  backend: neo4j
+  uri: bolt://neo4j:7687
+  pool_size: 10
+  auth_env_var: null
+
+vectorstore:
+  backend: qdrant
+  uri: http://qdrant:6333
+  dimensions: 384
+  distance_metric: cosine
+
+embeddings:
+  provider: local
+  model: local-default
+  dimensions: 384
+  batch_size: 32
+  api_key_env_var: null
+
+storage:
+  backend: local
+  endpoint_url: null
+  bucket: null
+  base_path: /app/data/objects
+  credentials_env_var: null
+
+events:
+  backend: redis
+  uri: redis://redis:6379
+  stream_prefix: chili
+  consumer_group: chili-workers
+
+database:
+  backend: postgres
+  dsn_env_var: DATABASE_URL
+  pool_size: 10
+  pool_max_overflow: 5
+  statement_timeout_ms: 30000
+
+analytics:
+  metrics_recompute_min_interval_seconds: 300
+
+monitoring:
+  evaluation_interval_seconds: 300
+  dedup_window_seconds: 3600
+  max_alerts_per_entity: 10
+  max_alerts_per_evaluation: 100
+  grouping_window_seconds: 300
+
+llm:
+  provider: local
+  model: local-default
+  api_key_env_var: null
+  temperature: 0.2
+  max_tokens: 4096
+  fallback:
+    provider: openai
+    model: gpt-4o-mini
+    api_key_env_var: OPENAI_API_KEY
+    temperature: 0.2
+    max_tokens: 4096
+    fallback:
+      provider: ollama
+      model: llama3.1:8b
+      base_url: http://localhost:11434
+      temperature: 0.2
+      max_tokens: 4096
 
 rag:
   top_k: 5
@@ -161,7 +543,81 @@ alerts:
   thresholds:
     supplier:
       risk_score: 0.70
+    facility:
+      risk_score: 0.65
     shipment:
+      risk_score: 0.75
       anomaly_sigma: 2.0
     inspection:
       risk_score: 0.60
+    lab_test:
+      risk_score: 0.50
+    recall:
+      risk_score: 0.50
+
+ui:
+  default_entity_type: supplier
+  navigation:
+    pages:
+      - id: dashboard
+        label: Dashboard
+        route: /dashboard
+        capability: risk_scoring
+      - id: alerts
+        label: Alert Feed
+        route: /alerts
+      - id: investigation
+        label: Traceability Workbench
+        route: /investigation
+        capability: gnn
+      - id: knowledge_bases
+        label: Knowledge Bases
+        route: /knowledge-bases
+      - id: rag_chat
+        label: RAG Chat
+        route: /rag-chat
+        capability: rag_chat
+      - id: configuration
+        label: Configuration
+        route: /configuration
+  display_fields:
+    supplier:
+      title: name
+      subtitle: country
+      chips: [certification]
+    facility:
+      title: name
+      subtitle: facility_type
+      chips: [country]
+    product_lot:
+      title: lot_id
+      subtitle: product_name
+      chips: [category]
+    shipment:
+      title: tracking_id
+      subtitle: ship_date
+      chips: [origin_country]
+    inspection:
+      title: inspection_id
+      subtitle: date
+      chips: [result, grade]
+    lab_test:
+      title: test_id
+      subtitle: sample_date
+      chips: [result]
+    contaminant:
+      title: name
+      chips: [contaminant_type]
+    recall:
+      title: recall_id
+      subtitle: issue_date
+      chips: [classification, status]
+  roles:
+    analyst:
+      landing_page: alerts
+      pages: [alerts, investigation, knowledge_bases, rag_chat]
+      permissions: [alerts:read, feedback:write]
+    supervisor:
+      landing_page: dashboard
+      pages: [dashboard, alerts, investigation, knowledge_bases, configuration]
+      permissions: [alerts:read, cases:assign]

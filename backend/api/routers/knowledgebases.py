@@ -166,13 +166,19 @@ async def create_knowledge_base(
     payload: CreateKbRequest,
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
     event_bus: EventBus = Depends(get_event_bus),
+    config: DomainConfig = Depends(get_domain_config),
 ) -> KnowledgeBase:
-    """Create a new knowledge base and publish a creation event."""
+    """Create a new knowledge base and publish a creation event.
+
+    The KB is stamped with the active domain name so a later domain swap can
+    surface (never block on) a mismatch between the KB and the active pack.
+    """
     knowledge_base = KnowledgeBase(
         id=generate_id(),
         name=payload.name,
         description=payload.description,
         created_at=utc_now(),
+        domain=config.domain.name,
     )
     repository.create(knowledge_base)
     event_bus.publish(

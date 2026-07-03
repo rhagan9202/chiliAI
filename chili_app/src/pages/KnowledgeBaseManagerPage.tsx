@@ -17,6 +17,8 @@ import { useWorkflows } from '../api/workflows'
 import { DocumentSourcePanel } from '../components/ingestion/DocumentSourcePanel'
 import { IngestionStepper } from '../components/ingestion/IngestionStepper'
 import { KnowledgeBaseSelector } from '../components/ingestion/KnowledgeBaseSelector'
+import { isDomainMismatch } from '../components/knowledgebase/domainMismatch'
+import { KbDomainBadge } from '../components/knowledgebase/KbDomainBadge'
 import { RecordsSourcePanel } from '../components/ingestion/RecordsSourcePanel'
 import { RunTimeline } from '../components/ingestion/RunTimeline'
 import { SourceTypeStep } from '../components/ingestion/SourceTypeStep'
@@ -80,6 +82,7 @@ export function KnowledgeBaseManagerPage() {
   const pushRecordsMutation = usePushRecords(activeKnowledgeBaseId)
   const uploadRecordFileMutation = useUploadRecordFile(activeKnowledgeBaseId)
 
+  const activeDomainName = domainConfigQuery.data?.domain.name ?? null
   const feeds = domainConfigQuery.data?.records?.feeds ?? []
   const selectedFeed = feeds.find((feed) => feed.name === studio.selectedFeedName) ?? null
   const documentIssues = validateDocumentFiles(
@@ -341,6 +344,7 @@ export function KnowledgeBaseManagerPage() {
         <div className="ingestion-studio-main">
           <Card>
             <KnowledgeBaseSelector
+              activeDomainName={activeDomainName}
               activeKnowledgeBaseId={activeKnowledgeBaseId}
               createDescription={knowledgeBaseDescription}
               createDisabled={createKnowledgeBaseMutation.isPending}
@@ -474,7 +478,10 @@ export function KnowledgeBaseManagerPage() {
 
         <aside className="ingestion-studio-context" aria-label="Ingestion context">
           <Card>
-            <SelectedKnowledgeBaseSummary knowledgeBase={knowledgeBase} />
+            <SelectedKnowledgeBaseSummary
+              activeDomainName={activeDomainName}
+              knowledgeBase={knowledgeBase}
+            />
           </Card>
 
           <Card>
@@ -588,8 +595,10 @@ function NextActionsPanel({
 }
 
 function SelectedKnowledgeBaseSummary({
+  activeDomainName,
   knowledgeBase,
 }: {
+  activeDomainName: string | null
   knowledgeBase: NonNullable<ReturnType<typeof useKnowledgeBase>['data']> | null
 }) {
   if (!knowledgeBase) {
@@ -601,6 +610,9 @@ function SelectedKnowledgeBaseSummary({
     )
   }
 
+  const kbDomain = knowledgeBase.domain ?? null
+  const hasDomainMismatch = isDomainMismatch(kbDomain, activeDomainName)
+
   return (
     <section className="ingestion-studio-summary" aria-labelledby="selected-kb-title">
       <div className="metric-row">
@@ -609,7 +621,16 @@ function SelectedKnowledgeBaseSummary({
           <p className="page-copy-block">{knowledgeBase.description}</p>
         </div>
         <Chip label={knowledgeBase.status} tone={toneForKnowledgeBaseStatus(knowledgeBase.status)} />
+        <KbDomainBadge activeDomainName={activeDomainName} kbDomain={kbDomain} />
       </div>
+
+      {hasDomainMismatch ? (
+        <p className="page-copy-block" data-testid="kb-domain-mismatch-note" role="status">
+          This knowledge base was created under the &quot;{kbDomain}&quot; domain, but
+          &quot;{activeDomainName}&quot; is now active. Its entities and relationships may not
+          match the active domain&apos;s configuration. All actions remain available.
+        </p>
+      ) : null}
 
       <div className="knowledge-base-stats">
         <div className="knowledge-base-stat">

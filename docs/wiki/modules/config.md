@@ -20,7 +20,7 @@ Exports `DomainConfig` and all sub-models. See [contracts/domain-config.md](../c
 ```python
 def load_config(path: str | None = None) -> DomainConfig:
 ```
-- Reads path from `CHILI_CONFIG_PATH` env var if `path` is None.
+- When `path` is None, resolves via `config.store.resolve_config_path()`: active-pack pointer (`data/config/active_pack.json`) > `CHILI_CONFIG_PATH` env var > `ConfigLoadError`.
 - Supports YAML (`.yaml`, `.yml`) and JSON (`.json`) files.
 - Parses and validates against `DomainConfig`.
 - Result is LRU-cached in `api/dependencies.py::get_domain_config()`.

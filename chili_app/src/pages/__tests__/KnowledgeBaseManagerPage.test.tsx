@@ -197,10 +197,13 @@ function installFetchMock({
   documentFail = false,
   recordsFail = false,
   structuredRecordsFail = false,
+  kbDomain = null,
 }: {
   documentFail?: boolean
   recordsFail?: boolean
   structuredRecordsFail?: boolean
+  /** `domain` stamped on the mocked knowledge base (null = legacy/unknown). */
+  kbDomain?: string | null
 } = {}) {
   installXhrMock({ documentFail, recordsFail })
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -233,6 +236,7 @@ function installFetchMock({
               entity_count: 2,
               relationship_count: 1,
               created_at: '2026-05-10T00:00:00Z',
+              domain: kbDomain,
             },
           ],
           total: 1,
@@ -252,6 +256,7 @@ function installFetchMock({
           entity_count: 2,
           relationship_count: 1,
           created_at: '2026-05-10T00:00:00Z',
+          domain: kbDomain,
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
@@ -406,6 +411,54 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     expect(await screen.findAllByText('Fraud KB')).toHaveLength(2)
     expect(screen.getByText('Knowledge base')).toBeInTheDocument()
     expect(screen.getByText('existing-policy.txt')).toBeInTheDocument()
+  })
+
+  it('warns without blocking when the knowledge base was created under another domain', async () => {
+    // Active domain in the mocked config is medicare_fraud.
+    installFetchMock({ kbDomain: 'food_supply_chain' })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('Ingestion Studio')
+
+    // Badge on the KB list entry and on the selected-KB summary card.
+    expect(await screen.findAllByTestId('kb-domain-mismatch')).toHaveLength(2)
+    expect(screen.getAllByText('Created under food_supply_chain')).toHaveLength(2)
+
+    // Banner note on the summary card.
+    const note = screen.getByTestId('kb-domain-mismatch-note')
+    expect(note).toHaveTextContent('created under the "food_supply_chain" domain')
+    expect(note).toHaveTextContent('All actions remain available.')
+
+    // Warn only — the KB stays selectable and deletable.
+    expect(screen.getByRole('button', { name: /fraud kb/i })).toBeEnabled()
+    expect(
+      screen.getByRole('button', { name: /delete selected knowledge base/i }),
+    ).toBeEnabled()
+  })
+
+  it('shows no domain badge when the knowledge base matches the active domain', async () => {
+    installFetchMock({ kbDomain: 'medicare_fraud' })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('Ingestion Studio')
+    await screen.findAllByText('Fraud KB')
+
+    expect(screen.queryByTestId('kb-domain-mismatch')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('kb-domain-mismatch-note')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('kb-domain-unknown')).not.toBeInTheDocument()
+  })
+
+  it('renders a tolerated unknown state for a legacy knowledge base without a domain', async () => {
+    // Default mock leaves kbDomain null (legacy KB created before stamping).
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('Ingestion Studio')
+    await screen.findAllByText('Fraud KB')
+
+    // List entry + summary card each show the subtle unknown chip, no warning.
+    expect(screen.getAllByTestId('kb-domain-unknown')).toHaveLength(2)
+    expect(screen.queryByTestId('kb-domain-mismatch')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('kb-domain-mismatch-note')).not.toBeInTheDocument()
   })
 
   it('shows a warning chip and reasons for documents with ingestion warnings', async () => {

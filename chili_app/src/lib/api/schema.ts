@@ -437,6 +437,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/config/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Pack
+         * @description Validate and (re-)apply a pack; without ``pack`` re-applies the active one.
+         */
+        post: operations["apply_pack_config_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/config/domain": {
         parameters: {
             query?: never;
@@ -491,6 +511,66 @@ export interface paths {
         get: operations["get_features_config_features_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/config/packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Packs
+         * @description List available domain packs and the active-pack resolution state.
+         */
+        get: operations["list_packs_config_packs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/config/switch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch Pack
+         * @description Activate a different existing pack (validate → persist → swap → emit).
+         */
+        post: operations["switch_pack_config_switch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/config/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate Pack
+         * @description Dry-run full validation of a pack; never mutates pointer, caches, or state.
+         */
+        post: operations["validate_pack_config_validate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -654,6 +734,9 @@ export interface paths {
         /**
          * Create Knowledge Base
          * @description Create a new knowledge base and publish a creation event.
+         *
+         *     The KB is stamped with the active domain name so a later domain swap can
+         *     surface (never block on) a mismatch between the KB and the active pack.
          */
         post: operations["create_knowledge_base_knowledgebases_post"];
         delete?: never;
@@ -917,6 +1000,33 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * ActivePackState
+         * @description How the currently active domain pack is being resolved.
+         */
+        ActivePackState: {
+            /**
+             * Config Path
+             * @description Path of the active pack file (None when unresolvable).
+             */
+            config_path?: string | null;
+            /**
+             * Pack Name
+             * @description Pack name recorded in the pointer, when available.
+             */
+            pack_name?: string | null;
+            /**
+             * Source
+             * @description Resolution source: active-pack pointer, CHILI_CONFIG_PATH env, or none.
+             * @enum {string}
+             */
+            source: "pointer" | "env" | "none";
+            /**
+             * Updated At
+             * @description When the pointer was last written (pointer source only).
+             */
+            updated_at?: string | null;
+        };
+        /**
          * AlertDetailResponse
          * @description Expanded alert record used by alert and investigation views.
          */
@@ -1063,6 +1173,20 @@ export interface components {
              * @enum {string}
              */
             status: "accepted" | "ok";
+        };
+        /**
+         * ApplyPackRequest
+         * @description Input for ``POST /config/apply``.
+         *
+         *     Omit ``pack`` (or send ``{}``) to re-apply the currently active pack —
+         *     the re-validate-and-swap path after editing the active pack in place.
+         */
+        ApplyPackRequest: {
+            /**
+             * Pack
+             * @description Pack name or path within the allowed config directories; defaults to the currently active pack.
+             */
+            pack?: string | null;
         };
         /**
          * AuthConfig
@@ -1470,6 +1594,79 @@ export interface components {
             entity_ids?: string[];
             /** Label */
             label?: string | null;
+        };
+        /**
+         * ConfigSwapResponse
+         * @description Result of a successful ``POST /config/apply`` or ``POST /config/switch``.
+         */
+        ConfigSwapResponse: {
+            /**
+             * Event Published
+             * @description Whether the config.updated event was published to the event bus (the swap itself succeeded either way).
+             */
+            event_published: boolean;
+            /**
+             * Generation
+             * @description New config swap generation; clients can compare against a previously observed generation to detect mid-request swaps.
+             */
+            generation: number;
+            /**
+             * Pack Name
+             * @description ``domain.name`` of the now-active pack.
+             */
+            pack_name: string;
+            /**
+             * Pack Path
+             * @description Resolved path of the now-active pack file.
+             */
+            pack_path: string;
+            /**
+             * Previous Pack Name
+             * @description Pack that was active before the swap, when known.
+             */
+            previous_pack_name?: string | null;
+            /**
+             * Rag Degraded To Fallback
+             * @description True when the live RAG composition for the new pack failed and the API fell back to the seeded in-memory pipeline.
+             */
+            rag_degraded_to_fallback: boolean;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "apply" | "switch";
+            /**
+             * Status
+             * @constant
+             */
+            status: "applied";
+        };
+        /**
+         * ConfigValidationIssue
+         * @description One structured, field-level validation finding for a domain pack.
+         */
+        ConfigValidationIssue: {
+            /**
+             * Error Type
+             * @description Machine-readable error category (pydantic error type or 'parse_error').
+             */
+            error_type: string;
+            /**
+             * Field
+             * @description Dotted-path convenience form of ``loc`` (empty for file-level issues).
+             * @default
+             */
+            field: string;
+            /**
+             * Loc
+             * @description Path segments to the offending field (ints stringified).
+             */
+            loc?: string[];
+            /**
+             * Message
+             * @description Human-readable error message.
+             */
+            message: string;
         };
         /**
          * CreateKbRequest
@@ -2084,6 +2281,8 @@ export interface components {
              * @default 0
              */
             document_count: number;
+            /** Domain */
+            domain?: string | null;
             /**
              * Entity Count
              * @default 0
@@ -2257,6 +2456,63 @@ export interface components {
              * @default null
              */
             endpoint_url: string | null;
+        };
+        /**
+         * PackListResponse
+         * @description Response for ``GET /config/packs``.
+         */
+        PackListResponse: {
+            active: components["schemas"]["ActivePackState"];
+            /**
+             * Generation
+             * @description Current config swap generation (see get_config_generation).
+             */
+            generation: number;
+            /** Packs */
+            packs?: components["schemas"]["PackSummary"][];
+        };
+        /**
+         * PackSummary
+         * @description A domain pack discovered in one of the allowed config directories.
+         */
+        PackSummary: {
+            /**
+             * Active
+             * @description Whether this pack is the currently active one.
+             */
+            active: boolean;
+            /**
+             * Display Name
+             * @description ``domain.display_name`` from the pack (None when invalid).
+             */
+            display_name?: string | null;
+            /**
+             * Domain Name
+             * @description ``domain.name`` from the pack (None when invalid).
+             */
+            domain_name?: string | null;
+            /**
+             * Error
+             * @description Validation/parse failure summary when ``valid`` is false.
+             */
+            error?: string | null;
+            /** File Name */
+            file_name: string;
+            /**
+             * Name
+             * @description Pack name (file stem), usable as a pack reference.
+             */
+            name: string;
+            /**
+             * Path
+             * @description Resolved filesystem path of the pack file.
+             */
+            path: string;
+            /**
+             * Valid
+             * @description Whether the pack currently passes full validation.
+             */
+            valid: boolean;
         };
         /**
          * PageInfo
@@ -2901,6 +3157,17 @@ export interface components {
             unavailable_reason?: string | null;
         };
         /**
+         * SwitchPackRequest
+         * @description Input for ``POST /config/switch``: activate a different existing pack.
+         */
+        SwitchPackRequest: {
+            /**
+             * Pack
+             * @description Pack name or path within the allowed config directories.
+             */
+            pack: string;
+        };
+        /**
          * TimeseriesPoint
          * @description A single data point in a returned time-series.
          */
@@ -2997,6 +3264,48 @@ export interface components {
             roles?: string[];
             /** User Id */
             user_id: string;
+        };
+        /**
+         * ValidatePackRequest
+         * @description Dry-run validation input: exactly one of ``pack`` or ``content``.
+         *
+         *     ``pack`` is a pack name (file stem in an allowed config directory) or a
+         *     path resolving inside an allowed config directory. ``content`` is an
+         *     inline pack mapping (already parsed, e.g. the JSON form of the YAML).
+         */
+        ValidatePackRequest: {
+            /**
+             * Content
+             * @description Inline domain-pack mapping to validate.
+             */
+            content?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Pack
+             * @description Pack name or path within the allowed config directories.
+             */
+            pack?: string | null;
+        };
+        /**
+         * ValidatePackResponse
+         * @description Response for ``POST /config/validate`` (never mutates server state).
+         */
+        ValidatePackResponse: {
+            /**
+             * Display Name
+             * @description ``domain.display_name`` of the validated pack when valid.
+             */
+            display_name?: string | null;
+            /** Errors */
+            errors?: components["schemas"]["ConfigValidationIssue"][];
+            /**
+             * Pack Name
+             * @description ``domain.name`` of the validated pack when valid.
+             */
+            pack_name?: string | null;
+            /** Valid */
+            valid: boolean;
         };
         /**
          * ValidationConfig
@@ -3860,6 +4169,39 @@ export interface operations {
             };
         };
     };
+    apply_pack_config_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyPackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigSwapResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_domain_config_domain_get: {
         parameters: {
             query?: never;
@@ -3918,6 +4260,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DomainFeaturesResponse"];
+                };
+            };
+        };
+    };
+    list_packs_config_packs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackListResponse"];
+                };
+            };
+        };
+    };
+    switch_pack_config_switch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SwitchPackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigSwapResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_pack_config_validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ValidatePackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidatePackResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -60,7 +60,7 @@ def create_app() -> FastAPI:
 
 1. Calls `configure_logging()`, `setup_tracing()`.
 2. Clears `get_domain_config` LRU cache (test isolation).
-3. Loads `DomainConfig` from `CHILI_CONFIG_PATH`.
+3. Loads `DomainConfig` from the resolved active pack (active-pack pointer > `CHILI_CONFIG_PATH`).
 4. Enforces production guardrail: `CHILI_ENV ∈ {staging, production}` → `AuthConfig.enabled` must be `True` with all required fields.
 5. Creates `FastAPI` app with CORS middleware (`ALLOWED_ORIGINS` env var or localhost defaults).
 6. Attaches `ApiState` to `app.state.api_state`.

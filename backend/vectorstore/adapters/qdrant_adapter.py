@@ -124,7 +124,15 @@ class QdrantVectorStore:
         self._config = config
         self._client: QdrantClientProtocol = cast(
             QdrantClientProtocol,
-            client or client_class(url=config.uri, prefer_grpc=False),
+            client
+            or client_class(
+                url=config.uri,
+                prefer_grpc=False,
+                # Client construction performs no network I/O here; server
+                # version compatibility is exercised by the integration tests
+                # that run against a live Qdrant instance.
+                check_compatibility=False,
+            ),
         )
         self._distance: Distance = _distance_for(config.distance_metric)
 

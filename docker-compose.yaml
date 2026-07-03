@@ -25,6 +25,8 @@ services:
     env_file:
       - .env
     environment:
+      # Domain pack selector — must stay in lockstep with the worker service.
+      - CHILI_CONFIG_PATH=${CHILI_CONFIG_PATH:-/app/config/defaults/medicare_fraud_cms_desynpuf.yaml}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - CHILI_EVENT_BUS_BACKEND=${CHILI_EVENT_BUS_BACKEND:-redis}
       - CHILI_WORKFLOW_RUN_STORE_BACKEND=${CHILI_WORKFLOW_RUN_STORE_BACKEND:-redis}
@@ -51,6 +53,9 @@ services:
     env_file:
       - .env
     environment:
+      # Must match the API service's CHILI_CONFIG_PATH — api and worker always
+      # move to a new domain pack together.
+      - CHILI_CONFIG_PATH=${CHILI_CONFIG_PATH:-/app/config/defaults/medicare_fraud_cms_desynpuf.yaml}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - CHILI_EVENT_BUS_BACKEND=${CHILI_EVENT_BUS_BACKEND:-redis}
       - CHILI_WORKFLOW_RUN_STORE_BACKEND=${CHILI_WORKFLOW_RUN_STORE_BACKEND:-redis}

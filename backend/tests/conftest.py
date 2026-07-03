@@ -69,8 +69,19 @@ DEFAULT_CONFIG_PATH = (
 
 
 @pytest.fixture(autouse=True)
-def default_chili_config_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Give tests a deterministic domain config unless a case overrides it."""
+def default_chili_config_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Give tests a deterministic domain config unless a case overrides it.
+
+    ``CHILI_ACTIVE_PACK_STATE_PATH`` is pointed at a per-test temp location so
+    an active-pack pointer written on the developer machine (or by another
+    test) can never retarget the suite away from ``CHILI_CONFIG_PATH`` — see
+    ``config/store.py`` (pointer > env precedence).
+    """
 
     monkeypatch.setenv("CHILI_CONFIG_PATH", str(DEFAULT_CONFIG_PATH))
     monkeypatch.setenv("CHILI_ENV", "local")
+    monkeypatch.setenv(
+        "CHILI_ACTIVE_PACK_STATE_PATH", str(tmp_path / "active_pack.json")
+    )

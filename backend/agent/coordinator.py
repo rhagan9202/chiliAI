@@ -34,7 +34,7 @@ from agent.policy import (
     load_stage_policy_registry_from_env,
 )
 from agent.workflow_tracking import WorkflowEventTracker
-from config.loader import load_config
+from config.loader import load_active_config
 from config.schema import (
     AnalyticsConfig,
     DatabaseConfig,
@@ -131,6 +131,7 @@ from events.types import (
     AnalysisFailedEvent,
     AnyEvent,
     ChunkedDocumentReference,
+    ConfigUpdatedEvent,
     DocumentsChunkedEvent,
     DocumentsExtractionWarningEvent,
     DocumentsParsedEvent,
@@ -229,8 +230,11 @@ from vectorstore.adapters.protocols import VectorStoreProtocol
 from vectorstore.models import VectorRecord
 
 __all__ = [
+    "CONFIG_UPDATED_EVENT_TYPE",
     "WORKER_EVENT_TYPES",
+    "ConfigReloadState",
     "WorkerDependencies",
+    "apply_pending_config_updates",
     "assess_entities",
     "build_alert_history_writer",
     "build_connection_provider",
@@ -303,6 +307,11 @@ WORKER_EVENT_TYPES: tuple[str, ...] = (
     "alerts.created",
     "kb.delete",
 )
+# Domain hot-swap (E6): the worker consumes `config.updated` on its own
+# non-blocking poll — never through the pipeline drain — so a dependency
+# rebuild can only happen *between* drain iterations. An in-flight event
+# always completes with the dependencies it started with.
+CONFIG_UPDATED_EVENT_TYPE = "config.updated"
 
 
 @dataclass(slots=True)
@@ -857,6 +866,17 @@ def _resolve_worker_event_bus_settings(config: DomainConfig) -> EventBusSettings
     )
 
 
+def _load_worker_config() -> DomainConfig:
+    """Resolve the active :class:`DomainConfig` for the worker.
+
+    Uses the store-aware ``load_active_config()`` resolver (active-pack
+    pointer > ``CHILI_CONFIG_PATH``) so the worker and the API always agree
+    on the active domain pack across hot-swaps.
+    """
+
+    return load_active_config()
+
+
 def build_worker_dependencies() -> WorkerDependencies:
     """Assemble the worker's runtime dependencies from configuration.
 
@@ -864,7 +884,7 @@ def build_worker_dependencies() -> WorkerDependencies:
     sections silently fall back to the in-memory adapters used by tests.
     """
 
-    config = load_config()
+    config = _load_worker_config()
     event_settings = _resolve_worker_event_bus_settings(config)
     event_bus = create_event_bus(event_settings)
     workflow_run_store = create_workflow_run_store_from_env()
@@ -1007,6 +1027,105 @@ def build_worker_dependencies() -> WorkerDependencies:
         workflow_tracker=workflow_tracker,
         graph_embeddings_enabled=config.capabilities.gnn,
     )
+
+
+# ---------------------------------------------------------------------------
+# Domain hot-swap (E6) — config.updated consumption
+# ---------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class ConfigReloadState:
+    """Tracks the last applied ``config.updated`` delivery.
+
+    Used to make event redelivery idempotent: rebuilding twice for the same
+    delivery would be harmless (the factory re-reads the active config) but
+    wasteful, so redeliveries of an already-applied ``correlation_id`` skip
+    the rebuild.
+    """
+
+    last_applied_correlation_id: str | None = None
+
+
+def apply_pending_config_updates(
+    deps: WorkerDependencies,
+    *,
+    state: ConfigReloadState,
+    deps_factory: Callable[[], WorkerDependencies] | None = None,
+) -> WorkerDependencies:
+    """Consume pending ``config.updated`` events and rebuild worker deps.
+
+    Atomicity contract: ``run_worker`` calls this strictly *between* drain
+    iterations, so a rebuild never interleaves with event handling — the
+    in-flight event finished with the old dependencies before this runs, and
+    the next dispatch reads the swapped reference.
+
+    Multiple pending updates collapse into a single rebuild: the factory
+    re-reads the *active* configuration, so only the newest event matters.
+    On reload failure the previous dependencies are kept (the worker is never
+    left deps-less) and the deliveries are still acked — the next successful
+    config apply/switch publishes a fresh event.
+    """
+
+    event_types = [CONFIG_UPDATED_EVENT_TYPE]
+    consumer_group = deps.event_settings.consumer_group
+    deps.event_bus.ensure_consumer_group(event_types, consumer_group=consumer_group)
+    deliveries = deps.event_bus.consume(
+        event_types,
+        consumer_group=consumer_group,
+        consumer_name=deps.event_settings.consumer_name(),
+        limit=deps.event_settings.batch_size,
+        block_ms=None,
+    )
+    if not deliveries:
+        return deps
+
+    current = deps
+    latest = next(
+        (
+            delivery.event
+            for delivery in reversed(deliveries)
+            if isinstance(delivery.event, ConfigUpdatedEvent)
+        ),
+        None,
+    )
+    if latest is None:
+        deps.event_bus.ack(deliveries)
+        return current
+
+    if latest.correlation_id == state.last_applied_correlation_id:
+        logger.info(
+            "config.updated redelivered for pack '%s' (correlation_id=%s); "
+            "dependencies already rebuilt — skipping.",
+            latest.pack_name,
+            latest.correlation_id,
+        )
+    else:
+        factory = deps_factory if deps_factory is not None else build_worker_dependencies
+        try:
+            rebuilt = factory()
+        except Exception:  # noqa: BLE001 - never leave the worker deps-less
+            logger.exception(
+                "CONFIG RELOAD FAILED for pack '%s' (reason=%s correlation_id=%s); "
+                "keeping previous worker dependencies.",
+                latest.pack_name,
+                latest.reason,
+                latest.correlation_id,
+            )
+        else:
+            current = rebuilt
+            state.last_applied_correlation_id = latest.correlation_id
+            logger.info(
+                "Worker dependencies rebuilt for domain pack '%s' "
+                "(reason=%s previous_pack=%s correlation_id=%s).",
+                latest.pack_name,
+                latest.reason,
+                latest.previous_pack_name,
+                latest.correlation_id,
+            )
+    # Ack on the bus the deliveries came from (the *old* deps' bus).
+    deps.event_bus.ack(deliveries)
+    return current
 
 
 # ---------------------------------------------------------------------------
@@ -3465,6 +3584,7 @@ async def run_worker(
     redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
     logger.info("Worker starting — REDIS_URL=%s", redis_url)
     deps = build_worker_dependencies()
+    config_reload_state = ConfigReloadState()
 
     policy = retry_policy or RetryPolicy()
     stage_policy_registry = load_stage_policy_registry_from_env(
@@ -3521,6 +3641,10 @@ async def run_worker(
                         logger.warning(
                             "Reconciled %s stale workflow run(s)", reconciled
                         )
+                # Domain hot-swap: poll config.updated and, if the active
+                # config changed, atomically swap the dependency set here —
+                # between drain iterations, never mid-event.
+                deps = apply_pending_config_updates(deps, state=config_reload_state)
                 processed = await _drain_once(
                     deps,
                     policy=policy,

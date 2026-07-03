@@ -1,6 +1,63 @@
 {
   "components": {
     "schemas": {
+      "ActivePackState": {
+        "description": "How the currently active domain pack is being resolved.",
+        "properties": {
+          "config_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Path of the active pack file (None when unresolvable).",
+            "title": "Config Path"
+          },
+          "pack_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pack name recorded in the pointer, when available.",
+            "title": "Pack Name"
+          },
+          "source": {
+            "description": "Resolution source: active-pack pointer, CHILI_CONFIG_PATH env, or none.",
+            "enum": [
+              "pointer",
+              "env",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the pointer was last written (pointer source only).",
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "ActivePackState",
+        "type": "object"
+      },
       "AlertDetailResponse": {
         "description": "Expanded alert record used by alert and investigation views.",
         "properties": {
@@ -299,6 +356,25 @@
           "message"
         ],
         "title": "ApiEnvelope",
+        "type": "object"
+      },
+      "ApplyPackRequest": {
+        "description": "Input for ``POST /config/apply``.\n\nOmit ``pack`` (or send ``{}``) to re-apply the currently active pack \u2014\nthe re-validate-and-swap path after editing the active pack in place.",
+        "properties": {
+          "pack": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pack name or path within the allowed config directories; defaults to the currently active pack.",
+            "title": "Pack"
+          }
+        },
+        "title": "ApplyPackRequest",
         "type": "object"
       },
       "AuthConfig": {
@@ -1192,6 +1268,108 @@
           "anomaly_score"
         ],
         "title": "ClusterResult",
+        "type": "object"
+      },
+      "ConfigSwapResponse": {
+        "description": "Result of a successful ``POST /config/apply`` or ``POST /config/switch``.",
+        "properties": {
+          "event_published": {
+            "description": "Whether the config.updated event was published to the event bus (the swap itself succeeded either way).",
+            "title": "Event Published",
+            "type": "boolean"
+          },
+          "generation": {
+            "description": "New config swap generation; clients can compare against a previously observed generation to detect mid-request swaps.",
+            "minimum": 1.0,
+            "title": "Generation",
+            "type": "integer"
+          },
+          "pack_name": {
+            "description": "``domain.name`` of the now-active pack.",
+            "title": "Pack Name",
+            "type": "string"
+          },
+          "pack_path": {
+            "description": "Resolved path of the now-active pack file.",
+            "title": "Pack Path",
+            "type": "string"
+          },
+          "previous_pack_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pack that was active before the swap, when known.",
+            "title": "Previous Pack Name"
+          },
+          "rag_degraded_to_fallback": {
+            "description": "True when the live RAG composition for the new pack failed and the API fell back to the seeded in-memory pipeline.",
+            "title": "Rag Degraded To Fallback",
+            "type": "boolean"
+          },
+          "reason": {
+            "enum": [
+              "apply",
+              "switch"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "const": "applied",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "pack_name",
+          "pack_path",
+          "generation",
+          "rag_degraded_to_fallback",
+          "event_published"
+        ],
+        "title": "ConfigSwapResponse",
+        "type": "object"
+      },
+      "ConfigValidationIssue": {
+        "description": "One structured, field-level validation finding for a domain pack.",
+        "properties": {
+          "error_type": {
+            "description": "Machine-readable error category (pydantic error type or 'parse_error').",
+            "title": "Error Type",
+            "type": "string"
+          },
+          "field": {
+            "default": "",
+            "description": "Dotted-path convenience form of ``loc`` (empty for file-level issues).",
+            "title": "Field",
+            "type": "string"
+          },
+          "loc": {
+            "description": "Path segments to the offending field (ints stringified).",
+            "items": {
+              "type": "string"
+            },
+            "title": "Loc",
+            "type": "array"
+          },
+          "message": {
+            "description": "Human-readable error message.",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "error_type"
+        ],
+        "title": "ConfigValidationIssue",
         "type": "object"
       },
       "CreateKbRequest": {
@@ -2561,6 +2739,17 @@
             "title": "Document Count",
             "type": "integer"
           },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
           "entity_count": {
             "default": 0,
             "title": "Entity Count",
@@ -2869,6 +3058,107 @@
           }
         },
         "title": "ObjectStoreConfig",
+        "type": "object"
+      },
+      "PackListResponse": {
+        "description": "Response for ``GET /config/packs``.",
+        "properties": {
+          "active": {
+            "$ref": "#/components/schemas/ActivePackState"
+          },
+          "generation": {
+            "description": "Current config swap generation (see get_config_generation).",
+            "minimum": 0.0,
+            "title": "Generation",
+            "type": "integer"
+          },
+          "packs": {
+            "items": {
+              "$ref": "#/components/schemas/PackSummary"
+            },
+            "title": "Packs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "active",
+          "generation"
+        ],
+        "title": "PackListResponse",
+        "type": "object"
+      },
+      "PackSummary": {
+        "description": "A domain pack discovered in one of the allowed config directories.",
+        "properties": {
+          "active": {
+            "description": "Whether this pack is the currently active one.",
+            "title": "Active",
+            "type": "boolean"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "``domain.display_name`` from the pack (None when invalid).",
+            "title": "Display Name"
+          },
+          "domain_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "``domain.name`` from the pack (None when invalid).",
+            "title": "Domain Name"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Validation/parse failure summary when ``valid`` is false.",
+            "title": "Error"
+          },
+          "file_name": {
+            "title": "File Name",
+            "type": "string"
+          },
+          "name": {
+            "description": "Pack name (file stem), usable as a pack reference.",
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "description": "Resolved filesystem path of the pack file.",
+            "title": "Path",
+            "type": "string"
+          },
+          "valid": {
+            "description": "Whether the pack currently passes full validation.",
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "file_name",
+          "path",
+          "valid",
+          "active"
+        ],
+        "title": "PackSummary",
         "type": "object"
       },
       "PageInfo": {
@@ -4229,6 +4519,22 @@
         "title": "RiskScoreResponse",
         "type": "object"
       },
+      "SwitchPackRequest": {
+        "description": "Input for ``POST /config/switch``: activate a different existing pack.",
+        "properties": {
+          "pack": {
+            "description": "Pack name or path within the allowed config directories.",
+            "minLength": 1,
+            "title": "Pack",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pack"
+        ],
+        "title": "SwitchPackRequest",
+        "type": "object"
+      },
       "TimeseriesPoint": {
         "description": "A single data point in a returned time-series.",
         "properties": {
@@ -4437,6 +4743,83 @@
           "user_id"
         ],
         "title": "User",
+        "type": "object"
+      },
+      "ValidatePackRequest": {
+        "description": "Dry-run validation input: exactly one of ``pack`` or ``content``.\n\n``pack`` is a pack name (file stem in an allowed config directory) or a\npath resolving inside an allowed config directory. ``content`` is an\ninline pack mapping (already parsed, e.g. the JSON form of the YAML).",
+        "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Inline domain-pack mapping to validate.",
+            "title": "Content"
+          },
+          "pack": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pack name or path within the allowed config directories.",
+            "title": "Pack"
+          }
+        },
+        "title": "ValidatePackRequest",
+        "type": "object"
+      },
+      "ValidatePackResponse": {
+        "description": "Response for ``POST /config/validate`` (never mutates server state).",
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "``domain.display_name`` of the validated pack when valid.",
+            "title": "Display Name"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ConfigValidationIssue"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "pack_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "``domain.name`` of the validated pack when valid.",
+            "title": "Pack Name"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid"
+        ],
+        "title": "ValidatePackResponse",
         "type": "object"
       },
       "ValidationConfig": {
@@ -5880,6 +6263,48 @@
         ]
       }
     },
+    "/config/apply": {
+      "post": {
+        "description": "Validate and (re-)apply a pack; without ``pack`` re-applies the active one.",
+        "operationId": "apply_pack_config_apply_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyPackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigSwapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Pack",
+        "tags": [
+          "configuration"
+        ]
+      }
+    },
     "/config/domain": {
       "get": {
         "description": "Return the active domain configuration.",
@@ -5943,6 +6368,112 @@
           }
         },
         "summary": "Get Features",
+        "tags": [
+          "configuration"
+        ]
+      }
+    },
+    "/config/packs": {
+      "get": {
+        "description": "List available domain packs and the active-pack resolution state.",
+        "operationId": "list_packs_config_packs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Packs",
+        "tags": [
+          "configuration"
+        ]
+      }
+    },
+    "/config/switch": {
+      "post": {
+        "description": "Activate a different existing pack (validate \u2192 persist \u2192 swap \u2192 emit).",
+        "operationId": "switch_pack_config_switch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwitchPackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigSwapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Switch Pack",
+        "tags": [
+          "configuration"
+        ]
+      }
+    },
+    "/config/validate": {
+      "post": {
+        "description": "Dry-run full validation of a pack; never mutates pointer, caches, or state.",
+        "operationId": "validate_pack_config_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidatePackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidatePackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Pack",
         "tags": [
           "configuration"
         ]
@@ -6384,7 +6915,7 @@
         ]
       },
       "post": {
-        "description": "Create a new knowledge base and publish a creation event.",
+        "description": "Create a new knowledge base and publish a creation event.\n\nThe KB is stamped with the active domain name so a later domain swap can\nsurface (never block on) a mismatch between the KB and the active pack.",
         "operationId": "create_knowledge_base_knowledgebases_post",
         "requestBody": {
           "content": {

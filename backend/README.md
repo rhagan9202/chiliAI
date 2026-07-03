@@ -13,10 +13,10 @@ For the live, dependency-ordered list of production-readiness work per backend m
 ### What's functional
 
 - **`shared/`** — Generic platform types (`Entity`, `Relationship`, `Alert`, `EvidencePack`, `KnowledgeBase`), config-definition types (`EntityDefinition`, `PropertyDefinition`, `PropertyType`, `RelationshipDefinition`), protocols (`Configurable`), and utilities. **No hardcoded domain-specific types** — all domain entities use `Entity(type, properties)` validated against config.
-- **`config/`** — Domain configuration schema (`DomainConfig` Pydantic model with cross-field validation), YAML/JSON loader, and default domain configs (`medicare_fraud.yaml`, `medicare_fraud_dev.yaml`, `medicare_fraud_cms_desynpuf.yaml`, `food_supply_chain.yaml`).
+- **`config/`** — Domain configuration schema (`DomainConfig` Pydantic model with cross-field validation), YAML/JSON loader, the file-backed active-pack pointer store (`store.py`: pointer > `CHILI_CONFIG_PATH` resolution, atomic writes to `data/config/active_pack.json`), and default domain packs (`medicare_fraud.yaml`, `medicare_fraud_dev.yaml`, `medicare_fraud_cms_desynpuf.yaml`, `food_supply_chain.yaml`). See [`config/README.md`](config/README.md) for the pack-authoring contract and domain-switch ergonomics.
 - **`api/app.py`** — FastAPI app factory with `/health`, CORS, metrics instrumentation, and all API routers.
-- **`api/routers/config.py`** — `GET /config/domain` returns the active domain configuration as JSON.
-- **`api/dependencies.py`** — Dependency injection wiring. `get_domain_config()` loads config once and process-caches (cleared at the top of `create_app()` for test isolation). `get_api_state()` reads from `request.app.state.api_state`, attached per-app in `create_app()`. Graph, vectorstore, storage, embedding, and LLM adapters are selected from config with lazy optional imports.
+- **`api/routers/config.py`** — Viewer-gated reads (`GET /config/domain|features|domain/schema`) plus admin-gated pack management: `GET /config/packs` (discovery + active-pack state) and `POST /config/validate|apply|switch` (dry-run validation; no-restart domain hot-swap via the swap-once-success pipeline — validate + production auth guardrail → persist pointer → atomic DI cache reset → publish `ConfigUpdatedEvent`). Pack references are confined to allow-listed config directories. See [`docs/architecture.md` §9.3](../docs/architecture.md#93-active-pack-hot-swap-no-restart-domain-switch).
+- **`api/dependencies.py`** — Dependency injection wiring. `get_domain_config()` resolves the active pack (pointer > env) and process-caches; `reset_domain_config_caches()` clears it plus every config-keyed factory cache and bumps a monotonic swap-generation token (`get_config_generation`) with generation-guarded memoizers, so hot-swaps are atomic (a request sees a wholly-old or wholly-new dependency graph). `enforce_production_guardrail()` (applied at boot and to every hot-swap candidate) refuses auth-disabled or incomplete-OIDC configs under `CHILI_ENV=staging|production`. `get_api_state()` reads from `request.app.state.api_state`, attached per-app in `create_app()`. Graph, vectorstore, storage, embedding, and LLM adapters are selected from config with lazy optional imports.
 - **`api/routers/`** — Knowledge base, alert, investigation, chat (rag), analytics, config, policy, cases, evidence, graph, workflows, events (SSE), auth, WebSocket, and records routers. Every Phase 5+ route carries `Depends(require_role(...))` (reads = viewer, writes = analyst); `policy_registry.assert_complete` runs on app startup when auth is enabled and refuses to boot if any route is unguarded. Records routes: `POST /records/{knowledge_base_id}/files` (CSV/JSONL file upload) and `POST /records/{knowledge_base_id}/push` (JSON api-push).
 - **`api/_kb_projection.py`** — API-owned KB/document metadata projection. The in-memory repository remains available for tests and isolated local runs; the object-store repository persists dev KB/document metadata across API reloads through the configured `ObjectStore`. Projection reads merge repository metadata with live graph metrics/object-store build artifacts and persist status/count changes back through the repository.
 - **`api/_alert_store.py`** — API-owned alert read projection for `/alerts` and SSE `active_alerts`. Monitoring/analytics services still own alert generation; this projection preserves the frontend contract while decoupling alert reads from legacy seeded `ApiState`.
@@ -133,13 +133,14 @@ python -m tools.sample_data.build_tennessee_subset --help  # subset builder opti
 
 ## Configuration
 
-The backend reads a domain configuration YAML/JSON file at startup (path set via `CHILI_CONFIG_PATH` environment variable). This configuration defines entity types, relationships, enabled capabilities, and alert thresholds. See [`docs/architecture.md` §9](../docs/architecture.md#9-domain-configuration-model).
+The backend reads a domain configuration YAML/JSON file ("domain pack") at startup. The active file is resolved with strict precedence: the persisted active-pack pointer (`data/config/active_pack.json`, written by admin `POST /config/apply|switch` hot-swaps) **overrides** the `CHILI_CONFIG_PATH` environment variable — see the gotcha in [`config/README.md`](config/README.md). The configuration defines entity types, relationships, enabled capabilities, records feeds, policy rules, alert thresholds, UI metadata, and infra backend selection. See [`docs/architecture.md` §9](../docs/architecture.md#9-domain-configuration-model).
 
 ### Environment variables
 
 | Var | Default | Purpose |
 |-----|---------|---------|
-| `CHILI_CONFIG_PATH` | (required at runtime) | Path to the active domain config YAML/JSON. |
+| `CHILI_CONFIG_PATH` | (required at runtime) | Path to the domain config YAML/JSON used when no active-pack pointer exists. Parameterized in both compose files (medicare exemplar default); overridden by a persisted pointer after any UI/API pack switch. |
+| `CHILI_ACTIVE_PACK_STATE_PATH` | `data/config/active_pack.json` | Location of the active-pack pointer state file (shared `chili-object-data` volume in the dev stack; tests point it at a temp dir). Delete the file or call `config.store.clear_active_pack()` to revert to env-based resolution. |
 | `CHILI_ENV` | (required) | Runtime mode: `local`, `dev`, `staging`, or `production`. Startup fails on unset/unknown values. `staging` and `production` require `auth.enabled=True` plus a complete `AuthConfig`; `local` and `dev` permit auth-disabled development. |
 | `ALLOWED_ORIGINS` | local dev defaults (`http://localhost:5173`, `:80`, `localhost`) | Comma-separated CORS allow-list for the frontend. Required when the SPA is deployed under a different origin. |
 | `CHILI_KB_REPOSITORY_BACKEND` | `in_memory` | Knowledge base metadata repository. Use `object_store` in the dev stack to persist KB/document metadata through API reloads via the configured object store. |
@@ -184,14 +185,14 @@ cfg = load_config("config/defaults/medicare_fraud.yaml")
 |------|--------|
 | `config/defaults/medicare_fraud.yaml` | Medicare fraud detection (4 entities, 4 relationships, all capabilities) |
 | `config/defaults/medicare_fraud_dev.yaml` | Medicare fraud variant wired for the dev Compose stack (Neo4j graph, Redis event bus, object-store KB/alert repos, Redis workflow run store) |
-| `config/defaults/medicare_fraud_cms_desynpuf.yaml` | CMS DE-SynPUF Medicare fraud demo domain with wider records/feed mappings |
-| `config/defaults/food_supply_chain.yaml` | Food supply chain monitoring (4 entities, 3 relationships, partial capabilities) |
+| `config/defaults/medicare_fraud_cms_desynpuf.yaml` | CMS DE-SynPUF Medicare fraud exemplar with wider records/feed mappings — the **default** pack for `make dev` / `make prod` |
+| `config/defaults/food_supply_chain.yaml` | Food supply chain integrity — exemplar-parity peer pack (8 entities, 11 relationships, 4 records feeds, 3 policy rule packs, full `ui` section, dev-stack infra pins) |
 
 ### Creating a new domain
 
-1. Copy an existing default and modify entity types, relationships, and thresholds.
-2. Set `CHILI_CONFIG_PATH` to the new file.
-3. Restart the backend. The frontend picks up the new config via `GET /config/domain`.
+1. Copy an existing default and modify entity types, relationships, feeds, rules, and thresholds (contract in [`config/README.md`](config/README.md)).
+2. Select it at stack start (`make dev-domain DOMAIN=<pack>` or `CHILI_CONFIG_PATH`), **or** hot-swap a running stack via the Configuration page / admin `POST /config/switch` — no restart needed; the worker converges via the `config.updated` event.
+3. The frontend picks up the new config via `GET /config/domain`.
 
 ## Knowledge Base Projection Notes
 

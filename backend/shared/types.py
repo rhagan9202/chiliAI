@@ -161,8 +161,13 @@ class KnowledgeBase(BaseModel):
     created_at: datetime
     updated_at: datetime | None = None
     pending_cleanup: bool = False
-    # TODO(production): Add domain_config_version: str | None to pin which config version was active.
-    # Add owner: str | None and tags: dict[str, str] for organization.
+    # Domain name (``DomainConfig.domain.name``) active when this KB was created.
+    # ``None`` marks a legacy KB created before domain stamping ("unknown" domain);
+    # such KBs must remain valid everywhere — never treat a missing stamp as an
+    # error. A future ``domain_config_version: str | None`` may additionally pin
+    # the exact config version that was active.
+    domain: str | None = None
+    # TODO(production): Add owner: str | None and tags: dict[str, str] for organization.
 
 
 # ---------------------------------------------------------------------------
