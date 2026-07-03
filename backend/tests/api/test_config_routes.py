@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 
 from api import dependencies
@@ -46,7 +47,8 @@ def client() -> TestClient:
 class _RecordingBus:
     """Minimal publish-recording stand-in for the event bus."""
 
-    def __init__(self) -> None:
+    def __init__(self, label: str = "") -> None:
+        self.label = label
         self.events: list[object] = []
 
     def publish(self, event: object) -> str | None:
@@ -324,6 +326,107 @@ class TestApplyAndSwitch:
         resp = client.post("/config/apply", json={})
         assert resp.status_code == 200
         assert resp.json()["rag_degraded_to_fallback"] is True
+
+    def test_reload_signal_published_on_pre_swap_transport(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """M3: config.updated must ride the OLD pack's event transport.
+
+        The worker is still consuming on pre-swap settings, so the bus must
+        be resolved before the cache reset. Each bus resolution is labeled
+        with the domain config visible at resolution time; the reload signal
+        must land on a bus resolved while the old pack was still cached.
+        """
+        buses: list[_RecordingBus] = []
+
+        def capturing_get_event_bus() -> _RecordingBus:
+            bus = _RecordingBus(label=dependencies.get_domain_config().domain.name)
+            buses.append(bus)
+            return bus
+
+        monkeypatch.setattr(dependencies, "get_event_bus", capturing_get_event_bus)
+
+        resp = client.post("/config/switch", json={"pack": "food_supply_chain"})
+        assert resp.status_code == 200
+        assert resp.json()["event_published"] is True
+
+        carrying = [
+            bus
+            for bus in buses
+            if any(isinstance(event, ConfigUpdatedEvent) for event in bus.events)
+        ]
+        assert len(carrying) == 1
+        assert carrying[0].label == "medicare_fraud"
+
+
+# ---------------------------------------------------------------------------
+# Production auth guardrail on hot-swap
+# ---------------------------------------------------------------------------
+
+
+class TestProductionGuardrail:
+    def test_authless_pack_rejected_under_production_with_nothing_mutated(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """C1: one POST must never disable auth platform-wide in production."""
+        assert client.get("/config/domain").json()["domain"]["name"] == "medicare_fraud"
+        config_before = dependencies.get_domain_config()
+        generation_before = dependencies.get_config_generation()
+
+        monkeypatch.setenv("CHILI_ENV", "production")
+        for route in ("/config/switch", "/config/apply"):
+            resp = client.post(route, json={"pack": "food_supply_chain"})
+            assert resp.status_code == 400, route
+            detail = resp.json()["detail"]
+            assert "guardrail" in detail
+            assert "active configuration unchanged" in detail
+
+        assert read_active_pack() is None
+        assert not resolve_state_path().exists()
+        assert dependencies.get_config_generation() == generation_before
+        assert dependencies.get_domain_config() is config_before
+        assert client.get("/config/domain").json()["domain"]["name"] == "medicare_fraud"
+
+    def test_non_production_env_still_swaps(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHILI_ENV", "dev")
+        resp = client.post("/config/switch", json={"pack": "food_supply_chain"})
+        assert resp.status_code == 200
+        pointer = read_active_pack()
+        assert pointer is not None
+        assert pointer.pack_name == "food_supply_chain"
+
+    def test_production_swap_allowed_for_fully_authed_pack(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        secured = load_config(MEDICARE_YAML).model_copy(
+            update={
+                "auth": AuthConfig(
+                    enabled=True,
+                    issuer_url="https://idp.example.com",
+                    audience="chili-api",
+                    jwks_uri="https://idp.example.com/jwks",
+                    client_id="chili-spa",
+                    client_secret_env_var="OIDC_CLIENT_SECRET",
+                    authorize_endpoint="https://idp.example.com/authorize",
+                    token_endpoint="https://idp.example.com/oauth/token",
+                    redirect_uri="https://app.example.com/auth/callback",
+                )
+            }
+        )
+        pack = tmp_path / "secured.yaml"
+        pack.write_text(
+            yaml.safe_dump(secured.model_dump(mode="json")), encoding="utf-8"
+        )
+        monkeypatch.setenv(PACK_DIRS_ENV_VAR, str(tmp_path))
+        monkeypatch.setenv("CHILI_ENV", "production")
+
+        resp = client.post("/config/switch", json={"pack": "secured"})
+        assert resp.status_code == 200
+        pointer = read_active_pack()
+        assert pointer is not None
+        assert pointer.pack_name == "medicare_fraud"
 
 
 # ---------------------------------------------------------------------------

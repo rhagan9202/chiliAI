@@ -16,6 +16,16 @@ Allowed config directories are ``config/defaults`` plus any directories in the
 ``CHILI_CONFIG_PACK_DIRS`` environment variable (``os.pathsep``-separated).
 User-supplied pack references must resolve (symlinks followed) inside an
 allowed directory — path traversal is rejected.
+
+Operational constraints:
+
+- Under ``CHILI_ENV=staging|production`` a candidate pack must carry a fully
+  enabled ``auth`` section (``enforce_production_guardrail``) — a hot-swap
+  can never disable auth platform-wide.
+- Packs must not change the event transport (``events`` backend / stream
+  prefix / consumer group) across a hot-swap: the ``config.updated`` reload
+  signal is published on the *pre-swap* transport, which is the one the
+  worker is still consuming — worker convergence relies on it.
 """
 
 from __future__ import annotations
@@ -59,6 +69,7 @@ from config.store import (
     resolve_config_path,
     write_active_pack,
 )
+from events.protocols import EventBus
 from events.types import ConfigUpdatedEvent
 
 __all__ = ["PACK_DIRS_ENV_VAR", "router"]
@@ -306,15 +317,33 @@ def _rag_degraded_to_fallback(request: Request) -> bool:
     return api_state.rag_service is not live
 
 
+def _capture_pre_swap_event_bus() -> EventBus | None:
+    """Resolve the event bus on the OLD pack's transport, before the reset.
+
+    The worker is still consuming on the pre-swap transport settings, so the
+    ``config.updated`` reload signal must be published there — resolving the
+    bus after the reset would publish on the new pack's transport, where a
+    worker on old settings would never look. A resolution failure must not
+    fail the swap; it degrades to ``event_published=false``.
+    """
+    try:
+        return dependencies.get_event_bus()
+    except Exception:  # noqa: BLE001 — surfaced via event_published, never fails the swap
+        logger.exception("Failed to resolve the pre-swap event bus for config.updated.")
+        return None
+
+
 def _publish_config_updated(
+    event_bus: EventBus | None,
     new_config: DomainConfig,
     pack_path: Path,
     previous_pack_name: str | None,
     reason: str,
 ) -> bool:
     """Publish ``config.updated`` after a durable swap; never fail the request."""
+    if event_bus is None:
+        return False
     try:
-        event_bus = dependencies.get_event_bus()
         event_bus.publish(
             ConfigUpdatedEvent(
                 pack_name=new_config.domain.name,
@@ -340,10 +369,14 @@ def _activate_pack(
     reason: Literal["apply", "switch"],
     request: Request,
 ) -> ConfigSwapResponse:
-    """Swap-once-success pipeline: validate → persist pointer → reset → emit.
+    """Swap-once-success pipeline: validate + guardrail → persist pointer → reset → emit.
 
-    A failure in validation or pointer persistence mutates nothing — the old
-    pack keeps serving (see the swap-core contract in api.dependencies).
+    A failure in validation, the production auth guardrail, or pointer
+    persistence mutates nothing — the old pack keeps serving (see the
+    swap-core contract in api.dependencies). The ``config.updated`` signal is
+    published on the pre-swap event transport (see
+    :func:`_capture_pre_swap_event_bus`), so packs must not change the event
+    transport across a hot-swap.
     """
     previous_pack_name = _current_pack_name()
     try:
@@ -354,16 +387,27 @@ def _activate_pack(
             detail=f"Pack validation failed; active configuration unchanged. {exc}",
         ) from exc
     try:
+        dependencies.enforce_production_guardrail(new_config.auth)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Pack rejected by the production auth guardrail; "
+                f"active configuration unchanged. {exc}"
+            ),
+        ) from exc
+    try:
         write_active_pack(candidate, pack_name=new_config.domain.name)
     except ActivePackStoreError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Could not persist the active-pack pointer; active configuration unchanged. {exc}",
         ) from exc
+    pre_swap_event_bus = _capture_pre_swap_event_bus()
     generation = dependencies.reset_domain_config_caches(request.app)
     rag_degraded = _rag_degraded_to_fallback(request)
     event_published = _publish_config_updated(
-        new_config, candidate, previous_pack_name, reason
+        pre_swap_event_bus, new_config, candidate, previous_pack_name, reason
     )
     return ConfigSwapResponse(
         status="applied",
