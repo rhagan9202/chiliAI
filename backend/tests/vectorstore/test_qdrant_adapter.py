@@ -175,7 +175,11 @@ def test_qdrant_vector_store_uses_http_client_by_default(
         VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=2)
     )
 
-    assert client_kwargs == {"url": "http://qdrant:6333", "prefer_grpc": False}
+    assert client_kwargs == {
+        "url": "http://qdrant:6333",
+        "prefer_grpc": False,
+        "check_compatibility": False,
+    }
 
 
 def test_qdrant_vector_store_creates_collection_and_upserts_records() -> None:
