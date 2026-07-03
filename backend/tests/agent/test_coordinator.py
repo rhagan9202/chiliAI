@@ -491,7 +491,9 @@ def test_build_worker_dependencies_assembles_ingestion_pipeline(
         __file__
         .replace("tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml")
     )
-    monkeypatch.setattr("agent.coordinator.load_config", lambda: load_config(defaults_dir))
+    monkeypatch.setattr(
+        "agent.coordinator.load_active_config", lambda: load_config(defaults_dir)
+    )
     monkeypatch.setattr(
         "agent.coordinator.load_event_bus_settings",
         lambda: EventBusSettings(backend="in-memory"),
@@ -521,7 +523,9 @@ def test_build_worker_dependencies_wires_policy(
         __file__
         .replace("tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml")
     )
-    monkeypatch.setattr("agent.coordinator.load_config", lambda: load_config(defaults_dir))
+    monkeypatch.setattr(
+        "agent.coordinator.load_active_config", lambda: load_config(defaults_dir)
+    )
     monkeypatch.setattr(
         "agent.coordinator.load_event_bus_settings",
         lambda: EventBusSettings(backend="in-memory"),
@@ -4135,7 +4139,8 @@ def test_run_worker_passes_configured_stage_policy_registry(
         lambda: SimpleNamespace(
             ingestion_service=SimpleNamespace(replay_recovery_markers=lambda: 0),
             workflow_tracker=SimpleNamespace(reconcile_stale_runs=_reconcile_zero),
-            event_settings=SimpleNamespace(backend="in-memory"),
+            event_bus=InMemoryEventBus(),
+            event_settings=EventBusSettings(backend="in-memory"),
         ),
     )
 
@@ -4203,7 +4208,8 @@ def test_run_worker_replays_recovery_markers_before_drain(
         lambda: SimpleNamespace(
             ingestion_service=FakeIngestionService(),
             workflow_tracker=SimpleNamespace(reconcile_stale_runs=_reconcile_zero),
-            event_settings=SimpleNamespace(backend="in-memory"),
+            event_bus=InMemoryEventBus(),
+            event_settings=EventBusSettings(backend="in-memory"),
         ),
     )
 
@@ -4264,7 +4270,8 @@ def test_run_worker_retries_recovery_replay_failure_before_drain(
         lambda: SimpleNamespace(
             ingestion_service=FakeIngestionService(),
             workflow_tracker=SimpleNamespace(reconcile_stale_runs=_reconcile_zero),
-            event_settings=SimpleNamespace(backend="in-memory"),
+            event_bus=InMemoryEventBus(),
+            event_settings=EventBusSettings(backend="in-memory"),
         ),
     )
 

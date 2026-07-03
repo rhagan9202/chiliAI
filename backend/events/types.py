@@ -31,6 +31,23 @@ class KnowledgeBaseDeletedEvent(EventBase):
     cleanup_pending: bool = False
 
 
+class ConfigUpdatedEvent(EventBase):
+    """Published when the active domain configuration pack changes.
+
+    Emitted by the config API (apply/switch) after the new configuration is
+    durably active. Consumers (the pipeline worker) treat this as a "reload
+    now" signal: they re-resolve the active config themselves and rebuild
+    their dependencies — the payload carries pack identity and a reason, not
+    a config snapshot.
+    """
+
+    event_type: Literal["config.updated"] = "config.updated"
+    pack_name: str
+    pack_path: str | None = None
+    previous_pack_name: str | None = None
+    reason: str = "apply"
+
+
 class DocumentReference(BaseModel):
     knowledge_base_id: str
     source_document_id: str
@@ -468,6 +485,7 @@ AnyEvent = (
     | DocumentsExtractionWarningEvent
     | ClaimsReceivedEvent
     | ClaimsIngestedEvent
+    | ConfigUpdatedEvent
     | RecordsIngestedEvent
 )
 
@@ -483,6 +501,7 @@ __all__ = [
     "ChunkedDocumentReference",
     "ClaimsIngestedEvent",
     "ClaimsReceivedEvent",
+    "ConfigUpdatedEvent",
     "DocumentFailureReference",
     "DocumentReference",
     "DocumentsChunkedEvent",

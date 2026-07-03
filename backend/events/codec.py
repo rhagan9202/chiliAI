@@ -14,6 +14,7 @@ from events.types import (
     AnyEvent,
     ClaimsIngestedEvent,
     ClaimsReceivedEvent,
+    ConfigUpdatedEvent,
     EmbeddingsCompleteEvent,
     EmbeddingsGeneratedEvent,
     ExplainabilityGeneratedEvent,
@@ -74,6 +75,7 @@ EVENT_TYPE_REGISTRY: dict[str, type[EventBase]] = {
     "documents.extraction_warning": DocumentsExtractionWarningEvent,
     "claims.received": ClaimsReceivedEvent,
     "claims.ingested": ClaimsIngestedEvent,
+    "config.updated": ConfigUpdatedEvent,
     "records.ingested": RecordsIngestedEvent,
 }
 
