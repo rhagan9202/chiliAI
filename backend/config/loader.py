@@ -11,6 +11,7 @@ import yaml
 from pydantic import ValidationError
 
 from config.schema import DomainConfig
+from config.store import ActivePackStoreError, resolve_config_path
 
 
 class ConfigLoadError(Exception):
@@ -37,6 +38,25 @@ def load_config(path: str | Path | None = None) -> DomainConfig:
     raw = _read_file(resolved)
     data = _parse_content(raw, resolved)
     return _validate(data)
+
+
+def load_active_config() -> DomainConfig:
+    """Load the domain configuration for the *active* pack.
+
+    Unlike :func:`load_config` (which stays pure: explicit path > env > error),
+    this follows the file-backed active-pack pointer written by the config
+    API on hot-swap: pointer > ``CHILI_CONFIG_PATH`` env > error. The worker
+    uses this when rebuilding its dependencies on a ``config.updated`` event
+    so it picks up the pack the API activated through the shared volume.
+
+    Raises ``ConfigLoadError`` (store resolution failures are re-raised as
+    ``ConfigLoadError``).
+    """
+    try:
+        resolved = resolve_config_path()
+    except ActivePackStoreError as exc:
+        raise ConfigLoadError(str(exc)) from exc
+    return load_config(resolved)
 
 
 # ---------------------------------------------------------------------------
@@ -101,5 +121,6 @@ def _validate(data: dict[str, Any]) -> DomainConfig:
 
 __all__ = [
     "ConfigLoadError",
+    "load_active_config",
     "load_config",
 ]

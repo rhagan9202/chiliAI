@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import os
+import threading
 from functools import lru_cache
-from typing import NoReturn, cast
+from typing import NoReturn, Protocol, cast
 
-from fastapi import Depends, HTTPException, Path, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
 
 from api.contracts import (
     AnalystFeedbackResponse,
@@ -72,7 +73,8 @@ from policy.models import PolicyItem
 from policy.service import PolicyService, create_policy_service
 from shared.utils import utc_now
 from api.state import ApiState, create_api_state
-from config.loader import load_config
+from config.loader import ConfigLoadError, load_config
+from config.store import ActivePackStoreError, read_active_pack
 from config.schema import (
     AnalyticsConfig,
     DatabaseConfig,
@@ -160,6 +162,7 @@ from analytics.explainability.repository import EvidencePackRepository
 from records.protocols import RecordsServiceProtocol
 from records.service import create_records_service
 from shared.exceptions import ConfigurationError
+from shared.logging import get_logger
 from shared.types import EvidencePack
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.adapters.local_fs_adapter import LocalFsObjectStore
@@ -179,6 +182,10 @@ from rag.protocols import RagServiceProtocol
 from rag.service import create_rag_service
 
 __all__ = [
+    "CONFIG_CACHE_REGISTRY",
+    "build_api_state",
+    "get_config_generation",
+    "reset_domain_config_caches",
     "get_api_state",
     "get_alert_repository",
     "get_agent_service",
@@ -236,6 +243,8 @@ __all__ = [
     "get_workflow_run_store",
     "get_workflow_tracker",
 ]
+
+logger = get_logger("chili.api.dependencies")
 
 
 def _raise_unsupported_backend(
@@ -796,11 +805,22 @@ def get_timeseries_payload(
 def get_domain_config() -> DomainConfig:
     """Load and cache the domain configuration (process-singleton).
 
-    The cache is cleared at the start of :func:`api.app.create_app` so each
-    test that builds a fresh app picks up the current ``CHILI_CONFIG_PATH``
-    or ``api.app.load_config`` patch. Tests that need to inject a specific
-    config can also override via ``app.dependency_overrides``.
+    Resolution precedence: active-pack pointer (``config.store``, written by
+    the config hot-swap routes) > ``CHILI_CONFIG_PATH`` env. When no pointer
+    has been written the historical zero-arg ``load_config()`` call is kept so
+    tests that monkeypatch ``api.dependencies.load_config`` still take effect.
+
+    The cache is cleared by :func:`reset_domain_config_caches` (called at the
+    start of :func:`api.app.create_app` and on every domain hot-swap), so each
+    fresh app or swap picks up the currently active pack. Tests that need to
+    inject a specific config can also override via ``app.dependency_overrides``.
     """
+    try:
+        pointer = read_active_pack()
+    except ActivePackStoreError as exc:
+        raise ConfigLoadError(str(exc)) from exc
+    if pointer is not None:
+        return load_config(pointer.config_path)
     return load_config()
 
 
@@ -1429,3 +1449,146 @@ def get_rag_service() -> RagServiceProtocol:
         graph_context_expander=ServiceGraphContextExpander(get_graph_service()),
         domain_config=domain_config,
     )
+
+
+# ---------------------------------------------------------------------------
+# Domain hot-swap core (config.05 / E3+E5).
+#
+# Every ``@lru_cache`` singleton in this module is derived (directly or
+# transitively) from the active ``DomainConfig``, so a domain swap must clear
+# them all together. The registry below is the single authoritative list; the
+# regression test in ``tests/api/test_dependency_swap.py`` fails if a new
+# ``@lru_cache`` site is added to this module without being registered here.
+# ---------------------------------------------------------------------------
+
+
+class _ClearableCache(Protocol):
+    """Structural type for an ``functools.lru_cache`` wrapper we can clear."""
+
+    def cache_clear(self) -> None: ...
+
+
+CONFIG_CACHE_REGISTRY: dict[str, _ClearableCache] = {
+    "get_domain_config": get_domain_config,
+    "get_parser_registry": get_parser_registry,
+    "get_remote_fetcher": get_remote_fetcher,
+    "get_parser_orchestrator": get_parser_orchestrator,
+    "get_event_bus_settings": get_event_bus_settings,
+    "get_event_bus": get_event_bus,
+    "get_session_store": get_session_store,
+    "get_object_store": get_object_store,
+    "get_graph_repository": get_graph_repository,
+    "get_graph_service": get_graph_service,
+    "get_vector_store": get_vector_store,
+    "get_vectorstore_service": get_vectorstore_service,
+    "get_embedder": get_embedder,
+    "get_embeddings_service": get_embeddings_service,
+    "get_llm_client": get_llm_client,
+    "get_llm_service": get_llm_service,
+    "get_monitoring_source": get_monitoring_source,
+    "get_monitoring_service": get_monitoring_service,
+    "get_risk_signal_source": get_risk_signal_source,
+    "get_risk_service": get_risk_service,
+    "get_timeseries_history_source": get_timeseries_history_source,
+    "get_timeseries_service": get_timeseries_service,
+    "get_graph_snapshot_source": get_graph_snapshot_source,
+    "get_gnn_service": get_gnn_service,
+    "get_ingestion_recovery_store": get_ingestion_recovery_store,
+    "get_ingestion_service": get_ingestion_service,
+    "get_connection_provider": get_connection_provider,
+    "get_raw_record_store": get_raw_record_store,
+    "get_derived_signal_store": get_derived_signal_store,
+    "get_risk_history_writer": get_risk_history_writer,
+    "get_observation_writer": get_observation_writer,
+    "get_alert_history_writer": get_alert_history_writer,
+    "get_entity_metric_repository": get_entity_metric_repository,
+    "get_knowledge_base_repository": get_knowledge_base_repository,
+    "get_rag_service": get_rag_service,
+}
+"""All ``@lru_cache`` singletons in this module, cleared together on swap."""
+
+
+# Config-derived objects memoized on ``app.state`` by the per-app dependency
+# helpers above. Purged (and ``api_state`` eagerly rebuilt) on swap so the next
+# request lazily reconstructs them against the new pack's backends.
+_CONFIG_DERIVED_APP_STATE_ATTRS: tuple[str, ...] = (
+    "api_state",
+    "evidence_pack_repository",
+    "case_repository",
+    "alert_repository",
+    "conversation_repository",
+    "policy_repository",
+)
+
+_CONFIG_SWAP_LOCK = threading.Lock()
+_config_generation = 0
+
+
+def get_config_generation() -> int:
+    """Return the monotonic swap generation token (0 until the first reset).
+
+    Bumped exactly once per :func:`reset_domain_config_caches`. A request that
+    records the generation when it starts can detect that a swap happened
+    mid-request by comparing against the current value.
+    """
+    with _CONFIG_SWAP_LOCK:
+        return _config_generation
+
+
+def build_api_state() -> ApiState:
+    """Build a fresh :class:`ApiState` from the active domain configuration.
+
+    Composes the live RAG service (embeddings → vectorstore → graph → LLM,
+    BL-001); on composition failure it logs the exception and falls back to
+    the seeded in-memory pipeline so the API still serves.
+    """
+    domain_config = get_domain_config()
+    try:
+        live_rag_service: RagServiceProtocol | None = get_rag_service()
+    except Exception:
+        logger.exception(
+            "Failed to compose live RAG service; falling back to seeded in-memory pipeline."
+        )
+        live_rag_service = None
+    return create_api_state(domain_config, rag_service=live_rag_service)
+
+
+def reset_domain_config_caches(app: FastAPI | None = None) -> int:
+    """Atomically swap every config-derived singleton to the active pack.
+
+    Clears every ``@lru_cache`` wrapper in :data:`CONFIG_CACHE_REGISTRY`; when
+    ``app`` is given, also purges the config-derived per-app state attributes
+    (:data:`_CONFIG_DERIVED_APP_STATE_ATTRS`) and eagerly rebuilds
+    ``app.state.api_state`` via :func:`build_api_state`. Returns the new
+    swap generation (see :func:`get_config_generation`).
+
+    Callers MUST follow swap-once-success discipline: fully load + validate
+    the candidate pack (``load_config(path)``) and persist the pointer
+    (``config.store.write_active_pack``) *before* calling this — a failure in
+    either step leaves every cache untouched and the old pack keeps serving.
+
+    Atomicity guarantee:
+
+    - Swaps are **serialized** by a module-level lock; no two resets interleave.
+    - The reset is **all-or-nothing at the registry level**: within one
+      critical section every registered singleton is cleared and
+      ``app.state.api_state`` is rebuilt — after this function returns, any
+      new dependency resolution observes only new-pack singletons.
+    - In-flight requests that resolved singletons **before** the reset keep
+      those (old-pack) objects for the rest of that resolution; requests
+      resolving **concurrently** with the reset may observe a mix across
+      *separate* singleton lookups, but each individual singleton is either
+      wholly old or wholly new — never torn. Use :func:`get_config_generation`
+      to detect a swap mid-request if needed.
+    """
+    global _config_generation
+    with _CONFIG_SWAP_LOCK:
+        for wrapper in CONFIG_CACHE_REGISTRY.values():
+            wrapper.cache_clear()
+        if app is not None:
+            for attr in _CONFIG_DERIVED_APP_STATE_ATTRS:
+                if hasattr(app.state, attr):
+                    delattr(app.state, attr)
+            app.state.api_state = build_api_state()
+        _config_generation += 1
+        return _config_generation

@@ -7,9 +7,9 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.dependencies import build_api_state, reset_domain_config_caches
 from api.middleware.metrics import register_metrics
 from api.middleware.policy_registry import assert_complete
-from api.state import create_api_state
 from api.routers.alerts import router as alerts_router
 from api.routers.analytics import router as analytics_router
 from api.routers.auth import router as auth_router
@@ -106,11 +106,10 @@ def create_app() -> FastAPI:
     configure_logging()
     setup_tracing()
 
-    # Reset process-level config cache so each create_app() call (e.g. one
-    # per test) reloads from CHILI_CONFIG_PATH / monkeypatched load_config.
-    from api.dependencies import get_domain_config, get_rag_service
-    get_domain_config.cache_clear()
-    get_rag_service.cache_clear()
+    # Reset every config-derived singleton so each create_app() call (e.g. one
+    # per test, or a fresh process after a domain swap) reloads from the
+    # active-pack pointer / CHILI_CONFIG_PATH / monkeypatched load_config.
+    reset_domain_config_caches()
 
     config = load_config()
     _enforce_production_guardrail(config.auth)
@@ -131,15 +130,12 @@ def create_app() -> FastAPI:
 
     # Per-app seeded state — see api.dependencies.get_api_state. Each
     # create_app() call yields a fresh ApiState so tests are isolated.
-    # The live RAG service (BL-001) is composed via DI and injected here so
-    # the chat surfaces query real embeddings / vector store / graph / LLM
-    # adapters instead of the seeded in-memory demo pipeline.
-    try:
-        live_rag_service = get_rag_service()
-    except Exception:  # pragma: no cover - defensive: bad config / missing optional deps
-        logger.exception("Failed to compose live RAG service; falling back to seeded in-memory pipeline.")
-        live_rag_service = None
-    app.state.api_state = create_api_state(rag_service=live_rag_service)
+    # build_api_state composes the live RAG service (BL-001) via DI so the
+    # chat surfaces query real embeddings / vector store / graph / LLM
+    # adapters, falling back to the seeded in-memory demo pipeline on
+    # composition failure. Domain hot-swaps rebuild this via
+    # api.dependencies.reset_domain_config_caches(app).
+    app.state.api_state = build_api_state()
 
     register_metrics(app)
     instrument_fastapi_app(app)
