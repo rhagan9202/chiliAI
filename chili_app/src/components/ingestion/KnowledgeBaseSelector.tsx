@@ -1,11 +1,14 @@
 import type { FormEvent } from 'react'
 
 import type { KnowledgeBaseStatus, KnowledgeBaseSummaryResponse } from '../../api/contracts'
+import { KbDomainBadge } from '../knowledgebase/KbDomainBadge'
 import { Chip } from '../ui/Chip'
 import { EmptyState } from '../ui/EmptyState'
 import './ingestion.css'
 
 type KnowledgeBaseSelectorProps = {
+  /** `domain.name` of the active domain config; enables the warn-only domain badge. */
+  activeDomainName?: string | null
   activeKnowledgeBaseId: string | null
   createDescription: string
   createDisabled: boolean
@@ -38,6 +41,7 @@ function toneForKnowledgeBaseStatus(status: KnowledgeBaseStatus) {
 }
 
 export function KnowledgeBaseSelector({
+  activeDomainName = null,
   activeKnowledgeBaseId,
   createDescription,
   createDisabled,
@@ -99,6 +103,10 @@ export function KnowledgeBaseSelector({
                   />
                   <Chip label={`${knowledgeBase.document_count} docs`} tone="default" />
                   <Chip label={`${knowledgeBase.entity_count} entities`} tone="network" />
+                  <KbDomainBadge
+                    activeDomainName={activeDomainName}
+                    kbDomain={knowledgeBase.domain ?? null}
+                  />
                 </span>
               </button>
             )
