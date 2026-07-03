@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os
 import threading
+from collections.abc import Callable
 from functools import lru_cache
-from typing import NoReturn, Protocol, cast
+from typing import NoReturn, Protocol, TypeVar, cast
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
 
@@ -77,6 +78,7 @@ from config.loader import ConfigLoadError, load_config
 from config.store import ActivePackStoreError, read_active_pack
 from config.schema import (
     AnalyticsConfig,
+    AuthConfig,
     DatabaseConfig,
     DomainConfig,
     EmbeddingsConfig,
@@ -184,7 +186,9 @@ from rag.service import create_rag_service
 __all__ = [
     "CONFIG_CACHE_REGISTRY",
     "build_api_state",
+    "enforce_production_guardrail",
     "get_config_generation",
+    "load_chili_environment",
     "reset_domain_config_caches",
     "get_api_state",
     "get_alert_repository",
@@ -258,6 +262,75 @@ def _raise_unsupported_backend(
     )
 
 
+# ---------------------------------------------------------------------------
+# Environment + production auth guardrail.
+#
+# Public (moved here from api.app) so the config hot-swap routes can enforce
+# the same guardrail on a candidate pack BEFORE activating it — a domain
+# switch under CHILI_ENV=staging/production must never disable auth
+# platform-wide. api.app.create_app applies it at boot; POST /config/apply |
+# /config/switch (T3) must apply it to the candidate's ``auth`` section as
+# part of step 1 of swap-once-success (validate; nothing mutated on failure).
+# ---------------------------------------------------------------------------
+
+_ALLOWED_ENVIRONMENTS = frozenset({"local", "dev", "staging", "production"})
+_AUTH_REQUIRED_ENVIRONMENTS = frozenset({"staging", "production"})
+
+
+def load_chili_environment() -> str:
+    """Return the validated runtime environment name from ``CHILI_ENV``."""
+
+    raw_environment = os.environ.get("CHILI_ENV")
+    if raw_environment is None or raw_environment.strip() == "":
+        allowed = ", ".join(sorted(_ALLOWED_ENVIRONMENTS))
+        raise RuntimeError(
+            "CHILI_ENV must be set to one of "
+            f"{allowed}; use CHILI_ENV=local for local development."
+        )
+
+    environment = raw_environment.strip().lower()
+    if environment not in _ALLOWED_ENVIRONMENTS:
+        allowed = ", ".join(sorted(_ALLOWED_ENVIRONMENTS))
+        raise RuntimeError(
+            f"Unknown CHILI_ENV '{raw_environment}'. Expected one of {allowed}."
+        )
+    return environment
+
+
+def enforce_production_guardrail(auth: AuthConfig | None) -> None:
+    """Reject an ``auth`` section that would disable auth under staging/production.
+
+    No-op under ``CHILI_ENV=local|dev``. Raises ``RuntimeError`` when auth is
+    absent, disabled, or missing required OIDC fields under
+    ``CHILI_ENV=staging|production``. Applied at boot (``api.app.create_app``)
+    and to every candidate pack before a domain hot-swap activates it.
+    """
+    environment = load_chili_environment()
+    if environment not in _AUTH_REQUIRED_ENVIRONMENTS:
+        return
+    if auth is None or not auth.enabled:
+        raise RuntimeError(
+            "AuthConfig.enabled must be True under "
+            f"CHILI_ENV={environment}."
+        )
+    required = (
+        ("issuer_url", auth.issuer_url),
+        ("audience", auth.audience),
+        ("jwks_uri", auth.jwks_uri),
+        ("client_id", auth.client_id),
+        ("client_secret_env_var", auth.client_secret_env_var),
+        ("authorize_endpoint", auth.authorize_endpoint),
+        ("token_endpoint", auth.token_endpoint),
+        ("redirect_uri", auth.redirect_uri),
+    )
+    missing = [name for name, value in required if value is None]
+    if missing:
+        raise RuntimeError(
+            "AuthConfig is missing required fields under "
+            f"CHILI_ENV={environment}: {missing}"
+        )
+
+
 def get_api_state(request: Request) -> ApiState:
     """Return the per-app seeded mutable API state.
 
@@ -265,12 +338,18 @@ def get_api_state(request: Request) -> ApiState:
     each TestClient (and each production process) its own ``ApiState``
     instance. Mutations made via one request do not leak into a fresh app
     instance — important for test isolation.
+
+    The lazy rebuild (bare ``FastAPI()`` in tests, or first request after a
+    swap purge) is memoized through :func:`_memoize_config_derived` so a
+    build that raced a domain swap can never poison ``app.state`` — see M2 in
+    the swap-core section.
     """
-    state = getattr(request.app.state, "api_state", None)
-    if state is None:
-        state = create_api_state(get_domain_config())
-        request.app.state.api_state = state
-    return state
+    return _memoize_config_derived(
+        request.app,
+        "api_state",
+        lambda: create_api_state(get_domain_config()),
+        guard=lambda value: isinstance(value, ApiState),
+    )
 
 
 def get_evidence_pack_repository(request: Request) -> EvidencePackRepository:
@@ -278,13 +357,12 @@ def get_evidence_pack_repository(request: Request) -> EvidencePackRepository:
 
     Reads packs the worker persisted to the shared object store (BL-005).
     """
-    repository = getattr(request.app.state, "evidence_pack_repository", None)
-    if isinstance(repository, EvidencePackRepository):
-        return repository
-
-    repository = ObjectStoreEvidencePackRepository(get_object_store())
-    request.app.state.evidence_pack_repository = repository
-    return repository
+    return _memoize_config_derived(
+        request.app,
+        "evidence_pack_repository",
+        lambda: ObjectStoreEvidencePackRepository(get_object_store()),
+        guard=lambda value: isinstance(value, EvidencePackRepository),
+    )
 
 
 def get_evidence_pack_payload(
@@ -324,16 +402,18 @@ def get_case_repository(request: Request) -> CaseRepository:
     Postgres when a connection provider is configured, otherwise a per-app
     in-memory repository (so each app instance is isolated).
     """
-    repository = getattr(request.app.state, "case_repository", None)
-    if isinstance(repository, CaseRepository):
-        return repository
+    def build() -> CaseRepository:
+        provider = get_connection_provider()
+        return (
+            InMemoryCaseRepository() if provider is None else PostgresCaseRepository(provider)
+        )
 
-    provider = get_connection_provider()
-    repository = (
-        InMemoryCaseRepository() if provider is None else PostgresCaseRepository(provider)
+    return _memoize_config_derived(
+        request.app,
+        "case_repository",
+        build,
+        guard=lambda value: isinstance(value, CaseRepository),
     )
-    request.app.state.case_repository = repository
-    return repository
 
 
 def get_case_service(
@@ -345,13 +425,12 @@ def get_case_service(
 
 def get_alert_repository(request: Request) -> AlertProjectionRepository:
     """Return the per-app alert projection repository used by alert routes."""
-    repository = getattr(request.app.state, "alert_repository", None)
-    if isinstance(repository, AlertProjectionRepository):
-        return repository
-
-    repository = _create_alert_repository()
-    request.app.state.alert_repository = repository
-    return repository
+    return _memoize_config_derived(
+        request.app,
+        "alert_repository",
+        _create_alert_repository,
+        guard=lambda value: isinstance(value, AlertProjectionRepository),
+    )
 
 
 def _create_alert_repository() -> AlertProjectionRepository:
@@ -567,18 +646,20 @@ def get_conversation_repository(request: Request) -> ConversationRepository:
     Postgres when a connection provider is configured, otherwise a per-app
     in-memory repository (so each app instance is isolated).
     """
-    repository = getattr(request.app.state, "conversation_repository", None)
-    if isinstance(repository, ConversationRepository):
-        return repository
+    def build() -> ConversationRepository:
+        provider = get_connection_provider()
+        return (
+            InMemoryConversationRepository()
+            if provider is None
+            else PostgresConversationRepository(provider)
+        )
 
-    provider = get_connection_provider()
-    repository = (
-        InMemoryConversationRepository()
-        if provider is None
-        else PostgresConversationRepository(provider)
+    return _memoize_config_derived(
+        request.app,
+        "conversation_repository",
+        build,
+        guard=lambda value: isinstance(value, ConversationRepository),
     )
-    request.app.state.conversation_repository = repository
-    return repository
 
 
 def get_conversation_service(
@@ -650,18 +731,20 @@ def get_policy_repository(request: Request) -> PolicyItemRepository:
     Postgres when a connection provider is configured, otherwise a per-app
     in-memory repository (so each app instance is isolated).
     """
-    repository = getattr(request.app.state, "policy_repository", None)
-    if isinstance(repository, PolicyItemRepository):
-        return repository
+    def build() -> PolicyItemRepository:
+        provider = get_connection_provider()
+        return (
+            InMemoryPolicyItemRepository()
+            if provider is None
+            else PostgresPolicyItemRepository(provider)
+        )
 
-    provider = get_connection_provider()
-    repository = (
-        InMemoryPolicyItemRepository()
-        if provider is None
-        else PostgresPolicyItemRepository(provider)
+    return _memoize_config_derived(
+        request.app,
+        "policy_repository",
+        build,
+        guard=lambda value: isinstance(value, PolicyItemRepository),
     )
-    request.app.state.policy_repository = repository
-    return repository
 
 
 def get_policy_service(
@@ -1523,6 +1606,54 @@ _CONFIG_DERIVED_APP_STATE_ATTRS: tuple[str, ...] = (
 _CONFIG_SWAP_LOCK = threading.Lock()
 _config_generation = 0
 
+_T = TypeVar("_T")
+
+
+def _memoize_config_derived(
+    app: FastAPI,
+    attr: str,
+    factory: Callable[[], _T],
+    *,
+    guard: Callable[[object], bool],
+) -> _T:
+    """Memoize a config-derived object onto ``app.state`` swap-safely (M2).
+
+    A naive unlocked check-then-act memoizer races the swap: a threadpool
+    request can build an object against the *old* pack, the locked reset
+    completes (purging ``app.state``), and the thread then memoizes the stale
+    object — served until the next swap (for ``api_state`` this can clobber
+    live-RAG state with the seeded fallback). This helper makes post-reset
+    memoization of a pre-reset build impossible:
+
+    1. Snapshot the swap generation under the lock, build outside the lock
+       (builds may be slow; the factory itself must never take the lock).
+    2. Write under the lock only if the generation is unchanged; otherwise a
+       swap completed mid-build — discard the stale candidate and rebuild
+       against the new pack.
+
+    Note the ``@lru_cache`` singletons themselves retain the documented miss
+    race (m4): a lookup that misses concurrently with a reset may construct
+    and transiently *use* an instance that loses the cache-fill race and is
+    discarded — never torn, and never re-served after the swap.
+    """
+    existing = getattr(app.state, attr, None)
+    if guard(existing):
+        return cast("_T", existing)
+    while True:
+        with _CONFIG_SWAP_LOCK:
+            generation = _config_generation
+        candidate = factory()
+        with _CONFIG_SWAP_LOCK:
+            if _config_generation != generation:
+                # A swap completed while we were building: the candidate was
+                # derived from the previous pack. Never memoize it.
+                continue
+            existing = getattr(app.state, attr, None)
+            if guard(existing):
+                return cast("_T", existing)
+            setattr(app.state, attr, candidate)
+            return candidate
+
 
 def get_config_generation() -> int:
     """Return the monotonic swap generation token (0 until the first reset).
@@ -1580,6 +1711,18 @@ def reset_domain_config_caches(app: FastAPI | None = None) -> int:
       *separate* singleton lookups, but each individual singleton is either
       wholly old or wholly new — never torn. Use :func:`get_config_generation`
       to detect a swap mid-request if needed.
+
+    Accepted limitations (red-cell m2/m3, by design):
+
+    - The reset runs synchronously and holds the lock while rebuilding
+      ``api_state`` (adapter composition included), blocking the event loop
+      for that duration. Swaps are rare, operator-initiated actions; do not
+      call this from a hot path.
+    - If the pack file becomes unreadable *after* the pointer was persisted
+      but before/while caches rebuild, subsequent resolutions fail loudly
+      (``ConfigLoadError`` → 500) with caches cleared rather than silently
+      serving a stale pack. Recover by activating a valid pack (or
+      ``config.store.clear_active_pack()`` to revert to ``CHILI_CONFIG_PATH``).
     """
     global _config_generation
     with _CONFIG_SWAP_LOCK:
