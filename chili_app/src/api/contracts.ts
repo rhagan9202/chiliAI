@@ -170,6 +170,16 @@ export type RecordsConfig = RequireFields<Omit<Schemas['RecordsConfig'], 'feeds'
 }
 export type DomainConfigSchema = Record<string, unknown>
 
+export type ActivePackState = Schemas['ActivePackState']
+export type PackSummary = Schemas['PackSummary']
+export type PackListResponse = RequireFields<Schemas['PackListResponse'], 'packs'>
+export type ValidatePackRequest = Schemas['ValidatePackRequest']
+export type ConfigValidationIssue = RequireFields<Schemas['ConfigValidationIssue'], 'loc'>
+export type ValidatePackResponse = RequireFields<Schemas['ValidatePackResponse'], 'errors'>
+export type ApplyPackRequest = Schemas['ApplyPackRequest']
+export type SwitchPackRequest = Schemas['SwitchPackRequest']
+export type ConfigSwapResponse = Schemas['ConfigSwapResponse']
+
 export type RecordPushRequest = Schemas['RecordPushRequest']
 export type RecordIngestReceipt = Schemas['RecordIngestReceipt']
 

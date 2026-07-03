@@ -1,11 +1,18 @@
 import { useDomainConfig, useDomainConfigSchema, useDomainFeatures } from '../api/config'
+import { ActivePackEditor } from '../components/config/ActivePackEditor'
+import { PackSwitcher } from '../components/config/PackSwitcher'
 import { Card } from '../components/ui/Card'
 import { ErrorState } from '../components/ui/ErrorState'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import { useSession } from '../contexts/sessionContextValue'
 import './pages.css'
 
 export function ConfigurationPage() {
+  const { user } = useSession()
+  // Mirrors the backend RBAC gate on /config/packs|validate|apply|switch
+  // (require_role("admin")): only the literal admin role sits at that level.
+  const isAdmin = user?.roles.includes('admin') ?? false
   const domainConfig = useDomainConfig()
   const domainFeatures = useDomainFeatures()
   const domainConfigSchema = useDomainConfigSchema()
@@ -89,6 +96,22 @@ export function ConfigurationPage() {
           </div>
         </Card>
       </div>
+      {isAdmin ? (
+        <>
+          <SectionHeader
+            eyebrow="Domain packs"
+            subtitle="Activate a different domain pack. The switch validates first, then hot-swaps the whole workspace in place — navigation, labels, and the entity registry re-render without a reload."
+            title="Pack switcher"
+          />
+          <PackSwitcher />
+          <SectionHeader
+            eyebrow="Active pack"
+            subtitle="Dry-run validate edits against the full domain-pack schema, then re-apply the active pack to hot-swap the running configuration."
+            title="Pack editor"
+          />
+          <ActivePackEditor />
+        </>
+      ) : null}
     </section>
   )
 }
