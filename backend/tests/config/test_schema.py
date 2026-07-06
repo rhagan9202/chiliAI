@@ -117,6 +117,74 @@ def _make_config(
     )
 
 
+def _scorecard_metric_data(
+    *,
+    formula: dict[str, str],
+    inputs: list[dict[str, str]],
+    metric_id: str = "metric",
+) -> dict[str, object]:
+    return {
+        "id": metric_id,
+        "label": "Metric",
+        "inputs": inputs,
+        "formula": formula,
+        "thresholds": {"pass_min": 1.0},
+    }
+
+
+def _config_data_with_scorecard_metric(metric: dict[str, object]) -> dict[str, object]:
+    data = _make_config().model_dump()
+    data["scorecards"] = {
+        "templates": [
+            {
+                "id": "readiness",
+                "name": "Readiness",
+                "category": "combined",
+                "scope": "installation",
+                "period": "quarterly",
+                "sections": [
+                    {
+                        "id": "section",
+                        "label": "Section",
+                        "metrics": [metric],
+                    }
+                ],
+            }
+        ]
+    }
+    return data
+
+
+def _config_data_with_record_feed_scorecard_input(
+    metric_input: dict[str, str],
+) -> dict[str, object]:
+    data = _config_data_with_scorecard_metric(
+        _scorecard_metric_data(
+            formula={"operator": "latest", "value": "source"},
+            inputs=[metric_input],
+        )
+    )
+    data["records"] = {
+        "feeds": [
+            {
+                "name": "source_feed",
+                "record_type": "source_record",
+                "source": "file_upload",
+                "id_field": "record_id",
+                "record_schema": {
+                    "record_id": {
+                        "type": "string",
+                        "display": "Record ID",
+                        "required": True,
+                    },
+                    "score": {"type": "decimal", "display": "Score"},
+                },
+            }
+        ]
+    }
+    return data
+
+
 # ---------------------------------------------------------------------------
 # Happy path
 # ---------------------------------------------------------------------------
@@ -437,6 +505,83 @@ class TestDomainConfigValidation:
         }
 
         with pytest.raises(ValidationError, match="Duplicate scorecard metric id"):
+            DomainConfig.model_validate(data)
+
+    def test_scorecard_ratio_formula_requires_denominator(self) -> None:
+        data = _config_data_with_scorecard_metric(
+            _scorecard_metric_data(
+                formula={"operator": "ratio", "numerator": "value"},
+                inputs=[
+                    {
+                        "name": "value",
+                        "source": "metric",
+                        "ref": "source_metric",
+                    }
+                ],
+            )
+        )
+
+        with pytest.raises(ValidationError, match="ratio"):
+            DomainConfig.model_validate(data)
+
+    @pytest.mark.parametrize("operator", ["sum", "mean", "latest"])
+    def test_scorecard_value_formulas_require_value_input(self, operator: str) -> None:
+        data = _config_data_with_scorecard_metric(
+            _scorecard_metric_data(
+                formula={"operator": operator, "numerator": "value"},
+                inputs=[
+                    {
+                        "name": "value",
+                        "source": "metric",
+                        "ref": "source_metric",
+                    }
+                ],
+            )
+        )
+
+        with pytest.raises(ValidationError, match=operator):
+            DomainConfig.model_validate(data)
+
+    def test_scorecard_weighted_mean_formula_requires_weight(self) -> None:
+        data = _config_data_with_scorecard_metric(
+            _scorecard_metric_data(
+                formula={"operator": "weighted_mean", "value": "value"},
+                inputs=[
+                    {
+                        "name": "value",
+                        "source": "metric",
+                        "ref": "source_metric",
+                    }
+                ],
+            )
+        )
+
+        with pytest.raises(ValidationError, match="weighted_mean"):
+            DomainConfig.model_validate(data)
+
+    def test_scorecard_record_feed_input_requires_field(self) -> None:
+        data = _config_data_with_record_feed_scorecard_input(
+            {
+                "name": "source",
+                "source": "record_feed",
+                "ref": "source_feed",
+            }
+        )
+
+        with pytest.raises(ValidationError, match="requires field"):
+            DomainConfig.model_validate(data)
+
+    def test_scorecard_record_feed_input_rejects_unknown_field(self) -> None:
+        data = _config_data_with_record_feed_scorecard_input(
+            {
+                "name": "source",
+                "source": "record_feed",
+                "ref": "source_feed",
+                "field": "missing_score",
+            }
+        )
+
+        with pytest.raises(ValidationError, match="unknown field"):
             DomainConfig.model_validate(data)
 
 

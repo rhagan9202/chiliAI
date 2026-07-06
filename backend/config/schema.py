@@ -469,6 +469,67 @@ class ScorecardFormulaConfig(BaseModel):
     value: str | None = None
     weight: str | None = None
 
+    @model_validator(mode="after")
+    def _validate_operator_shape(self) -> ScorecardFormulaConfig:
+        if self.operator == "ratio":
+            missing = [
+                field_name
+                for field_name, input_ref in (
+                    ("numerator", self.numerator),
+                    ("denominator", self.denominator),
+                )
+                if input_ref is None
+            ]
+            extra = [
+                field_name
+                for field_name, input_ref in (
+                    ("value", self.value),
+                    ("weight", self.weight),
+                )
+                if input_ref is not None
+            ]
+        elif self.operator in {"sum", "mean", "latest"}:
+            missing = ["value"] if self.value is None else []
+            extra = [
+                field_name
+                for field_name, input_ref in (
+                    ("numerator", self.numerator),
+                    ("denominator", self.denominator),
+                    ("weight", self.weight),
+                )
+                if input_ref is not None
+            ]
+        else:
+            missing = [
+                field_name
+                for field_name, input_ref in (
+                    ("value", self.value),
+                    ("weight", self.weight),
+                )
+                if input_ref is None
+            ]
+            extra = [
+                field_name
+                for field_name, input_ref in (
+                    ("numerator", self.numerator),
+                    ("denominator", self.denominator),
+                )
+                if input_ref is not None
+            ]
+
+        if missing or extra:
+            message_parts: list[str] = []
+            if missing:
+                message_parts.append(f"requires {', '.join(missing)}")
+            if extra:
+                message_parts.append(f"does not accept {', '.join(extra)}")
+            raise ValueError(
+                f"Scorecard formula operator '{self.operator}' "
+                f"{' and '.join(message_parts)}."
+            )
+
+        return self
+
 
 class ScorecardThresholdConfig(BaseModel):
     """Thresholds used to classify a configured scorecard metric."""
@@ -752,7 +813,10 @@ class DomainConfig(BaseModel):
                     )
 
         # --- scorecard template references ---
-        feed_names = {feed.name for feed in records_config.feeds}
+        feed_schemas = {
+            feed.name: set(feed.record_schema.keys())
+            for feed in records_config.feeds
+        }
         for template in self.scorecards.templates:
             metric_ids: set[str] = set()
             for section in template.sections:
@@ -766,15 +830,28 @@ class DomainConfig(BaseModel):
 
                     input_names = {metric_input.name for metric_input in metric.inputs}
                     for metric_input in metric.inputs:
-                        if (
-                            metric_input.source == "record_feed"
-                            and metric_input.ref not in feed_names
-                        ):
-                            errors.append(
-                                f"Scorecard metric '{metric.id}' in template "
-                                f"'{template.id}' references unknown records feed "
-                                f"'{metric_input.ref}'."
-                            )
+                        if metric_input.source == "record_feed":
+                            feed_schema = feed_schemas.get(metric_input.ref)
+                            if feed_schema is None:
+                                errors.append(
+                                    f"Scorecard metric '{metric.id}' in template "
+                                    f"'{template.id}' references unknown records feed "
+                                    f"'{metric_input.ref}'."
+                                )
+                            elif metric_input.field is None:
+                                errors.append(
+                                    f"Scorecard metric '{metric.id}' in template "
+                                    f"'{template.id}' record_feed input "
+                                    f"'{metric_input.name}' requires field."
+                                )
+                            elif metric_input.field not in feed_schema:
+                                errors.append(
+                                    f"Scorecard metric '{metric.id}' in template "
+                                    f"'{template.id}' record_feed input "
+                                    f"'{metric_input.name}' references unknown field "
+                                    f"'{metric_input.field}' in records feed "
+                                    f"'{metric_input.ref}'."
+                                )
 
                     formula_refs = (
                         ("numerator", metric.formula.numerator),

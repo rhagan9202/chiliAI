@@ -125,8 +125,10 @@ Section checklist for a first-class pack:
    template declares category, scope, period, sections, metrics, bounded
    formula operators (`ratio`, `sum`, `mean`, `weighted_mean`, `latest`),
    record-feed inputs, thresholds, freshness windows, and export formats.
-   The Air Force housing pack ships UH and MFH templates exporting JSON and
-   Markdown.
+   Formula fields are operator-specific: ratios use numerator/denominator,
+   sums/means/latest use value, and weighted means use value/weight. Record
+   feed inputs must name a declared feed field. The Air Force housing pack
+   ships UH and MFH templates exporting JSON and Markdown.
 8. **`alerts.thresholds`** — per-entity-type metric thresholds.
 9. **`ui`** — this drives dynamic frontend rendering: `default_entity_type`,
    `navigation.pages` (id/label/route, optional `capability` gate),
@@ -155,8 +157,9 @@ Section checklist for a first-class pack:
   same feed; observation entity types must be mapped by the feed;
 - scorecard template integrity: duplicate template/section IDs fail, metric
   IDs must be unique across each template, record-feed inputs must reference
-  declared feeds, formula input references must name declared metric inputs,
-  and metric freshness windows must be positive;
+  declared feeds and fields in those feeds, formula shapes must match their
+  operators, formula input references must name declared metric inputs, and
+  metric freshness windows must be positive;
 - policy-rule `config_ref`s not declared in the owning pack's `thresholds`;
 - `vectorstore.dimensions` != `embeddings.dimensions` when both are set.
 
