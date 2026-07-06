@@ -1863,6 +1863,9 @@
             "title": "Schema Version",
             "type": "string"
           },
+          "scorecards": {
+            "$ref": "#/components/schemas/ScorecardsConfig"
+          },
           "storage": {
             "anyOf": [
               {
@@ -2606,6 +2609,306 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HousingExecutiveKpiResponse": {
+        "description": "One executive KPI in the Air Force housing dashboard.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "status": {
+            "default": "unknown",
+            "enum": [
+              "ok",
+              "watch",
+              "critical",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "default": "",
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "HousingExecutiveKpiResponse",
+        "type": "object"
+      },
+      "HousingInstallationMapPointResponse": {
+        "description": "Map point for one housing installation.",
+        "properties": {
+          "installation_id": {
+            "title": "Installation Id",
+            "type": "string"
+          },
+          "latitude": {
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "default": "unknown",
+            "enum": [
+              "ok",
+              "watch",
+              "critical",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "installation_id",
+          "name",
+          "latitude",
+          "longitude"
+        ],
+        "title": "HousingInstallationMapPointResponse",
+        "type": "object"
+      },
+      "HousingInstallationResponse": {
+        "description": "One installation row for the housing dashboard.",
+        "properties": {
+          "installation_id": {
+            "title": "Installation Id",
+            "type": "string"
+          },
+          "majcom": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Majcom"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "occupancy_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occupancy Rate"
+          },
+          "open_work_orders": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Open Work Orders",
+            "type": "integer"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "status": {
+            "default": "unknown",
+            "enum": [
+              "ok",
+              "watch",
+              "critical",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "installation_id",
+          "name"
+        ],
+        "title": "HousingInstallationResponse",
+        "type": "object"
+      },
+      "HousingInstallationsResponse": {
+        "description": "Safe empty installation list and map payload.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HousingInstallationResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "map_points": {
+            "items": {
+              "$ref": "#/components/schemas/HousingInstallationMapPointResponse"
+            },
+            "title": "Map Points",
+            "type": "array"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "total": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "title": "HousingInstallationsResponse",
+        "type": "object"
+      },
+      "HousingOverviewResponse": {
+        "description": "Safe empty overview payload for the housing executive dashboard.",
+        "properties": {
+          "executive_kpis": {
+            "items": {
+              "$ref": "#/components/schemas/HousingExecutiveKpiResponse"
+            },
+            "title": "Executive Kpis",
+            "type": "array"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "portfolio_summary": {
+            "$ref": "#/components/schemas/HousingPortfolioSummaryResponse"
+          }
+        },
+        "title": "HousingOverviewResponse",
+        "type": "object"
+      },
+      "HousingPortfolioSummaryResponse": {
+        "description": "Empty-safe executive housing portfolio totals.",
+        "properties": {
+          "installations_reporting": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Installations Reporting",
+            "type": "integer"
+          },
+          "occupancy_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occupancy Rate"
+          },
+          "open_work_orders": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Open Work Orders",
+            "type": "integer"
+          },
+          "overdue_work_orders": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Overdue Work Orders",
+            "type": "integer"
+          },
+          "resident_satisfaction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resident Satisfaction"
+          },
+          "total_installations": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Total Installations",
+            "type": "integer"
+          }
+        },
+        "title": "HousingPortfolioSummaryResponse",
         "type": "object"
       },
       "IngestionConfig": {
@@ -4517,6 +4820,775 @@
           "risk_level"
         ],
         "title": "RiskScoreResponse",
+        "type": "object"
+      },
+      "ScorecardCitationResponse": {
+        "description": "Source reference attached to one scorecard metric.",
+        "properties": {
+          "citation_id": {
+            "title": "Citation Id",
+            "type": "string"
+          },
+          "feed_name": {
+            "title": "Feed Name",
+            "type": "string"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "citation_id",
+          "feed_name",
+          "record_id"
+        ],
+        "title": "ScorecardCitationResponse",
+        "type": "object"
+      },
+      "ScorecardExportResponse": {
+        "description": "Stored scorecard export content.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "json",
+              "markdown"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "format",
+          "content"
+        ],
+        "title": "ScorecardExportResponse",
+        "type": "object"
+      },
+      "ScorecardFormulaConfig": {
+        "description": "Bounded scorecard formula; no arbitrary code execution.",
+        "properties": {
+          "denominator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Denominator"
+          },
+          "numerator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Numerator"
+          },
+          "operator": {
+            "enum": [
+              "ratio",
+              "sum",
+              "mean",
+              "weighted_mean",
+              "latest"
+            ],
+            "title": "Operator",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Value"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Weight"
+          }
+        },
+        "required": [
+          "operator"
+        ],
+        "title": "ScorecardFormulaConfig",
+        "type": "object"
+      },
+      "ScorecardMetricConfig": {
+        "description": "A configured scorecard metric with safe formula metadata.",
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "formula": {
+            "$ref": "#/components/schemas/ScorecardFormulaConfig"
+          },
+          "freshness_days": {
+            "default": 90,
+            "exclusiveMinimum": 0,
+            "title": "Freshness Days",
+            "type": "integer"
+          },
+          "housing_category": {
+            "default": "combined",
+            "enum": [
+              "UH",
+              "MFH",
+              "combined"
+            ],
+            "title": "Housing Category",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/ScorecardMetricInputConfig"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "thresholds": {
+            "$ref": "#/components/schemas/ScorecardThresholdConfig"
+          },
+          "unit": {
+            "default": "",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "inputs",
+          "formula",
+          "thresholds"
+        ],
+        "title": "ScorecardMetricConfig",
+        "type": "object"
+      },
+      "ScorecardMetricInputConfig": {
+        "description": "One named input consumed by a configured scorecard metric.",
+        "properties": {
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Field"
+          },
+          "filter": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "title": "Filter",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "record_feed",
+              "metric",
+              "graph",
+              "document"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "source",
+          "ref"
+        ],
+        "title": "ScorecardMetricInputConfig",
+        "type": "object"
+      },
+      "ScorecardMetricResponse": {
+        "description": "Frontend-safe metric result with a stable metric_id field.",
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/ScorecardCitationResponse"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "completeness": {
+            "enum": [
+              "complete",
+              "missing_source",
+              "stale_source",
+              "formula_error"
+            ],
+            "title": "Completeness",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "health": {
+            "enum": [
+              "pass",
+              "warn",
+              "fail",
+              "incomplete"
+            ],
+            "title": "Health",
+            "type": "string"
+          },
+          "housing_category": {
+            "default": "combined",
+            "enum": [
+              "UH",
+              "MFH",
+              "combined"
+            ],
+            "title": "Housing Category",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "metric_id": {
+            "title": "Metric Id",
+            "type": "string"
+          },
+          "unit": {
+            "default": "",
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "metric_id",
+          "label",
+          "health",
+          "completeness"
+        ],
+        "title": "ScorecardMetricResponse",
+        "type": "object"
+      },
+      "ScorecardRunGenerateRequest": {
+        "description": "Payload for generating a scorecard run.",
+        "properties": {
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "scope_id": {
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "scope_type": {
+            "title": "Scope Type",
+            "type": "string"
+          },
+          "template_id": {
+            "title": "Template Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "template_id",
+          "scope_type",
+          "scope_id",
+          "period_start",
+          "period_end"
+        ],
+        "title": "ScorecardRunGenerateRequest",
+        "type": "object"
+      },
+      "ScorecardRunListResponse": {
+        "description": "Paginated scorecard run collection.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScorecardRunResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "ScorecardRunListResponse",
+        "type": "object"
+      },
+      "ScorecardRunResponse": {
+        "description": "Frontend-facing scorecard run without stored export payloads.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "overall_health": {
+            "enum": [
+              "pass",
+              "warn",
+              "fail",
+              "incomplete"
+            ],
+            "title": "Overall Health",
+            "type": "string"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "scope_id": {
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "scope_type": {
+            "title": "Scope Type",
+            "type": "string"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ScorecardSectionResponse"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "source_snapshot_hash": {
+            "title": "Source Snapshot Hash",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "generated",
+              "failed",
+              "superseded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "template_id": {
+            "title": "Template Id",
+            "type": "string"
+          },
+          "template_name": {
+            "title": "Template Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "knowledge_base_id",
+          "template_id",
+          "template_name",
+          "scope_type",
+          "scope_id",
+          "period_start",
+          "period_end",
+          "source_snapshot_hash",
+          "status",
+          "overall_health",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ScorecardRunResponse",
+        "type": "object"
+      },
+      "ScorecardSectionConfig": {
+        "description": "A grouped set of scorecard metrics.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/ScorecardMetricConfig"
+            },
+            "title": "Metrics",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "metrics"
+        ],
+        "title": "ScorecardSectionConfig",
+        "type": "object"
+      },
+      "ScorecardSectionResponse": {
+        "description": "A scorecard section with evaluated metrics.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/ScorecardMetricResponse"
+            },
+            "title": "Metrics",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "ScorecardSectionResponse",
+        "type": "object"
+      },
+      "ScorecardTemplateConfig": {
+        "description": "A safe configurable scorecard template.",
+        "properties": {
+          "category": {
+            "enum": [
+              "UH",
+              "MFH",
+              "combined"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "export_formats": {
+            "items": {
+              "enum": [
+                "json",
+                "markdown"
+              ],
+              "type": "string"
+            },
+            "title": "Export Formats",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "period": {
+            "enum": [
+              "monthly",
+              "quarterly",
+              "annual",
+              "ad_hoc"
+            ],
+            "title": "Period",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "enterprise",
+              "majcom",
+              "region",
+              "installation",
+              "market_area"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ScorecardSectionConfig"
+            },
+            "title": "Sections",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "category",
+          "scope",
+          "period",
+          "sections"
+        ],
+        "title": "ScorecardTemplateConfig",
+        "type": "object"
+      },
+      "ScorecardTemplateListResponse": {
+        "description": "Configured scorecard templates.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScorecardTemplateResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "ScorecardTemplateListResponse",
+        "type": "object"
+      },
+      "ScorecardTemplateResponse": {
+        "description": "Configured scorecard template summary for dashboard selectors.",
+        "properties": {
+          "category": {
+            "enum": [
+              "UH",
+              "MFH",
+              "combined"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "period": {
+            "enum": [
+              "monthly",
+              "quarterly",
+              "annual",
+              "ad_hoc"
+            ],
+            "title": "Period",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "enterprise",
+              "majcom",
+              "region",
+              "installation",
+              "market_area"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "category",
+          "scope",
+          "period"
+        ],
+        "title": "ScorecardTemplateResponse",
+        "type": "object"
+      },
+      "ScorecardThresholdConfig": {
+        "description": "Thresholds used to classify a configured scorecard metric.",
+        "properties": {
+          "fail_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Fail Max"
+          },
+          "incomplete_when_missing": {
+            "default": true,
+            "title": "Incomplete When Missing",
+            "type": "boolean"
+          },
+          "pass_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pass Min"
+          },
+          "warn_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Warn Min"
+          }
+        },
+        "title": "ScorecardThresholdConfig",
+        "type": "object"
+      },
+      "ScorecardsConfig": {
+        "description": "Collection of configured scorecard templates for the domain.",
+        "properties": {
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/ScorecardTemplateConfig"
+            },
+            "title": "Templates",
+            "type": "array"
+          }
+        },
+        "title": "ScorecardsConfig",
         "type": "object"
       },
       "SwitchPackRequest": {
@@ -6652,6 +7724,142 @@
         "summary": "Health"
       }
     },
+    "/housing/installations": {
+      "get": {
+        "description": "Return a safe empty installation list and map model.",
+        "operationId": "list_installations_housing_installations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period_start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period_end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HousingInstallationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Installations",
+        "tags": [
+          "housing"
+        ]
+      }
+    },
+    "/housing/overview": {
+      "get": {
+        "description": "Return a safe empty executive housing KPI model.",
+        "operationId": "get_overview_housing_overview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period_start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period_end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HousingOverviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Overview",
+        "tags": [
+          "housing"
+        ]
+      }
+    },
     "/investigation/entities/{entity_id}": {
       "get": {
         "description": "Return a single entity from the knowledge base or 404 if unknown.",
@@ -7517,6 +8725,292 @@
         "summary": "Push Records",
         "tags": [
           "records"
+        ]
+      }
+    },
+    "/scorecards/runs": {
+      "get": {
+        "description": "Return scorecard runs scoped to one knowledge base.",
+        "operationId": "list_runs_scorecards_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "template_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Template Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "generated",
+                    "failed",
+                    "superseded"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScorecardRunListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Runs",
+        "tags": [
+          "scorecards"
+        ]
+      },
+      "post": {
+        "description": "Generate and persist a scorecard run.",
+        "operationId": "generate_run_scorecards_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScorecardRunGenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScorecardRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Run",
+        "tags": [
+          "scorecards"
+        ]
+      }
+    },
+    "/scorecards/runs/{run_id}": {
+      "get": {
+        "description": "Return one scorecard run by ID and knowledge-base scope.",
+        "operationId": "get_run_scorecards_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScorecardRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "scorecards"
+        ]
+      }
+    },
+    "/scorecards/runs/{run_id}/export": {
+      "get": {
+        "description": "Return a stored JSON or Markdown export for one scorecard run.",
+        "operationId": "export_run_scorecards_runs__run_id__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "enum": [
+                "json",
+                "markdown"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScorecardExportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Run",
+        "tags": [
+          "scorecards"
+        ]
+      }
+    },
+    "/scorecards/templates": {
+      "get": {
+        "description": "Return configured scorecard templates.",
+        "operationId": "list_templates_scorecards_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScorecardTemplateListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Templates",
+        "tags": [
+          "scorecards"
         ]
       }
     },

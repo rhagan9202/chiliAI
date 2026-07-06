@@ -658,6 +658,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/housing/installations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Installations
+         * @description Return a safe empty installation list and map model.
+         */
+        get: operations["list_installations_housing_installations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/housing/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Overview
+         * @description Return a safe empty executive housing KPI model.
+         */
+        get: operations["get_overview_housing_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/investigation/entities/{entity_id}": {
         parameters: {
             query?: never;
@@ -926,6 +966,90 @@ export interface paths {
          * @description Ingest a JSON array of record rows into the named feed.
          */
         post: operations["push_records_records__knowledge_base_id__push_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scorecards/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description Return scorecard runs scoped to one knowledge base.
+         */
+        get: operations["list_runs_scorecards_runs_get"];
+        put?: never;
+        /**
+         * Generate Run
+         * @description Generate and persist a scorecard run.
+         */
+        post: operations["generate_run_scorecards_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scorecards/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run
+         * @description Return one scorecard run by ID and knowledge-base scope.
+         */
+        get: operations["get_run_scorecards_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scorecards/runs/{run_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Run
+         * @description Return a stored JSON or Markdown export for one scorecard run.
+         */
+        get: operations["export_run_scorecards_runs__run_id__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scorecards/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Templates
+         * @description Return configured scorecard templates.
+         */
+        get: operations["list_templates_scorecards_templates_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1868,6 +1992,7 @@ export interface components {
              * @default 1.0
              */
             schema_version: string;
+            scorecards?: components["schemas"]["ScorecardsConfig"];
             /** @default null */
             storage: components["schemas"]["ObjectStoreConfig"] | null;
             /** @default null */
@@ -2212,6 +2337,138 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * HousingExecutiveKpiResponse
+         * @description One executive KPI in the Air Force housing dashboard.
+         */
+        HousingExecutiveKpiResponse: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @default unknown
+             * @enum {string}
+             */
+            status: "ok" | "watch" | "critical" | "unknown";
+            /**
+             * Unit
+             * @default
+             */
+            unit: string;
+            /** Value */
+            value?: number | null;
+        };
+        /**
+         * HousingInstallationMapPointResponse
+         * @description Map point for one housing installation.
+         */
+        HousingInstallationMapPointResponse: {
+            /** Installation Id */
+            installation_id: string;
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @default unknown
+             * @enum {string}
+             */
+            status: "ok" | "watch" | "critical" | "unknown";
+        };
+        /**
+         * HousingInstallationResponse
+         * @description One installation row for the housing dashboard.
+         */
+        HousingInstallationResponse: {
+            /** Installation Id */
+            installation_id: string;
+            /** Majcom */
+            majcom?: string | null;
+            /** Name */
+            name: string;
+            /** Occupancy Rate */
+            occupancy_rate?: number | null;
+            /**
+             * Open Work Orders
+             * @default 0
+             */
+            open_work_orders: number;
+            /** State */
+            state?: string | null;
+            /**
+             * Status
+             * @default unknown
+             * @enum {string}
+             */
+            status: "ok" | "watch" | "critical" | "unknown";
+        };
+        /**
+         * HousingInstallationsResponse
+         * @description Safe empty installation list and map payload.
+         */
+        HousingInstallationsResponse: {
+            /** Items */
+            items?: components["schemas"]["HousingInstallationResponse"][];
+            /** Map Points */
+            map_points?: components["schemas"]["HousingInstallationMapPointResponse"][];
+            /** Period End */
+            period_end?: string | null;
+            /** Period Start */
+            period_start?: string | null;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /**
+         * HousingOverviewResponse
+         * @description Safe empty overview payload for the housing executive dashboard.
+         */
+        HousingOverviewResponse: {
+            /** Executive Kpis */
+            executive_kpis?: components["schemas"]["HousingExecutiveKpiResponse"][];
+            /** Period End */
+            period_end?: string | null;
+            /** Period Start */
+            period_start?: string | null;
+            portfolio_summary?: components["schemas"]["HousingPortfolioSummaryResponse"];
+        };
+        /**
+         * HousingPortfolioSummaryResponse
+         * @description Empty-safe executive housing portfolio totals.
+         */
+        HousingPortfolioSummaryResponse: {
+            /**
+             * Installations Reporting
+             * @default 0
+             */
+            installations_reporting: number;
+            /** Occupancy Rate */
+            occupancy_rate?: number | null;
+            /**
+             * Open Work Orders
+             * @default 0
+             */
+            open_work_orders: number;
+            /**
+             * Overdue Work Orders
+             * @default 0
+             */
+            overdue_work_orders: number;
+            /** Resident Satisfaction */
+            resident_satisfaction?: number | null;
+            /**
+             * Total Installations
+             * @default 0
+             */
+            total_installations: number;
         };
         /**
          * IngestionConfig
@@ -3155,6 +3412,382 @@ export interface components {
             risk_level: "low" | "medium" | "high" | "critical";
             /** Unavailable Reason */
             unavailable_reason?: string | null;
+        };
+        /**
+         * ScorecardCitationResponse
+         * @description Source reference attached to one scorecard metric.
+         */
+        ScorecardCitationResponse: {
+            /** Citation Id */
+            citation_id: string;
+            /** Feed Name */
+            feed_name: string;
+            /** Field */
+            field?: string | null;
+            /** Record Id */
+            record_id: string;
+        };
+        /**
+         * ScorecardExportResponse
+         * @description Stored scorecard export content.
+         */
+        ScorecardExportResponse: {
+            /** Content */
+            content: string;
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "json" | "markdown";
+            /** Run Id */
+            run_id: string;
+        };
+        /**
+         * ScorecardFormulaConfig
+         * @description Bounded scorecard formula; no arbitrary code execution.
+         */
+        ScorecardFormulaConfig: {
+            /**
+             * Denominator
+             * @default null
+             */
+            denominator: string | null;
+            /**
+             * Numerator
+             * @default null
+             */
+            numerator: string | null;
+            /**
+             * Operator
+             * @enum {string}
+             */
+            operator: "ratio" | "sum" | "mean" | "weighted_mean" | "latest";
+            /**
+             * Value
+             * @default null
+             */
+            value: string | null;
+            /**
+             * Weight
+             * @default null
+             */
+            weight: string | null;
+        };
+        /**
+         * ScorecardMetricConfig
+         * @description A configured scorecard metric with safe formula metadata.
+         */
+        ScorecardMetricConfig: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            formula: components["schemas"]["ScorecardFormulaConfig"];
+            /**
+             * Freshness Days
+             * @default 90
+             */
+            freshness_days: number;
+            /**
+             * Housing Category
+             * @default combined
+             * @enum {string}
+             */
+            housing_category: "UH" | "MFH" | "combined";
+            /** Id */
+            id: string;
+            /** Inputs */
+            inputs: components["schemas"]["ScorecardMetricInputConfig"][];
+            /** Label */
+            label: string;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            thresholds: components["schemas"]["ScorecardThresholdConfig"];
+            /**
+             * Unit
+             * @default
+             */
+            unit: string;
+        };
+        /**
+         * ScorecardMetricInputConfig
+         * @description One named input consumed by a configured scorecard metric.
+         */
+        ScorecardMetricInputConfig: {
+            /**
+             * Field
+             * @default null
+             */
+            field: string | null;
+            /** Filter */
+            filter?: {
+                [key: string]: string | number | boolean;
+            };
+            /** Name */
+            name: string;
+            /** Ref */
+            ref: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "record_feed" | "metric" | "graph" | "document";
+        };
+        /**
+         * ScorecardMetricResponse
+         * @description Frontend-safe metric result with a stable metric_id field.
+         */
+        ScorecardMetricResponse: {
+            /** Citations */
+            citations?: components["schemas"]["ScorecardCitationResponse"][];
+            /**
+             * Completeness
+             * @enum {string}
+             */
+            completeness: "complete" | "missing_source" | "stale_source" | "formula_error";
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Health
+             * @enum {string}
+             */
+            health: "pass" | "warn" | "fail" | "incomplete";
+            /**
+             * Housing Category
+             * @default combined
+             * @enum {string}
+             */
+            housing_category: "UH" | "MFH" | "combined";
+            /** Label */
+            label: string;
+            /** Metric Id */
+            metric_id: string;
+            /**
+             * Unit
+             * @default
+             */
+            unit: string;
+            /** Value */
+            value?: number | null;
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * ScorecardRunGenerateRequest
+         * @description Payload for generating a scorecard run.
+         */
+        ScorecardRunGenerateRequest: {
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /** Scope Id */
+            scope_id: string;
+            /** Scope Type */
+            scope_type: string;
+            /** Template Id */
+            template_id: string;
+        };
+        /**
+         * ScorecardRunListResponse
+         * @description Paginated scorecard run collection.
+         */
+        ScorecardRunListResponse: {
+            /** Items */
+            items?: components["schemas"]["ScorecardRunResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * ScorecardRunResponse
+         * @description Frontend-facing scorecard run without stored export payloads.
+         */
+        ScorecardRunResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /**
+             * Overall Health
+             * @enum {string}
+             */
+            overall_health: "pass" | "warn" | "fail" | "incomplete";
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /** Scope Id */
+            scope_id: string;
+            /** Scope Type */
+            scope_type: string;
+            /** Sections */
+            sections?: components["schemas"]["ScorecardSectionResponse"][];
+            /** Source Snapshot Hash */
+            source_snapshot_hash: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "generated" | "failed" | "superseded";
+            /** Template Id */
+            template_id: string;
+            /** Template Name */
+            template_name: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ScorecardSectionConfig
+         * @description A grouped set of scorecard metrics.
+         */
+        ScorecardSectionConfig: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Metrics */
+            metrics: components["schemas"]["ScorecardMetricConfig"][];
+        };
+        /**
+         * ScorecardSectionResponse
+         * @description A scorecard section with evaluated metrics.
+         */
+        ScorecardSectionResponse: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Metrics */
+            metrics?: components["schemas"]["ScorecardMetricResponse"][];
+        };
+        /**
+         * ScorecardTemplateConfig
+         * @description A safe configurable scorecard template.
+         */
+        ScorecardTemplateConfig: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "UH" | "MFH" | "combined";
+            /** Export Formats */
+            export_formats?: ("json" | "markdown")[];
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Period
+             * @enum {string}
+             */
+            period: "monthly" | "quarterly" | "annual" | "ad_hoc";
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "enterprise" | "majcom" | "region" | "installation" | "market_area";
+            /** Sections */
+            sections: components["schemas"]["ScorecardSectionConfig"][];
+        };
+        /**
+         * ScorecardTemplateListResponse
+         * @description Configured scorecard templates.
+         */
+        ScorecardTemplateListResponse: {
+            /** Items */
+            items?: components["schemas"]["ScorecardTemplateResponse"][];
+        };
+        /**
+         * ScorecardTemplateResponse
+         * @description Configured scorecard template summary for dashboard selectors.
+         */
+        ScorecardTemplateResponse: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "UH" | "MFH" | "combined";
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Period
+             * @enum {string}
+             */
+            period: "monthly" | "quarterly" | "annual" | "ad_hoc";
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "enterprise" | "majcom" | "region" | "installation" | "market_area";
+        };
+        /**
+         * ScorecardThresholdConfig
+         * @description Thresholds used to classify a configured scorecard metric.
+         */
+        ScorecardThresholdConfig: {
+            /**
+             * Fail Max
+             * @default null
+             */
+            fail_max: number | null;
+            /**
+             * Incomplete When Missing
+             * @default true
+             */
+            incomplete_when_missing: boolean;
+            /**
+             * Pass Min
+             * @default null
+             */
+            pass_min: number | null;
+            /**
+             * Warn Min
+             * @default null
+             */
+            warn_min: number | null;
+        };
+        /**
+         * ScorecardsConfig
+         * @description Collection of configured scorecard templates for the domain.
+         */
+        ScorecardsConfig: {
+            /** Templates */
+            templates?: components["schemas"]["ScorecardTemplateConfig"][];
         };
         /**
          * SwitchPackRequest
@@ -4470,6 +5103,70 @@ export interface operations {
             };
         };
     };
+    list_installations_housing_installations_get: {
+        parameters: {
+            query?: {
+                period_start?: string | null;
+                period_end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HousingInstallationsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_overview_housing_overview_get: {
+        parameters: {
+            query?: {
+                period_start?: string | null;
+                period_end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HousingOverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     read_entity_investigation_entities__entity_id__get: {
         parameters: {
             query: {
@@ -4994,6 +5691,161 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_scorecards_runs_get: {
+        parameters: {
+            query: {
+                knowledge_base_id: string;
+                template_id?: string | null;
+                status?: ("generated" | "failed" | "superseded") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScorecardRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_run_scorecards_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScorecardRunGenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScorecardRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_scorecards_runs__run_id__get: {
+        parameters: {
+            query: {
+                knowledge_base_id: string;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScorecardRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_run_scorecards_runs__run_id__export_get: {
+        parameters: {
+            query: {
+                knowledge_base_id: string;
+                format?: "json" | "markdown";
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScorecardExportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_templates_scorecards_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScorecardTemplateListResponse"];
                 };
             };
         };

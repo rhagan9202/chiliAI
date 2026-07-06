@@ -186,6 +186,49 @@ export type RecordIngestReceipt = Schemas['RecordIngestReceipt']
 export type WorkflowRunResponse = Schemas['WorkflowRunResponse']
 export type WorkflowRunListResponse = RequireFields<Schemas['WorkflowRunListResponse'], 'items'>
 
+export type ScorecardRunStatus = Schemas['ScorecardRunResponse']['status']
+export type ScorecardExportFormat = Schemas['ScorecardExportResponse']['format']
+export type ScorecardTemplateResponse = Schemas['ScorecardTemplateResponse']
+export type ScorecardTemplateListResponse = RequireFields<
+  Schemas['ScorecardTemplateListResponse'],
+  'items'
+>
+export type ScorecardRunGenerateRequest = Schemas['ScorecardRunGenerateRequest']
+export type ScorecardCitationResponse = Schemas['ScorecardCitationResponse']
+export type ScorecardMetricResponse = RequireFields<
+  Schemas['ScorecardMetricResponse'],
+  'citations' | 'warnings'
+>
+export type ScorecardSectionResponse = Omit<Schemas['ScorecardSectionResponse'], 'metrics'> & {
+  metrics: ScorecardMetricResponse[]
+}
+export type ScorecardRunResponse = Omit<
+  RequireFields<Schemas['ScorecardRunResponse'], 'sections'>,
+  'sections'
+> & {
+  sections: ScorecardSectionResponse[]
+}
+export type ScorecardRunListResponse = Omit<
+  RequireFields<Schemas['ScorecardRunListResponse'], 'items'>,
+  'items'
+> & {
+  items: ScorecardRunResponse[]
+}
+export type ScorecardExportResponse = Schemas['ScorecardExportResponse']
+
+export type HousingPortfolioSummaryResponse = Schemas['HousingPortfolioSummaryResponse']
+export type HousingExecutiveKpiResponse = Schemas['HousingExecutiveKpiResponse']
+export type HousingOverviewResponse = RequireFields<
+  Schemas['HousingOverviewResponse'],
+  'executive_kpis' | 'portfolio_summary'
+>
+export type HousingInstallationResponse = Schemas['HousingInstallationResponse']
+export type HousingInstallationMapPointResponse = Schemas['HousingInstallationMapPointResponse']
+export type HousingInstallationsResponse = RequireFields<
+  Schemas['HousingInstallationsResponse'],
+  'items' | 'map_points'
+>
+
 export type RiskFactorResponse = Schemas['RiskFactorResponse']
 export type RiskScoreResponse = RequireFields<Schemas['RiskScoreResponse'], 'factors'>
 export type RiskScoreListResponse = Schemas['RiskScoreListResponse']
