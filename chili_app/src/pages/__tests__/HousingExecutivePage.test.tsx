@@ -181,10 +181,13 @@ describe('HousingExecutivePage', () => {
     const detail = screen.getByRole('region', { name: 'Installation detail' })
     expect(within(detail).getByText('Barksdale AFB')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Select Edwards AFB on map' }))
+    fireEvent.click(screen.getByRole('button', {
+      name: 'Select Edwards AFB on map, critical status, 95 open work orders',
+    }))
 
     expect(within(detail).getByText('Edwards AFB')).toBeInTheDocument()
     expect(within(detail).getByText('AFMC')).toBeInTheDocument()
+    expect(screen.getByText('Jun 1 - Jun 30')).toBeInTheDocument()
 
     const ragLink = within(detail).getByRole('link', { name: /ask ai about edwards afb/i })
     expect(ragLink).toHaveAttribute('href', expect.stringContaining('/rag-chat?'))
@@ -198,5 +201,22 @@ describe('HousingExecutivePage', () => {
 
     const detail = screen.getByRole('region', { name: 'Installation detail' })
     expect(within(detail).getByText('Edwards AFB')).toBeInTheDocument()
+  })
+
+  it('disables generation and omits KB context when no ready knowledge base exists', () => {
+    const processingKb: KnowledgeBaseListResponse = {
+      total: 1,
+      items: [{ ...knowledgeBases.items[0], status: 'building' }],
+    }
+    mocks.useKnowledgeBases.mockReturnValue(querySuccess(processingKb))
+
+    renderPage('/housing?installation=edwards')
+
+    expect(screen.getByText('Unavailable')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Generate scorecard' })).toBeDisabled()
+
+    const detail = screen.getByRole('region', { name: 'Installation detail' })
+    const ragLink = within(detail).getByRole('link', { name: /ask ai about edwards afb/i })
+    expect(ragLink).toHaveAttribute('href', expect.not.stringContaining('kb='))
   })
 })

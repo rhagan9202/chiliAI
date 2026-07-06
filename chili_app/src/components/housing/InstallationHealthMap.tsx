@@ -104,11 +104,12 @@ export function InstallationHealthMap({
         {mapPoints.map((point) => {
           const installation = installationById.get(point.installation_id)
           const status = installation?.status ?? point.status
+          const openWorkOrders = installation?.open_work_orders ?? 0
           const selected = point.installation_id === selectedInstallationId
           return (
             <button
               aria-pressed={selected}
-              aria-label={`Select ${point.name} on map`}
+              aria-label={`Select ${point.name} on map, ${status} status, ${openWorkOrders} open work orders`}
               className={selected ? `${styles.marker} ${styles.markerSelected}` : styles.marker}
               key={point.installation_id}
               onClick={() => onSelectInstallation(point.installation_id)}

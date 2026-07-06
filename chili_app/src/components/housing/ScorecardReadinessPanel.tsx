@@ -29,7 +29,14 @@ function healthTone(health: ScorecardRunResponse['overall_health']) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(value))
+  const [datePart] = value.split('T')
+  const [year, month, day] = datePart.split('-').map((part) => Number(part))
+  if (!year || !month || !day) {
+    return value
+  }
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
+    new Date(year, month - 1, day),
+  )
 }
 
 export function ScorecardReadinessPanel({

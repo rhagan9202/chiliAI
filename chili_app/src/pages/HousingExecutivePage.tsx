@@ -58,7 +58,7 @@ export function HousingExecutivePage() {
   const installationsQuery = useHousingInstallations()
   const knowledgeBasesQuery = useKnowledgeBases()
   const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
-  const activeKnowledgeBase = knowledgeBases.find((kb) => kb.status === 'ready') ?? knowledgeBases[0] ?? null
+  const activeKnowledgeBase = knowledgeBases.find((kb) => kb.status === 'ready') ?? null
   const templatesQuery = useScorecardTemplates()
   const runsQuery = useScorecardRuns(
     activeKnowledgeBase ? { knowledgeBaseId: activeKnowledgeBase.id, limit: 5 } : null,
