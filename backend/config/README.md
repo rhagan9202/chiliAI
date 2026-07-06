@@ -153,10 +153,10 @@ Section checklist for a first-class pack:
   mappings must reference declared entities; relationship mappings must
   reference declared relationship types whose endpoints are mapped by the
   same feed; observation entity types must be mapped by the feed;
-- scorecard template integrity: duplicate template/section IDs fail, duplicate
-  metric IDs fail within a section, record-feed inputs must reference declared
-  feeds, formula input references must name declared metric inputs, and metric
-  freshness windows must be positive;
+- scorecard template integrity: duplicate template/section IDs fail, metric
+  IDs must be unique across each template, record-feed inputs must reference
+  declared feeds, formula input references must name declared metric inputs,
+  and metric freshness windows must be positive;
 - policy-rule `config_ref`s not declared in the owning pack's `thresholds`;
 - `vectorstore.dimensions` != `embeddings.dimensions` when both are set.
 

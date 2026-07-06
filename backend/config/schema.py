@@ -754,13 +754,13 @@ class DomainConfig(BaseModel):
         # --- scorecard template references ---
         feed_names = {feed.name for feed in records_config.feeds}
         for template in self.scorecards.templates:
+            metric_ids: set[str] = set()
             for section in template.sections:
-                metric_ids: set[str] = set()
                 for metric in section.metrics:
                     if metric.id in metric_ids:
                         errors.append(
                             f"Duplicate scorecard metric id '{metric.id}' in "
-                            f"section '{section.id}' of template '{template.id}'."
+                            f"template '{template.id}'."
                         )
                     metric_ids.add(metric.id)
 

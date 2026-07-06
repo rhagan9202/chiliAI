@@ -376,6 +376,69 @@ class TestDomainConfigValidation:
         assert cfg.vectorstore is not None
         assert cfg.vectorstore.dimensions == 384
 
+    def test_duplicate_scorecard_metric_ids_across_template_sections_fail(self) -> None:
+        data = _make_config().model_dump()
+        data["scorecards"] = {
+            "templates": [
+                {
+                    "id": "readiness",
+                    "name": "Readiness",
+                    "category": "combined",
+                    "scope": "installation",
+                    "period": "quarterly",
+                    "sections": [
+                        {
+                            "id": "supply",
+                            "label": "Supply",
+                            "metrics": [
+                                {
+                                    "id": "duplicate_metric",
+                                    "label": "Supply Metric",
+                                    "inputs": [
+                                        {
+                                            "name": "value",
+                                            "source": "metric",
+                                            "ref": "source_metric",
+                                        }
+                                    ],
+                                    "formula": {
+                                        "operator": "latest",
+                                        "value": "value",
+                                    },
+                                    "thresholds": {"pass_min": 1.0},
+                                }
+                            ],
+                        },
+                        {
+                            "id": "condition",
+                            "label": "Condition",
+                            "metrics": [
+                                {
+                                    "id": "duplicate_metric",
+                                    "label": "Condition Metric",
+                                    "inputs": [
+                                        {
+                                            "name": "value",
+                                            "source": "metric",
+                                            "ref": "source_metric",
+                                        }
+                                    ],
+                                    "formula": {
+                                        "operator": "latest",
+                                        "value": "value",
+                                    },
+                                    "thresholds": {"pass_min": 1.0},
+                                }
+                            ],
+                        },
+                    ],
+                }
+            ]
+        }
+
+        with pytest.raises(ValidationError, match="Duplicate scorecard metric id"):
+            DomainConfig.model_validate(data)
+
 
 class TestChunkingConfig:
     def test_default_min_chunk_size_is_capped_for_small_chunk_sizes(self) -> None:
