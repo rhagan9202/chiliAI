@@ -1,0 +1,104 @@
+.root {
+  position: relative;
+  min-height: 360px;
+  overflow: hidden;
+  background: var(--c-s1);
+  border: 1px solid var(--c-b0);
+  border-radius: 8px;
+}
+
+.map {
+  display: block;
+  width: 100%;
+  height: 360px;
+}
+
+.land {
+  fill: var(--c-s3);
+  stroke: var(--c-b2);
+  stroke-width: 1.5;
+}
+
+.gridLine {
+  stroke: rgba(136, 153, 187, 0.18);
+  stroke-width: 1;
+}
+
+.markers {
+  position: absolute;
+  inset: 0;
+}
+
+.marker {
+  position: absolute;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+}
+
+.marker:focus-visible {
+  outline: 2px solid var(--c-cyan);
+  outline-offset: 2px;
+}
+
+.markerInner {
+  display: block;
+  width: var(--marker-size);
+  height: var(--marker-size);
+  border: 2px solid color-mix(in srgb, var(--marker-color) 80%, white);
+  border-radius: 999px;
+  background: var(--marker-color);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--marker-color) 18%, transparent);
+}
+
+.markerSelected .markerInner {
+  box-shadow:
+    0 0 0 6px color-mix(in srgb, var(--marker-color) 26%, transparent),
+    0 0 0 10px rgba(226, 234, 246, 0.12);
+}
+
+.legend {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: calc(100% - 28px);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 8px;
+  color: var(--c-dim);
+  background: rgba(8, 13, 26, 0.82);
+  border: 1px solid var(--c-b0);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--legend-color);
+}
+
+@media (max-width: 760px) {
+  .root,
+  .map {
+    min-height: 300px;
+    height: 300px;
+  }
+}

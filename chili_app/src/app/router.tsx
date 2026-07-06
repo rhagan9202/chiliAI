@@ -8,6 +8,7 @@ import { AlertFeedPage } from '../pages/AlertFeedPage'
 import { CaseManagementPage } from '../pages/CaseManagementPage'
 import { ConfigurationPage } from '../pages/ConfigurationPage'
 import { DashboardPage } from '../pages/DashboardPage'
+import { HousingExecutivePage } from '../pages/HousingExecutivePage'
 import { InvestigationWorkbenchPage } from '../pages/InvestigationWorkbenchPage'
 import { KnowledgeBaseManagerPage } from '../pages/KnowledgeBaseManagerPage'
 import { Login } from '../pages/Login'
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: withPageBoundary(<DashboardPage />) },
+      { path: 'housing', element: withPageBoundary(<HousingExecutivePage />) },
       { path: 'alerts', element: withPageBoundary(<AlertFeedPage />) },
       { path: 'investigation', element: withPageBoundary(<InvestigationWorkbenchPage />) },
       { path: 'investigation/:entityId', element: withPageBoundary(<InvestigationWorkbenchPage />) },

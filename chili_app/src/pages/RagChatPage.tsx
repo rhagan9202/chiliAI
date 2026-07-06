@@ -26,6 +26,7 @@ const contextTitleBySource = {
   alert: 'Alert investigation',
   case: 'Case investigation',
   entity: 'Entity investigation',
+  housing: 'Housing investigation',
 } as const
 
 type ChatCitation = {
@@ -95,6 +96,8 @@ export function RagChatPage() {
     launchContext.entityId,
     launchContext.caseId,
     launchContext.evidencePackId,
+    launchContext.installationId,
+    launchContext.scorecardRunId,
   ].filter((value): value is string => typeof value === 'string' && value.length > 0)
   const canStartContextualThread = !conversationId && contextQuestion.length > 0
 

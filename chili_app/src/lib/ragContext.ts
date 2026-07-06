@@ -1,4 +1,4 @@
-export type RagLaunchSource = 'alert' | 'entity' | 'case'
+export type RagLaunchSource = 'alert' | 'entity' | 'case' | 'housing'
 
 export type RagLaunchContext = {
   knowledgeBaseId: string | null
@@ -7,6 +7,8 @@ export type RagLaunchContext = {
   entityId?: string | null
   caseId?: string | null
   evidencePackId?: string | null
+  installationId?: string | null
+  scorecardRunId?: string | null
   question?: string | null
 }
 
@@ -22,7 +24,7 @@ type NavigationTarget = {
 
 export const DEFAULT_RISK_QUESTION = 'Why is this high risk?'
 
-const SOURCE_VALUES = new Set<RagLaunchSource>(['alert', 'entity', 'case'])
+const SOURCE_VALUES = new Set<RagLaunchSource>(['alert', 'entity', 'case', 'housing'])
 
 const nonEmpty = (value: string | null | undefined): value is string =>
   typeof value === 'string' && value.length > 0
@@ -42,6 +44,8 @@ export function buildRagChatUrl(context: RagLaunchContext): string {
   appendIfPresent(params, 'entity', context.entityId)
   appendIfPresent(params, 'case', context.caseId)
   appendIfPresent(params, 'evidence', context.evidencePackId)
+  appendIfPresent(params, 'installation', context.installationId)
+  appendIfPresent(params, 'scorecardRun', context.scorecardRunId)
   appendIfPresent(params, 'q', context.question)
 
   const query = params.toString()
@@ -58,6 +62,8 @@ export function parseRagLaunchContext(params: URLSearchParams): Required<RagLaun
     entityId: params.get('entity') || null,
     caseId: params.get('case') || null,
     evidencePackId: params.get('evidence') || null,
+    installationId: params.get('installation') || null,
+    scorecardRunId: params.get('scorecardRun') || null,
     question: params.get('q') || null,
   }
 }
@@ -70,6 +76,8 @@ export function buildRagMessageFilters(context: RagLaunchContext): Record<string
       ['entity_id', context.entityId],
       ['case_id', context.caseId],
       ['evidence_pack_id', context.evidencePackId],
+      ['installation_id', context.installationId],
+      ['scorecard_run_id', context.scorecardRunId],
     ].filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length > 0),
   )
 }
@@ -103,6 +111,13 @@ export function citationNavigationTarget(
     return {
       pathname: '/cases',
       search: params.toString(),
+    }
+  }
+
+  if (context.source === 'housing' && nonEmpty(context.installationId)) {
+    return {
+      pathname: '/housing',
+      search: new URLSearchParams({ installation: context.installationId }).toString(),
     }
   }
 

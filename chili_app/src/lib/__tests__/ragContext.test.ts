@@ -56,6 +56,8 @@ describe('ragContext', () => {
       entityId: 'provider-204',
       caseId: 'case-7',
       evidencePackId: 'evidence-1',
+      installationId: null,
+      scorecardRunId: null,
       question: 'Explain risk',
     })
   })
@@ -68,7 +70,34 @@ describe('ragContext', () => {
       entityId: null,
       caseId: null,
       evidencePackId: null,
+      installationId: null,
+      scorecardRunId: null,
       question: null,
+    })
+  })
+
+  it('serializes and parses a housing launch context', () => {
+    const url = buildRagChatUrl({
+      knowledgeBaseId: 'kb-housing',
+      source: 'housing',
+      installationId: 'edwards',
+      scorecardRunId: 'run-1',
+      question: 'Summarize housing supply risk.',
+    })
+
+    expect(url).toBe(
+      '/rag-chat?kb=kb-housing&source=housing&installation=edwards&scorecardRun=run-1&q=Summarize+housing+supply+risk.',
+    )
+    expect(parseRagLaunchContext(new URLSearchParams(url.slice('/rag-chat?'.length)))).toEqual({
+      knowledgeBaseId: 'kb-housing',
+      source: 'housing',
+      alertId: null,
+      entityId: null,
+      caseId: null,
+      evidencePackId: null,
+      installationId: 'edwards',
+      scorecardRunId: 'run-1',
+      question: 'Summarize housing supply risk.',
     })
   })
 
@@ -114,6 +143,15 @@ describe('ragContext', () => {
         { knowledgeBaseId: 'kb-1', source: 'case', caseId: 'case-1' },
       ),
     ).toEqual({ pathname: '/cases', search: 'kb=kb-1&case=case-1' })
+  })
+
+  it('falls back to source housing navigation', () => {
+    expect(
+      citationNavigationTarget(
+        { content_id: 'chunk-1' },
+        { knowledgeBaseId: 'kb-1', source: 'housing', installationId: 'edwards' },
+      ),
+    ).toEqual({ pathname: '/housing', search: 'installation=edwards' })
   })
 
   it('returns null when no citation or context navigation target exists', () => {
