@@ -390,3 +390,32 @@ def test_non_finite_numeric_inputs_are_not_treated_as_complete_metrics(
     assert metric.health == "incomplete"
     assert metric.completeness == "missing_source"
     assert any("housing_inventory" in warning for warning in metric.warnings)
+
+
+def test_finite_inputs_that_overflow_formula_are_reported_as_formula_error() -> None:
+    result = evaluate_template(
+        _template(metric=_sum_metric()),
+        ScorecardEvalState(
+            as_of=NOW,
+            records=[
+                SourceRecord(
+                    feed_name="housing_inventory",
+                    record_id="inv-1",
+                    observed_at=NOW - timedelta(days=1),
+                    values={"installation": "JBSA", "available_units": 1e308},
+                ),
+                SourceRecord(
+                    feed_name="housing_inventory",
+                    record_id="inv-2",
+                    observed_at=NOW - timedelta(days=1),
+                    values={"installation": "JBSA", "available_units": 1e308},
+                ),
+            ],
+        ),
+    )
+
+    metric = result.sections[0].metrics[0]
+    assert metric.value is None
+    assert metric.health == "incomplete"
+    assert metric.completeness == "formula_error"
+    assert any("non-finite" in warning.lower() for warning in metric.warnings)

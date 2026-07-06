@@ -115,6 +115,10 @@ def _evaluate_metric(
 
     try:
         value = _evaluate_formula(metric.formula, selections)
+        if not isfinite(value):
+            raise ScorecardFormulaError(
+                "Formula produced a non-finite numeric result."
+            )
         health = _classify_health(metric, value)
         completeness: ScorecardCompleteness = "complete"
         warnings = list(missing)
