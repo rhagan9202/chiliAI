@@ -1,3 +1,6 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { renderHook, waitFor } from '@testing-library/react'
+import { createElement, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -9,6 +12,7 @@ import {
   scorecardRunQueryKey,
   scorecardRunsQueryKey,
   scorecardTemplatesQueryKey,
+  useGenerateScorecardRun,
 } from '../scorecards'
 import { apiFetch, apiPost } from '../client'
 import type { ScorecardRunGenerateRequest } from '../contracts'
@@ -20,6 +24,27 @@ vi.mock('../client', () => ({
 
 const apiFetchMock = vi.mocked(apiFetch)
 const apiPostMock = vi.mocked(apiPost)
+
+function createTestQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      mutations: { retry: false },
+      queries: { retry: false },
+    },
+  })
+}
+
+function createQueryWrapper(queryClient: QueryClient) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return createElement(QueryClientProvider, { client: queryClient }, children)
+  }
+}
+
+function invalidatedQueryKeys(queryClient: QueryClient) {
+  return vi
+    .mocked(queryClient.invalidateQueries)
+    .mock.calls.map(([filters]) => filters?.queryKey)
+}
 
 describe('scorecards API', () => {
   beforeEach(() => {
@@ -83,5 +108,32 @@ describe('scorecards API', () => {
     await generateScorecardRun(payload)
 
     expect(apiPostMock).toHaveBeenCalledWith('/scorecards/runs', payload)
+  })
+
+  it('invalidates scorecard and housing caches after generating a run', async () => {
+    const payload: ScorecardRunGenerateRequest = {
+      knowledge_base_id: 'kb-1',
+      template_id: 'uh_scorecard',
+      scope_type: 'installation',
+      scope_id: 'base-1',
+      period_start: '2026-06-01',
+      period_end: '2026-06-30',
+    }
+    const queryClient = createTestQueryClient()
+    vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue()
+    apiPostMock.mockResolvedValue({ id: 'run-1' })
+
+    const { result } = renderHook(() => useGenerateScorecardRun(), {
+      wrapper: createQueryWrapper(queryClient),
+    })
+
+    await result.current.mutateAsync(payload)
+
+    await waitFor(() => {
+      expect(invalidatedQueryKeys(queryClient)).toEqual([
+        ['scorecards'],
+        ['housing'],
+      ])
+    })
   })
 })
