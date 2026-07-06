@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal, cast
 
 from pydantic import BaseModel, Field
@@ -395,6 +395,192 @@ class AnalyticsOverviewResponse(BaseModel):
     high_risk_entities: int = Field(ge=0)
 
 
+ScorecardCompletenessValue = Literal[
+    "complete",
+    "missing_source",
+    "stale_source",
+    "formula_error",
+]
+ScorecardExportFormatValue = Literal["json", "markdown"]
+ScorecardHealthValue = Literal["pass", "warn", "fail", "incomplete"]
+ScorecardRunStatusValue = Literal["generated", "failed", "superseded"]
+
+
+class ScorecardTemplateResponse(BaseModel):
+    """Configured scorecard template summary for dashboard selectors."""
+
+    id: str
+    name: str
+    category: Literal["UH", "MFH", "combined"]
+    scope: Literal["enterprise", "majcom", "region", "installation", "market_area"]
+    period: Literal["monthly", "quarterly", "annual", "ad_hoc"]
+
+
+class ScorecardTemplateListResponse(BaseModel):
+    """Configured scorecard templates."""
+
+    items: list[ScorecardTemplateResponse] = Field(
+        default_factory=lambda: cast(list[ScorecardTemplateResponse], [])
+    )
+
+
+class ScorecardRunGenerateRequest(BaseModel):
+    """Payload for generating a scorecard run."""
+
+    knowledge_base_id: str
+    template_id: str
+    scope_type: str
+    scope_id: str
+    period_start: date
+    period_end: date
+
+
+class ScorecardCitationResponse(BaseModel):
+    """Source reference attached to one scorecard metric."""
+
+    citation_id: str
+    feed_name: str
+    record_id: str
+    field: str | None = None
+
+
+class ScorecardMetricResponse(BaseModel):
+    """Frontend-safe metric result with a stable metric_id field."""
+
+    metric_id: str
+    label: str
+    description: str = ""
+    unit: str = ""
+    housing_category: Literal["UH", "MFH", "combined"] = "combined"
+    value: float | None = None
+    health: ScorecardHealthValue
+    completeness: ScorecardCompletenessValue
+    citations: list[ScorecardCitationResponse] = Field(
+        default_factory=lambda: cast(list[ScorecardCitationResponse], [])
+    )
+    warnings: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class ScorecardSectionResponse(BaseModel):
+    """A scorecard section with evaluated metrics."""
+
+    id: str
+    label: str
+    metrics: list[ScorecardMetricResponse] = Field(
+        default_factory=lambda: cast(list[ScorecardMetricResponse], [])
+    )
+
+
+class ScorecardRunResponse(BaseModel):
+    """Frontend-facing scorecard run without stored export payloads."""
+
+    id: str
+    knowledge_base_id: str
+    template_id: str
+    template_name: str
+    scope_type: str
+    scope_id: str
+    period_start: date
+    period_end: date
+    source_snapshot_hash: str
+    status: ScorecardRunStatusValue
+    overall_health: ScorecardHealthValue
+    sections: list[ScorecardSectionResponse] = Field(
+        default_factory=lambda: cast(list[ScorecardSectionResponse], [])
+    )
+    created_at: datetime
+    updated_at: datetime
+
+
+class ScorecardRunListResponse(BaseModel):
+    """Paginated scorecard run collection."""
+
+    items: list[ScorecardRunResponse] = Field(
+        default_factory=lambda: cast(list[ScorecardRunResponse], [])
+    )
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    offset: int = Field(ge=0)
+
+
+class ScorecardExportResponse(BaseModel):
+    """Stored scorecard export content."""
+
+    run_id: str
+    format: ScorecardExportFormatValue
+    content: str
+
+
+class HousingPortfolioSummaryResponse(BaseModel):
+    """Empty-safe executive housing portfolio totals."""
+
+    total_installations: int = Field(default=0, ge=0)
+    installations_reporting: int = Field(default=0, ge=0)
+    open_work_orders: int = Field(default=0, ge=0)
+    overdue_work_orders: int = Field(default=0, ge=0)
+    occupancy_rate: float | None = None
+    resident_satisfaction: float | None = None
+
+
+class HousingExecutiveKpiResponse(BaseModel):
+    """One executive KPI in the Air Force housing dashboard."""
+
+    id: str
+    label: str
+    value: float | None = None
+    unit: str = ""
+    status: Literal["ok", "watch", "critical", "unknown"] = "unknown"
+
+
+class HousingOverviewResponse(BaseModel):
+    """Safe empty overview payload for the housing executive dashboard."""
+
+    period_start: date | None = None
+    period_end: date | None = None
+    portfolio_summary: HousingPortfolioSummaryResponse = Field(
+        default_factory=HousingPortfolioSummaryResponse
+    )
+    executive_kpis: list[HousingExecutiveKpiResponse] = Field(
+        default_factory=lambda: cast(list[HousingExecutiveKpiResponse], [])
+    )
+
+
+class HousingInstallationResponse(BaseModel):
+    """One installation row for the housing dashboard."""
+
+    installation_id: str
+    name: str
+    majcom: str | None = None
+    state: str | None = None
+    status: Literal["ok", "watch", "critical", "unknown"] = "unknown"
+    open_work_orders: int = Field(default=0, ge=0)
+    occupancy_rate: float | None = None
+
+
+class HousingInstallationMapPointResponse(BaseModel):
+    """Map point for one housing installation."""
+
+    installation_id: str
+    name: str
+    latitude: float
+    longitude: float
+    status: Literal["ok", "watch", "critical", "unknown"] = "unknown"
+
+
+class HousingInstallationsResponse(BaseModel):
+    """Safe empty installation list and map payload."""
+
+    period_start: date | None = None
+    period_end: date | None = None
+    total: int = Field(default=0, ge=0)
+    items: list[HousingInstallationResponse] = Field(
+        default_factory=lambda: cast(list[HousingInstallationResponse], [])
+    )
+    map_points: list[HousingInstallationMapPointResponse] = Field(
+        default_factory=lambda: cast(list[HousingInstallationMapPointResponse], [])
+    )
+
+
 class CaseCreateRequest(BaseModel):
     """Payload for creating a new case."""
 
@@ -472,6 +658,12 @@ __all__ = [
     "GraphEdgeResponse",
     "GraphEntityDetailResponse",
     "GraphNodeResponse",
+    "HousingExecutiveKpiResponse",
+    "HousingInstallationMapPointResponse",
+    "HousingInstallationResponse",
+    "HousingInstallationsResponse",
+    "HousingOverviewResponse",
+    "HousingPortfolioSummaryResponse",
     "PageInfo",
     "PolicyCitation",
     "PolicyCitationResponse",
@@ -483,6 +675,16 @@ __all__ = [
     "RealtimeSnapshotResponse",
     "RiskFactorResponse",
     "RiskScoreResponse",
+    "ScorecardCitationResponse",
+    "ScorecardExportFormatValue",
+    "ScorecardExportResponse",
+    "ScorecardMetricResponse",
+    "ScorecardRunGenerateRequest",
+    "ScorecardRunListResponse",
+    "ScorecardRunResponse",
+    "ScorecardSectionResponse",
+    "ScorecardTemplateListResponse",
+    "ScorecardTemplateResponse",
     "WorkflowRunListResponse",
     "WorkflowRunResponse",
 ]

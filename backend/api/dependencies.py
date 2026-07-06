@@ -160,6 +160,7 @@ from records.adapters.protocols import RawRecordStore
 from scorecards.adapters.in_memory import InMemoryScorecardRunRepository
 from scorecards.adapters.postgres import PostgresScorecardRunRepository
 from scorecards.adapters.protocols import ScorecardRunRepository
+from scorecards.service import ScorecardService, create_scorecard_service
 from analytics.explainability.adapters.evidence_object_store import (
     ObjectStoreEvidencePackRepository,
 )
@@ -229,6 +230,7 @@ __all__ = [
     "get_raw_record_store",
     "get_records_service",
     "get_scorecard_run_repository",
+    "get_scorecard_service",
     "get_knowledge_base_repository",
     "get_llm_client",
     "get_llm_service",
@@ -1382,6 +1384,14 @@ def get_scorecard_run_repository(request: Request) -> ScorecardRunRepository:
         build,
         guard=lambda value: isinstance(value, ScorecardRunRepository),
     )
+
+
+def get_scorecard_service(
+    config: DomainConfig = Depends(get_domain_config),
+    repository: ScorecardRunRepository = Depends(get_scorecard_run_repository),
+) -> ScorecardService:
+    """Return the scorecard service assembled from config and persistence."""
+    return create_scorecard_service(config, repository)
 
 
 def get_records_service(
