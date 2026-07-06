@@ -1,0 +1,3 @@
+demand_id,installation_id,installation_name,majcom,state,latitude,longitude,unaccompanied_authorized,accompanied_authorized,snapshot_date
+umd-edwards-2026q1,edwards_afb,Edwards AFB,AFMC,CA,34.9054,-117.8837,1250,820,2026-03-31
+umd-eglin-2026q1,eglin_afb,Eglin AFB,AFMC,FL,30.4832,-86.5254,980,1040,2026-03-31

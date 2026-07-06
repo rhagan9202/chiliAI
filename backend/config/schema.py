@@ -446,6 +446,100 @@ class PolicyRulePack(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Scorecard template config
+# ---------------------------------------------------------------------------
+
+
+class ScorecardMetricInputConfig(BaseModel):
+    """One named input consumed by a configured scorecard metric."""
+
+    name: str
+    source: Literal["record_feed", "metric", "graph", "document"]
+    ref: str
+    field: str | None = None
+    filter: dict[str, str | float | int | bool] = Field(default_factory=dict)
+
+
+class ScorecardFormulaConfig(BaseModel):
+    """Bounded scorecard formula; no arbitrary code execution."""
+
+    operator: Literal["ratio", "sum", "mean", "weighted_mean", "latest"]
+    numerator: str | None = None
+    denominator: str | None = None
+    value: str | None = None
+    weight: str | None = None
+
+
+class ScorecardThresholdConfig(BaseModel):
+    """Thresholds used to classify a configured scorecard metric."""
+
+    pass_min: float | None = None
+    warn_min: float | None = None
+    fail_max: float | None = None
+    incomplete_when_missing: bool = True
+
+
+class ScorecardMetricConfig(BaseModel):
+    """A configured scorecard metric with safe formula metadata."""
+
+    id: str
+    label: str
+    description: str = ""
+    unit: str = ""
+    housing_category: Literal["UH", "MFH", "combined"] = "combined"
+    inputs: list[ScorecardMetricInputConfig]
+    formula: ScorecardFormulaConfig
+    thresholds: ScorecardThresholdConfig
+    freshness_days: int = Field(default=90, gt=0)
+    required: bool = True
+
+
+class ScorecardSectionConfig(BaseModel):
+    """A grouped set of scorecard metrics."""
+
+    id: str
+    label: str
+    metrics: list[ScorecardMetricConfig]
+
+
+class ScorecardTemplateConfig(BaseModel):
+    """A safe configurable scorecard template."""
+
+    id: str
+    name: str
+    category: Literal["UH", "MFH", "combined"]
+    scope: Literal["enterprise", "majcom", "region", "installation", "market_area"]
+    period: Literal["monthly", "quarterly", "annual", "ad_hoc"]
+    sections: list[ScorecardSectionConfig]
+    export_formats: list[Literal["json", "markdown"]] = Field(
+        default_factory=lambda: ["json", "markdown"]
+    )
+
+
+class ScorecardsConfig(BaseModel):
+    """Collection of configured scorecard templates for the domain."""
+
+    templates: list[ScorecardTemplateConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_template_ids(self) -> ScorecardsConfig:
+        seen: set[str] = set()
+        for template in self.templates:
+            if template.id in seen:
+                raise ValueError(f"Duplicate scorecard template id: '{template.id}'")
+            seen.add(template.id)
+            section_ids: set[str] = set()
+            for section in template.sections:
+                if section.id in section_ids:
+                    raise ValueError(
+                        f"Duplicate scorecard section id '{section.id}' "
+                        f"in template '{template.id}'"
+                    )
+                section_ids.add(section.id)
+        return self
+
+
+# ---------------------------------------------------------------------------
 # Peer-group z-score config
 # ---------------------------------------------------------------------------
 
@@ -507,6 +601,7 @@ class DomainConfig(BaseModel):
     records: RecordsConfig | None = None
     analytics: AnalyticsConfig | None = None
     peer_stats: PeerStatsConfig | None = None
+    scorecards: ScorecardsConfig = Field(default_factory=ScorecardsConfig)
     policy_rules: list[PolicyRulePack] = Field(
         default_factory=lambda: cast(list[PolicyRulePack], [])
     )
@@ -656,6 +751,45 @@ class DomainConfig(BaseModel):
                         f"'{observation_mapping.score_field}' is not in record_schema."
                     )
 
+        # --- scorecard template references ---
+        feed_names = {feed.name for feed in records_config.feeds}
+        for template in self.scorecards.templates:
+            for section in template.sections:
+                metric_ids: set[str] = set()
+                for metric in section.metrics:
+                    if metric.id in metric_ids:
+                        errors.append(
+                            f"Duplicate scorecard metric id '{metric.id}' in "
+                            f"section '{section.id}' of template '{template.id}'."
+                        )
+                    metric_ids.add(metric.id)
+
+                    input_names = {metric_input.name for metric_input in metric.inputs}
+                    for metric_input in metric.inputs:
+                        if (
+                            metric_input.source == "record_feed"
+                            and metric_input.ref not in feed_names
+                        ):
+                            errors.append(
+                                f"Scorecard metric '{metric.id}' in template "
+                                f"'{template.id}' references unknown records feed "
+                                f"'{metric_input.ref}'."
+                            )
+
+                    formula_refs = (
+                        ("numerator", metric.formula.numerator),
+                        ("denominator", metric.formula.denominator),
+                        ("value", metric.formula.value),
+                        ("weight", metric.formula.weight),
+                    )
+                    for field_name, input_ref in formula_refs:
+                        if input_ref is not None and input_ref not in input_names:
+                            errors.append(
+                                f"Scorecard metric '{metric.id}' in template "
+                                f"'{template.id}' formula field '{field_name}' "
+                                f"references undeclared input '{input_ref}'."
+                            )
+
         if errors:
             raise ValueError(
                 "Domain config validation failed:\n  - " + "\n  - ".join(errors)
@@ -701,4 +835,11 @@ __all__ = [
     "RecordsConfig",
     "ValidationConfig",
     "VectorStoreConfig",
+    "ScorecardFormulaConfig",
+    "ScorecardMetricConfig",
+    "ScorecardMetricInputConfig",
+    "ScorecardSectionConfig",
+    "ScorecardTemplateConfig",
+    "ScorecardThresholdConfig",
+    "ScorecardsConfig",
 ]

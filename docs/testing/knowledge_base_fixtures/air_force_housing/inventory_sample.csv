@@ -1,0 +1,5 @@
+snapshot_id,asset_id,installation_id,category,asset_type,available_units,offline_units,utilization_rate,condition_index,snapshot_date
+inv-edwards-uh-2026q1,edwards-dorms,edwards_afb,UH,dormitory,1120,90,0.96,72,2026-03-31
+inv-edwards-mfh-2026q1,edwards-family,edwards_afb,MFH,family_housing,760,25,0.94,84,2026-03-31
+inv-eglin-uh-2026q1,eglin-dorms,eglin_afb,UH,dormitory,1030,35,0.89,88,2026-03-31
+inv-eglin-mfh-2026q1,eglin-family,eglin_afb,MFH,family_housing,910,45,0.91,76,2026-03-31

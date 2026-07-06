@@ -1,0 +1,524 @@
+domain:
+  name: department_air_force_housing
+  display_name: "Department of the Air Force Housing"
+  description: "Executive visibility and scorecard automation for accompanied and unaccompanied Air Force housing."
+
+entities:
+  - name: installation
+    display_label: "Installation"
+    icon: building
+    natural_key: [installation_id]
+    properties:
+      installation_id: { type: string, display: "Installation ID", required: true }
+      name: { type: string, display: "Name", required: true }
+      majcom: { type: string, display: "MAJCOM" }
+      state: { type: string, display: "State" }
+      latitude: { type: decimal, display: "Latitude" }
+      longitude: { type: decimal, display: "Longitude" }
+
+  - name: housing_asset
+    display_label: "Housing Asset"
+    icon: building
+    natural_key: [asset_id]
+    properties:
+      asset_id: { type: string, display: "Asset ID", required: true }
+      installation_id: { type: string, display: "Installation ID", required: true }
+      category: { type: enum, display: "Category", enum_values: ["UH", "MFH"], required: true }
+      asset_type: { type: string, display: "Asset Type" }
+
+  - name: housing_inventory_snapshot
+    display_label: "Inventory Snapshot"
+    icon: document
+    natural_key: [snapshot_id]
+    properties:
+      snapshot_id: { type: string, display: "Snapshot ID", required: true }
+      installation_id: { type: string, display: "Installation ID", required: true }
+      available_units: { type: integer, display: "Available Units", min_value: 0 }
+      offline_units: { type: integer, display: "Offline Units", min_value: 0 }
+      utilization_rate: { type: decimal, display: "Utilization Rate", min_value: 0, max_value: 1 }
+      condition_index: { type: decimal, display: "Condition Index", min_value: 0, max_value: 100 }
+      snapshot_date: { type: date, display: "Snapshot Date", required: true }
+
+  - name: population_demand_snapshot
+    display_label: "Population Demand Snapshot"
+    icon: person
+    natural_key: [demand_id]
+    properties:
+      demand_id: { type: string, display: "Demand ID", required: true }
+      installation_id: { type: string, display: "Installation ID", required: true }
+      unaccompanied_authorized: { type: integer, display: "Unaccompanied Authorized", min_value: 0 }
+      accompanied_authorized: { type: integer, display: "Accompanied Authorized", min_value: 0 }
+      snapshot_date: { type: date, display: "Snapshot Date", required: true }
+
+  - name: allowance_market_snapshot
+    display_label: "Allowance And Market Snapshot"
+    icon: chart
+    natural_key: [market_id]
+    properties:
+      market_id: { type: string, display: "Market ID", required: true }
+      installation_id: { type: string, display: "Installation ID", required: true }
+      bah_rate: { type: decimal, display: "BAH Rate", min_value: 0 }
+      available_rentals: { type: integer, display: "Available Rentals", min_value: 0 }
+      affordability_index: { type: decimal, display: "Affordability Index", min_value: 0 }
+      snapshot_date: { type: date, display: "Snapshot Date", required: true }
+
+  - name: demographic_snapshot
+    display_label: "Demographic Snapshot"
+    icon: users
+    natural_key: [demographic_id]
+    properties:
+      demographic_id: { type: string, display: "Demographic ID", required: true }
+      installation_id: { type: string, display: "Installation ID", required: true }
+      local_population: { type: integer, display: "Local Population", min_value: 0 }
+      median_income: { type: decimal, display: "Median Income", min_value: 0 }
+      snapshot_date: { type: date, display: "Snapshot Date", required: true }
+
+  - name: resident_experience_snapshot
+    display_label: "Resident Experience Snapshot"
+    icon: clipboard
+    natural_key: [experience_id]
+    properties:
+      experience_id: { type: string, display: "Experience ID", required: true }
+      installation_id: { type: string, display: "Installation ID", required: true }
+      satisfaction_score: { type: decimal, display: "Satisfaction Score", min_value: 0, max_value: 100 }
+      open_work_orders: { type: integer, display: "Open Work Orders", min_value: 0 }
+      snapshot_date: { type: date, display: "Snapshot Date", required: true }
+
+  - name: scorecard_run
+    display_label: "Scorecard Run"
+    icon: document
+    natural_key: [run_id]
+    properties:
+      run_id: { type: string, display: "Run ID", required: true }
+      template_id: { type: string, display: "Template ID", required: true }
+      status: { type: string, display: "Status" }
+
+relationships:
+  - name: installation_has_asset
+    display_label: "Has Asset"
+    source: installation
+    target: housing_asset
+
+  - name: asset_has_inventory_snapshot
+    display_label: "Has Inventory Snapshot"
+    source: housing_asset
+    target: housing_inventory_snapshot
+
+  - name: installation_has_population_demand
+    display_label: "Has Population Demand"
+    source: installation
+    target: population_demand_snapshot
+
+  - name: installation_has_market_snapshot
+    display_label: "Has Market Snapshot"
+    source: installation
+    target: allowance_market_snapshot
+
+  - name: installation_has_demographic_snapshot
+    display_label: "Has Demographic Snapshot"
+    source: installation
+    target: demographic_snapshot
+
+  - name: installation_has_resident_experience
+    display_label: "Has Resident Experience"
+    source: installation
+    target: resident_experience_snapshot
+
+  - name: scorecard_run_for_installation
+    display_label: "Scorecard For Installation"
+    source: scorecard_run
+    target: installation
+
+capabilities:
+  timeseries: true
+  gnn: false
+  risk_scoring: true
+  rag_chat: true
+  explainability: true
+  structured_ingestion: true
+  peer_stats: false
+
+ingestion:
+  chunking:
+    strategy: recursive
+    chunk_size: 1000
+    chunk_overlap: 200
+    min_chunk_size: 50
+  sources:
+    - type: file_upload
+      formats: [pdf, docx, txt, csv, json, xlsx]
+
+records:
+  feeds:
+    - name: umd_authorizations
+      record_type: umd_authorization
+      source: file_upload
+      id_field: demand_id
+      allow_extra_fields: true
+      accepted_formats: [csv, jsonl]
+      record_schema:
+        demand_id: { type: string, display: "Demand ID", required: true }
+        installation_id: { type: string, display: "Installation ID", required: true }
+        installation_name: { type: string, display: "Installation Name", required: true }
+        majcom: { type: string, display: "MAJCOM" }
+        state: { type: string, display: "State" }
+        latitude: { type: decimal, display: "Latitude" }
+        longitude: { type: decimal, display: "Longitude" }
+        unaccompanied_authorized: { type: integer, display: "Unaccompanied Authorized", min_value: 0 }
+        accompanied_authorized: { type: integer, display: "Accompanied Authorized", min_value: 0 }
+        snapshot_date: { type: date, display: "Snapshot Date", required: true }
+      entities:
+        - entity_type: installation
+          id_field: installation_id
+          property_fields:
+            installation_id: installation_id
+            name: installation_name
+            majcom: majcom
+            state: state
+            latitude: latitude
+            longitude: longitude
+        - entity_type: population_demand_snapshot
+          id_field: demand_id
+          property_fields:
+            demand_id: demand_id
+            installation_id: installation_id
+            unaccompanied_authorized: unaccompanied_authorized
+            accompanied_authorized: accompanied_authorized
+            snapshot_date: snapshot_date
+      relationships:
+        - relationship_type: installation_has_population_demand
+          source_entity_type: installation
+          target_entity_type: population_demand_snapshot
+      observations:
+        - metric_name: unaccompanied_demand
+          entity_type: installation
+          score_field: unaccompanied_authorized
+          rationale: "Unaccompanied demand from UMD authorization export."
+
+    - name: bah_rates
+      record_type: bah_rate
+      source: file_upload
+      id_field: market_id
+      allow_extra_fields: true
+      accepted_formats: [csv, jsonl]
+      record_schema:
+        market_id: { type: string, display: "Market ID", required: true }
+        installation_id: { type: string, display: "Installation ID", required: true }
+        bah_rate: { type: decimal, display: "BAH Rate", min_value: 0 }
+        available_rentals: { type: integer, display: "Available Rentals", min_value: 0 }
+        affordability_index: { type: decimal, display: "Affordability Index", min_value: 0 }
+        snapshot_date: { type: date, display: "Snapshot Date", required: true }
+      entities:
+        - entity_type: installation
+          id_field: installation_id
+          property_fields:
+            installation_id: installation_id
+        - entity_type: allowance_market_snapshot
+          id_field: market_id
+          property_fields:
+            market_id: market_id
+            installation_id: installation_id
+            bah_rate: bah_rate
+            available_rentals: available_rentals
+            affordability_index: affordability_index
+            snapshot_date: snapshot_date
+      relationships:
+        - relationship_type: installation_has_market_snapshot
+          source_entity_type: installation
+          target_entity_type: allowance_market_snapshot
+      observations:
+        - metric_name: market_pressure
+          entity_type: allowance_market_snapshot
+          score_field: affordability_index
+          rationale: "Market pressure from allowance and rental availability export."
+
+    - name: housing_inventory
+      record_type: housing_inventory
+      source: file_upload
+      id_field: snapshot_id
+      allow_extra_fields: true
+      accepted_formats: [csv, jsonl]
+      record_schema:
+        snapshot_id: { type: string, display: "Snapshot ID", required: true }
+        asset_id: { type: string, display: "Asset ID", required: true }
+        installation_id: { type: string, display: "Installation ID", required: true }
+        category: { type: enum, display: "Category", enum_values: ["UH", "MFH"], required: true }
+        asset_type: { type: string, display: "Asset Type" }
+        available_units: { type: integer, display: "Available Units", min_value: 0 }
+        offline_units: { type: integer, display: "Offline Units", min_value: 0 }
+        utilization_rate: { type: decimal, display: "Utilization Rate", min_value: 0, max_value: 1 }
+        condition_index: { type: decimal, display: "Condition Index", min_value: 0, max_value: 100 }
+        snapshot_date: { type: date, display: "Snapshot Date", required: true }
+      entities:
+        - entity_type: installation
+          id_field: installation_id
+          property_fields:
+            installation_id: installation_id
+        - entity_type: housing_asset
+          id_field: asset_id
+          property_fields:
+            asset_id: asset_id
+            installation_id: installation_id
+            category: category
+            asset_type: asset_type
+        - entity_type: housing_inventory_snapshot
+          id_field: snapshot_id
+          property_fields:
+            snapshot_id: snapshot_id
+            installation_id: installation_id
+            available_units: available_units
+            offline_units: offline_units
+            utilization_rate: utilization_rate
+            condition_index: condition_index
+            snapshot_date: snapshot_date
+      relationships:
+        - relationship_type: installation_has_asset
+          source_entity_type: installation
+          target_entity_type: housing_asset
+        - relationship_type: asset_has_inventory_snapshot
+          source_entity_type: housing_asset
+          target_entity_type: housing_inventory_snapshot
+      observations:
+        - metric_name: housing_condition
+          entity_type: housing_inventory_snapshot
+          score_field: condition_index
+          rationale: "Housing condition index from inventory export."
+
+    - name: market_availability
+      record_type: market_availability
+      source: file_upload
+      id_field: market_id
+      allow_extra_fields: true
+      accepted_formats: [csv, jsonl]
+      record_schema:
+        market_id: { type: string, display: "Market ID", required: true }
+        installation_id: { type: string, display: "Installation ID", required: true }
+        available_rentals: { type: integer, display: "Available Rentals", min_value: 0 }
+        affordability_index: { type: decimal, display: "Affordability Index", min_value: 0 }
+        snapshot_date: { type: date, display: "Snapshot Date", required: true }
+      entities:
+        - entity_type: installation
+          id_field: installation_id
+          property_fields:
+            installation_id: installation_id
+        - entity_type: allowance_market_snapshot
+          id_field: market_id
+          property_fields:
+            market_id: market_id
+            installation_id: installation_id
+            available_rentals: available_rentals
+            affordability_index: affordability_index
+            snapshot_date: snapshot_date
+      relationships:
+        - relationship_type: installation_has_market_snapshot
+          source_entity_type: installation
+          target_entity_type: allowance_market_snapshot
+      observations:
+        - metric_name: rental_availability
+          entity_type: allowance_market_snapshot
+          score_field: available_rentals
+          rationale: "Rental availability from market export."
+
+    - name: area_demographics
+      record_type: area_demographics
+      source: file_upload
+      id_field: demographic_id
+      allow_extra_fields: true
+      accepted_formats: [csv, jsonl]
+      record_schema:
+        demographic_id: { type: string, display: "Demographic ID", required: true }
+        installation_id: { type: string, display: "Installation ID", required: true }
+        local_population: { type: integer, display: "Local Population", min_value: 0 }
+        median_income: { type: decimal, display: "Median Income", min_value: 0 }
+        snapshot_date: { type: date, display: "Snapshot Date", required: true }
+      entities:
+        - entity_type: installation
+          id_field: installation_id
+          property_fields:
+            installation_id: installation_id
+        - entity_type: demographic_snapshot
+          id_field: demographic_id
+          property_fields:
+            demographic_id: demographic_id
+            installation_id: installation_id
+            local_population: local_population
+            median_income: median_income
+            snapshot_date: snapshot_date
+      relationships:
+        - relationship_type: installation_has_demographic_snapshot
+          source_entity_type: installation
+          target_entity_type: demographic_snapshot
+      observations:
+        - metric_name: demographic_context
+          entity_type: demographic_snapshot
+          score_field: local_population
+          rationale: "Area demographic context from export."
+
+scorecards:
+  templates:
+    - id: uh_scorecard
+      name: "Unaccompanied Housing Scorecard"
+      category: UH
+      scope: installation
+      period: quarterly
+      export_formats: [json, markdown]
+      sections:
+        - id: demand_supply
+          label: "Demand And Supply"
+          metrics:
+            - id: uh_supply_ratio
+              label: "UH Supply Ratio"
+              description: "Available UH inventory divided by unaccompanied authorized demand."
+              unit: ratio
+              housing_category: UH
+              inputs:
+                - name: supply
+                  source: record_feed
+                  ref: housing_inventory
+                  field: available_units
+                  filter: { category: UH }
+                - name: demand
+                  source: record_feed
+                  ref: umd_authorizations
+                  field: unaccompanied_authorized
+              formula: { operator: ratio, numerator: supply, denominator: demand }
+              thresholds: { pass_min: 1.0, warn_min: 0.9, fail_max: 0.89, incomplete_when_missing: true }
+              freshness_days: 90
+        - id: condition
+          label: "Condition"
+          metrics:
+            - id: uh_condition_index
+              label: "UH Condition Index"
+              description: "Average UH condition index from inventory snapshots."
+              unit: score
+              housing_category: UH
+              inputs:
+                - name: condition
+                  source: record_feed
+                  ref: housing_inventory
+                  field: condition_index
+                  filter: { category: UH }
+              formula: { operator: mean, value: condition }
+              thresholds: { pass_min: 80, warn_min: 70, fail_max: 69, incomplete_when_missing: true }
+              freshness_days: 90
+
+    - id: mfh_scorecard
+      name: "Military Family Housing Scorecard"
+      category: MFH
+      scope: installation
+      period: quarterly
+      export_formats: [json, markdown]
+      sections:
+        - id: family_housing_supply
+          label: "Family Housing Supply"
+          metrics:
+            - id: mfh_supply_ratio
+              label: "MFH Supply Ratio"
+              description: "Available MFH inventory divided by accompanied authorized demand."
+              unit: ratio
+              housing_category: MFH
+              inputs:
+                - name: supply
+                  source: record_feed
+                  ref: housing_inventory
+                  field: available_units
+                  filter: { category: MFH }
+                - name: demand
+                  source: record_feed
+                  ref: umd_authorizations
+                  field: accompanied_authorized
+              formula: { operator: ratio, numerator: supply, denominator: demand }
+              thresholds: { pass_min: 1.0, warn_min: 0.9, fail_max: 0.89, incomplete_when_missing: true }
+              freshness_days: 90
+        - id: market_pressure
+          label: "Market Pressure"
+          metrics:
+            - id: mfh_market_affordability
+              label: "Market Affordability"
+              description: "Average local market affordability for family housing demand."
+              unit: index
+              housing_category: MFH
+              inputs:
+                - name: affordability
+                  source: record_feed
+                  ref: market_availability
+                  field: affordability_index
+              formula: { operator: mean, value: affordability }
+              thresholds: { pass_min: 80, warn_min: 65, fail_max: 64, incomplete_when_missing: true }
+              freshness_days: 90
+
+rag:
+  top_k: 5
+  expansion_depth: 2
+  reranking_enabled: false
+  system_prompt_template: "You are an executive housing data assistant for {domain_name}. Cite source rows and documents when answering questions about installations, UH, MFH, scorecards, and data completeness."
+
+alerts:
+  thresholds:
+    installation:
+      housing_health: 0.75
+    housing_inventory_snapshot:
+      condition_index: 70
+    allowance_market_snapshot:
+      affordability_index: 65
+
+ui:
+  default_entity_type: installation
+  navigation:
+    pages:
+      - id: housing
+        label: Housing
+        route: /housing
+        capability: risk_scoring
+      - id: knowledge_bases
+        label: Knowledge Bases
+        route: /knowledge-bases
+      - id: rag_chat
+        label: Ask Housing Data
+        route: /rag-chat
+        capability: rag_chat
+      - id: configuration
+        label: Configuration
+        route: /configuration
+  display_fields:
+    installation:
+      title: name
+      subtitle: majcom
+      chips: [state]
+    housing_asset:
+      title: asset_id
+      subtitle: category
+      chips: [installation_id]
+    housing_inventory_snapshot:
+      title: snapshot_id
+      subtitle: installation_id
+      chips: [snapshot_date]
+    population_demand_snapshot:
+      title: demand_id
+      subtitle: installation_id
+      chips: [snapshot_date]
+    allowance_market_snapshot:
+      title: market_id
+      subtitle: installation_id
+      chips: [snapshot_date]
+    demographic_snapshot:
+      title: demographic_id
+      subtitle: installation_id
+      chips: [snapshot_date]
+    resident_experience_snapshot:
+      title: experience_id
+      subtitle: installation_id
+      chips: [snapshot_date]
+    scorecard_run:
+      title: run_id
+      subtitle: template_id
+      chips: [status]
+  roles:
+    executive:
+      landing_page: housing
+      pages: [housing, knowledge_bases, rag_chat, configuration]
+      permissions: [view:housing, generate:scorecards]
+    analyst:
+      landing_page: housing
+      pages: [housing, knowledge_bases, rag_chat]
+      permissions: [view:housing]

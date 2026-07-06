@@ -32,6 +32,9 @@ selection — with **zero code changes**.
   - `food_supply_chain.yaml` — food supply chain integrity (fraud,
     contamination, traceability). Exemplar-parity peer pack; proves the
     retargeting thesis.
+  - `department_air_force_housing.yaml` — Department of the Air Force housing
+    visibility, file/export feeds for UMD, BAH, inventory, market, and
+    demographics, plus configurable UH/MFH scorecard templates.
   - `medicare_fraud.yaml`, `medicare_fraud_dev.yaml` — minimal/dev variants.
 
 ## Switching domains
@@ -118,13 +121,19 @@ Section checklist for a first-class pack:
    are cross-validated at load (see below).
 6. **`policy_rules`** — rule packs with `thresholds` referenced by
    `config_ref` predicates; unknown refs fail at load.
-7. **`alerts.thresholds`** — per-entity-type metric thresholds.
-8. **`ui`** — this drives dynamic frontend rendering: `default_entity_type`,
+7. **`scorecards.templates`** — safe configurable report templates. Each
+   template declares category, scope, period, sections, metrics, bounded
+   formula operators (`ratio`, `sum`, `mean`, `weighted_mean`, `latest`),
+   record-feed inputs, thresholds, freshness windows, and export formats.
+   The Air Force housing pack ships UH and MFH templates exporting JSON and
+   Markdown.
+8. **`alerts.thresholds`** — per-entity-type metric thresholds.
+9. **`ui`** — this drives dynamic frontend rendering: `default_entity_type`,
    `navigation.pages` (id/label/route, optional `capability` gate),
    `display_fields` per entity (`title`/`subtitle`/`chips` naming entity
    properties), and `roles` (landing page + page list + permission hints).
    Cover **every** entity in `display_fields` so all entity types render.
-9. **Infra sections** (`graph`, `vectorstore`, `embeddings`, `llm`,
+10. **Infra sections** (`graph`, `vectorstore`, `embeddings`, `llm`,
    `storage`, `events`, `database`, `monitoring`, `analytics`, `rag`) —
    omit for in-memory/local defaults, or pin real backends. The shipped
    packs pin the dev-stack services (neo4j, qdrant, redis, postgres, local
@@ -144,6 +153,10 @@ Section checklist for a first-class pack:
   mappings must reference declared entities; relationship mappings must
   reference declared relationship types whose endpoints are mapped by the
   same feed; observation entity types must be mapped by the feed;
+- scorecard template integrity: duplicate template/section IDs fail, duplicate
+  metric IDs fail within a section, record-feed inputs must reference declared
+  feeds, formula input references must name declared metric inputs, and metric
+  freshness windows must be positive;
 - policy-rule `config_ref`s not declared in the owning pack's `thresholds`;
 - `vectorstore.dimensions` != `embeddings.dimensions` when both are set.
 

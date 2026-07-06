@@ -91,6 +91,7 @@ sample_data/                                  # gitignored (bulk, local-only)
 | `backend/tests/ingestion/fixtures/policies/*` | tracked | synthetic policy corpus (MD/HTML/JSON/TXT/DOCX) | `test_full_pipeline.py` + `scripts/demo_ingest_tn_subset.sh` | document-ingestion / policy graph (BL-014) |
 | `tools/tests/fixtures/{nppes_micro,desynpuf_micro}/*.csv` | tracked | micro NPPES + DE-SynPUF rows | `tools/tests/test_filter_nppes.py`, `test_filter_desynpuf.py`, `test_manifest_and_idempotency.py` | exercise the TN-subset builder |
 | `docs/testing/knowledge_base_fixtures/medicare_fraud/*` | tracked | hand-crafted KB docs + `manifest.json` | manual / manifest-driven walkthroughs | expected graph counts + search queries; see its own README |
+| `docs/testing/knowledge_base_fixtures/air_force_housing/*` | tracked | tiny synthetic Air Force housing CSV exports | manual / feed-driven walkthroughs for `department_air_force_housing.yaml` | maps `umd_sample.csv` -> `umd_authorizations`, `inventory_sample.csv` -> `housing_inventory`, `market_sample.csv` -> `market_availability`, `bah_sample.csv` -> `bah_rates`, and `demographics_sample.csv` -> `area_demographics` |
 | `tests/scripts/fixtures/*.md` | tracked | backlog-story markdown | `tests/scripts/test_backlog_consistency.py` | **not data** — fixtures for the backlog tooling |
 | `backend/data/` | runtime · ignored | local FS object-store (`base_path`) | the storage adapter at runtime | never commit |
 
