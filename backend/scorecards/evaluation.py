@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from math import isfinite
 from typing import cast
 
 from pydantic import BaseModel, Field
@@ -18,9 +19,9 @@ from scorecards.exceptions import ScorecardFormulaError
 from scorecards.models import (
     ScorecardCitation,
     ScorecardCompleteness,
+    ScorecardEvaluationResult,
     ScorecardHealth,
     ScorecardMetricResult,
-    ScorecardRun,
     ScorecardSectionResult,
 )
 from shared.utils import utc_now
@@ -63,7 +64,7 @@ class _InputSelection:
 def evaluate_template(
     template: ScorecardTemplateConfig,
     state: ScorecardEvalState,
-) -> ScorecardRun:
+) -> ScorecardEvaluationResult:
     """Evaluate a scorecard template against already-loaded source records."""
 
     sections = [
@@ -74,14 +75,10 @@ def evaluate_template(
         )
         for section in template.sections
     ]
-    return ScorecardRun(
+    return ScorecardEvaluationResult(
         template_id=template.id,
         template_name=template.name,
-        category=template.category,
-        scope=template.scope,
-        period=template.period,
-        health=_overall_health(sections),
-        export_formats=list(template.export_formats),
+        overall_health=_overall_health(sections),
         sections=sections,
         evaluated_at=state.as_of,
     )
@@ -127,13 +124,22 @@ def _evaluate_metric(
             if health == "pass":
                 health = "warn"
     except ScorecardFormulaError as exc:
+        if missing and _is_missing_input_formula_error(exc):
+            return _metric_result(
+                metric,
+                value=None,
+                health="incomplete",
+                completeness="missing_source",
+                citations=_citations(selections),
+                warnings=missing,
+            )
         return _metric_result(
             metric,
             value=None,
             health="incomplete",
             completeness="formula_error",
             citations=_citations(selections),
-            warnings=[str(exc)],
+            warnings=[*missing, str(exc)],
         )
 
     return _metric_result(
@@ -396,11 +402,18 @@ def _as_float(value: SourceValue) -> float | None:
     if isinstance(value, bool) or value is None:
         return None
     if isinstance(value, int | float):
-        return float(value)
+        numeric = float(value)
+        return numeric if isfinite(numeric) else None
     try:
-        return float(value)
-    except ValueError:
+        numeric = float(value)
+    except (TypeError, ValueError):
         return None
+    return numeric if isfinite(numeric) else None
+
+
+def _is_missing_input_formula_error(exc: ScorecardFormulaError) -> bool:
+    message = str(exc)
+    return "has no values" in message or "no matched value/weight pairs" in message
 
 
 __all__ = [

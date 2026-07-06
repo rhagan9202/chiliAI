@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal, cast
 
 from pydantic import BaseModel, Field
@@ -17,7 +17,7 @@ ScorecardCompleteness = Literal[
 ]
 ScorecardExportFormat = Literal["json", "markdown"]
 ScorecardHealth = Literal["pass", "warn", "fail", "incomplete"]
-ScorecardRunStatus = Literal["pending", "running", "completed", "failed"]
+ScorecardRunStatus = Literal["generated", "failed", "superseded"]
 
 
 class ScorecardCitation(BaseModel):
@@ -56,28 +56,46 @@ class ScorecardSectionResult(BaseModel):
     )
 
 
-class ScorecardRun(BaseModel):
-    """A deterministic scorecard evaluation result."""
+class ScorecardEvaluationResult(BaseModel):
+    """A pure evaluator result that has not been persisted as a durable run."""
 
     template_id: str
     template_name: str
-    category: Literal["UH", "MFH", "combined"]
-    scope: Literal["enterprise", "majcom", "region", "installation", "market_area"]
-    period: Literal["monthly", "quarterly", "annual", "ad_hoc"]
-    status: ScorecardRunStatus = "completed"
-    health: ScorecardHealth
-    export_formats: list[ScorecardExportFormat] = Field(
-        default_factory=lambda: cast(list[ScorecardExportFormat], [])
-    )
+    overall_health: ScorecardHealth
     sections: list[ScorecardSectionResult] = Field(
         default_factory=lambda: cast(list[ScorecardSectionResult], [])
     )
     evaluated_at: datetime = Field(default_factory=utc_now)
 
 
+class ScorecardRun(BaseModel):
+    """A durable scorecard run shape shared by service, repository, and API layers."""
+
+    id: str
+    knowledge_base_id: str
+    template_id: str
+    template_name: str
+    scope_type: str
+    scope_id: str
+    period_start: date
+    period_end: date
+    source_snapshot_hash: str
+    status: ScorecardRunStatus = "generated"
+    overall_health: ScorecardHealth = "incomplete"
+    sections: list[ScorecardSectionResult] = Field(
+        default_factory=lambda: cast(list[ScorecardSectionResult], [])
+    )
+    export_payloads: dict[ScorecardExportFormat, str] = Field(
+        default_factory=lambda: cast(dict[ScorecardExportFormat, str], {})
+    )
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 __all__ = [
     "ScorecardCitation",
     "ScorecardCompleteness",
+    "ScorecardEvaluationResult",
     "ScorecardExportFormat",
     "ScorecardHealth",
     "ScorecardMetricResult",

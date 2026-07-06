@@ -5,6 +5,7 @@ from scorecards.exceptions import ScorecardEvaluationError, ScorecardFormulaErro
 from scorecards.models import (
     ScorecardCitation,
     ScorecardCompleteness,
+    ScorecardEvaluationResult,
     ScorecardExportFormat,
     ScorecardHealth,
     ScorecardMetricResult,
@@ -13,9 +14,15 @@ from scorecards.models import (
     ScorecardSectionResult,
 )
 from scorecards.service_models import (
+    ScorecardExportResponse,
     ScorecardEvaluationRequest,
     ScorecardEvaluationResponse,
+    ScorecardGenerateRequest,
     ScorecardExportRequest,
+    ScorecardRunListRequest,
+    ScorecardRunListResponse,
+    ScorecardTemplateListResponse,
+    ScorecardTemplateSummary,
 )
 
 __all__ = [
@@ -23,16 +30,23 @@ __all__ = [
     "ScorecardCompleteness",
     "ScorecardEvalState",
     "ScorecardEvaluationError",
+    "ScorecardEvaluationResult",
     "ScorecardEvaluationRequest",
     "ScorecardEvaluationResponse",
+    "ScorecardGenerateRequest",
     "ScorecardExportFormat",
+    "ScorecardExportResponse",
     "ScorecardExportRequest",
     "ScorecardFormulaError",
     "ScorecardHealth",
     "ScorecardMetricResult",
     "ScorecardRun",
+    "ScorecardRunListRequest",
+    "ScorecardRunListResponse",
     "ScorecardRunStatus",
     "ScorecardSectionResult",
+    "ScorecardTemplateListResponse",
+    "ScorecardTemplateSummary",
     "SourceRecord",
     "evaluate_template",
 ]
