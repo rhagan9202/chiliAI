@@ -157,6 +157,9 @@ from analytics.peerstats.adapters.protocols import DerivedRiskSignalWriterProtoc
 from records.adapters.in_memory import InMemoryRawRecordStore
 from records.adapters.postgres import PostgresRawRecordStore
 from records.adapters.protocols import RawRecordStore
+from scorecards.adapters.in_memory import InMemoryScorecardRunRepository
+from scorecards.adapters.postgres import PostgresScorecardRunRepository
+from scorecards.adapters.protocols import ScorecardRunRepository
 from analytics.explainability.adapters.evidence_object_store import (
     ObjectStoreEvidencePackRepository,
 )
@@ -225,6 +228,7 @@ __all__ = [
     "get_connection_provider",
     "get_raw_record_store",
     "get_records_service",
+    "get_scorecard_run_repository",
     "get_knowledge_base_repository",
     "get_llm_client",
     "get_llm_service",
@@ -1361,6 +1365,25 @@ def get_entity_metric_repository() -> EntityMetricRepository:
     return PostgresEntityMetricRepository(provider)
 
 
+def get_scorecard_run_repository(request: Request) -> ScorecardRunRepository:
+    """Return the scorecard-run repository selected by config."""
+
+    def build() -> ScorecardRunRepository:
+        provider = get_connection_provider()
+        return (
+            InMemoryScorecardRunRepository()
+            if provider is None
+            else PostgresScorecardRunRepository(provider)
+        )
+
+    return _memoize_config_derived(
+        request.app,
+        "scorecard_run_repository",
+        build,
+        guard=lambda value: isinstance(value, ScorecardRunRepository),
+    )
+
+
 def get_records_service(
     event_bus: EventBus = Depends(get_event_bus),
     store: RawRecordStore = Depends(get_raw_record_store),
@@ -1601,6 +1624,7 @@ _CONFIG_DERIVED_APP_STATE_ATTRS: tuple[str, ...] = (
     "alert_repository",
     "conversation_repository",
     "policy_repository",
+    "scorecard_run_repository",
 )
 
 _CONFIG_SWAP_LOCK = threading.Lock()

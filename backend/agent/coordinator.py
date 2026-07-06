@@ -206,6 +206,9 @@ from monitoring.metrics import observe_pipeline_stage
 from records.adapters.in_memory import InMemoryRawRecordStore
 from records.adapters.postgres import PostgresRawRecordStore
 from records.adapters.protocols import RawRecordStore
+from scorecards.adapters.in_memory import InMemoryScorecardRunRepository
+from scorecards.adapters.postgres import PostgresScorecardRunRepository
+from scorecards.adapters.protocols import ScorecardRunRepository
 from records.exceptions import RecordFeedNotFoundError
 from records.mappers.feed_mapper import map_batch, map_observations
 from policy.adapters.in_memory import InMemoryPolicyItemRepository
@@ -254,6 +257,7 @@ __all__ = [
     "build_raw_record_store",
     "build_risk_history_writer",
     "build_risk_signal_source",
+    "build_scorecard_run_repository",
     "build_vector_store",
     "build_worker_dependencies",
     "drain_ingestion_events",
@@ -647,6 +651,16 @@ def build_entity_metric_repository(
     return PostgresEntityMetricRepository(provider)
 
 
+def build_scorecard_run_repository(
+    provider: ConnectionProvider | None,
+) -> ScorecardRunRepository:
+    """Select a scorecard-run repository: Postgres when a provider exists."""
+
+    if provider is None:
+        return InMemoryScorecardRunRepository()
+    return PostgresScorecardRunRepository(provider)
+
+
 def build_risk_history_writer(
     provider: ConnectionProvider | None,
 ) -> RiskHistoryWriter:
@@ -720,6 +734,7 @@ def build_kb_deletion_stores(
         ),
         policy_item_repository=build_policy_item_repository(provider),
         evidence_pack_repository=ObjectStoreEvidencePackRepository(object_store),
+        scorecard_run_repository=build_scorecard_run_repository(provider),
         object_store=object_store,
     )
 
@@ -2512,7 +2527,7 @@ def handle_knowledge_base_deleted(
     cascade as the API — the single authoritative step list in
     ``knowledgebases.cleanup.kb_deletion_steps`` (graph/vector/raw_records/derived
     signals/risk history/observations/alert history/metrics/conversations/cases/
-    policy/evidence/object store) — then deletes the KB metadata.
+    policy/evidence/scorecards/object store) — then deletes the KB metadata.
 
     Every step is idempotent. Exceptions propagate so the coordinator's retry/DLQ
     wrapper re-runs the whole (idempotent) cascade; KB metadata is deleted only

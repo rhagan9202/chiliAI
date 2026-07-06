@@ -9,13 +9,11 @@ the bundle from FastAPI dependencies for the `DELETE /knowledgebases/{id}` route
 from __future__ import annotations
 
 from fastapi import Depends
-from fastapi import Request
 
 from analytics.explainability.repository import EvidencePackRepository
 from analytics.metrics.adapters.protocols import EntityMetricRepository
 from analytics.peerstats.adapters.protocols import DerivedRiskSignalWriterProtocol
 from analytics.risk.adapters.protocols import RiskHistoryWriter
-from api import dependencies as _api_dependencies
 from api.dependencies import (
     get_alert_history_writer,
     get_case_repository,
@@ -29,6 +27,7 @@ from api.dependencies import (
     get_policy_repository,
     get_raw_record_store,
     get_risk_history_writer,
+    get_scorecard_run_repository,
     get_vector_service,
 )
 from cases.adapters.protocols import CaseRepository
@@ -38,22 +37,9 @@ from knowledgebases.cleanup import KbDeletionStores, kb_deletion_steps
 from monitoring.adapters.protocols import AlertHistoryWriter, ObservationWriter
 from policy.adapters.protocols import PolicyItemRepository
 from records.adapters.protocols import RawRecordStore
+from scorecards.adapters.protocols import ScorecardRunRepository
 from storage.protocols import ObjectStore
 from vectorstore.protocols import VectorServiceProtocol
-
-
-def get_optional_scorecard_run_repository(request: Request) -> object | None:
-    """Resolve Task 4's scorecard repository dependency when it exists.
-
-    Task 3 owns the repository contract. The API dependency and cleanup bundle
-    field are expected to land with route wiring, so this stays inert until both
-    are present instead of making KB deletion imports depend on future code.
-    """
-
-    getter = getattr(_api_dependencies, "get_scorecard_run_repository", None)
-    if getter is None:
-        return None
-    return getter(request)
 
 
 def get_kb_deletion_stores(
@@ -77,14 +63,13 @@ def get_kb_deletion_stores(
     evidence_pack_repository: EvidencePackRepository = Depends(
         get_evidence_pack_repository
     ),
-    object_store: ObjectStore = Depends(get_object_store),
-    scorecard_run_repository: object | None = Depends(
-        get_optional_scorecard_run_repository
+    scorecard_run_repository: ScorecardRunRepository = Depends(
+        get_scorecard_run_repository
     ),
+    object_store: ObjectStore = Depends(get_object_store),
 ) -> KbDeletionStores:
     """Assemble the KB-delete cascade store bundle from DI."""
 
-    _ = scorecard_run_repository
     return KbDeletionStores(
         graph_service=graph_service,
         vector_service=vector_service,
@@ -98,13 +83,13 @@ def get_kb_deletion_stores(
         case_repository=case_repository,
         policy_item_repository=policy_item_repository,
         evidence_pack_repository=evidence_pack_repository,
+        scorecard_run_repository=scorecard_run_repository,
         object_store=object_store,
     )
 
 
 __all__ = [
     "KbDeletionStores",
-    "get_optional_scorecard_run_repository",
     "get_kb_deletion_stores",
     "kb_deletion_steps",
 ]
