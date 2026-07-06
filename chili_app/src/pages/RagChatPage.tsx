@@ -80,9 +80,20 @@ export function RagChatPage() {
   const knowledgeBasesQuery = useKnowledgeBases()
   const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
   const requestedKbId = launchContext.knowledgeBaseId
+  const hasContextualLaunch =
+    launchContext.source != null ||
+    launchContext.alertId != null ||
+    launchContext.entityId != null ||
+    launchContext.caseId != null ||
+    launchContext.evidencePackId != null ||
+    launchContext.installationId != null ||
+    launchContext.scorecardRunId != null ||
+    launchContext.question != null
   const selectedKnowledgeBaseId = knowledgeBases.some((kb) => kb.id === requestedKbId)
     ? requestedKbId
-    : knowledgeBases[0]?.id ?? null
+    : hasContextualLaunch
+      ? null
+      : knowledgeBases[0]?.id ?? null
   const conversationQuery = useConversation(conversationId)
   const createConversationMutation = useCreateConversation()
   const startContextualThreadMutation = useStartConversationWithMessage()
