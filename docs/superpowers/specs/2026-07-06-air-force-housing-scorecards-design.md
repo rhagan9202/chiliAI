@@ -1,7 +1,7 @@
 # Department of the Air Force Housing Scorecards Design
 
-> Status: Draft for user review (2026-07-06)  
-> Branch: `af_housing`  
+> Status: Draft for user review (2026-07-06)
+> Branch: `af_housing`
 > Goal: Rapidly adapt chiliAI into an executive, cross-installation housing health platform for Department of the Air Force accompanied and unaccompanied housing, with configurable UH and MFH scorecard generation.
 
 ## 1. Problem And Context
