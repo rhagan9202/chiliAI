@@ -73,15 +73,15 @@ class PostgresScorecardRunRepository:
                     return run
                 row = conn.execute(_SELECT_BY_NATURAL_KEY_SQL, _key_params(run)).fetchone()
                 conn.commit()
+                if row is None:
+                    raise ScorecardPersistenceError(
+                        "Scorecard run conflict could not be resolved."
+                    )
+                return _row_to_run(row)
         except ScorecardPersistenceError:
             raise
         except Exception as exc:  # noqa: BLE001
             raise ScorecardPersistenceError("Failed to upsert scorecard run.") from exc
-        if row is None:
-            raise ScorecardPersistenceError(
-                "Scorecard run conflict could not be resolved."
-            )
-        return _row_to_run(row)
 
     def get(self, *, knowledge_base_id: str, run_id: str) -> ScorecardRun | None:
         try:
@@ -89,9 +89,11 @@ class PostgresScorecardRunRepository:
                 row = conn.execute(
                     _SELECT_BY_ID_SQL, (knowledge_base_id, run_id)
                 ).fetchone()
+                return None if row is None else _row_to_run(row)
+        except ScorecardPersistenceError:
+            raise
         except Exception as exc:  # noqa: BLE001
             raise ScorecardPersistenceError("Failed to read scorecard run.") from exc
-        return None if row is None else _row_to_run(row)
 
     def list(
         self,
@@ -123,9 +125,11 @@ class PostgresScorecardRunRepository:
                     "ORDER BY created_at DESC, run_id DESC LIMIT %s OFFSET %s",
                     (*params, limit, offset),
                 ).fetchall()
+                return [_row_to_run(row) for row in rows], total
+        except ScorecardPersistenceError:
+            raise
         except Exception as exc:  # noqa: BLE001
             raise ScorecardPersistenceError("Failed to list scorecard runs.") from exc
-        return [_row_to_run(row) for row in rows], total
 
     def delete_by_kb(self, knowledge_base_id: str) -> int:
         try:
@@ -206,4 +210,11 @@ def _decode_export_payloads(value: object) -> dict[ScorecardExportFormat, str]:
     raw = _as_obj(value) or {}
     if not isinstance(raw, dict):
         raise ScorecardPersistenceError("scorecard_runs.export_payloads is not an object.")
-    return cast(dict[ScorecardExportFormat, str], raw)
+    payloads: dict[ScorecardExportFormat, str] = {}
+    for key, payload in raw.items():
+        if key not in {"json", "markdown"} or not isinstance(payload, str):
+            raise ScorecardPersistenceError(
+                "scorecard_runs.export_payloads contains an invalid entry."
+            )
+        payloads[cast(ScorecardExportFormat, key)] = payload
+    return payloads

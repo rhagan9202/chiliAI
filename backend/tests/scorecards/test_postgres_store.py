@@ -6,8 +6,11 @@ from datetime import UTC, date, datetime
 from types import TracebackType
 from typing import cast
 
+import pytest
+
 from database.protocols import ConnectionProvider
 from scorecards.adapters.postgres import PostgresScorecardRunRepository
+from scorecards.exceptions import ScorecardPersistenceError
 from scorecards.models import ScorecardMetricResult, ScorecardRun, ScorecardSectionResult
 
 
@@ -178,3 +181,14 @@ def test_get_list_and_delete_by_kb_use_kb_scoped_contract() -> None:
 
     provider.conn.delete_count = 1
     assert repo.delete_by_kb("kb-1") == 1
+
+
+def test_corrupt_stored_payload_raises_persistence_error() -> None:
+    provider = FakeProvider()
+    repo = PostgresScorecardRunRepository(cast(ConnectionProvider, provider))
+    repo.upsert(_run("run-1"))
+    assert provider.conn._stored is not None
+    provider.conn._stored = provider.conn._stored[:11] + ("not-json",) + provider.conn._stored[12:]
+
+    with pytest.raises(ScorecardPersistenceError):
+        repo.get(knowledge_base_id="kb-1", run_id="run-1")
