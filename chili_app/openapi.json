@@ -2660,6 +2660,17 @@
       "HousingInstallationMapPointResponse": {
         "description": "Map point for one housing installation.",
         "properties": {
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
           "installation_id": {
             "title": "Installation Id",
             "type": "string"
@@ -2700,6 +2711,17 @@
       "HousingInstallationResponse": {
         "description": "One installation row for the housing dashboard.",
         "properties": {
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
           "installation_id": {
             "title": "Installation Id",
             "type": "string"
@@ -2736,6 +2758,19 @@
             "title": "Open Work Orders",
             "type": "integer"
           },
+          "open_work_orders_rank": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1-based competition rank by open work orders (1 = most) among reporting installations; ties share the smaller rank. None when the installation reports no inventory or resident-experience data.",
+            "title": "Open Work Orders Rank"
+          },
           "state": {
             "anyOf": [
               {
@@ -2757,6 +2792,14 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "status_reasons": {
+            "description": "Human-readable threshold findings behind status, one per tripped metric band (metric, observed value, threshold). Empty for ok; a single no-data reason for unknown.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Status Reasons",
+            "type": "array"
           }
         },
         "required": [
@@ -4462,7 +4505,7 @@
         "type": "object"
       },
       "RecordObservationMapping": {
-        "description": "Maps a numeric record field onto a scored monitoring observation.",
+        "description": "Maps a numeric record field onto a scored monitoring observation.\n\n``MonitoringObservation.score`` is bounded to [0, 1].  ``score_max`` is an\noptional normalization divisor (``score = raw_value / score_max``) for\nfields declared on another bounded scale (e.g. a 0-100 index).  It is a\nscale conversion, not a clamp: values that still fall outside [0, 1] after\nnormalization fail the record batch loudly.  DomainConfig cross-validation\nrequires the score_field's declared record_schema bounds to prove every\nin-schema value normalizes into [0, 1] \u2014 see\n``DomainConfig._validate_cross_references``.",
         "properties": {
           "entity_type": {
             "title": "Entity Type",
@@ -4480,6 +4523,19 @@
           "score_field": {
             "title": "Score Field",
             "type": "string"
+          },
+          "score_max": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Score Max"
           }
         },
         "required": [
@@ -5530,7 +5586,7 @@
         "type": "object"
       },
       "ScorecardThresholdConfig": {
-        "description": "Thresholds used to classify a configured scorecard metric.",
+        "description": "Thresholds used to classify a configured scorecard metric.\n\nExactly one grading direction may be used per metric:\n\n- higher-is-better: ``pass_min`` / ``warn_min`` / ``fail_max``\n- lower-is-better: ``pass_max`` / ``warn_max`` / ``fail_min``\n\nMixing fields from both directions is a validation error, and at least\none threshold field must be set so every metric has a defined grade.\nBounds must also be coherent within their direction so grading bands\ncannot overlap: higher-is-better requires ``pass_min >= warn_min >\nfail_max`` and lower-is-better requires ``pass_max <= warn_max <\nfail_min`` (each comparison applies where both fields are present).",
         "properties": {
           "fail_max": {
             "anyOf": [
@@ -5544,10 +5600,34 @@
             "default": null,
             "title": "Fail Max"
           },
+          "fail_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Fail Min"
+          },
           "incomplete_when_missing": {
             "default": true,
             "title": "Incomplete When Missing",
             "type": "boolean"
+          },
+          "pass_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pass Max"
           },
           "pass_min": {
             "anyOf": [
@@ -5560,6 +5640,18 @@
             ],
             "default": null,
             "title": "Pass Min"
+          },
+          "warn_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Warn Max"
           },
           "warn_min": {
             "anyOf": [
@@ -7726,7 +7818,7 @@
     },
     "/housing/installations": {
       "get": {
-        "description": "Return a safe empty installation list and map model.",
+        "description": "Return the installation list and map computed from ingested records.\n\nInstallations without resolvable coordinates appear in ``items`` but not\nin ``map_points`` \u2014 surfaced as location-pending, never silently dropped.",
         "operationId": "list_installations_housing_installations_get",
         "parameters": [
           {
@@ -7762,6 +7854,24 @@
               ],
               "title": "Period End"
             }
+          },
+          {
+            "description": "Knowledge base to aggregate; defaults to the newest KB of the active domain.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Knowledge base to aggregate; defaults to the newest KB of the active domain.",
+              "title": "Knowledge Base Id"
+            }
           }
         ],
         "responses": {
@@ -7794,7 +7904,7 @@
     },
     "/housing/overview": {
       "get": {
-        "description": "Return a safe empty executive housing KPI model.",
+        "description": "Return the executive housing KPI model computed from ingested records.",
         "operationId": "get_overview_housing_overview_get",
         "parameters": [
           {
@@ -7829,6 +7939,24 @@
                 }
               ],
               "title": "Period End"
+            }
+          },
+          {
+            "description": "Knowledge base to aggregate; defaults to the newest KB of the active domain.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Knowledge base to aggregate; defaults to the newest KB of the active domain.",
+              "title": "Knowledge Base Id"
             }
           }
         ],

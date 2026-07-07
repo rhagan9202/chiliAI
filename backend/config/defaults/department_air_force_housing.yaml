@@ -12,6 +12,9 @@ entities:
       installation_id: { type: string, display: "Installation ID", required: true }
       name: { type: string, display: "Name", required: true }
       majcom: { type: string, display: "MAJCOM" }
+      # Service branch of the installation (USAF | USSF); string per the frozen
+      # feed-column contract (Interface 2).
+      branch: { type: string, display: "Branch" }
       state: { type: string, display: "State" }
       latitude: { type: decimal, display: "Latitude" }
       longitude: { type: decimal, display: "Longitude" }
@@ -37,6 +40,13 @@ entities:
       offline_units: { type: integer, display: "Offline Units", min_value: 0 }
       utilization_rate: { type: decimal, display: "Utilization Rate", min_value: 0, max_value: 1 }
       condition_index: { type: decimal, display: "Condition Index", min_value: 0, max_value: 100 }
+      # FY2024 NDAA §2834 20%-of-replacement-cost certification inputs and the
+      # 10 U.S.C. §2884(c)(7) unit-age element (Interface 2 additions).
+      repair_backlog_usd: { type: decimal, display: "Repair Backlog (USD)", min_value: 0 }
+      # Contract bound is strictly > 0; PropertyDefinition bounds are inclusive,
+      # so 0.01 (smallest positive USD amount) encodes it.
+      replacement_cost_usd: { type: decimal, display: "Replacement Cost (USD)", min_value: 0.01 }
+      average_unit_age_years: { type: decimal, display: "Average Unit Age (Years)", min_value: 0 }
       snapshot_date: { type: date, display: "Snapshot Date", required: true }
 
   - name: population_demand_snapshot
@@ -80,8 +90,17 @@ entities:
     properties:
       experience_id: { type: string, display: "Experience ID", required: true }
       installation_id: { type: string, display: "Installation ID", required: true }
+      category: { type: enum, display: "Category", enum_values: ["UH", "MFH"] }
       satisfaction_score: { type: decimal, display: "Satisfaction Score", min_value: 0, max_value: 100 }
+      maintenance_response_hours: { type: decimal, display: "Maintenance Response (Hours)", min_value: 0 }
       open_work_orders: { type: integer, display: "Open Work Orders", min_value: 0 }
+      work_orders_overdue: { type: integer, display: "Overdue Work Orders", min_value: 0 }
+      work_order_completion_rate: { type: decimal, display: "Work Order Completion Rate", min_value: 0, max_value: 1 }
+      disputes_filed: { type: integer, display: "Disputes Filed", min_value: 0 }
+      disputes_resolved: { type: integer, display: "Disputes Resolved", min_value: 0 }
+      dispute_payments_usd: { type: decimal, display: "Dispute Payments (USD)", min_value: 0 }
+      # Mold/ventilation/fire-safety waivers per FY2026 NDAA §2822 (Interface 2).
+      safety_waiver_count: { type: integer, display: "Safety Waiver Count", min_value: 0 }
       snapshot_date: { type: date, display: "Snapshot Date", required: true }
 
   - name: scorecard_run
@@ -161,6 +180,8 @@ records:
         installation_id: { type: string, display: "Installation ID", required: true }
         installation_name: { type: string, display: "Installation Name", required: true }
         majcom: { type: string, display: "MAJCOM" }
+        # Service branch (USAF | USSF) per Interface 2.
+        branch: { type: string, display: "Branch" }
         state: { type: string, display: "State" }
         latitude: { type: decimal, display: "Latitude" }
         longitude: { type: decimal, display: "Longitude" }
@@ -174,6 +195,7 @@ records:
             installation_id: installation_id
             name: installation_name
             majcom: majcom
+            branch: branch
             state: state
             latitude: latitude
             longitude: longitude
@@ -189,11 +211,12 @@ records:
         - relationship_type: installation_has_population_demand
           source_entity_type: installation
           target_entity_type: population_demand_snapshot
-      observations:
-        - metric_name: unaccompanied_demand
-          entity_type: installation
-          score_field: unaccompanied_authorized
-          rationale: "Unaccompanied demand from UMD authorization export."
+      # No observations: unaccompanied_authorized is a raw authorization
+      # count (unbounded integer), not a score, so it cannot be proven to
+      # normalize into MonitoringObservation's [0, 1] bound.  The former
+      # unaccompanied_demand observation was removed rather than remapped —
+      # this feed carries no naturally bounded field, and demand still reaches
+      # the scorecards directly via record_feed inputs (uh_supply_ratio).
 
     - name: bah_rates
       record_type: bah_rate
@@ -206,7 +229,9 @@ records:
         installation_id: { type: string, display: "Installation ID", required: true }
         bah_rate: { type: decimal, display: "BAH Rate", min_value: 0 }
         available_rentals: { type: integer, display: "Available Rentals", min_value: 0 }
-        affordability_index: { type: decimal, display: "Affordability Index", min_value: 0 }
+        # 0-100 index; max_value lets the market_pressure observation prove
+        # its score_max: 100 normalization stays within [0, 1].
+        affordability_index: { type: decimal, display: "Affordability Index", min_value: 0, max_value: 100 }
         snapshot_date: { type: date, display: "Snapshot Date", required: true }
       entities:
         - entity_type: installation
@@ -227,9 +252,12 @@ records:
           source_entity_type: installation
           target_entity_type: allowance_market_snapshot
       observations:
+        # affordability_index is a 0-100 index; score_max normalizes it into
+        # the [0, 1] observation bound (scale conversion, never a clamp).
         - metric_name: market_pressure
           entity_type: allowance_market_snapshot
           score_field: affordability_index
+          score_max: 100
           rationale: "Market pressure from allowance and rental availability export."
 
     - name: housing_inventory
@@ -248,6 +276,13 @@ records:
         offline_units: { type: integer, display: "Offline Units", min_value: 0 }
         utilization_rate: { type: decimal, display: "Utilization Rate", min_value: 0, max_value: 1 }
         condition_index: { type: decimal, display: "Condition Index", min_value: 0, max_value: 100 }
+        # FY2024 NDAA §2834 backlog/replacement-cost certification inputs and the
+        # 10 U.S.C. §2884(c)(7) unit-age element (Interface 2 additions).
+        repair_backlog_usd: { type: decimal, display: "Repair Backlog (USD)", min_value: 0 }
+        # Contract bound is strictly > 0; PropertyDefinition bounds are inclusive,
+        # so 0.01 (smallest positive USD amount) encodes it.
+        replacement_cost_usd: { type: decimal, display: "Replacement Cost (USD)", min_value: 0.01 }
+        average_unit_age_years: { type: decimal, display: "Average Unit Age (Years)", min_value: 0 }
         snapshot_date: { type: date, display: "Snapshot Date", required: true }
       entities:
         - entity_type: installation
@@ -270,6 +305,9 @@ records:
             offline_units: offline_units
             utilization_rate: utilization_rate
             condition_index: condition_index
+            repair_backlog_usd: repair_backlog_usd
+            replacement_cost_usd: replacement_cost_usd
+            average_unit_age_years: average_unit_age_years
             snapshot_date: snapshot_date
       relationships:
         - relationship_type: installation_has_asset
@@ -279,9 +317,12 @@ records:
           source_entity_type: housing_asset
           target_entity_type: housing_inventory_snapshot
       observations:
+        # condition_index is declared 0-100; score_max normalizes it into the
+        # [0, 1] observation bound (scale conversion, never a clamp).
         - metric_name: housing_condition
           entity_type: housing_inventory_snapshot
           score_field: condition_index
+          score_max: 100
           rationale: "Housing condition index from inventory export."
 
     - name: market_availability
@@ -313,11 +354,12 @@ records:
         - relationship_type: installation_has_market_snapshot
           source_entity_type: installation
           target_entity_type: allowance_market_snapshot
-      observations:
-        - metric_name: rental_availability
-          entity_type: allowance_market_snapshot
-          score_field: available_rentals
-          rationale: "Rental availability from market export."
+      # No observations: available_rentals is a raw listing count (unbounded
+      # integer), not a score, so it cannot be proven to normalize into
+      # MonitoringObservation's [0, 1] bound.  The former rental_availability
+      # observation was removed; availability still reaches the scorecards
+      # directly via record_feed inputs, and market pressure is already
+      # observed from the bounded affordability_index on the bah_rates feed.
 
     - name: area_demographics
       record_type: area_demographics
@@ -348,12 +390,75 @@ records:
         - relationship_type: installation_has_demographic_snapshot
           source_entity_type: installation
           target_entity_type: demographic_snapshot
-      observations:
-        - metric_name: demographic_context
-          entity_type: demographic_snapshot
-          score_field: local_population
-          rationale: "Area demographic context from export."
+      # No observations: local_population is a raw population count
+      # (unbounded integer), not a score, so it cannot be proven to normalize
+      # into MonitoringObservation's [0, 1] bound.  The former
+      # demographic_context observation was removed; demographic context
+      # remains available on the demographic_snapshot entity properties.
 
+    - name: resident_experience
+      record_type: resident_experience
+      source: file_upload
+      id_field: experience_id
+      allow_extra_fields: true
+      accepted_formats: [csv, jsonl]
+      record_schema:
+        experience_id: { type: string, display: "Experience ID", required: true }
+        installation_id: { type: string, display: "Installation ID", required: true }
+        category: { type: enum, display: "Category", enum_values: ["UH", "MFH"] }
+        satisfaction_score: { type: decimal, display: "Satisfaction Score", min_value: 0, max_value: 100 }
+        maintenance_response_hours: { type: decimal, display: "Maintenance Response (Hours)", min_value: 0 }
+        work_orders_open: { type: integer, display: "Open Work Orders", min_value: 0 }
+        work_orders_overdue: { type: integer, display: "Overdue Work Orders", min_value: 0 }
+        work_order_completion_rate: { type: decimal, display: "Work Order Completion Rate", min_value: 0, max_value: 1 }
+        disputes_filed: { type: integer, display: "Disputes Filed", min_value: 0 }
+        disputes_resolved: { type: integer, display: "Disputes Resolved", min_value: 0 }
+        dispute_payments_usd: { type: decimal, display: "Dispute Payments (USD)", min_value: 0 }
+        # Mold/ventilation/fire-safety waivers per FY2026 NDAA §2822 (Interface 2).
+        safety_waiver_count: { type: integer, display: "Safety Waiver Count", min_value: 0 }
+        snapshot_date: { type: date, display: "Snapshot Date", required: true }
+      entities:
+        - entity_type: installation
+          id_field: installation_id
+          property_fields:
+            installation_id: installation_id
+        - entity_type: resident_experience_snapshot
+          id_field: experience_id
+          property_fields:
+            experience_id: experience_id
+            installation_id: installation_id
+            category: category
+            satisfaction_score: satisfaction_score
+            maintenance_response_hours: maintenance_response_hours
+            open_work_orders: work_orders_open
+            work_orders_overdue: work_orders_overdue
+            work_order_completion_rate: work_order_completion_rate
+            disputes_filed: disputes_filed
+            disputes_resolved: disputes_resolved
+            dispute_payments_usd: dispute_payments_usd
+            safety_waiver_count: safety_waiver_count
+            snapshot_date: snapshot_date
+      relationships:
+        - relationship_type: installation_has_resident_experience
+          source_entity_type: installation
+          target_entity_type: resident_experience_snapshot
+      observations:
+        # satisfaction_score is declared 0-100; score_max normalizes it into
+        # the [0, 1] observation bound (scale conversion, never a clamp).
+        # Kept as an observation: it is a real resident-experience signal.
+        - metric_name: resident_satisfaction
+          entity_type: resident_experience_snapshot
+          score_field: satisfaction_score
+          score_max: 100
+          rationale: "Resident satisfaction from tenant experience export."
+
+# Scorecard templates regenerated from the research dossier
+# docs/research/housing-scorecard-mandates.md (§ 4.1 UH, § 4.2 MFH).
+# Every metric carries a provenance comment: [statutory: cite] where the
+# statute supplies the number, [judgement: rationale] otherwise; traceability
+# matches the dossier's § 4 tables. Lower-is-better metrics use the mirrored
+# pass_max/warn_max/fail_min keys (pass <= pass_max, warn <= warn_max,
+# fail >= fail_min).
 scorecards:
   templates:
     - id: uh_scorecard
@@ -364,8 +469,11 @@ scorecards:
       export_formats: [json, markdown]
       sections:
         - id: demand_supply
-          label: "Demand And Supply"
+          label: "Demand and Supply"
           metrics:
+            # UH #1 — traceability: FY2023 § 2821 (HRMA context); demo construct.
+            # [judgement: 1:1 coverage of authorized unaccompanied demand;
+            # supports HRMA-style requirements analysis]
             - id: uh_supply_ratio
               label: "UH Supply Ratio"
               description: "Available UH inventory divided by unaccompanied authorized demand."
@@ -384,12 +492,34 @@ scorecards:
               formula: { operator: ratio, numerator: supply, denominator: demand }
               thresholds: { pass_min: 1.0, warn_min: 0.9, fail_max: 0.89, incomplete_when_missing: true }
               freshness_days: 90
-        - id: condition
-          label: "Condition"
+            # UH #2 — traceability: 10 U.S.C. § 2884(c)(2) analog (dossier § 6 caveat).
+            # [judgement: 0.75 warn boundary borrowed by analogy from the
+            # § 2884(c)(2) MFH occupancy financial-risk trigger; 0.90 is a
+            # healthy-dorm-management target]
+            - id: uh_utilization_rate
+              label: "UH Utilization Rate"
+              description: "Average UH utilization across inventory snapshots."
+              unit: ratio
+              housing_category: UH
+              inputs:
+                - name: utilization
+                  source: record_feed
+                  ref: housing_inventory
+                  field: utilization_rate
+                  filter: { category: UH }
+              formula: { operator: mean, value: utilization }
+              thresholds: { pass_min: 0.90, warn_min: 0.75, fail_max: 0.7499, incomplete_when_missing: true }
+              freshness_days: 90
+        - id: condition_recapitalization
+          label: "Condition and Recapitalization"
           metrics:
+            # UH #3 — traceability: FY2024 § 2838 (DOD-wide UH condition index).
+            # [judgement, DOD-band-aligned: pass = fair-or-better (>= 80),
+            # warn = poor band (60-79), fail = failing band (< 60) per the DOD
+            # condition-score convention documented in GAO-23-105797 p. 11 n.17]
             - id: uh_condition_index
               label: "UH Condition Index"
-              description: "Average UH condition index from inventory snapshots."
+              description: "Unit-weighted UH condition index from inventory snapshots."
               unit: score
               housing_category: UH
               inputs:
@@ -398,8 +528,115 @@ scorecards:
                   ref: housing_inventory
                   field: condition_index
                   filter: { category: UH }
-              formula: { operator: mean, value: condition }
-              thresholds: { pass_min: 80, warn_min: 70, fail_max: 69, incomplete_when_missing: true }
+                - name: units
+                  source: record_feed
+                  ref: housing_inventory
+                  field: available_units
+                  filter: { category: UH }
+              formula: { operator: weighted_mean, value: condition, weight: units }
+              thresholds: { pass_min: 80, warn_min: 60, fail_max: 59.99, incomplete_when_missing: true }
+              freshness_days: 90
+            # UH #4 — traceability: FY2024 § 2834 -> 10 U.S.C. § 2856b(c).
+            # pass_max 0.20 [statutory: 10 U.S.C. § 2856b(c) annual certification
+            # that UH repair and improvement needs do not exceed 20 percent of
+            # replacement cost]; warn_max 0.25 [judgement: buffer above the
+            # certification line]; fail_min 0.2501. Freshness 400: annual
+            # certification submitted with the President's budget.
+            - id: uh_repair_backlog_ratio
+              label: "Repair Backlog vs Replacement Cost"
+              description: "UH repair backlog divided by replacement cost (Section 2856b(c) certification line)."
+              unit: ratio
+              housing_category: UH
+              inputs:
+                - name: backlog
+                  source: record_feed
+                  ref: housing_inventory
+                  field: repair_backlog_usd
+                  filter: { category: UH }
+                - name: replacement
+                  source: record_feed
+                  ref: housing_inventory
+                  field: replacement_cost_usd
+                  filter: { category: UH }
+              formula: { operator: ratio, numerator: backlog, denominator: replacement }
+              thresholds: { pass_max: 0.20, warn_max: 0.25, fail_min: 0.2501, incomplete_when_missing: true }
+              freshness_days: 400
+        - id: maintenance_performance
+          label: "Maintenance Performance"
+          metrics:
+            # UH #5 — traceability: FY2024 § 2837; § 2884(c)(9) analog.
+            # [judgement: statute mandates work-order metrics but sets no
+            # target; 90% completion is a conventional facilities KPI]
+            - id: uh_work_order_completion_rate
+              label: "Work-Order Completion Rate"
+              description: "Average UH work-order completion rate."
+              unit: ratio
+              housing_category: UH
+              inputs:
+                - name: completion
+                  source: record_feed
+                  ref: resident_experience
+                  field: work_order_completion_rate
+                  filter: { category: UH }
+              formula: { operator: mean, value: completion }
+              thresholds: { pass_min: 0.90, warn_min: 0.80, fail_max: 0.79, incomplete_when_missing: true }
+              freshness_days: 90
+            # UH #6 — traceability: FY2024 § 2837; § 2884(c)(9) analog.
+            # [judgement: anchored to the 24-hour emergency/urgent response
+            # convention in DOD housing management practice; statute requires
+            # tracking response times without a number]
+            - id: uh_maintenance_response_hours
+              label: "Avg Maintenance Response (hrs)"
+              description: "Average UH emergency/urgent maintenance response time in hours."
+              unit: hours
+              housing_category: UH
+              inputs:
+                - name: response_hours
+                  source: record_feed
+                  ref: resident_experience
+                  field: maintenance_response_hours
+                  filter: { category: UH }
+              formula: { operator: mean, value: response_hours }
+              thresholds: { pass_max: 24, warn_max: 48, fail_min: 48.01, incomplete_when_missing: true }
+              freshness_days: 90
+        - id: resident_experience_safety
+          label: "Resident Experience and Safety"
+          metrics:
+            # UH #7 — traceability: FY2020 § 3058 (uniform survey incl.
+            # government-owned housing). [judgement: calibrated to the DAF
+            # 2020-21 tenant-satisfaction average of 77.2 and CEL's "very good"
+            # band; no statutory target exists] Freshness 400: annual survey.
+            - id: uh_resident_satisfaction
+              label: "Resident Satisfaction Score"
+              description: "Average UH resident satisfaction survey score."
+              unit: score
+              housing_category: UH
+              inputs:
+                - name: satisfaction
+                  source: record_feed
+                  ref: resident_experience
+                  field: satisfaction_score
+                  filter: { category: UH }
+              formula: { operator: mean, value: satisfaction }
+              thresholds: { pass_min: 75, warn_min: 65, fail_max: 64.99, incomplete_when_missing: true }
+              freshness_days: 400
+            # UH #8 — traceability: FY2026 § 2822; § 2856b(b) waiver authority.
+            # [judgement: statute mandates reporting waiver counts with no
+            # threshold; zero open waivers is the only defensible healthy
+            # state, small non-zero counts warn]
+            - id: uh_safety_waiver_count
+              label: "Health/Safety Standard Waivers"
+              description: "Count of UH health and safety standard waivers (mold, ventilation, fire safety)."
+              unit: count
+              housing_category: UH
+              inputs:
+                - name: waivers
+                  source: record_feed
+                  ref: resident_experience
+                  field: safety_waiver_count
+                  filter: { category: UH }
+              formula: { operator: sum, value: waivers }
+              thresholds: { pass_max: 0, warn_max: 2, fail_min: 3, incomplete_when_missing: true }
               freshness_days: 90
 
     - id: mfh_scorecard
@@ -408,10 +645,16 @@ scorecards:
       scope: installation
       period: quarterly
       export_formats: [json, markdown]
+      # Sections after Supply and Market implement the 10 U.S.C. § 2891c
+      # minimum performance-metric categories (tenant satisfaction,
+      # maintenance management, safety, financial management) plus the
+      # § 2894 dispute-resolution instrument.
       sections:
         - id: family_housing_supply
-          label: "Family Housing Supply"
+          label: "Supply and Market"
           metrics:
+            # MFH #1 — traceability: FY2023 § 2821 (HRMA context); demo construct.
+            # [judgement: as UH #1 — 1:1 coverage of accompanied authorized demand]
             - id: mfh_supply_ratio
               label: "MFH Supply Ratio"
               description: "Available MFH inventory divided by accompanied authorized demand."
@@ -430,12 +673,12 @@ scorecards:
               formula: { operator: ratio, numerator: supply, denominator: demand }
               thresholds: { pass_min: 1.0, warn_min: 0.9, fail_max: 0.89, incomplete_when_missing: true }
               freshness_days: 90
-        - id: market_pressure
-          label: "Market Pressure"
-          metrics:
+            # MFH #2 — traceability: FY2023 § 2821 (HRMA); § 2884(b)(2) BAH context.
+            # [judgement: carried from existing pack; index is a synthetic
+            # HRMA-style composite]
             - id: mfh_market_affordability
-              label: "Market Affordability"
-              description: "Average local market affordability for family housing demand."
+              label: "Local Market Affordability"
+              description: "Average local market affordability index for family housing demand."
               unit: index
               housing_category: MFH
               inputs:
@@ -444,8 +687,291 @@ scorecards:
                   ref: market_availability
                   field: affordability_index
               formula: { operator: mean, value: affordability }
-              thresholds: { pass_min: 80, warn_min: 65, fail_max: 64, incomplete_when_missing: true }
+              thresholds: { pass_min: 80, warn_min: 65, fail_max: 64.99, incomplete_when_missing: true }
               freshness_days: 90
+        - id: financial_management
+          label: "Financial Management"
+          # § 2891c minimum category (4): financial management.
+          metrics:
+            # MFH #3 — traceability: § 2884(c)(2); § 2891c (financial management).
+            # pass_min 0.90 [judgement: healthy project]; warn_min 0.75
+            # [statutory boundary: 10 U.S.C. § 2884(c)(2) financial-risk
+            # mitigation trigger when occupancy falls below 75 percent];
+            # fail_max 0.7499 (below the trigger).
+            - id: mfh_occupancy_rate
+              label: "MFH Occupancy Rate"
+              description: "Average MFH occupancy across inventory snapshots."
+              unit: ratio
+              housing_category: MFH
+              inputs:
+                - name: occupancy
+                  source: record_feed
+                  ref: housing_inventory
+                  field: utilization_rate
+                  filter: { category: MFH }
+              formula: { operator: mean, value: occupancy }
+              thresholds: { pass_min: 0.90, warn_min: 0.75, fail_max: 0.7499, incomplete_when_missing: true }
+              freshness_days: 90
+            # MFH #4 — traceability: § 2884(c)(1); threshold parity with § 2856b(c).
+            # [judgement: parity with the UH statutory 20% line; § 2884(c)(1)
+            # mandates backlog reporting with no number; wider warn band
+            # because MFH recapitalization is project-financed]
+            - id: mfh_repair_backlog_ratio
+              label: "Repair Backlog vs Replacement Cost"
+              description: "MFH repair backlog divided by replacement cost."
+              unit: ratio
+              housing_category: MFH
+              inputs:
+                - name: backlog
+                  source: record_feed
+                  ref: housing_inventory
+                  field: repair_backlog_usd
+                  filter: { category: MFH }
+                - name: replacement
+                  source: record_feed
+                  ref: housing_inventory
+                  field: replacement_cost_usd
+                  filter: { category: MFH }
+              formula: { operator: ratio, numerator: backlog, denominator: replacement }
+              thresholds: { pass_max: 0.20, warn_max: 0.30, fail_min: 0.3001, incomplete_when_missing: true }
+              freshness_days: 400
+        - id: condition_recapitalization
+          label: "Condition and Recapitalization"
+          metrics:
+            # MFH #5 — traceability: § 2884(c)(7); DOD bands per GAO-23-105797.
+            # [judgement, DOD-band-aligned: as UH #3]
+            - id: mfh_condition_index
+              label: "MFH Condition Index"
+              description: "Unit-weighted MFH condition index from inventory snapshots."
+              unit: score
+              housing_category: MFH
+              inputs:
+                - name: condition
+                  source: record_feed
+                  ref: housing_inventory
+                  field: condition_index
+                  filter: { category: MFH }
+                - name: units
+                  source: record_feed
+                  ref: housing_inventory
+                  field: available_units
+                  filter: { category: MFH }
+              formula: { operator: weighted_mean, value: condition, weight: units }
+              thresholds: { pass_min: 80, warn_min: 60, fail_max: 59.99, incomplete_when_missing: true }
+              freshness_days: 90
+            # MFH #6 — traceability: § 2884(c)(7) (age-based condition assessment).
+            # [judgement: § 2884(c)(7) requires age-based condition assessment
+            # with no threshold; bands reflect multi-decade MHPI
+            # recapitalization planning horizons]
+            - id: mfh_average_unit_age
+              label: "Average Unit Age (yrs)"
+              description: "Average MFH unit age in years."
+              unit: years
+              housing_category: MFH
+              inputs:
+                - name: age
+                  source: record_feed
+                  ref: housing_inventory
+                  field: average_unit_age_years
+                  filter: { category: MFH }
+              formula: { operator: mean, value: age }
+              thresholds: { pass_max: 25, warn_max: 40, fail_min: 40.01, incomplete_when_missing: true }
+              freshness_days: 90
+        - id: maintenance_management
+          label: "Maintenance Management"
+          # § 2891c minimum category (2): maintenance management.
+          metrics:
+            # MFH #7 — traceability: § 2884(c)(9); § 2891c (maintenance
+            # management); FY2026 § 2824. [judgement: as UH #5]
+            - id: mfh_work_order_completion_rate
+              label: "Work-Order Completion Rate"
+              description: "Average MFH work-order completion rate."
+              unit: ratio
+              housing_category: MFH
+              inputs:
+                - name: completion
+                  source: record_feed
+                  ref: resident_experience
+                  field: work_order_completion_rate
+                  filter: { category: MFH }
+              formula: { operator: mean, value: completion }
+              thresholds: { pass_min: 0.90, warn_min: 0.80, fail_max: 0.79, incomplete_when_missing: true }
+              freshness_days: 90
+            # MFH #8 — traceability: § 2884(c)(9); § 2891c (maintenance
+            # management). [judgement: as UH #6]
+            - id: mfh_maintenance_response_hours
+              label: "Avg Maintenance Response (hrs)"
+              description: "Average MFH emergency/urgent maintenance response time in hours."
+              unit: hours
+              housing_category: MFH
+              inputs:
+                - name: response_hours
+                  source: record_feed
+                  ref: resident_experience
+                  field: maintenance_response_hours
+                  filter: { category: MFH }
+              formula: { operator: mean, value: response_hours }
+              thresholds: { pass_max: 24, warn_max: 48, fail_min: 48.01, incomplete_when_missing: true }
+              freshness_days: 90
+        - id: tenant_satisfaction
+          label: "Tenant Satisfaction"
+          # § 2891c minimum category (1): tenant satisfaction.
+          metrics:
+            # MFH #9 — traceability: FY2020 § 3058; § 2884(c)(13); § 2891c
+            # (tenant satisfaction). [judgement: calibrated to DAF TSS 77.2
+            # average, "very good" band] Freshness 400: annual survey.
+            - id: mfh_resident_satisfaction
+              label: "Resident Satisfaction Score"
+              description: "Average MFH resident satisfaction survey score."
+              unit: score
+              housing_category: MFH
+              inputs:
+                - name: satisfaction
+                  source: record_feed
+                  ref: resident_experience
+                  field: satisfaction_score
+                  filter: { category: MFH }
+              formula: { operator: mean, value: satisfaction }
+              thresholds: { pass_min: 75, warn_min: 65, fail_max: 64.99, incomplete_when_missing: true }
+              freshness_days: 400
+        - id: safety
+          label: "Safety"
+          # § 2891c minimum category (3): safety.
+          metrics:
+            # MFH #10 — traceability: § 2891c (safety); FY2026 § 2822 (analog —
+            # UH-originated construct). [judgement: operationalizes the § 2891c
+            # safety category with the FY2026 § 2822 waiver-count construct;
+            # see dossier § 6]
+            - id: mfh_safety_waiver_count
+              label: "Health/Safety Standard Waivers"
+              description: "Count of MFH health and safety standard waivers (mold, ventilation, fire safety)."
+              unit: count
+              housing_category: MFH
+              inputs:
+                - name: waivers
+                  source: record_feed
+                  ref: resident_experience
+                  field: safety_waiver_count
+                  filter: { category: MFH }
+              formula: { operator: sum, value: waivers }
+              thresholds: { pass_max: 0, warn_max: 2, fail_min: 3, incomplete_when_missing: true }
+              freshness_days: 90
+        - id: dispute_resolution
+          label: "Dispute Resolution"
+          metrics:
+            # MFH #11 — traceability: § 2894; § 2884(c)(10); FY2021 § 2811.
+            # [judgement: statute defines process and timelines, not a
+            # resolution-rate target]
+            - id: mfh_dispute_resolution_rate
+              label: "Dispute Resolution Rate"
+              description: "MFH disputes resolved divided by disputes filed."
+              unit: ratio
+              housing_category: MFH
+              inputs:
+                - name: resolved
+                  source: record_feed
+                  ref: resident_experience
+                  field: disputes_resolved
+                  filter: { category: MFH }
+                - name: filed
+                  source: record_feed
+                  ref: resident_experience
+                  field: disputes_filed
+                  filter: { category: MFH }
+              formula: { operator: ratio, numerator: resolved, denominator: filed }
+              thresholds: { pass_min: 0.90, warn_min: 0.75, fail_max: 0.7499, incomplete_when_missing: true }
+              freshness_days: 90
+            # MFH #12 — traceability: § 2891c as amended by FY2026 § 2825.
+            # [judgement, weakest thresholds in the set: FY2026 § 2825 mandates
+            # disclosure only; grading absolute dollars across differently
+            # sized installations is a demo convenience, flagged in dossier § 6]
+            - id: mfh_dispute_payments
+              label: "Dispute-Resolution Payments (USD)"
+              description: "Total MFH payments made pursuant to a dispute resolution process."
+              unit: USD
+              housing_category: MFH
+              inputs:
+                - name: payments
+                  source: record_feed
+                  ref: resident_experience
+                  field: dispute_payments_usd
+                  filter: { category: MFH }
+              formula: { operator: sum, value: payments }
+              thresholds: { pass_max: 25000, warn_max: 100000, fail_min: 100000.01, incomplete_when_missing: true }
+              freshness_days: 90
+
+# Infra pins — dev-stack services, mirroring the shipped exemplar packs
+# (food_supply_chain.yaml / medicare_fraud_cms_desynpuf.yaml) per the
+# config/README first-class-pack checklist. Without these the KB store,
+# records, and scorecard runs fall back to per-process in-memory defaults
+# and the demo wipes on API restart.
+graph:
+  backend: neo4j
+  uri: bolt://neo4j:7687
+  pool_size: 10
+  auth_env_var: null
+
+vectorstore:
+  backend: qdrant
+  uri: http://qdrant:6333
+  dimensions: 384
+  distance_metric: cosine
+
+embeddings:
+  provider: local
+  model: local-default
+  dimensions: 384
+  batch_size: 32
+  api_key_env_var: null
+
+storage:
+  backend: local
+  endpoint_url: null
+  bucket: null
+  base_path: /app/data/objects
+  credentials_env_var: null
+
+events:
+  backend: redis
+  uri: redis://redis:6379
+  stream_prefix: chili
+  consumer_group: chili-workers
+
+database:
+  backend: postgres
+  dsn_env_var: DATABASE_URL
+  pool_size: 10
+  pool_max_overflow: 5
+  statement_timeout_ms: 30000
+
+analytics:
+  metrics_recompute_min_interval_seconds: 300
+
+monitoring:
+  evaluation_interval_seconds: 300
+  dedup_window_seconds: 3600
+  max_alerts_per_entity: 10
+  max_alerts_per_evaluation: 100
+  grouping_window_seconds: 300
+
+llm:
+  provider: local
+  model: local-default
+  api_key_env_var: null
+  temperature: 0.2
+  max_tokens: 4096
+  fallback:
+    provider: openai
+    model: gpt-4o-mini
+    api_key_env_var: OPENAI_API_KEY
+    temperature: 0.2
+    max_tokens: 4096
+    fallback:
+      provider: ollama
+      model: llama3.1:8b
+      base_url: http://localhost:11434
+      temperature: 0.2
+      max_tokens: 4096
 
 rag:
   top_k: 5

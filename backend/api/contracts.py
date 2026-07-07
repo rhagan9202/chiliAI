@@ -552,8 +552,27 @@ class HousingInstallationResponse(BaseModel):
     name: str
     majcom: str | None = None
     state: str | None = None
+    branch: str | None = None
     status: Literal["ok", "watch", "critical", "unknown"] = "unknown"
+    status_reasons: list[str] = Field(
+        default_factory=lambda: cast(list[str], []),
+        description=(
+            "Human-readable threshold findings behind status, one per tripped "
+            "metric band (metric, observed value, threshold). Empty for ok; "
+            "a single no-data reason for unknown."
+        ),
+    )
     open_work_orders: int = Field(default=0, ge=0)
+    open_work_orders_rank: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "1-based competition rank by open work orders (1 = most) among "
+            "reporting installations; ties share the smaller rank. None when "
+            "the installation reports no inventory or resident-experience "
+            "data."
+        ),
+    )
     occupancy_rate: float | None = None
 
 
@@ -564,6 +583,7 @@ class HousingInstallationMapPointResponse(BaseModel):
     name: str
     latitude: float
     longitude: float
+    branch: str | None = None
     status: Literal["ok", "watch", "critical", "unknown"] = "unknown"
 
 

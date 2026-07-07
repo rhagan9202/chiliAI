@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from typing import Protocol, runtime_checkable
 
 from config.schema import DomainConfig, ScorecardTemplateConfig
 from scorecards.adapters.protocols import ScorecardRunRepository
-from scorecards.evaluation import ScorecardEvalState, evaluate_template
+from scorecards.evaluation import ScorecardEvalState, SourceRecord, evaluate_template
 from scorecards.exceptions import (
     ScorecardExportNotFoundError,
     ScorecardRunNotFoundError,
@@ -24,17 +25,40 @@ from scorecards.service_models import (
 )
 from shared.utils import utc_now
 
-__all__ = ["ScorecardService", "create_scorecard_service"]
+__all__ = [
+    "ScorecardService",
+    "ScorecardSourceRecordLoader",
+    "create_scorecard_service",
+]
+
+
+@runtime_checkable
+class ScorecardSourceRecordLoader(Protocol):
+    """Read boundary supplying a knowledge base's ingested feed records.
+
+    Implemented outside this module (the API gateway bridges the records
+    store through this protocol) so scorecards never import other backend
+    modules directly.
+    """
+
+    def load_source_records(self, knowledge_base_id: str) -> list[SourceRecord]:
+        """Return every ingested record for the KB as evaluator source records."""
+        ...
 
 
 class ScorecardService:
     """Coordinates template lookup, pure evaluation, exports, and persistence."""
 
     def __init__(
-        self, *, config: DomainConfig, repository: ScorecardRunRepository
+        self,
+        *,
+        config: DomainConfig,
+        repository: ScorecardRunRepository,
+        record_source: ScorecardSourceRecordLoader | None = None,
     ) -> None:
         self._config = config
         self._repository = repository
+        self._record_source = record_source
 
     def list_templates(self) -> ScorecardTemplateListResponse:
         return ScorecardTemplateListResponse(
@@ -58,9 +82,10 @@ class ScorecardService:
 
     def generate(self, request: ScorecardGenerateRequest) -> ScorecardRun:
         template = self.get_template(request.template_id)
-        evaluation = evaluate_template(template, ScorecardEvalState(records=[]))
+        records = self._select_records(request)
+        evaluation = evaluate_template(template, ScorecardEvalState(records=records))
         now = utc_now()
-        snapshot_hash = _source_snapshot_hash(request)
+        snapshot_hash = _source_snapshot_hash(request, records)
         run = ScorecardRun(
             id=_run_id(snapshot_hash),
             knowledge_base_id=request.knowledge_base_id,
@@ -86,6 +111,39 @@ class ScorecardService:
             }
         )
         return self._repository.upsert(run)
+
+    def _select_records(
+        self, request: ScorecardGenerateRequest
+    ) -> list[SourceRecord]:
+        """Return the KB's ingested records narrowed to the requested run.
+
+        Scope: ``scope_type == "installation"`` keeps only records whose
+        ``installation_id`` value matches ``scope_id`` — every housing feed
+        carries that column. Broader scopes (enterprise, majcom, region,
+        market_area) evaluate the full KB record set; the feeds do not carry
+        a reliable roll-up key for them, so narrowing there would silently
+        drop data.
+
+        Period: records dated via ``observed_at`` (the feed's snapshot date)
+        must fall inside ``[period_start, period_end]``. Undated records are
+        kept — the evaluator's freshness check is the authority on staleness.
+        """
+        if self._record_source is None:
+            return []
+        records = self._record_source.load_source_records(request.knowledge_base_id)
+        selected: list[SourceRecord] = []
+        for record in records:
+            if (
+                request.scope_type == "installation"
+                and record.values.get("installation_id") != request.scope_id
+            ):
+                continue
+            if record.observed_at is not None:
+                observed = record.observed_at.date()
+                if observed < request.period_start or observed > request.period_end:
+                    continue
+            selected.append(record)
+        return selected
 
     def list_runs(self, request: ScorecardRunListRequest) -> ScorecardRunListResponse:
         items, total = self._repository.list(
@@ -118,12 +176,28 @@ class ScorecardService:
 
 
 def create_scorecard_service(
-    config: DomainConfig, repository: ScorecardRunRepository
+    config: DomainConfig,
+    repository: ScorecardRunRepository,
+    record_source: ScorecardSourceRecordLoader | None = None,
 ) -> ScorecardService:
-    return ScorecardService(config=config, repository=repository)
+    return ScorecardService(
+        config=config, repository=repository, record_source=record_source
+    )
 
 
-def _source_snapshot_hash(request: ScorecardGenerateRequest) -> str:
+def _source_snapshot_hash(
+    request: ScorecardGenerateRequest, records: list[SourceRecord]
+) -> str:
+    """Fingerprint the run request together with the exact records evaluated.
+
+    Including per-record content digests means re-generating after new or
+    changed source data produces a new run id, while an identical request
+    over identical data stays idempotent.
+    """
+    record_digests = sorted(
+        f"{record.feed_name}:{record.record_id}:{_record_values_digest(record)}"
+        for record in records
+    )
     payload = {
         "knowledge_base_id": request.knowledge_base_id,
         "template_id": request.template_id,
@@ -131,10 +205,18 @@ def _source_snapshot_hash(request: ScorecardGenerateRequest) -> str:
         "scope_id": request.scope_id,
         "period_start": request.period_start.isoformat(),
         "period_end": request.period_end.isoformat(),
+        "records": record_digests,
         "version": 1,
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _record_values_digest(record: SourceRecord) -> str:
+    canonical = json.dumps(
+        record.values, sort_keys=True, separators=(",", ":"), default=str
+    )
+    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
 
 def _run_id(source_snapshot_hash: str) -> str:

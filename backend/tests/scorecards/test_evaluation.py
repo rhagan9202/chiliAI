@@ -392,6 +392,185 @@ def test_non_finite_numeric_inputs_are_not_treated_as_complete_metrics(
     assert any("housing_inventory" in warning for warning in metric.warnings)
 
 
+def _response_hours_metric(
+    thresholds: ScorecardThresholdConfig,
+) -> ScorecardMetricConfig:
+    return ScorecardMetricConfig(
+        id="maintenance_response_hours",
+        label="Maintenance response hours",
+        unit="hours",
+        housing_category="combined",
+        inputs=[
+            ScorecardMetricInputConfig(
+                name="response_hours",
+                source="record_feed",
+                ref="resident_experience",
+                field="maintenance_response_hours",
+            )
+        ],
+        formula=ScorecardFormulaConfig(operator="mean", value="response_hours"),
+        thresholds=thresholds,
+        freshness_days=30,
+    )
+
+
+def _evaluate_response_hours(
+    thresholds: ScorecardThresholdConfig,
+    value: float,
+    *,
+    observed_at: datetime | None = None,
+) -> tuple[str, str]:
+    result = evaluate_template(
+        _template(metric=_response_hours_metric(thresholds)),
+        ScorecardEvalState(
+            as_of=NOW,
+            records=[
+                SourceRecord(
+                    feed_name="resident_experience",
+                    record_id="exp-1",
+                    observed_at=observed_at or NOW - timedelta(days=1),
+                    values={"maintenance_response_hours": value},
+                )
+            ],
+        ),
+    )
+    metric = result.sections[0].metrics[0]
+    return metric.health, metric.completeness
+
+
+@pytest.mark.parametrize(
+    ("value", "expected_health"),
+    [(20.0, "pass"), (24.0, "pass"), (30.0, "warn"), (48.0, "warn"), (60.0, "fail")],
+)
+def test_lower_is_better_thresholds_grade_in_reverse(
+    value: float, expected_health: str
+) -> None:
+    thresholds = ScorecardThresholdConfig(pass_max=24.0, warn_max=48.0)
+    health, completeness = _evaluate_response_hours(thresholds, value)
+    assert health == expected_health
+    assert completeness == "complete"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected_health"),
+    [(10.0, "pass"), (72.0, "fail"), (100.0, "fail")],
+)
+def test_lower_is_better_fail_min_only_mirrors_fail_max_only(
+    value: float, expected_health: str
+) -> None:
+    thresholds = ScorecardThresholdConfig(fail_min=72.0)
+    health, _ = _evaluate_response_hours(thresholds, value)
+    assert health == expected_health
+
+
+def test_stale_source_downgrades_lower_is_better_pass_to_warn() -> None:
+    thresholds = ScorecardThresholdConfig(pass_max=24.0, warn_max=48.0)
+    health, completeness = _evaluate_response_hours(
+        thresholds, 10.0, observed_at=NOW - timedelta(days=45)
+    )
+    assert health == "warn"
+    assert completeness == "stale_source"
+
+
+def test_threshold_directions_cannot_be_mixed() -> None:
+    with pytest.raises(ValueError, match="cannot mix"):
+        ScorecardThresholdConfig(pass_min=0.9, pass_max=24.0)
+    with pytest.raises(ValueError, match="cannot mix"):
+        ScorecardThresholdConfig(warn_min=0.8, fail_min=72.0)
+
+
+def test_thresholds_require_at_least_one_bound() -> None:
+    with pytest.raises(ValueError, match="at least one"):
+        ScorecardThresholdConfig()
+
+
+def test_threshold_bounds_must_be_ordered_within_direction() -> None:
+    with pytest.raises(ValueError, match="pass_min 0.8 must be >= warn_min 0.9"):
+        ScorecardThresholdConfig(pass_min=0.8, warn_min=0.9)
+    with pytest.raises(ValueError, match="pass_min 0.9 must be > fail_max 0.9"):
+        ScorecardThresholdConfig(pass_min=0.9, fail_max=0.9)
+    with pytest.raises(ValueError, match="warn_min 0.8 must be > fail_max 0.85"):
+        ScorecardThresholdConfig(pass_min=0.9, warn_min=0.8, fail_max=0.85)
+    with pytest.raises(ValueError, match="pass_max 48.0 must be <= warn_max 24.0"):
+        ScorecardThresholdConfig(pass_max=48.0, warn_max=24.0)
+    with pytest.raises(ValueError, match="pass_max 24.0 must be < fail_min 24.0"):
+        ScorecardThresholdConfig(pass_max=24.0, fail_min=24.0)
+    with pytest.raises(ValueError, match="warn_max 48.0 must be < fail_min 40.0"):
+        ScorecardThresholdConfig(pass_max=24.0, warn_max=48.0, fail_min=40.0)
+    # Coherent chains in both directions are accepted.
+    ScorecardThresholdConfig(pass_min=1.0, warn_min=0.9, fail_max=0.89)
+    ScorecardThresholdConfig(pass_max=0.20, warn_max=0.25, fail_min=0.2501)
+
+
+def _partial_input_metric(*, incomplete_when_missing: bool) -> ScorecardMetricConfig:
+    """Optional metric whose formula uses only one of its two inputs."""
+
+    return ScorecardMetricConfig(
+        id="partial_metric",
+        label="Partial metric",
+        unit="units",
+        housing_category="combined",
+        required=False,
+        inputs=[
+            ScorecardMetricInputConfig(
+                name="supply",
+                source="record_feed",
+                ref="housing_inventory",
+                field="available_units",
+            ),
+            ScorecardMetricInputConfig(
+                name="context",
+                source="record_feed",
+                ref="umd_authorizations",
+                field="authorized_units",
+            ),
+        ],
+        formula=ScorecardFormulaConfig(operator="mean", value="supply"),
+        thresholds=ScorecardThresholdConfig(
+            pass_min=1.0,
+            warn_min=0.0,
+            incomplete_when_missing=incomplete_when_missing,
+        ),
+        freshness_days=30,
+    )
+
+
+def _supply_only_records() -> list[SourceRecord]:
+    return [
+        SourceRecord(
+            feed_name="housing_inventory",
+            record_id="inv-1",
+            observed_at=NOW - timedelta(days=1),
+            values={"available_units": 100},
+        )
+    ]
+
+
+def test_incomplete_when_missing_true_marks_optional_metric_incomplete() -> None:
+    result = evaluate_template(
+        _template(metric=_partial_input_metric(incomplete_when_missing=True)),
+        ScorecardEvalState(as_of=NOW, records=_supply_only_records()),
+    )
+    metric = result.sections[0].metrics[0]
+    assert metric.value is None
+    assert metric.health == "incomplete"
+    assert metric.completeness == "missing_source"
+    assert any("umd_authorizations" in warning for warning in metric.warnings)
+
+
+def test_incomplete_when_missing_false_grades_computable_partial_data() -> None:
+    result = evaluate_template(
+        _template(metric=_partial_input_metric(incomplete_when_missing=False)),
+        ScorecardEvalState(as_of=NOW, records=_supply_only_records()),
+    )
+    metric = result.sections[0].metrics[0]
+    assert metric.value == 100.0
+    assert metric.health == "pass"
+    assert metric.completeness == "complete"
+    # The missing-input warning is retained even though grading proceeded.
+    assert any("umd_authorizations" in warning for warning in metric.warnings)
+
+
 def test_finite_inputs_that_overflow_formula_are_reported_as_formula_error() -> None:
     result = evaluate_template(
         _template(metric=_sum_metric()),

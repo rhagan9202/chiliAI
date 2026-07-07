@@ -667,7 +667,10 @@ export interface paths {
         };
         /**
          * List Installations
-         * @description Return a safe empty installation list and map model.
+         * @description Return the installation list and map computed from ingested records.
+         *
+         *     Installations without resolvable coordinates appear in ``items`` but not
+         *     in ``map_points`` — surfaced as location-pending, never silently dropped.
          */
         get: operations["list_installations_housing_installations_get"];
         put?: never;
@@ -687,7 +690,7 @@ export interface paths {
         };
         /**
          * Get Overview
-         * @description Return a safe empty executive housing KPI model.
+         * @description Return the executive housing KPI model computed from ingested records.
          */
         get: operations["get_overview_housing_overview_get"];
         put?: never;
@@ -2366,6 +2369,8 @@ export interface components {
          * @description Map point for one housing installation.
          */
         HousingInstallationMapPointResponse: {
+            /** Branch */
+            branch?: string | null;
             /** Installation Id */
             installation_id: string;
             /** Latitude */
@@ -2386,6 +2391,8 @@ export interface components {
          * @description One installation row for the housing dashboard.
          */
         HousingInstallationResponse: {
+            /** Branch */
+            branch?: string | null;
             /** Installation Id */
             installation_id: string;
             /** Majcom */
@@ -2399,6 +2406,11 @@ export interface components {
              * @default 0
              */
             open_work_orders: number;
+            /**
+             * Open Work Orders Rank
+             * @description 1-based competition rank by open work orders (1 = most) among reporting installations; ties share the smaller rank. None when the installation reports no inventory or resident-experience data.
+             */
+            open_work_orders_rank?: number | null;
             /** State */
             state?: string | null;
             /**
@@ -2407,6 +2419,11 @@ export interface components {
              * @enum {string}
              */
             status: "ok" | "watch" | "critical" | "unknown";
+            /**
+             * Status Reasons
+             * @description Human-readable threshold findings behind status, one per tripped metric band (metric, observed value, threshold). Empty for ok; a single no-data reason for unknown.
+             */
+            status_reasons?: string[];
         };
         /**
          * HousingInstallationsResponse
@@ -3244,6 +3261,15 @@ export interface components {
         /**
          * RecordObservationMapping
          * @description Maps a numeric record field onto a scored monitoring observation.
+         *
+         *     ``MonitoringObservation.score`` is bounded to [0, 1].  ``score_max`` is an
+         *     optional normalization divisor (``score = raw_value / score_max``) for
+         *     fields declared on another bounded scale (e.g. a 0-100 index).  It is a
+         *     scale conversion, not a clamp: values that still fall outside [0, 1] after
+         *     normalization fail the record batch loudly.  DomainConfig cross-validation
+         *     requires the score_field's declared record_schema bounds to prove every
+         *     in-schema value normalizes into [0, 1] — see
+         *     ``DomainConfig._validate_cross_references``.
          */
         RecordObservationMapping: {
             /** Entity Type */
@@ -3257,6 +3283,11 @@ export interface components {
             rationale: string;
             /** Score Field */
             score_field: string;
+            /**
+             * Score Max
+             * @default null
+             */
+            score_max: number | null;
         };
         /**
          * RecordPushRequest
@@ -3758,6 +3789,18 @@ export interface components {
         /**
          * ScorecardThresholdConfig
          * @description Thresholds used to classify a configured scorecard metric.
+         *
+         *     Exactly one grading direction may be used per metric:
+         *
+         *     - higher-is-better: ``pass_min`` / ``warn_min`` / ``fail_max``
+         *     - lower-is-better: ``pass_max`` / ``warn_max`` / ``fail_min``
+         *
+         *     Mixing fields from both directions is a validation error, and at least
+         *     one threshold field must be set so every metric has a defined grade.
+         *     Bounds must also be coherent within their direction so grading bands
+         *     cannot overlap: higher-is-better requires ``pass_min >= warn_min >
+         *     fail_max`` and lower-is-better requires ``pass_max <= warn_max <
+         *     fail_min`` (each comparison applies where both fields are present).
          */
         ScorecardThresholdConfig: {
             /**
@@ -3766,15 +3809,30 @@ export interface components {
              */
             fail_max: number | null;
             /**
+             * Fail Min
+             * @default null
+             */
+            fail_min: number | null;
+            /**
              * Incomplete When Missing
              * @default true
              */
             incomplete_when_missing: boolean;
             /**
+             * Pass Max
+             * @default null
+             */
+            pass_max: number | null;
+            /**
              * Pass Min
              * @default null
              */
             pass_min: number | null;
+            /**
+             * Warn Max
+             * @default null
+             */
+            warn_max: number | null;
             /**
              * Warn Min
              * @default null
@@ -5108,6 +5166,8 @@ export interface operations {
             query?: {
                 period_start?: string | null;
                 period_end?: string | null;
+                /** @description Knowledge base to aggregate; defaults to the newest KB of the active domain. */
+                knowledge_base_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -5140,6 +5200,8 @@ export interface operations {
             query?: {
                 period_start?: string | null;
                 period_end?: string | null;
+                /** @description Knowledge base to aggregate; defaults to the newest KB of the active domain. */
+                knowledge_base_id?: string | null;
             };
             header?: never;
             path?: never;

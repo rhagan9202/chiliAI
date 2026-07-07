@@ -344,7 +344,7 @@ Verification commands should follow repo convention:
 - backend pytest for changed modules;
 - backend pyright for changed files/modules;
 - frontend Vitest for changed API/page components;
-- `pnpm build` in `chili_app`;
+- `npm run build` in `chili_app`;
 - OpenAPI export/codegen when API contracts change;
 - `git diff --check`.
 

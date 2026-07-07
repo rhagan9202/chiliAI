@@ -13,7 +13,7 @@ For the live, dependency-ordered list of production-readiness work per backend m
 ### What's functional
 
 - **`shared/`** — Generic platform types (`Entity`, `Relationship`, `Alert`, `EvidencePack`, `KnowledgeBase`), config-definition types (`EntityDefinition`, `PropertyDefinition`, `PropertyType`, `RelationshipDefinition`), protocols (`Configurable`), and utilities. **No hardcoded domain-specific types** — all domain entities use `Entity(type, properties)` validated against config.
-- **`config/`** — Domain configuration schema (`DomainConfig` Pydantic model with cross-field validation), YAML/JSON loader, the file-backed active-pack pointer store (`store.py`: pointer > `CHILI_CONFIG_PATH` resolution, atomic writes to `data/config/active_pack.json`), and default domain packs (`medicare_fraud.yaml`, `medicare_fraud_dev.yaml`, `medicare_fraud_cms_desynpuf.yaml`, `food_supply_chain.yaml`). See [`config/README.md`](config/README.md) for the pack-authoring contract and domain-switch ergonomics.
+- **`config/`** — Domain configuration schema (`DomainConfig` Pydantic model with cross-field validation), YAML/JSON loader, the file-backed active-pack pointer store (`store.py`: pointer > `CHILI_CONFIG_PATH` resolution, atomic writes to `data/config/active_pack.json`), and default domain packs (`medicare_fraud.yaml`, `medicare_fraud_dev.yaml`, `medicare_fraud_cms_desynpuf.yaml`, `food_supply_chain.yaml`, `department_air_force_housing.yaml`). See [`config/README.md`](config/README.md) for the pack-authoring contract and domain-switch ergonomics.
 - **`api/app.py`** — FastAPI app factory with `/health`, CORS, metrics instrumentation, and all API routers.
 - **`api/routers/config.py`** — Viewer-gated reads (`GET /config/domain|features|domain/schema`) plus admin-gated pack management: `GET /config/packs` (discovery + active-pack state) and `POST /config/validate|apply|switch` (dry-run validation; no-restart domain hot-swap via the swap-once-success pipeline — validate + production auth guardrail → persist pointer → atomic DI cache reset → publish `ConfigUpdatedEvent`). Pack references are confined to allow-listed config directories. See [`docs/architecture.md` §9.3](../docs/architecture.md#93-active-pack-hot-swap-no-restart-domain-switch).
 - **`api/dependencies.py`** — Dependency injection wiring. `get_domain_config()` resolves the active pack (pointer > env) and process-caches; `reset_domain_config_caches()` clears it plus every config-keyed factory cache and bumps a monotonic swap-generation token (`get_config_generation`) with generation-guarded memoizers, so hot-swaps are atomic (a request sees a wholly-old or wholly-new dependency graph). `enforce_production_guardrail()` (applied at boot and to every hot-swap candidate) refuses auth-disabled or incomplete-OIDC configs under `CHILI_ENV=staging|production`. `get_api_state()` reads from `request.app.state.api_state`, attached per-app in `create_app()`. Graph, vectorstore, storage, embedding, and LLM adapters are selected from config with lazy optional imports.
@@ -35,6 +35,8 @@ For the live, dependency-ordered list of production-readiness work per backend m
 - **`cases/`** — durable, KB-scoped investigation case management (BL-010). `Case` model + `CaseRepository` (in-memory + Postgres adapters, `cases` table via migration `0002_cases`) + `CaseService` with `promote_from_alert`. Backs `/cases` CRUD + `POST /cases/promote` (all `?knowledge_base_id=`-scoped). See [`cases/README.md`](cases/README.md).
 - **`policy/`** — durable, KB-scoped policy intelligence (BL-011). Rule-pack-driven `PolicyItem` generation + analyst triage (accept/reject/defer/escalate-to-case) with persisted `PolicyDisposition`. `PolicyItemRepository` (in-memory + Postgres adapters, `policy_items` table via migration `0003_policy`). Backs `GET /policy/items`, `GET /policy/items/{id}`, `POST /policy/items/{id}/triage`. Replaces the old seeded policy-gap surface. See [`policy/README.md`](policy/README.md).
 - **`conversations/`** — durable RAG chat persistence (BL-012). `Conversation`/`ConversationMessage` models + `ConversationRepository` (in-memory + Postgres adapters, `conversations` table via migration `0005_conversations`) + `ConversationService`. Backs the `/chat/conversations` create/read/append routes; the API layer (`api/_conversation_payloads.py`) adapts these models to the frontend `Chat*` contracts and builds the user/assistant turn from a RAG answer — replacing the in-memory-only seeded `ApiState` conversation store.
+- **`scorecards/`** — config-driven statutory scorecard runs (branch `af_housing`). Pure `evaluate_template()` grades `ScorecardTemplateConfig` metrics (bounded operators `ratio`/`sum`/`mean`/`weighted_mean`/`latest`, freshness windows, one-direction thresholds) against `SourceRecord` rows; `ScorecardService.generate()` selects KB records by scope + period, content-hashes the source snapshot, and persists runs through `ScorecardRunRepository` (in-memory + Postgres, `scorecard_runs` table via migration `0008_scorecards`). Feed records reach the module through the `ScorecardSourceRecordLoader` protocol, implemented at the gateway by `RecordFeedSourceLoader` (`api/dependencies.py`) over `RawRecordStore.load_for_kb` — scorecards never imports `records/`. Backs `/scorecards/templates|runs|runs/{id}/export`. Metric provenance for the shipped UH/MFH templates: [`../docs/research/housing-scorecard-mandates.md`](../docs/research/housing-scorecard-mandates.md).
+- **`api/_housing_read_model.py` + `api/routers/housing.py`** — `/housing/overview` and `/housing/installations` compute genuine per-installation aggregates from the KB's ingested feed rows (same rows the scorecard evaluator consumes), with statutorily informed `ok`/`watch`/`critical`/`unknown` banding documented on `derive_status`. Installations without resolvable coordinates stay in `items` but are excluded from `map_points` (frontend shows a location-pending list). See [`docs/architecture.md` §6.8](../docs/architecture.md#68-housing-scorecards--executive-dashboard-branch-af_housing).
 - **`analytics/explainability/`** also owns the **evidence-pack repository** (BL-005): real packs are extracted in the worker (`graph.get_subgraph` + risk factors → `ExplanationContext` → `ExplainabilityService`), persisted to an object-store `EvidencePackRepository`, and served by `GET /evidence-packs/{id}` (KB-scoped) — replacing the seeded `ApiState` evidence read model.
 - **`api/middleware/`** — Metrics, auth, and RBAC middleware with route-level policy enforcement and auth-enabled startup audit.
 - **`agent/coordinator.py`** — Worker entry point (`python -m agent.coordinator`) for Redis-stream processing, workflow lifecycle tracking, retry/DLQ routing, graceful shutdown, and a lightweight health endpoint. Implements persistence-layer worker flows:
@@ -73,7 +75,8 @@ backend/
 ├── knowledgebases/  # KB/document metadata repository adapters (in-memory, object-store)
 ├── conversations/   # durable RAG chat conversations (in-memory, Postgres)
 ├── cases/           # durable, KB-scoped investigation cases (promote-from-alert)
-└── policy/          # durable, KB-scoped policy intelligence (rule-pack items + triage)
+├── policy/          # durable, KB-scoped policy intelligence (rule-pack items + triage)
+└── scorecards/      # config-driven scorecard evaluation + durable runs (in-memory, Postgres)
 ```
 
 ## Cross-Module Interaction Rules
@@ -111,6 +114,20 @@ cd .. && uv run --project backend python -m tools.export_openapi --output chili_
 # Demo: Tennessee Medicare subset (requires `make dev` stack running first)
 make demo-tn-subset                                         # build TN subset + create KB + upload
 python -m tools.sample_data.build_tennessee_subset --help  # subset builder options
+
+# Demo: Air Force housing dashboard (stack must run the housing pack)
+make dev-domain DOMAIN=department_air_force_housing        # start stack with the housing pack
+make seed-housing                                          # create KB + upload 6 feed fixtures via real HTTP
+make seed-housing SEED_ARGS="--scorecards"                 # ...and generate scorecard runs per template
+# then open http://localhost:5173/housing
+# Reseeding creates a fresh KB each run; the housing endpoints aggregate the
+# newest KB of the active domain. Against a bare uvicorn (no worker) pass
+# SEED_ARGS="--no-worker".
+# The housing pack pins the dev-stack services like the other shipped packs
+# (Postgres records/scorecard runs, object-store KB metadata, Redis events,
+# Neo4j/Qdrant), so seeded demo state survives API restarts. Reseed only
+# after `make clean` wipes the volumes — and into a fresh KB: the seed
+# script refuses a non-empty same-named KB by design.
 ```
 
 > These commands target the architecture described in `docs/architecture.md`. The codebase is under active hardening; keep Ruff, Pyright, and pytest clean for touched packages.
@@ -124,6 +141,20 @@ python -m tools.sample_data.build_tennessee_subset --help  # subset builder opti
 > compose services stay opt-in and skip unless their env var is set:
 > `OPENAI_API_KEY` (paid API), `SENTENCE_TRANSFORMERS_SMOKE_MODEL` (model
 > download), and the Ollama e2e (`OLLAMA_MODEL` + a reachable Ollama server).
+>
+> ⚠️ **Host `pytest --cov` WIPES the dev-stack Postgres data.** Because
+> `DATABASE_URL` defaults to the dev stack's `…:5432/chili`,
+> `tests/database/test_migrations.py` runs `alembic downgrade base` →
+> `upgrade head` against it — dropping and recreating **every** app table
+> (`raw_records`, `observations`, `scorecard_runs`, metric/alert history, …)
+> empty. KB metadata survives (it lives in the object store), which is worse:
+> the KB shells remain while their data is gone — this has destroyed seeded
+> demo state (e.g. `make seed-housing`) in practice. When the stack holds
+> demo state you care about, point the suite at a scratch database in the
+> same instance first, e.g.
+> `DATABASE_URL=postgresql://chili:chili@localhost:5432/chili_test pytest --cov`
+> (create it once: `CREATE DATABASE chili_test;` — migration 0001 installs
+> the TimescaleDB extension itself). Otherwise plan to reseed afterwards.
 
 ## Quality Requirements
 
@@ -187,6 +218,7 @@ cfg = load_config("config/defaults/medicare_fraud.yaml")
 | `config/defaults/medicare_fraud_dev.yaml` | Medicare fraud variant wired for the dev Compose stack (Neo4j graph, Redis event bus, object-store KB/alert repos, Redis workflow run store) |
 | `config/defaults/medicare_fraud_cms_desynpuf.yaml` | CMS DE-SynPUF Medicare fraud exemplar with wider records/feed mappings — the **default** pack for `make dev` / `make prod` |
 | `config/defaults/food_supply_chain.yaml` | Food supply chain integrity — exemplar-parity peer pack (8 entities, 11 relationships, 4 records feeds, 3 policy rule packs, full `ui` section, dev-stack infra pins) |
+| `config/defaults/department_air_force_housing.yaml` | Department of the Air Force housing oversight — 6 records feeds (UMD, BAH, inventory, market, demographics, resident experience) and statutory UH/MFH scorecard templates with per-metric provenance (see [`../docs/research/housing-scorecard-mandates.md`](../docs/research/housing-scorecard-mandates.md)) |
 
 ### Creating a new domain
 

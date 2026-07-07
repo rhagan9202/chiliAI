@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import threading
 from collections.abc import Callable
+from datetime import UTC, date, datetime
 from functools import lru_cache
 from typing import NoReturn, Protocol, TypeVar, cast
 
@@ -160,6 +161,7 @@ from records.adapters.protocols import RawRecordStore
 from scorecards.adapters.in_memory import InMemoryScorecardRunRepository
 from scorecards.adapters.postgres import PostgresScorecardRunRepository
 from scorecards.adapters.protocols import ScorecardRunRepository
+from scorecards.evaluation import SourceRecord, SourceValue
 from scorecards.service import ScorecardService, create_scorecard_service
 from analytics.explainability.adapters.evidence_object_store import (
     ObjectStoreEvidencePackRepository,
@@ -231,6 +233,7 @@ __all__ = [
     "get_records_service",
     "get_scorecard_run_repository",
     "get_scorecard_service",
+    "get_source_record_loader",
     "get_knowledge_base_repository",
     "get_llm_client",
     "get_llm_service",
@@ -1386,12 +1389,87 @@ def get_scorecard_run_repository(request: Request) -> ScorecardRunRepository:
     )
 
 
+class RecordFeedSourceLoader:
+    """Bridge the raw-records store into the scorecard evaluator's read model.
+
+    Implements :class:`scorecards.service.ScorecardSourceRecordLoader` at the
+    gateway layer, so scorecards (and the housing read models) consume ingested
+    feed data without importing the records module directly. Stored rows are
+    keyed by ``record_type``; the active config's feed declarations map each
+    row back to the feed name that scorecard metric inputs reference. Rows are
+    dated from their ``snapshot_date`` column (every housing feed carries one)
+    so the evaluator's freshness checks operate on real observation dates.
+    """
+
+    def __init__(self, store: RawRecordStore, records_config: RecordsConfig) -> None:
+        self._store = store
+        self._feed_names_by_record_type: dict[str, list[str]] = {}
+        for feed in records_config.feeds:
+            self._feed_names_by_record_type.setdefault(feed.record_type, []).append(
+                feed.name
+            )
+
+    def load_source_records(self, knowledge_base_id: str) -> list[SourceRecord]:
+        """Return every ingested record for the KB as evaluator source records."""
+        source_records: list[SourceRecord] = []
+        for record in self._store.load_for_kb(knowledge_base_id=knowledge_base_id):
+            feed_names = self._feed_names_by_record_type.get(record.record_type, [])
+            if not feed_names:
+                continue
+            values = _scalar_payload_values(record.payload)
+            observed_at = _parse_observed_at(record.payload.get("snapshot_date"))
+            source_records.extend(
+                SourceRecord(
+                    feed_name=feed_name,
+                    record_id=record.record_id,
+                    values=values,
+                    observed_at=observed_at,
+                )
+                for feed_name in feed_names
+            )
+        return source_records
+
+
+def _scalar_payload_values(payload: dict[str, object]) -> dict[str, SourceValue]:
+    """Keep the scalar payload columns the evaluator understands."""
+    return {
+        key: value
+        for key, value in payload.items()
+        if value is None or isinstance(value, str | int | float | bool)
+    }
+
+
+def _parse_observed_at(raw: object) -> datetime | None:
+    """Parse a payload ``snapshot_date`` into a timezone-aware datetime."""
+    if isinstance(raw, datetime):
+        return raw if raw.tzinfo is not None else raw.replace(tzinfo=UTC)
+    if isinstance(raw, date):
+        return datetime(raw.year, raw.month, raw.day, tzinfo=UTC)
+    if isinstance(raw, str):
+        try:
+            parsed = date.fromisoformat(raw.strip())
+        except ValueError:
+            return None
+        return datetime(parsed.year, parsed.month, parsed.day, tzinfo=UTC)
+    return None
+
+
+def get_source_record_loader(
+    config: DomainConfig = Depends(get_domain_config),
+) -> RecordFeedSourceLoader:
+    """Return the feed-record loader over the configured raw-record store."""
+    return RecordFeedSourceLoader(
+        get_raw_record_store(), config.records or RecordsConfig()
+    )
+
+
 def get_scorecard_service(
     config: DomainConfig = Depends(get_domain_config),
     repository: ScorecardRunRepository = Depends(get_scorecard_run_repository),
+    record_source: RecordFeedSourceLoader = Depends(get_source_record_loader),
 ) -> ScorecardService:
-    """Return the scorecard service assembled from config and persistence."""
-    return create_scorecard_service(config, repository)
+    """Return the scorecard service assembled from config, records, and persistence."""
+    return create_scorecard_service(config, repository, record_source)
 
 
 def get_records_service(

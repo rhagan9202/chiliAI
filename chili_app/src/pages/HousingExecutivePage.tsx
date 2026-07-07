@@ -7,11 +7,27 @@ import { useGenerateScorecardRun, useScorecardRuns, useScorecardTemplates } from
 import type {
   HousingExecutiveKpiResponse,
   HousingInstallationResponse,
+  KnowledgeBaseSummaryResponse,
+  ScorecardRunResponse,
   ScorecardTemplateResponse,
 } from '../api/contracts'
 import { showToast } from '../components/common/toastStore'
+import { HousingFilterStrip } from '../components/housing/HousingFilterStrip'
+import {
+  commandOptions,
+  countInstallationsByStatus,
+  EMPTY_HOUSING_FILTERS,
+  filterInstallations,
+  hasActiveHousingFilters,
+  readStatusReasons,
+  resolveInstallationRank,
+  toggleFilterValue,
+  type HousingFilterState,
+  type InstallationStatus,
+} from '../components/housing/housingFilters'
 import { InstallationHealthMap } from '../components/housing/InstallationHealthMap'
 import { InstallationRankingTable } from '../components/housing/InstallationRankingTable'
+import type { InstallationBranch } from '../components/housing/installationMapGeometry'
 import { ScorecardReadinessPanel } from '../components/housing/ScorecardReadinessPanel'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -27,13 +43,18 @@ import {
 import { buildRagChatUrl } from '../lib/ragContext'
 import './pages.css'
 
-type StatusCounts = Record<HousingInstallationResponse['status'], number>
-
 const STATUS_TONE: Record<HousingInstallationResponse['status'], 'default' | 'success' | 'warning' | 'danger'> = {
   ok: 'success',
   watch: 'warning',
   critical: 'danger',
   unknown: 'default',
+}
+
+const HEALTH_TONE: Record<ScorecardRunResponse['overall_health'], 'default' | 'success' | 'warning' | 'danger'> = {
+  pass: 'success',
+  warn: 'warning',
+  fail: 'danger',
+  incomplete: 'default',
 }
 
 function formatPercent(value: number | null | undefined) {
@@ -50,6 +71,17 @@ function formatKpiValue(kpi: HousingExecutiveKpiResponse) {
   return String(kpi.value)
 }
 
+function formatRunDate(value: string) {
+  const [datePart] = value.split('T')
+  const [year, month, day] = datePart.split('-').map((part) => Number(part))
+  if (!year || !month || !day) {
+    return value
+  }
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
+    new Date(year, month - 1, day),
+  )
+}
+
 function todayDate() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -58,22 +90,63 @@ function selectInstallationTemplate(templates: ScorecardTemplateResponse[]) {
   return templates.find((template) => template.scope === 'installation') ?? null
 }
 
+/** Latest run per template for one installation, newest first (UH and MFH both surface). */
+function latestRunsByTemplate(runs: ScorecardRunResponse[]): ScorecardRunResponse[] {
+  const byTemplate = new Map<string, ScorecardRunResponse>()
+  for (const run of runs) {
+    if (!byTemplate.has(run.template_id)) {
+      byTemplate.set(run.template_id, run)
+    }
+  }
+  return [...byTemplate.values()]
+}
+
 const LIVE_FEEDS_REQUIRED_REASON =
   'Load UMD, BAH, inventory, market, and demographics feeds before generating NDAA scorecards.'
+
+/**
+ * Mirror of the backend housing read model's KB resolution
+ * (api/_housing_read_model._resolve_knowledge_base_id): `ready` KBs first
+ * (fully built), then still-`active` ones — records-only KBs land rows before
+ * any pipeline marks them ready — newest `created_at` within each band, KBs
+ * pending cleanup excluded. Keeping the two in lockstep means the KB the page
+ * generates scorecards against is the KB the /housing endpoints aggregate.
+ */
+function selectActiveKnowledgeBase(
+  knowledgeBases: KnowledgeBaseSummaryResponse[],
+): KnowledgeBaseSummaryResponse | null {
+  const candidates = knowledgeBases.filter(
+    (kb) => (kb.status === 'ready' || kb.status === 'active') && !kb.pending_cleanup,
+  )
+  if (candidates.length === 0) {
+    return null
+  }
+  return candidates.reduce((best, kb) => {
+    const kbReady = kb.status === 'ready'
+    const bestReady = best.status === 'ready'
+    if (kbReady !== bestReady) {
+      return kbReady ? kb : best
+    }
+    return kb.created_at > best.created_at ? kb : best
+  })
+}
 
 export function HousingExecutivePage() {
   const overviewQuery = useHousingOverview()
   const installationsQuery = useHousingInstallations()
   const knowledgeBasesQuery = useKnowledgeBases()
   const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
-  const activeKnowledgeBase = knowledgeBases.find((kb) => kb.status === 'ready') ?? null
+  const activeKnowledgeBase = selectActiveKnowledgeBase(knowledgeBases)
   const templatesQuery = useScorecardTemplates()
+  // The runs endpoint has no scope filter; pull the KB's run history in one
+  // page (500 is the API cap) so per-installation lookups stay client-side.
   const runsQuery = useScorecardRuns(
-    activeKnowledgeBase ? { knowledgeBaseId: activeKnowledgeBase.id, limit: 5 } : null,
+    activeKnowledgeBase ? { knowledgeBaseId: activeKnowledgeBase.id, limit: 500 } : null,
   )
   const generateScorecard = useGenerateScorecardRun()
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedInstallationId, setSelectedInstallationId] = useState<string | null>(null)
+  const [filters, setFilters] = useState<HousingFilterState>(EMPTY_HOUSING_FILTERS)
 
   if (overviewQuery.isLoading || installationsQuery.isLoading || knowledgeBasesQuery.isLoading) {
     return <LoadingState label="Loading housing portfolio" />
@@ -91,31 +164,57 @@ export function HousingExecutivePage() {
   const referenceLookup = referenceMode ? publicReferenceById() : new Map()
   const installations = referenceMode ? referenceInstallations : liveInstallations
   const mapPoints = referenceMode ? publicReferenceMapPoints() : installationsPayload?.map_points ?? []
+
+  const filtersActive = hasActiveHousingFilters(filters)
+  const filteredInstallations = filterInstallations(installations, filters)
+  const filteredInstallationIds = new Set(
+    filteredInstallations.map((installation) => installation.installation_id),
+  )
+  const filteredMapPoints = mapPoints.filter((point) =>
+    filteredInstallationIds.has(point.installation_id),
+  )
+
   const requestedInstallationId = searchParams.get('installation')
   const candidateInstallationId = selectedInstallationId ?? requestedInstallationId
-  const activeInstallationId = installations.some(
+  // Selection resolves against the FILTERED set: if the current selection is
+  // filtered out, the detail card falls back to the first visible installation
+  // without touching the URL, so clearing the filters restores the original
+  // selection. Filtered-out installations are not selectable from the UI.
+  const activeInstallationId = filteredInstallations.some(
     (installation) => installation.installation_id === candidateInstallationId,
   )
     ? candidateInstallationId
-    : installations[0]?.installation_id ?? null
+    : filteredInstallations[0]?.installation_id ?? null
   const selectedInstallation =
-    installations.find((installation) => installation.installation_id === activeInstallationId) ?? null
+    filteredInstallations.find(
+      (installation) => installation.installation_id === activeInstallationId,
+    ) ?? null
   const selectedReference = selectedInstallation
     ? referenceLookup.get(selectedInstallation.installation_id) ?? null
     : null
-  const statusCounts = installations.reduce<StatusCounts>(
-    (counts, installation) => ({
-      ...counts,
-      [installation.status]: counts[installation.status] + 1,
-    }),
-    { ok: 0, watch: 0, critical: 0, unknown: 0 },
-  )
+  // Status strip mirrors the filtered set; the KPI cards above stay
+  // portfolio-wide (all four — they read as portfolio KPIs, and the filtered
+  // story is told by the strip plus the filter strip's aria-live count).
+  const statusCounts = countInstallationsByStatus(filteredInstallations)
+  const portfolioStatusCounts = countInstallationsByStatus(installations)
+  const availableCommands = commandOptions(installations)
+  const selectedRank = selectedInstallation
+    ? resolveInstallationRank(installations, selectedInstallation)
+    : null
+  const statusReasons = selectedInstallation ? readStatusReasons(selectedInstallation) : []
+
   const templates = templatesQuery.data?.items ?? []
   const runs = runsQuery.data?.items ?? []
+  const sortedRuns = [...runs].sort((left, right) => right.created_at.localeCompare(left.created_at))
   const installationTemplate = selectInstallationTemplate(templates)
-  const selectedRun = selectedInstallation
-    ? runs.find((run) => run.scope_id === selectedInstallation.installation_id) ?? null
-    : null
+  const selectedInstallationRuns = selectedInstallation
+    ? sortedRuns.filter((run) => run.scope_id === selectedInstallation.installation_id)
+    : []
+  const selectedRun = selectedInstallationRuns[0] ?? null
+  const installationRunLinks = latestRunsByTemplate(selectedInstallationRuns)
+  const scopeNames = new Map(
+    installations.map((installation) => [installation.installation_id, installation.name]),
+  )
   const periodStart = overview?.period_start ?? installationsPayload?.period_start ?? todayDate()
   const periodEnd = overview?.period_end ?? installationsPayload?.period_end ?? todayDate()
   const canGenerateScorecard = Boolean(
@@ -158,6 +257,31 @@ export function HousingExecutivePage() {
     const nextParams = new URLSearchParams(searchParams)
     nextParams.set('installation', installationId)
     setSearchParams(nextParams)
+  }
+
+  const handleToggleStatus = (status: InstallationStatus) => {
+    setFilters((current) => ({
+      ...current,
+      statuses: toggleFilterValue(current.statuses, status),
+    }))
+  }
+
+  const handleToggleBranch = (branch: InstallationBranch) => {
+    setFilters((current) => ({
+      ...current,
+      branches: toggleFilterValue(current.branches, branch),
+    }))
+  }
+
+  const handleToggleCommand = (command: string) => {
+    setFilters((current) => ({
+      ...current,
+      commands: toggleFilterValue(current.commands, command),
+    }))
+  }
+
+  const handleClearFilters = () => {
+    setFilters(EMPTY_HOUSING_FILTERS)
   }
 
   return (
@@ -223,21 +347,32 @@ export function HousingExecutivePage() {
         <Card compact>
           <div className="housing-kpi">
             <span className="metric-row__label">{referenceMode ? 'Scorecards' : 'Critical'}</span>
-            <strong>{referenceMode ? 'pending' : statusCounts.critical}</strong>
+            <strong>{referenceMode ? 'pending' : portfolioStatusCounts.critical}</strong>
           </div>
         </Card>
       </div>
 
+      <HousingFilterStrip
+        commands={availableCommands}
+        filters={filters}
+        matchCount={filteredInstallations.length}
+        onClear={handleClearFilters}
+        onToggleBranch={handleToggleBranch}
+        onToggleCommand={handleToggleCommand}
+        onToggleStatus={handleToggleStatus}
+        totalCount={installations.length}
+      />
+
       <div className="housing-operating-picture">
         <div className="housing-map-column">
           <InstallationHealthMap
-            installations={installations}
-            mapPoints={mapPoints}
+            installations={filteredInstallations}
+            mapPoints={filteredMapPoints}
             onSelectInstallation={handleSelectInstallation}
             referenceMode={referenceMode}
             selectedInstallationId={activeInstallationId}
           />
-          <div className="housing-status-strip">
+          <div aria-label="Status counts" className="housing-status-strip" role="group">
             {(['critical', 'watch', 'ok', 'unknown'] as const).map((status) => (
               <div className="metric-row" key={status}>
                 <span className="metric-row__label">{status}</span>
@@ -274,6 +409,11 @@ export function HousingExecutivePage() {
                     </>
                   )}
                 </div>
+                {!referenceMode && selectedRank ? (
+                  <span className="housing-detail-rank">
+                    #{selectedRank.rank} of {selectedRank.total} reporting by open work orders
+                  </span>
+                ) : null}
                 <div className="housing-detail-grid">
                   <div>
                     <span className="metric-row__label">{referenceMode ? 'Source ident' : 'MAJCOM'}</span>
@@ -292,6 +432,48 @@ export function HousingExecutivePage() {
                     <strong>{referenceMode ? 'Pending' : formatPercent(selectedInstallation.occupancy_rate)}</strong>
                   </div>
                 </div>
+                {!referenceMode ? (
+                  <div className="housing-status-reasons">
+                    <strong>Why this status</strong>
+                    {statusReasons.length > 0 ? (
+                      <ul>
+                        {statusReasons.map((reason) => (
+                          <li key={reason}>{reason}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <span>No status drivers reported for this period.</span>
+                    )}
+                  </div>
+                ) : null}
+                {!referenceMode && activeKnowledgeBase ? (
+                  <div className="housing-detail-runs">
+                    <strong>Scorecards</strong>
+                    {installationRunLinks.length > 0 ? (
+                      <ul className="housing-run-links">
+                        {installationRunLinks.map((run) => (
+                          <li key={run.id}>
+                            <Link
+                              aria-label={`View ${run.template_name} scorecard for ${selectedInstallation.name}, overall ${run.overall_health}`}
+                              className="housing-run-link"
+                              to={`/scorecards/${encodeURIComponent(run.id)}?kb=${encodeURIComponent(activeKnowledgeBase.id)}`}
+                            >
+                              <span className="housing-run-link__scope">
+                                <strong>{run.template_name}</strong>
+                                <span className="metric-row__label">
+                                  {formatRunDate(run.period_start)} - {formatRunDate(run.period_end)}
+                                </span>
+                              </span>
+                              <Chip label={run.overall_health} tone={HEALTH_TONE[run.overall_health]} />
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <span className="metric-row__label">No scorecard runs for this installation yet.</span>
+                    )}
+                  </div>
+                ) : null}
                 {referenceMode ? (
                   <div className="housing-scorecard-reason">
                     <strong>Live feeds required</strong>
@@ -304,7 +486,14 @@ export function HousingExecutivePage() {
                 )}
               </>
             ) : (
-              <EmptyState description="No installation rows are available for the selected period." title="No installation selected" />
+              <EmptyState
+                description={
+                  filtersActive
+                    ? 'No installations match the active filters. Clear the filters to restore the full portfolio.'
+                    : 'No installation rows are available for the selected period.'
+                }
+                title={filtersActive ? 'No matching installations' : 'No installation selected'}
+              />
             )}
           </section>
         </Card>
@@ -315,14 +504,21 @@ export function HousingExecutivePage() {
           <div className="metric-stack">
             <div className="metric-row">
               <strong>Installation ranking</strong>
-              <Chip label={`${installations.length} rows`} tone="info" />
+              <Chip label={`${filteredInstallations.length} rows`} tone="info" />
             </div>
-            <InstallationRankingTable
-              installations={installations}
-              onSelectInstallation={handleSelectInstallation}
-              referenceMode={referenceMode}
-              selectedInstallationId={activeInstallationId}
-            />
+            {filteredInstallations.length === 0 && filtersActive ? (
+              <EmptyState
+                description="No installations match the active filters."
+                title="No matching installations"
+              />
+            ) : (
+              <InstallationRankingTable
+                installations={filteredInstallations}
+                onSelectInstallation={handleSelectInstallation}
+                referenceMode={referenceMode}
+                selectedInstallationId={activeInstallationId}
+              />
+            )}
           </div>
         </Card>
 
@@ -331,9 +527,12 @@ export function HousingExecutivePage() {
             canGenerate={canGenerateScorecard}
             generatePending={generateScorecard.isPending}
             generationUnavailableReason={generationUnavailableReason}
+            knowledgeBaseId={referenceMode ? null : activeKnowledgeBase?.id ?? null}
             knowledgeBaseName={referenceMode ? 'Live evidence pending' : activeKnowledgeBase?.name ?? null}
             onGenerate={handleGenerateScorecard}
             recentRuns={runs}
+            runsTotal={runsQuery.data?.total ?? null}
+            scopeNames={scopeNames}
             selectedInstallation={selectedInstallation}
             templates={templates}
           />

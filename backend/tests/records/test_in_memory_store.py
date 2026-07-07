@@ -41,6 +41,31 @@ def test_load_batch_filters_by_correlation_id() -> None:
     assert [record.record_id for record in loaded] == ["c1"]
 
 
+def test_load_for_kb_returns_all_kb_records_sorted() -> None:
+    store = InMemoryRawRecordStore()
+    store.persist([_record("c2", correlation_id="corr-1")])
+    store.persist([_record("c1", correlation_id="corr-2")])
+    store.persist(
+        [
+            RawRecord(
+                knowledge_base_id="kb-other",
+                record_type="claim_record",
+                record_id="c9",
+                payload={"claim_id": "c9"},
+                source_type="file_upload",
+                source_ref=None,
+                correlation_id="corr-3",
+                content_hash=content_hash_for({"claim_id": "c9"}),
+            )
+        ]
+    )
+
+    loaded = store.load_for_kb(knowledge_base_id="kb-1")
+
+    # All correlation batches for the KB, deterministic order, other KBs excluded.
+    assert [record.record_id for record in loaded] == ["c1", "c2"]
+
+
 def test_submission_dedup_round_trip() -> None:
     store = InMemoryRawRecordStore()
     assert (

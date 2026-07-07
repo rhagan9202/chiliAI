@@ -33,6 +33,14 @@ _SELECT_SQL = """
     ORDER BY record_type, record_id
 """
 
+_SELECT_BY_KB_SQL = """
+    SELECT knowledge_base_id, record_type, record_id, payload,
+           source_type, source_ref, correlation_id, content_hash, ingested_at
+    FROM raw_records
+    WHERE knowledge_base_id = %s
+    ORDER BY record_type, record_id
+"""
+
 _DELETE_BY_KB_SQL = """
     DELETE FROM raw_records
     WHERE knowledge_base_id = %s
@@ -97,6 +105,15 @@ class PostgresRawRecordStore:
                 rows = conn.execute(
                     _SELECT_SQL, (knowledge_base_id, correlation_id)
                 ).fetchall()
+        except Exception as exc:
+            raise RecordPersistenceError("Failed to load raw records.") from exc
+        return [_row_to_record(row) for row in rows]
+
+    def load_for_kb(self, *, knowledge_base_id: str) -> list[RawRecord]:
+        """Return all records for a knowledge base, ordered deterministically."""
+        try:
+            with self._provider.connection() as conn:
+                rows = conn.execute(_SELECT_BY_KB_SQL, (knowledge_base_id,)).fetchall()
         except Exception as exc:
             raise RecordPersistenceError("Failed to load raw records.") from exc
         return [_row_to_record(row) for row in rows]

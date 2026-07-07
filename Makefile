@@ -86,3 +86,11 @@ tn-subset-full: ## Build the COMPLETE TN subset (no sampling, ~2.4 GB carrier) â
 
 data-setup: ## Stage local CMS/NPPES source data into sample_data/ (extracts downloaded zips)
 	scripts/setup_local_data.sh
+
+# Requires the stack running with the Air Force housing pack, e.g.
+# `make dev-domain DOMAIN=department_air_force_housing`. Uploads the tracked
+# housing feed fixtures through the real records API. Extra args pass through:
+# `make seed-housing SEED_ARGS="--scorecards"`.
+.PHONY: seed-housing
+seed-housing: ## Seed the Air Force housing demo KB via the running API (SEED_ARGS="--scorecards")
+	PYTHONPATH=backend backend/.venv/bin/python -m tools.seed_housing_demo $(SEED_ARGS)

@@ -23,6 +23,15 @@ the `observations` table.
   `shared.types.validate_entity` via a synthetic `EntityDefinition`.
 - `mappers/feed_mapper.py` — config-driven `map_batch` (rows → entities +
   relationships) and `map_observations` (rows → scored observations).
+  Observation scores are bounded to `[0, 1]`; a mapping may declare
+  `score_max` and the mapper divides the raw field value by it (scale
+  conversion only, e.g. a 0–100 index). Non-numeric, non-finite, or
+  out-of-range values (before **or** after normalization) raise a hard
+  `RecordMappingError` — nothing is clamped. `DomainConfig` load-time
+  validation proves every in-schema value normalizes into `[0, 1]`
+  (numeric type + `min_value >= 0` + `max_value <= score_max` obligations;
+  see `config/README.md` § Validation), so a loadable pack cannot re-create
+  the worker-side retries → DLQ → run-`failed` mode.
 - `service.py` — `RecordsService.register_records()`: validate → persist →
   publish `RecordsIngestedEvent`.
 - `protocols.py` — `RecordsServiceProtocol` (service boundary).

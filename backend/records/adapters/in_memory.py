@@ -35,6 +35,15 @@ class InMemoryRawRecordStore:
         ]
         return sorted(matches, key=lambda record: (record.record_type, record.record_id))
 
+    def load_for_kb(self, *, knowledge_base_id: str) -> list[RawRecord]:
+        """Return all records for a knowledge base, ordered deterministically."""
+        matches = [
+            record
+            for record in self._records.values()
+            if record.knowledge_base_id == knowledge_base_id
+        ]
+        return sorted(matches, key=lambda record: (record.record_type, record.record_id))
+
     def count_for_kb(self, knowledge_base_id: str) -> int:
         """Return the number of raw records stored for the given knowledge base."""
         return sum(

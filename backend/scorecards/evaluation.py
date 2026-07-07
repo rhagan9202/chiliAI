@@ -103,7 +103,13 @@ def _evaluate_metric(
         for warning in selection.stale_warnings
     ]
 
-    if missing and metric.required:
+    # A metric with any input missing grades incomplete when the metric is
+    # required OR its thresholds declare incomplete_when_missing (the config
+    # knob; red-cell finding B3). With both flags false, evaluation falls
+    # through to the formula: it grades normally if it can still compute
+    # (the missing input is unused) and otherwise lands incomplete via the
+    # missing-input formula-error mapping below.
+    if missing and (metric.required or metric.thresholds.incomplete_when_missing):
         return _metric_result(
             metric,
             value=None,
@@ -347,7 +353,29 @@ def _classify_health(
     metric: ScorecardMetricConfig,
     value: float,
 ) -> ScorecardHealth:
+    """Grade a metric value against its configured thresholds.
+
+    ``ScorecardThresholdConfig`` validation guarantees the two grading
+    directions are never mixed; the lower-is-better branch mirrors the
+    higher-is-better logic exactly.
+    """
+
     thresholds = metric.thresholds
+    lower_is_better = (
+        thresholds.pass_max is not None
+        or thresholds.warn_max is not None
+        or thresholds.fail_min is not None
+    )
+    if lower_is_better:
+        if thresholds.pass_max is not None and value <= thresholds.pass_max:
+            return "pass"
+        if thresholds.warn_max is not None and value <= thresholds.warn_max:
+            return "warn"
+        if thresholds.fail_min is not None and value >= thresholds.fail_min:
+            return "fail"
+        if thresholds.pass_max is not None or thresholds.warn_max is not None:
+            return "fail"
+        return "pass"
     if thresholds.pass_min is not None and value >= thresholds.pass_min:
         return "pass"
     if thresholds.warn_min is not None and value >= thresholds.warn_min:

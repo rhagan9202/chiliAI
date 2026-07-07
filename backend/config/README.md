@@ -33,8 +33,11 @@ selection — with **zero code changes**.
     contamination, traceability). Exemplar-parity peer pack; proves the
     retargeting thesis.
   - `department_air_force_housing.yaml` — Department of the Air Force housing
-    visibility, file/export feeds for UMD, BAH, inventory, market, and
-    demographics, plus configurable UH/MFH scorecard templates.
+    visibility, file/export feeds for UMD, BAH, inventory, market,
+    demographics, and resident experience, plus configurable UH (8-metric)
+    and MFH (12-metric) statutory scorecard templates whose per-metric
+    provenance is documented in
+    [`../../docs/research/housing-scorecard-mandates.md`](../../docs/research/housing-scorecard-mandates.md).
   - `medicare_fraud.yaml`, `medicare_fraud_dev.yaml` — minimal/dev variants.
 
 ## Switching domains
@@ -118,7 +121,14 @@ Section checklist for a first-class pack:
 5. **`records.feeds`** — structured-ingestion feeds. Each feed declares a
    `record_schema`, an `id_field` (or `id_template`), and mappings from rows
    to `entities`, `relationships`, and scored `observations`. All references
-   are cross-validated at load (see below).
+   are cross-validated at load (see below). Observation scores are hard-bound
+   to `[0, 1]` (`MonitoringObservation.score`); a `score_field` on another
+   scale (e.g. a 0–100 index) declares `score_max` on the observation mapping
+   and the mapper divides raw values by it (`score = value / score_max`).
+   `score_max` is a scale conversion only — values still out of range after
+   division raise a hard `RecordMappingError` (never clamped), so raw counts
+   with no natural upper bound cannot be observations; model them as entity
+   properties / scorecard record-feed inputs instead.
 6. **`policy_rules`** — rule packs with `thresholds` referenced by
    `config_ref` predicates; unknown refs fail at load.
 7. **`scorecards.templates`** — safe configurable report templates. Each
@@ -127,8 +137,12 @@ Section checklist for a first-class pack:
    record-feed inputs, thresholds, freshness windows, and export formats.
    Formula fields are operator-specific: ratios use numerator/denominator,
    sums/means/latest use value, and weighted means use value/weight. Record
-   feed inputs must name a declared feed field. The Air Force housing pack
-   ships UH and MFH templates exporting JSON and Markdown.
+   feed inputs must name a declared feed field. Thresholds grade in exactly
+   one direction per metric: higher-is-better (`pass_min`/`warn_min`/
+   `fail_max`) **or** lower-is-better (`pass_max`/`warn_max`/`fail_min`) —
+   mixing directions is a load error, at least one bound is required, and
+   bounds must be ordered so grading bands cannot overlap. The Air Force
+   housing pack ships UH and MFH templates exporting JSON and Markdown.
 8. **`alerts.thresholds`** — per-entity-type metric thresholds.
 9. **`ui`** — this drives dynamic frontend rendering: `default_entity_type`,
    `navigation.pages` (id/label/route, optional `capability` gate),
@@ -155,11 +169,22 @@ Section checklist for a first-class pack:
   mappings must reference declared entities; relationship mappings must
   reference declared relationship types whose endpoints are mapped by the
   same feed; observation entity types must be mapped by the feed;
+- observation bound proof: every observation `score_field` must be provable
+  at load time to land in `[0, 1]` for all in-schema values. Concretely, the
+  `record_schema` field must (a) be a numeric type (`integer` or `decimal` —
+  bounds on non-numeric types are not enforced at record intake, so anything
+  else is rejected), (b) declare `min_value >= 0`, and (c) declare
+  `max_value <= 1`, **or** the observation sets `score_max` (a `> 0`
+  normalization divisor) with a declared `max_value <= score_max`. A field
+  with no `max_value` can never carry `score_max` — an unbounded field cannot
+  be proven to normalize. This turns the runtime worker failure
+  (retries → DLQ → run `failed`) into an unloadable config;
 - scorecard template integrity: duplicate template/section IDs fail, metric
   IDs must be unique across each template, record-feed inputs must reference
   declared feeds and fields in those feeds, formula shapes must match their
-  operators, formula input references must name declared metric inputs, and
-  metric freshness windows must be positive;
+  operators, formula input references must name declared metric inputs,
+  metric freshness windows must be positive, and thresholds must use a
+  single grading direction with coherent (non-overlapping) bound ordering;
 - policy-rule `config_ref`s not declared in the owning pack's `thresholds`;
 - `vectorstore.dimensions` != `embeddings.dimensions` when both are set.
 

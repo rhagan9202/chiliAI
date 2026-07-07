@@ -145,12 +145,31 @@ def map_observations(
                     f"Feed '{feed.name}' record '{record.record_id}' is missing "
                     f"observation id field '{id_field}'."
                 )
+            score = _as_float(score_value)
+            if observation_mapping.score_max is not None:
+                # Scale conversion only (e.g. a 0-100 index to [0, 1]); values
+                # still out of range after division fail loudly below — never
+                # clamp.
+                score = score / observation_mapping.score_max
+            if not 0.0 <= score <= 1.0:
+                normalization = (
+                    f" normalized by score_max {observation_mapping.score_max}"
+                    if observation_mapping.score_max is not None
+                    else ""
+                )
+                raise RecordMappingError(
+                    f"Feed '{feed.name}' observation "
+                    f"'{observation_mapping.metric_name}' score field "
+                    f"'{observation_mapping.score_field}' value {score_value!r}"
+                    f"{normalization} produces score {score}, outside the "
+                    f"[0, 1] observation bound (record '{record.record_id}')."
+                )
             observations.append(
                 MonitoringObservation(
                     entity_id=_entity_id(observation_mapping.entity_type, raw_id),
                     entity_type=observation_mapping.entity_type,
                     metric_name=observation_mapping.metric_name,
-                    score=_as_float(score_value),
+                    score=score,
                     observed_at=record.ingested_at,
                     rationale=observation_mapping.rationale,
                 )

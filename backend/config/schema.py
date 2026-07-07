@@ -324,11 +324,22 @@ class RecordRelationshipMapping(BaseModel):
 
 
 class RecordObservationMapping(BaseModel):
-    """Maps a numeric record field onto a scored monitoring observation."""
+    """Maps a numeric record field onto a scored monitoring observation.
+
+    ``MonitoringObservation.score`` is bounded to [0, 1].  ``score_max`` is an
+    optional normalization divisor (``score = raw_value / score_max``) for
+    fields declared on another bounded scale (e.g. a 0-100 index).  It is a
+    scale conversion, not a clamp: values that still fall outside [0, 1] after
+    normalization fail the record batch loudly.  DomainConfig cross-validation
+    requires the score_field's declared record_schema bounds to prove every
+    in-schema value normalizes into [0, 1] — see
+    ``DomainConfig._validate_cross_references``.
+    """
 
     metric_name: str
     entity_type: str
     score_field: str
+    score_max: float | None = Field(default=None, gt=0)
     rationale: str = ""
 
 
@@ -532,12 +543,98 @@ class ScorecardFormulaConfig(BaseModel):
 
 
 class ScorecardThresholdConfig(BaseModel):
-    """Thresholds used to classify a configured scorecard metric."""
+    """Thresholds used to classify a configured scorecard metric.
+
+    Exactly one grading direction may be used per metric:
+
+    - higher-is-better: ``pass_min`` / ``warn_min`` / ``fail_max``
+    - lower-is-better: ``pass_max`` / ``warn_max`` / ``fail_min``
+
+    Mixing fields from both directions is a validation error, and at least
+    one threshold field must be set so every metric has a defined grade.
+    Bounds must also be coherent within their direction so grading bands
+    cannot overlap: higher-is-better requires ``pass_min >= warn_min >
+    fail_max`` and lower-is-better requires ``pass_max <= warn_max <
+    fail_min`` (each comparison applies where both fields are present).
+    """
 
     pass_min: float | None = None
     warn_min: float | None = None
     fail_max: float | None = None
+    pass_max: float | None = None
+    warn_max: float | None = None
+    fail_min: float | None = None
     incomplete_when_missing: bool = True
+
+    @model_validator(mode="after")
+    def validate_threshold_direction(self) -> ScorecardThresholdConfig:
+        has_higher = any(
+            bound is not None
+            for bound in (self.pass_min, self.warn_min, self.fail_max)
+        )
+        has_lower = any(
+            bound is not None
+            for bound in (self.pass_max, self.warn_max, self.fail_min)
+        )
+        if has_higher and has_lower:
+            raise ValueError(
+                "Scorecard thresholds cannot mix higher-is-better fields "
+                "(pass_min/warn_min/fail_max) with lower-is-better fields "
+                "(pass_max/warn_max/fail_min)."
+            )
+        if not has_higher and not has_lower:
+            raise ValueError(
+                "Scorecard thresholds must set at least one of "
+                "pass_min/warn_min/fail_max or pass_max/warn_max/fail_min."
+            )
+
+        # Intra-direction ordering: bounds must be coherent so grading
+        # bands cannot overlap (red-cell finding B1).
+        if (
+            self.pass_min is not None
+            and self.warn_min is not None
+            and self.pass_min < self.warn_min
+        ):
+            raise ValueError(
+                f"Scorecard thresholds: pass_min {self.pass_min} must be "
+                f">= warn_min {self.warn_min}."
+            )
+        for field_name, bound in (
+            ("pass_min", self.pass_min),
+            ("warn_min", self.warn_min),
+        ):
+            if (
+                bound is not None
+                and self.fail_max is not None
+                and bound <= self.fail_max
+            ):
+                raise ValueError(
+                    f"Scorecard thresholds: {field_name} {bound} must be "
+                    f"> fail_max {self.fail_max}."
+                )
+        if (
+            self.pass_max is not None
+            and self.warn_max is not None
+            and self.pass_max > self.warn_max
+        ):
+            raise ValueError(
+                f"Scorecard thresholds: pass_max {self.pass_max} must be "
+                f"<= warn_max {self.warn_max}."
+            )
+        for field_name, bound in (
+            ("pass_max", self.pass_max),
+            ("warn_max", self.warn_max),
+        ):
+            if (
+                bound is not None
+                and self.fail_min is not None
+                and bound >= self.fail_min
+            ):
+                raise ValueError(
+                    f"Scorecard thresholds: {field_name} {bound} must be "
+                    f"< fail_min {self.fail_min}."
+                )
+        return self
 
 
 class ScorecardMetricConfig(BaseModel):
@@ -811,6 +908,59 @@ class DomainConfig(BaseModel):
                         f"Records feed '{feed.name}' observation mapping score_field "
                         f"'{observation_mapping.score_field}' is not in record_schema."
                     )
+                else:
+                    # MonitoringObservation.score is bounded to [0, 1]; the
+                    # declared record_schema bounds must prove every in-schema
+                    # value lands (or normalizes via score_max) into [0, 1].
+                    score_def = feed.record_schema[observation_mapping.score_field]
+                    label = (
+                        f"Records feed '{feed.name}' observation "
+                        f"'{observation_mapping.metric_name}' score_field "
+                        f"'{observation_mapping.score_field}'"
+                    )
+                    if score_def.type.value not in ("integer", "decimal"):
+                        # Bounds on non-numeric types are not enforced at
+                        # record intake, so a non-numeric score_field with
+                        # numeric-looking bounds would pass load-time checks
+                        # yet still hard-fail worker-side at mapping time.
+                        errors.append(
+                            f"{label} must be a numeric record_schema type "
+                            f"(integer or decimal), got "
+                            f"'{score_def.type.value}'."
+                        )
+                    else:
+                        if score_def.min_value is None or score_def.min_value < 0:
+                            errors.append(
+                                f"{label} must declare min_value >= 0 in "
+                                f"record_schema; observation scores are "
+                                f"bounded to [0, 1]."
+                            )
+                        if observation_mapping.score_max is None:
+                            if score_def.max_value is None or score_def.max_value > 1:
+                                errors.append(
+                                    f"{label} must declare max_value <= 1 in "
+                                    f"record_schema, or the observation must "
+                                    f"set score_max to normalize the field's "
+                                    f"scale into [0, 1]."
+                                )
+                        elif score_def.max_value is None:
+                            # A field with no declared upper bound (e.g. a
+                            # raw count) can never be proven to normalize
+                            # into [0, 1], so score_max on such a field is
+                            # rejected outright.
+                            errors.append(
+                                f"{label} sets score_max but record_schema "
+                                f"declares no max_value; an unbounded field "
+                                f"cannot be proven to normalize into [0, 1]. "
+                                f"Declare max_value or drop the observation."
+                            )
+                        elif score_def.max_value > observation_mapping.score_max:
+                            errors.append(
+                                f"{label} declares max_value "
+                                f"{score_def.max_value} greater than "
+                                f"score_max {observation_mapping.score_max}; "
+                                f"normalized scores could exceed 1."
+                            )
 
         # --- scorecard template references ---
         feed_schemas = {
@@ -852,6 +1002,20 @@ class DomainConfig(BaseModel):
                                     f"'{metric_input.field}' in records feed "
                                     f"'{metric_input.ref}'."
                                 )
+                            # Filter keys must be declared feed fields; a
+                            # typo'd key would otherwise match no records and
+                            # silently degrade the metric to incomplete
+                            # (red-cell finding B4/C1).
+                            if feed_schema is not None:
+                                for filter_key in sorted(metric_input.filter):
+                                    if filter_key not in feed_schema:
+                                        errors.append(
+                                            f"Scorecard metric '{metric.id}' in "
+                                            f"template '{template.id}' record_feed "
+                                            f"input '{metric_input.name}' filter key "
+                                            f"'{filter_key}' is not declared in "
+                                            f"records feed '{metric_input.ref}'."
+                                        )
 
                     formula_refs = (
                         ("numerator", metric.formula.numerator),

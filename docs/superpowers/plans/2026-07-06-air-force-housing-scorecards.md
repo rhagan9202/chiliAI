@@ -2923,7 +2923,7 @@ Run:
 
 ```bash
 cd chili_app && ./node_modules/.bin/vitest run src/api/__tests__/scorecards.test.ts src/api/__tests__/housing.test.ts src/pages/__tests__/HousingExecutivePage.test.tsx
-cd chili_app && pnpm build
+cd chili_app && npm run build
 ```
 
 Expected: all pass.

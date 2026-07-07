@@ -216,7 +216,7 @@ uv run --project backend pytest backend/tests/ingestion/test_service.py -q
 **Focused verification:**
 
 ```bash
-pnpm --dir chili_app test -- knowledgebases
+npm --prefix chili_app run test -- knowledgebases
 ```
 
 ## Final Verification
