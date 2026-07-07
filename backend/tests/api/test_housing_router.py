@@ -422,6 +422,316 @@ def test_installations_map_points_require_coordinates() -> None:
     assert eglin_point["status"] == "ok"
 
 
+def test_installation_fields_recompute_every_overview_aggregate() -> None:
+    """Semantic contract for filter-driven aggregate cards.
+
+    Folding every installation's exposed inputs with the documented formulas
+    must reproduce the ``/housing/overview`` portfolio summary and executive
+    KPI values exactly — the frontend implements these formulas over any
+    filtered subset:
+
+    - occupancy = sum(occupancy_rate * occupancy_unit_weight)
+      / sum(occupancy_unit_weight) over non-null weights
+    - condition = sum(condition_index * condition_unit_weight)
+      / sum(condition_unit_weight) over non-null weights
+    - satisfaction = sum(resident_satisfaction * satisfaction_survey_count)
+      / sum(satisfaction_survey_count) — identical to the overview's flat
+      mean over every survey value
+    - overdue rate = sum(overdue_work_orders) / sum(open_work_orders),
+      unknown when the open sum is 0
+    - supply ratio = sum(non-null <cat>_available_units)
+      / sum(<cat>_authorized_units), unknown unless the authorized sum is
+      positive and at least one installation reported that category
+    - counts from status: total = row count, reporting = status != unknown,
+      critical = status == critical
+    """
+    client, _loader = _client()
+
+    overview = client.get("/housing/overview").json()
+    items = client.get("/housing/installations").json()["items"]
+    summary = overview["portfolio_summary"]
+    kpis = {kpi["id"]: kpi["value"] for kpi in overview["executive_kpis"]}
+
+    assert summary["total_installations"] == len(items)
+    assert summary["installations_reporting"] == sum(
+        1 for item in items if item["status"] != "unknown"
+    )
+    assert kpis["installations_critical"] == float(
+        sum(1 for item in items if item["status"] == "critical")
+    )
+
+    open_orders = sum(item["open_work_orders"] for item in items)
+    overdue_orders = sum(item["overdue_work_orders"] for item in items)
+    assert summary["open_work_orders"] == open_orders
+    assert summary["overdue_work_orders"] == overdue_orders
+    assert open_orders > 0
+    assert kpis["work_order_overdue_rate"] == round(
+        overdue_orders / open_orders * 100.0, 3
+    )
+
+    occupancy_pairs = [
+        (item["occupancy_rate"], item["occupancy_unit_weight"])
+        for item in items
+        if item["occupancy_unit_weight"] is not None
+    ]
+    occupancy = sum(rate * weight for rate, weight in occupancy_pairs) / sum(
+        weight for _rate, weight in occupancy_pairs
+    )
+    assert summary["occupancy_rate"] == round(occupancy, 4)
+    assert kpis["portfolio_occupancy"] == round(occupancy * 100.0, 3)
+
+    condition_pairs = [
+        (item["condition_index"], item["condition_unit_weight"])
+        for item in items
+        if item["condition_unit_weight"] is not None
+    ]
+    condition = sum(value * weight for value, weight in condition_pairs) / sum(
+        weight for _value, weight in condition_pairs
+    )
+    assert kpis["average_condition_index"] == round(condition, 3)
+
+    survey_count = sum(item["satisfaction_survey_count"] for item in items)
+    assert survey_count > 0
+    satisfaction = (
+        sum(
+            item["resident_satisfaction"] * item["satisfaction_survey_count"]
+            for item in items
+            if item["satisfaction_survey_count"] > 0
+        )
+        / survey_count
+    )
+    assert summary["resident_satisfaction"] == round(satisfaction, 2)
+    assert kpis["resident_satisfaction"] == round(satisfaction, 3)
+
+    uh_available = [
+        item["uh_available_units"]
+        for item in items
+        if item["uh_available_units"] is not None
+    ]
+    uh_authorized = sum(item["uh_authorized_units"] for item in items)
+    assert uh_available and uh_authorized > 0
+    assert kpis["uh_supply_ratio"] == round(sum(uh_available) / uh_authorized, 3)
+
+    # No MFH inventory landed anywhere: every mfh_available_units is None, so
+    # the recomputation yields unknown even though authorizations exist —
+    # exactly what the overview reports.
+    assert all(item["mfh_available_units"] is None for item in items)
+    assert sum(item["mfh_authorized_units"] for item in items) > 0
+    assert kpis["mfh_supply_ratio"] is None
+
+
+def test_installation_aggregate_inputs_are_null_where_unreported() -> None:
+    """Aggregate inputs are null (or zero-count) when the feed never landed."""
+    client, _loader = _client()
+
+    by_id = {
+        item["installation_id"]: item
+        for item in client.get("/housing/installations").json()["items"]
+    }
+
+    eglin = by_id["eglin_afb"]
+    assert eglin["occupancy_unit_weight"] == 1140  # available 1100 + offline 40
+    assert eglin["condition_index"] == 88.0
+    assert eglin["condition_unit_weight"] == 1100  # available units only
+    assert eglin["resident_satisfaction"] == 82.0
+    assert eglin["satisfaction_survey_count"] == 1
+    assert eglin["overdue_work_orders"] == 1
+    assert eglin["uh_available_units"] == 1100
+    assert eglin["uh_authorized_units"] == 1000
+    assert eglin["mfh_available_units"] is None  # no MFH inventory reported
+    assert eglin["mfh_authorized_units"] == 900
+
+    context_only = by_id["context_only_afb"]
+    assert context_only["occupancy_rate"] is None
+    assert context_only["occupancy_unit_weight"] is None
+    assert context_only["condition_index"] is None
+    assert context_only["condition_unit_weight"] is None
+    assert context_only["resident_satisfaction"] is None
+    assert context_only["satisfaction_survey_count"] == 0
+    assert context_only["overdue_work_orders"] == 0
+    assert context_only["uh_available_units"] is None
+    assert context_only["uh_authorized_units"] == 0.0
+    assert context_only["mfh_available_units"] is None
+    assert context_only["mfh_authorized_units"] == 0.0
+
+
+def _mixed_feed_records() -> list[SourceRecord]:
+    """Two installations exercising every weighting subtlety at once:
+    offline units (occupancy weight differs from condition weight), multiple
+    inventory rows and surveys per installation, MFH inventory on both sides
+    of the ratio, and a UH category reported by only one installation.
+    """
+    return [
+        _record(
+            "umd_authorizations",
+            "umd-alpha",
+            {
+                "installation_id": "alpha_afb",
+                "installation_name": "Alpha AFB",
+                "unaccompanied_authorized": 700,
+                "accompanied_authorized": 600,
+            },
+        ),
+        _record(
+            "housing_inventory",
+            "inv-alpha-uh",
+            {
+                "installation_id": "alpha_afb",
+                "category": "UH",
+                "available_units": 500,
+                "offline_units": 100,
+                "utilization_rate": 0.9,
+                "condition_index": 85.0,
+            },
+        ),
+        _record(
+            "housing_inventory",
+            "inv-alpha-mfh",
+            {
+                "installation_id": "alpha_afb",
+                "category": "MFH",
+                "available_units": 500,
+                "offline_units": 0,
+                "utilization_rate": 0.79,
+                "condition_index": 90.0,
+            },
+        ),
+        _record(
+            "resident_experience",
+            "rex-alpha-1",
+            {
+                "installation_id": "alpha_afb",
+                "satisfaction_score": 80.0,
+                "work_orders_open": 10,
+                "work_orders_overdue": 2,
+            },
+        ),
+        _record(
+            "resident_experience",
+            "rex-alpha-2",
+            {
+                "installation_id": "alpha_afb",
+                "satisfaction_score": 70.0,
+                "work_orders_open": 30,
+                "work_orders_overdue": 3,
+            },
+        ),
+        _record(
+            "umd_authorizations",
+            "umd-bravo",
+            {
+                "installation_id": "bravo_afb",
+                "installation_name": "Bravo AFB",
+                "unaccompanied_authorized": 400,
+                "accompanied_authorized": 400,
+            },
+        ),
+        _record(
+            "housing_inventory",
+            "inv-bravo-mfh",
+            {
+                "installation_id": "bravo_afb",
+                "category": "MFH",
+                "available_units": 300,
+                "offline_units": 0,
+                "utilization_rate": 0.7,
+                "condition_index": 60.0,
+            },
+        ),
+        _record(
+            "resident_experience",
+            "rex-bravo",
+            {
+                "installation_id": "bravo_afb",
+                "satisfaction_score": 60.0,
+                "work_orders_open": 20,
+                "work_orders_overdue": 5,
+            },
+        ),
+    ]
+
+
+def test_recompute_contract_pins_weights_on_mixed_feeds() -> None:
+    """The exposed weights are the overview's actual weights.
+
+    Occupancy weighs by total units (available + offline) of
+    utilization-reporting rows; condition weighs by available units of
+    condition-reporting rows; portfolio satisfaction weighs each
+    installation's mean by its survey count (equal to the overview's flat
+    mean over all surveys). Substituting available units for the occupancy
+    weight in this fixture would recompute a different portfolio value —
+    the wrong weight fails loudly here.
+    """
+    client, _loader = _client(loader=StubRecordLoader(_mixed_feed_records()))
+
+    overview = client.get("/housing/overview").json()
+    items = client.get("/housing/installations").json()["items"]
+    by_id = {item["installation_id"]: item for item in items}
+    summary = overview["portfolio_summary"]
+    kpis = {kpi["id"]: kpi["value"] for kpi in overview["executive_kpis"]}
+
+    alpha = by_id["alpha_afb"]
+    # Occupancy weight counts offline units; condition weight does not.
+    assert alpha["occupancy_unit_weight"] == 600 + 500
+    assert alpha["occupancy_rate"] == round((0.9 * 600 + 0.79 * 500) / 1100, 4)
+    assert alpha["condition_unit_weight"] == 500 + 500
+    assert alpha["condition_index"] == (85.0 * 500 + 90.0 * 500) / 1000
+    assert alpha["resident_satisfaction"] == 75.0
+    assert alpha["satisfaction_survey_count"] == 2
+    assert alpha["overdue_work_orders"] == 5
+    assert alpha["uh_available_units"] == 500
+    assert alpha["mfh_available_units"] == 500
+
+    bravo = by_id["bravo_afb"]
+    assert bravo["uh_available_units"] is None  # no UH inventory reported
+    assert bravo["uh_authorized_units"] == 400  # still counts toward demand
+    assert bravo["mfh_available_units"] == 300
+
+    occupancy = sum(
+        item["occupancy_rate"] * item["occupancy_unit_weight"] for item in items
+    ) / sum(item["occupancy_unit_weight"] for item in items)
+    assert summary["occupancy_rate"] == round(occupancy, 4)
+    assert kpis["portfolio_occupancy"] == round(occupancy * 100.0, 3)
+
+    condition = sum(
+        item["condition_index"] * item["condition_unit_weight"] for item in items
+    ) / sum(item["condition_unit_weight"] for item in items)
+    assert kpis["average_condition_index"] == round(condition, 3)
+
+    satisfaction = sum(
+        item["resident_satisfaction"] * item["satisfaction_survey_count"]
+        for item in items
+    ) / sum(item["satisfaction_survey_count"] for item in items)
+    assert summary["resident_satisfaction"] == round(satisfaction, 2)
+    assert kpis["resident_satisfaction"] == round(satisfaction, 3)
+
+    assert kpis["work_order_overdue_rate"] == round(
+        sum(item["overdue_work_orders"] for item in items)
+        / sum(item["open_work_orders"] for item in items)
+        * 100.0,
+        3,
+    )
+    assert kpis["uh_supply_ratio"] == round(
+        sum(
+            item["uh_available_units"]
+            for item in items
+            if item["uh_available_units"] is not None
+        )
+        / sum(item["uh_authorized_units"] for item in items),
+        3,
+    )
+    # Both sides of MFH reported → the ratio recomputes instead of unknown.
+    assert kpis["mfh_supply_ratio"] == round(
+        sum(
+            item["mfh_available_units"]
+            for item in items
+            if item["mfh_available_units"] is not None
+        )
+        / sum(item["mfh_authorized_units"] for item in items),
+        3,
+    )
+
+
 def test_explicit_knowledge_base_id_overrides_default_resolution() -> None:
     client, loader = _client(knowledge_bases=[])
 

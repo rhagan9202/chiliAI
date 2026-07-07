@@ -1,17 +1,14 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
-import { useHousingInstallations, useHousingOverview } from '../api/housing'
+import { useHousingInstallations } from '../api/housing'
 import { useKnowledgeBases } from '../api/knowledgebases'
-import { useGenerateScorecardRun, useScorecardRuns, useScorecardTemplates } from '../api/scorecards'
+import { useScorecardRuns } from '../api/scorecards'
 import type {
-  HousingExecutiveKpiResponse,
   HousingInstallationResponse,
   KnowledgeBaseSummaryResponse,
   ScorecardRunResponse,
-  ScorecardTemplateResponse,
 } from '../api/contracts'
-import { showToast } from '../components/common/toastStore'
 import { HousingFilterStrip } from '../components/housing/HousingFilterStrip'
 import {
   commandOptions,
@@ -25,10 +22,10 @@ import {
   type HousingFilterState,
   type InstallationStatus,
 } from '../components/housing/housingFilters'
+import { HousingSummaryBand } from '../components/housing/HousingSummaryBand'
 import { InstallationHealthMap } from '../components/housing/InstallationHealthMap'
 import { InstallationRankingTable } from '../components/housing/InstallationRankingTable'
 import type { InstallationBranch } from '../components/housing/installationMapGeometry'
-import { ScorecardReadinessPanel } from '../components/housing/ScorecardReadinessPanel'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
 import { EmptyState } from '../components/ui/EmptyState'
@@ -61,16 +58,6 @@ function formatPercent(value: number | null | undefined) {
   return value == null ? 'n/a' : `${Math.round(value * 100)}%`
 }
 
-function formatKpiValue(kpi: HousingExecutiveKpiResponse) {
-  if (kpi.value == null) {
-    return 'n/a'
-  }
-  if (kpi.unit === 'percent') {
-    return `${Math.round(kpi.value * 100)}%`
-  }
-  return String(kpi.value)
-}
-
 function formatRunDate(value: string) {
   const [datePart] = value.split('T')
   const [year, month, day] = datePart.split('-').map((part) => Number(part))
@@ -80,14 +67,6 @@ function formatRunDate(value: string) {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
     new Date(year, month - 1, day),
   )
-}
-
-function todayDate() {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function selectInstallationTemplate(templates: ScorecardTemplateResponse[]) {
-  return templates.find((template) => template.scope === 'installation') ?? null
 }
 
 /** Latest run per template for one installation, newest first (UH and MFH both surface). */
@@ -132,31 +111,27 @@ function selectActiveKnowledgeBase(
 }
 
 export function HousingExecutivePage() {
-  const overviewQuery = useHousingOverview()
   const installationsQuery = useHousingInstallations()
   const knowledgeBasesQuery = useKnowledgeBases()
   const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
   const activeKnowledgeBase = selectActiveKnowledgeBase(knowledgeBases)
-  const templatesQuery = useScorecardTemplates()
   // The runs endpoint has no scope filter; pull the KB's run history in one
   // page (500 is the API cap) so per-installation lookups stay client-side.
   const runsQuery = useScorecardRuns(
     activeKnowledgeBase ? { knowledgeBaseId: activeKnowledgeBase.id, limit: 500 } : null,
   )
-  const generateScorecard = useGenerateScorecardRun()
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedInstallationId, setSelectedInstallationId] = useState<string | null>(null)
   const [filters, setFilters] = useState<HousingFilterState>(EMPTY_HOUSING_FILTERS)
 
-  if (overviewQuery.isLoading || installationsQuery.isLoading || knowledgeBasesQuery.isLoading) {
+  if (installationsQuery.isLoading || knowledgeBasesQuery.isLoading) {
     return <LoadingState label="Loading housing portfolio" />
   }
 
-  if (overviewQuery.isError || installationsQuery.isError || knowledgeBasesQuery.isError) {
+  if (installationsQuery.isError || knowledgeBasesQuery.isError) {
     return <ErrorState description="Housing portfolio data could not be loaded from the API." />
   }
 
-  const overview = overviewQuery.data
   const installationsPayload = installationsQuery.data
   const liveInstallations = installationsPayload?.items ?? []
   const referenceMode = liveInstallations.length === 0
@@ -192,35 +167,23 @@ export function HousingExecutivePage() {
   const selectedReference = selectedInstallation
     ? referenceLookup.get(selectedInstallation.installation_id) ?? null
     : null
-  // Status strip mirrors the filtered set; the KPI cards above stay
-  // portfolio-wide (all four — they read as portfolio KPIs, and the filtered
-  // story is told by the strip plus the filter strip's aria-live count).
+  // Status strip and the summary band both mirror the filtered set — the
+  // filters drive every aggregate, and the filter strip's aria-live count
+  // narrates the subset.
   const statusCounts = countInstallationsByStatus(filteredInstallations)
-  const portfolioStatusCounts = countInstallationsByStatus(installations)
   const availableCommands = commandOptions(installations)
   const selectedRank = selectedInstallation
     ? resolveInstallationRank(installations, selectedInstallation)
     : null
   const statusReasons = selectedInstallation ? readStatusReasons(selectedInstallation) : []
 
-  const templates = templatesQuery.data?.items ?? []
   const runs = runsQuery.data?.items ?? []
   const sortedRuns = [...runs].sort((left, right) => right.created_at.localeCompare(left.created_at))
-  const installationTemplate = selectInstallationTemplate(templates)
   const selectedInstallationRuns = selectedInstallation
     ? sortedRuns.filter((run) => run.scope_id === selectedInstallation.installation_id)
     : []
   const selectedRun = selectedInstallationRuns[0] ?? null
   const installationRunLinks = latestRunsByTemplate(selectedInstallationRuns)
-  const scopeNames = new Map(
-    installations.map((installation) => [installation.installation_id, installation.name]),
-  )
-  const periodStart = overview?.period_start ?? installationsPayload?.period_start ?? todayDate()
-  const periodEnd = overview?.period_end ?? installationsPayload?.period_end ?? todayDate()
-  const canGenerateScorecard = Boolean(
-    !referenceMode && activeKnowledgeBase && selectedInstallation && installationTemplate && periodStart && periodEnd,
-  )
-  const generationUnavailableReason = referenceMode ? LIVE_FEEDS_REQUIRED_REASON : null
   const ragUrl = selectedInstallation
     ? buildRagChatUrl({
         knowledgeBaseId: activeKnowledgeBase?.id ?? null,
@@ -230,27 +193,6 @@ export function HousingExecutivePage() {
         question: `Summarize housing supply risk for ${selectedInstallation.name}.`,
       })
     : '/rag-chat'
-
-  const handleGenerateScorecard = () => {
-    if (!activeKnowledgeBase || !selectedInstallation || !installationTemplate) {
-      return
-    }
-
-    generateScorecard.mutate(
-      {
-        knowledge_base_id: activeKnowledgeBase.id,
-        template_id: installationTemplate.id,
-        scope_type: installationTemplate.scope,
-        scope_id: selectedInstallation.installation_id,
-        period_start: periodStart,
-        period_end: periodEnd,
-      },
-      {
-        onSuccess: () => showToast('success', 'Scorecard generation queued.'),
-        onError: () => showToast('error', 'Could not generate the scorecard.'),
-      },
-    )
-  }
 
   const handleSelectInstallation = (installationId: string) => {
     setSelectedInstallationId(installationId)
@@ -319,38 +261,7 @@ export function HousingExecutivePage() {
         </div>
       ) : null}
 
-      <div className="housing-kpis">
-        <Card compact>
-          <div className="housing-kpi">
-            <span className="metric-row__label">{referenceMode ? 'Public locations' : 'Reporting'}</span>
-            <strong>
-              {referenceMode
-                ? installations.length
-                : `${overview?.portfolio_summary?.installations_reporting ?? installations.length}/${
-                    overview?.portfolio_summary?.total_installations ?? installationsPayload?.total ?? installations.length
-                  }`}
-            </strong>
-          </div>
-        </Card>
-        <Card compact>
-          <div className="housing-kpi">
-            <span className="metric-row__label">{referenceMode ? 'Live reporting' : 'Open WOs'}</span>
-            <strong>{referenceMode ? '0' : overview?.portfolio_summary?.open_work_orders ?? 0}</strong>
-          </div>
-        </Card>
-        <Card compact>
-          <div className="housing-kpi">
-            <span className="metric-row__label">{referenceMode ? 'Health scored' : 'Occupancy'}</span>
-            <strong>{referenceMode ? '0' : formatPercent(overview?.portfolio_summary?.occupancy_rate)}</strong>
-          </div>
-        </Card>
-        <Card compact>
-          <div className="housing-kpi">
-            <span className="metric-row__label">{referenceMode ? 'Scorecards' : 'Critical'}</span>
-            <strong>{referenceMode ? 'pending' : portfolioStatusCounts.critical}</strong>
-          </div>
-        </Card>
-      </div>
+      <HousingSummaryBand installations={filteredInstallations} referenceMode={referenceMode} />
 
       <HousingFilterStrip
         commands={availableCommands}
@@ -499,56 +410,27 @@ export function HousingExecutivePage() {
         </Card>
       </div>
 
-      <div className="housing-lower-grid">
-        <Card>
-          <div className="metric-stack">
-            <div className="metric-row">
-              <strong>Installation ranking</strong>
-              <Chip label={`${filteredInstallations.length} rows`} tone="info" />
-            </div>
-            {filteredInstallations.length === 0 && filtersActive ? (
-              <EmptyState
-                description="No installations match the active filters."
-                title="No matching installations"
-              />
-            ) : (
-              <InstallationRankingTable
-                installations={filteredInstallations}
-                onSelectInstallation={handleSelectInstallation}
-                referenceMode={referenceMode}
-                selectedInstallationId={activeInstallationId}
-              />
-            )}
+      <Card>
+        <div className="metric-stack">
+          <div className="metric-row">
+            <strong>Installation ranking</strong>
+            <Chip label={`${filteredInstallations.length} rows`} tone="info" />
           </div>
-        </Card>
-
-        <Card>
-          <ScorecardReadinessPanel
-            canGenerate={canGenerateScorecard}
-            generatePending={generateScorecard.isPending}
-            generationUnavailableReason={generationUnavailableReason}
-            knowledgeBaseId={referenceMode ? null : activeKnowledgeBase?.id ?? null}
-            knowledgeBaseName={referenceMode ? 'Live evidence pending' : activeKnowledgeBase?.name ?? null}
-            onGenerate={handleGenerateScorecard}
-            recentRuns={runs}
-            runsTotal={runsQuery.data?.total ?? null}
-            scopeNames={scopeNames}
-            selectedInstallation={selectedInstallation}
-            templates={templates}
-          />
-        </Card>
-      </div>
-
-      {overview?.executive_kpis.length ? (
-        <div className="housing-executive-kpis">
-          {overview.executive_kpis.map((kpi) => (
-            <div className="metric-row" key={kpi.label}>
-              <span className="metric-row__label">{kpi.label}</span>
-              <strong>{formatKpiValue(kpi)}</strong>
-            </div>
-          ))}
+          {filteredInstallations.length === 0 && filtersActive ? (
+            <EmptyState
+              description="No installations match the active filters."
+              title="No matching installations"
+            />
+          ) : (
+            <InstallationRankingTable
+              installations={filteredInstallations}
+              onSelectInstallation={handleSelectInstallation}
+              referenceMode={referenceMode}
+              selectedInstallationId={activeInstallationId}
+            />
+          )}
         </div>
-      ) : null}
+      </Card>
     </section>
   )
 }

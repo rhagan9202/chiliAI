@@ -368,3 +368,27 @@ Verification commands should follow repo convention:
 - Formula expressiveness must be sufficient for scorecards without becoming unsafe arbitrary code.
 - Source exports may vary by command or system; the feed design should include explicit schema versions and rejected-row reports.
 - PDF export may become a hard requirement; keep v1 export payloads stable so PDF generation can be added as a renderer later.
+
+## Addendum (2026-07-07): Generation UI Retired, Aggregates Unified Above The Map
+
+Directed presentation change to the shipped `/housing` dashboard (this section
+records the decision; sections 9-10 above are preserved as originally written):
+
+- The mid-right scorecard readiness panel (Ready KB / Templates / run summary /
+  "Generate scorecard" button) is **removed entirely**. Scorecard generation
+  keeps no UI surface: runs are created through `POST /scorecards/runs` only
+  (backend router tests and `make seed-housing SEED_ARGS="--scorecards"` cover
+  the flow). The scorecard run viewer remains reachable from the installation
+  detail card's run links — "scorecard actions" in section 9 now means run
+  viewing plus the scoped RAG launch.
+- All aggregate cards move into a **single summary band above the map**
+  (header → band → filter strip → map → ranking), replacing both the previous
+  top KPI cards and the bottom executive KPI row. The filters drive every band
+  value: aggregates are recomputed client-side from the filtered installation
+  set with the backend read model's exact weighting semantics, using additive
+  aggregate-input fields added to `HousingInstallationResponse`
+  (unit-weighted occupancy/condition, survey-weighted satisfaction,
+  Σ overdue/Σ open, Σ available/Σ authorized supply ratios). Unfiltered band
+  values exactly equal `GET /housing/overview`; subsets without reporters for
+  a metric render "n/a".
+- This supersedes the earlier portfolio-pinned-KPI presentation decision.

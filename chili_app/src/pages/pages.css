@@ -503,7 +503,7 @@
 
 .housing-kpis {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 12px;
 }
 
@@ -567,15 +567,13 @@
   min-width: 0;
 }
 
-.housing-status-strip,
-.housing-executive-kpis {
+.housing-status-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
-.housing-status-strip .metric-row,
-.housing-executive-kpis .metric-row {
+.housing-status-strip .metric-row {
   min-height: 42px;
   padding: 10px 12px;
   background: var(--c-s2);
@@ -597,7 +595,6 @@
 }
 
 .housing-detail-grid > div,
-.housing-scorecard-run,
 .housing-scorecard-reason {
   display: grid;
   gap: 7px;
@@ -609,7 +606,6 @@
 }
 
 .housing-detail-grid strong,
-.housing-scorecard-run strong,
 .housing-scorecard-reason strong {
   color: var(--c-text);
 }
@@ -754,11 +750,6 @@
   font-size: 13px;
 }
 
-.housing-recent-runs {
-  display: grid;
-  gap: 8px;
-}
-
 .housing-run-links {
   display: grid;
   gap: 8px;
@@ -787,10 +778,6 @@ a.housing-run-link:hover {
   border-color: rgba(0, 212, 255, 0.4);
 }
 
-.housing-run-link--static {
-  background: var(--c-s3);
-}
-
 .housing-run-link__scope {
   display: grid;
   gap: 3px;
@@ -800,24 +787,6 @@ a.housing-run-link:hover {
 .housing-run-link__scope strong {
   color: var(--c-text);
   font-size: 13px;
-}
-
-.housing-scorecard-run--link {
-  text-decoration: none;
-  transition: border-color 120ms ease, background 120ms ease;
-}
-
-.housing-scorecard-run--link:hover {
-  background: rgba(0, 212, 255, 0.08);
-  border-color: rgba(0, 212, 255, 0.4);
-}
-
-.housing-run-link__hint {
-  color: var(--c-cyan);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 
 /* ── Scorecard run viewer ────────────────────────────────────── */
@@ -961,13 +930,6 @@ a.housing-run-link:hover {
   line-height: 1.55;
 }
 
-.housing-lower-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
-  gap: 16px;
-  align-items: start;
-}
-
 .housing-table-wrap {
   max-height: min(58vh, 640px);
   overflow-x: auto;
@@ -1036,7 +998,6 @@ a.housing-run-link:hover {
   .housing-kpis,
   .dashboard-panels,
   .housing-operating-picture,
-  .housing-lower-grid,
   .investigation-layout,
   .case-layout,
   .knowledge-base-layout,
@@ -1063,9 +1024,7 @@ a.housing-run-link:hover {
   .housing-kpis,
   .dashboard-panels,
   .housing-operating-picture,
-  .housing-lower-grid,
   .housing-status-strip,
-  .housing-executive-kpis,
   .metric-stack,
   .chart-shell,
   .investigation-layout,
@@ -1089,9 +1048,7 @@ a.housing-run-link:hover {
   .housing-kpis,
   .dashboard-panels,
   .housing-operating-picture,
-  .housing-lower-grid,
   .housing-status-strip,
-  .housing-executive-kpis,
   .investigation-layout,
   .case-layout,
   .knowledge-base-layout,

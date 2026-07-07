@@ -101,6 +101,10 @@ export function publicReferenceInstallations(): HousingInstallationResponse[] {
     state: installation.state,
     status: 'unknown',
     open_work_orders: 0,
+    overdue_work_orders: 0,
+    satisfaction_survey_count: 0,
+    uh_authorized_units: 0,
+    mfh_authorized_units: 0,
     occupancy_rate: null,
   }))
 }

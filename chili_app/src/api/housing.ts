@@ -1,15 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { apiFetch } from './client'
-import type { HousingInstallationsResponse, HousingOverviewResponse } from './contracts'
+import type { HousingInstallationsResponse } from './contracts'
 
 export type HousingPeriodFilters = {
   periodStart?: string
   periodEnd?: string
 }
 
-export const housingOverviewQueryKey = (filters: HousingPeriodFilters | null = null) =>
-  ['housing', 'overview', filters] as const
 export const housingInstallationsQueryKey = (filters: HousingPeriodFilters | null = null) =>
   ['housing', 'installations', filters] as const
 
@@ -24,13 +22,11 @@ function withOptionalQuery(path: string, query: string): string {
   return query ? `${path}?${query}` : path
 }
 
-export function getHousingOverview(
-  filters?: HousingPeriodFilters,
-): Promise<HousingOverviewResponse> {
-  return apiFetch<HousingOverviewResponse>(
-    withOptionalQuery('/housing/overview', housingPeriodQuery(filters)),
-  )
-}
+// The GET /housing/overview endpoint stays live (backend router tests pin it
+// as the aggregate semantic contract), but the dashboard recomputes every
+// portfolio aggregate client-side from the installation rows
+// (housingFilters.aggregateInstallations) so the summary band can follow the
+// filters — no frontend binding for the overview endpoint remains.
 
 export function getHousingInstallations(
   filters?: HousingPeriodFilters,
@@ -38,13 +34,6 @@ export function getHousingInstallations(
   return apiFetch<HousingInstallationsResponse>(
     withOptionalQuery('/housing/installations', housingPeriodQuery(filters)),
   )
-}
-
-export function useHousingOverview(filters: HousingPeriodFilters | null = null) {
-  return useQuery({
-    queryKey: housingOverviewQueryKey(filters),
-    queryFn: () => getHousingOverview(filters ?? undefined),
-  })
 }
 
 export function useHousingInstallations(filters: HousingPeriodFilters | null = null) {

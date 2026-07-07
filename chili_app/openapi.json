@@ -2709,7 +2709,7 @@
         "type": "object"
       },
       "HousingInstallationResponse": {
-        "description": "One installation row for the housing dashboard.",
+        "description": "One installation row for the housing dashboard.\n\nCarries the per-installation inputs (value + weight pairs, work-order\ncounts, supply/authorization totals) sufficient to recompute every\n``/housing/overview`` portfolio aggregate for any filtered subset with\nidentical semantics \u2014 each field's description documents its weighting\nrole and formula. Count aggregates derive from ``status``:\ntotal = row count, reporting = rows with ``status != \"unknown\"``,\ncritical = rows with ``status == \"critical\"``.",
         "properties": {
           "branch": {
             "anyOf": [
@@ -2721,6 +2721,31 @@
               }
             ],
             "title": "Branch"
+          },
+          "condition_index": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unit-weighted condition index: sum(condition_index * available_units) / sum(available_units) over this installation's inventory rows that reported a condition index (the scorecard's weighted_mean semantics). None when no row reported condition. Portfolio Average Condition Index over any subset = sum(condition_index * condition_unit_weight) / sum(condition_unit_weight) across installations where condition_unit_weight is non-null.",
+            "title": "Condition Index"
+          },
+          "condition_unit_weight": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Weight behind condition_index: available units summed over the inventory rows that reported a condition index (offline units carry no condition weight). None when no row reported condition. This is the weight in the portfolio condition formula on condition_index.",
+            "title": "Condition Unit Weight"
           },
           "installation_id": {
             "title": "Installation Id",
@@ -2737,6 +2762,26 @@
             ],
             "title": "Majcom"
           },
+          "mfh_authorized_units": {
+            "default": 0.0,
+            "description": "UMD accompanied authorizations summed for this installation \u2014 the denominator contribution in the portfolio MFH Supply Ratio. 0 when no UMD authorization row reported (contributes nothing to the sum or the sum > 0 gate).",
+            "minimum": 0.0,
+            "title": "Mfh Authorized Units",
+            "type": "number"
+          },
+          "mfh_available_units": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Available military family housing units summed from MFH inventory rows. None when no MFH inventory row landed (absent data, not zero supply). Portfolio MFH Supply Ratio over any subset = sum(mfh_available_units) / sum(mfh_authorized_units), unknown unless sum(mfh_authorized_units) > 0 and at least one installation has non-null mfh_available_units.",
+            "title": "Mfh Available Units"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -2750,7 +2795,21 @@
                 "type": "null"
               }
             ],
+            "description": "Occupancy as the unit-weighted utilization across this installation's inventory rows that reported a utilization rate, each weighted by its total units (available + offline); rounded to 4 decimals. None when no row reported utilization. Portfolio occupancy over any subset = sum(occupancy_rate * occupancy_unit_weight) / sum(occupancy_unit_weight) across installations where occupancy_unit_weight is non-null.",
             "title": "Occupancy Rate"
+          },
+          "occupancy_unit_weight": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Weight behind occupancy_rate: total units (available + offline) summed over the inventory rows that reported a utilization rate. None when no row reported utilization. This is the weight in the portfolio occupancy formula on occupancy_rate.",
+            "title": "Occupancy Unit Weight"
           },
           "open_work_orders": {
             "default": 0,
@@ -2770,6 +2829,32 @@
             ],
             "description": "1-based competition rank by open work orders (1 = most) among reporting installations; ties share the smaller rank. None when the installation reports no inventory or resident-experience data.",
             "title": "Open Work Orders Rank"
+          },
+          "overdue_work_orders": {
+            "default": 0,
+            "description": "Overdue work orders summed from resident-experience rows. Portfolio Work Orders Overdue rate over any subset = sum(overdue_work_orders) / sum(open_work_orders), unknown when sum(open_work_orders) is 0.",
+            "minimum": 0.0,
+            "title": "Overdue Work Orders",
+            "type": "integer"
+          },
+          "resident_satisfaction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Mean satisfaction score across this installation's resident experience survey rows (unweighted within the installation). None when no survey reported a score. Portfolio Resident Satisfaction over any subset is the flat mean across every survey value = sum(resident_satisfaction * satisfaction_survey_count) / sum(satisfaction_survey_count) across installations with a non-zero count.",
+            "title": "Resident Satisfaction"
+          },
+          "satisfaction_survey_count": {
+            "default": 0,
+            "description": "Number of resident-experience rows that reported a satisfaction score \u2014 the weight behind resident_satisfaction in the portfolio satisfaction formula. 0 when unreported (resident_satisfaction is then None).",
+            "minimum": 0.0,
+            "title": "Satisfaction Survey Count",
+            "type": "integer"
           },
           "state": {
             "anyOf": [
@@ -2800,6 +2885,26 @@
             },
             "title": "Status Reasons",
             "type": "array"
+          },
+          "uh_authorized_units": {
+            "default": 0.0,
+            "description": "UMD unaccompanied authorizations summed for this installation \u2014 the denominator contribution in the portfolio UH Supply Ratio. 0 when no UMD authorization row reported (contributes nothing to the sum or the sum > 0 gate).",
+            "minimum": 0.0,
+            "title": "Uh Authorized Units",
+            "type": "number"
+          },
+          "uh_available_units": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Available unaccompanied-housing units summed from UH inventory rows. None when no UH inventory row landed (absent data, not zero supply). Portfolio UH Supply Ratio over any subset = sum(uh_available_units) / sum(uh_authorized_units), unknown unless sum(uh_authorized_units) > 0 and at least one installation has non-null uh_available_units.",
+            "title": "Uh Available Units"
           }
         },
         "required": [

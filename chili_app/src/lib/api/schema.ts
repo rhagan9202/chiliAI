@@ -2389,18 +2389,55 @@ export interface components {
         /**
          * HousingInstallationResponse
          * @description One installation row for the housing dashboard.
+         *
+         *     Carries the per-installation inputs (value + weight pairs, work-order
+         *     counts, supply/authorization totals) sufficient to recompute every
+         *     ``/housing/overview`` portfolio aggregate for any filtered subset with
+         *     identical semantics — each field's description documents its weighting
+         *     role and formula. Count aggregates derive from ``status``:
+         *     total = row count, reporting = rows with ``status != "unknown"``,
+         *     critical = rows with ``status == "critical"``.
          */
         HousingInstallationResponse: {
             /** Branch */
             branch?: string | null;
+            /**
+             * Condition Index
+             * @description Unit-weighted condition index: sum(condition_index * available_units) / sum(available_units) over this installation's inventory rows that reported a condition index (the scorecard's weighted_mean semantics). None when no row reported condition. Portfolio Average Condition Index over any subset = sum(condition_index * condition_unit_weight) / sum(condition_unit_weight) across installations where condition_unit_weight is non-null.
+             */
+            condition_index?: number | null;
+            /**
+             * Condition Unit Weight
+             * @description Weight behind condition_index: available units summed over the inventory rows that reported a condition index (offline units carry no condition weight). None when no row reported condition. This is the weight in the portfolio condition formula on condition_index.
+             */
+            condition_unit_weight?: number | null;
             /** Installation Id */
             installation_id: string;
             /** Majcom */
             majcom?: string | null;
+            /**
+             * Mfh Authorized Units
+             * @description UMD accompanied authorizations summed for this installation — the denominator contribution in the portfolio MFH Supply Ratio. 0 when no UMD authorization row reported (contributes nothing to the sum or the sum > 0 gate).
+             * @default 0
+             */
+            mfh_authorized_units: number;
+            /**
+             * Mfh Available Units
+             * @description Available military family housing units summed from MFH inventory rows. None when no MFH inventory row landed (absent data, not zero supply). Portfolio MFH Supply Ratio over any subset = sum(mfh_available_units) / sum(mfh_authorized_units), unknown unless sum(mfh_authorized_units) > 0 and at least one installation has non-null mfh_available_units.
+             */
+            mfh_available_units?: number | null;
             /** Name */
             name: string;
-            /** Occupancy Rate */
+            /**
+             * Occupancy Rate
+             * @description Occupancy as the unit-weighted utilization across this installation's inventory rows that reported a utilization rate, each weighted by its total units (available + offline); rounded to 4 decimals. None when no row reported utilization. Portfolio occupancy over any subset = sum(occupancy_rate * occupancy_unit_weight) / sum(occupancy_unit_weight) across installations where occupancy_unit_weight is non-null.
+             */
             occupancy_rate?: number | null;
+            /**
+             * Occupancy Unit Weight
+             * @description Weight behind occupancy_rate: total units (available + offline) summed over the inventory rows that reported a utilization rate. None when no row reported utilization. This is the weight in the portfolio occupancy formula on occupancy_rate.
+             */
+            occupancy_unit_weight?: number | null;
             /**
              * Open Work Orders
              * @default 0
@@ -2411,6 +2448,23 @@ export interface components {
              * @description 1-based competition rank by open work orders (1 = most) among reporting installations; ties share the smaller rank. None when the installation reports no inventory or resident-experience data.
              */
             open_work_orders_rank?: number | null;
+            /**
+             * Overdue Work Orders
+             * @description Overdue work orders summed from resident-experience rows. Portfolio Work Orders Overdue rate over any subset = sum(overdue_work_orders) / sum(open_work_orders), unknown when sum(open_work_orders) is 0.
+             * @default 0
+             */
+            overdue_work_orders: number;
+            /**
+             * Resident Satisfaction
+             * @description Mean satisfaction score across this installation's resident experience survey rows (unweighted within the installation). None when no survey reported a score. Portfolio Resident Satisfaction over any subset is the flat mean across every survey value = sum(resident_satisfaction * satisfaction_survey_count) / sum(satisfaction_survey_count) across installations with a non-zero count.
+             */
+            resident_satisfaction?: number | null;
+            /**
+             * Satisfaction Survey Count
+             * @description Number of resident-experience rows that reported a satisfaction score — the weight behind resident_satisfaction in the portfolio satisfaction formula. 0 when unreported (resident_satisfaction is then None).
+             * @default 0
+             */
+            satisfaction_survey_count: number;
             /** State */
             state?: string | null;
             /**
@@ -2424,6 +2478,17 @@ export interface components {
              * @description Human-readable threshold findings behind status, one per tripped metric band (metric, observed value, threshold). Empty for ok; a single no-data reason for unknown.
              */
             status_reasons?: string[];
+            /**
+             * Uh Authorized Units
+             * @description UMD unaccompanied authorizations summed for this installation — the denominator contribution in the portfolio UH Supply Ratio. 0 when no UMD authorization row reported (contributes nothing to the sum or the sum > 0 gate).
+             * @default 0
+             */
+            uh_authorized_units: number;
+            /**
+             * Uh Available Units
+             * @description Available unaccompanied-housing units summed from UH inventory rows. None when no UH inventory row landed (absent data, not zero supply). Portfolio UH Supply Ratio over any subset = sum(uh_available_units) / sum(uh_authorized_units), unknown unless sum(uh_authorized_units) > 0 and at least one installation has non-null uh_available_units.
+             */
+            uh_available_units?: number | null;
         };
         /**
          * HousingInstallationsResponse

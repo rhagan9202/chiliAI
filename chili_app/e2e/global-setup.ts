@@ -4,7 +4,10 @@
  * Seeds a deterministic scenario into the REAL backend stores by calling the
  * dev-gated POST /admin/dev-seed endpoint (registered only when
  * CHILI_ENV != production), then writes the returned ids to e2e/.seeded.json
- * for specs to read via e2e/helpers/seeded.ts.
+ * for specs to read via e2e/helpers/seeded.ts. Seeding only happens when the
+ * stack's active domain is the medicare pack: on any other pack (probed via
+ * GET /config/domain) dev-seed is skipped automatically so the seeded KB
+ * cannot win newest-KB resolution over the pack's own demo KB.
  *
  * Before seeding anything it snapshots the knowledge bases that already exist
  * on the stack to e2e/.kb-baseline.json. global-teardown.ts deletes every KB
@@ -55,6 +58,18 @@ async function snapshotKnowledgeBases(): Promise<void> {
   )
 }
 
+/** The domain the dev-seed scenario's asserted display values belong to. */
+const DEV_SEED_DOMAIN = 'medicare_fraud'
+
+async function fetchActiveDomainName(): Promise<string> {
+  const res = await fetch(`${API}/config/domain`)
+  if (!res.ok) {
+    throw new Error(`GET /config/domain failed (${res.status}): ${await res.text()}`)
+  }
+  const payload = (await res.json()) as { domain: { name: string } }
+  return payload.domain.name
+}
+
 async function globalSetup(): Promise<void> {
   await waitForApi()
 
@@ -67,6 +82,23 @@ async function globalSetup(): Promise<void> {
   // a newer empty KB and flip the /housing endpoints off the seeded demo KB).
   if (process.env['E2E_SKIP_DEV_SEED'] === '1') {
     console.log('[e2e] E2E_SKIP_DEV_SEED=1 — skipping /admin/dev-seed; seeded-id specs will fail')
+    return
+  }
+
+  // Domain guard: dev-seed's asserted display values belong to the medicare
+  // pack, and on any other pack the seeded KB would become the newest
+  // ready/active KB — flipping the /housing endpoints (and every
+  // newest-KB-resolving dashboard) off the pack's seeded demo KB for the
+  // whole run. Skip automatically on non-medicare stacks; E2E_SKIP_DEV_SEED=1
+  // above remains the explicit override for medicare stacks.
+  const activeDomain = await fetchActiveDomainName()
+  if (activeDomain !== DEV_SEED_DOMAIN) {
+    console.log(
+      `[e2e] active domain "${activeDomain}" != "${DEV_SEED_DOMAIN}" — skipping /admin/dev-seed ` +
+        '(the medicare scenario would squat on newest-KB resolution and poison the demo stack); ' +
+        'seeded-id specs will fail; domain-adaptive specs run in live mode. ' +
+        'E2E_SKIP_DEV_SEED=1 is no longer required here — it stays as the explicit override.',
+    )
     return
   }
 

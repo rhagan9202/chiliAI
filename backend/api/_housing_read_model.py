@@ -609,6 +609,14 @@ def build_housing_installations(
 ) -> HousingInstallationsResponse:
     """Compute the installation list and map payload from ingested records.
 
+    Each item exposes the rollup's own value/weight pairs and totals
+    (``occupancy_unit_weight``, ``condition_index``/``condition_unit_weight``,
+    ``resident_satisfaction``/``satisfaction_survey_count``,
+    ``overdue_work_orders``, UH/MFH available vs authorized units) so any
+    filtered subset can recompute every ``/housing/overview`` aggregate with
+    identical semantics — the same accumulators feed both endpoints, so there
+    is no second derivation path to drift.
+
     Installations without resolvable coordinates appear in ``items`` but not
     in ``map_points`` — the frontend surfaces them as location-pending rather
     than silently dropping them.
@@ -657,6 +665,24 @@ def build_housing_installations(
                 if rollup.occupancy_rate is None
                 else round(rollup.occupancy_rate, 4)
             ),
+            occupancy_unit_weight=(
+                rollup.utilization_weight if rollup.utilization_weight > 0 else None
+            ),
+            condition_index=rollup.condition_index,
+            condition_unit_weight=(
+                rollup.condition_weight if rollup.condition_weight > 0 else None
+            ),
+            resident_satisfaction=rollup.satisfaction_score,
+            satisfaction_survey_count=len(rollup.satisfaction_values),
+            overdue_work_orders=rollup.overdue_work_orders,
+            uh_available_units=(
+                rollup.uh_available_units if rollup.has_uh_inventory else None
+            ),
+            uh_authorized_units=rollup.unaccompanied_authorized,
+            mfh_available_units=(
+                rollup.mfh_available_units if rollup.has_mfh_inventory else None
+            ),
+            mfh_authorized_units=rollup.accompanied_authorized,
         )
         for rollup in ordered
     ]

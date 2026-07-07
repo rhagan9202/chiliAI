@@ -147,7 +147,8 @@ test.describe('Scorecard run viewer', () => {
   test('dashboard run link opens graded sections with working exports', async ({ page }) => {
     if (referenceMode) {
       // Reference mode has no scorecard runs: the detail card must not offer
-      // run links and the readiness panel renders no viewer links.
+      // run links — it is the dashboard's only scorecard-viewer entry point
+      // now that the readiness panel is retired.
       await page.goto('/housing')
       await expect(page.locator('.housing-detail-runs')).toHaveCount(0)
       await expect(page.locator('a.housing-run-link')).toHaveCount(0)

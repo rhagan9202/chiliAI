@@ -71,7 +71,7 @@ domain-configured page id that doesn't yet have a built component.
 | `/cases` | Case management queue |
 | `/knowledge-bases` | Ingestion Studio — knowledge base list (scoped to the active domain by default, with a show-all-domains toggle), detail, document inventory |
 | `/policy` | Policy intelligence item queue |
-| `/housing` | Air Force housing executive dashboard — Albers CONUS installation health map, status/branch/command filter strip, ranking, status context, scorecard readiness (see "Housing dashboard" below) |
+| `/housing` | Air Force housing executive dashboard — filter-driven summary band above an Albers CONUS installation health map, status/branch/command filter strip, ranking, status context (see "Housing dashboard" below) |
 | `/scorecards/:runId?kb=<kbId>` | Scorecard run viewer — graded sections, metric health/completeness chips, citations, JSON/Markdown export (see "Housing dashboard" below) |
 | `/rag-chat` | RAG chat shell backed by the selected knowledge base |
 | `/configuration` | Config Manager (pack switcher + active-pack YAML editor with validate/apply) |
@@ -173,25 +173,32 @@ healthy, POSTs `/admin/dev-seed`, and writes the returned ids to
 - **`CHILI_DEV_ANONYMOUS_ROLE=analyst`** elevates the anonymous user to the
   analyst role (dev-gated in `api/middleware/auth.py`; ignored when
   `CHILI_ENV=production`), so protected pages render without a login flow.
-- **`E2E_SKIP_DEV_SEED=1`** makes global-setup skip `POST /admin/dev-seed`
-  entirely (logged loudly). Use it **only** when running specs that do not
-  read `e2e/.seeded.json` — e.g. the housing spec against an
-  already-seeded housing-pack stack (`make seed-housing`), where dev-seed
-  would create a newer, feed-empty KB and flip the `/housing` endpoints off
-  the seeded demo KB (they aggregate the newest ready/active KB of the
-  active domain). Under this flag, seeded-id specs fail by design:
+- **Domain guard (automatic)**: global-setup probes `GET /config/domain`
+  before seeding and **skips `POST /admin/dev-seed` on any non-medicare
+  stack** (logged loudly, naming the active domain). The dev-seed scenario's
+  asserted display values belong to the medicare pack, and on another pack
+  the seeded KB would become the newest ready/active KB — flipping the
+  `/housing` endpoints (and every newest-KB-resolving dashboard) off that
+  pack's seeded demo KB (e.g. `make seed-housing`) for the whole run. On a
+  housing-pack stack the housing specs therefore run in live mode with no
+  env var needed:
 
   ```bash
-  E2E_SKIP_DEV_SEED=1 npx playwright test e2e/air-force-housing-scorecards.spec.ts
+  npx playwright test e2e/air-force-housing-scorecards.spec.ts
   ```
+
+- **`E2E_SKIP_DEV_SEED=1`** stays as the **explicit override**: it makes
+  global-setup skip `POST /admin/dev-seed` unconditionally (logged loudly),
+  including on medicare stacks where the domain guard would otherwise seed.
+  Under either skip path, seeded-id specs fail by design.
 
   The housing specs themselves (`air-force-housing-scorecards.spec.ts`,
   `air-force-housing-context.spec.ts`) are stack-adaptive: they probe
   `GET /housing/installations` and assert live-mode behavior (65 live
-  markers, real scorecard generation, viewer/filters/status-context flows)
-  when housing feeds are seeded, or reference-mode behavior (public
-  installation layer, generation gated off, live-only surfaces absent)
-  on the default medicare stack. `ingestion-studio-domain-scoping.spec.ts`
+  markers, band aggregates recomputed from the API payload,
+  viewer/filters/status-context flows) when housing feeds are seeded, or
+  reference-mode behavior (public installation layer, placeholder band
+  cards, live-only surfaces absent) on the default medicare stack. `ingestion-studio-domain-scoping.spec.ts`
   is domain-adaptive the same way (expectations computed from
   `GET /config/domain` + `GET /knowledgebases`).
 
@@ -235,7 +242,7 @@ not on mutable status, so they are order-independent.
 | `policy-intelligence.spec.ts` | Policy gap queue renders from the real API |
 | `policy-triage.spec.ts` | Escalating the seeded policy item creates a case via the real triage endpoint |
 | `ingestion-document-warnings.spec.ts` | Ragged-CSV upload surfaces worker-persisted parser warnings in the document inventory |
-| `air-force-housing-scorecards.spec.ts` | `/housing` dashboard: real CONUS state geography (49 paths), 65 accessible installation markers (public reference layer, or live map points + location-pending accounting when housing feeds are seeded), marker/deep-link selection → detail panel + `?installation=` URL param, and scorecard generation gating (disabled with the statutory-feed reason in reference mode; queues a real run in live mode) |
+| `air-force-housing-scorecards.spec.ts` | `/housing` dashboard: real CONUS state geography (49 paths), 65 accessible installation markers (public reference layer, or live map points + location-pending accounting when housing feeds are seeded), marker/deep-link selection → detail panel + `?installation=` URL param, summary band rendered above the map with no generation UI (generation is API-only: backend router tests + seed tool), and filter-driven band aggregates pinned against values recomputed from the real API payload (status filter changes them, clear restores) |
 | `air-force-housing-context.spec.ts` | Stack-adaptive housing follow-up surfaces: scorecard viewer guard states (missing `?kb=`, unknown run), dashboard run link → viewer with graded sections/health chips + real JSON export download + back-link round trip, "Why this status" drivers pinned to the API's `status_reasons`, filter strip narrowing map markers + ranking rows + status counts together (clear restores), and a zero-failed-runs probe over every housing-domain KB's workflow history |
 | `ingestion-studio-domain-scoping.spec.ts` | Domain-adaptive Ingestion Studio scoping: default KB list shows only active-domain (+ legacy unstamped) KBs, show-all-domains toggle reveals the cross-domain list and scopes back down; expected sets computed from the real `/config/domain` + `/knowledgebases` |
 | `config-manager.spec.ts` | Pack switcher + YAML editor: dry-run validation errors, apply, and pack hot-swap round-trip (requires an admin session — skips loudly otherwise) |
@@ -333,8 +340,9 @@ has been applied/switched, the persisted pointer overrides
 
 `/housing` (`src/pages/HousingExecutivePage.tsx`) is the Department of the Air
 Force housing demo surface — a map-led executive operating picture over the
-real `/housing/overview` and `/housing/installations` endpoints plus the
-`/scorecards/*` action surface. Backend design:
+real `/housing/installations` endpoint plus the `/scorecards/*` run-viewing
+surface. Layout: header → summary band → filter strip → map + detail card →
+ranking table. Backend design:
 [`docs/architecture.md` §6.8](../docs/architecture.md#68-housing-scorecards--executive-dashboard-branch-af_housing);
 statutory metric provenance:
 [`docs/research/housing-scorecard-mandates.md`](../docs/research/housing-scorecard-mandates.md).
@@ -371,22 +379,38 @@ reseed only after `make clean` wipes the volumes.
 - With no housing rows ingested, the page falls back to the 65-entry public
   reference layer (`src/data/airForceInstallations.ts`, kept in sync with
   `docs/testing/knowledge_base_fixtures/air_force_housing/installations_reference.csv`
-  by a unit test) and gates scorecard generation off with the
-  statutory-feed reason.
+  by a unit test), renders placeholder band cards (no fabricated numbers), and
+  the detail card states the statutory-feed requirement honestly.
 
-**KB selection**: the page's scorecard actions target the KB chosen by
-`selectActiveKnowledgeBase()`, which mirrors the backend housing read model
-exactly — `ready` KBs preferred, then still-`active` ones (records-only KBs
-never transition to `ready`), newest within each band, KBs pending cleanup
-excluded — so the KB the page generates against is the KB the `/housing`
-endpoints aggregate.
+**Summary band** (`src/components/housing/HousingSummaryBand.tsx`): one
+`role=group` band **above the map** carrying every portfolio aggregate — in
+live mode nine cards (Reporting, Open WOs, Critical, Occupancy, Condition
+index, Satisfaction, Overdue WO rate, UH/MFH supply ratios), all recomputed
+client-side from the **filtered** installation set by the pure
+`housingFilters.aggregateInstallations()` using the backend read model's
+documented weighting semantics (unit-weighted occupancy/condition,
+survey-weighted satisfaction, Σ-based rates/ratios; aggregate-input fields on
+`HousingInstallationResponse`). With no filters active the band exactly
+matches `GET /housing/overview` (unit-test pinned against a fixture mirroring
+the backend's router test); subsets with no reporters for a metric show an
+honest "n/a". There is no separate readiness/aggregate panel and no
+"Generate scorecard" button — scorecard generation is API-only
+(`POST /scorecards/runs`, exercised by backend router tests and
+`make seed-housing SEED_ARGS="--scorecards"`), retired from the UI 2026-07-07.
+
+**KB selection**: the page's scorecard run links and RAG launches target the
+KB chosen by `selectActiveKnowledgeBase()`, which mirrors the backend housing
+read model exactly — `ready` KBs preferred, then still-`active` ones
+(records-only KBs never transition to `ready`), newest within each band, KBs
+pending cleanup excluded — so the KB whose runs the page lists is the KB the
+`/housing` endpoints aggregate.
 
 **Filters** (`src/components/housing/HousingFilterStrip.tsx` + the pure
 logic module `housingFilters.ts`): status / branch (USAF/USSF) / command
 toggle groups — OR within a category, AND across categories, commands derived
-from the loaded data. Filters apply simultaneously to the map, the ranking
-table, and the status-strip counts, with an `aria-live` "Showing X of Y
-installations" summary and a Clear-filters action. Selection resolves against
+from the loaded data. Filters apply simultaneously to the summary band's
+aggregates, the map, the ranking table, and the status-strip counts, with an
+`aria-live` "Showing X of Y installations" summary and a Clear-filters action. Selection resolves against
 the filtered set: a filtered-out selection falls back to the first visible
 installation **without** touching the URL, so clearing the filters restores
 it. Filter state is component-local by design (not URL-persisted).
@@ -408,9 +432,9 @@ chips, completeness chips (shown only when not `complete`), citation pills,
 warnings, and a computation-description affordance; JSON/Markdown export via
 the real export endpoint with client-side blob download. Guard states:
 missing `?kb=` context, run-not-found (404), loading, and error. The
-dashboard links into the viewer from the detail card's "Scorecards" list
-(latest run per template) and from the readiness panel's selected/recent
-runs; the viewer's back link returns to `/housing?installation=<scope_id>`.
+dashboard's only entry into the viewer is the detail card's "Scorecards" list
+(latest run per template); the viewer's back link returns to
+`/housing?installation=<scope_id>`.
 
 ## TypeScript Configuration
 

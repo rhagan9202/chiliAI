@@ -5,25 +5,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   HousingInstallationResponse,
   HousingInstallationsResponse,
-  HousingOverviewResponse,
   KnowledgeBaseListResponse,
   ScorecardRunListResponse,
-  ScorecardTemplateListResponse,
 } from '../../api/contracts'
 import { HousingExecutivePage } from '../HousingExecutivePage'
 
 const mocks = vi.hoisted(() => ({
-  useGenerateScorecardRun: vi.fn(),
   useHousingInstallations: vi.fn(),
-  useHousingOverview: vi.fn(),
   useKnowledgeBases: vi.fn(),
   useScorecardRuns: vi.fn(),
-  useScorecardTemplates: vi.fn(),
 }))
 
 vi.mock('../../api/housing', () => ({
   useHousingInstallations: mocks.useHousingInstallations,
-  useHousingOverview: mocks.useHousingOverview,
 }))
 
 vi.mock('../../api/knowledgebases', () => ({
@@ -31,27 +25,8 @@ vi.mock('../../api/knowledgebases', () => ({
 }))
 
 vi.mock('../../api/scorecards', () => ({
-  useGenerateScorecardRun: mocks.useGenerateScorecardRun,
   useScorecardRuns: mocks.useScorecardRuns,
-  useScorecardTemplates: mocks.useScorecardTemplates,
 }))
-
-const overview: HousingOverviewResponse = {
-  period_start: '2026-06-01',
-  period_end: '2026-06-30',
-  portfolio_summary: {
-    total_installations: 2,
-    installations_reporting: 2,
-    open_work_orders: 139,
-    overdue_work_orders: 26,
-    occupancy_rate: 0.91,
-    resident_satisfaction: 0.78,
-  },
-  executive_kpis: [
-    { id: 'critical-bases', label: 'Critical bases', status: 'critical', value: 1, unit: 'count' },
-    { id: 'watch-bases', label: 'Watch bases', status: 'watch', value: 1, unit: 'count' },
-  ],
-}
 
 const installations: HousingInstallationsResponse = {
   period_start: '2026-06-01',
@@ -65,6 +40,10 @@ const installations: HousingInstallationsResponse = {
       state: 'LA',
       status: 'watch',
       open_work_orders: 44,
+      overdue_work_orders: 6,
+      satisfaction_survey_count: 0,
+      uh_authorized_units: 900,
+      mfh_authorized_units: 700,
       occupancy_rate: 0.88,
     },
     {
@@ -74,6 +53,10 @@ const installations: HousingInstallationsResponse = {
       state: 'CA',
       status: 'critical',
       open_work_orders: 95,
+      overdue_work_orders: 30,
+      satisfaction_survey_count: 0,
+      uh_authorized_units: 1200,
+      mfh_authorized_units: 800,
       occupancy_rate: 0.82,
     },
   ],
@@ -95,6 +78,12 @@ const installations: HousingInstallationsResponse = {
   ],
 }
 
+/**
+ * Fully reported aggregate inputs so the summary band's filter-driven math is
+ * assertable: unfiltered occupancy (0.88·500 + 0.82·1000 + 0.93·200) / 1700 =
+ * 85%, UH supply (360+500+275)/(400+1000+250) = 0.69; critical-only (Edwards)
+ * occupancy 82%, UH supply 0.50.
+ */
 const filterableInstallations: HousingInstallationsResponse = {
   period_start: '2026-06-01',
   period_end: '2026-06-30',
@@ -108,7 +97,17 @@ const filterableInstallations: HousingInstallationsResponse = {
       state: 'LA',
       status: 'watch',
       open_work_orders: 44,
+      overdue_work_orders: 6,
       occupancy_rate: 0.88,
+      occupancy_unit_weight: 500,
+      condition_index: 82,
+      condition_unit_weight: 400,
+      resident_satisfaction: 74,
+      satisfaction_survey_count: 2,
+      uh_available_units: 360,
+      uh_authorized_units: 400,
+      mfh_available_units: 300,
+      mfh_authorized_units: 300,
     },
     {
       installation_id: 'edwards',
@@ -118,7 +117,17 @@ const filterableInstallations: HousingInstallationsResponse = {
       state: 'CA',
       status: 'critical',
       open_work_orders: 95,
+      overdue_work_orders: 30,
       occupancy_rate: 0.82,
+      occupancy_unit_weight: 1000,
+      condition_index: 68,
+      condition_unit_weight: 800,
+      resident_satisfaction: 58,
+      satisfaction_survey_count: 1,
+      uh_available_units: 500,
+      uh_authorized_units: 1000,
+      mfh_available_units: 350,
+      mfh_authorized_units: 500,
     },
     {
       installation_id: 'patrick',
@@ -128,7 +137,17 @@ const filterableInstallations: HousingInstallationsResponse = {
       state: 'FL',
       status: 'ok',
       open_work_orders: 12,
+      overdue_work_orders: 0,
       occupancy_rate: 0.93,
+      occupancy_unit_weight: 200,
+      condition_index: 90,
+      condition_unit_weight: 200,
+      resident_satisfaction: 85,
+      satisfaction_survey_count: 1,
+      uh_available_units: 275,
+      uh_authorized_units: 250,
+      mfh_available_units: 150,
+      mfh_authorized_units: 150,
     },
   ],
   map_points: [
@@ -177,18 +196,6 @@ const knowledgeBases: KnowledgeBaseListResponse = {
   ],
 }
 
-const templates: ScorecardTemplateListResponse = {
-  items: [
-    {
-      id: 'installation-health',
-      name: 'Installation Health',
-      category: 'combined',
-      scope: 'installation',
-      period: 'monthly',
-    },
-  ],
-}
-
 const runs: ScorecardRunListResponse = {
   total: 1,
   limit: 5,
@@ -225,15 +232,19 @@ function renderPage(initialEntry = '/housing') {
   )
 }
 
+/** The <strong> value rendered in the summary band card with the given label. */
+function bandValue(label: string): string | null {
+  const band = screen.getByRole('group', { name: 'Housing portfolio summary' })
+  const labelElement = within(band).getByText(label)
+  return labelElement.parentElement?.querySelector('strong')?.textContent ?? null
+}
+
 describe('HousingExecutivePage', () => {
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset())
-    mocks.useHousingOverview.mockReturnValue(querySuccess(overview))
     mocks.useHousingInstallations.mockReturnValue(querySuccess(installations))
     mocks.useKnowledgeBases.mockReturnValue(querySuccess(knowledgeBases))
-    mocks.useScorecardTemplates.mockReturnValue(querySuccess(templates))
     mocks.useScorecardRuns.mockReturnValue(querySuccess(runs))
-    mocks.useGenerateScorecardRun.mockReturnValue({ isPending: false, mutate: vi.fn() })
   })
 
   it('renders the map-led housing operating picture with contextual RAG launch', () => {
@@ -268,7 +279,25 @@ describe('HousingExecutivePage', () => {
     expect(within(detail).getByText('Edwards AFB')).toBeInTheDocument()
   })
 
-  it('disables generation and omits KB context when no ready or active knowledge base exists', () => {
+  it('retires the scorecard readiness panel while keeping the run viewer reachable', () => {
+    renderPage('/housing?installation=edwards')
+
+    // The mid-page readiness panel (Ready KB / Templates / run summary /
+    // Generate scorecard) is gone — generation stays API-side.
+    expect(screen.queryByText('Ready KB')).not.toBeInTheDocument()
+    expect(screen.queryByText('Templates')).not.toBeInTheDocument()
+    expect(screen.queryByText('Runs generated')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /generate scorecard/i })).not.toBeInTheDocument()
+
+    // The scorecard viewer entry point survives on the installation detail card.
+    const detail = screen.getByRole('region', { name: 'Installation detail' })
+    const runLink = within(detail).getByRole('link', {
+      name: 'View Installation Health scorecard for Edwards AFB, overall fail',
+    })
+    expect(runLink).toHaveAttribute('href', '/scorecards/run-edwards?kb=kb-housing')
+  })
+
+  it('omits KB context from RAG launches when no ready or active knowledge base exists', () => {
     const processingKb: KnowledgeBaseListResponse = {
       total: 1,
       items: [{ ...knowledgeBases.items[0], status: 'building' }],
@@ -277,18 +306,15 @@ describe('HousingExecutivePage', () => {
 
     renderPage('/housing?installation=edwards')
 
-    expect(screen.getByText('Unavailable')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Generate scorecard' })).toBeDisabled()
-
     const detail = screen.getByRole('region', { name: 'Installation detail' })
     const ragLink = within(detail).getByRole('link', { name: /ask ai about edwards afb/i })
     expect(ragLink).toHaveAttribute('href', expect.not.stringContaining('kb='))
   })
 
-  it('enables generation against a records-only (active) knowledge base', () => {
+  it('resolves KB context from a records-only (active) knowledge base', () => {
     // Records-only KBs land feed rows but never transition to "ready" (no
     // document pipeline). The page must mirror the backend read model and
-    // accept them, or the live demo's generate button stays dead.
+    // accept them, or the live demo's run links and RAG launches lose the KB.
     const recordsOnlyKb: KnowledgeBaseListResponse = {
       total: 1,
       items: [{ ...knowledgeBases.items[0], status: 'active' }],
@@ -296,9 +322,6 @@ describe('HousingExecutivePage', () => {
     mocks.useKnowledgeBases.mockReturnValue(querySuccess(recordsOnlyKb))
 
     renderPage('/housing?installation=edwards')
-
-    expect(screen.getByText('Housing KB')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Generate scorecard' })).toBeEnabled()
 
     const detail = screen.getByRole('region', { name: 'Installation detail' })
     const ragLink = within(detail).getByRole('link', { name: /ask ai about edwards afb/i })
@@ -337,10 +360,6 @@ describe('HousingExecutivePage', () => {
 
     renderPage('/housing?installation=edwards')
 
-    expect(screen.getByText('Older Ready KB')).toBeInTheDocument()
-    expect(screen.queryByText('Newer Active KB')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Generate scorecard' })).toBeEnabled()
-
     const detail = screen.getByRole('region', { name: 'Installation detail' })
     const ragLink = within(detail).getByRole('link', { name: /ask ai about edwards afb/i })
     expect(ragLink).toHaveAttribute('href', expect.stringContaining('kb=kb-older-ready'))
@@ -359,6 +378,10 @@ describe('HousingExecutivePage', () => {
           state: 'NM',
           status: 'unknown' as const,
           open_work_orders: 12,
+          overdue_work_orders: 0,
+          satisfaction_survey_count: 0,
+          uh_authorized_units: 0,
+          mfh_authorized_units: 0,
           occupancy_rate: null,
         },
       ],
@@ -428,6 +451,10 @@ describe('HousingExecutivePage', () => {
           state: 'TX',
           status: 'unknown' as const,
           open_work_orders: 0,
+          overdue_work_orders: 0,
+          satisfaction_survey_count: 0,
+          uh_authorized_units: 0,
+          mfh_authorized_units: 0,
           open_work_orders_rank: null,
           occupancy_rate: null,
         },
@@ -454,6 +481,10 @@ describe('HousingExecutivePage', () => {
           state: 'TX',
           status: 'unknown' as const,
           open_work_orders: 0,
+          overdue_work_orders: 0,
+          satisfaction_survey_count: 0,
+          uh_authorized_units: 0,
+          mfh_authorized_units: 0,
           open_work_orders_rank: null,
           occupancy_rate: null,
         },
@@ -467,18 +498,75 @@ describe('HousingExecutivePage', () => {
     expect(within(detail).queryByText(/by open work orders/)).not.toBeInTheDocument()
   })
 
-  it('links readiness panel run entries into the scorecard viewer', () => {
-    renderPage('/housing?installation=edwards')
+  it('renders the summary band above the map with every aggregate card', () => {
+    mocks.useHousingInstallations.mockReturnValue(querySuccess(filterableInstallations))
 
-    const selectedRunLink = screen.getByRole('link', {
-      name: 'View Installation Health scorecard run for Edwards AFB',
-    })
-    expect(selectedRunLink).toHaveAttribute('href', '/scorecards/run-edwards?kb=kb-housing')
+    renderPage()
 
-    const recentRunLink = screen.getByRole('link', {
-      name: 'View Installation Health scorecard run for Edwards AFB, overall fail',
-    })
-    expect(recentRunLink).toHaveAttribute('href', '/scorecards/run-edwards?kb=kb-housing')
+    const band = screen.getByRole('group', { name: 'Housing portfolio summary' })
+    const map = screen.getByLabelText('Installation health map')
+    // The band precedes the map in DOM order — all summary cards live above it.
+    expect(band.compareDocumentPosition(map) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    expect(bandValue('Reporting')).toBe('3/3')
+    expect(bandValue('Open WOs')).toBe('151')
+    expect(bandValue('Critical')).toBe('1')
+    // Unit-weighted: (0.88·500 + 0.82·1000 + 0.93·200) / 1700 = 85%.
+    expect(bandValue('Occupancy')).toBe('85%')
+    // (82·400 + 68·800 + 90·200) / 1400 = 75.1.
+    expect(bandValue('Condition index')).toBe('75.1')
+    // Survey-count weighted: (74·2 + 58 + 85) / 4 = 72.8.
+    expect(bandValue('Satisfaction')).toBe('72.8')
+    // 36 overdue / 151 open = 24%.
+    expect(bandValue('Overdue WO rate')).toBe('24%')
+    // (360 + 500 + 275) / (400 + 1000 + 250) = 0.69.
+    expect(bandValue('UH supply ratio')).toBe('0.69')
+    // (300 + 350 + 150) / (300 + 500 + 150) = 0.84.
+    expect(bandValue('MFH supply ratio')).toBe('0.84')
+  })
+
+  it('drives every summary band aggregate from the active filters', () => {
+    mocks.useHousingInstallations.mockReturnValue(querySuccess(filterableInstallations))
+
+    renderPage()
+
+    const statusGroup = screen.getByRole('group', { name: 'Filter by status' })
+    fireEvent.click(within(statusGroup).getByRole('button', { name: 'critical' }))
+
+    // Only Edwards remains: its own numbers, not the portfolio's.
+    expect(bandValue('Reporting')).toBe('1/1')
+    expect(bandValue('Open WOs')).toBe('95')
+    expect(bandValue('Critical')).toBe('1')
+    expect(bandValue('Occupancy')).toBe('82%')
+    expect(bandValue('UH supply ratio')).toBe('0.50')
+
+    fireEvent.click(within(statusGroup).getByRole('button', { name: 'critical' }))
+    fireEvent.click(within(statusGroup).getByRole('button', { name: 'ok' }))
+
+    // Only Patrick remains: zero critical is an honest zero, not "n/a".
+    expect(bandValue('Critical')).toBe('0')
+    expect(bandValue('Occupancy')).toBe('93%')
+    expect(bandValue('UH supply ratio')).toBe('1.10')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+
+    expect(bandValue('Occupancy')).toBe('85%')
+    expect(bandValue('Critical')).toBe('1')
+  })
+
+  it('shows honest n/a in the band when the subset reports no data for a metric', () => {
+    // The base fixture carries no occupancy weights, condition, satisfaction,
+    // or available-unit inventory — every derived metric must read "n/a",
+    // never 0 and never NaN.
+    renderPage()
+
+    expect(bandValue('Occupancy')).toBe('n/a')
+    expect(bandValue('Condition index')).toBe('n/a')
+    expect(bandValue('Satisfaction')).toBe('n/a')
+    expect(bandValue('UH supply ratio')).toBe('n/a')
+    expect(bandValue('MFH supply ratio')).toBe('n/a')
+    // Open work orders exist, so the overdue rate is a real number.
+    expect(bandValue('Overdue WO rate')).toBe('26%')
   })
 
   it('filters the map, ranking table, and status counts together', () => {
@@ -553,21 +641,19 @@ describe('HousingExecutivePage', () => {
     expect(within(detail).getByText('Edwards AFB')).toBeInTheDocument()
   })
 
-  it('keeps all four KPI cards portfolio-wide while filters narrow the status strip', () => {
+  it('narrows the status strip alongside the filtered band', () => {
     mocks.useHousingInstallations.mockReturnValue(querySuccess(filterableInstallations))
 
     renderPage()
 
-    const criticalKpi = screen.getByText('Critical').parentElement
-    expect(criticalKpi).not.toBeNull()
-    expect(within(criticalKpi as HTMLElement).getByText('1')).toBeInTheDocument()
+    expect(bandValue('Critical')).toBe('1')
 
-    // Filter to ok-only: the portfolio has 1 critical installation but the
-    // filtered set has none — the KPI card must not follow the filter.
+    // Filter to ok-only: the filtered set has no critical installation, and
+    // the band follows the filters (superseding the portfolio-pinned rule).
     const statusGroup = screen.getByRole('group', { name: 'Filter by status' })
     fireEvent.click(within(statusGroup).getByRole('button', { name: 'ok' }))
 
-    expect(within(criticalKpi as HTMLElement).getByText('1')).toBeInTheDocument()
+    expect(bandValue('Critical')).toBe('0')
 
     const counts = screen.getByRole('group', { name: 'Status counts' })
     // Strip reflects the filtered set: ok 1, critical/watch/unknown 0.
@@ -575,29 +661,7 @@ describe('HousingExecutivePage', () => {
     expect(within(counts).getAllByText('0')).toHaveLength(3)
   })
 
-  it('reports the exact run total beyond the fetched page in the readiness panel', () => {
-    mocks.useScorecardRuns.mockReturnValue(querySuccess({ ...runs, total: 640 }))
-
-    renderPage()
-
-    const runsRow = screen.getByText('Runs generated').parentElement
-    expect(runsRow).not.toBeNull()
-    expect(within(runsRow as HTMLElement).getByText('640')).toBeInTheDocument()
-  })
-
   it('renders a public installation reference layer when live housing feeds are empty', () => {
-    mocks.useHousingOverview.mockReturnValue(querySuccess({
-      ...overview,
-      portfolio_summary: {
-        total_installations: 0,
-        installations_reporting: 0,
-        open_work_orders: 0,
-        overdue_work_orders: 0,
-        occupancy_rate: null,
-        resident_satisfaction: null,
-      },
-      executive_kpis: [],
-    }))
     mocks.useHousingInstallations.mockReturnValue(querySuccess({
       period_start: '2026-06-01',
       period_end: '2026-06-30',
@@ -605,19 +669,23 @@ describe('HousingExecutivePage', () => {
       items: [],
       map_points: [],
     }))
-    mocks.useScorecardTemplates.mockReturnValue(querySuccess({ items: [] }))
 
     renderPage()
 
     expect(screen.getAllByText('Public installation reference')).toHaveLength(2)
-    expect(screen.getAllByText('Live feeds required')).toHaveLength(3)
+    expect(screen.getAllByText('Live feeds required')).toHaveLength(2)
     expect(screen.getByText('Edwards AFB')).toBeInTheDocument()
     expect(screen.getByRole('button', {
       name: 'Select Edwards AFB on map, public reference location, live housing status pending, USAF',
     })).toBeInTheDocument()
     expect(screen.getByText('Public CONUS base locations are shown until UMD, BAH, inventory, market, and demographics feeds are loaded.')).toBeInTheDocument()
-    expect(screen.getByText('Live evidence pending')).toBeInTheDocument()
-    expect(screen.queryByText('Housing KB')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Generate scorecard' })).toBeDisabled()
+
+    // The band keeps its placeholder cards — no fabricated aggregates.
+    const band = screen.getByRole('group', { name: 'Housing portfolio summary' })
+    expect(within(band).getByText('Public locations')).toBeInTheDocument()
+    expect(within(band).getByText('Scorecards')).toBeInTheDocument()
+    expect(within(band).getByText('pending')).toBeInTheDocument()
+    expect(within(band).queryByText('Occupancy')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /generate scorecard/i })).not.toBeInTheDocument()
   })
 })

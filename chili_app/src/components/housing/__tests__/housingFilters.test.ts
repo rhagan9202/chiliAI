@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { HousingInstallationResponse } from '../../../api/contracts'
 import {
+  aggregateInstallations,
   commandOptions,
   countInstallationsByStatus,
   EMPTY_HOUSING_FILTERS,
@@ -23,6 +24,10 @@ function installation(
     state: null,
     status: 'unknown',
     open_work_orders: 0,
+    overdue_work_orders: 0,
+    satisfaction_survey_count: 0,
+    uh_authorized_units: 0,
+    mfh_authorized_units: 0,
     occupancy_rate: null,
     ...overrides,
   }
@@ -184,6 +189,180 @@ describe('resolveInstallationRank', () => {
   it('reports no rank for a non-reporting installation', () => {
     const nonReporter = portfolio[3]
     expect(resolveInstallationRank(portfolio, nonReporter)).toBeNull()
+  })
+})
+
+/**
+ * Mirror of the backend router test's record fixture
+ * (backend/tests/api/test_housing_router.py::_installation_records) projected
+ * through the per-installation aggregate fields the read model now exposes:
+ * eglin (ok), edwards (watch), patrick (critical), plus a context-only
+ * installation that reports nothing. Aggregating ALL of these must reproduce
+ * the /housing/overview portfolio summary and executive KPI values that the
+ * backend test pins on the same data — the two computations are one contract.
+ */
+const overviewParityPortfolio: HousingInstallationResponse[] = [
+  installation({
+    installation_id: 'eglin_afb',
+    status: 'ok',
+    open_work_orders: 30,
+    overdue_work_orders: 1,
+    occupancy_rate: 0.92,
+    occupancy_unit_weight: 1140, // 1100 available + 40 offline
+    condition_index: 88.0,
+    condition_unit_weight: 1100,
+    resident_satisfaction: 82.0,
+    satisfaction_survey_count: 1,
+    uh_available_units: 1100,
+    uh_authorized_units: 1000,
+    mfh_available_units: null, // MFH inventory never landed — absent, not zero
+    mfh_authorized_units: 900,
+  }),
+  installation({
+    installation_id: 'edwards_afb',
+    status: 'watch',
+    open_work_orders: 40,
+    overdue_work_orders: 6,
+    occupancy_rate: 0.8,
+    occupancy_unit_weight: 1200, // 1150 + 50
+    condition_index: 74.0,
+    condition_unit_weight: 1150,
+    resident_satisfaction: 68.0,
+    satisfaction_survey_count: 1,
+    uh_available_units: 1150,
+    uh_authorized_units: 1200,
+    mfh_available_units: null,
+    mfh_authorized_units: 800,
+  }),
+  installation({
+    installation_id: 'patrick_sfb',
+    status: 'critical',
+    open_work_orders: 50,
+    overdue_work_orders: 20,
+    occupancy_rate: 0.7,
+    occupancy_unit_weight: 460, // 400 + 60
+    condition_index: 65.0,
+    condition_unit_weight: 400,
+    resident_satisfaction: 50.0,
+    satisfaction_survey_count: 1,
+    uh_available_units: 400,
+    uh_authorized_units: 500,
+    mfh_available_units: null,
+    mfh_authorized_units: 450,
+  }),
+  // Market-context only: no inventory or experience feeds → reports nothing.
+  installation({ installation_id: 'context_only_afb' }),
+]
+
+describe('aggregateInstallations', () => {
+  it('reproduces the /housing/overview values over the full unfiltered set', () => {
+    const aggregates = aggregateInstallations(overviewParityPortfolio)
+
+    expect(aggregates.totalCount).toBe(4)
+    expect(aggregates.reportingCount).toBe(3)
+    expect(aggregates.openWorkOrders).toBe(30 + 40 + 50)
+    expect(aggregates.criticalCount).toBe(1)
+    // Display-precision equality against the overview endpoint's rounded
+    // payloads (occupancy 4dp, condition/ratios 3dp, satisfaction 2dp).
+    expect(aggregates.occupancyRate?.toFixed(4)).toBe(
+      ((0.92 * 1140 + 0.8 * 1200 + 0.7 * 460) / 2800).toFixed(4),
+    )
+    expect(aggregates.conditionIndex?.toFixed(3)).toBe(
+      ((88.0 * 1100 + 74.0 * 1150 + 65.0 * 400) / (1100 + 1150 + 400)).toFixed(3),
+    )
+    expect(aggregates.residentSatisfaction?.toFixed(2)).toBe(
+      ((82.0 + 68.0 + 50.0) / 3).toFixed(2),
+    )
+    expect(aggregates.overdueWorkOrderRate).toBeCloseTo((1 + 6 + 20) / (30 + 40 + 50), 10)
+    expect(aggregates.uhSupplyRatio?.toFixed(3)).toBe(
+      ((1100 + 1150 + 400) / (1000 + 1200 + 500)).toFixed(3),
+    )
+    // MFH inventory never landed anywhere → unknown, not fabricated.
+    expect(aggregates.mfhSupplyRatio).toBeNull()
+  })
+
+  it('weights satisfaction by survey count, not equally per installation', () => {
+    const heavier = {
+      ...overviewParityPortfolio[0],
+      resident_satisfaction: 90,
+      satisfaction_survey_count: 3,
+    }
+    const lighter = {
+      ...overviewParityPortfolio[1],
+      resident_satisfaction: 50,
+      satisfaction_survey_count: 1,
+    }
+    const aggregates = aggregateInstallations([heavier, lighter])
+    // Flat mean across surveys: (90·3 + 50·1) / 4 = 80, not (90+50)/2 = 70.
+    expect(aggregates.residentSatisfaction).toBeCloseTo(80, 10)
+  })
+
+  it('recomputes every aggregate for a filtered subset', () => {
+    const aggregates = aggregateInstallations(
+      filterInstallations(overviewParityPortfolio, {
+        ...EMPTY_HOUSING_FILTERS,
+        statuses: ['critical'],
+      }),
+    )
+
+    expect(aggregates.totalCount).toBe(1)
+    expect(aggregates.reportingCount).toBe(1)
+    expect(aggregates.openWorkOrders).toBe(50)
+    expect(aggregates.criticalCount).toBe(1)
+    expect(aggregates.occupancyRate).toBeCloseTo(0.7, 10)
+    expect(aggregates.conditionIndex).toBeCloseTo(65.0, 10)
+    expect(aggregates.residentSatisfaction).toBeCloseTo(50.0, 10)
+    expect(aggregates.overdueWorkOrderRate).toBeCloseTo(20 / 50, 10)
+    expect(aggregates.uhSupplyRatio).toBeCloseTo(400 / 500, 10)
+    expect(aggregates.mfhSupplyRatio).toBeNull()
+  })
+
+  it('resolves to null — never 0 or NaN — when the subset has no reporters for a metric', () => {
+    const nonReporters = [installation({ installation_id: 'context_only_afb' })]
+    const aggregates = aggregateInstallations(nonReporters)
+
+    expect(aggregates.totalCount).toBe(1)
+    expect(aggregates.reportingCount).toBe(0)
+    expect(aggregates.openWorkOrders).toBe(0)
+    expect(aggregates.criticalCount).toBe(0)
+    expect(aggregates.occupancyRate).toBeNull()
+    expect(aggregates.conditionIndex).toBeNull()
+    expect(aggregates.residentSatisfaction).toBeNull()
+    expect(aggregates.overdueWorkOrderRate).toBeNull()
+    expect(aggregates.uhSupplyRatio).toBeNull()
+    expect(aggregates.mfhSupplyRatio).toBeNull()
+
+    expect(aggregateInstallations([]).occupancyRate).toBeNull()
+    expect(aggregateInstallations([]).totalCount).toBe(0)
+  })
+
+  it('treats zero recorded supply as a real ratio, but absent inventory as unknown', () => {
+    // Zero available units WITH an inventory report → honest 0.0 ratio.
+    const zeroSupply = installation({
+      installation_id: 'zero_supply',
+      status: 'critical',
+      uh_available_units: 0,
+      uh_authorized_units: 500,
+    })
+    expect(aggregateInstallations([zeroSupply]).uhSupplyRatio).toBe(0)
+
+    // Authorized demand but NO inventory row (null available) → unknown.
+    const noInventory = installation({
+      installation_id: 'no_inventory',
+      status: 'watch',
+      uh_available_units: null,
+      uh_authorized_units: 500,
+    })
+    expect(aggregateInstallations([noInventory]).uhSupplyRatio).toBeNull()
+
+    // Inventory reported but zero authorized demand → unknown (no denominator).
+    const noDemand = installation({
+      installation_id: 'no_demand',
+      status: 'ok',
+      uh_available_units: 300,
+      uh_authorized_units: 0,
+    })
+    expect(aggregateInstallations([noDemand]).uhSupplyRatio).toBeNull()
   })
 })
 
