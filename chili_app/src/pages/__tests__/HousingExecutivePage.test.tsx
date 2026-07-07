@@ -219,4 +219,40 @@ describe('HousingExecutivePage', () => {
     const ragLink = within(detail).getByRole('link', { name: /ask ai about edwards afb/i })
     expect(ragLink).toHaveAttribute('href', expect.not.stringContaining('kb='))
   })
+
+  it('renders a public installation reference layer when live housing feeds are empty', () => {
+    mocks.useHousingOverview.mockReturnValue(querySuccess({
+      ...overview,
+      portfolio_summary: {
+        total_installations: 0,
+        installations_reporting: 0,
+        open_work_orders: 0,
+        overdue_work_orders: 0,
+        occupancy_rate: null,
+        resident_satisfaction: null,
+      },
+      executive_kpis: [],
+    }))
+    mocks.useHousingInstallations.mockReturnValue(querySuccess({
+      period_start: '2026-06-01',
+      period_end: '2026-06-30',
+      total: 0,
+      items: [],
+      map_points: [],
+    }))
+    mocks.useScorecardTemplates.mockReturnValue(querySuccess({ items: [] }))
+
+    renderPage()
+
+    expect(screen.getAllByText('Public installation reference')).toHaveLength(2)
+    expect(screen.getAllByText('Live feeds required')).toHaveLength(3)
+    expect(screen.getByText('Edwards Air Force Base')).toBeInTheDocument()
+    expect(screen.getByRole('button', {
+      name: 'Select Edwards Air Force Base on map, public reference location, live housing status pending',
+    })).toBeInTheDocument()
+    expect(screen.getByText('Public CONUS base locations are shown until UMD, BAH, inventory, market, and demographics feeds are loaded.')).toBeInTheDocument()
+    expect(screen.getByText('Live evidence pending')).toBeInTheDocument()
+    expect(screen.queryByText('Housing KB')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Generate scorecard' })).toBeDisabled()
+  })
 })

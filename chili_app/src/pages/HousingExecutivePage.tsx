@@ -19,6 +19,11 @@ import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import {
+  publicReferenceById,
+  publicReferenceInstallations,
+  publicReferenceMapPoints,
+} from '../data/airForceInstallations'
 import { buildRagChatUrl } from '../lib/ragContext'
 import './pages.css'
 
@@ -53,6 +58,9 @@ function selectInstallationTemplate(templates: ScorecardTemplateResponse[]) {
   return templates.find((template) => template.scope === 'installation') ?? null
 }
 
+const LIVE_FEEDS_REQUIRED_REASON =
+  'Load UMD, BAH, inventory, market, and demographics feeds before generating NDAA scorecards.'
+
 export function HousingExecutivePage() {
   const overviewQuery = useHousingOverview()
   const installationsQuery = useHousingInstallations()
@@ -77,8 +85,12 @@ export function HousingExecutivePage() {
 
   const overview = overviewQuery.data
   const installationsPayload = installationsQuery.data
-  const installations = installationsPayload?.items ?? []
-  const mapPoints = installationsPayload?.map_points ?? []
+  const liveInstallations = installationsPayload?.items ?? []
+  const referenceMode = liveInstallations.length === 0
+  const referenceInstallations = referenceMode ? publicReferenceInstallations() : []
+  const referenceLookup = referenceMode ? publicReferenceById() : new Map()
+  const installations = referenceMode ? referenceInstallations : liveInstallations
+  const mapPoints = referenceMode ? publicReferenceMapPoints() : installationsPayload?.map_points ?? []
   const requestedInstallationId = searchParams.get('installation')
   const candidateInstallationId = selectedInstallationId ?? requestedInstallationId
   const activeInstallationId = installations.some(
@@ -88,6 +100,9 @@ export function HousingExecutivePage() {
     : installations[0]?.installation_id ?? null
   const selectedInstallation =
     installations.find((installation) => installation.installation_id === activeInstallationId) ?? null
+  const selectedReference = selectedInstallation
+    ? referenceLookup.get(selectedInstallation.installation_id) ?? null
+    : null
   const statusCounts = installations.reduce<StatusCounts>(
     (counts, installation) => ({
       ...counts,
@@ -104,8 +119,9 @@ export function HousingExecutivePage() {
   const periodStart = overview?.period_start ?? installationsPayload?.period_start ?? todayDate()
   const periodEnd = overview?.period_end ?? installationsPayload?.period_end ?? todayDate()
   const canGenerateScorecard = Boolean(
-    activeKnowledgeBase && selectedInstallation && installationTemplate && periodStart && periodEnd,
+    !referenceMode && activeKnowledgeBase && selectedInstallation && installationTemplate && periodStart && periodEnd,
   )
+  const generationUnavailableReason = referenceMode ? LIVE_FEEDS_REQUIRED_REASON : null
   const ragUrl = selectedInstallation
     ? buildRagChatUrl({
         knowledgeBaseId: activeKnowledgeBase?.id ?? null,
@@ -147,38 +163,67 @@ export function HousingExecutivePage() {
   return (
     <section className="page-grid">
       <SectionHeader
-        actions={<Chip label={`${installationsPayload?.total ?? installations.length} installations`} tone="info" />}
-        eyebrow="Air Force housing"
-        subtitle="Installation status, demand pressure, and scorecard readiness across the housing portfolio."
+        actions={
+          <div className="housing-header-actions">
+            {referenceMode ? <Chip label="Public installation reference" tone="warning" /> : null}
+            <Chip
+              label={
+                referenceMode
+                  ? `${installations.length} public locations`
+                  : `${installationsPayload?.total ?? installations.length} installations`
+              }
+              tone="info"
+            />
+          </div>
+        }
+        eyebrow="Department of the Air Force housing"
+        subtitle={
+          referenceMode
+            ? 'Public CONUS base locations are shown until UMD, BAH, inventory, market, and demographics feeds are loaded.'
+            : 'Installation status, demand pressure, and scorecard readiness across the housing portfolio.'
+        }
         title="Housing Supply Health"
       />
+
+      {referenceMode ? (
+        <div className="housing-reference-banner">
+          <div>
+            <strong>Public installation reference</strong>
+            <span>Coordinates from open airport data; live housing health requires ingested Air Force housing feeds.</span>
+          </div>
+          <Chip label="Live feeds required" tone="warning" />
+        </div>
+      ) : null}
 
       <div className="housing-kpis">
         <Card compact>
           <div className="housing-kpi">
-            <span className="metric-row__label">Reporting</span>
+            <span className="metric-row__label">{referenceMode ? 'Public locations' : 'Reporting'}</span>
             <strong>
-              {overview?.portfolio_summary?.installations_reporting ?? installations.length}/
-              {overview?.portfolio_summary?.total_installations ?? installationsPayload?.total ?? installations.length}
+              {referenceMode
+                ? installations.length
+                : `${overview?.portfolio_summary?.installations_reporting ?? installations.length}/${
+                    overview?.portfolio_summary?.total_installations ?? installationsPayload?.total ?? installations.length
+                  }`}
             </strong>
           </div>
         </Card>
         <Card compact>
           <div className="housing-kpi">
-            <span className="metric-row__label">Open WOs</span>
-            <strong>{overview?.portfolio_summary?.open_work_orders ?? 0}</strong>
+            <span className="metric-row__label">{referenceMode ? 'Live reporting' : 'Open WOs'}</span>
+            <strong>{referenceMode ? '0' : overview?.portfolio_summary?.open_work_orders ?? 0}</strong>
           </div>
         </Card>
         <Card compact>
           <div className="housing-kpi">
-            <span className="metric-row__label">Occupancy</span>
-            <strong>{formatPercent(overview?.portfolio_summary?.occupancy_rate)}</strong>
+            <span className="metric-row__label">{referenceMode ? 'Health scored' : 'Occupancy'}</span>
+            <strong>{referenceMode ? '0' : formatPercent(overview?.portfolio_summary?.occupancy_rate)}</strong>
           </div>
         </Card>
         <Card compact>
           <div className="housing-kpi">
-            <span className="metric-row__label">Critical</span>
-            <strong>{statusCounts.critical}</strong>
+            <span className="metric-row__label">{referenceMode ? 'Scorecards' : 'Critical'}</span>
+            <strong>{referenceMode ? 'pending' : statusCounts.critical}</strong>
           </div>
         </Card>
       </div>
@@ -189,6 +234,7 @@ export function HousingExecutivePage() {
             installations={installations}
             mapPoints={mapPoints}
             onSelectInstallation={handleSelectInstallation}
+            referenceMode={referenceMode}
             selectedInstallationId={activeInstallationId}
           />
           <div className="housing-status-strip">
@@ -208,35 +254,54 @@ export function HousingExecutivePage() {
                 <div className="metric-row metric-row--stacked">
                   <strong className="housing-detail-title">{selectedInstallation.name}</strong>
                   <span className="metric-row__label">
-                    {[selectedInstallation.majcom, selectedInstallation.state].filter(Boolean).join(' / ') || 'Unassigned'}
+                    {referenceMode && selectedReference
+                      ? [selectedReference.municipality, selectedReference.state].filter(Boolean).join(' / ')
+                      : [selectedInstallation.majcom, selectedInstallation.state].filter(Boolean).join(' / ') || 'Unassigned'}
                   </span>
                 </div>
                 <div className="alert-row-card__meta">
-                  <Chip label={selectedInstallation.status} tone={STATUS_TONE[selectedInstallation.status]} />
-                  <Chip label={`${selectedInstallation.open_work_orders} open WOs`} tone="info" />
-                  <Chip label={`${formatPercent(selectedInstallation.occupancy_rate)} occupied`} tone="default" />
+                  {referenceMode ? (
+                    <>
+                      <Chip label="public location" tone="default" />
+                      <Chip label="health pending" tone="warning" />
+                      <Chip label={selectedReference?.sourceIdent ?? 'open data'} tone="info" />
+                    </>
+                  ) : (
+                    <>
+                      <Chip label={selectedInstallation.status} tone={STATUS_TONE[selectedInstallation.status]} />
+                      <Chip label={`${selectedInstallation.open_work_orders} open WOs`} tone="info" />
+                      <Chip label={`${formatPercent(selectedInstallation.occupancy_rate)} occupied`} tone="default" />
+                    </>
+                  )}
                 </div>
                 <div className="housing-detail-grid">
                   <div>
-                    <span className="metric-row__label">MAJCOM</span>
-                    <strong>{selectedInstallation.majcom ?? 'n/a'}</strong>
+                    <span className="metric-row__label">{referenceMode ? 'Source ident' : 'MAJCOM'}</span>
+                    <strong>{referenceMode ? selectedReference?.sourceIdent ?? 'Open data' : selectedInstallation.majcom ?? 'n/a'}</strong>
                   </div>
                   <div>
                     <span className="metric-row__label">State</span>
                     <strong>{selectedInstallation.state ?? 'n/a'}</strong>
                   </div>
                   <div>
-                    <span className="metric-row__label">Open work orders</span>
-                    <strong>{selectedInstallation.open_work_orders}</strong>
+                    <span className="metric-row__label">{referenceMode ? 'Live feed' : 'Open work orders'}</span>
+                    <strong>{referenceMode ? 'Not loaded' : selectedInstallation.open_work_orders}</strong>
                   </div>
                   <div>
-                    <span className="metric-row__label">Occupancy</span>
-                    <strong>{formatPercent(selectedInstallation.occupancy_rate)}</strong>
+                    <span className="metric-row__label">{referenceMode ? 'Housing KPIs' : 'Occupancy'}</span>
+                    <strong>{referenceMode ? 'Pending' : formatPercent(selectedInstallation.occupancy_rate)}</strong>
                   </div>
                 </div>
-                <Link className="page-button housing-rag-link" to={ragUrl}>
-                  Ask AI about {selectedInstallation.name}
-                </Link>
+                {referenceMode ? (
+                  <div className="housing-scorecard-reason">
+                    <strong>Live feeds required</strong>
+                    <span>{LIVE_FEEDS_REQUIRED_REASON}</span>
+                  </div>
+                ) : (
+                  <Link className="page-button housing-rag-link" to={ragUrl}>
+                    Ask AI about {selectedInstallation.name}
+                  </Link>
+                )}
               </>
             ) : (
               <EmptyState description="No installation rows are available for the selected period." title="No installation selected" />
@@ -255,6 +320,7 @@ export function HousingExecutivePage() {
             <InstallationRankingTable
               installations={installations}
               onSelectInstallation={handleSelectInstallation}
+              referenceMode={referenceMode}
               selectedInstallationId={activeInstallationId}
             />
           </div>
@@ -264,7 +330,8 @@ export function HousingExecutivePage() {
           <ScorecardReadinessPanel
             canGenerate={canGenerateScorecard}
             generatePending={generateScorecard.isPending}
-            knowledgeBaseName={activeKnowledgeBase?.name ?? null}
+            generationUnavailableReason={generationUnavailableReason}
+            knowledgeBaseName={referenceMode ? 'Live evidence pending' : activeKnowledgeBase?.name ?? null}
             onGenerate={handleGenerateScorecard}
             recentRuns={runs}
             selectedInstallation={selectedInstallation}

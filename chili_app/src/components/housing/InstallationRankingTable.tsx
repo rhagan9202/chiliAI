@@ -3,6 +3,7 @@ import { Chip } from '../ui/Chip'
 
 type InstallationRankingTableProps = {
   installations: HousingInstallationResponse[]
+  referenceMode?: boolean
   selectedInstallationId: string | null
   onSelectInstallation: (installationId: string) => void
 }
@@ -33,6 +34,7 @@ function formatPercent(value: number | null | undefined) {
 
 export function InstallationRankingTable({
   installations,
+  referenceMode = false,
   selectedInstallationId,
   onSelectInstallation,
 }: InstallationRankingTableProps) {
@@ -50,7 +52,7 @@ export function InstallationRankingTable({
         <thead>
           <tr>
             <th scope="col">Installation</th>
-            <th scope="col">Status</th>
+            <th scope="col">{referenceMode ? 'Feed status' : 'Status'}</th>
             <th scope="col">Open WOs</th>
             <th scope="col">Occupancy</th>
           </tr>
@@ -78,10 +80,13 @@ export function InstallationRankingTable({
                 </button>
               </td>
               <td>
-                <Chip label={installation.status} tone={statusTone(installation.status)} />
+                <Chip
+                  label={referenceMode ? 'unscored' : installation.status}
+                  tone={referenceMode ? 'default' : statusTone(installation.status)}
+                />
               </td>
-              <td>{installation.open_work_orders}</td>
-              <td>{formatPercent(installation.occupancy_rate)}</td>
+              <td>{referenceMode ? 'pending' : installation.open_work_orders}</td>
+              <td>{referenceMode ? 'pending' : formatPercent(installation.occupancy_rate)}</td>
             </tr>
           ))}
         </tbody>

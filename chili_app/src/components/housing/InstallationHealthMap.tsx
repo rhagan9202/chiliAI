@@ -11,6 +11,7 @@ type InstallationStatus = HousingInstallationResponse['status']
 type InstallationHealthMapProps = {
   installations: HousingInstallationResponse[]
   mapPoints: HousingInstallationMapPointResponse[]
+  referenceMode?: boolean
   selectedInstallationId: string | null
   onSelectInstallation: (installationId: string) => void
 }
@@ -65,6 +66,7 @@ function markerSize(installation: HousingInstallationResponse | undefined, statu
 export function InstallationHealthMap({
   installations,
   mapPoints,
+  referenceMode = false,
   selectedInstallationId,
   onSelectInstallation,
 }: InstallationHealthMapProps) {
@@ -109,7 +111,11 @@ export function InstallationHealthMap({
           return (
             <button
               aria-pressed={selected}
-              aria-label={`Select ${point.name} on map, ${status} status, ${openWorkOrders} open work orders`}
+              aria-label={
+                referenceMode
+                  ? `Select ${point.name} on map, public reference location, live housing status pending`
+                  : `Select ${point.name} on map, ${status} status, ${openWorkOrders} open work orders`
+              }
               className={selected ? `${styles.marker} ${styles.markerSelected}` : styles.marker}
               key={point.installation_id}
               onClick={() => onSelectInstallation(point.installation_id)}

@@ -55,6 +55,9 @@ export function AppShell() {
   )
   const domainQueriesDone = !domainConfigQuery.isLoading && !domainFeaturesQuery.isLoading
   const routeBlocked = domainQueriesDone && !routeAllowed
+  const pageTitleOverride = location.pathname.startsWith('/housing')
+    ? 'Department of the Air Force Housing'
+    : undefined
 
   useEffect(() => {
     if (routeBlocked) {
@@ -78,6 +81,7 @@ export function AppShell() {
           domainConfig={domainConfigQuery.data}
           domainFeatures={domainFeaturesQuery.data}
           loading={domainConfigQuery.isLoading}
+          pageTitleOverride={pageTitleOverride}
           unavailable={domainConfigQuery.isError}
         />
         <main className="app-shell__main" aria-label="chiliAI workspace">

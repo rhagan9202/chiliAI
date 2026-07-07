@@ -41,7 +41,9 @@ export function AppProviders({ children }: PropsWithChildren) {
   return (
     <QueryClientProvider client={queryClient}>
       <SessionProvider>{children}</SessionProvider>
-      {import.meta.env.DEV ? <ReactQueryDevtools initialIsOpen={false} /> : null}
+      {import.meta.env.DEV && import.meta.env.VITE_SHOW_QUERY_DEVTOOLS === 'true' ? (
+        <ReactQueryDevtools initialIsOpen={false} />
+      ) : null}
     </QueryClientProvider>
   )
 }

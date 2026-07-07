@@ -8,6 +8,7 @@ import { Chip } from '../ui/Chip'
 type ScorecardReadinessPanelProps = {
   canGenerate: boolean
   generatePending: boolean
+  generationUnavailableReason?: string | null
   knowledgeBaseName: string | null
   recentRuns: ScorecardRunResponse[]
   selectedInstallation: HousingInstallationResponse | null
@@ -42,6 +43,7 @@ function formatDate(value: string) {
 export function ScorecardReadinessPanel({
   canGenerate,
   generatePending,
+  generationUnavailableReason = null,
   knowledgeBaseName,
   recentRuns,
   selectedInstallation,
@@ -84,6 +86,12 @@ export function ScorecardReadinessPanel({
           <span className="metric-row__label">No recent run</span>
         </div>
       )}
+      {generationUnavailableReason ? (
+        <div className="housing-scorecard-reason">
+          <strong>Live feeds required</strong>
+          <span>{generationUnavailableReason}</span>
+        </div>
+      ) : null}
       <button
         className="page-button"
         disabled={!canGenerate || generatePending}
