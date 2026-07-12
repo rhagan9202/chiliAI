@@ -27,6 +27,7 @@ from api.dependencies import (
     get_policy_repository,
     get_raw_record_store,
     get_risk_history_writer,
+    get_scorecard_run_repository,
     get_vector_service,
 )
 from cases.adapters.protocols import CaseRepository
@@ -36,6 +37,7 @@ from knowledgebases.cleanup import KbDeletionStores, kb_deletion_steps
 from monitoring.adapters.protocols import AlertHistoryWriter, ObservationWriter
 from policy.adapters.protocols import PolicyItemRepository
 from records.adapters.protocols import RawRecordStore
+from scorecards.adapters.protocols import ScorecardRunRepository
 from storage.protocols import ObjectStore
 from vectorstore.protocols import VectorServiceProtocol
 
@@ -61,6 +63,9 @@ def get_kb_deletion_stores(
     evidence_pack_repository: EvidencePackRepository = Depends(
         get_evidence_pack_repository
     ),
+    scorecard_run_repository: ScorecardRunRepository = Depends(
+        get_scorecard_run_repository
+    ),
     object_store: ObjectStore = Depends(get_object_store),
 ) -> KbDeletionStores:
     """Assemble the KB-delete cascade store bundle from DI."""
@@ -78,6 +83,7 @@ def get_kb_deletion_stores(
         case_repository=case_repository,
         policy_item_repository=policy_item_repository,
         evidence_pack_repository=evidence_pack_repository,
+        scorecard_run_repository=scorecard_run_repository,
         object_store=object_store,
     )
 

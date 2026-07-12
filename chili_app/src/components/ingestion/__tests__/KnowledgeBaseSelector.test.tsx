@@ -129,6 +129,45 @@ describe('KnowledgeBaseSelector', () => {
     expect(screen.queryByTestId('kb-domain-unknown')).not.toBeInTheDocument()
   })
 
+  it('renders no domain toggle when no knowledge bases are hidden', () => {
+    renderSelector()
+
+    expect(screen.queryByTestId('kb-show-all-domains-toggle')).not.toBeInTheDocument()
+  })
+
+  it('shows the hidden-domain count on the toggle and reports toggling', () => {
+    const onToggleShowAllDomains = vi.fn()
+    renderSelector({ hiddenDomainCount: 3, onToggleShowAllDomains })
+
+    const toggle = screen.getByRole('button', { name: 'Show all domains (3 hidden)' })
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.click(toggle)
+
+    expect(onToggleShowAllDomains).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers to scope back to the active domain when all domains are shown', () => {
+    renderSelector({ hiddenDomainCount: 2, showAllDomains: true })
+
+    const toggle = screen.getByRole('button', { name: 'Scope to active domain' })
+    expect(toggle).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('explains a scoped-empty list instead of claiming no knowledge bases exist', () => {
+    renderSelector({
+      activeKnowledgeBaseId: null,
+      hiddenDomainCount: 2,
+      knowledgeBases: [],
+    })
+
+    expect(screen.getByText('No knowledge bases in the active domain')).toBeInTheDocument()
+    expect(screen.queryByText('No knowledge bases yet')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Show all domains (2 hidden)' }),
+    ).toBeInTheDocument()
+  })
+
   it('renders an empty state and keeps create disabled for blank names', () => {
     renderSelector({
       activeKnowledgeBaseId: null,

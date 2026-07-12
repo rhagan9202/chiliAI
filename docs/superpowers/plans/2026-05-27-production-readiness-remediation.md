@@ -444,7 +444,7 @@ it('passes active knowledge base scope into analytics queries', () => {
 Run:
 
 ```bash
-pnpm --dir chili_app test -- src/pages/__tests__/InvestigationWorkbenchPage.test.tsx --run
+npm --prefix chili_app run test -- src/pages/__tests__/InvestigationWorkbenchPage.test.tsx --run
 ```
 
 Expected: FAIL because `useRiskScore` and `useTimeseries` currently accept only `entityId`.
@@ -526,7 +526,7 @@ Then replace the current no-risk `EmptyState` branch with:
 Run:
 
 ```bash
-pnpm --dir chili_app test -- src/pages/__tests__/InvestigationWorkbenchPage.test.tsx --run
+npm --prefix chili_app run test -- src/pages/__tests__/InvestigationWorkbenchPage.test.tsx --run
 ```
 
 Expected: PASS.
@@ -1417,7 +1417,7 @@ describe('analyst-facing copy', () => {
 Run:
 
 ```bash
-pnpm --dir chili_app test -- src/app/__tests__/router-routes.test.tsx src/pages/__tests__/AnalystCopy.test.tsx --run
+npm --prefix chili_app run test -- src/app/__tests__/router-routes.test.tsx src/pages/__tests__/AnalystCopy.test.tsx --run
 ```
 
 Expected: FAIL because `/knowledgebases` route is absent and seeded copy remains.
@@ -1621,8 +1621,8 @@ if (disconnectedAt === null) {
 Run:
 
 ```bash
-pnpm --dir chili_app test -- src/app/__tests__/router-routes.test.tsx src/pages/__tests__/AnalystCopy.test.tsx src/pages/__tests__/InvestigationWorkbenchPage.test.tsx --run
-pnpm --dir chili_app build
+npm --prefix chili_app run test -- src/app/__tests__/router-routes.test.tsx src/pages/__tests__/AnalystCopy.test.tsx src/pages/__tests__/InvestigationWorkbenchPage.test.tsx --run
+npm --prefix chili_app run build
 ```
 
 Expected: PASS.
@@ -1660,7 +1660,7 @@ Expected: `chili_app/openapi.json` changes include `availability_status`, `unava
 Run:
 
 ```bash
-pnpm --dir chili_app codegen:api
+npm --prefix chili_app run codegen:api
 ```
 
 Expected: `chili_app/src/lib/api/schema.ts` changes include the updated analytics response fields.
@@ -1752,7 +1752,7 @@ If `.github/workflows/ci.yml` does not already run these exact checks, add steps
 
 - name: Frontend production-readiness regression tests
   run: |
-    pnpm --dir chili_app test -- \
+    npm --prefix chili_app run test -- \
       src/pages/__tests__/InvestigationWorkbenchPage.test.tsx \
       src/app/__tests__/router-routes.test.tsx \
       src/pages/__tests__/AnalystCopy.test.tsx --run
@@ -1764,8 +1764,8 @@ Run:
 
 ```bash
 uv run --project backend pytest backend/tests/api/test_analytics_router.py backend/tests/agent/test_workflow_tracking.py backend/tests/api/test_records_router.py backend/tests/records/test_service.py backend/tests/events/test_redis_streams.py backend/tests/ingestion/test_service.py -q
-pnpm --dir chili_app test -- src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/app/__tests__/router-routes.test.tsx src/pages/__tests__/AnalystCopy.test.tsx --run
-pnpm --dir chili_app build
+npm --prefix chili_app run test -- src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/app/__tests__/router-routes.test.tsx src/pages/__tests__/AnalystCopy.test.tsx --run
+npm --prefix chili_app run build
 ```
 
 Expected: PASS.

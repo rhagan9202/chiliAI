@@ -23,19 +23,11 @@ An updated `docs/project/planning/requirements.md` (written only after explicit 
 
 1. **Detect optional focus argument.** If the user passed a focus area (e.g. `/refresh-requirements auth`), capture it; otherwise treat the run as a full-product refresh.
 
-2. **Hand off to the `requirements_gatherer` agent.** Invoke it as a subagent and supply the following standard refresh preamble verbatim (substitute `<FOCUS>` with the captured focus argument or the literal string `full product`):
+2. **Hand off to the `requirements_gatherer` agent.** Invoke it as a subagent with this trigger prompt (substitute `<FOCUS>` with the captured focus argument or the literal string `full product`):
 
-   > **Refresh preamble (standard)**
-   >
-   > Run a complete refresh of the canonical chiliAI product requirements.
-   >
-   > - Scope: `<FOCUS>`.
-   > - Treat the existing `docs/project/planning/requirements.md` (if present) as the prior version. Preserve every existing `REQ-<AREA>-<NNN>` ID; only append new IDs for genuinely new requirements; mark removed scope as deprecated rather than deleting silently.
-   > - Delegate exploration to the `Explore` subagent in `thorough` mode. Restrict Explore to planning-tier sources only: root `README.md` and `CLAUDE.md`; `.github/copilot-instructions.md` and `.github/instructions/**`; `docs/architecture.md`, `docs/onboarding.md`, `docs/security_checklist.md`, `docs/system_architecture_diagram.md`; `docs/project/planning/**`; `docs/backlog/**`; `docs/superpowers/plans/**` and `docs/superpowers/specs/**` (titles, goals, architecture sections only); module-level `README.md` files; existing module backlog summaries. Explicitly exclude source code, tests, and per-task implementation detail.
-   > - Synthesize findings into the canonical structure: Product Vision, Target Users & Domains, Functional Requirements (grouped by capability area with stable IDs), Non-Functional Requirements, Integration & Adapter Requirements, Out of Scope, Assumptions, Source Material.
-   > - Produce 3–5 product-level improvement suggestions (scope/product only — never code-level).
-   > - Resolve every `[OPEN QUESTION]` with the user before requesting approval; open questions block approval. `[ASSUMPTION]` items are non-blocking but must be surfaced for confirmation.
-   > - Request explicit approval (`approve / revise / reject`) before writing. On approval, write `docs/project/planning/requirements.md`, creating parent directories if needed, and stamp it with today's date and an incremented version number.
+   > Run a complete refresh of the canonical chiliAI product requirements. Scope: `<FOCUS>`. Follow your standard Approach, Constraints, and Output Format exactly as defined in your agent definition ([`requirements_gatherer.agent.md`](../../agents/requirements_gatherer.agent.md)) — including prior-version REQ-ID preservation, Explore-delegated planning-tier-only exploration, 3–5 product-level improvement suggestions, the blocking open-questions loop, and the explicit approve/revise/reject gate before writing.
+
+   The agent definition is the single source of the refresh procedure — this skill deliberately does not restate it. If the procedure needs to change, change the agent definition, not this file.
 
 3. **Do not bypass the agent's gates.** This skill is a thin invocation wrapper. It MUST NOT write `docs/project/planning/requirements.md` itself, MUST NOT skip the open-questions resolution loop, and MUST NOT auto-approve on the user's behalf.
 
@@ -43,7 +35,7 @@ An updated `docs/project/planning/requirements.md` (written only after explicit 
 
 ## Constraints
 - ONLY invoke the `requirements_gatherer` agent. Do not directly read sources, edit files, or invoke `Explore` from this skill.
-- DO NOT alter the agent's approach, structure, or approval gates via the preamble — the preamble is a *trigger*, not an override.
+- DO NOT alter the agent's approach, structure, or approval gates via the trigger prompt — it is a *trigger*, not an override.
 - DO NOT run unattended; this skill always returns control to the user for approval.
 
 ## Related

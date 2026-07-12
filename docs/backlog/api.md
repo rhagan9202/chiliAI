@@ -933,7 +933,8 @@ Superseded by the BL-011 policy item surface. The legacy `/policy/gaps`, `/polic
 ## Story api.25: Admin write surface for runtime config + ops actions
 
 **ID:** api.25
-**Status:** in-progress
+**Status:** planned
+_Note (2026-07-12): implementation is in flight on the unmerged `feat/domain-packs-and-config-manager` branch; status flipped back to planned because the prerequisite DAG invariant (in-progress requires all prerequisites done) is CI-enforced and the listed prerequisites are not done. Restore to in-progress/done when the branch merges and the prerequisite edges are reconciled._
 **Prerequisites:** [config.07, agent.19, events.16, _security.12, api.17]
 **Progress note (2026-07-03, feat/domain-packs-and-config-manager):** the runtime-config slice of this surface landed (a8573e5, 5b6646c) as admin-gated routes under the existing `/config` router rather than a new `/admin/*` family: `GET /config/packs`, `POST /config/validate|apply|switch` (`require_role("admin")`), with the production auth guardrail enforced on candidate packs and a `ConfigUpdatedEvent` published on swap — this supersedes the `POST /admin/config/reload` intent. Still open: the router-family decision (the shipped routes chose folding into `/config`; revisit or ratify when the rest of the surface is built), DLQ replay, alert backfill, JWKS cache invalidation, session revoke, and `_security.12` audit events for admin actions.
 **Unblocks:** []

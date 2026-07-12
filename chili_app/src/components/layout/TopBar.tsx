@@ -8,17 +8,24 @@ type TopBarProps = {
   domainConfig?: DomainConfig
   domainFeatures?: DomainFeatures
   loading: boolean
+  pageTitleOverride?: string
   unavailable: boolean
 }
 
-export function TopBar({ domainConfig, domainFeatures, loading, unavailable }: TopBarProps) {
+export function TopBar({
+  domainConfig,
+  domainFeatures,
+  loading,
+  pageTitleOverride,
+  unavailable,
+}: TopBarProps) {
   const toggleAiPanel = useUiStore((state) => state.toggleAiPanel)
   const selectedRole = useUiStore((state) => state.selectedRole)
   const setSelectedRole = useUiStore((state) => state.setSelectedRole)
   const realtimeConnected = useUiStore((state) => state.realtimeConnected)
   const accessNotice = useUiStore((state) => state.accessNotice)
   const setAccessNotice = useUiStore((state) => state.setAccessNotice)
-  const title = domainConfig?.domain.display_name ?? 'chiliAI Platform'
+  const title = pageTitleOverride ?? domainConfig?.domain.display_name ?? 'chiliAI Platform'
   const status = loading ? 'Loading config' : unavailable ? 'Config unavailable' : realtimeConnected ? 'Live updates' : 'Realtime reconnecting'
   const roleOptions = Object.keys(domainFeatures?.roles ?? {})
   const activeRole = selectedRole ?? getDefaultRole(domainFeatures) ?? roleOptions[0] ?? ''

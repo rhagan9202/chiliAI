@@ -3881,7 +3881,8 @@ def test_dispatch_runs_kb_cleanup_when_wired_and_guards_when_not() -> None:
         "graph_service", "vector_service", "raw_record_store", "derived_signal_store",
         "risk_history_writer", "observation_writer", "alert_history_writer",
         "entity_metric_repository", "conversation_repository", "case_repository",
-        "policy_item_repository", "evidence_pack_repository", "object_store",
+        "policy_item_repository", "evidence_pack_repository",
+        "scorecard_run_repository", "object_store",
     ]
     mocks = {field: MagicMock() for field in store_fields}
     mocks["object_store"].list_keys.return_value = []
@@ -3909,6 +3910,7 @@ def test_dispatch_runs_kb_cleanup_when_wired_and_guards_when_not() -> None:
     # Wired → dispatch invokes the handler, which replays the cascade + deletes metadata.
     assert _dispatch(bundle) == 1
     mocks["risk_history_writer"].delete_by_kb.assert_called_once_with("kb-x")
+    mocks["scorecard_run_repository"].delete_by_kb.assert_called_once_with("kb-x")
     kb_repository.delete.assert_called_once_with("kb-x")
 
     # Not wired (no bundle) → guard short-circuits, no cleanup.

@@ -38,21 +38,26 @@
 
 ## Tooling And Commands
 
-- Follow existing lockfiles and module READMEs for package managers. Current frontend commands are defined in `chili_app/package.json` and use npm scripts:
+- Package managers: uv for Python environment management (`uv venv`, `uv pip install …`; no bare `pip`, pipenv, or poetry), npm for node/TypeScript (no pnpm or yarn). Day-to-day backend tools run from the project venv (`backend/.venv/bin/…` or an activated venv). Current frontend commands are defined in `chili_app/package.json` and use npm scripts:
   - `npm run dev` — Vite dev server
   - `npm run build` — TypeScript compile + Vite production build
   - `npm run lint` — ESLint
 - Backend uses Python 3.12 as declared in `backend/.python-version` and `backend/pyproject.toml`:
   - API server: `uvicorn api.app:create_app --factory --reload --port 8000`
   - Worker: `python -m agent.coordinator`
-  - Tests: `pytest --cov`
+  - Tests: `pytest --cov` — ⚠️ on the host this WIPES the dev-stack Postgres data (the migration tests downgrade/upgrade against the default `DATABASE_URL`); when the stack holds seeded/demo state, use `DATABASE_URL=postgresql://chili:chili@localhost:5432/chili_test pytest --cov` (see `backend/README.md`).
   - Type check/lint: `pyright`, `ruff check .`
 - CI runs backend lint/typecheck/tests and frontend lint/typecheck/tests/build. Keep touched areas green.
+- Tooling gotchas (mirrored from `CLAUDE.md` — keep in sync):
+  - `ruff`'s cache dir may not be writable in sandboxed agent runs — use `ruff check --no-cache .`.
+  - Bare `pyright` (no args) is the real gate — `tool.pyright.include` covers many `tests/**`, so test code must be strict-clean too; per-file `pyright <file>` can miss include-scoped test errors.
+  - Playwright `page.route` patterns must be `/api/`-anchored — unanchored patterns also intercept SPA page navigations and render JSON as the page body.
+  - Regenerate frontend contracts after ANY frontend-consumed Pydantic change: `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json` (repo root), then `cd chili_app && npm run codegen:api`. CI fails on drift.
 
 ## Quality Gates
 
 - Backend functional code must be fully typed, compatible with `pyright --strict`, and avoid untyped `Any`. The active Pyright scope is in `backend/pyproject.toml`.
-- Backend changes require pytest coverage ≥ 85% for affected packages and full green tests before acceptance.
+- Backend changes require pytest coverage ≥ 85% for affected packages and full green tests before acceptance (per-package is the project standard; the CI gate enforces the aggregate `--cov-fail-under=85`).
 - Frontend TypeScript is strict (`noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`) and must remain ESLint clean.
 - Follow existing frontend patterns: functional React components, hooks, Vite/ESLint setup, TanStack Query for server state, Zustand for client state, and React Router v7 for routing.
 - Use e2e/Playwright verification for workflows, UI behavior, and integration points. E2E tests MUST run against the full running stack (real API + worker + services, e.g. `make dev`); `page.route`/mock fixtures must never stand in for the component, endpoint, or integration under test — a test whose subject is mocked is not an e2e test.
@@ -61,7 +66,7 @@
 
 ## Agent Workflow Rules
 
-- When planning, read nearby `README.md`, `AGENT_Instructions.md`, or `AGENT.md` files if present, and document assumptions/open questions instead of fabricating details.
+- When planning, read the nearest `README.md` files and applicable instruction files (`CLAUDE.md`, this file, `.github/instructions/*.md`), and document assumptions/open questions instead of fabricating details.
 - When implementing, update adjacent docs for new commands, dependencies, APIs, or architectural decisions. Update `docs/architecture.md` and the root `README.md` for design or cross-cutting changes.
 - When changing frontend behavior, run and visually/interaction-test the app when practical; do not rely only on code review.
 - When changing backend behavior, run relevant tests and, when practical, verify API/worker behavior, logs, and persisted state.

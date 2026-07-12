@@ -57,11 +57,25 @@ export function KnowledgeBaseManagerPage() {
   const [uploadError, setUploadError] = useState<string | null>(null)
   // Holds the last upload invocation so the Retry button can re-run it verbatim.
   const [retryUpload, setRetryUpload] = useState<(() => void) | null>(null)
+  const [showAllDomains, setShowAllDomains] = useState(false)
 
   const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
-  const activeKnowledgeBaseId = knowledgeBases.some((item) => item.id === selectedKnowledgeBaseId)
+  const activeDomainName = domainConfigQuery.data?.domain.name ?? null
+  // Default scope: KBs stamped with the active domain plus legacy KBs without a
+  // domain stamp (isDomainMismatch never flags a null/undefined KB domain).
+  const scopedKnowledgeBases = knowledgeBases.filter(
+    (item) => !isDomainMismatch(item.domain ?? null, activeDomainName),
+  )
+  const hiddenDomainCount = knowledgeBases.length - scopedKnowledgeBases.length
+  const visibleKnowledgeBases = showAllDomains ? knowledgeBases : scopedKnowledgeBases
+  // Auto-select prefers in-scope KBs; an explicit selection is honored only
+  // while its KB is visible, so scoping back down can never leave the run
+  // timeline or document inventory pointed at an out-of-scope KB.
+  const activeKnowledgeBaseId = visibleKnowledgeBases.some(
+    (item) => item.id === selectedKnowledgeBaseId,
+  )
     ? selectedKnowledgeBaseId
-    : knowledgeBases[0]?.id ?? null
+    : scopedKnowledgeBases[0]?.id ?? visibleKnowledgeBases[0]?.id ?? null
   const workflowsQuery = useWorkflows(
     { knowledgeBaseId: activeKnowledgeBaseId ?? undefined },
     { enabled: Boolean(activeKnowledgeBaseId) },
@@ -82,7 +96,6 @@ export function KnowledgeBaseManagerPage() {
   const pushRecordsMutation = usePushRecords(activeKnowledgeBaseId)
   const uploadRecordFileMutation = useUploadRecordFile(activeKnowledgeBaseId)
 
-  const activeDomainName = domainConfigQuery.data?.domain.name ?? null
   const feeds = domainConfigQuery.data?.records?.feeds ?? []
   const selectedFeed = feeds.find((feed) => feed.name === studio.selectedFeedName) ?? null
   const documentIssues = validateDocumentFiles(
@@ -350,7 +363,8 @@ export function KnowledgeBaseManagerPage() {
               createDisabled={createKnowledgeBaseMutation.isPending}
               createName={knowledgeBaseName}
               deleteDisabled={deleteKnowledgeBaseMutation.isPending}
-              knowledgeBases={knowledgeBases}
+              hiddenDomainCount={hiddenDomainCount}
+              knowledgeBases={visibleKnowledgeBases}
               onCreateDescriptionChange={setKnowledgeBaseDescription}
               onCreateNameChange={setKnowledgeBaseName}
               onCreateSubmit={() => {
@@ -384,6 +398,8 @@ export function KnowledgeBaseManagerPage() {
                 setSelectedDocumentId(null)
                 studio.setCurrentStep('source')
               }}
+              onToggleShowAllDomains={() => setShowAllDomains((value) => !value)}
+              showAllDomains={showAllDomains}
             />
           </Card>
 

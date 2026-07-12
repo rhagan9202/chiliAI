@@ -71,7 +71,7 @@ Parsers surface **non-fatal** diagnostics through a typed `ParsedDocument.warnin
 ## Commands
 
 ```bash
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 pytest tests/ingestion -m "not integration"    # fast unit tests
 pytest tests/ingestion -m integration          # needs a configured LLM adapter
 ```

@@ -18,7 +18,7 @@ from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.service import GraphService, create_graph_service
 from monitoring.adapters.in_memory import InMemoryObservationWriter
 from records.adapters.in_memory import InMemoryRawRecordStore
-from records.exceptions import RecordFeedNotFoundError
+from records.exceptions import RecordFeedNotFoundError, RecordMappingError
 from records.models import RawRecord, content_hash_for
 from storage.adapters.in_memory import InMemoryObjectStore
 
@@ -133,6 +133,115 @@ def test_handler_raises_for_unknown_feed() -> None:
             graph_service=_graph_service(),
             observation_writer=InMemoryObservationWriter(),
         )
+
+
+def _housing_records_config(score_max: float | None) -> RecordsConfig:
+    """A housing-shaped feed: a 0-100 satisfaction score on an installation."""
+    return RecordsConfig(
+        feeds=[
+            RecordFeedConfig(
+                name="resident_experience",
+                record_type="resident_experience",
+                source="file_upload",
+                id_field="experience_id",
+                entities=[
+                    RecordEntityMapping(
+                        entity_type="installation", id_field="installation_id"
+                    )
+                ],
+                observations=[
+                    RecordObservationMapping(
+                        metric_name="resident_satisfaction",
+                        entity_type="installation",
+                        score_field="satisfaction_score",
+                        score_max=score_max,
+                        rationale="Resident satisfaction from tenant experience export.",
+                    )
+                ],
+            )
+        ]
+    )
+
+
+def _seed_housing_store(
+    store: InMemoryRawRecordStore, correlation_id: str, satisfaction_score: float
+) -> None:
+    payload: dict[str, object] = {
+        "experience_id": "exp-1",
+        "installation_id": "INST-0001",
+        "satisfaction_score": satisfaction_score,
+    }
+    store.persist(
+        [
+            RawRecord(
+                knowledge_base_id="kb-housing",
+                record_type="resident_experience",
+                record_id="exp-1",
+                payload=payload,
+                source_type="file_upload",
+                source_ref="resident_experience.csv",
+                correlation_id=correlation_id,
+                content_hash=content_hash_for(payload),
+            )
+        ]
+    )
+
+
+def test_handler_normalizes_housing_magnitude_scores() -> None:
+    """A realistic 0-100 satisfaction value lands as an in-bound observation."""
+    store = InMemoryRawRecordStore()
+    _seed_housing_store(store, "corr-housing", 77.0)
+    writer = InMemoryObservationWriter()
+
+    processed = handle_records_ingested(
+        RecordsIngestedEvent(
+            correlation_id="corr-housing",
+            knowledge_base_id="kb-housing",
+            feed_name="resident_experience",
+            record_type="resident_experience",
+            record_count=1,
+        ),
+        records_config=_housing_records_config(score_max=100.0),
+        raw_record_store=store,
+        graph_service=_graph_service(),
+        observation_writer=writer,
+    )
+
+    assert processed == 1
+    assert len(writer.written) == 1
+    batch, _ = writer.written[0]
+    observation = batch.observations[0]
+    assert observation.metric_name == "resident_satisfaction"
+    assert observation.score == pytest.approx(0.77)
+    assert observation.entity_id == "installation:INST-0001"
+
+
+def test_handler_fails_loudly_on_unnormalized_housing_magnitude() -> None:
+    """The pre-fix housing failure mode: a raw-magnitude value with no
+    score_max must raise a hard mapping error, never a clamped observation."""
+    store = InMemoryRawRecordStore()
+    _seed_housing_store(store, "corr-housing", 1250.0)
+    writer = InMemoryObservationWriter()
+
+    with pytest.raises(RecordMappingError) as exc_info:
+        handle_records_ingested(
+            RecordsIngestedEvent(
+                correlation_id="corr-housing",
+                knowledge_base_id="kb-housing",
+                feed_name="resident_experience",
+                record_type="resident_experience",
+                record_count=1,
+            ),
+            records_config=_housing_records_config(score_max=None),
+            raw_record_store=store,
+            graph_service=_graph_service(),
+            observation_writer=writer,
+        )
+    message = str(exc_info.value)
+    assert "resident_experience" in message
+    assert "satisfaction_score" in message
+    assert "1250.0" in message
+    assert writer.written == []
 
 
 def test_handler_returns_zero_when_no_records_found() -> None:

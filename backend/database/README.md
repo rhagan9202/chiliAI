@@ -33,7 +33,7 @@ analyst feedback history.
 ## Commands
 
 ```bash
-pip install -e ".[dev,postgres]"     # install the optional extra
+uv pip install -e ".[dev,postgres]"  # install the optional extra
 alembic upgrade head                 # apply migrations (needs DATABASE_URL)
 alembic downgrade base               # drop the schema
 pytest tests/database -m "not integration"   # fast unit tests

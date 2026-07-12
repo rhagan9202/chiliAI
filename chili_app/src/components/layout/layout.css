@@ -312,9 +312,7 @@
   }
 
   .app-sidebar {
-    position: sticky;
-    top: 0;
-    z-index: 20;
+    position: static;
     padding: 12px 14px;
     border-right: 0;
     border-bottom: 1px solid var(--c-b0);

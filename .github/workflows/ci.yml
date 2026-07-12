@@ -74,6 +74,10 @@ jobs:
         # Every optional adapter is always installed; no silent fallback. If the
         # full install fails, CI fails here rather than quietly running a partial
         # dependency set.
+        # Note on pip vs uv: local development is uv-managed (see CLAUDE.md);
+        # this CI job deliberately installs into the runner's Python with pip
+        # for cache/setup simplicity, and installs uv only for the one
+        # `uv run --project backend` step below. This split is intentional.
         run: |
           python -m pip install --upgrade pip
           pip install uv
@@ -114,12 +118,18 @@ jobs:
         # which is not on PyPI and cannot be audited. --strict is intentionally
         # omitted — it would fail on that un-auditable local package; pip-audit
         # still exits non-zero on any real dependency vulnerability.
+        # --ignore-vuln PYSEC-2026-1325: `ecdsa` (transitive via python-jose)
+        # timing side-channel with NO fixed release upstream (the ecdsa
+        # maintainers consider side-channel resistance out of scope). Our JWT
+        # verification pins algorithms=["RS256"] (api/middleware/auth.py), so
+        # the ECDSA code path is never exercised. Revisit if python-jose is
+        # replaced or an ecdsa fix ships.
         run: |
           pip-audit \
             --skip-editable \
             --vulnerability-service=pypi \
-            --ignore-vuln GHSA-0000-0000-0000 \
-            || pip-audit --skip-editable
+            --ignore-vuln PYSEC-2026-1325 \
+            || pip-audit --skip-editable --ignore-vuln PYSEC-2026-1325
 
       - name: Tear down the service stack
         if: always()

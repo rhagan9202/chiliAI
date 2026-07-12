@@ -1,0 +1,66 @@
+demand_id,installation_id,installation_name,majcom,state,latitude,longitude,unaccompanied_authorized,accompanied_authorized,snapshot_date,branch
+umd-jb_langley_eustis-2026q2,jb_langley_eustis,Joint Base Langley-Eustis,ACC,VA,37.082901,-76.360497,961,794,2026-06-30,USAF
+umd-seymour_johnson_afb-2026q2,seymour_johnson_afb,Seymour Johnson AFB,ACC,NC,35.339401,-77.960602,1020,1048,2026-06-30,USAF
+umd-shaw_afb-2026q2,shaw_afb,Shaw AFB,ACC,SC,33.972698,-80.470596,1132,531,2026-06-30,USAF
+umd-moody_afb-2026q2,moody_afb,Moody AFB,ACC,GA,30.967800,-83.193001,766,869,2026-06-30,USAF
+umd-mountain_home_afb-2026q2,mountain_home_afb,Mountain Home AFB,ACC,ID,43.043598,-115.872002,1542,1182,2026-06-30,USAF
+umd-nellis_afb-2026q2,nellis_afb,Nellis AFB,ACC,NV,36.236198,-115.033997,1052,1228,2026-06-30,USAF
+umd-creech_afb-2026q2,creech_afb,Creech AFB,ACC,NV,36.587200,-115.672997,1538,911,2026-06-30,USAF
+umd-davis_monthan_afb-2026q2,davis_monthan_afb,Davis-Monthan AFB,ACC,AZ,32.166500,-110.883003,609,1191,2026-06-30,USAF
+umd-tyndall_afb-2026q2,tyndall_afb,Tyndall AFB,ACC,FL,30.069599,-85.575401,862,881,2026-06-30,USAF
+umd-beale_afb-2026q2,beale_afb,Beale AFB,ACC,CA,39.136101,-121.436996,1036,439,2026-06-30,USAF
+umd-offutt_afb-2026q2,offutt_afb,Offutt AFB,ACC,NE,41.119307,-95.908510,453,1192,2026-06-30,USAF
+umd-grand_forks_afb-2026q2,grand_forks_afb,Grand Forks AFB,ACC,ND,47.961102,-97.401199,1328,350,2026-06-30,USAF
+umd-holloman_afb-2026q2,holloman_afb,Holloman AFB,ACC,NM,32.852501,-106.107002,960,1125,2026-06-30,USAF
+umd-altus_afb-2026q2,altus_afb,Altus AFB,AETC,OK,34.667099,-99.266701,619,1284,2026-06-30,USAF
+umd-columbus_afb-2026q2,columbus_afb,Columbus AFB,AETC,MS,33.643799,-88.443802,899,1086,2026-06-30,USAF
+umd-goodfellow_afb-2026q2,goodfellow_afb,Goodfellow AFB,AETC,TX,31.431630,-100.399216,1238,816,2026-06-30,USAF
+umd-keesler_afb-2026q2,keesler_afb,Keesler AFB,AETC,MS,30.410400,-88.924400,1120,1285,2026-06-30,USAF
+umd-laughlin_afb-2026q2,laughlin_afb,Laughlin AFB,AETC,TX,29.359501,-100.778002,1465,611,2026-06-30,USAF
+umd-luke_afb-2026q2,luke_afb,Luke AFB,AETC,AZ,33.535000,-112.383003,498,930,2026-06-30,USAF
+umd-maxwell_afb-2026q2,maxwell_afb,Maxwell AFB,AETC,AL,32.382900,-86.365799,525,973,2026-06-30,USAF
+umd-jb_san_antonio-2026q2,jb_san_antonio,Joint Base San Antonio,AETC,TX,29.384199,-98.581100,480,957,2026-06-30,USAF
+umd-sheppard_afb-2026q2,sheppard_afb,Sheppard AFB,AETC,TX,33.988800,-98.491898,1179,1077,2026-06-30,USAF
+umd-vance_afb-2026q2,vance_afb,Vance AFB,AETC,OK,36.339199,-97.916496,1149,715,2026-06-30,USAF
+umd-dover_afb-2026q2,dover_afb,Dover AFB,AMC,DE,39.129501,-75.466003,752,809,2026-06-30,USAF
+umd-fairchild_afb-2026q2,fairchild_afb,Fairchild AFB,AMC,WA,47.615101,-117.655998,859,674,2026-06-30,USAF
+umd-little_rock_afb-2026q2,little_rock_afb,Little Rock AFB,AMC,AR,34.916901,-92.149696,762,602,2026-06-30,USAF
+umd-macdill_afb-2026q2,macdill_afb,MacDill AFB,AMC,FL,27.849300,-82.521202,826,954,2026-06-30,USAF
+umd-mcconnell_afb-2026q2,mcconnell_afb,McConnell AFB,AMC,KS,37.621899,-97.268204,418,689,2026-06-30,USAF
+umd-scott_afb-2026q2,scott_afb,Scott AFB,AMC,IL,38.545200,-89.835197,1307,1101,2026-06-30,USAF
+umd-travis_afb-2026q2,travis_afb,Travis AFB,AMC,CA,38.262699,-121.927002,1301,1202,2026-06-30,USAF
+umd-jb_charleston-2026q2,jb_charleston,Joint Base Charleston,AMC,SC,32.896159,-80.038151,1326,1135,2026-06-30,USAF
+umd-jb_mcguire_dix_lakehurst-2026q2,jb_mcguire_dix_lakehurst,Joint Base McGuire-Dix-Lakehurst,AMC,NJ,40.015598,-74.591698,1447,853,2026-06-30,USAF
+umd-barksdale_afb-2026q2,barksdale_afb,Barksdale AFB,AFGSC,LA,32.501801,-93.662697,584,630,2026-06-30,USAF
+umd-dyess_afb-2026q2,dyess_afb,Dyess AFB,AFGSC,TX,32.420799,-99.854599,1333,1145,2026-06-30,USAF
+umd-ellsworth_afb-2026q2,ellsworth_afb,Ellsworth AFB,AFGSC,SD,44.145000,-103.103996,992,838,2026-06-30,USAF
+umd-fe_warren_afb-2026q2,fe_warren_afb,Francis E. Warren AFB,AFGSC,WY,41.133302,-104.866997,1023,901,2026-06-30,USAF
+umd-malmstrom_afb-2026q2,malmstrom_afb,Malmstrom AFB,AFGSC,MT,47.504700,-111.186996,1416,827,2026-06-30,USAF
+umd-minot_afb-2026q2,minot_afb,Minot AFB,AFGSC,ND,48.415600,-101.358002,1429,822,2026-06-30,USAF
+umd-whiteman_afb-2026q2,whiteman_afb,Whiteman AFB,AFGSC,MO,38.730301,-93.547897,901,1100,2026-06-30,USAF
+umd-kirtland_afb-2026q2,kirtland_afb,Kirtland AFB,AFGSC,NM,35.039976,-106.608925,1082,1147,2026-06-30,USAF
+umd-edwards_afb-2026q2,edwards_afb,Edwards AFB,AFMC,CA,34.910781,-117.886391,492,1004,2026-06-30,USAF
+umd-eglin_afb-2026q2,eglin_afb,Eglin AFB,AFMC,FL,30.481315,-86.515839,1189,747,2026-06-30,USAF
+umd-hanscom_afb-2026q2,hanscom_afb,Hanscom AFB,AFMC,MA,42.470001,-71.289001,617,1110,2026-06-30,USAF
+umd-hill_afb-2026q2,hill_afb,Hill AFB,AFMC,UT,41.124030,-111.973086,1048,1240,2026-06-30,USAF
+umd-robins_afb-2026q2,robins_afb,Robins AFB,AFMC,GA,32.640099,-83.591904,1091,1061,2026-06-30,USAF
+umd-tinker_afb-2026q2,tinker_afb,Tinker AFB,AFMC,OK,35.414700,-97.386597,1237,530,2026-06-30,USAF
+umd-wright_patterson_afb-2026q2,wright_patterson_afb,Wright-Patterson AFB,AFMC,OH,39.826099,-84.048302,938,1035,2026-06-30,USAF
+umd-arnold_afb-2026q2,arnold_afb,Arnold AFB,AFMC,TN,35.392601,-86.085800,1419,740,2026-06-30,USAF
+umd-hurlburt_field-2026q2,hurlburt_field,Hurlburt Field,AFSOC,FL,30.427799,-86.689301,832,1177,2026-06-30,USAF
+umd-cannon_afb-2026q2,cannon_afb,Cannon AFB,AFSOC,NM,34.382801,-103.321999,956,410,2026-06-30,USAF
+umd-jb_andrews-2026q2,jb_andrews,Joint Base Andrews,AFDW,MD,38.810799,-76.866997,1525,1114,2026-06-30,USAF
+umd-jb_anacostia_bolling-2026q2,jb_anacostia_bolling,Joint Base Anacostia-Bolling,AFDW,DC,38.842800,-77.016100,825,1035,2026-06-30,USAF
+umd-usafa-2026q2,usafa,US Air Force Academy,USAFA,CO,38.972497,-104.821125,1353,1230,2026-06-30,USAF
+umd-dobbins_arb-2026q2,dobbins_arb,Dobbins ARB,AFRC,GA,33.915401,-84.516296,942,473,2026-06-30,USAF
+umd-grissom_arb-2026q2,grissom_arb,Grissom ARB,AFRC,IN,40.648102,-86.152100,835,1234,2026-06-30,USAF
+umd-homestead_arb-2026q2,homestead_arb,Homestead ARB,AFRC,FL,25.488600,-80.383598,715,1099,2026-06-30,USAF
+umd-march_arb-2026q2,march_arb,March ARB,AFRC,CA,33.880699,-117.259003,618,717,2026-06-30,USAF
+umd-westover_arb-2026q2,westover_arb,Westover ARB,AFRC,MA,42.194000,-72.534798,638,1049,2026-06-30,USAF
+umd-peterson_sfb-2026q2,peterson_sfb,Peterson SFB,SpOC,CO,38.815800,-104.700800,540,1035,2026-06-30,USSF
+umd-schriever_sfb-2026q2,schriever_sfb,Schriever SFB,SpOC,CO,38.803100,-104.528900,1102,879,2026-06-30,USSF
+umd-buckley_sfb-2026q2,buckley_sfb,Buckley SFB,SpOC,CO,39.701698,-104.751999,1566,575,2026-06-30,USSF
+umd-vandenberg_sfb-2026q2,vandenberg_sfb,Vandenberg SFB,SSC,CA,34.737301,-120.584000,1076,1249,2026-06-30,USSF
+umd-patrick_sfb-2026q2,patrick_sfb,Patrick SFB,SSC,FL,28.234900,-80.610100,1452,696,2026-06-30,USSF
+umd-cape_canaveral_sfs-2026q2,cape_canaveral_sfs,Cape Canaveral SFS,SSC,FL,28.488900,-80.577800,1484,1041,2026-06-30,USSF
+umd-los_angeles_afb-2026q2,los_angeles_afb,Los Angeles AFB,SSC,CA,33.915500,-118.382500,1426,1215,2026-06-30,USSF

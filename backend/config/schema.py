@@ -324,11 +324,22 @@ class RecordRelationshipMapping(BaseModel):
 
 
 class RecordObservationMapping(BaseModel):
-    """Maps a numeric record field onto a scored monitoring observation."""
+    """Maps a numeric record field onto a scored monitoring observation.
+
+    ``MonitoringObservation.score`` is bounded to [0, 1].  ``score_max`` is an
+    optional normalization divisor (``score = raw_value / score_max``) for
+    fields declared on another bounded scale (e.g. a 0-100 index).  It is a
+    scale conversion, not a clamp: values that still fall outside [0, 1] after
+    normalization fail the record batch loudly.  DomainConfig cross-validation
+    requires the score_field's declared record_schema bounds to prove every
+    in-schema value normalizes into [0, 1] — see
+    ``DomainConfig._validate_cross_references``.
+    """
 
     metric_name: str
     entity_type: str
     score_field: str
+    score_max: float | None = Field(default=None, gt=0)
     rationale: str = ""
 
 
@@ -446,6 +457,247 @@ class PolicyRulePack(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Scorecard template config
+# ---------------------------------------------------------------------------
+
+
+class ScorecardMetricInputConfig(BaseModel):
+    """One named input consumed by a configured scorecard metric."""
+
+    name: str
+    source: Literal["record_feed", "metric", "graph", "document"]
+    ref: str
+    field: str | None = None
+    filter: dict[str, str | float | int | bool] = Field(default_factory=dict)
+
+
+class ScorecardFormulaConfig(BaseModel):
+    """Bounded scorecard formula; no arbitrary code execution."""
+
+    operator: Literal["ratio", "sum", "mean", "weighted_mean", "latest"]
+    numerator: str | None = None
+    denominator: str | None = None
+    value: str | None = None
+    weight: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_operator_shape(self) -> ScorecardFormulaConfig:
+        if self.operator == "ratio":
+            missing = [
+                field_name
+                for field_name, input_ref in (
+                    ("numerator", self.numerator),
+                    ("denominator", self.denominator),
+                )
+                if input_ref is None
+            ]
+            extra = [
+                field_name
+                for field_name, input_ref in (
+                    ("value", self.value),
+                    ("weight", self.weight),
+                )
+                if input_ref is not None
+            ]
+        elif self.operator in {"sum", "mean", "latest"}:
+            missing = ["value"] if self.value is None else []
+            extra = [
+                field_name
+                for field_name, input_ref in (
+                    ("numerator", self.numerator),
+                    ("denominator", self.denominator),
+                    ("weight", self.weight),
+                )
+                if input_ref is not None
+            ]
+        else:
+            missing = [
+                field_name
+                for field_name, input_ref in (
+                    ("value", self.value),
+                    ("weight", self.weight),
+                )
+                if input_ref is None
+            ]
+            extra = [
+                field_name
+                for field_name, input_ref in (
+                    ("numerator", self.numerator),
+                    ("denominator", self.denominator),
+                )
+                if input_ref is not None
+            ]
+
+        if missing or extra:
+            message_parts: list[str] = []
+            if missing:
+                message_parts.append(f"requires {', '.join(missing)}")
+            if extra:
+                message_parts.append(f"does not accept {', '.join(extra)}")
+            raise ValueError(
+                f"Scorecard formula operator '{self.operator}' "
+                f"{' and '.join(message_parts)}."
+            )
+
+        return self
+
+
+class ScorecardThresholdConfig(BaseModel):
+    """Thresholds used to classify a configured scorecard metric.
+
+    Exactly one grading direction may be used per metric:
+
+    - higher-is-better: ``pass_min`` / ``warn_min`` / ``fail_max``
+    - lower-is-better: ``pass_max`` / ``warn_max`` / ``fail_min``
+
+    Mixing fields from both directions is a validation error, and at least
+    one threshold field must be set so every metric has a defined grade.
+    Bounds must also be coherent within their direction so grading bands
+    cannot overlap: higher-is-better requires ``pass_min >= warn_min >
+    fail_max`` and lower-is-better requires ``pass_max <= warn_max <
+    fail_min`` (each comparison applies where both fields are present).
+    """
+
+    pass_min: float | None = None
+    warn_min: float | None = None
+    fail_max: float | None = None
+    pass_max: float | None = None
+    warn_max: float | None = None
+    fail_min: float | None = None
+    incomplete_when_missing: bool = True
+
+    @model_validator(mode="after")
+    def validate_threshold_direction(self) -> ScorecardThresholdConfig:
+        has_higher = any(
+            bound is not None
+            for bound in (self.pass_min, self.warn_min, self.fail_max)
+        )
+        has_lower = any(
+            bound is not None
+            for bound in (self.pass_max, self.warn_max, self.fail_min)
+        )
+        if has_higher and has_lower:
+            raise ValueError(
+                "Scorecard thresholds cannot mix higher-is-better fields "
+                "(pass_min/warn_min/fail_max) with lower-is-better fields "
+                "(pass_max/warn_max/fail_min)."
+            )
+        if not has_higher and not has_lower:
+            raise ValueError(
+                "Scorecard thresholds must set at least one of "
+                "pass_min/warn_min/fail_max or pass_max/warn_max/fail_min."
+            )
+
+        # Intra-direction ordering: bounds must be coherent so grading
+        # bands cannot overlap (red-cell finding B1).
+        if (
+            self.pass_min is not None
+            and self.warn_min is not None
+            and self.pass_min < self.warn_min
+        ):
+            raise ValueError(
+                f"Scorecard thresholds: pass_min {self.pass_min} must be "
+                f">= warn_min {self.warn_min}."
+            )
+        for field_name, bound in (
+            ("pass_min", self.pass_min),
+            ("warn_min", self.warn_min),
+        ):
+            if (
+                bound is not None
+                and self.fail_max is not None
+                and bound <= self.fail_max
+            ):
+                raise ValueError(
+                    f"Scorecard thresholds: {field_name} {bound} must be "
+                    f"> fail_max {self.fail_max}."
+                )
+        if (
+            self.pass_max is not None
+            and self.warn_max is not None
+            and self.pass_max > self.warn_max
+        ):
+            raise ValueError(
+                f"Scorecard thresholds: pass_max {self.pass_max} must be "
+                f"<= warn_max {self.warn_max}."
+            )
+        for field_name, bound in (
+            ("pass_max", self.pass_max),
+            ("warn_max", self.warn_max),
+        ):
+            if (
+                bound is not None
+                and self.fail_min is not None
+                and bound >= self.fail_min
+            ):
+                raise ValueError(
+                    f"Scorecard thresholds: {field_name} {bound} must be "
+                    f"< fail_min {self.fail_min}."
+                )
+        return self
+
+
+class ScorecardMetricConfig(BaseModel):
+    """A configured scorecard metric with safe formula metadata."""
+
+    id: str
+    label: str
+    description: str = ""
+    unit: str = ""
+    housing_category: Literal["UH", "MFH", "combined"] = "combined"
+    inputs: list[ScorecardMetricInputConfig]
+    formula: ScorecardFormulaConfig
+    thresholds: ScorecardThresholdConfig
+    freshness_days: int = Field(default=90, gt=0)
+    required: bool = True
+
+
+class ScorecardSectionConfig(BaseModel):
+    """A grouped set of scorecard metrics."""
+
+    id: str
+    label: str
+    metrics: list[ScorecardMetricConfig]
+
+
+class ScorecardTemplateConfig(BaseModel):
+    """A safe configurable scorecard template."""
+
+    id: str
+    name: str
+    category: Literal["UH", "MFH", "combined"]
+    scope: Literal["enterprise", "majcom", "region", "installation", "market_area"]
+    period: Literal["monthly", "quarterly", "annual", "ad_hoc"]
+    sections: list[ScorecardSectionConfig]
+    export_formats: list[Literal["json", "markdown"]] = Field(
+        default_factory=lambda: ["json", "markdown"]
+    )
+
+
+class ScorecardsConfig(BaseModel):
+    """Collection of configured scorecard templates for the domain."""
+
+    templates: list[ScorecardTemplateConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_template_ids(self) -> ScorecardsConfig:
+        seen: set[str] = set()
+        for template in self.templates:
+            if template.id in seen:
+                raise ValueError(f"Duplicate scorecard template id: '{template.id}'")
+            seen.add(template.id)
+            section_ids: set[str] = set()
+            for section in template.sections:
+                if section.id in section_ids:
+                    raise ValueError(
+                        f"Duplicate scorecard section id '{section.id}' "
+                        f"in template '{template.id}'"
+                    )
+                section_ids.add(section.id)
+        return self
+
+
+# ---------------------------------------------------------------------------
 # Peer-group z-score config
 # ---------------------------------------------------------------------------
 
@@ -507,6 +759,7 @@ class DomainConfig(BaseModel):
     records: RecordsConfig | None = None
     analytics: AnalyticsConfig | None = None
     peer_stats: PeerStatsConfig | None = None
+    scorecards: ScorecardsConfig = Field(default_factory=ScorecardsConfig)
     policy_rules: list[PolicyRulePack] = Field(
         default_factory=lambda: cast(list[PolicyRulePack], [])
     )
@@ -655,6 +908,128 @@ class DomainConfig(BaseModel):
                         f"Records feed '{feed.name}' observation mapping score_field "
                         f"'{observation_mapping.score_field}' is not in record_schema."
                     )
+                else:
+                    # MonitoringObservation.score is bounded to [0, 1]; the
+                    # declared record_schema bounds must prove every in-schema
+                    # value lands (or normalizes via score_max) into [0, 1].
+                    score_def = feed.record_schema[observation_mapping.score_field]
+                    label = (
+                        f"Records feed '{feed.name}' observation "
+                        f"'{observation_mapping.metric_name}' score_field "
+                        f"'{observation_mapping.score_field}'"
+                    )
+                    if score_def.type.value not in ("integer", "decimal"):
+                        # Bounds on non-numeric types are not enforced at
+                        # record intake, so a non-numeric score_field with
+                        # numeric-looking bounds would pass load-time checks
+                        # yet still hard-fail worker-side at mapping time.
+                        errors.append(
+                            f"{label} must be a numeric record_schema type "
+                            f"(integer or decimal), got "
+                            f"'{score_def.type.value}'."
+                        )
+                    else:
+                        if score_def.min_value is None or score_def.min_value < 0:
+                            errors.append(
+                                f"{label} must declare min_value >= 0 in "
+                                f"record_schema; observation scores are "
+                                f"bounded to [0, 1]."
+                            )
+                        if observation_mapping.score_max is None:
+                            if score_def.max_value is None or score_def.max_value > 1:
+                                errors.append(
+                                    f"{label} must declare max_value <= 1 in "
+                                    f"record_schema, or the observation must "
+                                    f"set score_max to normalize the field's "
+                                    f"scale into [0, 1]."
+                                )
+                        elif score_def.max_value is None:
+                            # A field with no declared upper bound (e.g. a
+                            # raw count) can never be proven to normalize
+                            # into [0, 1], so score_max on such a field is
+                            # rejected outright.
+                            errors.append(
+                                f"{label} sets score_max but record_schema "
+                                f"declares no max_value; an unbounded field "
+                                f"cannot be proven to normalize into [0, 1]. "
+                                f"Declare max_value or drop the observation."
+                            )
+                        elif score_def.max_value > observation_mapping.score_max:
+                            errors.append(
+                                f"{label} declares max_value "
+                                f"{score_def.max_value} greater than "
+                                f"score_max {observation_mapping.score_max}; "
+                                f"normalized scores could exceed 1."
+                            )
+
+        # --- scorecard template references ---
+        feed_schemas = {
+            feed.name: set(feed.record_schema.keys())
+            for feed in records_config.feeds
+        }
+        for template in self.scorecards.templates:
+            metric_ids: set[str] = set()
+            for section in template.sections:
+                for metric in section.metrics:
+                    if metric.id in metric_ids:
+                        errors.append(
+                            f"Duplicate scorecard metric id '{metric.id}' in "
+                            f"template '{template.id}'."
+                        )
+                    metric_ids.add(metric.id)
+
+                    input_names = {metric_input.name for metric_input in metric.inputs}
+                    for metric_input in metric.inputs:
+                        if metric_input.source == "record_feed":
+                            feed_schema = feed_schemas.get(metric_input.ref)
+                            if feed_schema is None:
+                                errors.append(
+                                    f"Scorecard metric '{metric.id}' in template "
+                                    f"'{template.id}' references unknown records feed "
+                                    f"'{metric_input.ref}'."
+                                )
+                            elif metric_input.field is None:
+                                errors.append(
+                                    f"Scorecard metric '{metric.id}' in template "
+                                    f"'{template.id}' record_feed input "
+                                    f"'{metric_input.name}' requires field."
+                                )
+                            elif metric_input.field not in feed_schema:
+                                errors.append(
+                                    f"Scorecard metric '{metric.id}' in template "
+                                    f"'{template.id}' record_feed input "
+                                    f"'{metric_input.name}' references unknown field "
+                                    f"'{metric_input.field}' in records feed "
+                                    f"'{metric_input.ref}'."
+                                )
+                            # Filter keys must be declared feed fields; a
+                            # typo'd key would otherwise match no records and
+                            # silently degrade the metric to incomplete
+                            # (red-cell finding B4/C1).
+                            if feed_schema is not None:
+                                for filter_key in sorted(metric_input.filter):
+                                    if filter_key not in feed_schema:
+                                        errors.append(
+                                            f"Scorecard metric '{metric.id}' in "
+                                            f"template '{template.id}' record_feed "
+                                            f"input '{metric_input.name}' filter key "
+                                            f"'{filter_key}' is not declared in "
+                                            f"records feed '{metric_input.ref}'."
+                                        )
+
+                    formula_refs = (
+                        ("numerator", metric.formula.numerator),
+                        ("denominator", metric.formula.denominator),
+                        ("value", metric.formula.value),
+                        ("weight", metric.formula.weight),
+                    )
+                    for field_name, input_ref in formula_refs:
+                        if input_ref is not None and input_ref not in input_names:
+                            errors.append(
+                                f"Scorecard metric '{metric.id}' in template "
+                                f"'{template.id}' formula field '{field_name}' "
+                                f"references undeclared input '{input_ref}'."
+                            )
 
         if errors:
             raise ValueError(
@@ -701,4 +1076,11 @@ __all__ = [
     "RecordsConfig",
     "ValidationConfig",
     "VectorStoreConfig",
+    "ScorecardFormulaConfig",
+    "ScorecardMetricConfig",
+    "ScorecardMetricInputConfig",
+    "ScorecardSectionConfig",
+    "ScorecardTemplateConfig",
+    "ScorecardThresholdConfig",
+    "ScorecardsConfig",
 ]

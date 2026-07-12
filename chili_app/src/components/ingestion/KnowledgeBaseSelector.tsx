@@ -14,12 +14,20 @@ type KnowledgeBaseSelectorProps = {
   createDisabled: boolean
   createName: string
   deleteDisabled: boolean
+  /**
+   * Number of knowledge bases from other domains excluded from `knowledgeBases`
+   * when domain scoping is active. When > 0 a show-all-domains toggle renders.
+   */
+  hiddenDomainCount?: number
   knowledgeBases: KnowledgeBaseSummaryResponse[]
   onCreateDescriptionChange: (value: string) => void
   onCreateNameChange: (value: string) => void
   onCreateSubmit: () => void
   onDelete: (knowledgeBaseId: string) => void
   onSelect: (knowledgeBaseId: string) => void
+  onToggleShowAllDomains?: () => void
+  /** Whether the list currently includes knowledge bases from all domains. */
+  showAllDomains?: boolean
 }
 
 function countLabel(count: number) {
@@ -47,12 +55,15 @@ export function KnowledgeBaseSelector({
   createDisabled,
   createName,
   deleteDisabled,
+  hiddenDomainCount = 0,
   knowledgeBases,
   onCreateDescriptionChange,
   onCreateNameChange,
   onCreateSubmit,
   onDelete,
   onSelect,
+  onToggleShowAllDomains,
+  showAllDomains = false,
 }: KnowledgeBaseSelectorProps) {
   const isCreateDisabled = createDisabled || createName.trim().length === 0
 
@@ -72,6 +83,20 @@ export function KnowledgeBaseSelector({
         </h2>
         <Chip label={countLabel(knowledgeBases.length)} tone="info" />
       </div>
+
+      {hiddenDomainCount > 0 ? (
+        <button
+          aria-pressed={showAllDomains}
+          className="page-button page-button--secondary ingestion-kb-selector__domain-toggle"
+          data-testid="kb-show-all-domains-toggle"
+          onClick={onToggleShowAllDomains}
+          type="button"
+        >
+          {showAllDomains
+            ? 'Scope to active domain'
+            : `Show all domains (${hiddenDomainCount} hidden)`}
+        </button>
+      ) : null}
 
       {knowledgeBases.length > 0 ? (
         <div className="ingestion-kb-list">
@@ -112,6 +137,11 @@ export function KnowledgeBaseSelector({
             )
           })}
         </div>
+      ) : hiddenDomainCount > 0 ? (
+        <EmptyState
+          title="No knowledge bases in the active domain"
+          description="Show all domains to view knowledge bases created under other domains, or create a new corpus."
+        />
       ) : (
         <EmptyState
           title="No knowledge bases yet"

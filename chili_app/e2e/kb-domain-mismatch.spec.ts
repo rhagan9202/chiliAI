@@ -4,8 +4,9 @@
  * Proves the domain-reconfigurability thesis end to end: a knowledge base
  * created under the active domain (the medicare exemplar by default) is
  * stamped with that domain; after the active pack is swapped to a different
- * domain, the KB manager shows a warn-only badge on the KB — and nothing is
- * blocked.
+ * domain, the KB is scoped out of the studio's default (active-domain) list,
+ * and the show-all-domains toggle reveals it with a warn-only badge — nothing
+ * is blocked.
  *
  * No page.route mocking — the UI talks to the real API. The domain swap and
  * cleanup use the real admin endpoints (/config/packs, /config/switch,
@@ -69,9 +70,18 @@ test.describe('KB domain mismatch warning', () => {
       packList.packs.find((pack) => pack.domain_name === originalDomain)?.path
     expect(originalPackRef, 'the active pack must be resolvable for restore').toBeTruthy()
 
-    const otherPack = packList.packs.find(
+    const alternates = packList.packs.filter(
       (pack) => pack.valid && pack.domain_name !== null && pack.domain_name !== originalDomain,
     )
+    // The mismatch badge is only observable when both packs read the SAME KB
+    // store, so prefer the food_supply_chain exemplar (pins the identical
+    // dev-stack storage) as a deterministic swap target instead of whichever
+    // pack happens to sort first. A pack without infra pins would fall back
+    // to per-process default stores, making KBs created under the original
+    // domain wholly absent after the swap — real platform behavior, but not
+    // the warn-badge contract this spec pins.
+    const otherPack =
+      alternates.find((pack) => pack.domain_name === 'food_supply_chain') ?? alternates[0]
     expect(
       otherPack,
       'at least one valid pack for a different domain must exist (e.g. food_supply_chain)',
@@ -111,6 +121,11 @@ test.describe('KB domain mismatch warning', () => {
       // --- The KB now warns, and nothing is blocked. ---
       await page.reload()
       await expect(page.getByRole('heading', { name: 'Ingestion Studio' })).toBeVisible()
+
+      // The studio scopes the KB list to the active domain by default, so the
+      // mismatched KB is hidden until the show-all-domains toggle reveals it.
+      await expect(kbCard).toHaveCount(0)
+      await page.getByTestId('kb-show-all-domains-toggle').click()
 
       await expect(kbCard).toBeVisible()
       await expect(kbCard.getByTestId('kb-domain-mismatch')).toBeVisible()

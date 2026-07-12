@@ -57,6 +57,11 @@ def test_persist_and_load_round_trip(database_url: str) -> None:
         )
         assert [record.record_id for record in loaded] == ["claim-1", "claim-2"]
         assert loaded[0].payload["amount"] == 12.5
+
+        # KB-wide load returns the same rows without needing a correlation id.
+        kb_loaded = store.load_for_kb(knowledge_base_id="kb-records-test")
+        assert [record.record_id for record in kb_loaded] == ["claim-1", "claim-2"]
+        assert kb_loaded[0].payload["amount"] == 12.5
     finally:
         with provider.connection() as conn:
             conn.execute(

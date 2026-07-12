@@ -25,6 +25,7 @@ from graph.protocols import GraphServiceProtocol
 from monitoring.adapters.protocols import AlertHistoryWriter, ObservationWriter
 from policy.adapters.protocols import PolicyItemRepository
 from records.adapters.protocols import RawRecordStore
+from scorecards.adapters.protocols import ScorecardRunRepository
 from storage.protocols import ObjectStore
 from vectorstore.protocols import VectorServiceProtocol
 
@@ -45,6 +46,7 @@ class KbDeletionStores:
     case_repository: CaseRepository
     policy_item_repository: PolicyItemRepository
     evidence_pack_repository: EvidencePackRepository
+    scorecard_run_repository: ScorecardRunRepository
     object_store: ObjectStore
 
 
@@ -82,6 +84,7 @@ def kb_deletion_steps(
         ("cases", lambda: stores.case_repository.delete_by_kb(kb)),
         ("policy", lambda: stores.policy_item_repository.delete_by_kb(kb)),
         ("evidence", lambda: stores.evidence_pack_repository.delete_by_kb(kb)),
+        ("scorecards", lambda: stores.scorecard_run_repository.delete_by_kb(kb)),
         ("object_store", lambda: delete_object_store_prefix(stores.object_store, kb)),
     ]
 

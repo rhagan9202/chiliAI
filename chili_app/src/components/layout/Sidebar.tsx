@@ -8,6 +8,7 @@ import {
   Gauge,
   GitBranch,
   LayoutDashboard,
+  MapPinned,
   ShieldCheck,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
@@ -28,6 +29,7 @@ type NavItem = {
 // generic icon so a new domain config can ship pages without a code change.
 const DEFAULT_ICONS: Record<string, ComponentType<{ size?: number }>> = {
   dashboard: LayoutDashboard,
+  housing: MapPinned,
   alerts: ClipboardList,
   investigation: GitBranch,
   cases: BriefcaseBusiness,
@@ -40,6 +42,7 @@ const DEFAULT_ICONS: Record<string, ComponentType<{ size?: number }>> = {
 // Default routes by page id, used only if domain config is unavailable.
 const DEFAULT_NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
+  { id: 'housing', label: 'Housing', to: '/housing', icon: MapPinned },
   { id: 'alerts', label: 'Alert Feed', to: '/alerts', icon: ClipboardList },
   { id: 'investigation', label: 'Investigation', to: '/investigation', icon: GitBranch, capability: 'gnn' },
   { id: 'cases', label: 'Cases', to: '/cases', icon: BriefcaseBusiness },

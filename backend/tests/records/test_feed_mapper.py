@@ -145,3 +145,66 @@ def test_map_observations_raises_on_non_numeric_string_score() -> None:
     record = _record_with_score("c5", "not-a-number")
     with pytest.raises(RecordMappingError, match="not numeric"):
         map_observations(_feed(), [record])
+
+
+def test_map_observations_raises_loudly_on_out_of_range_score() -> None:
+    """A raw value outside [0, 1] with no score_max is a hard mapper error."""
+    record = _record_with_score("c6", 1250.0)
+    with pytest.raises(RecordMappingError) as exc_info:
+        map_observations(_feed(), [record])
+    message = str(exc_info.value)
+    assert "claims_feed" in message
+    assert "anomaly_score" in message
+    assert "1250.0" in message
+    assert "[0, 1]" in message
+
+
+def test_map_observations_raises_on_negative_score() -> None:
+    record = _record_with_score("c7", -0.1)
+    with pytest.raises(RecordMappingError, match=r"outside the \[0, 1\]"):
+        map_observations(_feed(), [record])
+
+
+def _feed_with_score_max(score_max: float) -> RecordFeedConfig:
+    feed = _feed()
+    return feed.model_copy(
+        update={
+            "observations": [
+                RecordObservationMapping(
+                    metric_name="claim_anomaly",
+                    entity_type="claim",
+                    score_field="anomaly_score",
+                    score_max=score_max,
+                    rationale="Structured-feed anomaly score.",
+                )
+            ]
+        }
+    )
+
+
+def test_map_observations_normalizes_with_score_max() -> None:
+    """A 0-100 scale value divides down into the [0, 1] observation bound."""
+    record = _record_with_score("c8", 77.0)
+    observations = map_observations(_feed_with_score_max(100.0), [record])
+    assert len(observations) == 1
+    assert observations[0].score == pytest.approx(0.77)
+
+
+@pytest.mark.parametrize("raw", [0.0, 100.0])
+def test_map_observations_score_max_keeps_boundary_values(raw: float) -> None:
+    record = _record_with_score("c9", raw)
+    observations = map_observations(_feed_with_score_max(100.0), [record])
+    assert observations[0].score == pytest.approx(raw / 100.0)
+
+
+def test_map_observations_raises_when_still_out_of_range_after_score_max() -> None:
+    """Normalization is a scale conversion, not a clamp — 1250/100 still fails."""
+    record = _record_with_score("c10", 1250.0)
+    with pytest.raises(RecordMappingError) as exc_info:
+        map_observations(_feed_with_score_max(100.0), [record])
+    message = str(exc_info.value)
+    assert "claims_feed" in message
+    assert "anomaly_score" in message
+    assert "1250.0" in message
+    assert "score_max 100.0" in message
+    assert "12.5" in message

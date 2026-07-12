@@ -2,15 +2,16 @@
 
 **Verified against codebase:** partially refreshed 2026-06-16; individual pages carry their own verification stamps.
 
-This wiki is the authoritative technical reference for the chiliAI codebase. It documents exact current contracts — signatures, payload shapes, route paths, adapter inventories — so agents and developers can make changes without reading the entire codebase.
+This wiki is the authoritative **narrative** technical reference for the chiliAI codebase. It documents exact current contracts — signatures, payload shapes, route paths, adapter inventories — so agents and developers can make changes without reading the entire codebase. Where the wiki and the code disagree, the code wins; update the wiki. It is maintained by the `dev-wiki-curator` agent.
 
 ## Relationship to Other Docs
 
 | Doc | Owns |
 |-----|------|
-| `docs/architecture.md` | *Why* and high-level system shape (C4 diagrams, guiding principles) |
+| `docs/architecture.md` | *Why* and high-level system shape (C4 diagrams, guiding principles) — the design source of truth |
 | `CLAUDE.md` | Operating rules, hard architectural constraints, common commands |
 | `backend/README.md`, `chili_app/README.md` | Setup, run commands, current implementation status |
+| `docs/ledger/` | Generated point-in-time **index** of the public surface (module map, protocol/route/event inventories) — a snapshot, not a maintained narrative; this wiki supersedes it where they disagree |
 | **This wiki** | *What* and exact current detail: signatures, route tables, payload shapes, adapter lists |
 
 ## Navigation

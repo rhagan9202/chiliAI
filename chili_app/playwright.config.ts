@@ -13,6 +13,9 @@ export default defineConfig({
   testDir: './e2e',
   /* Seed the real backend stores once before any spec (full-stack e2e). */
   globalSetup: './e2e/global-setup.ts',
+  /* Delete every KB the run created (baseline diff) so e2e can never leave a
+     fresh empty KB squatting on newest-ready KB resolution (demo poisoning). */
+  globalTeardown: './e2e/global-teardown.ts',
   /* No timeout-based retries in local dev; 2 retries on CI */
   retries: process.env['CI'] ? 2 : 0,
   /*

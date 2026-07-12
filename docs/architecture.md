@@ -82,12 +82,12 @@ Depend on **protocols** (Python `Protocol`), **abstract base classes**, or **nar
 
 ### 2.5 Strict typing
 
-- **Backend**: Python 3.12. All code must be compatible with `pyright --strict` — full annotations, no untyped `Any`, explicit domain types.
+- **Backend**: Python 3.12. All code is written to be `pyright --strict`-compatible — full annotations, no untyped `Any`, explicit domain types. The enforced gate is bare `pyright`, whose strict scope is `tool.pyright.include` in `backend/pyproject.toml`; modules are added to `include` as they are hardened, with full-tree inclusion the end state.
 - **Frontend**: TypeScript in strict mode (`noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`).
 
 ### 2.6 Test-driven quality
 
-Backend test suites must maintain **≥ 85% coverage** for affected packages. Missing tests are treated as incomplete work. Tests are isolated and deterministic — external systems are mocked or faked at the adapter boundary.
+Backend test suites must maintain **≥ 85% coverage** for affected packages (the project standard, checked in review; the CI gate enforces the aggregate `--cov-fail-under=85`). Missing tests are treated as incomplete work. Tests are isolated and deterministic — external systems are mocked or faked at the adapter boundary.
 
 ---
 
@@ -216,6 +216,7 @@ backend/
 │   ├── state.py                # Application state container assembled at startup
 │   ├── contracts.py            # API-facing request/response models
 │   ├── _alert_store.py         # In-process alert read model
+│   ├── _housing_read_model.py  # Housing overview/installation read models over feed records
 │   ├── _kb_busy.py             # Workflow/pending-cleanup mutation guard
 │   ├── _kb_projection.py       # KB read projection updated from events
 │   ├── _rag_bridges.py         # RAG <-> KB document/entity bridges
@@ -230,6 +231,8 @@ backend/
 │   └── routers/
 │       ├── knowledgebases.py   # KB CRUD, document management
 │       ├── records.py          # Structured-record submission endpoints
+│       ├── housing.py          # Air Force housing dashboard read endpoints (/housing/*)
+│       ├── scorecards.py       # Scorecard templates/runs/exports (/scorecards/*)
 │       ├── alerts.py           # Alert feed, acknowledgment
 │       ├── investigation.py    # Investigation queries
 │       ├── graph.py            # Graph queries, entity detail
@@ -389,6 +392,7 @@ backend/
 │       ├── medicare_fraud.yaml
 │       ├── medicare_fraud_dev.yaml
 │       ├── medicare_fraud_cms_desynpuf.yaml  # CMS DE-SynPUF + NPPES feeds (9 feeds)
+│       ├── department_air_force_housing.yaml # DAF housing pack (6 feeds, UH/MFH scorecard templates)
 │       └── food_supply_chain.yaml
 ├── events/                     # Event bus abstraction
 │   ├── __init__.py
@@ -449,6 +453,16 @@ policy/                         # Durable, KB-scoped policy intelligence (BL-011
         ├── protocols.py        # PolicyItemRepository (upsert/get/list/update/delete_by_kb)
         ├── in_memory.py        # InMemoryPolicyItemRepository
         └── postgres.py         # PostgresPolicyItemRepository (policy_items table, migration 0003_policy)
+scorecards/                     # Config-driven statutory scorecard runs (af_housing)
+    ├── evaluation.py           # Pure evaluate_template() over SourceRecords; no I/O
+    ├── service.py              # ScorecardService + ScorecardSourceRecordLoader protocol
+    ├── service_models.py       # Generate/list/export request-response models
+    ├── models.py               # ScorecardRun, section/metric results, export formats
+    ├── exceptions.py
+    └── adapters/
+        ├── protocols.py        # ScorecardRunRepository
+        ├── in_memory.py        # InMemoryScorecardRunRepository
+        └── postgres.py         # PostgresScorecardRunRepository (migration 0008_scorecards)
 conversations/                  # Durable RAG chat conversations (BL-012)
     ├── models.py               # Conversation, ConversationMessage, ConversationCitation
     ├── service.py              # ConversationService (create / get / append_messages)
@@ -499,6 +513,7 @@ conversations/                  # Durable RAG chat conversations (BL-012)
 | `records` | Structured-record validation, raw_records persistence, feed mapping | `config`, `shared`, `events`, `database`, `monitoring.models` | imports of `graph`/`analytics` internals — communicates downstream only by publishing `RecordsIngestedEvent` |
 | `policy` | KB-scoped policy item persistence, rule evaluation, analyst triage | `config` (PolicyRulePack), `shared.types`, `database.ConnectionProvider` | `api`, `ingestion`, `graph` internals — the pure `evaluate()` function takes a plain `PolicyEvalState`; item I/O goes through `PolicyItemRepository` |
 | `cases` | KB-scoped investigation case management | `shared.types`, `database.ConnectionProvider` | `api`, `ingestion`, `monitoring` internals |
+| `scorecards` | Config-driven scorecard evaluation (`evaluate_template`), durable run persistence, JSON/Markdown exports | `config` (ScorecardTemplateConfig), `shared`, `database.ConnectionProvider`; feed records arrive through the `ScorecardSourceRecordLoader` protocol implemented at the gateway | `records`, `api`, `ingestion` internals — never imports the records module directly |
 
 ### 5.3 Cross-module interaction rules
 
@@ -889,6 +904,24 @@ The analytics pipeline is designed as a **feedback loop**: analysis results (ris
 - Risk scoring aggregates signals from both time-series and GNN outputs
 - Each monitoring cycle produces a progressively richer graph
 
+### 6.8 Housing scorecards & executive dashboard (branch `af_housing`)
+
+The Department of the Air Force housing demo exercises the platform's domain-reconfigurability with a statutory-reporting vertical. Every piece is configured or generic — no housing types are hardcoded.
+
+**Scorecards module (`backend/scorecards/`).** A standard-shape module that evaluates config-driven report templates. `evaluation.py` is pure (no I/O): `evaluate_template()` grades `ScorecardTemplateConfig` metrics against `SourceRecord` rows, applying bounded formula operators (`ratio`, `sum`, `mean`, `weighted_mean`, `latest`), per-metric freshness windows, and threshold banding. `ScorecardService.generate()` selects the KB's records by scope + period, evaluates, content-hashes the source snapshot into the run id, and persists the `ScorecardRun` through `ScorecardRunRepository` (in-memory or Postgres, migration `0008_scorecards`). Runs export as JSON or Markdown.
+
+**Threshold directions.** `ScorecardThresholdConfig` supports exactly one grading direction per metric: higher-is-better (`pass_min`/`warn_min`/`fail_max`) or lower-is-better (`pass_max`/`warn_max`/`fail_min`). Mixing directions is a load-time validation error, and bounds must be ordered so grading bands cannot overlap.
+
+**`RecordFeedSourceLoader` bridge (`api/dependencies.py`).** Scorecards never import the records module. The gateway implements the `scorecards.service.ScorecardSourceRecordLoader` protocol with `RecordFeedSourceLoader`, which reads the raw-record store (`RawRecordStore.load_for_kb`), maps stored `record_type`s back to the active config's feed names, and dates each row from its `snapshot_date` column so freshness checks operate on real observation dates. This keeps the cross-module interaction on the sanctioned gateway path.
+
+**Housing read models (`api/_housing_read_model.py` + `api/routers/housing.py`).** The `/housing/overview` and `/housing/installations` endpoints are a thin router over gateway read-model builders (the same extraction pattern as `api/_analytics_overview.py`). The builders aggregate the KB's ingested feed rows — the same rows the scorecard evaluator consumes via the bridge — into per-installation rollups, derive `ok`/`watch`/`critical`/`unknown` status with statutorily informed banding, and default to the newest KB of the active domain when no `knowledge_base_id` is passed. `derive_status_with_reasons` is the single threshold evaluation: it returns the status band **and** the human-readable `status_reasons` the API exposes per installation (`derive_status` is a thin wrapper), so the band and its explanation can never disagree — including at boundary values. Installations also carry `open_work_orders_rank`, a competition rank computed among *reporting* installations only (non-reporters are `unknown` and unranked). Each installation row additionally exposes the aggregate inputs behind every overview number — value/weight pairs (`occupancy_rate`/`occupancy_unit_weight`, `condition_index`/`condition_unit_weight`, `resident_satisfaction`/`satisfaction_survey_count`), work-order counts, and UH/MFH available-vs-authorized units (nullable where the feed never reported) — taken from the same rollup accumulators the overview sums, so the frontend can recompute every portfolio aggregate for any filtered subset with identical semantics (the exact formulas are documented on the contract fields and pinned by exact-equality router tests). Note the two weights differ by design: occupancy weighs by total units (available + offline) of utilization-reporting rows; condition weighs by available units of condition-reporting rows. Installations without resolvable coordinates appear in `items` but not `map_points`; the frontend renders them as a visible "location pending" list rather than dropping them.
+
+**Frontend.** `/housing` (`HousingExecutivePage`) renders a real Albers CONUS map (`d3-geo` + `topojson-client` + pre-projected `us-atlas` states, no tile servers) with all 65 CONUS AF/SF installations, marker declutter with leader legs, branch glyphs (USAF/USSF), and status/size encodings. A single summary band (`HousingSummaryBand`) sits **above the map** (header → band → filter strip → map → ranking) and carries every portfolio aggregate — counts plus the executive KPIs (occupancy, condition index, satisfaction, overdue work-order rate, UH/MFH supply ratios) — recomputed client-side from the **filtered** installation set by the pure `housingFilters.aggregateInstallations()` using the read model's aggregate-input fields and identical weighting semantics (unfiltered values exactly match `/housing/overview`, unit-test pinned; metrics with no reporters in the subset show "n/a"). A status/branch/command filter strip (`HousingFilterStrip` + the pure `housingFilters.ts` module) narrows the band aggregates, map, ranking table, and status counts together. The installation detail card explains itself: a "Why this status" list rendered straight from the API's `status_reasons`, a reporters-only rank pill (backend `open_work_orders_rank` preferred, client fallback), and links into the scorecard run viewer at `/scorecards/:runId?kb=<kbId>` (`ScorecardRunPage`) — graded sections, metric health/completeness chips, citations, and JSON/Markdown export against the real export endpoint; these run links are the dashboard's only scorecard entry point. Scorecard generation has **no UI surface** (the earlier readiness panel and "Generate scorecard" button were retired 2026-07-07 in favor of the unified band): runs are created via `POST /scorecards/runs` by the seed tool and covered by backend router tests. With no housing rows ingested the page falls back to the public installation reference layer (`src/data/airForceInstallations.ts`) with placeholder band cards — no fabricated numbers.
+
+**Seed path.** `make seed-housing` (→ `tools/seed_housing_demo.py`) drives the *running* API over real HTTP: creates a fresh KB, uploads the six housing feed fixture CSVs through `POST /records/{kb}/files`, waits for the ingest workflows, and optionally generates scorecard runs (`SEED_ARGS="--scorecards"`). Requires the stack running with the housing pack (`make dev-domain DOMAIN=department_air_force_housing`). Reseeding uses a fresh KB each run — the housing read models aggregate the newest KB of the active domain.
+
+**Provenance.** Every UH (8-metric) and MFH (12-metric) template metric traces to a congressional mandate; the statutory basis, per-metric citations, and the honest simplifications the demo makes are documented in the research dossier at [`docs/research/housing-scorecard-mandates.md`](research/housing-scorecard-mandates.md).
+
 ---
 
 ## 7. Knowledge Base Management
@@ -971,6 +1004,7 @@ chili_app/src/
 │   ├── KnowledgeBaseManager.tsx
 │   ├── AlertFeed.tsx
 │   ├── InvestigationWorkbench.tsx
+│   ├── HousingExecutivePage.tsx # /housing — map-led DAF housing dashboard (see §6.8)
 │   ├── RagChat.tsx
 │   └── ConfigEditor.tsx
 ├── components/
@@ -978,6 +1012,7 @@ chili_app/src/
 │   ├── alerts/                 # Alert list item, badge, detail
 │   ├── chat/                   # RAG chat message list, input
 │   ├── knowledgebase/          # KB tables, detail view, upload widgets
+│   ├── housing/                # InstallationHealthMap (d3-geo Albers CONUS), summary band, filters, ranking
 │   └── common/                 # Shared UI primitives (layout, loading, error)
 └── hooks/                      # Shared custom hooks
     ├── useWebSocket.ts
@@ -1470,12 +1505,12 @@ Adapter selection is driven by environment configuration, not code changes.
 | **Graph visualization** | `react-force-graph-2d` | Interactive graph explorer in the current prototype |
 | **Backend language** | Python 3.12 | All backend services |
 | **API framework** | FastAPI | HTTP + WebSocket gateway |
-| **Type checking** | pyright (strict mode) | Static type analysis |
+| **Type checking** | pyright (strict, scoped via `tool.pyright.include`) | Static type analysis |
 | **Testing** | pytest + coverage | Unit/integration tests, ≥85% coverage |
 | **Event streaming** | Redis 7+ Streams | Pipeline orchestration, decoupling |
 | **Graph database** | in-memory / Neo4j | Knowledge graph storage (pluggable through the graph repository protocol) |
 | **Vector store** | in-memory / Qdrant | Embedding storage, similarity search (pluggable through the vector store protocol) |
-| **LLM integration** | OpenAI / Anthropic / Ollama / vLLM | RAG answers, entity extraction (pluggable) |
+| **LLM integration** | local / OpenAI / Anthropic / Ollama (vLLM is roadmap-only) | RAG answers, entity extraction (pluggable) |
 | **Embedding models** | OpenAI / sentence-transformers / custom | Text and graph-metric embeddings (pluggable) |
 | **Object storage** | S3 / MinIO / local FS | Raw document persistence (pluggable) |
 | **Logging** | structlog | Structured JSON logging |

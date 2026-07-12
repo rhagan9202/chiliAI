@@ -1,0 +1,281 @@
+.root {
+  overflow: hidden;
+  background: var(--c-s1);
+  border: 1px solid var(--c-b0);
+  border-radius: 8px;
+}
+
+.frame {
+  position: relative;
+  aspect-ratio: 975 / 610;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(0, 212, 255, 0.045), transparent 60%),
+    var(--c-s1);
+}
+
+.map {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.state {
+  fill: var(--c-s3);
+  stroke: #2e4162;
+  stroke-width: 1;
+  stroke-linejoin: round;
+  transition: fill 120ms ease;
+}
+
+.state:hover {
+  fill: #16233c;
+}
+
+.graticule {
+  fill: none;
+  stroke: rgba(136, 153, 187, 0.14);
+  stroke-width: 0.6;
+  stroke-dasharray: 2 4;
+}
+
+/* Leader legs from a decluttered marker back to its true location. */
+.legLine {
+  stroke: rgba(136, 153, 187, 0.45);
+  stroke-width: 1;
+}
+
+.legAnchor {
+  fill: rgba(136, 153, 187, 0.55);
+}
+
+.markers {
+  position: absolute;
+  inset: 0;
+}
+
+.marker {
+  position: absolute;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  /* Severity stacks on top without changing DOM/tab order (set inline per status). */
+  z-index: var(--marker-z, 1);
+}
+
+.marker:hover,
+.marker:focus-visible {
+  z-index: 20;
+}
+
+.marker:focus-visible {
+  outline: 2px solid var(--c-cyan);
+  outline-offset: 2px;
+}
+
+.markerInner {
+  display: block;
+  width: var(--marker-size);
+  height: var(--marker-size);
+  border: 1.5px solid color-mix(in srgb, var(--marker-color) 80%, white);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--marker-color) 88%, black);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--marker-color) 16%, transparent);
+  transition: box-shadow 120ms ease;
+}
+
+/* Branch is encoded as shape only: USAF circle, USSF diamond. Color stays status-only. */
+.markerInnerUssf {
+  border-radius: 3px;
+  transform: rotate(45deg);
+}
+
+.marker:hover .markerInner {
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--marker-color) 24%, transparent);
+}
+
+.markerSelected .markerInner {
+  box-shadow:
+    0 0 0 5px color-mix(in srgb, var(--marker-color) 28%, transparent),
+    0 0 0 9px rgba(226, 234, 246, 0.14);
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 240px;
+  padding: 8px 10px;
+  color: var(--c-text);
+  background: rgba(8, 13, 26, 0.94);
+  border: 1px solid var(--c-b1);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  pointer-events: none;
+  transform: translate(var(--tt-shift-x, -50%), calc(-100% - 16px));
+  white-space: nowrap;
+}
+
+.tooltipBelow {
+  transform: translate(var(--tt-shift-x, -50%), 16px);
+}
+
+.tooltipTitle {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.tooltipLine {
+  color: var(--c-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.tooltipBranch {
+  align-self: flex-start;
+  padding: 1px 6px;
+  color: var(--c-cyan);
+  border: 1px solid var(--c-b1);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+/* Footer strip below the frame so it never occludes markers. */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  padding: 8px 14px;
+  background: var(--c-s2);
+  border-top: 1px solid var(--c-b0);
+}
+
+.legendGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.legendGroup + .legendGroup {
+  padding-left: 18px;
+  border-left: 1px solid var(--c-b0);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--c-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--legend-color);
+}
+
+.legendShape {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--c-dim);
+  border-radius: 999px;
+}
+
+.legendShapeUssf {
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
+.legendSizeSmall,
+.legendSizeLarge {
+  border: 1px solid var(--c-dim);
+  border-radius: 999px;
+}
+
+.legendSizeSmall {
+  width: 6px;
+  height: 6px;
+}
+
+.legendSizeLarge {
+  width: 12px;
+  height: 12px;
+}
+
+.pending {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--c-b0);
+  background: var(--c-s2);
+}
+
+.pendingLabel {
+  color: var(--c-amber);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pendingList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pendingItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  color: var(--c-text);
+  background: var(--c-s3);
+  border: 1px solid var(--c-b1);
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.pendingItem:hover {
+  border-color: var(--c-b2);
+}
+
+.pendingItem:focus-visible {
+  outline: 2px solid var(--c-cyan);
+  outline-offset: 1px;
+}
+
+.pendingReason {
+  color: var(--c-dim);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+@media (max-width: 760px) {
+  .legendGroup + .legendGroup {
+    padding-left: 0;
+    border-left: 0;
+  }
+}

@@ -287,6 +287,20 @@ describe('RagChatPage', () => {
     expect(select.value).toBe('kb-1')
   })
 
+  it('does not infer a KB for contextual launches that omit kb', () => {
+    mocks.knowledgeBases = [KB_TWO]
+    mocks.searchParams = new URLSearchParams(
+      'source=housing&installation=edwards&q=Summarize+housing+supply+risk.',
+    )
+
+    render(<RagChatPage />)
+
+    expect(screen.getByText('No knowledge base available')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Knowledge base')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /start contextual thread/i })).not.toBeInTheDocument()
+    expect(mocks.startConversationWithMessage).not.toHaveBeenCalled()
+  })
+
   it('updates the URL params when the user picks a different KB', async () => {
     mocks.knowledgeBases = [KB_ONE, KB_TWO]
 

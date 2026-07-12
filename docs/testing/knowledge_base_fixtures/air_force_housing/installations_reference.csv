@@ -1,0 +1,66 @@
+installation_id,name,branch,command,state,municipality,latitude,longitude,host_unit,source_note
+jb_langley_eustis,Joint Base Langley-Eustis,USAF,ACC,VA,Hampton,37.082901,-76.360497,633d Air Base Wing,OurAirports KLFI; jble.af.mil
+seymour_johnson_afb,Seymour Johnson AFB,USAF,ACC,NC,Goldsboro,35.339401,-77.960602,4th Fighter Wing,OurAirports KGSB; seymourjohnson.af.mil
+shaw_afb,Shaw AFB,USAF,ACC,SC,Sumter,33.972698,-80.470596,20th Fighter Wing,OurAirports KSSC; shaw.af.mil
+moody_afb,Moody AFB,USAF,ACC,GA,Valdosta,30.967800,-83.193001,23d Wing,OurAirports KVAD; moody.af.mil
+mountain_home_afb,Mountain Home AFB,USAF,ACC,ID,Mountain Home,43.043598,-115.872002,366th Fighter Wing,OurAirports KMUO; mountainhome.af.mil
+nellis_afb,Nellis AFB,USAF,ACC,NV,Las Vegas,36.236198,-115.033997,99th Air Base Wing,OurAirports KLSV; nellis.af.mil
+creech_afb,Creech AFB,USAF,ACC,NV,Indian Springs,36.587200,-115.672997,432d Wing,OurAirports KINS; creech.af.mil
+davis_monthan_afb,Davis-Monthan AFB,USAF,ACC,AZ,Tucson,32.166500,-110.883003,355th Wing,OurAirports KDMA; dm.af.mil fact sheet 666235
+tyndall_afb,Tyndall AFB,USAF,ACC,FL,Panama City,30.069599,-85.575401,325th Fighter Wing,OurAirports KPAM; tyndall.af.mil
+beale_afb,Beale AFB,USAF,ACC,CA,Marysville,39.136101,-121.436996,9th Reconnaissance Wing,OurAirports KBAB; beale.af.mil
+offutt_afb,Offutt AFB,USAF,ACC,NE,Bellevue,41.119307,-95.908510,55th Wing,OurAirports KOFF; offutt.af.mil
+grand_forks_afb,Grand Forks AFB,USAF,ACC,ND,Grand Forks,47.961102,-97.401199,319th Reconnaissance Wing,OurAirports KRDR; grandforks.af.mil; AMC-to-ACC realignment 2019
+holloman_afb,Holloman AFB,USAF,ACC,NM,Alamogordo,32.852501,-106.107002,49th Wing,OurAirports KHMN; holloman.af.mil; AETC-to-ACC 4 Jun 2026 (dvidshub 567007)
+altus_afb,Altus AFB,USAF,AETC,OK,Altus,34.667099,-99.266701,97th Air Mobility Wing,OurAirports KLTS; altus.af.mil
+columbus_afb,Columbus AFB,USAF,AETC,MS,Columbus,33.643799,-88.443802,14th Flying Training Wing,OurAirports KCBM; columbus.af.mil
+goodfellow_afb,Goodfellow AFB,USAF,AETC,TX,San Angelo,31.431630,-100.399216,17th Training Wing,OurAirports US-8159 (no fixed-wing field); goodfellow.af.mil
+keesler_afb,Keesler AFB,USAF,AETC,MS,Biloxi,30.410400,-88.924400,81st Training Wing,OurAirports KBIX; keesler.af.mil
+laughlin_afb,Laughlin AFB,USAF,AETC,TX,Del Rio,29.359501,-100.778002,47th Flying Training Wing,OurAirports KDLF; laughlin.af.mil
+luke_afb,Luke AFB,USAF,AETC,AZ,Glendale,33.535000,-112.383003,56th Fighter Wing,OurAirports KLUF; luke.af.mil; 56 FW FTU slated for ACC reassignment
+maxwell_afb,Maxwell AFB,USAF,AETC,AL,Montgomery,32.382900,-86.365799,42d Air Base Wing,OurAirports KMXF; maxwell.af.mil (includes Gunter Annex)
+jb_san_antonio,Joint Base San Antonio,USAF,AETC,TX,San Antonio,29.384199,-98.581100,502d Air Base Wing,OurAirports KSKF (Kelly Field at Lackland); jbsa.mil; hosts Lackland-Randolph-Fort Sam Houston
+sheppard_afb,Sheppard AFB,USAF,AETC,TX,Wichita Falls,33.988800,-98.491898,82d Training Wing,OurAirports KSPS; sheppard.af.mil
+vance_afb,Vance AFB,USAF,AETC,OK,Enid,36.339199,-97.916496,71st Flying Training Wing,OurAirports KEND; vance.af.mil
+dover_afb,Dover AFB,USAF,AMC,DE,Dover,39.129501,-75.466003,436th Airlift Wing,OurAirports KDOV; dover.af.mil
+fairchild_afb,Fairchild AFB,USAF,AMC,WA,Spokane,47.615101,-117.655998,92d Air Refueling Wing,OurAirports KSKA; fairchild.af.mil
+little_rock_afb,Little Rock AFB,USAF,AMC,AR,Jacksonville,34.916901,-92.149696,19th Airlift Wing,OurAirports KLRF; littlerock.af.mil
+macdill_afb,MacDill AFB,USAF,AMC,FL,Tampa,27.849300,-82.521202,6th Air Refueling Wing,OurAirports KMCF; macdill.af.mil fact sheet 231802
+mcconnell_afb,McConnell AFB,USAF,AMC,KS,Wichita,37.621899,-97.268204,22d Air Refueling Wing,OurAirports KIAB; mcconnell.af.mil
+scott_afb,Scott AFB,USAF,AMC,IL,Belleville,38.545200,-89.835197,375th Air Mobility Wing,OurAirports KBLV; scott.af.mil (AMC HQ)
+travis_afb,Travis AFB,USAF,AMC,CA,Fairfield,38.262699,-121.927002,60th Air Mobility Wing,OurAirports KSUU; travis.af.mil
+jb_charleston,Joint Base Charleston,USAF,AMC,SC,Charleston,32.896159,-80.038151,628th Air Base Wing,OurAirports KCHS; jbcharleston.jb.mil
+jb_mcguire_dix_lakehurst,Joint Base McGuire-Dix-Lakehurst,USAF,AMC,NJ,Wrightstown,40.015598,-74.591698,87th Air Base Wing,OurAirports KWRI; jbmdl.jb.mil
+barksdale_afb,Barksdale AFB,USAF,AFGSC,LA,Bossier City,32.501801,-93.662697,2d Bomb Wing,OurAirports KBAD; barksdale.af.mil (AFGSC HQ)
+dyess_afb,Dyess AFB,USAF,AFGSC,TX,Abilene,32.420799,-99.854599,7th Bomb Wing,OurAirports KDYS; dyess.af.mil
+ellsworth_afb,Ellsworth AFB,USAF,AFGSC,SD,Box Elder,44.145000,-103.103996,28th Bomb Wing,OurAirports KRCA; ellsworth.af.mil
+fe_warren_afb,Francis E. Warren AFB,USAF,AFGSC,WY,Cheyenne,41.133302,-104.866997,90th Missile Wing,OurAirports FEW; warren.af.mil
+malmstrom_afb,Malmstrom AFB,USAF,AFGSC,MT,Great Falls,47.504700,-111.186996,341st Missile Wing,OurAirports KGFA; malmstrom.af.mil
+minot_afb,Minot AFB,USAF,AFGSC,ND,Minot,48.415600,-101.358002,5th Bomb Wing,OurAirports KMIB; minot.af.mil; also hosts 91st Missile Wing
+whiteman_afb,Whiteman AFB,USAF,AFGSC,MO,Knob Noster,38.730301,-93.547897,509th Bomb Wing,OurAirports KSZL; whiteman.af.mil
+kirtland_afb,Kirtland AFB,USAF,AFGSC,NM,Albuquerque,35.039976,-106.608925,377th Air Base Wing,OurAirports KABQ (shared Sunport); kirtland.af.mil fact sheet 825944; AFMC-to-AFGSC 2015
+edwards_afb,Edwards AFB,USAF,AFMC,CA,Edwards,34.910781,-117.886391,412th Test Wing,OurAirports KEDW; edwards.af.mil
+eglin_afb,Eglin AFB,USAF,AFMC,FL,Valparaiso,30.481315,-86.515839,96th Test Wing,OurAirports KVPS (Eglin main field); eglin.af.mil
+hanscom_afb,Hanscom AFB,USAF,AFMC,MA,Bedford,42.470001,-71.289001,66th Air Base Group,OurAirports KBED (Hanscom Field); hanscom.af.mil; host unit is a group
+hill_afb,Hill AFB,USAF,AFMC,UT,Ogden,41.124030,-111.973086,75th Air Base Wing,OurAirports KHIF; hill.af.mil
+robins_afb,Robins AFB,USAF,AFMC,GA,Warner Robins,32.640099,-83.591904,78th Air Base Wing,OurAirports KWRB; robins.af.mil
+tinker_afb,Tinker AFB,USAF,AFMC,OK,Oklahoma City,35.414700,-97.386597,72d Air Base Wing,OurAirports KTIK; tinker.af.mil
+wright_patterson_afb,Wright-Patterson AFB,USAF,AFMC,OH,Dayton,39.826099,-84.048302,88th Air Base Wing,OurAirports KFFO; wpafb.af.mil (AFMC HQ)
+arnold_afb,Arnold AFB,USAF,AFMC,TN,Tullahoma,35.392601,-86.085800,Arnold Engineering Development Complex,OurAirports KAYX; arnold.af.mil; host unit is AEDC (no host wing)
+hurlburt_field,Hurlburt Field,USAF,AFSOC,FL,Mary Esther,30.427799,-86.689301,1st Special Operations Wing,OurAirports KHRT; hurlburt.af.mil (AFSOC HQ)
+cannon_afb,Cannon AFB,USAF,AFSOC,NM,Clovis,34.382801,-103.321999,27th Special Operations Wing,OurAirports KCVS; cannon.af.mil
+jb_andrews,Joint Base Andrews,USAF,AFDW,MD,Camp Springs,38.810799,-76.866997,316th Wing,OurAirports KADW; jba.af.mil; AFDW is a DRU
+jb_anacostia_bolling,Joint Base Anacostia-Bolling,USAF,AFDW,DC,Washington,38.842800,-77.016100,11th Wing,Wikipedia JBAB coordinates; jbab.jb.mil; AF lead service since 1 Oct 2020 (af.mil 2232606)
+usafa,US Air Force Academy,USAF,USAFA,CO,Colorado Springs,38.972497,-104.821125,10th Air Base Wing,OurAirports KAFF; usafa.af.mil; USAFA is a DRU
+dobbins_arb,Dobbins ARB,USAF,AFRC,GA,Marietta,33.915401,-84.516296,94th Airlift Wing,OurAirports KMGE; dobbins.afrc.af.mil
+grissom_arb,Grissom ARB,USAF,AFRC,IN,Peru,40.648102,-86.152100,434th Air Refueling Wing,OurAirports KGUS; grissom.afrc.af.mil
+homestead_arb,Homestead ARB,USAF,AFRC,FL,Homestead,25.488600,-80.383598,482d Fighter Wing,OurAirports KHST; homestead.afrc.af.mil
+march_arb,March ARB,USAF,AFRC,CA,Riverside,33.880699,-117.259003,452d Air Mobility Wing,OurAirports KRIV; march.afrc.af.mil
+westover_arb,Westover ARB,USAF,AFRC,MA,Chicopee,42.194000,-72.534798,439th Airlift Wing,OurAirports KCEF; westover.afrc.af.mil
+peterson_sfb,Peterson SFB,USSF,SpOC,CO,Colorado Springs,38.815800,-104.700800,Space Base Delta 1,petersonschriever.spaceforce.mil SBD 1 fact sheet 326192; shares KCOS runways
+schriever_sfb,Schriever SFB,USSF,SpOC,CO,Colorado Springs,38.803100,-104.528900,Space Base Delta 41,petersonschriever.spaceforce.mil; SBD 41 activated 18 Jun 2025 (article 4221169); Wikipedia coordinates
+buckley_sfb,Buckley SFB,USSF,SpOC,CO,Aurora,39.701698,-104.751999,Space Base Delta 2,OurAirports KBKF; buckley.spaceforce.mil SBD 2 fact sheet 322399
+vandenberg_sfb,Vandenberg SFB,USSF,SSC,CA,Lompoc,34.737301,-120.584000,Space Launch Delta 30,OurAirports KVBG; vandenberg.spaceforce.mil
+patrick_sfb,Patrick SFB,USSF,SSC,FL,Satellite Beach,28.234900,-80.610100,Space Launch Delta 45,OurAirports KCOF; patrick.spaceforce.mil; STARCOM HQ relocating here as tenant
+cape_canaveral_sfs,Cape Canaveral SFS,USSF,SSC,FL,Cocoa Beach,28.488900,-80.577800,Space Launch Delta 45,Wikipedia Cape Canaveral SFS coordinates; skid strip KXMR; SLD 45 (patrick.spaceforce.mil)
+los_angeles_afb,Los Angeles AFB,USSF,SSC,CA,El Segundo,33.915500,-118.382500,Space Base Delta 3,losangeles.spaceforce.mil; Wikipedia Space Base Delta 3 coordinates; SSC HQ

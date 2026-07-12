@@ -2,7 +2,6 @@
 description: "Use when the user asks to gather, refresh, audit, review, or update the canonical product requirements for chiliAI — phrases like 'gather requirements', 'refresh the requirements doc', 'what's the product scope', 'update the requirements list', 'review project requirements', or any product-owner-level scoping work. Owns the single source of truth at docs/project/planning/requirements.md."
 name: "Requirements Gatherer"
 tools: [read, search, edit, agent, todo]
-model: "Claude Sonnet 4.5"
 argument-hint: "Optional focus area (e.g. 'auth', 'ingestion'); omit for full-product refresh."
 agents: [Explore]
 user-invocable: true
