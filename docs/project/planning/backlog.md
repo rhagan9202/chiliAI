@@ -1,284 +1,81 @@
 # chiliAI v1 Consolidated Backlog
 
 > Owned by the Project Manager agent. The single source of truth for v1-scoped, prioritized work items.
-> Version: 1 · Last updated: 2026-06-23
+> Version: 2 · Last updated: 2026-07-12
 >
 > This file is a **curated v1 backlog** that consolidates and prioritizes work derived from:
-> - `docs/project/planning/requirements.md` (canonical requirements)
-> - The 24 module backlogs under `docs/backlog/**` (442 raw stories as of 2026-06-23 — see [docs/backlog/README.md](../../backlog/README.md))
-> - Drift items identified by the PM run on 2026-05-26
+> - `docs/project/planning/requirements.md` (canonical requirements, v1.1 · 2026-05-26)
+> - The 24 module backlogs under `docs/backlog/**` (see [docs/backlog/README.md](../../backlog/README.md))
+> - Drift items identified in PM runs (see History)
 >
-> The module backlogs remain the authoritative per-module breakdown. This file selects, prioritizes, and dependency-orders items for v1.
+> The module backlogs remain the authoritative per-module breakdown. This file selects, prioritizes, and dependency-orders items for v1. Every status below was **code-verified against `prod` on 2026-07-12** (post domain-packs merge ff46080 and af_housing merge 23eed31).
 
 ## Legend
 
 - **Priority**: `P0` (v1 blocker, ship-stopping) · `P1` (v1 required, important) · `P2` (v1 nice-to-have) · `P3` (post-v1 / deferred)
-- **Milestone**: `v1` · `v1.1` · `post-v1`
-- **Status**: `todo` · `in-progress` · `done` · `blocked`
-- **Drift origin**: links to a `D-XX` in the PM run drift table (when applicable)
+- **Status**: `todo` · `in-progress` · `partial` (some acceptance criteria shipped) · `done` · `blocked`
+- **Estimate**: remaining effort (SP), re-baselined against code — not the nominal original size
 - **Module source**: links the canonical module story (`docs/backlog/<module>.md#story-<id>`)
 
-## Drift resolution summary (from 2026-05-26 PM run)
+## Active Items — summary
 
-| Drift | Resolution | Backlog ID |
-|---|---|---|
-| D-01 KB snapshots/restore | ACCEPT-AS-BACKLOG | BL-020 |
-| D-02 Graph backup/restore | ACCEPT-AS-BACKLOG | BL-021 |
-| D-03 Live RAG service wiring | CODE-CHANGE (P0 v1-blocker) | **BL-001** |
-| D-04 RAG citations/provenance | CODE-CHANGE (P0 v1-blocker) | **BL-002** |
-| D-05 GNN PyG/DGL inference | ACCEPT-AS-BACKLOG (post-v1) | BL-030 |
-| D-06 Evidence pack subgraph extraction | CODE-CHANGE (P1) — **RESOLVED** (Sprint 2026-23) | BL-005 |
-| D-07 Evidence pack alert attachment | CODE-CHANGE (P1) — **RESOLVED** (Sprint 2026-23) | BL-006 |
-| D-08 Mount GraphCanvas in workbench | CODE-CHANGE (P0 v1-blocker) | **BL-003** |
-| D-09 OIDC hardening (JWKS rotation, id_token validation) | ACCEPT-AS-BACKLOG | BL-022 |
-| D-10 CI dependency scanning | CODE-CHANGE (P1) | **BL-004** |
-| D-11 Event replay operationalization | ACCEPT-AS-BACKLOG | BL-023 |
-| D-12 Load testing / SLO baselines | ACCEPT-AS-BACKLOG | BL-024 |
-| D-13 Config editor read-only polish | ACCEPT-AS-BACKLOG | BL-025 |
-| D-14 Case Management surface | ADD-REQUIREMENT (REQ-CASE-*) + BL | BL-010 |
-| D-15 Policy Intelligence surface | ADD-REQUIREMENT (REQ-POLICY-*) + BL — **RESOLVED (Sprint 2026-24)** | BL-011 |
-| D-16 SSE/WebSocket transport policy | REQUIREMENT-CHANGE (REQ-UI-005 amended) | n/a |
-| D-17 Two default configs ship | REQUIREMENT-CHANGE (REQ-CONFIG-001 amended) | BL-026 (test) |
-| D-18 Postgres/TimescaleDB stack | No action | n/a |
+| BL-ID | Title | REQ-IDs | Priority | Status | Remaining |
+|-------|-------|---------|----------|--------|-----------|
+| BL-016 | Configuration save endpoint + wizard | REQ-CONFIG-005 (contested) | P1 | partial ~70% | ~3 SP |
+| BL-017 | Graph integrity + version/merge | REQ-GRAPH-001 | P1 | todo | 8 SP |
+| BL-019 | Embeddings + Vectorstore 1.0 hardening | REQ-VEC-001..004 | P1 | partial ~60% | ~5 SP |
+| BL-020 | KB snapshots & restore | REQ-KB-007, REQ-NFR-DR-001 | P2 | todo | 8 SP |
+| BL-021 | Graph backup/restore per adapter | REQ-GRAPH-006, REQ-NFR-DR-002 | P2 | todo | 5 SP |
+| BL-022 | OIDC hardening | REQ-AUTH-001 | P2 | partial ~35% | ~4 SP |
+| BL-023 | Event replay operationalization | REQ-WORKFLOW-005, REQ-NFR-DR-003 | P2 | partial ~35% | ~3 SP |
+| BL-024 | Load testing & SLO baselines | REQ-NFR-SCALE-PROD | P2 | todo | 8 SP |
+| BL-027 | Resource-level per-KB ACL | REQ-AUTH-006 (ext) | P2 | todo | 8 SP |
+| BL-028 | Multi-KB scope in RAG | REQ-RAG-002 | P2 | todo | 5 SP |
 
----
-
-## Reconciliation pass (updated 2026-06-16)
-
-A code-level audit of every non-done BL story was run on 2026-06-04 and refreshed against the current backend state on 2026-06-16. Verified status and **genuine remaining** effort judge current code rather than the nominal estimate:
-
-| BL | Story | Nominal | Verified status | Remaining | Notes |
-|----|-------|---------|-----------------|-----------|-------|
-| BL-012 | De-seed `ApiState` | 5 | **done** | 0 | all six `_seed_*` production read models removed; durable conversations, workflow store, graph/evidence/alerts/cases/policy paths, and overview aggregation are service/repository-backed; entity-scoped analytics composition remains documented under api.28/api.29 |
-| BL-013 | Ingestion Studio UI | 8 | **done** | 0 | XHR upload progress + retry, receipt counts, and ingestion-records e2e landed in Sprint 2026-25 |
-| BL-014 | Ingestion E2E demo | 13 | **done** | 0 | 17-doc synthetic policy corpus, policy/procedure_code/regulation_section extraction config, demo/e2e wiring, and TN subset flow landed in Sprint 2026-25 |
-| BL-015 | Records submission dedup | 5 | **done** | 0 | submission-hash dedup, migration `0004_record_submissions`, per-row format rejection, typed receipts, and accepted-format 415 gate landed in Sprint 2026-25 |
-| BL-016 | Config save + wizard (write) | 8 | todo 0% | 8 SP | **contested** — conflicts with REQ-CONFIG-005 (read-only) + post-v1 hot-reload; needs requirements decision + design spec |
-| BL-017 | Graph integrity + version/merge | 8 | todo 0% | 8 SP | explicit TODOs in both adapters; no integrity checks, no merge, no version conflict |
-| BL-018 | Neo4j index strategy | 5 | **done** | 0 | `neo4j_adapter._ensure_schema` ships constraint + 4 indexes + fulltext |
-| BL-019 | Embeddings + Vectorstore 1.0 hardening | 13 | partial ~50% | **~7 SP** | text+graph foundation, adapters, audit, events done; remaining = caching, retry, cost tracking, namespace lifecycle, arch guards |
-| BL-020 | KB snapshots & restore | 8 | todo 0% | 8 SP | only an internal transport model; no snapshot repo/endpoints |
-| BL-021 | Graph backup/restore | 5 | todo 0% | 5 SP | no export/restore on service or adapters |
-| BL-022 | OIDC hardening (JWKS rotation, id_token) | 5 | partial ~30% | **~4 SP** | JWKS cache + aud/iss/exp present; remaining = kid-aware rotation, nonce/id_token validation, IdP templates, rotation tests |
-| BL-023 | Event replay operationalization | 5 | partial ~35% | **~3 SP** | reclaim + DLQ-stream + retry done; remaining = DLQ persistence + replay API/script + runbook |
-| BL-024 | Load testing & SLO baselines | 8 | todo 0% | 8 SP | no harness/benchmarks anywhere |
-| BL-025 | Config editor (read-only) polish + tests | 2 | partial ~40% | **~2 SP** | `ConfigurationPage` renders read-only; no tests + minor polish |
-| BL-027 | Resource-level per-KB ACL | 8 | todo 0% | 8 SP | no ACL model/middleware/endpoints; `KnowledgeBase` has no owner/acl |
-| BL-028 | Multi-KB scope in RAG | 5 | todo 0% | 5 SP | request accepts a KB list but service projects to `[0]` (documented limitation) |
-
-**Conclusion — the v1 *feature surface* is essentially complete; what remains is a hardening/DR/security-depth tail.** All P0 + the P1 user-facing verticals (RAG, citations, graph canvas, evidence, cases, policy, ingestion studio, ingestion demo, de-seed, records dedup) are done or have only documented hardening tails. Remaining higher-risk backend work is concentrated in graph integrity/versioning (BL-017), embeddings/vectorstore hardening (BL-019), OIDC hardening (BL-022), event replay operations (BL-023), and resource-level per-KB ACL (BL-027). The 24 module backlogs under `docs/backlog/**` were partially reconciled on 2026-06-16 for backend docs; frontend and cross-cutting operational docs still need a separate pass.
-
----
-
-## Drift resolution — 2026-06-23 PM run (module-backlog dependency-graph cleaning)
-
-A code-verified, platform-wide audit of all 24 module backlogs (`docs/backlog/*.md`, 440 → 442 stories) was run to fix two defect classes surfaced by an ingestion audit: **(A) mislabeled/dangling cross-module prerequisite edges** (a prereq ID names a story whose actual title is unrelated) and **(B) status drift vs. code**. The backlog consistency validator (`scripts/backlog_consistency.py --check`) exits **0** after these edits (DAG acyclic, no dangling prereqs, status invariants hold). The validator does **not** semantically check prereq targets, which is why these slipped through.
-
-### Prerequisite-edge corrections (Class A)
-
-| Story | File | Old prereq | New prereq | Evidence / rationale |
-|---|---|---|---|---|
-| ingestion.16 | ingestion.md | `[api.09, graph.07, vectorstore.05]` | `[vectorstore.09]` | api.09=request-contracts, graph.07=search-relevance, vectorstore.05=namespace-lifecycle — all unrelated. Real vector-cascade story is **vectorstore.09** ("Wire `delete_by_source_document` into the document-delete API"). Graph leg already ships (`graph/service.py:313`); no graph/api story needed — the DELETE route exists (`api/routers/knowledgebases.py:352`) but does not yet call the cascade. |
-| ingestion.19 | ingestion.md | `[ingestion.11, analytics.07, _observability.08]` | `[ingestion.11, analytics.33, _observability.08]` | analytics.07=Timeseries Postgres DI, NOT extraction-quality. No analytics story owned `compute_extraction_quality`; created **analytics.33** (new). |
-| embeddings.02 | embeddings.md | `[shared.02, _infra.05, llm.09]` | `[]` | All three mislabeled (shared.02=retire Alert.acknowledged, _infra.05=Helm values, llm.09=LLM observability); body's "shared Redis pool from shared.02" has no real target story (Redis pool lives in `events/runtime.py`). Edges dropped; folded into story. |
-| embeddings.03 | embeddings.md | `[shared.05]` | `[shared.15]` | shared.05=entity-ID generation; the shared retry/backoff primitive is **shared.15**. |
-| embeddings.06 | embeddings.md | `[vectorstore.06]` | `[]` | vectorstore.06=sharding/replication knobs; no vectorstore record-schema story exists. model_version writes into existing freeform vector metadata — no vectorstore story needed. Edge dropped. |
-| embeddings.07 | embeddings.md | `[embeddings.06, agent.11, vectorstore.06]` | `[embeddings.06]` | agent.11=workflow-listing pagination (no backfill-runner story exists); vectorstore.06=sharding. Both dropped; story builds its own backfill workflow. |
-| rag.06 | rag.md | `[rag.01, llm.17, api.07]` | `[rag.01, llm.01, api.07]` | llm.17=tool-calling loop; provider-native token streaming is **llm.01**. Body's "from llm.03" reference also corrected to llm.01. |
-| vectorstore.08 | vectorstore.md | `[vectorstore.07, graph.08]` | `[vectorstore.07]` | graph.08=graph bulk-write throughput — does not gate vector hybrid search. Edge dropped. |
-| graph.03 | graph.md | `[graph.02, events.02]` | `[graph.02]` | events.02=Redis stream trimming; `GraphUpdatedEvent` already defined+published (`events/types.py:135`). Conditional-publish change-detection needs no stream trimming. Edge dropped. |
-| agent.09 | agent.md | `[graph.05, vectorstore.04, embeddings.05, storage.04, database.04, events.05]` | `[graph.10, vectorstore.12, embeddings.01, storage.14, database.01, events.06]` | Readiness probe needs each dependency's health surface. All six were mislabeled (subgraph/snapshot/cost/encryption/CI-gate/trace-context). Re-pointed to the real health/foundation stories; **storage.14** (new) created for the missing object-store health probe. |
-| records.04 | records.md | `[api.10]` | `[]` | api.10=paginated-collection contract; a streaming-upload story has no pagination dependency and no api streaming story exists. Edge dropped. |
-| frontend.04 | frontend.md | `[analytics.06, rag.07]` | `[api.28, rag.01]` | rag.07=reranker → **rag.01** (live RagService) for the RAG copy. `analytics.06`=timeseries `load_series` was the wrong live-projection source → **api.28** ("Replace seeded API analytics reads", cycle-safe via api.01) per 2026-06-23 PM decision. |
-| frontend.05 | frontend.md | `[rag.07]` | `[rag.01]` | rag.07=reranker; assistant wiring depends on live RagService (**rag.01**). |
-| frontend.07 | frontend.md | `[api.09, events.06]` | `[api.07]` | Last-Event-ID SSE resume is owned by **api.07** ("Event-driven SSE with reconnect semantics"); api.09/events.06 unrelated. |
-| _plugins.04 | _plugins.md | `[_plugins.14, _plugins.03, _security.07, api.02]` | `[_plugins.14, _plugins.03, _security.11, api.02]` | _security.07=PII redaction; admin RBAC is **_security.11** (3-tier RBAC policy table). |
-| _observability.10 | _observability.md | `[…, database.05]` | `[…, database.01]` | database.05=pool tuning; the `audit_log` migration needs the persistence baseline/migration convention (**database.01**). |
-| _cicd.06 | _cicd.md | `[_cicd.05, _security.07]` | `[_cicd.05]` | _security.07=PII redaction; no image-scan-policy story exists. Policy file is owned by _cicd.06's own AC. Edge dropped. |
-| _multitenancy.03 | _multitenancy.md | `[_multitenancy.01, _security.04, api.29]` | `[_multitenancy.01, _security.04]` | api.29=de-seed ApiState — does not gate reading a tenant JWT claim. Edge dropped. |
-
-Also fixed (in-body, non-prereq): ingestion.07 AC cross-referenced `_security.07` as "audit log" → corrected to **`_security.06`** (audit log; _security.07 is PII redaction). Counter-checked and left intact (correct as-cited): ingestion.20 → storage.06 (tenant-scoped key prefixes), knowledgebases citations to _security.07 for *redaction* (correct).
-
-### New stories added
-
-| ID | Title | Why |
-|---|---|---|
-| **analytics.33** | Extraction-quality metric — `compute_extraction_quality(predicted, gold)` | ingestion.19 cited a non-existent analytics extraction-quality story (`analytics.07` is timeseries DI). The metric (`backend/analytics/metrics/extraction_quality.py`) has no home story and is genuinely unimplemented. Prereqs `[]`; unblocks ingestion.19. |
-| **storage.14** | Object-store health probes for worker and API readiness | agent.09's readiness probe needs a storage `check_health()` surface; storage had no readiness story (it cited `storage.04`=encryption). Mirrors vectorstore.12. Prereqs `[]`; unblocks agent.09. |
-
-### Status drift vs. code (Class B) — documented, not flipped
-
-Three stories are **substantially shipped in code** but the validator forbids flipping them to `in-progress` because it requires all prerequisites to be `done`, and their residual ACs depend on still-`planned` foundations. Rather than falsely close prereqs, each carries a dated **PM status note** in its body recording the effective completion:
-- **api.02** (cases persistence) — ~70% done; `backend/cases/` + migration `0002_cases.py` live; tenant-auth/audit tail remains (`_security.05`/`_multitenancy.04`).
-- **api.03** (conversation persistence) — ~60% done; `backend/conversations/` + migration `0005_conversations.py` live; citation-provenance + tenant tail remains.
-- **analytics.11** (Postgres risk history) — 3/4 AC; `PostgresRiskSignalSource` live; only the live-DB round-trip test remains.
-
-All other audited `planned` statuses were verified genuinely unstarted in code (config.04, config.02/06, events.04, shared.06/07, llm.04/06/07, most `_observability.*`/`_multitenancy.*`, graph.01/06/07, vectorstore.02/05/09/12, database.01/02/04). database.04's CI-migration **drift/replay gate** is confirmed NOT shipped (CI does a forward-only `alembic upgrade head` at `ci.yml:83`, but no bidirectional replay or `alembic check` drift gate) — `planned` is correct.
-
-### PM decisions — resolved 2026-06-23
-
-The three items flagged in the dependency-graph cleaning were adjudicated (product-owner decision):
-
-1. **frontend.04 live-projection source** → **`[api.28, rag.01]`**. The Dashboard's "seeded vs live" status is owned by **api.28** ("Replace seeded API analytics reads", prereq `[api.01]` — cycle-safe); the mislabeled `analytics.06` (timeseries) prereq was dropped. `analytics.28` was rejected as the target because it already depends on frontend.04 (would cycle).
-2. **audit-log duplicate** → **`_security.06` is canonical** (security/compliance domain owns audit-of-admin-actions). `_observability.10` marked **`dropped`** (superseded); its sole dependent `storage.09` re-pointed to `_security.06`.
-3. **workflow-run store duplicate** → **`agent.18` owns the `PostgresWorkflowRunStore` adapter** (alongside the existing Redis/in-memory adapters in `agent/adapters/`). **`database.01` refocused** to own the `workflow_runs` schema **migration** only (the persistence anchor its 9 dependents rely on); `agent.18` now depends on `database.01`. No dependents re-pointed.
-
-### Carried over for a future cleanup (noted, not actioned this run)
-- The newer narrative-style stories (most `*.1x`+ stories across graph/api/config/events/analytics/monitoring) cite code-touch-points under a non-existent `backend/app/...` path layout; the real layout is `backend/<module>/`. Systematic doc-convention nit, not a status/prereq defect.
-- **database.08–.13** carry literal Alembic revision IDs (`0004_…`–`0008_…`) that now collide with shipped revisions `0004_record_submissions`…`0007_case_feedback`; must be renumbered at implementation time.
-
----
-
-## P0 — v1 blockers
-
-### BL-001 — Wire live RAG service (embed → retrieve → expand → generate)
-- **REQ**: REQ-RAG-001, REQ-RAG-002
-- **Drift**: D-03 (RESOLVED)
-- **Module source**: [docs/backlog/rag.md#story-rag01](../../backlog/rag.md)
-- **Status**: done (Sprint 2026-22)
-- **Estimate**: 8 SP
-- **Acceptance**:
-  - `POST /rag/conversations/{id}/messages` calls a `RagService` that performs: embed query (via `embeddings.Service`), top-k retrieve (via `vectorstore.Service`), graph expand (via `graph.Service`), prompt assemble, LLM generate.
-  - In-memory adapter no longer used in non-test code paths.
-  - pyright --strict clean; pytest coverage ≥ 85% for `rag/`.
-  - One e2e Playwright test sends a query in the RAG Chat surface and asserts a non-seeded answer.
-- **Dependencies**: none (all collaborator services built).
-
-### BL-002 — RAG citations & provenance
-- **REQ**: REQ-RAG-003
-- **Drift**: D-04 (RESOLVED)
-- **Module source**: [docs/backlog/rag.md#story-rag03](../../backlog/rag.md)
-- **Status**: done (Sprint 2026-22)
-- **Estimate**: 3 SP
-- **Acceptance**:
-  - RAG answer payload includes a `citations: list[Citation]` field with chunk ids, document ids, and entity ids that contributed to the answer.
-  - Frontend RAG Chat surface renders citations under each assistant message with click-through to entity detail.
-  - Unit + e2e coverage.
-- **Dependencies**: BL-001.
-
-### BL-003 — Mount GraphCanvas in Investigation Workbench
-- **REQ**: REQ-UI-004
-- **Drift**: D-08 (RESOLVED)
-- **Module source**: [docs/backlog/frontend.md#story-frontend01](../../backlog/frontend.md)
-- **Status**: done (Sprint 2026-22)
-- **Estimate**: 5 SP
-- **Acceptance**:
-  - `GraphCanvas.tsx` is mounted on `InvestigationWorkbenchPage` and loads neighborhoods via `GET /graph/entities/{id}/neighborhood`.
-  - Entity click opens detail panel; relationship click highlights edge; depth selector wired.
-  - Playwright e2e: search entity → click → see neighborhood render.
-  - No accessibility regressions in axe scan of the page.
-- **Dependencies**: none.
+**Big picture:** the v1 feature surface is complete (all P0s and P1 user-facing verticals shipped — see Done), and the config surface gained a full write/hot-swap path plus a third domain (Air Force housing scorecards) since 2026-06-23. What remains active is a hardening/DR/security-depth tail plus the config wizard finish. Two large shipped features have **no requirement coverage** — see [NO-REQ] below.
 
 ---
 
 ## P1 — v1 required
 
-### BL-004 — CI dependency vulnerability scanning
-- **REQ**: REQ-NFR-SEC-005
-- **Drift**: D-10 (RESOLVED)
-- **Module source**: [docs/backlog/_security.md](../../backlog/_security.md)
-- **Status**: done (Sprint 2026-22)
-- **Estimate**: 2 SP
-- **Acceptance**:
-  - GitHub Actions job runs `pip-audit` on `backend/` and `npm audit --omit=dev` on `chili_app/` on every PR and on a nightly schedule.
-  - Job fails the PR on `HIGH` or `CRITICAL` findings; `MEDIUM` and below report but do not fail.
-  - Findings posted as a PR check summary; nightly findings opened as issues.
-- **Dependencies**: none.
-
-### BL-005 — Evidence pack subgraph extraction
-- **REQ**: REQ-ANALYTICS-005
-- **Drift**: D-06
-- **Module source**: [docs/backlog/rag.md#story-rag10](../../backlog/rag.md), [docs/backlog/monitoring.md](../../backlog/monitoring.md)
-- **Status**: done (Sprint 2026-23)
-- **Estimate**: 5 SP
-- **Acceptance**:
-  - `EvidencePack` is generated from alert context (seed entities + relationship traversal + metric snapshot) and persisted alongside the alert. ✅ `graph.get_subgraph` + risk factors/score → `ExplanationContext` → object-store `EvidencePackRepository`, written best-effort in the worker explainability stage.
-  - Replaces seeded evidence pack data in API responses. ✅ `GET /evidence-packs/{id}` reads the repository (KB-scoped, 404 when absent); de-seed regression test added.
-  - Tested with synthetic Medicare alert scenarios. ✅ `tests/agent/test_explainability_stage.py`.
-- **Dependencies**: none.
-
-### BL-006 — Evidence pack on alert UI
-- **REQ**: REQ-ALERT-003
-- **Drift**: D-07
-- **Module source**: [docs/backlog/frontend.md#story-frontend02](../../backlog/frontend.md)
-- **Status**: done (Sprint 2026-23)
-- **Estimate**: 3 SP
-- **Acceptance**:
-  - Pack viewer renders subgraph (re-using GraphCanvas), metrics snapshot, and reasoning text. ✅ `EvidencePackViewer` (reasoning + metric chips + items + policy citations + subgraph via GraphCanvas) wired into the Investigation Workbench.
-  - Evidence pack viewer shown when an alert is selected. ✅ in the Investigation Workbench **and** the Alert Feed (per-row "View evidence" toggle; `knowledge_base_id` added to `AlertListItem`/projection to scope the fetch). Playwright e2e: `alert-feed-evidence.spec.ts`.
-- **Dependencies**: BL-003, BL-005.
-
-### BL-010 — Case Management v1 surface
-- **REQ**: REQ-CASE-001..004 (new)
-- **Drift**: D-14
-- **Status**: done (Sprint 2026-23)
-- **Estimate**: 8 SP
-- **Acceptance**:
-  - Cases persisted via durable repository (in-memory + Postgres adapters). ✅ `backend/cases/` + `0002_cases` migration.
-  - `POST/GET/PATCH /cases` endpoints with KB scoping. ✅ all routes take `?knowledge_base_id=`; plus `POST /cases/promote`.
-  - Frontend `CaseManagementPage` lists, filters, and edits cases; supports "promote from alert". ✅ KB-threaded, status filter, status updates, toasts, promote-from-alert wired to `/cases/promote`.
-  - pyright --strict, pytest ≥ 85%, Playwright e2e for promote-alert-to-case. ✅ (`case-promote.spec.ts`; case CRUD/feedback specs updated for KB scoping.)
-- **Dependencies**: BL-005 (evidence pack on case).
-- **Deferred to BL-012:** analytics `open_cases`/`list_policy_gap_cases` KB-scoping and removal of legacy `ApiState._seed_cases`; durable analyst feedback; rich `alerts[]` on case detail.
-
-### BL-011 — Policy Intelligence v1 surface
-- **REQ**: REQ-POLICY-001..004 (new)
-- **Drift**: D-15
-- **Status**: done (Sprint 2026-24)
-- **Estimate**: 8 SP
-- **Acceptance**:
-  - Domain config schema extended with `policy_rules: list[PolicyRulePack]`. ✅ `DomainConfig.policy_rules: list[PolicyRulePack]` (additive, optional) in `config/schema.py`; example packs in `medicare_fraud.yaml` / `medicare_fraud_dev.yaml`.
-  - Worker generates policy items from configured rules against KB state. ✅ `evaluation.evaluate()` (pure) called in `handle_records_ingested`; matches upserted as durable `PolicyItem`s via `PolicyService.record_match` (D-EVAL-IMPL: folded into record-ingest handler, no standalone stage; alert-target rules defined but not yet evaluated).
-  - `GET /policy/items`, `GET /policy/items/{id}`, `POST /policy/items/{id}/triage` endpoints with KB scoping. ✅ all routes take `?knowledge_base_id=`; viewer for reads, analyst for triage. Old `/policy/gaps*` + `POST /policy/briefs` removed.
-  - Frontend `PolicyIntelligencePage` rebuilt as an item queue + triage; `api/policy.ts` KB-scoped; contracts regenerated (not hand-written). ✅
-  - Tests + e2e. ✅ unit tests for evaluation/service/repository + `tests/e2e/policy-triage.spec.ts`.
-- **Dependencies**: BL-010 (escalate-to-case action).
-
-### BL-012 — Replace seeded ApiState with real services across remaining endpoints
-- **REQ**: REQ-RAG-002, REQ-ALERT-001, REQ-WORKFLOW-002
-- **Module source**: [docs/backlog/api.md](../../backlog/api.md) (multiple stories)
-- **Status**: done (Sprint 2026-25 — all six `_seed_*` removed; durable conversations module + migration 0005; analytics/graph-entity rewired; regression test enforces no `_seed_*` outside tests)
-- **Estimate**: 5 SP
-- **Acceptance**: ApiState seeded data fully removed from non-test code paths; replaced with durable repositories.
-
-### BL-013 — Ingestion Studio UI/UX (file upload progress, retry)
-- **REQ**: REQ-KB-002, REQ-KB-004
-- **Plan**: [docs/superpowers/plans/2026-05-17-ingestion-studio-ui-ux-implementation.md](../../superpowers/plans/)
-- **Status**: done (Sprint 2026-25) — XHR upload progress + retry, receipt counts, ingestion-records e2e.
-- **Estimate**: 8 SP (nominal)
-
-### BL-014 — Ingestion pipeline E2E demo (TN Medicare subset)
-- **REQ**: REQ-KB-003, REQ-REC-001..004, REQ-RAG-002
-- **Plan**: [docs/superpowers/plans/2026-05-22-ingestion-pipeline-e2e-demo.md](../../superpowers/plans/)
-- **Status**: done (Sprint 2026-25) — 17-doc synthetic policy corpus + policy/procedure_code/regulation_section config entities + demo/e2e wiring.
-- **Estimate**: 13 SP (nominal)
-
-### BL-015 — Records submission-level dedup + format enforcement
-- **REQ**: REQ-REC-001, REQ-REC-003
-- **Module source**: [docs/backlog/records.md](../../backlog/records.md) stories records.01, records.02
-- **Status**: done (Sprint 2026-25) — submission-hash dedup (migration 0004) + per-row format-rejection + typed receipt + accepted_formats 415 gate.
-- **Estimate**: 5 SP (nominal)
-
 ### BL-016 — Configuration save endpoint + wizard
-- **REQ**: REQ-CONFIG-005
-- **Module source**: [docs/backlog/config.md](../../backlog/config.md), [docs/backlog/frontend.md#story-frontend03](../../backlog/frontend.md)
-- **Estimate**: 8 SP
+- **REQ**: REQ-CONFIG-005 — **contested**: the requirement still specifies a *read-only* editor while a full write/apply surface has shipped; requirements amendment needed (see [NO-REQ] notes).
+- **Module source**: [docs/backlog/config.md](../../backlog/config.md) (config.05/06/07/14/15), [docs/backlog/frontend.md#story-frontend03](../../backlog/frontend.md) (frontend.03/25/26)
+- **Status**: partial ~70% (Config Manager landed with the domain-packs merge ff46080, 2026-07-04; wizard did not)
+- **Remaining estimate**: ~3 SP
+- **Acceptance**:
+  - [x] Config write path: `POST /config/validate` (dry-run), `POST /config/apply`, `POST /config/switch`, all admin-gated — `backend/api/routers/config.py:454,489,509`; swap-once-success pipeline `_activate_pack()` (`config.py:366`: validate → guardrail → persist → cache reset → `config.updated`)
+  - [x] Durable activation: atomic file-backed active-pack pointer on the shared volume, survives restart, precedence over `CHILI_CONFIG_PATH` — `backend/config/store.py:100-142` (`write_active_pack`, temp-file + `os.replace`)
+  - [x] Atomic DI hot-swap + worker rebuild on `config.updated` — `backend/api/dependencies.py:1799` (`reset_domain_config_caches`, generation-guarded memoizers), `backend/agent/coordinator.py:1066` (`apply_pending_config_updates`, redelivery-safe)
+  - [x] Config Manager UI: pack switcher + YAML editor with inline validate/apply — `chili_app/src/pages/ConfigurationPage.tsx` mounting `PackSwitcher` + `ActivePackEditor` (`chili_app/src/components/config/`)
+  - [x] Tests: `backend/tests/api/test_config_router.py`, `test_config_routes.py`, `test_dependency_swap.py`, `backend/tests/config/test_store.py`, `backend/tests/agent/test_config_reload.py`; Vitest `chili_app/src/pages/__tests__/ConfigurationPage.test.tsx`; Playwright `chili_app/e2e/config-manager.spec.ts`
+  - [ ] Sectioned configuration **wizard** (structured forms, not raw YAML) — module stories frontend.03/25/26 explicitly reverted to `planned` on 2026-07-12 ("raw-YAML editor + switcher, not the sectioned wizard shell")
+  - [ ] Config draft save/apply persistence + write-endpoint hardening (ETag + admin audit; Postgres-backed persistence) — config.06/07/14/15 still `planned`
+  - [ ] REQ-CONFIG-005 amended (read-only → managed write) so the shipped surface is requirement-traceable
+- **Dependencies**: requirements amendment (Requirements Gatherer run).
 
 ### BL-017 — Graph referential integrity + version/merge semantics
 - **REQ**: REQ-GRAPH-001
 - **Module source**: [docs/backlog/graph.md](../../backlog/graph.md) stories graph.01, graph.02
-- **Estimate**: 8 SP
-
-### BL-018 — Neo4j index strategy for scale
-- **REQ**: REQ-NFR-SCALE-PROD
-- **Plan**: [docs/superpowers/plans/2026-05-21-neo4j-graph-indexes.md](../../superpowers/plans/)
-- **Status**: done (verified 2026-06-04 — `neo4j_adapter._ensure_schema` ships the constraint + 4 indexes + fulltext)
-- **Estimate**: 5 SP
+- **Status**: todo (re-verified 2026-07-12 — essentially unmoved since 2026-06-16)
+- **Remaining estimate**: 8 SP
+- **Acceptance**:
+  - [ ] Referential integrity: relationship writes validate endpoint existence — today `upsert_relationships` writes unchecked (`backend/graph/adapters/in_memory.py:41-50`, shipping TODO at `:21-22`); Neo4j `MERGE` silently creates phantom endpoint nodes (`neo4j_adapter.py:226-228`)
+  - [ ] Optimistic locking / version-conflict detection — `version` is stored and blindly overwritten (`neo4j_adapter.py:176,188`); `graph/service.py:29` carries the production TODO
+  - [ ] Real merge semantics — only a property-dict merge on single-entity update exists (`in_memory.py:77-80`, `neo4j_adapter.py:295-298`)
 
 ### BL-019 — Embeddings 1.0 + Vectorstore 1.0 hardening
 - **REQ**: REQ-VEC-001..004
 - **Plans**: [docs/superpowers/plans/2026-05-19-embeddings-1-0.md](../../superpowers/plans/), [docs/superpowers/plans/2026-05-19-vectorstore-1-0.md](../../superpowers/plans/)
-- **Estimate**: 13 SP
+- **Status**: partial ~60% (re-verified 2026-07-12)
+- **Remaining estimate**: ~5 SP
+- **Acceptance**:
+  - [x] Retry/backoff + batching/token budgeting on OpenAI embeddings — `backend/embeddings/adapters/openai_adapter.py:108-134` (`_create_embeddings_with_retry`, 3 attempts, exponential backoff)
+  - [x] Namespace lifecycle — `delete_namespace` on both adapters + service (`vectorstore/service.py:200`, `adapters/in_memory.py:105`, `qdrant_adapter.py:232`) with per-namespace dimension guard
+  - [x] `delete_by_source_document` wired end-to-end — protocol `vectorstore/protocols.py:39`, service `:216-223`, exercised on the document-replacement path (`api/routers/knowledgebases.py:142-143`); whole-KB delete uses namespace drop via the cleanup cascade (`knowledgebases/cleanup.py:74`)
+  - [ ] Embedding cache — none (standing TODO `backend/embeddings/service.py:24`)
+  - [ ] Cost/usage tracking — none
+  - [ ] Object-store persistence of embeddings; graph-metric hybrid embedding flow; model routing; architecture guards — none
 
 ---
 
@@ -287,88 +84,147 @@ The three items flagged in the dependency-graph cleaning were adjudicated (produ
 ### BL-020 — KB snapshots & restore (D-01)
 - **REQ**: REQ-KB-007, REQ-NFR-DR-001
 - **Module source**: [docs/backlog/knowledgebases.md](../../backlog/knowledgebases.md) story knowledgebases.07
-- **Estimate**: 8 SP
+- **Status**: todo (re-verified 2026-07-12 — only the internal transport model `backend/knowledgebases/snapshots.py::KnowledgeBaseStoreSnapshot` exists; no snapshot repository, no snapshot/restore endpoints)
+- **Remaining estimate**: 8 SP
 
 ### BL-021 — Graph backup/restore procedures per adapter (D-02)
 - **REQ**: REQ-GRAPH-006, REQ-NFR-DR-002
 - **Module source**: [docs/backlog/graph.md](../../backlog/graph.md) story graph.11
-- **Estimate**: 5 SP
+- **Status**: todo (re-verified 2026-07-12 — no export/backup/restore methods anywhere in `backend/graph/`; the only "snapshot" is in-memory transaction-rollback `deepcopy` state, `in_memory.py:316-337`)
+- **Remaining estimate**: 5 SP
 
 ### BL-022 — OIDC hardening: JWKS rotation, full id_token validation (D-09)
 - **REQ**: REQ-AUTH-001
 - **Module source**: [docs/backlog/_security.md](../../backlog/_security.md) story _security.01
-- **Estimate**: 5 SP
+- **Status**: partial ~35% (re-verified 2026-07-12; no auth-crypto commits since 2026-06-16)
+- **Remaining estimate**: ~4 SP
+- **Acceptance**:
+  - [x] JWKS TTL cache keyed by URI — `backend/api/middleware/auth.py:81` (`JwksCache`)
+  - [x] aud/iss/exp + signature validation — `auth.py:196-208` (`jwt.decode(..., audience, issuer, algorithms=["RS256"])`)
+  - [x] id_token routed through the validated decode path in the OIDC callback — `backend/api/routers/auth.py:128-134`
+  - [x] *(adjacent, landed with ff46080)* Production auth guardrail: incomplete/disabled `AuthConfig` rejected under `CHILI_ENV=staging|production`, at boot and pre-hot-swap — `backend/api/dependencies.py:309` (`enforce_production_guardrail`), `api/app.py:78`
+  - [ ] kid-aware key rotation (forced JWKS refresh on unknown `kid`; today cache refresh is TTL-only) + rotation tests
+  - [ ] nonce generation + validation in the OIDC flow (PKCE `state` only today, `auth.py:109`)
+  - [ ] IdP configuration templates (Keycloak/Okta) — none in repo
 
 ### BL-023 — Event replay operationalization (D-11)
 - **REQ**: REQ-WORKFLOW-005, REQ-NFR-DR-003
 - **Module source**: [docs/backlog/events.md](../../backlog/events.md)
-- **Estimate**: 5 SP
+- **Status**: partial ~35% (re-verified 2026-07-12 — unchanged)
+- **Remaining estimate**: ~3 SP
+- **Acceptance**:
+  - [x] Stale-pending reclaim via `xautoclaim` — `backend/events/adapters/redis_streams.py:107-124`
+  - [x] DLQ stream publish (`{stream}.dlq`) — `redis_streams.py:160-176`
+  - [x] Handler retry/DLQ wrapper (documented `docs/security_checklist.md:136`)
+  - [ ] Durable DLQ persistence — no table/migration (in-memory adapter keeps a Python list, `adapters/in_memory.py:25`)
+  - [ ] Replay API or operator script — no `replay` surface in `backend/api/` or `scripts/`
+  - [ ] Operator runbook — `docs/runbooks/` does not exist
 
 ### BL-024 — Load testing & SLO baselines (D-12)
 - **REQ**: REQ-NFR-SCALE-PROD
-- **Estimate**: 8 SP
-- **Notes**: Establishes the latency/throughput targets currently held as `[ASSUMPTION]` in requirements.
-
-### BL-025 — Configuration editor (read-only) polish + tests (D-13)
-- **REQ**: REQ-CONFIG-005
-- **Estimate**: 2 SP
-
-### BL-026 — Test coverage for both default configs loading (D-17)
-- **REQ**: REQ-CONFIG-001
-- **Status**: done (Sprint 2026-22 — pre-completed; `tests/config/test_loader.py` covers every default yaml)
-- **Estimate**: 1 SP
+- **Status**: todo (re-verified 2026-07-12 — no harness anywhere; `locust`/`k6` appear only as aspirational lines in module backlogs; `backend/tests/perf/` absent)
+- **Remaining estimate**: 8 SP
+- **Notes**: Establishes the latency/throughput targets currently held as `[ASSUMPTION]` in requirements. Unblocks resolving the four open `[ASSUMPTION]` items via `/refresh-requirements`.
 
 ### BL-027 — Resource-level authorization (per-KB ACL)
 - **REQ**: REQ-AUTH-006 (extension)
 - **Module source**: [docs/backlog/_security.md](../../backlog/_security.md) story _security.02
-- **Estimate**: 8 SP
+- **Status**: todo (re-verified 2026-07-12 — `KnowledgeBase` still has no owner/acl fields, only the production TODO at `backend/shared/types.py:170`; no ACL model/middleware/endpoints)
+- **Remaining estimate**: 8 SP
 
 ### BL-028 — Multi-KB scope in RAG retrieval/expansion
 - **REQ**: REQ-RAG-002
 - **Module source**: [docs/backlog/rag.md](../../backlog/rag.md) story rag.02
-- **Estimate**: 5 SP
+- **Status**: todo (re-verified 2026-07-12 — retrieval still projects the KB list to `[0]`: `backend/rag/service.py:132` `primary_kb_id = request.knowledge_base_ids[0]`, documented single-KB limitation at `:131,165`)
+- **Remaining estimate**: 5 SP
 
 ---
 
 ## P3 — post-v1
 
 ### BL-030 — GNN inference via PyTorch Geometric / DGL (D-05)
-- **REQ**: REQ-ANALYTICS-003
-- **Milestone**: post-v1
+- **REQ**: REQ-ANALYTICS-003 · **Milestone**: post-v1
 
 ### BL-031 — Roadmap adapters: Neptune, Memgraph, pgvector, Weaviate, GCS, Azure Blob
-- **REQ**: REQ-INT-005
-- **Milestone**: post-v1
+- **REQ**: REQ-INT-005 · **Milestone**: post-v1
 
 ### BL-032 — Third-party plugin SPI
-- **REQ**: covered by §6 Out of Scope; `[ASSUMPTION]` SPI design revisited after v1
-- **Milestone**: post-v1
+- **REQ**: covered by §6 Out of Scope; `[ASSUMPTION]` SPI design revisited after v1 · **Milestone**: post-v1
 
 ### BL-033 — Tenant isolation across data + tenant management UI
-- **REQ**: covered by §6 Out of Scope
-- **Milestone**: post-v1
+- **REQ**: covered by §6 Out of Scope · **Milestone**: post-v1
 
 ### BL-034 — Production observability stack (Prom/Grafana/Jaeger + retention/alerts)
-- **REQ**: covered by §6 Out of Scope; `[ASSUMPTION]` observability stack selection
-- **Milestone**: post-v1
+- **REQ**: covered by §6 Out of Scope; `[ASSUMPTION]` observability stack selection · **Milestone**: post-v1
 
 ### BL-035 — CI/CD pipelines & GitOps
-- **REQ**: covered by §6 Out of Scope
-- **Milestone**: post-v1
+- **REQ**: covered by §6 Out of Scope · **Milestone**: post-v1
 
 ### BL-036 — Frontend RUM & accessibility audit
-- **REQ**: covered by §6 Out of Scope (RUM); a11y planned
-- **Milestone**: v1.1
+- **REQ**: covered by §6 Out of Scope (RUM); a11y planned · **Milestone**: v1.1
 
-### BL-037 — Configuration hot-reload
-- **REQ**: covered by §6 Out of Scope
-- **Milestone**: post-v1
+---
+
+## Done
+
+| BL-ID | Title | REQ-IDs | Completed | Evidence |
+|-------|-------|---------|-----------|----------|
+| BL-001 | Wire live RAG service (embed → retrieve → expand → generate) | REQ-RAG-001, REQ-RAG-002 | Sprint 2026-22 | `backend/rag/service.py` + RAG Chat e2e |
+| BL-002 | RAG citations & provenance | REQ-RAG-003 | Sprint 2026-22 | citations in RAG payload + rendered in `RagChatPage.tsx` |
+| BL-003 | Mount GraphCanvas in Investigation Workbench | REQ-UI-004 | Sprint 2026-22 | `GraphCanvas` on `InvestigationWorkbenchPage` + neighborhood e2e |
+| BL-004 | CI dependency vulnerability scanning | REQ-NFR-SEC-005 | Sprint 2026-22 | `.github/workflows/ci.yml:113-132` (pip-audit, fail HIGH/CRITICAL), `:231-232` (npm audit) |
+| BL-005 | Evidence pack subgraph extraction | REQ-ANALYTICS-005 | Sprint 2026-23 | `EvidencePackRepository` (`analytics/explainability/`), worker explainability stage, `tests/agent/test_explainability_stage.py` |
+| BL-006 | Evidence pack on alert UI | REQ-ALERT-003 | Sprint 2026-23 | `EvidencePackViewer` in workbench + alert feed; `alert-feed-evidence.spec.ts` |
+| BL-010 | Case Management v1 surface | REQ-CASE-001..004 | Sprint 2026-23 | `backend/cases/` + migration `0002_cases`; `case-promote.spec.ts` |
+| BL-011 | Policy Intelligence v1 surface | REQ-POLICY-001..004 | Sprint 2026-24 | `DomainConfig.policy_rules`, durable `PolicyItem`s, triage routes; `policy-triage.spec.ts` |
+| BL-012 | De-seed `ApiState` (all endpoints on durable services) | REQ-RAG-002, REQ-ALERT-001, REQ-WORKFLOW-002 | Sprint 2026-25 | all six `_seed_*` removed; regression test forbids `_seed_*` outside `tests/`; `backend/conversations/` + migration `0005` |
+| BL-013 | Ingestion Studio UI/UX (upload progress, retry) | REQ-KB-002, REQ-KB-004 | Sprint 2026-25 | XHR progress + retry, receipt counts; ingestion-records e2e |
+| BL-014 | Ingestion pipeline E2E demo (TN Medicare subset) | REQ-KB-003, REQ-REC-001..004, REQ-RAG-002 | Sprint 2026-25 | 17-doc synthetic policy corpus + demo/e2e wiring |
+| BL-015 | Records submission-level dedup + format enforcement | REQ-REC-001, REQ-REC-003 | Sprint 2026-25 | migration `0004_record_submissions`, per-row rejection, typed receipts, 415 gate |
+| BL-018 | Neo4j index strategy for scale | REQ-NFR-SCALE-PROD | verified 2026-06-04 | `neo4j_adapter.py:139` `_ensure_schema`: unique constraint + KB-scoped indexes + fulltext (re-verified 2026-07-12) |
+| BL-025 | Configuration editor polish + tests | REQ-CONFIG-005 | 2026-07-04 (merge ff46080) | subsumed by Config Manager: `ConfigurationPage.test.tsx` (Vitest), `api/__tests__/config.test.ts`, `e2e/config-manager.spec.ts` |
+| BL-026 | Test coverage for default configs loading | REQ-CONFIG-001 | Sprint 2026-22 | `tests/config/test_loader.py` covers every default yaml (now 5 packs incl. `department_air_force_housing.yaml`) |
+| BL-037 | Configuration hot-reload | was §6 Out of Scope (post-v1) | 2026-07-04 (merge ff46080) | API + worker swap `DomainConfig` without restart: `dependencies.py:1799` generation-guarded cache reset; `coordinator.py:1066` worker rebuild on `config.updated`. **Limitations**: pack must not change the event transport across a swap (restart required); reload-posture ADR + `config_reload_total` metric + cache-coverage audit test remain in module story config.05 |
+
+---
+
+## [NO-REQ] Items Awaiting Requirement
+
+Shipped work with **no traceable REQ-ID** in requirements.md v1.1 (2026-05-26). Per the PM charter these get no invented REQ-IDs; they are flagged for the next Requirements Gatherer run.
+
+| BL-ID | Title | Status | Notes |
+|-------|-------|--------|-------|
+| BL-038 | Scorecards platform module (deterministic evaluator, persisted runs, API) | **shipped, awaiting REQ** (2026-07-12, merge 23eed31) | `backend/scorecards/` (evaluation/service/in-memory+Postgres adapters), migration `0008_scorecards`, routers `api/routers/scorecards.py`, KB cleanup cascade (`knowledgebases/cleanup.py:87`), config models `ScorecardsConfig` et al. in `config/schema.py`; tests `backend/tests/scorecards/`, `test_scorecards_router.py`. Grep of requirements.md: zero scorecard coverage. |
+| BL-039 | Air Force housing domain pack + Housing Executive dashboard | **shipped, awaiting REQ** (2026-07-12, merge 23eed31) | `backend/config/defaults/department_air_force_housing.yaml` (1050 lines), `api/routers/housing.py` + `_housing_read_model.py`, `HousingExecutivePage.tsx` / `ScorecardRunPage.tsx` + `components/housing/`, seed tooling (`make seed-housing`, `make dev-domain`), e2e `air-force-housing-*.spec.ts`. REQ-CONFIG-001 names only the two original packs. |
+
+**Requirements amendments needed (flag for Requirements Gatherer — do not resolve here):**
+1. **REQ-CONFIG-005** still specifies a *read-only* configuration editor; prod ships an admin-gated write/apply/switch surface with hot-swap (BL-016/BL-037). Amend to a managed-write requirement (roles, validation, durability) or record an accepted deviation.
+2. **REQ-CONFIG-001** enumerates two default configs; prod ships 5 pack yamls across 3 domains (medicare_fraud + 2 variants, food_supply_chain, department_air_force_housing).
+3. New requirement families needed for BL-038 (scorecards capability) and BL-039 (housing domain surface), e.g. REQ-SCORE-* / domain-pack acceptance criteria.
+
+---
+
+## History
+
+Full detail for each pass lives in this file's git history (`git log -p -- docs/project/planning/backlog.md`). Summaries:
+
+- **2026-05-26 PM run (drift resolution)** — 18 drift items (D-01..D-18) adjudicated against requirements v1.1. All CODE-CHANGE items (D-03/04/06/07/08/10/14/15 → BL-001..006, BL-010/011) have since shipped; ACCEPT-AS-BACKLOG items became BL-020..025/030; two REQUIREMENT-CHANGE items were amended into requirements v1.1.
+- **2026-06-16 reconciliation pass** — code-level audit of every non-done BL item; corrected systemically stale SP estimates (BL-013 8→~0, BL-014 13→~0, BL-015 5→3, BL-018 already done). Conclusion then (still true): the v1 feature surface is essentially complete; the remainder is a hardening/DR/security-depth tail.
+- **2026-06-23 PM run (module-backlog dependency-graph cleaning)** — platform-wide audit of all 24 module backlogs: 18 mislabeled/dangling prerequisite edges corrected, 2 new stories added (analytics.33 extraction-quality metric, storage.14 object-store health probes), 3 substantially-shipped stories annotated (api.02/api.03/analytics.11), and 3 PM decisions recorded (frontend.04 → `[api.28, rag.01]`; `_security.06` is the canonical audit-log story with `_observability.10` dropped; `agent.18` owns `PostgresWorkflowRunStore` with `database.01` refocused on the migration).
+
+### Carryover notes (still actionable)
+
+- **`backend/app/...` path nit** — newer narrative-style module stories (most `*.1x`+ across graph/api/config/events/analytics/monitoring) cite code-touch-points under a non-existent `backend/app/...` layout; the real layout is `backend/<module>/`. Doc-convention cleanup, not a status defect.
+- **database.08–.13 Alembic revision-ID collision** — those stories carry literal revision IDs `0004_…`–`0008_…` that collide with shipped revisions, which now run through **`0008_scorecards`** (af_housing merge). Renumber at implementation time.
+- **No `scorecards.md` module backlog** — the new `backend/scorecards/` module has no engineering-story home under `docs/backlog/**`; hardening stories for it (e.g. peer-stats depth, template versioning) currently have nowhere to land. Flag for the module-backlog owner.
+- **Estimate drift is systemic** (2026-25 retro) — verify every committed story against code at sprint kickoff; do not trust nominal SPs.
+- Frontend + cross-cutting operational module backlogs still need the reconciliation pass that backend docs got on 2026-06-16.
 
 ---
 
 ## Cross-cutting reference
 
-Module backlogs (442 stories as of 2026-06-23) remain the authoritative per-module work breakdown. The Project Manager agent triages stories from these into the curated list above each sprint:
+Module backlogs remain the authoritative per-module work breakdown (CI-enforced via `scripts/backlog_consistency.py`). The Project Manager agent triages stories from these into the curated list above each sprint:
 
 - [docs/backlog/_cicd.md](../../backlog/_cicd.md), [_infra.md](../../backlog/_infra.md), [_multitenancy.md](../../backlog/_multitenancy.md), [_observability.md](../../backlog/_observability.md), [_plugins.md](../../backlog/_plugins.md), [_security.md](../../backlog/_security.md)
 - [agent.md](../../backlog/agent.md), [analytics.md](../../backlog/analytics.md), [api.md](../../backlog/api.md), [config.md](../../backlog/config.md), [database.md](../../backlog/database.md), [embeddings.md](../../backlog/embeddings.md), [events.md](../../backlog/events.md), [frontend.md](../../backlog/frontend.md), [graph.md](../../backlog/graph.md), [ingestion.md](../../backlog/ingestion.md), [knowledgebases.md](../../backlog/knowledgebases.md), [llm.md](../../backlog/llm.md), [monitoring.md](../../backlog/monitoring.md), [rag.md](../../backlog/rag.md), [records.md](../../backlog/records.md), [shared.md](../../backlog/shared.md), [storage.md](../../backlog/storage.md), [vectorstore.md](../../backlog/vectorstore.md)
