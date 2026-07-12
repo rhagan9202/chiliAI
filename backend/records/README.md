@@ -121,7 +121,7 @@ monitoring observations.
 ## Commands
 
 ```bash
-pip install -e ".[dev,postgres]"
+uv pip install -e ".[dev,postgres]"
 pytest tests/records -m "not integration"   # fast unit tests
 pytest tests/records -m integration           # needs a migrated TimescaleDB
 ```

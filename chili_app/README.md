@@ -108,7 +108,7 @@ npm run render:architecture  # Render docs/architecture.md diagrams
 `npm run codegen:api` reads `chili_app/openapi.json`; it does not call a live backend. When backend HTTP contracts change, regenerate the snapshot from the repo root first:
 
 ```bash
-uv run --project backend python -m tools.export_openapi --output chili_app/openapi.json
+PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json
 cd chili_app
 npm run codegen:api
 ```

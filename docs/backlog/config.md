@@ -179,7 +179,8 @@
 ## Story config.05: Add config hot-reload with atomic downstream cache invalidation
 
 **ID:** config.05
-**Status:** in-progress
+**Status:** planned
+_Note (2026-07-12): implementation is in flight on the unmerged `feat/domain-packs-and-config-manager` branch; status flipped back to planned because the prerequisite DAG invariant (in-progress requires all prerequisites done) is CI-enforced and the listed prerequisites are not done. Restore to in-progress/done when the branch merges and the prerequisite edges are reconciled._
 **Prerequisites:** [config.07, events.04]
 **Progress note (2026-07-03, feat/domain-packs-and-config-manager):** the core hot-reload mechanics landed as domain hot-swap (524b5bb, 648f413, 410a34c, a8573e5, 5b6646c):
 - `reset_domain_config_caches()` exists in `backend/api/dependencies.py` with a monotonic swap-generation token (`get_config_generation`) and generation-guarded memoizers so an in-flight request sees a wholly-old or wholly-new dependency graph, never a torn one. Swap-once-success atomicity holds: validate (+ production auth guardrail) → persist pointer → reset caches → emit event; failure at any step leaves the prior config active.
@@ -228,7 +229,8 @@ Still open: the reload-posture ADR, the `config_reload_total` Prometheus counter
 ## Story config.06: DomainConfigStore protocol + Postgres-backed persistence
 
 **ID:** config.06
-**Status:** in-progress
+**Status:** planned
+_Note (2026-07-12): implementation is in flight on the unmerged `feat/domain-packs-and-config-manager` branch; status flipped back to planned because the prerequisite DAG invariant (in-progress requires all prerequisites done) is CI-enforced and the listed prerequisites are not done. Restore to in-progress/done when the branch merges and the prerequisite edges are reconciled._
 **Prerequisites:** [database.02]
 **Progress note (2026-07-03, feat/domain-packs-and-config-manager):** a deliberately smaller persistence slice landed (524b5bb): `backend/config/store.py` is a file-backed **active-pack pointer store** (`data/config/active_pack.json` on the shared `chili-object-data` volume, atomic temp-file + `os.replace` writes, `read_active_pack`/`write_active_pack`/`clear_active_pack`/`resolve_config_path`). Boot-time resolution is pointer > `CHILI_CONFIG_PATH` env > error. It is intentionally not the versioned `DomainConfigStoreProtocol` this story specifies — it persists *which pack is active*, not config payloads/versions. All ACs below (protocol, filesystem/Postgres adapters, `domain_config` table + migration, version history, `CHILI_DOMAIN_CONFIG_STORE_BACKEND`) remain open; the pointer store should be reconciled into (or subsumed by) the versioned store when this story is executed.
 **Unblocks:** [config.07, config.09, config.10, config.11, config.13]
@@ -274,7 +276,8 @@ Still open: the reload-posture ADR, the `config_reload_total` Prometheus counter
 ## Story config.07: Write API for domain config (`/config/domain` write endpoint with dry-run, ETag, audit event)
 
 **ID:** config.07
-**Status:** in-progress
+**Status:** planned
+_Note (2026-07-12): implementation is in flight on the unmerged `feat/domain-packs-and-config-manager` branch; status flipped back to planned because the prerequisite DAG invariant (in-progress requires all prerequisites done) is CI-enforced and the listed prerequisites are not done. Restore to in-progress/done when the branch merges and the prerequisite edges are reconciled._
 **Prerequisites:** [config.06, _security.11]
 **Progress note (2026-07-03, feat/domain-packs-and-config-manager):** a pack-management API landed (a8573e5, 5b6646c) covering much of this story's intent with a pack-file (not payload-write) shape:
 - `GET /config/packs` (discovery + active-pack state), `POST /config/validate` (dry-run over a pack reference **or** inline content, structured field-level `ConfigValidationIssue` list), `POST /config/apply` (re-validate + hot-swap the on-disk pack, defaulting to the active one), `POST /config/switch` (activate a different pack) — all `require_role("admin")`, DTOs in `backend/api/config_models.py`, contracts regenerated.

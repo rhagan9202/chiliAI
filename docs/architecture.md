@@ -82,12 +82,12 @@ Depend on **protocols** (Python `Protocol`), **abstract base classes**, or **nar
 
 ### 2.5 Strict typing
 
-- **Backend**: Python 3.12. All code must be compatible with `pyright --strict` — full annotations, no untyped `Any`, explicit domain types.
+- **Backend**: Python 3.12. All code is written to be `pyright --strict`-compatible — full annotations, no untyped `Any`, explicit domain types. The enforced gate is bare `pyright`, whose strict scope is `tool.pyright.include` in `backend/pyproject.toml`; modules are added to `include` as they are hardened, with full-tree inclusion the end state.
 - **Frontend**: TypeScript in strict mode (`noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`).
 
 ### 2.6 Test-driven quality
 
-Backend test suites must maintain **≥ 85% coverage** for affected packages. Missing tests are treated as incomplete work. Tests are isolated and deterministic — external systems are mocked or faked at the adapter boundary.
+Backend test suites must maintain **≥ 85% coverage** for affected packages (the project standard, checked in review; the CI gate enforces the aggregate `--cov-fail-under=85`). Missing tests are treated as incomplete work. Tests are isolated and deterministic — external systems are mocked or faked at the adapter boundary.
 
 ---
 
@@ -1505,12 +1505,12 @@ Adapter selection is driven by environment configuration, not code changes.
 | **Graph visualization** | `react-force-graph-2d` | Interactive graph explorer in the current prototype |
 | **Backend language** | Python 3.12 | All backend services |
 | **API framework** | FastAPI | HTTP + WebSocket gateway |
-| **Type checking** | pyright (strict mode) | Static type analysis |
+| **Type checking** | pyright (strict, scoped via `tool.pyright.include`) | Static type analysis |
 | **Testing** | pytest + coverage | Unit/integration tests, ≥85% coverage |
 | **Event streaming** | Redis 7+ Streams | Pipeline orchestration, decoupling |
 | **Graph database** | in-memory / Neo4j | Knowledge graph storage (pluggable through the graph repository protocol) |
 | **Vector store** | in-memory / Qdrant | Embedding storage, similarity search (pluggable through the vector store protocol) |
-| **LLM integration** | OpenAI / Anthropic / Ollama / vLLM | RAG answers, entity extraction (pluggable) |
+| **LLM integration** | local / OpenAI / Anthropic / Ollama (vLLM is roadmap-only) | RAG answers, entity extraction (pluggable) |
 | **Embedding models** | OpenAI / sentence-transformers / custom | Text and graph-metric embeddings (pluggable) |
 | **Object storage** | S3 / MinIO / local FS | Raw document persistence (pluggable) |
 | **Logging** | structlog | Structured JSON logging |

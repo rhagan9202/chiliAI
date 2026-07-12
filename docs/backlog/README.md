@@ -1,6 +1,7 @@
 # chiliAI Backlog
 
-> Single source of truth for what's planned, in-progress, and done across the platform.
+> Single source of truth for **module-level engineering stories** — dependency-ordered work items, their status, and production-readiness gaps. Enforced in CI by `scripts/backlog_consistency.py`.
+> Product-level scope is owned separately: requirements live in `docs/project/planning/requirements.md` and the PM-curated, REQ-traceable backlog + sprint plans live in `docs/project/planning/` (maintained by the Project Manager agent, which reads this backlog as an input signal — the two do not duplicate each other).
 > See [docs/architecture.md](../architecture.md) for the target architecture this backlog drives toward.
 > Design spec: [docs/superpowers/specs/2026-05-24-complete-backlog-design.md](../superpowers/specs/2026-05-24-complete-backlog-design.md).
 
@@ -23,12 +24,12 @@
 | _security.md | 12 | 0 | 0 | 12 | 0% |
 | agent.md | 19 | 0 | 1 | 20 | 5% |
 | analytics.md | 33 | 0 | 0 | 33 | 0% |
-| api.md | 26 | 1 | 1 | 29 | 3% |
-| config.md | 12 | 3 | 0 | 15 | 0% |
+| api.md | 27 | 0 | 1 | 29 | 3% |
+| config.md | 15 | 0 | 0 | 15 | 0% |
 | database.md | 13 | 0 | 0 | 13 | 0% |
 | embeddings.md | 12 | 0 | 0 | 12 | 0% |
 | events.md | 14 | 2 | 0 | 16 | 0% |
-| frontend.md | 22 | 2 | 2 | 26 | 7% |
+| frontend.md | 24 | 0 | 2 | 26 | 7% |
 | graph.md | 20 | 0 | 0 | 20 | 0% |
 | ingestion.md | 25 | 0 | 10 | 35 | 28% |
 | knowledgebases.md | 13 | 0 | 0 | 13 | 0% |
@@ -39,7 +40,7 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 412 | 13 | 15 | 442 | 3% |
+| **Total** | 418 | 7 | 15 | 442 | 3% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)

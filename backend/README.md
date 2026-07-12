@@ -92,8 +92,9 @@ Ad hoc cross-module imports, hidden shared state, and direct implementation coup
 ## Development Commands
 
 ```bash
-# Install (editable, with dev extras when available)
-pip install -e ".[dev]"
+# Install (uv manages the venv; editable, with dev extras when available)
+uv venv --python 3.12 && source .venv/bin/activate
+uv pip install -e ".[dev]"
 
 # API server
 CHILI_ENV=local uvicorn api.app:create_app --factory --reload --port 8000
@@ -109,7 +110,7 @@ pytest --cov      # @pytest.mark.integration tests target the running stack
 pyright
 
 # Export backend OpenAPI for frontend contract codegen (from repo root)
-cd .. && uv run --project backend python -m tools.export_openapi --output chili_app/openapi.json
+cd .. && PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json
 
 # Demo: Tennessee Medicare subset (requires `make dev` stack running first)
 make demo-tn-subset                                         # build TN subset + create KB + upload
@@ -158,8 +159,8 @@ make seed-housing SEED_ARGS="--scorecards"                 # ...and generate sco
 
 ## Quality Requirements
 
-- **Type checking**: All code must pass `pyright --strict`. Full annotations, no untyped `Any`, explicit domain types.
-- **Test coverage**: ≥ 85% for each backend package. Missing tests = incomplete work.
+- **Type checking**: All code is written `pyright --strict`-clean; the enforced gate is bare `pyright`, scoped by `tool.pyright.include` in `pyproject.toml` (hardened modules are added to `include`). Full annotations, no untyped `Any`, explicit domain types.
+- **Test coverage**: ≥ 85% for each backend package (project standard; the CI gate enforces aggregate `--cov-fail-under=85`). Missing tests = incomplete work.
 - **Interface-first**: Every external system (graph DB, vector store, LLM, object store) behind an abstract protocol in `<module>/protocols.py` with concrete adapters in `<module>/adapters/`.
 
 ## Configuration

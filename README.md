@@ -111,7 +111,7 @@ npm run lint      # ESLint check
 Backend OpenAPI is the source of truth for frontend API DTOs.
 
 ```bash
-uv run --project backend python -m tools.export_openapi --output chili_app/openapi.json
+PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json
 cd chili_app
 npm run codegen:api
 ```
@@ -122,8 +122,9 @@ Commit both `chili_app/openapi.json` and `chili_app/src/lib/api/schema.ts` when 
 
 ```bash
 cd backend
-# Create and activate a virtual environment, then:
-pip install -e ".[dev]"
+# Create and activate a virtual environment (uv manages Python envs), then:
+uv venv --python 3.12 && source .venv/bin/activate
+uv pip install -e ".[dev]"
 CHILI_ENV=local uvicorn api.app:create_app --factory --reload --port 8000   # API server
 python -m agent.coordinator                         # Pipeline worker
 pytest --cov                                        # Run tests with coverage
@@ -137,8 +138,8 @@ pytest --cov                                        # Run tests with coverage
 |----------|--------|-----------|
 | Event transport | Redis Streams | Lightweight, supports consumer groups for worker scaling |
 | Cross-module interaction | FastAPI gateway / agent coordinator / shared contracts library only | Enforces loose coupling — see [`docs/architecture.md` §2.2](docs/architecture.md#22-loose-coupling-and-narrow-module-boundaries) |
-| Type checking | `pyright --strict` (backend), TypeScript strict (frontend) | Catches errors early; enforces explicit domain types |
-| Test coverage | pytest ≥ 85% for backend packages | Quality gate — missing tests = incomplete work |
+| Type checking | `pyright --strict` (backend, scoped via `tool.pyright.include`), TypeScript strict (frontend) | Catches errors early; enforces explicit domain types |
+| Test coverage | pytest ≥ 85% per backend package (standard; CI gate is aggregate `--cov-fail-under=85`) | Quality gate — missing tests = incomplete work |
 | Deployment | Docker containers on Kubernetes or Docker Compose | Hybrid cloud + on-premises support |
 
 ## Documentation

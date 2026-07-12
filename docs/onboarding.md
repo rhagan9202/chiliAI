@@ -113,12 +113,12 @@ The first run will pull and build images; expect ~3–5 minutes. After that, inc
 ```bash
 cd backend
 
-# Create a virtual environment
-python3.12 -m venv .venv
+# Create a virtual environment (uv manages Python envs in this repo)
+uv venv --python 3.12
 source .venv/bin/activate
 
 # Install the package in editable mode with all dev extras
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 
 # Verify
 python -c "import fastapi; print(fastapi.__version__)"
@@ -129,8 +129,8 @@ pytest --version
 Installing optional adapter dependencies (only if you need to run adapter-specific code locally):
 
 ```bash
-pip install -e ".[neo4j]"     # Neo4j driver
-pip install -e ".[qdrant]"    # Qdrant client
+uv pip install -e ".[neo4j]"     # Neo4j driver
+uv pip install -e ".[qdrant]"    # Qdrant client
 ```
 
 ### 3.4 Frontend — local Node setup
@@ -323,8 +323,8 @@ The `type` and `properties` keys are defined by the active domain configuration 
 | Rule | Detail |
 |------|--------|
 | **Python version** | 3.12. Use its syntax and stdlib features freely. |
-| **Type checking** | All code must pass `pyright --strict`. Full annotations, no untyped `Any`, explicit domain types. |
-| **Test coverage** | ≥ 85% per package for any code you add or change. Missing tests = incomplete work. |
+| **Type checking** | Code must be `pyright --strict`-clean. Strictness is enforced for the modules listed in `tool.pyright.include` (`backend/pyproject.toml`); hardened modules are added to `include`. Full annotations, no untyped `Any`, explicit domain types. |
+| **Test coverage** | ≥ 85% per package for any code you add or change (project standard; the CI gate enforces aggregate `--cov-fail-under=85`). Missing tests = incomplete work. |
 | **Test isolation** | Mock or fake external systems at the adapter boundary. Unit tests must not need a live database, Redis, or LLM. |
 | **No business logic in routers** | `api/routers/*.py` must only validate input, call service methods, and return responses. |
 | **No cross-module imports** | Each module only touches `shared/`, its own internals, and injected protocol dependencies. |
@@ -341,6 +341,10 @@ pyright                       # strict type check
 ruff check .                  # lint
 ruff format .                 # format
 pytest --cov --cov-report=term-missing   # tests with coverage report
+# ⚠️ With the dev stack up, the default DATABASE_URL points at the stack's live
+# Postgres and the migration tests WIPE it (see backend/README.md). To protect
+# seeded demo state:
+# DATABASE_URL=postgresql://chili:chili@localhost:5432/chili_test pytest --cov
 ```
 
 ### 6.2 Frontend
@@ -1053,7 +1057,7 @@ Check that all function parameters and return types are explicitly annotated. `p
 
 ### Tests fail with `ModuleNotFoundError`
 
-Make sure you installed the package in editable mode: `pip install -e ".[dev]"`. If you added a new package, check that it is listed in `pyproject.toml` under `[tool.setuptools.packages.find]`.
+Make sure you installed the package in editable mode: `uv pip install -e ".[dev]"`. If you added a new package, check that it is listed in `pyproject.toml` under `[tool.setuptools.packages.find]`.
 
 ### `make dev` fails because a port is already in use
 

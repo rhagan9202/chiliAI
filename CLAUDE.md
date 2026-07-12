@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Development Rules
-- Use uv for python environment management, npm for node and typescript. Do not use pipenv, poetry, pnpm, or yarn.
+- Use uv for python environment management (`uv venv`, `uv pip install …`), npm for node and typescript. Day-to-day tool invocation goes through the project venv (`backend/.venv/bin/pytest`, activated-venv `pytest`, etc.). Do not use bare `pip`, pipenv, poetry, pnpm, or yarn.
 - Use Python 3.12 and React 19 with Vite 8.
 - All functional code must be fully typed with no `Any` types. Use `pyright --strict` to check.
 - All functional backend code must have pytest coverage >= 85% coverage, full green before acceptance.
@@ -16,10 +16,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - DO NOT LEAVE PRE-EXISTING ERRORS. This includes failures you surface by running a suite/build (a red test, a type error, a lint failure in code you did not write): diagnose the root cause and fix it — do not merely flag it as "pre-existing" or "unrelated." You may NOT end your turn with any known error, warning, or failing test outstanding.
 - When finishing a turn, read and update the relevant module README.md files and any applicable instruction files under `.github/` (for example `.github/copilot-instructions.md` and `.github/instructions/*.md`).
 - When finishing a turn update the architecture.md file and the root README.md if the change affects design or cross-cutting concerns.
-- Before committing, read CLAUDE.md, all instruction files in github/, all README.md files in the repo, and all non-archived files in docs/ and update any contradictions or outdated information.
+- Before committing, read CLAUDE.md, all instruction files in `.github/`, all README.md files in the repo, and all non-archived files in docs/ and update any contradictions or outdated information.
 - When planning a change, search up the directory for the nearest README.md files and applicable instruction files (CLAUDE.md, `.github/copilot-instructions.md`, `.github/instructions/*.md`) to understand the current state and relevant constraints.
 
 ### Tooling gotchas (cost real time; will recur)
+- **Host `pytest --cov` WIPES the dev-stack Postgres data**: `DATABASE_URL` defaults to the dev stack's `…:5432/chili`, and `tests/database/test_migrations.py` runs `alembic downgrade base` → `upgrade head` against it, emptying every app table while KB shells survive in the object store. When the stack holds seeded/demo state, run `DATABASE_URL=postgresql://chili:chili@localhost:5432/chili_test pytest --cov` (details: `backend/README.md` § Development Commands).
 - `ruff`'s cache dir is not writable in the sandbox — run `backend/.venv/bin/ruff check --no-cache .`.
 - Bare `pyright` (no args) is the real gate — its `tool.pyright.include` covers many `tests/**`, so test code must be strict-clean too. Never import private `_helpers` into an included test dir (triggers `reportPrivateUsage`); test through the public surface (promote a helper to public if needed). Per-file `pyright <file>` can miss include-scoped test errors.
 - Playwright `page.route` patterns must be `/api/`-anchored — an unanchored `/cases`-style pattern also intercepts the SPA page navigation `localhost:5173/cases` and renders JSON as the page body.
@@ -43,21 +44,25 @@ Monorepo layout: `backend/` (Python 3.12 / FastAPI), `chili_app/` (React 19 + TS
 ### Full stack (Docker)
 ```bash
 make dev          # docker compose -f docker-compose.dev.yaml up --build (hot reload)
+make dev-domain DOMAIN=<pack>  # dev stack under a named domain pack (backend/config/defaults/<pack>.yaml)
 make down         # stop dev stack
 make clean        # stop + remove volumes
 make api-shell    # shell into the API container
+make migrate      # alembic upgrade head inside the API container
 make test         # run backend pytest --cov inside the API container
+make test-e2e     # Playwright e2e against a fresh full dev stack
+make seed-housing # seed the Air Force housing demo KB via the running API (housing pack required)
 make prod         # production stack (built images, nginx, no hot reload)
 ```
 Service URLs: frontend `:5173`, API `:8000`, Neo4j `:7474`, Qdrant `:6333`, MinIO console `:9001`. `.env` is loaded from `.env.example` (gitignored).
 
 ### Backend (`cd backend`)
 ```bash
-pip install -e ".[dev]"                                  # base + dev tools
-pip install -e ".[dev,neo4j,qdrant,openai,anthropic,s3,sentence-transformers]"  # with optional adapters
+uv venv && uv pip install -e ".[dev]"                    # env + base dev tools (uv manages the venv)
+uv pip install -e ".[dev,neo4j,qdrant,openai,anthropic,s3,sentence-transformers]"  # with optional adapters
 uvicorn api.app:create_app --factory --reload --port 8000  # API (note --factory: create_app is a factory)
 python -m agent.coordinator                               # pipeline worker
-pytest --cov                                              # all tests, coverage gate ≥ 85% per package
+pytest --cov                                              # all tests; standard is ≥ 85% per package (CI enforces aggregate --cov-fail-under=85)
 pytest tests/storage/test_in_memory.py::TestClass::test_x # single test
 pytest -m integration                                     # tests requiring external services / optional deps
 pyright                                                   # strict type check (config in pyproject.toml)
@@ -108,7 +113,7 @@ Modules typically expose: `protocols.py` (abstract contract), `models.py` (inter
 Backend FastAPI OpenAPI is the source of truth for HTTP request/response shapes. Frontend code must import API DTOs from `chili_app/src/api/contracts.ts`, which aliases generated types from `chili_app/src/lib/api/schema.ts`. Do not hand-write frontend wire DTOs, do not edit generated schema files, and do not patch type failures with `as any`. When a frontend-consumed backend route changes, update the Pydantic request/response model, export OpenAPI, run `npm run codegen:api`, then update UI adapters.
 
 ### 6. Quality gates
-- Backend: `pyright --strict` clean, full annotations, no untyped `Any`. pytest coverage ≥ 85% per package — missing tests = incomplete work.
+- Backend: `pyright --strict` clean (strictness is scoped by `tool.pyright.include` in `backend/pyproject.toml`; hardened modules are added to `include`), full annotations, no untyped `Any`. pytest coverage ≥ 85% per package is the project standard (CI's enforced gate is the aggregate `--cov-fail-under=85`) — missing tests = incomplete work.
 - Frontend: TypeScript strict (`noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`). ESLint clean.
 
 ## Backend Module Map (Target)

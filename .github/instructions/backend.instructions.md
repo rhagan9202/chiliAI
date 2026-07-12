@@ -20,9 +20,10 @@ applyTo: "backend/**/*.py"
 | Concern | Modules |
 | --- | --- |
 | API and orchestration | `api/`, `agent/`, `events/` |
-| Knowledge pipeline | `ingestion/`, `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/` |
-| Analytics and monitoring | `analytics/timeseries/`, `analytics/gnn/`, `analytics/risk/`, `analytics/explainability/`, `monitoring/` |
-| Shared platform services | `shared/`, `config/`, `storage/` |
+| Knowledge pipeline | `ingestion/` (documents), `records/` (structured/tabular), `graph/`, `vectorstore/`, `embeddings/`, `rag/`, `llm/`, `knowledgebases/` |
+| Analytics and monitoring | `analytics/timeseries/`, `analytics/gnn/`, `analytics/risk/`, `analytics/explainability/`, `analytics/metrics/`, `analytics/peerstats/`, `monitoring/`, `scorecards/` |
+| Analyst workflows | `cases/`, `conversations/`, `policy/` |
+| Shared platform services | `shared/`, `config/`, `storage/`, `database/` |
 
 - Keep modules loosely coupled and narrowly scoped. Each module owns its internal implementation and exposes a narrow public contract.
 - The `api/` module is a FastAPI gateway — thin routing, request validation, and dependency injection. **No business logic in routers.**
@@ -55,4 +56,4 @@ applyTo: "backend/**/*.py"
 - Add or update pytest coverage for backend changes. Backend test suites should pass and maintain at least 85% coverage for the affected backend package or the backend test target being introduced.
 - Treat missing tests as incomplete work for backend features, orchestration paths, adapters, and shared contracts.
 - Keep tests isolated and deterministic. Mock or fake external systems at the adapter boundary rather than leaking network, database, or model dependencies into unit tests.
-- If repository tooling is not yet in place for strict type checking or coverage enforcement, still write code and tests to satisfy these requirements and add the minimal supporting configuration only when the task calls for it.
+- CI enforces both gates: bare `pyright` (strict scope from `tool.pyright.include` in `backend/pyproject.toml`) and `pytest --cov --cov-fail-under=85` (aggregate; ≥ 85% per touched package is the review standard).
