@@ -33,17 +33,33 @@ class InMemorySourceDocumentStatusStore:
                 current_status=transition.status,
                 status_rank=new_rank,
                 last_error=transition.error_message,
-                dropped_entity_count=transition.dropped_entity_count or 0,
-                dropped_relationship_count=(
-                    transition.dropped_relationship_count or 0
+                dropped_entity_count=(
+                    transition.dropped_entity_count
+                    if transition.dropped_entity_count is not None
+                    else 0
                 ),
-                sample_reasons=list(transition.sample_reasons or []),
+                dropped_relationship_count=(
+                    transition.dropped_relationship_count
+                    if transition.dropped_relationship_count is not None
+                    else 0
+                ),
+                sample_reasons=(
+                    list(transition.sample_reasons)
+                    if transition.sample_reasons is not None
+                    else []
+                ),
                 first_event_at=transition.occurred_at,
                 updated_at=transition.occurred_at,
             )
             self._records[key] = record
             return record
         advanced = new_rank > existing.status_rank
+        # A FAILED transition at >= the stored rank refreshes the error even
+        # though it does not advance the status (e.g. a second, newer failure).
+        failed_refresh = (
+            transition.status is IngestionStatus.FAILED
+            and new_rank >= existing.status_rank
+        )
         record = existing.model_copy(
             update={
                 "current_status": (
@@ -52,7 +68,8 @@ class InMemorySourceDocumentStatusStore:
                 "status_rank": max(existing.status_rank, new_rank),
                 "last_error": (
                     transition.error_message
-                    if advanced and transition.error_message is not None
+                    if (advanced or failed_refresh)
+                    and transition.error_message is not None
                     else existing.last_error
                 ),
                 "dropped_entity_count": (

@@ -20,7 +20,11 @@ class SourceDocumentStatusStore(Protocol):
     ``apply`` is monotonic: a transition only changes ``current_status`` when
     its ``STATUS_RANK`` is strictly greater than the stored rank, so stale or
     redelivered events are no-ops. Drop counts / sample reasons are absolute
-    values and overwrite whenever the transition carries them.
+    values and overwrite whenever the transition carries them. ``last_error``
+    (and ``updated_at``) additionally refresh whenever a FAILED transition
+    arrives at a rank >= the stored rank — a second, newer failure replaces
+    the recorded error — while lower-rank events arriving after FAILED never
+    touch ``last_error``.
     """
 
     def apply(

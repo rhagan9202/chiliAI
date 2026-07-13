@@ -68,10 +68,25 @@ def test_stale_transition_after_failed_is_ignored() -> None:
     store.apply(
         _transition(IngestionStatus.FAILED, occurred_at=T1, error="parse exploded")
     )
-    record = store.apply(_transition(IngestionStatus.PARSING, occurred_at=T2))
+    record = store.apply(
+        _transition(IngestionStatus.PARSING, occurred_at=T2, error="stale noise")
+    )
     assert record.current_status == IngestionStatus.FAILED
     assert record.last_error == "parse exploded"
     assert record.status_rank == STATUS_RANK[IngestionStatus.FAILED]
+
+
+def test_failed_redelivery_refreshes_last_error() -> None:
+    store = InMemorySourceDocumentStatusStore()
+    store.apply(
+        _transition(IngestionStatus.FAILED, occurred_at=T1, error="first failure")
+    )
+    record = store.apply(
+        _transition(IngestionStatus.FAILED, occurred_at=T2, error="second failure")
+    )
+    assert record.current_status == IngestionStatus.FAILED
+    assert record.last_error == "second failure"
+    assert record.updated_at == T2
 
 
 def test_redelivery_is_idempotent() -> None:
