@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from events.types import DocumentsUploadedEvent
+from ingestion.adapters.protocols import SourceDocumentStatusStore
 from ingestion.chunker import ChunkingResult
 from ingestion.models import ExtractionResult, ParsedDocument, ValidationReport
 from ingestion.orchestrators.protocols import DocumentParseFailure, ParseResult
@@ -61,4 +62,5 @@ __all__ = [
     "DocumentExtractorProtocol",
     "DocumentValidatorProtocol",
     "IngestionServiceProtocol",
+    "SourceDocumentStatusStore",
 ]
