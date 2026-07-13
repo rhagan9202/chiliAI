@@ -1,7 +1,7 @@
 # chiliAI v1 Consolidated Backlog
 
 > Owned by the Project Manager agent. The single source of truth for v1-scoped, prioritized work items.
-> Version: 3 · Last updated: 2026-07-12
+> Version: 4 · Last updated: 2026-07-12
 >
 > This file is a **curated v1 backlog** that consolidates and prioritizes work derived from:
 > - `docs/project/planning/requirements.md` (canonical requirements, v1.2 · 2026-07-12)
@@ -22,7 +22,11 @@
 | BL-ID | Title | REQ-IDs | Priority | Status | Remaining |
 |-------|-------|---------|----------|--------|-----------|
 | BL-017 | Graph integrity + version/merge | REQ-GRAPH-001 | P1 | todo | 8 SP |
-| BL-019 | Embeddings + Vectorstore 1.0 hardening | REQ-VEC-001..004 | P1 | partial ~60% | ~5 SP |
+| BL-019 | Embeddings + Vectorstore 1.0 hardening (re-scoped 2026-07-12: cache + cost/usage tracking) | REQ-VEC-001..004 | P1 | committed — Sprint 2026-26 | 5 SP |
+| BL-041 | Ingestion document-status projection + failure-path closure | REQ-KB-002, REQ-KB-004 | P1 | committed — Sprint 2026-26 | 6 SP |
+| BL-042 | CI migration drift/replay gate (database.04) | REQ-NFR-002 | P1 | committed — Sprint 2026-26 | 3 SP |
+| BL-043 | Ingestion structured stage logs + Prometheus counters | REQ-NFR-SEC-004 | P2 | committed — Sprint 2026-26 | 2 SP |
+| BL-044 | Config base + overlay layering (config.04) | REQ-CONFIG-001 | P2 | stretch — Sprint 2026-26 | 3 SP |
 | BL-020 | KB snapshots & restore | REQ-KB-007, REQ-NFR-DR-001 | P2 | todo | 8 SP |
 | BL-021 | Graph backup/restore per adapter | REQ-GRAPH-006, REQ-NFR-DR-002 | P2 | todo | 5 SP |
 | BL-022 | OIDC hardening | REQ-AUTH-001 | P2 | partial ~35% | ~4 SP |
@@ -47,18 +51,39 @@
   - [ ] Optimistic locking / version-conflict detection — `version` is stored and blindly overwritten (`neo4j_adapter.py:176,188`); `graph/service.py:29` carries the production TODO
   - [ ] Real merge semantics — only a property-dict merge on single-entity update exists (`in_memory.py:77-80`, `neo4j_adapter.py:295-298`)
 
-### BL-019 — Embeddings 1.0 + Vectorstore 1.0 hardening
+### BL-019 — Embeddings 1.0 + Vectorstore 1.0 hardening (re-scoped 2026-07-12)
 - **REQ**: REQ-VEC-001..004
 - **Plans**: [docs/superpowers/plans/2026-05-19-embeddings-1-0.md](../../superpowers/plans/), [docs/superpowers/plans/2026-05-19-vectorstore-1-0.md](../../superpowers/plans/)
-- **Status**: partial ~60% (re-verified 2026-07-12)
-- **Remaining estimate**: ~5 SP
+- **Status**: committed — Sprint 2026-26 (was partial ~60%, re-verified 2026-07-12)
+- **Remaining estimate**: 5 SP
+- **Re-scope ruling (product owner, 2026-07-12)**: acceptance for closing this P1 is **embedding cache + cost/usage tracking**. The roadmap-tier tail (object-store persistence of embeddings, graph-metric hybrid embedding flow, model routing, architecture guards) moved to post-v1 item **BL-045** — REQ-VEC-001..004 do not require it.
 - **Acceptance**:
   - [x] Retry/backoff + batching/token budgeting on OpenAI embeddings — `backend/embeddings/adapters/openai_adapter.py:108-134` (`_create_embeddings_with_retry`, 3 attempts, exponential backoff)
   - [x] Namespace lifecycle — `delete_namespace` on both adapters + service (`vectorstore/service.py:200`, `adapters/in_memory.py:105`, `qdrant_adapter.py:232`) with per-namespace dimension guard
   - [x] `delete_by_source_document` wired end-to-end — protocol `vectorstore/protocols.py:39`, service `:216-223`, exercised on the document-replacement path (`api/routers/knowledgebases.py:142-143`); whole-KB delete uses namespace drop via the cleanup cascade (`knowledgebases/cleanup.py:74`)
   - [ ] Embedding cache — none (standing TODO `backend/embeddings/service.py:24`)
   - [ ] Cost/usage tracking — none
-  - [ ] Object-store persistence of embeddings; graph-metric hybrid embedding flow; model routing; architecture guards — none
+  - ~~Object-store persistence of embeddings; graph-metric hybrid embedding flow; model routing; architecture guards~~ → moved to **BL-045** (post-v1, ruling 2026-07-12)
+
+### BL-041 — Ingestion document-status projection + failure-path closure
+- **REQ**: REQ-KB-002, REQ-KB-004
+- **Module source**: [docs/backlog/ingestion.md](../../backlog/ingestion.md) stories ingestion.18 (slice; FE wiring split out), ingestion.32 (coordinator residue), ingestion.35 (closure)
+- **Status**: committed — Sprint 2026-26 (code-verified 2026-07-12: no `SourceDocumentStatusStore` exists; `GET /knowledgebases/{kb_id}/documents` returns computed status + warning counts only, no durable stage/`last_error`; coordinator `handle_documents_parsed/chunked` still raise `ValueError` on missing keys, `coordinator.py:1169-1172, 1234-1235`)
+- **Estimate**: 6 SP
+- **Acceptance**:
+  - [ ] `SourceDocumentStatusStore` protocol + Postgres adapter (Alembic migration `0009`); monotonic transitions (stale `parsing` after `failed` ignored)
+  - [ ] Projection consumer subscribes to `documents.uploaded/parsed/failed` + extraction-warning events
+  - [ ] `GET /knowledgebases/{kb_id}/documents` returns durable `current_status`, `last_error`, validation drop counts/sample reasons; filterable by status; contracts regenerated
+  - [ ] Coordinator residue: missing-key/`get_bytes` failures in `handle_documents_parsed/chunked` converted to per-document `DocumentsFailedEvent` (one bad doc no longer poisons its batch)
+  - [ ] Zero-valid-entity docs surface `EXTRACTED_EMPTY` via the projection (status transition, no new event type)
+  - Frontend Studio wiring is explicitly out of scope (follow-on FE story)
+
+### BL-042 — CI migration drift/replay gate
+- **REQ**: REQ-NFR-002 (quality-gate; protects REQ-KB-006/REQ-INT-004 persistence)
+- **Module source**: [docs/backlog/database.md](../../backlog/database.md) story database.04
+- **Status**: committed — Sprint 2026-26 (code-verified 2026-07-12: no `scripts/ci_migration_check.sh`, no `snapshots/head.sql`, no `migrate-check` target; CI runs apply-only `alembic upgrade head` at `ci.yml:87`)
+- **Estimate**: 3 SP
+- **Acceptance**: `scripts/ci_migration_check.sh` (fresh TimescaleDB → upgrade head → downgrade base → upgrade head + drift check vs committed `snapshots/head.sql`); `make migrate-check` local parity; CI job wired (cross-edge `_cicd.12`). Paired with BL-041's migration `0009` so the new status table gets drift protection from day one.
 
 ---
 
@@ -121,6 +146,20 @@
 - **Status**: todo (re-verified 2026-07-12 — retrieval still projects the KB list to `[0]`: `backend/rag/service.py:132` `primary_kb_id = request.knowledge_base_ids[0]`, documented single-KB limitation at `:131,165`)
 - **Remaining estimate**: 5 SP
 
+### BL-043 — Ingestion structured stage logs + Prometheus counters
+- **REQ**: REQ-NFR-SEC-004 (structured logs); counters are an enabler for post-v1 BL-034
+- **Module source**: [docs/backlog/ingestion.md](../../backlog/ingestion.md) story ingestion.17 (logs+counters subset only — OTel spans + Grafana dashboards stay in ingestion.17, blocked on _observability.03/.05/.07)
+- **Status**: committed — Sprint 2026-26 (code-verified 2026-07-12: no ingestion-stage logs/counters exist; a generic Prometheus `/metrics` registry is already present at `api/middleware/metrics.py` to hang the counters on)
+- **Estimate**: 2 SP
+- **Acceptance**: each ingestion stage emits structured logs (`stage=`, `source_document_id=`, `kb_id=`, `duration_ms=`, `outcome=`); counters `ingestion_documents_failed_total{stage,error_class}`, `ingestion_documents_empty_extraction_total`, `ingestion_dedup_suppressed_total` on the existing `/metrics` registry.
+
+### BL-044 — Config base + environment overlay layering
+- **REQ**: REQ-CONFIG-001
+- **Module source**: [docs/backlog/config.md](../../backlog/config.md) story config.04
+- **Status**: stretch — Sprint 2026-26 (code-verified 2026-07-12: no `overlay.py`, no `CHILI_CONFIG_OVERLAY_PATH`, loader TODO intact at `backend/config/loader.py:31`)
+- **Estimate**: 3 SP
+- **Acceptance**: merge-semantics ADR; `backend/config/overlay.py` with property-based merge tests; `CHILI_CONFIG_OVERLAY_PATH` (stackable); `medicare_fraud_dev.yaml` shrunk to a minimal overlay; unknown-top-level-key rejection. The ingestion roadmap's named next lever — unblocks ingestion.08/09/13/15 + agent.05/10 + config.08.
+
 ---
 
 ## P3 — post-v1
@@ -151,6 +190,12 @@
 - **Module source**: [docs/backlog/frontend.md](../../backlog/frontend.md) (frontend.03/25/26 — sectioned wizard), [docs/backlog/config.md](../../backlog/config.md) (config.06/07/09/14/15 — draft persistence, ETag optimistic concurrency, admin audit events)
 - **Milestone**: post-v1 (product-owner ruling 2026-07-12: raw-YAML editor + pack switcher is the v1 bar; audit-trail gap recorded as an accepted deviation in requirements §6)
 - **Estimate**: ~3 SP (wizard) + hardening stories per module backlog
+
+### BL-045 — Embeddings/vectorstore roadmap tail (re-scoped out of BL-019)
+- **REQ**: beyond REQ-VEC-001..004 (roadmap-tier; no v1 requirement demands these)
+- **Scope**: object-store persistence of embeddings; graph-metric hybrid embedding flow; model routing; architecture guards — the BL-019 acceptance items moved here by product-owner ruling 2026-07-12 so nothing is silently dropped
+- **Plans**: [docs/superpowers/plans/2026-05-19-embeddings-1-0.md](../../superpowers/plans/), [docs/superpowers/plans/2026-05-19-vectorstore-1-0.md](../../superpowers/plans/)
+- **Milestone**: post-v1
 
 ---
 
@@ -196,6 +241,7 @@ Full detail for each pass lives in this file's git history (`git log -p -- docs/
 - **2026-05-26 PM run (drift resolution)** — 18 drift items (D-01..D-18) adjudicated against requirements v1.1. All CODE-CHANGE items (D-03/04/06/07/08/10/14/15 → BL-001..006, BL-010/011) have since shipped; ACCEPT-AS-BACKLOG items became BL-020..025/030; two REQUIREMENT-CHANGE items were amended into requirements v1.1.
 - **2026-06-16 reconciliation pass** — code-level audit of every non-done BL item; corrected systemically stale SP estimates (BL-013 8→~0, BL-014 13→~0, BL-015 5→3, BL-018 already done). Conclusion then (still true): the v1 feature surface is essentially complete; the remainder is a hardening/DR/security-depth tail.
 - **2026-07-12 requirements v1.2 reconciliation (v3)** — after the Requirements Gatherer refresh: BL-016 closed at the v1 bar per product-owner rulings (OQ-1..4: wizard post-v1, config-write hardening post-v1, API-only scorecard generation, housing = supported exemplar-tier domain); BL-038/BL-039 moved from [NO-REQ] to Done under the new REQ-SCORE-*/REQ-HOUSING-* families; BL-040 appended for the post-v1 config tail.
+- **2026-07-12 sprint 2026-26 planning (v4)** — Sprint 2026-26 committed (user-approved: 25 SP nominal / 16 SP core, 2026-07-13 → 2026-07-26): appended BL-041/BL-042 (P1, committed), BL-043 (P2, committed), BL-044 (P2, stretch); BL-019 re-scoped by product-owner ruling (acceptance = cache + cost/usage tracking; committed) with its roadmap tail preserved as post-v1 **BL-045**. Supersedes and deletes the June `2026-26-slice-…-DRAFT.md` (residue code-verified 2026-07-12).
 - **2026-06-23 PM run (module-backlog dependency-graph cleaning)** — platform-wide audit of all 24 module backlogs: 18 mislabeled/dangling prerequisite edges corrected, 2 new stories added (analytics.33 extraction-quality metric, storage.14 object-store health probes), 3 substantially-shipped stories annotated (api.02/api.03/analytics.11), and 3 PM decisions recorded (frontend.04 → `[api.28, rag.01]`; `_security.06` is the canonical audit-log story with `_observability.10` dropped; `agent.18` owns `PostgresWorkflowRunStore` with `database.01` refocused on the migration).
 
 ### Carryover notes (still actionable)
