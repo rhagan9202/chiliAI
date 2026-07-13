@@ -2263,6 +2263,8 @@ def test_drain_ingestion_events_routes_failing_event_to_dlq() -> None:
     )
 
     # Publish a DocumentsParsedEvent referencing a missing storage key.
+    # Per-document isolation (BL-041): this no longer poisons the batch
+    # (sends to DLQ). Instead, a DocumentsFailedEvent is published.
     event_bus.publish(
         DocumentsParsedEvent(
             correlation_id="corr-fail",
@@ -2291,10 +2293,16 @@ def test_drain_ingestion_events_routes_failing_event_to_dlq() -> None:
         sleep=_instant_sleep,
     ))
 
-    assert len(event_bus.dlq_entries) == 1
-    dlq_entry = event_bus.dlq_entries[0]
-    assert isinstance(dlq_entry.event, DocumentsParsedEvent)
-    assert dlq_entry.error.retry_count == 1
+    # With BL-041, missing storage keys are handled per-document via
+    # DocumentsFailedEvent, not by poisoning the batch to the DLQ.
+    assert len(event_bus.dlq_entries) == 0
+    failed_events = [
+        event for event in event_bus.published_events
+        if isinstance(event, DocumentsFailedEvent)
+    ]
+    assert len(failed_events) == 1
+    assert failed_events[0].correlation_id == "corr-fail"
+    assert failed_events[0].documents[0].source_document_id == "doc-1"
 
 
 def test_drain_ingestion_events_marks_records_workflow_failed_after_retry_exhaustion() -> None:
@@ -2596,49 +2604,202 @@ def teststart_health_server_safely_logs_warning_on_failure(
     assert "Health server failed to start" in caplog.text
 
 
-def test_handle_documents_parsed_raises_when_storage_key_missing() -> None:
+def test_handle_documents_parsed_publishes_failure_when_storage_key_missing() -> None:
     event_bus = InMemoryEventBus()
     object_store = InMemoryObjectStore()
     chunker = create_document_chunker()
-    with pytest.raises(ValueError):
-        handle_documents_parsed(
-            DocumentsParsedEvent(
-                documents=[
-                    ParsedDocumentReference(
-                        knowledge_base_id="kb-1",
-                        source_document_id="doc-1",
-                        parsed_document_id="parsed-1",
-                        parser_name="test",
-                    )
-                ]
-            ),
-            document_chunker=chunker,
-            object_store=object_store,
-            event_bus=event_bus,
-        )
+
+    processed = handle_documents_parsed(
+        DocumentsParsedEvent(
+            correlation_id="corr-fail-1",
+            documents=[
+                ParsedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    parser_name="test",
+                )
+            ]
+        ),
+        document_chunker=chunker,
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    assert processed == 0
+    failed_events = [
+        event for event in event_bus.published_events
+        if isinstance(event, DocumentsFailedEvent)
+    ]
+    assert len(failed_events) == 1
+    assert failed_events[0].correlation_id == "corr-fail-1"
+    failure = failed_events[0].documents[0]
+    assert failure.knowledge_base_id == "kb-1"
+    assert failure.source_document_id == "doc-1"
+    assert "parsed_document_storage_key" in failure.error_message
+    assert not any(
+        isinstance(event, DocumentsChunkedEvent)
+        for event in event_bus.published_events
+    )
 
 
-def test_handle_documents_chunked_raises_when_storage_key_missing() -> None:
+def test_handle_documents_parsed_isolates_bad_document_from_batch() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    chunker = create_document_chunker()
+    good_key = "knowledgebases/kb-1/parsed/parsed-good.json"
+    object_store.put_bytes(
+        good_key,
+        ParsedDocument(
+            id="parsed-good",
+            source_document_id="doc-good",
+            text_content="Claim 42 was filed by provider A.",
+            parser_name="test-parser",
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    processed = handle_documents_parsed(
+        DocumentsParsedEvent(
+            correlation_id="corr-mixed",
+            documents=[
+                ParsedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-bad",
+                    parsed_document_id="parsed-bad",
+                    parser_name="test-parser",
+                    parsed_document_storage_key="knowledgebases/kb-1/parsed/missing.json",
+                ),
+                ParsedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-good",
+                    parsed_document_id="parsed-good",
+                    parser_name="test-parser",
+                    parsed_document_storage_key=good_key,
+                ),
+            ]
+        ),
+        document_chunker=chunker,
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    assert processed == 1
+    failed_events = [
+        event for event in event_bus.published_events
+        if isinstance(event, DocumentsFailedEvent)
+    ]
+    chunked_events = [
+        event for event in event_bus.published_events
+        if isinstance(event, DocumentsChunkedEvent)
+    ]
+    assert len(failed_events) == 1
+    assert failed_events[0].documents[0].source_document_id == "doc-bad"
+    assert len(chunked_events) == 1
+    assert chunked_events[0].correlation_id == "corr-mixed"
+    assert chunked_events[0].documents[0].source_document_id == "doc-good"
+
+
+def test_handle_documents_chunked_publishes_failure_when_storage_key_missing() -> None:
     event_bus = InMemoryEventBus()
     object_store = InMemoryObjectStore()
     extractor = create_document_extractor([])
-    with pytest.raises(ValueError):
-        handle_documents_chunked(
-            DocumentsChunkedEvent(
-                documents=[
-                    ChunkedDocumentReference(
-                        knowledge_base_id="kb-1",
-                        source_document_id="doc-1",
-                        parsed_document_id="parsed-1",
-                        chunk_count=0,
-                        strategy="x",
-                    )
-                ]
-            ),
-            document_extractor=extractor,
-            object_store=object_store,
-            event_bus=event_bus,
-        )
+
+    processed = handle_documents_chunked(
+        DocumentsChunkedEvent(
+            correlation_id="corr-fail-2",
+            documents=[
+                ChunkedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-1",
+                    parsed_document_id="parsed-1",
+                    chunk_count=0,
+                    strategy="x",
+                )
+            ]
+        ),
+        document_extractor=extractor,
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    assert processed == 0
+    failed_events = [
+        event for event in event_bus.published_events
+        if isinstance(event, DocumentsFailedEvent)
+    ]
+    assert len(failed_events) == 1
+    assert failed_events[0].correlation_id == "corr-fail-2"
+    assert failed_events[0].documents[0].source_document_id == "doc-1"
+    assert "chunks_storage_key" in failed_events[0].documents[0].error_message
+    assert not any(
+        isinstance(event, EntitiesExtractedEvent)
+        for event in event_bus.published_events
+    )
+
+
+def test_handle_documents_chunked_isolates_unreadable_artifact_from_batch() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    extractor = create_document_extractor([])
+    good_key = "knowledgebases/kb-1/chunks/parsed-good.json"
+    object_store.put_bytes(
+        good_key,
+        ChunkingResult(
+            source_document_id="doc-good",
+            parsed_document_id="parsed-good",
+            strategy_used="StructuredRecordChunker",
+            chunks=[],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    bad_key = "knowledgebases/kb-1/chunks/parsed-bad.json"
+    object_store.put_bytes(
+        bad_key,
+        b"{not valid json at all",
+        media_type="application/json",
+    )
+
+    processed = handle_documents_chunked(
+        DocumentsChunkedEvent(
+            correlation_id="corr-mixed-2",
+            documents=[
+                ChunkedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-bad",
+                    parsed_document_id="parsed-bad",
+                    chunk_count=0,
+                    strategy="x",
+                    chunks_storage_key=bad_key,
+                ),
+                ChunkedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-good",
+                    parsed_document_id="parsed-good",
+                    chunk_count=0,
+                    strategy="StructuredRecordChunker",
+                    chunks_storage_key=good_key,
+                ),
+            ]
+        ),
+        document_extractor=extractor,
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    assert processed == 1
+    failed_events = [
+        event for event in event_bus.published_events
+        if isinstance(event, DocumentsFailedEvent)
+    ]
+    extracted_events = [
+        event for event in event_bus.published_events
+        if isinstance(event, EntitiesExtractedEvent)
+    ]
+    assert len(failed_events) == 1
+    assert failed_events[0].documents[0].source_document_id == "doc-bad"
+    assert len(extracted_events) == 1
+    assert extracted_events[0].documents[0].source_document_id == "doc-good"
 
 
 def test_handle_entities_extracted_raises_when_storage_key_missing() -> None:

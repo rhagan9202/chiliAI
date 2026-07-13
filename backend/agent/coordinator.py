@@ -132,8 +132,10 @@ from events.types import (
     AnyEvent,
     ChunkedDocumentReference,
     ConfigUpdatedEvent,
+    DocumentFailureReference,
     DocumentsChunkedEvent,
     DocumentsExtractionWarningEvent,
+    DocumentsFailedEvent,
     DocumentsParsedEvent,
     DocumentsUploadedEvent,
     EmbeddingsCompleteDocumentReference,
@@ -1156,8 +1158,16 @@ def handle_documents_parsed(
     event_bus: EventBus,
     kb_repository: KnowledgeBaseRepository | None = None,
 ) -> int:
-    """Chunk parsed documents and publish the next workflow event."""
+    """Chunk parsed documents and publish the next workflow event.
+
+    Per-document isolation (BL-041): a missing ``parsed_document_storage_key``
+    or an unreadable/invalid parsed artifact fails only that document (a
+    ``DocumentsFailedEvent`` is published) instead of poisoning the batch and
+    burning retries to the DLQ. Chunker and object-store *write* errors still
+    propagate to the retry/DLQ wrapper — they may be transient.
+    """
     references: list[ChunkedDocumentReference] = []
+    failures: list[DocumentFailureReference] = []
     for document in event.documents:
         if kb_repository is not None and document.warning_count > 0:
             kb_repository.record_document_warnings(
@@ -1167,11 +1177,42 @@ def handle_documents_parsed(
                 reasons=list(document.warning_samples),
             )
         if document.parsed_document_storage_key is None:
-            raise ValueError(
-                "DocumentsParsedEvent requires parsed_document_storage_key for chunking."
+            failures.append(
+                DocumentFailureReference(
+                    knowledge_base_id=document.knowledge_base_id,
+                    source_document_id=document.source_document_id,
+                    error_message=(
+                        "DocumentsParsedEvent reference is missing "
+                        "parsed_document_storage_key; cannot chunk."
+                    ),
+                    storage_key=document.storage_key,
+                )
             )
-        stored = object_store.get_bytes(document.parsed_document_storage_key)
-        parsed_document = ParsedDocument.model_validate_json(stored.content)
+            continue
+        try:
+            stored = object_store.get_bytes(document.parsed_document_storage_key)
+            parsed_document = ParsedDocument.model_validate_json(stored.content)
+        except Exception as exc:  # noqa: BLE001 - per-document isolation (BL-041)
+            logger.error(
+                "Failed to load parsed artifact. source_document_id=%s "
+                "storage_key=%s error_class=%s: %s",
+                document.source_document_id,
+                document.parsed_document_storage_key,
+                type(exc).__name__,
+                exc,
+            )
+            failures.append(
+                DocumentFailureReference(
+                    knowledge_base_id=document.knowledge_base_id,
+                    source_document_id=document.source_document_id,
+                    error_message=(
+                        f"Failed to load parsed artifact "
+                        f"'{document.parsed_document_storage_key}': {exc}"
+                    ),
+                    storage_key=document.storage_key,
+                )
+            )
+            continue
         result = document_chunker.chunk_document(
             parsed_document,
             source_document_id=document.source_document_id,
@@ -1203,6 +1244,13 @@ def handle_documents_parsed(
                 chunks_storage_key=chunks_storage_key,
             )
         )
+    if failures:
+        event_bus.publish(
+            DocumentsFailedEvent(
+                correlation_id=event.correlation_id,
+                documents=failures,
+            )
+        )
     if references:
         event_bus.publish(
             DocumentsChunkedEvent(
@@ -1228,13 +1276,52 @@ def handle_documents_chunked(
     object_store: ObjectStore,
     event_bus: EventBus,
 ) -> int:
-    """Extract entity candidates from persisted chunks and publish the next event."""
+    """Extract entity candidates from persisted chunks and publish the next event.
+
+    Per-document isolation (BL-041): a missing ``chunks_storage_key`` or an
+    unreadable/invalid chunks artifact fails only that document via a
+    ``DocumentsFailedEvent`` instead of poisoning the batch.
+    """
     references: list[ExtractedDocumentReference] = []
+    failures: list[DocumentFailureReference] = []
     for document in event.documents:
         if document.chunks_storage_key is None:
-            raise ValueError("DocumentsChunkedEvent requires chunks_storage_key for extraction.")
-        stored = object_store.get_bytes(document.chunks_storage_key)
-        chunking_result = ChunkingResult.model_validate_json(stored.content)
+            failures.append(
+                DocumentFailureReference(
+                    knowledge_base_id=document.knowledge_base_id,
+                    source_document_id=document.source_document_id,
+                    error_message=(
+                        "DocumentsChunkedEvent reference is missing "
+                        "chunks_storage_key; cannot extract."
+                    ),
+                    storage_key=document.storage_key,
+                )
+            )
+            continue
+        try:
+            stored = object_store.get_bytes(document.chunks_storage_key)
+            chunking_result = ChunkingResult.model_validate_json(stored.content)
+        except Exception as exc:  # noqa: BLE001 - per-document isolation (BL-041)
+            logger.error(
+                "Failed to load chunks artifact. source_document_id=%s "
+                "storage_key=%s error_class=%s: %s",
+                document.source_document_id,
+                document.chunks_storage_key,
+                type(exc).__name__,
+                exc,
+            )
+            failures.append(
+                DocumentFailureReference(
+                    knowledge_base_id=document.knowledge_base_id,
+                    source_document_id=document.source_document_id,
+                    error_message=(
+                        f"Failed to load chunks artifact "
+                        f"'{document.chunks_storage_key}': {exc}"
+                    ),
+                    storage_key=document.storage_key,
+                )
+            )
+            continue
         extraction_result = document_extractor.extract_document(chunking_result)
         extraction_storage_key = _build_extraction_storage_key(
             document.knowledge_base_id,
@@ -1265,6 +1352,13 @@ def handle_documents_chunked(
                 parsed_document_storage_key=document.parsed_document_storage_key,
                 chunks_storage_key=document.chunks_storage_key,
                 extraction_storage_key=extraction_storage_key,
+            )
+        )
+    if failures:
+        event_bus.publish(
+            DocumentsFailedEvent(
+                correlation_id=event.correlation_id,
+                documents=failures,
             )
         )
     if references:
