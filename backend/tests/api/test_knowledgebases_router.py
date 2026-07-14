@@ -802,6 +802,118 @@ def test_register_documents_cleans_replacement_after_successful_enqueue(
     assert vector_service.source_documents == set()
 
 
+def test_register_documents_replacement_purges_old_status_row(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    """Regression: a re-upload that replaces a document must purge its status row.
+
+    Before the fix, ``_cleanup_replaced_document`` deleted the superseded
+    document's `KnowledgeBaseRepository` record and derived artifacts but
+    never called ``document_status_store.delete_by_document``, leaving the
+    old status row behind — the same `total > len(items)` mismatch in
+    status-filtered listings that 56e6087 fixed for the DELETE endpoint.
+    """
+    client, _, object_store, repository = harness
+    graph_service = _RecordingReplacementGraphService()
+    vector_service = _RecordingReplacementVectorService()
+    status_store = InMemorySourceDocumentStatusStore()
+
+    class SuccessfulIngestionService:
+        def __init__(self, *, source_document_id: str, storage_key: str) -> None:
+            self._source_document_id = source_document_id
+            self._storage_key = storage_key
+
+        def register_documents(
+            self,
+            knowledge_base_id: str,
+            submissions: list[DocumentSubmission],
+            *,
+            correlation_id: str | None = None,
+        ) -> list[DocumentReceipt]:
+            del submissions, correlation_id
+            return [
+                DocumentReceipt(
+                    knowledge_base_id=knowledge_base_id,
+                    source_document_id=self._source_document_id,
+                    filename="claims.json",
+                    status=IngestionStatus.PENDING,
+                    storage_key=self._storage_key,
+                    enqueued=True,
+                )
+            ]
+
+    created = client.post(
+        "/knowledgebases", json={"name": "DocKb", "description": ""}
+    )
+    kb_id = created.json()["id"]
+    content = b'{"claim_id": "42"}'
+    content_hash = hashlib.sha256(content).hexdigest()
+    old_document_id = "old-doc"
+    old_source_key = f"knowledgebases/{kb_id}/documents/{old_document_id}/source"
+    repository.add_document(
+        DocumentRecord(
+            id=old_document_id,
+            knowledge_base_id=kb_id,
+            filename="old-name.json",
+            content_type="application/json",
+            size_bytes=len(content),
+            status=IngestionStatus.PENDING.value,
+            storage_key=old_source_key,
+            content_hash=content_hash,
+        )
+    )
+    object_store.put_bytes(old_source_key, content, media_type="application/json")
+    graph_service.source_documents.add((kb_id, old_document_id))
+    vector_service.source_documents.add((kb_id, old_document_id))
+    status_store.apply(
+        DocumentStatusTransition(
+            knowledge_base_id=kb_id,
+            source_document_id=old_document_id,
+            status=IngestionStatus.FAILED,
+            error_message="parser exploded",
+        )
+    )
+
+    app = cast(FastAPI, client.app)
+    app.dependency_overrides[get_graph_service] = lambda: graph_service
+    app.dependency_overrides[get_vector_service] = lambda: vector_service
+    app.dependency_overrides[get_document_status_store] = lambda: status_store
+    app.dependency_overrides[get_ingestion_service] = lambda: SuccessfulIngestionService(
+        source_document_id=old_document_id,
+        storage_key=old_source_key,
+    )
+
+    response = client.post(
+        f"/knowledgebases/{kb_id}/documents",
+        files=[("files", ("claims.json", content, "application/json"))],
+    )
+
+    assert response.status_code == 202
+    receipt = response.json()["documents"][0]
+    assert receipt["replaced_document_id"] == old_document_id
+
+    # The old status row must be gone — not merely superseded by a fresh one —
+    # so a stale FAILED projection can never outlive the document it described.
+    assert (
+        status_store.get_many(
+            knowledge_base_id=kb_id, source_document_ids=[old_document_id]
+        )
+        == {}
+    )
+
+    # A status-filtered list must stay internally consistent: `total` must
+    # equal `len(items)`, never counting a purged status row.
+    filtered = client.get(f"/knowledgebases/{kb_id}/documents?status=failed")
+    assert filtered.status_code == 200
+    filtered_payload = filtered.json()
+    assert filtered_payload["total"] == len(filtered_payload["items"]) == 0
+
+
 def test_register_documents_cleanup_failure_returns_500_and_preserves_new_source(
     harness: tuple[
         TestClient,

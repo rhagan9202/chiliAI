@@ -146,6 +146,7 @@ def _cleanup_replaced_document(
     graph_service: GraphServiceProtocol,
     vector_service: VectorServiceProtocol,
     object_store: ObjectStore,
+    document_status_store: SourceDocumentStatusStore,
 ) -> None:
     """Remove old derived artifacts after the replacement was safely enqueued."""
     try:
@@ -159,6 +160,11 @@ def _cleanup_replaced_document(
             if key not in protected_keys:
                 object_store.delete(key)
         repository.delete_document(knowledge_base_id, replacement.id)
+        # Purge the durable status projection row too, so it never outlives
+        # the document it describes (an orphaned row would inflate a
+        # status-filtered list's `total` past `len(items)`) — mirrors the
+        # purge on the DELETE endpoint. A missing row is a no-op.
+        document_status_store.delete_by_document(knowledge_base_id, replacement.id)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -506,6 +512,9 @@ async def register_knowledge_base_documents(
     config: DomainConfig = Depends(get_domain_config),
     workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
     agent_service: AgentServiceProtocol = Depends(get_agent_service),
+    document_status_store: SourceDocumentStatusStore = Depends(
+        get_document_status_store
+    ),
 ) -> DocumentRegistrationResponse:
     """Register uploaded documents and enqueue ingestion work."""
     existing_kb = repository.get(knowledge_base_id)
@@ -602,6 +611,7 @@ async def register_knowledge_base_documents(
                 graph_service=graph_service,
                 vector_service=vector_service,
                 object_store=object_store,
+                document_status_store=document_status_store,
             )
         if repository.get_document(knowledge_base_id, receipt.source_document_id) is None:
             repository.add_document(
