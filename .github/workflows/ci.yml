@@ -251,3 +251,35 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest pytest-cov
           pytest tests/scripts/test_backlog_consistency.py --cov=scripts.backlog_consistency --cov-fail-under=85
+
+  migrations:
+    name: Migrations (replay + snapshot drift)
+    runs-on: ubuntu-latest
+    # BL-042 / database.04 (workflow plumbing: _cicd.12). Independent of the
+    # backend job: no `needs`, so a schema-drift failure is reported even when
+    # unrelated backend tests are red, and existing jobs stay untouched.
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Alembic via the backend postgres extra
+        # Only alembic + psycopg are needed; the [postgres] extra pins them to
+        # the same versions the backend job resolves.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "backend[postgres]"
+
+      - name: Run migration replay + snapshot drift gate
+        # The script brings up only the compose postgres service itself (the
+        # same service-container pattern as the backend job's alembic step)
+        # and works in a scratch database, never the seeded `chili` one.
+        run: scripts/ci_migration_check.sh
+
+      - name: Tear down the service stack
+        if: always()
+        run: docker compose -f docker-compose.dev.yaml down -v
