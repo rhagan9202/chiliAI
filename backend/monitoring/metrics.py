@@ -1,8 +1,11 @@
 """Prometheus metrics helpers used by the worker pipeline (E10-S09).
 
-The metrics declared here use the default ``prometheus_client`` registry
-so the :func:`api.middleware.metrics.metrics_endpoint` exporter emits a
-unified payload for HTTP and pipeline data.
+The metrics declared here use the default ``prometheus_client`` registry.
+Each process serves its own scrape endpoint for that registry: the API
+gateway exposes ``GET /metrics`` (``api/middleware/metrics.py``) and the
+worker exposes ``GET /metrics`` on its health server (``agent/health.py``).
+Increments made in the worker process are visible only on the worker's
+endpoint — there is no cross-process aggregation.
 """
 
 from __future__ import annotations
