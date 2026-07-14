@@ -136,6 +136,8 @@ class EmbeddingsConfig(BaseModel):
     dimensions: int = Field(default=384, gt=0)
     batch_size: int = Field(default=32, gt=0)
     api_key_env_var: str | None = None
+    cache_enabled: bool = True
+    cache_max_entries: int = Field(default=4096, gt=0)
 
 
 class ObjectStoreConfig(BaseModel):

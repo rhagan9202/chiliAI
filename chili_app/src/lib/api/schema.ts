@@ -2069,6 +2069,16 @@ export interface components {
              */
             batch_size: number;
             /**
+             * Cache Enabled
+             * @default true
+             */
+            cache_enabled: boolean;
+            /**
+             * Cache Max Entries
+             * @default 4096
+             */
+            cache_max_entries: number;
+            /**
              * Dimensions
              * @default 384
              */

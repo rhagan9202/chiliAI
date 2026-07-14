@@ -2057,6 +2057,17 @@
             "title": "Batch Size",
             "type": "integer"
           },
+          "cache_enabled": {
+            "default": true,
+            "title": "Cache Enabled",
+            "type": "boolean"
+          },
+          "cache_max_entries": {
+            "default": 4096,
+            "exclusiveMinimum": 0,
+            "title": "Cache Max Entries",
+            "type": "integer"
+          },
           "dimensions": {
             "default": 384,
             "exclusiveMinimum": 0,
