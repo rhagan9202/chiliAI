@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import time
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ from typing import Literal
 from collections.abc import Sequence
 
 import pytest
+from prometheus_client import REGISTRY
 
 import agent.coordinator as coordinator
 from agent.coordinator import (
@@ -2609,27 +2611,32 @@ def teststart_health_server_safely_logs_warning_on_failure(
     assert "Health server failed to start" in caplog.text
 
 
-def test_handle_documents_parsed_publishes_failure_when_storage_key_missing() -> None:
+def test_handle_documents_parsed_publishes_failure_when_storage_key_missing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     event_bus = InMemoryEventBus()
     object_store = InMemoryObjectStore()
     chunker = create_document_chunker()
+    labels = {"stage": "chunk", "error_class": "ValueError"}
+    before = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
 
-    processed = handle_documents_parsed(
-        DocumentsParsedEvent(
-            correlation_id="corr-fail-1",
-            documents=[
-                ParsedDocumentReference(
-                    knowledge_base_id="kb-1",
-                    source_document_id="doc-1",
-                    parsed_document_id="parsed-1",
-                    parser_name="test",
-                )
-            ]
-        ),
-        document_chunker=chunker,
-        object_store=object_store,
-        event_bus=event_bus,
-    )
+    with caplog.at_level(logging.INFO, logger="chili.ingestion.stage"):
+        processed = handle_documents_parsed(
+            DocumentsParsedEvent(
+                correlation_id="corr-fail-1",
+                documents=[
+                    ParsedDocumentReference(
+                        knowledge_base_id="kb-1",
+                        source_document_id="doc-1",
+                        parsed_document_id="parsed-1",
+                        parser_name="test",
+                    )
+                ]
+            ),
+            document_chunker=chunker,
+            object_store=object_store,
+            event_bus=event_bus,
+        )
 
     assert processed == 0
     failed_events = [
@@ -2647,11 +2654,22 @@ def test_handle_documents_parsed_publishes_failure_when_storage_key_missing() ->
         for event in event_bus.published_events
     )
 
+    # BL-043 controller addition: the missing-storage-key DocumentsFailedEvent
+    # emission site increments ingestion_documents_failed_total{stage="chunk",
+    # error_class="ValueError"} and logs the chunk-stage "failed" outcome.
+    after = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
+    assert after == before + 1.0
+    assert _has_stage_field(caplog.text, "stage", "chunk")
+    assert _has_stage_field(caplog.text, "outcome", "failed")
+    assert _has_stage_field(caplog.text, "source_document_id", "doc-1")
+
 
 def test_handle_documents_parsed_isolates_bad_document_from_batch() -> None:
     event_bus = InMemoryEventBus()
     object_store = InMemoryObjectStore()
     chunker = create_document_chunker()
+    labels = {"stage": "chunk", "error_class": "KeyError"}
+    before = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
     good_key = "knowledgebases/kb-1/parsed/parsed-good.json"
     object_store.put_bytes(
         good_key,
@@ -2704,29 +2722,40 @@ def test_handle_documents_parsed_isolates_bad_document_from_batch() -> None:
     assert chunked_events[0].correlation_id == "corr-mixed"
     assert chunked_events[0].documents[0].source_document_id == "doc-good"
 
+    # BL-043 controller addition: the get_bytes-failure DocumentsFailedEvent
+    # emission site increments ingestion_documents_failed_total{stage="chunk",
+    # error_class="KeyError"} (the object store raises KeyError for a missing key).
+    after = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
+    assert after == before + 1.0
 
-def test_handle_documents_chunked_publishes_failure_when_storage_key_missing() -> None:
+
+def test_handle_documents_chunked_publishes_failure_when_storage_key_missing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     event_bus = InMemoryEventBus()
     object_store = InMemoryObjectStore()
     extractor = create_document_extractor([])
+    labels = {"stage": "extract", "error_class": "ValueError"}
+    before = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
 
-    processed = handle_documents_chunked(
-        DocumentsChunkedEvent(
-            correlation_id="corr-fail-2",
-            documents=[
-                ChunkedDocumentReference(
-                    knowledge_base_id="kb-1",
-                    source_document_id="doc-1",
-                    parsed_document_id="parsed-1",
-                    chunk_count=0,
-                    strategy="x",
-                )
-            ]
-        ),
-        document_extractor=extractor,
-        object_store=object_store,
-        event_bus=event_bus,
-    )
+    with caplog.at_level(logging.INFO, logger="chili.ingestion.stage"):
+        processed = handle_documents_chunked(
+            DocumentsChunkedEvent(
+                correlation_id="corr-fail-2",
+                documents=[
+                    ChunkedDocumentReference(
+                        knowledge_base_id="kb-1",
+                        source_document_id="doc-1",
+                        parsed_document_id="parsed-1",
+                        chunk_count=0,
+                        strategy="x",
+                    )
+                ]
+            ),
+            document_extractor=extractor,
+            object_store=object_store,
+            event_bus=event_bus,
+        )
 
     assert processed == 0
     failed_events = [
@@ -2742,11 +2771,22 @@ def test_handle_documents_chunked_publishes_failure_when_storage_key_missing() -
         for event in event_bus.published_events
     )
 
+    # BL-043 controller addition: the missing-storage-key DocumentsFailedEvent
+    # emission site increments ingestion_documents_failed_total{stage="extract",
+    # error_class="ValueError"} and logs the extract-stage "failed" outcome.
+    after = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
+    assert after == before + 1.0
+    assert _has_stage_field(caplog.text, "stage", "extract")
+    assert _has_stage_field(caplog.text, "outcome", "failed")
+    assert _has_stage_field(caplog.text, "source_document_id", "doc-1")
+
 
 def test_handle_documents_chunked_isolates_unreadable_artifact_from_batch() -> None:
     event_bus = InMemoryEventBus()
     object_store = InMemoryObjectStore()
     extractor = create_document_extractor([])
+    labels = {"stage": "extract", "error_class": "ValidationError"}
+    before = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
     good_key = "knowledgebases/kb-1/chunks/parsed-good.json"
     object_store.put_bytes(
         good_key,
@@ -2806,6 +2846,12 @@ def test_handle_documents_chunked_isolates_unreadable_artifact_from_batch() -> N
     assert len(extracted_events) == 1
     assert extracted_events[0].documents[0].source_document_id == "doc-good"
 
+    # BL-043 controller addition: the get_bytes/parse-failure DocumentsFailedEvent
+    # emission site increments ingestion_documents_failed_total{stage="extract",
+    # error_class="ValidationError"} (invalid JSON fails ChunkingResult validation).
+    after = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
+    assert after == before + 1.0
+
 
 def test_handle_entities_extracted_raises_when_storage_key_missing() -> None:
     event_bus = InMemoryEventBus()
@@ -2829,6 +2875,36 @@ def test_handle_entities_extracted_raises_when_storage_key_missing() -> None:
             object_store=object_store,
             event_bus=event_bus,
         )
+
+
+def test_handle_entities_extracted_logs_failed_outcome_before_raising(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    validator = create_extraction_validator([], [])
+    with caplog.at_level(logging.INFO, logger="chili.ingestion.stage"):
+        with pytest.raises(ValueError):
+            handle_entities_extracted(
+                EntitiesExtractedEvent(
+                    documents=[
+                        ExtractedDocumentReference(
+                            knowledge_base_id="kb-1",
+                            source_document_id="doc-fail-validate",
+                            parsed_document_id="parsed-1",
+                            extraction_result_id="extract-1",
+                            entity_count=0,
+                            relationship_count=0,
+                        )
+                    ]
+                ),
+                extraction_validator=validator,
+                object_store=object_store,
+                event_bus=event_bus,
+            )
+    assert _has_stage_field(caplog.text, "stage", "validate")
+    assert _has_stage_field(caplog.text, "outcome", "failed")
+    assert _has_stage_field(caplog.text, "source_document_id", "doc-fail-validate")
 
 
 def test_handle_entities_validated_raises_when_storage_key_missing() -> None:
@@ -4760,3 +4836,143 @@ def test_handle_event_projects_failed_documents_to_status_store() -> None:
     )["doc-1"]
     assert projected.current_status == IngestionStatus.FAILED
     assert projected.last_error == "parse exploded"
+
+
+def _has_stage_field(text: str, key: str, value: str) -> bool:
+    """Match a structured field under either renderer: console (key=value) or JSON."""
+    return f"{key}={value}" in text or f'"{key}": "{value}"' in text
+
+
+def test_handle_documents_parsed_emits_chunk_stage_log(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    chunker = create_document_chunker()
+    parsed_document = ParsedDocument(
+        id="parsed-log-1",
+        source_document_id="doc-log-1",
+        text_content="Claim 42 was filed by provider A.",
+        parser_name="test-parser",
+    )
+    storage_key = "knowledgebases/kb-1/parsed/parsed-log-1.json"
+    object_store.put_bytes(
+        storage_key,
+        parsed_document.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    with caplog.at_level(logging.INFO, logger="chili.ingestion.stage"):
+        handle_documents_parsed(
+            DocumentsParsedEvent(
+                correlation_id="corr-chunk-log",
+                documents=[
+                    ParsedDocumentReference(
+                        knowledge_base_id="kb-1",
+                        source_document_id="doc-log-1",
+                        parsed_document_id="parsed-log-1",
+                        parser_name="test-parser",
+                        storage_key="knowledgebases/kb-1/documents/doc-log-1/claims.txt",
+                        parsed_document_storage_key=storage_key,
+                    )
+                ],
+            ),
+            document_chunker=chunker,
+            object_store=object_store,
+            event_bus=event_bus,
+        )
+
+    assert _has_stage_field(caplog.text, "stage", "chunk")
+    assert _has_stage_field(caplog.text, "kb_id", "kb-1")
+    assert _has_stage_field(caplog.text, "source_document_id", "doc-log-1")
+    assert _has_stage_field(caplog.text, "outcome", "success")
+    assert "duration_ms" in caplog.text
+
+
+def test_handle_documents_chunked_logs_empty_outcome_for_zero_candidates(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    chunking_result = ChunkingResult(
+        source_document_id="doc-empty-log",
+        parsed_document_id="parsed-empty-log",
+        strategy_used="StructuredRecordChunker",
+        chunks=[],
+    )
+    chunks_storage_key = "knowledgebases/kb-1/chunks/parsed-empty-log.json"
+    object_store.put_bytes(
+        chunks_storage_key,
+        chunking_result.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    with caplog.at_level(logging.INFO, logger="chili.ingestion.stage"):
+        handle_documents_chunked(
+            DocumentsChunkedEvent(
+                documents=[
+                    ChunkedDocumentReference(
+                        knowledge_base_id="kb-1",
+                        source_document_id="doc-empty-log",
+                        parsed_document_id="parsed-empty-log",
+                        chunk_count=0,
+                        strategy="StructuredRecordChunker",
+                        chunks_storage_key=chunks_storage_key,
+                    )
+                ]
+            ),
+            document_extractor=create_document_extractor([]),
+            object_store=object_store,
+            event_bus=event_bus,
+        )
+
+    assert _has_stage_field(caplog.text, "stage", "extract")
+    assert _has_stage_field(caplog.text, "outcome", "empty")
+
+
+def test_handle_entities_extracted_counts_empty_extraction_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    extraction_result = ExtractionResult(
+        id="extract-empty-count",
+        source_document_id="doc-empty-count",
+        parsed_document_id="parsed-empty-count",
+    )
+    extraction_storage_key = "knowledgebases/kb-1/extractions/extract-empty-count.json"
+    object_store.put_bytes(
+        extraction_storage_key,
+        extraction_result.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    before = (
+        REGISTRY.get_sample_value("ingestion_documents_empty_extraction_total") or 0.0
+    )
+
+    with caplog.at_level(logging.INFO, logger="chili.ingestion.stage"):
+        handle_entities_extracted(
+            EntitiesExtractedEvent(
+                documents=[
+                    ExtractedDocumentReference(
+                        knowledge_base_id="kb-1",
+                        source_document_id="doc-empty-count",
+                        parsed_document_id="parsed-empty-count",
+                        extraction_result_id="extract-empty-count",
+                        entity_count=0,
+                        relationship_count=0,
+                        extraction_storage_key=extraction_storage_key,
+                    )
+                ]
+            ),
+            extraction_validator=create_extraction_validator([], []),
+            object_store=object_store,
+            event_bus=event_bus,
+        )
+
+    after = (
+        REGISTRY.get_sample_value("ingestion_documents_empty_extraction_total") or 0.0
+    )
+    assert after == before + 1.0
+    assert _has_stage_field(caplog.text, "stage", "validate")
+    assert _has_stage_field(caplog.text, "outcome", "empty")

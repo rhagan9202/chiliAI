@@ -223,6 +223,11 @@ from policy.adapters.protocols import PolicyItemRepository
 from policy.evaluation import PolicyEvalState, evaluate
 from policy.service import PolicyService, create_policy_service
 from shared.logging import bind_correlation_id, configure_logging, get_logger
+from shared.metrics import (
+    ingestion_documents_empty_extraction_total,
+    ingestion_documents_failed_total,
+    log_stage,
+)
 from shared.provenance import (
     SOURCE_DOCUMENT_ID_KEY,
     SOURCE_ID_KEY,
@@ -1189,6 +1194,7 @@ def handle_documents_parsed(
     references: list[ChunkedDocumentReference] = []
     failures: list[DocumentFailureReference] = []
     for document in event.documents:
+        started_at = time.perf_counter()
         if kb_repository is not None and document.warning_count > 0:
             kb_repository.record_document_warnings(
                 document.knowledge_base_id,
@@ -1207,6 +1213,18 @@ def handle_documents_parsed(
                     ),
                     storage_key=document.storage_key,
                 )
+            )
+            # BL-043: count adjacent to the (batched) DocumentsFailedEvent
+            # publish below, at the point each failure is committed to it.
+            ingestion_documents_failed_total.labels(
+                stage="chunk", error_class="ValueError"
+            ).inc()
+            log_stage(
+                stage="chunk",
+                kb_id=document.knowledge_base_id,
+                source_document_id=document.source_document_id,
+                started_at=started_at,
+                outcome="failed",
             )
             continue
         try:
@@ -1231,6 +1249,16 @@ def handle_documents_parsed(
                     ),
                     storage_key=document.storage_key,
                 )
+            )
+            ingestion_documents_failed_total.labels(
+                stage="chunk", error_class=type(exc).__name__
+            ).inc()
+            log_stage(
+                stage="chunk",
+                kb_id=document.knowledge_base_id,
+                source_document_id=document.source_document_id,
+                started_at=started_at,
+                outcome="failed",
             )
             continue
         result = document_chunker.chunk_document(
@@ -1263,6 +1291,13 @@ def handle_documents_parsed(
                 parsed_document_storage_key=document.parsed_document_storage_key,
                 chunks_storage_key=chunks_storage_key,
             )
+        )
+        log_stage(
+            stage="chunk",
+            kb_id=document.knowledge_base_id,
+            source_document_id=document.source_document_id,
+            started_at=started_at,
+            outcome="success" if result.chunks else "empty",
         )
     if failures:
         event_bus.publish(
@@ -1305,6 +1340,7 @@ def handle_documents_chunked(
     references: list[ExtractedDocumentReference] = []
     failures: list[DocumentFailureReference] = []
     for document in event.documents:
+        started_at = time.perf_counter()
         if document.chunks_storage_key is None:
             failures.append(
                 DocumentFailureReference(
@@ -1316,6 +1352,18 @@ def handle_documents_chunked(
                     ),
                     storage_key=document.storage_key,
                 )
+            )
+            # BL-043: count adjacent to the (batched) DocumentsFailedEvent
+            # publish below, at the point each failure is committed to it.
+            ingestion_documents_failed_total.labels(
+                stage="extract", error_class="ValueError"
+            ).inc()
+            log_stage(
+                stage="extract",
+                kb_id=document.knowledge_base_id,
+                source_document_id=document.source_document_id,
+                started_at=started_at,
+                outcome="failed",
             )
             continue
         try:
@@ -1340,6 +1388,16 @@ def handle_documents_chunked(
                     ),
                     storage_key=document.storage_key,
                 )
+            )
+            ingestion_documents_failed_total.labels(
+                stage="extract", error_class=type(exc).__name__
+            ).inc()
+            log_stage(
+                stage="extract",
+                kb_id=document.knowledge_base_id,
+                source_document_id=document.source_document_id,
+                started_at=started_at,
+                outcome="failed",
             )
             continue
         extraction_result = document_extractor.extract_document(chunking_result)
@@ -1373,6 +1431,18 @@ def handle_documents_chunked(
                 chunks_storage_key=document.chunks_storage_key,
                 extraction_storage_key=extraction_storage_key,
             )
+        )
+        log_stage(
+            stage="extract",
+            kb_id=document.knowledge_base_id,
+            source_document_id=document.source_document_id,
+            started_at=started_at,
+            outcome=(
+                "success"
+                if extraction_result.candidate_entities
+                or extraction_result.candidate_relationships
+                else "empty"
+            ),
         )
     if failures:
         event_bus.publish(
@@ -1428,105 +1498,127 @@ def handle_entities_extracted(
     references: list[ValidatedDocumentReference] = []
     warning_references: list[ExtractionWarningReference] = []
     for document in event.documents:
-        if document.extraction_storage_key is None:
-            raise ValueError("EntitiesExtractedEvent requires extraction_storage_key for validation.")
-        stored = object_store.get_bytes(document.extraction_storage_key)
-        extraction_result = ExtractionResult.model_validate_json(stored.content)
-        validation_report = extraction_validator.validate_extraction(extraction_result)
-        validation_storage_key = _build_validation_storage_key(
-            document.knowledge_base_id,
-            extraction_result.id,
-        )
-        object_store.put_bytes(
-            validation_storage_key,
-            validation_report.model_dump_json().encode("utf-8"),
-            media_type="application/json",
-            metadata={
-                "knowledge_base_id": document.knowledge_base_id,
-                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
-                "parsed_document_id": document.parsed_document_id,
-                "extraction_result_id": extraction_result.id,
-                "validation_report_id": validation_report.id,
-                "valid_entity_count": len(validation_report.valid_entities),
-                "valid_relationship_count": len(validation_report.valid_relationships),
-                "entity_error_count": len(validation_report.entity_errors),
-                "relationship_error_count": len(validation_report.relationship_errors),
-            },
-        )
-        references.append(
-            ValidatedDocumentReference(
-                knowledge_base_id=document.knowledge_base_id,
-                source_document_id=document.source_document_id,
-                parsed_document_id=document.parsed_document_id,
-                extraction_result_id=document.extraction_result_id,
-                validation_report_id=validation_report.id,
-                valid_entity_count=len(validation_report.valid_entities),
-                valid_relationship_count=len(validation_report.valid_relationships),
-                entity_error_count=len(validation_report.entity_errors),
-                relationship_error_count=len(validation_report.relationship_errors),
-                storage_key=document.storage_key,
-                parsed_document_storage_key=document.parsed_document_storage_key,
-                chunks_storage_key=document.chunks_storage_key,
-                extraction_storage_key=document.extraction_storage_key,
-                validation_storage_key=validation_storage_key,
-            )
-        )
-
-        valid_entity_count = len(validation_report.valid_entities)
-        dropped_entity_count = len(validation_report.entity_errors)
-        dropped_relationship_count = len(validation_report.relationship_errors)
-        stripped_property_count = len(validation_report.warnings)
-        extraction_stage_warnings = list(extraction_result.warnings)
-        empty_extraction = valid_entity_count == 0
-        if (
-            empty_extraction
-            or dropped_entity_count
-            or dropped_relationship_count
-            or stripped_property_count
-            or extraction_stage_warnings
-        ):
-            logger.warning(
-                "ingestion extraction warning stage=validate knowledge_base_id=%s "
-                "source_document_id=%s valid_entities=%d dropped_entities=%d "
-                "dropped_relationships=%d stripped_properties=%d empty=%s",
+        started_at = time.perf_counter()
+        try:
+            if document.extraction_storage_key is None:
+                raise ValueError(
+                    "EntitiesExtractedEvent requires extraction_storage_key for validation."
+                )
+            stored = object_store.get_bytes(document.extraction_storage_key)
+            extraction_result = ExtractionResult.model_validate_json(stored.content)
+            validation_report = extraction_validator.validate_extraction(extraction_result)
+            validation_storage_key = _build_validation_storage_key(
                 document.knowledge_base_id,
-                document.source_document_id,
-                valid_entity_count,
-                dropped_entity_count,
-                dropped_relationship_count,
-                stripped_property_count,
-                empty_extraction,
+                extraction_result.id,
             )
-            sample_reasons = _collect_extraction_warning_reasons(
-                validation_report, extraction_stage_warnings
+            object_store.put_bytes(
+                validation_storage_key,
+                validation_report.model_dump_json().encode("utf-8"),
+                media_type="application/json",
+                metadata={
+                    "knowledge_base_id": document.knowledge_base_id,
+                    SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
+                    "parsed_document_id": document.parsed_document_id,
+                    "extraction_result_id": extraction_result.id,
+                    "validation_report_id": validation_report.id,
+                    "valid_entity_count": len(validation_report.valid_entities),
+                    "valid_relationship_count": len(validation_report.valid_relationships),
+                    "entity_error_count": len(validation_report.entity_errors),
+                    "relationship_error_count": len(validation_report.relationship_errors),
+                },
             )
-            warning_references.append(
-                ExtractionWarningReference(
+            references.append(
+                ValidatedDocumentReference(
                     knowledge_base_id=document.knowledge_base_id,
                     source_document_id=document.source_document_id,
-                    valid_entity_count=valid_entity_count,
+                    parsed_document_id=document.parsed_document_id,
+                    extraction_result_id=document.extraction_result_id,
+                    validation_report_id=validation_report.id,
+                    valid_entity_count=len(validation_report.valid_entities),
                     valid_relationship_count=len(validation_report.valid_relationships),
-                    dropped_entity_count=dropped_entity_count,
-                    dropped_relationship_count=dropped_relationship_count,
-                    stripped_property_count=stripped_property_count,
-                    empty_extraction=empty_extraction,
-                    sample_reasons=sample_reasons,
+                    entity_error_count=len(validation_report.entity_errors),
+                    relationship_error_count=len(validation_report.relationship_errors),
+                    storage_key=document.storage_key,
+                    parsed_document_storage_key=document.parsed_document_storage_key,
+                    chunks_storage_key=document.chunks_storage_key,
+                    extraction_storage_key=document.extraction_storage_key,
                     validation_storage_key=validation_storage_key,
                 )
             )
-            if kb_repository is not None:
-                warning_total = (
-                    dropped_entity_count
-                    + dropped_relationship_count
-                    + stripped_property_count
-                    + len(extraction_stage_warnings)
-                ) or 1  # an unexplained empty extraction still counts once
-                kb_repository.record_document_warnings(
+
+            valid_entity_count = len(validation_report.valid_entities)
+            dropped_entity_count = len(validation_report.entity_errors)
+            dropped_relationship_count = len(validation_report.relationship_errors)
+            stripped_property_count = len(validation_report.warnings)
+            extraction_stage_warnings = list(extraction_result.warnings)
+            empty_extraction = valid_entity_count == 0
+            if empty_extraction:
+                ingestion_documents_empty_extraction_total.inc()
+            if (
+                empty_extraction
+                or dropped_entity_count
+                or dropped_relationship_count
+                or stripped_property_count
+                or extraction_stage_warnings
+            ):
+                logger.warning(
+                    "ingestion extraction warning stage=validate knowledge_base_id=%s "
+                    "source_document_id=%s valid_entities=%d dropped_entities=%d "
+                    "dropped_relationships=%d stripped_properties=%d empty=%s",
                     document.knowledge_base_id,
                     document.source_document_id,
-                    additional_count=warning_total,
-                    reasons=sample_reasons,
+                    valid_entity_count,
+                    dropped_entity_count,
+                    dropped_relationship_count,
+                    stripped_property_count,
+                    empty_extraction,
                 )
+                sample_reasons = _collect_extraction_warning_reasons(
+                    validation_report, extraction_stage_warnings
+                )
+                warning_references.append(
+                    ExtractionWarningReference(
+                        knowledge_base_id=document.knowledge_base_id,
+                        source_document_id=document.source_document_id,
+                        valid_entity_count=valid_entity_count,
+                        valid_relationship_count=len(validation_report.valid_relationships),
+                        dropped_entity_count=dropped_entity_count,
+                        dropped_relationship_count=dropped_relationship_count,
+                        stripped_property_count=stripped_property_count,
+                        empty_extraction=empty_extraction,
+                        sample_reasons=sample_reasons,
+                        validation_storage_key=validation_storage_key,
+                    )
+                )
+                if kb_repository is not None:
+                    warning_total = (
+                        dropped_entity_count
+                        + dropped_relationship_count
+                        + stripped_property_count
+                        + len(extraction_stage_warnings)
+                    ) or 1  # an unexplained empty extraction still counts once
+                    kb_repository.record_document_warnings(
+                        document.knowledge_base_id,
+                        document.source_document_id,
+                        additional_count=warning_total,
+                        reasons=sample_reasons,
+                    )
+        except Exception:
+            log_stage(
+                stage="validate",
+                kb_id=document.knowledge_base_id,
+                source_document_id=document.source_document_id,
+                started_at=started_at,
+                outcome="failed",
+            )
+            raise
+        log_stage(
+            stage="validate",
+            kb_id=document.knowledge_base_id,
+            source_document_id=document.source_document_id,
+            started_at=started_at,
+            outcome="empty" if empty_extraction else "success",
+        )
     if references:
         event_bus.publish(
             EntitiesValidatedEvent(
