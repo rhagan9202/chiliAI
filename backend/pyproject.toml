@@ -134,6 +134,7 @@ include = [
     "monitoring",
     "policy",
     "records",
+    "shared/metrics.py",
     "vectorstore",
     "tests/agent",
     "tests/conversations",
@@ -167,6 +168,7 @@ include = [
     "tests/monitoring/test_postgres_observation_source.py",
     "tests/policy",
     "tests/records",
+    "tests/shared/test_metrics.py",
     "tests/vectorstore",
     "../tools",
 ]
