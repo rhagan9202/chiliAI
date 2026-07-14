@@ -77,6 +77,13 @@ else
   exit 2
 fi
 
+# Past this point all usage/environment guards (exit 2) are behind us: any
+# tool failure that reaches here (psql, alembic, docker compose, pg_dump)
+# is a replay/check failure, not a usage error, and must map to exit 1 per
+# the documented exit-code contract. Explicit `exit 1`/`exit 2` calls below
+# are unaffected -- bash does not run the ERR trap for an explicit `exit`.
+trap 'echo "ERROR: migration replay/check step failed (see output above)." >&2; exit 1' ERR
+
 # Cluster-level statements (CREATE/DROP DATABASE) run connected to the
 # always-present 'postgres' maintenance database -- never to 'chili'.
 admin_psql() {
