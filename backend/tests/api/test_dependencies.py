@@ -34,6 +34,8 @@ from monitoring.service import MonitoringService
 from monitoring.service_models import MonitoringEvaluationRequest
 from records.adapters.in_memory import InMemoryRawRecordStore
 from records.adapters.postgres import PostgresRawRecordStore
+from ingestion.adapters.in_memory import InMemorySourceDocumentStatusStore
+from ingestion.adapters.postgres import PostgresSourceDocumentStatusStore
 from shared.exceptions import ConfigurationError
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.adapters.local_fs_adapter import LocalFsObjectStore
@@ -64,6 +66,7 @@ def clear_dependency_caches() -> None:
         dependencies.get_session_store,
         dependencies.get_connection_provider,
         dependencies.get_raw_record_store,
+        dependencies.get_document_status_store,
         dependencies.get_knowledge_base_repository,
         dependencies.get_parser_registry,
         dependencies.get_remote_fetcher,
@@ -955,6 +958,31 @@ def test_get_raw_record_store_returns_in_memory_when_provider_is_none(
     store = dependencies.get_raw_record_store()
 
     assert isinstance(store, InMemoryRawRecordStore)
+
+
+def test_get_document_status_store_returns_postgres_store_when_provider_non_null(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    fake_provider = MagicMock()
+    _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: fake_provider)
+
+    store = dependencies.get_document_status_store()
+
+    assert isinstance(store, PostgresSourceDocumentStatusStore)
+
+
+def test_get_document_status_store_returns_in_memory_when_provider_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: None)
+
+    store = dependencies.get_document_status_store()
+
+    assert isinstance(store, InMemorySourceDocumentStatusStore)
 
 
 # ---------------------------------------------------------------------------
