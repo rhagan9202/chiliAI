@@ -78,6 +78,8 @@ Every `Entity` and `Relationship` emitted by the extractor carries provenance fi
 
 **Deletes.** `SourceDocumentStatusStore.delete_by_kb` is one step in the shared `knowledgebases.cleanup.kb_deletion_steps` KB-delete cascade (replayed identically by the API's synchronous path and the worker's `KnowledgeBaseDeletedEvent(cleanup_pending=True)` retry). `delete_by_document` purges a single row on `DELETE /knowledgebases/{kb_id}/documents/{document_id}` and on the changed-content reupload path (`_cleanup_replaced_document` in `api/routers/knowledgebases.py`), so a status-filtered `GET .../documents?status=...` list's `total` never counts a document that no longer exists.
 
+**Orphan resurrection race.** The delete-time purge above is not the only line of defense: an in-flight pipeline event (e.g. a redelivered `DocumentsParsedEvent` for a document deleted/replaced mid-flight) can re-create a status row *after* the purge ran, leaving a row with no matching registered document. `list_knowledge_base_documents`'s status-filtered branch (`api/routers/knowledgebases.py`) treats this as expected: any returned row whose `source_document_id` has no matching document is excluded from both `items` and `total` (decrementing `total` by the reaped count) and opportunistically re-deleted via `delete_by_document`, so the orphan is cleaned up on the next read that surfaces it rather than permanently inflating `total`.
+
 ## Parser Registry
 
 Parsers for PDF, DOCX, HTML, TXT, JSON, CSV, and XLSX are registered in `parsers/registry.py`.

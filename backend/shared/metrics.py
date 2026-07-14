@@ -8,9 +8,17 @@ happened in that process.
 
 ``ingestion_documents_failed_total`` must be incremented adjacent to every
 ``DocumentsFailedEvent`` publish (the event payload carries neither ``stage``
-nor ``error_class``, so counting at consumption cannot label correctly). The
-only emission point today is ``ingestion/service.py`` (parse failures); new
-emission points (e.g. BL-041) add one ``.labels(...).inc()`` line each.
+nor ``error_class``, so counting at consumption cannot label correctly).
+Emission points today: ``ingestion/service.py`` (parse failures) and four
+sites in ``agent/coordinator.py`` (the missing-storage-key and
+get_bytes/parse-failure branches of ``handle_documents_parsed`` and
+``handle_documents_chunked``); new emission points add one
+``.labels(...).inc()`` line each.
+
+Counters are per-attempt increments, not per-document: under at-least-once
+event delivery a retried/redelivered document can increment the same counter
+more than once for what is ultimately a single logical failure, so these
+counters over-count relative to distinct-document failure totals.
 """
 
 from __future__ import annotations
