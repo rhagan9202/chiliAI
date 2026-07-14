@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+
 from embeddings.adapters.protocols import (
     EmbedderProtocol,
     EmbeddingCacheProtocol,
     GraphEmbeddingProviderProtocol,
 )
 from embeddings.exceptions import EmbeddingConfigurationError, EmbeddingProviderError
+from embeddings.metrics import TokenSource, estimate_tokens, record_embedding_usage
 from embeddings.models import (
     CachedEmbedding,
     EmbeddingItem,
@@ -25,6 +28,8 @@ from embeddings.service_models import (
 from events.protocols import EventBus
 from events.types import EmbeddingGeneratedReference, EmbeddingsGeneratedEvent
 from shared.utils import generate_id
+
+logger = logging.getLogger(__name__)
 
 
 class EmbeddingsService:
@@ -92,6 +97,14 @@ class EmbeddingsService:
                     )
                 ]
             )
+        )
+        self._record_usage(
+            request,
+            result_metadata,
+            provider=_usage_provider(result_metadata, text_items),
+            model_name=model_name,
+            cache_hits=len(cached_items),
+            miss_submissions=miss_submissions,
         )
         return response
 
@@ -281,6 +294,53 @@ class EmbeddingsService:
             missing_content_ids=missing_content_ids,
         )
 
+    def _record_usage(
+        self,
+        request: EmbedRequest,
+        result_metadata: EmbeddingMetadata | None,
+        *,
+        provider: str,
+        model_name: str,
+        cache_hits: int,
+        miss_submissions: list[EmbedSubmission],
+    ) -> None:
+        """Record counters and a structured log line for one embed() call."""
+
+        token_source: TokenSource
+        if result_metadata is not None and result_metadata.total_tokens is not None:
+            tokens = result_metadata.total_tokens
+            token_source = "reported"
+        elif miss_submissions:
+            tokens = sum(
+                estimate_tokens(submission.content)
+                for submission in miss_submissions
+            )
+            token_source = "estimated"
+        else:
+            tokens = 0
+            token_source = "cached"
+        record_embedding_usage(
+            provider=provider,
+            model_name=model_name,
+            knowledge_base_id=request.knowledge_base_id,
+            cache_hits=cache_hits,
+            cache_misses=len(miss_submissions),
+            tokens=tokens,
+            token_source=token_source,
+        )
+        logger.info(
+            "embedding usage: provider=%s model=%s knowledge_base_id=%s "
+            "texts=%d cache_hits=%d cache_misses=%d tokens=%d token_source=%s",
+            provider,
+            model_name,
+            request.knowledge_base_id or "none",
+            len(request.submissions),
+            cache_hits,
+            len(miss_submissions),
+            tokens,
+            token_source,
+        )
+
 
 def _response_identity(
     request: EmbedRequest,
@@ -296,6 +356,17 @@ def _response_identity(
         first.model_name or request.model_name,
         first.dimensions or len(first.vector),
     )
+
+
+def _usage_provider(
+    result_metadata: EmbeddingMetadata | None,
+    text_items: list[EmbeddedItem],
+) -> str:
+    """Resolve the provider label for usage recording."""
+
+    if result_metadata is not None:
+        return result_metadata.provider
+    return text_items[0].provider or "unknown"
 
 
 def create_embeddings_service(

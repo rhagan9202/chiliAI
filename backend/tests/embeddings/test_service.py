@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 
 import pytest
+from prometheus_client import REGISTRY
 
 from embeddings.adapters.protocols import (
     EmbedderProtocol,
@@ -565,3 +567,106 @@ def test_embeddings_service_graph_channel_covers_cached_submissions() -> None:
     )
 
     assert graph_provider.calls[-1] == ("kb-1", ["content-1", "content-2"], 3)
+
+
+class _UsageReportingEmbedder(EmbedderProtocol):
+    """Embedder whose metadata carries provider-reported token usage."""
+
+    def embed(self, request: EmbeddingRequest) -> EmbeddingResult:
+        return EmbeddingResult(
+            request_id=request.request_id,
+            vectors={item.id: [0.1, 0.2] for item in request.items},
+            metadata=EmbeddingMetadata(
+                model_name="usage-model",
+                dimensions=2,
+                provider="usage-provider",
+                total_tokens=42,
+            ),
+        )
+
+
+def _sample_or_zero(name: str, labels: dict[str, str]) -> float:
+    value = REGISTRY.get_sample_value(name, labels)
+    return 0.0 if value is None else value
+
+
+def test_embeddings_service_records_reported_token_usage() -> None:
+    labels = {
+        "provider": "usage-provider",
+        "model": "usage-model",
+        "knowledge_base_id": "kb-usage",
+        "source": "reported",
+    }
+    before = _sample_or_zero("embedding_tokens_total", labels)
+    service = create_embeddings_service(
+        _UsageReportingEmbedder(), event_bus=InMemoryEventBus()
+    )
+
+    service.embed(
+        EmbedRequest(
+            knowledge_base_id="kb-usage",
+            submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+        )
+    )
+
+    assert _sample_or_zero("embedding_tokens_total", labels) - before == 42.0
+
+
+def test_embeddings_service_records_estimated_tokens_and_cache_results() -> None:
+    hit_labels = {
+        "provider": "in-memory",
+        "model": "svc-usage-model",
+        "cache_result": "hit",
+    }
+    miss_labels = {**hit_labels, "cache_result": "miss"}
+    token_labels = {
+        "provider": "in-memory",
+        "model": "svc-usage-model",
+        "knowledge_base_id": "none",
+        "source": "estimated",
+    }
+    hits_before = _sample_or_zero("embedding_texts_total", hit_labels)
+    misses_before = _sample_or_zero("embedding_texts_total", miss_labels)
+    tokens_before = _sample_or_zero("embedding_tokens_total", token_labels)
+    service = _cached_service(_CountingEmbedder(), InMemoryEventBus())
+    request = EmbedRequest(
+        model_name="svc-usage-model",
+        submissions=[
+            EmbedSubmission(content_id="content-1", content="Alpha beta!")
+        ],
+    )
+
+    service.embed(request)
+    service.embed(request)
+
+    assert _sample_or_zero("embedding_texts_total", miss_labels) - misses_before == 1.0
+    assert _sample_or_zero("embedding_texts_total", hit_labels) - hits_before == 1.0
+    # "Alpha beta!" is 11 chars -> ceil(11 / 4) = 3 estimated tokens, misses only.
+    assert _sample_or_zero("embedding_tokens_total", token_labels) - tokens_before == 3.0
+
+
+def test_embeddings_service_logs_structured_usage_line(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    service = _cached_service(_CountingEmbedder(), InMemoryEventBus())
+    request = EmbedRequest(
+        knowledge_base_id="kb-log",
+        submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+    )
+
+    with caplog.at_level(logging.INFO, logger="embeddings.service"):
+        service.embed(request)
+        service.embed(request)
+
+    usage_lines = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "embeddings.service"
+        and record.getMessage().startswith("embedding usage:")
+    ]
+    assert len(usage_lines) == 2
+    assert "cache_misses=1" in usage_lines[0]
+    assert "token_source=estimated" in usage_lines[0]
+    assert "cache_hits=1" in usage_lines[1]
+    assert "token_source=cached" in usage_lines[1]
+    assert "knowledge_base_id=kb-log" in usage_lines[1]
