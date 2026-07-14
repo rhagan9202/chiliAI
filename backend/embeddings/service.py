@@ -4,25 +4,35 @@ from __future__ import annotations
 
 from embeddings.adapters.protocols import (
     EmbedderProtocol,
+    EmbeddingCacheProtocol,
     GraphEmbeddingProviderProtocol,
 )
 from embeddings.exceptions import EmbeddingConfigurationError, EmbeddingProviderError
-from embeddings.models import EmbeddingItem, EmbeddingRequest, GraphEmbeddingStatus
-from embeddings.service_models import EmbedRequest, EmbedResponse, EmbeddedItem
+from embeddings.models import (
+    CachedEmbedding,
+    EmbeddingItem,
+    EmbeddingMetadata,
+    EmbeddingRequest,
+    GraphEmbeddingStatus,
+    build_embedding_cache_key,
+)
+from embeddings.service_models import (
+    EmbedRequest,
+    EmbedResponse,
+    EmbedSubmission,
+    EmbeddedItem,
+)
 from events.protocols import EventBus
 from events.types import EmbeddingGeneratedReference, EmbeddingsGeneratedEvent
 from shared.utils import generate_id
 
 
 class EmbeddingsService:
-    """Coordinate request normalization, embedding generation, and event publication."""
+    """Coordinate request normalization, caching, generation, and events."""
 
-    # TODO(production): Implement graph-metric embedding flow (architecture specifies
-    # hybrid text + graph-metric embeddings). Add model routing: select embedder by
-    # model_name when multiple providers are configured. Add embedding caching to
-    # avoid re-embedding identical content. Add batch chunking to respect provider
-    # token-per-batch and rate limits. Add retry with backoff for provider failures.
-    # Add object store persistence of embedding results for reproducibility.
+    # Roadmap (BL-045): object-store persistence of embedding results, model
+    # routing across multiple configured providers, and a durable per-request
+    # usage ledger. Batch chunking and provider retry live in the adapters.
 
     def __init__(
         self,
@@ -30,19 +40,110 @@ class EmbeddingsService:
         *,
         event_bus: EventBus,
         graph_embedding_provider: GraphEmbeddingProviderProtocol | None = None,
+        cache: EmbeddingCacheProtocol | None = None,
+        cache_namespace: str = "",
     ) -> None:
         self._embedder = embedder
         self._event_bus = event_bus
         self._graph_embedding_provider = graph_embedding_provider
+        self._cache = cache
+        self._cache_namespace = cache_namespace
 
     def embed(self, request: EmbedRequest) -> EmbedResponse:
+        request_id = generate_id()
+        cached_items, miss_submissions = self._partition_cached(request)
+
+        fresh_items: dict[str, EmbeddedItem] = {}
+        result_metadata: EmbeddingMetadata | None = None
+        if miss_submissions:
+            result_metadata, fresh_items = self._embed_misses(
+                request, request_id, miss_submissions
+            )
+
+        text_items = [
+            fresh_items[submission.content_id]
+            if submission.content_id in fresh_items
+            else cached_items[submission.content_id]
+            for submission in request.submissions
+        ]
+        model_name, dimensions = _response_identity(
+            request, result_metadata, text_items
+        )
+        graph_items, graph_status = self._embed_graph_channel(
+            request,
+            [submission.content_id for submission in request.submissions],
+        )
+        response = EmbedResponse(
+            request_id=request_id,
+            model_name=model_name,
+            dimensions=dimensions,
+            items=[*text_items, *graph_items],
+            graph_status=graph_status,
+        )
+        self._event_bus.publish(
+            EmbeddingsGeneratedEvent(
+                batches=[
+                    EmbeddingGeneratedReference(
+                        knowledge_base_id=request.knowledge_base_id,
+                        request_id=response.request_id,
+                        item_count=len(request.submissions),
+                        dimensions=response.dimensions,
+                        model_name=response.model_name,
+                    )
+                ]
+            )
+        )
+        return response
+
+    def _cache_key(self, model_name: str, content: str) -> str:
+        return build_embedding_cache_key(
+            namespace=self._cache_namespace,
+            model_name=model_name,
+            content=content,
+        )
+
+    def _partition_cached(
+        self, request: EmbedRequest
+    ) -> tuple[dict[str, EmbeddedItem], list[EmbedSubmission]]:
+        """Split submissions into cached text items and cache misses."""
+
+        if self._cache is None:
+            return {}, list(request.submissions)
+
+        cached: dict[str, EmbeddedItem] = {}
+        misses: list[EmbedSubmission] = []
+        for submission in request.submissions:
+            entry = self._cache.get(
+                self._cache_key(request.model_name, submission.content)
+            )
+            if entry is None:
+                misses.append(submission)
+                continue
+            cached[submission.content_id] = EmbeddedItem(
+                content_id=submission.content_id,
+                vector=list(entry.vector),
+                channel="text",
+                model_name=entry.model_name,
+                provider=entry.provider,
+                dimensions=entry.dimensions,
+            )
+        return cached, misses
+
+    def _embed_misses(
+        self,
+        request: EmbedRequest,
+        request_id: str,
+        miss_submissions: list[EmbedSubmission],
+    ) -> tuple[EmbeddingMetadata, dict[str, EmbeddedItem]]:
+        """Embed cache misses, validate completeness, and back-fill the cache."""
+
         embedding_request = EmbeddingRequest(
-            request_id=generate_id(),
+            request_id=request_id,
             knowledge_base_id=request.knowledge_base_id,
             model_name=request.model_name,
             items=[
                 EmbeddingItem(id=submission.content_id, content=submission.content)
-                for submission in request.submissions
+                for submission in miss_submissions
             ],
         )
         try:
@@ -67,52 +168,37 @@ class EmbeddingsService:
                 + "; ".join(details)
             )
 
-        text_items = [
-            EmbeddedItem(
-                content_id=item.id,
-                vector=result.vectors[item.id],
+        fresh_items: dict[str, EmbeddedItem] = {}
+        for submission in miss_submissions:
+            vector = result.vectors[submission.content_id]
+            fresh_items[submission.content_id] = EmbeddedItem(
+                content_id=submission.content_id,
+                vector=vector,
                 channel="text",
                 model_name=result.metadata.model_name,
                 provider=result.metadata.provider,
                 dimensions=result.metadata.dimensions,
             )
-            for item in embedding_request.items
-        ]
-        graph_items, graph_status = self._embed_graph_channel(
-            request,
-            embedding_request,
-        )
-        response = EmbedResponse(
-            request_id=result.request_id,
-            model_name=result.metadata.model_name,
-            dimensions=result.metadata.dimensions,
-            items=[*text_items, *graph_items],
-            graph_status=graph_status,
-        )
-        self._event_bus.publish(
-            EmbeddingsGeneratedEvent(
-                batches=[
-                    EmbeddingGeneratedReference(
-                        knowledge_base_id=request.knowledge_base_id,
-                        request_id=response.request_id,
-                        item_count=len(embedding_request.items),
-                        dimensions=response.dimensions,
-                        model_name=response.model_name,
-                    )
-                ]
-            )
-        )
-        return response
+            if self._cache is not None:
+                self._cache.set(
+                    self._cache_key(request.model_name, submission.content),
+                    CachedEmbedding(
+                        vector=list(vector),
+                        model_name=result.metadata.model_name,
+                        provider=result.metadata.provider,
+                        dimensions=result.metadata.dimensions,
+                    ),
+                )
+        return result.metadata, fresh_items
 
     def _embed_graph_channel(
         self,
         request: EmbedRequest,
-        embedding_request: EmbeddingRequest,
+        content_ids: list[str],
     ) -> tuple[list[EmbeddedItem], GraphEmbeddingStatus | None]:
         if not request.include_graph_embeddings and not request.require_graph_embeddings:
             return [], None
 
-        content_ids = [item.id for item in embedding_request.items]
         if request.knowledge_base_id is None:
             if request.require_graph_embeddings:
                 raise EmbeddingProviderError(
@@ -196,11 +282,29 @@ class EmbeddingsService:
         )
 
 
+def _response_identity(
+    request: EmbedRequest,
+    result_metadata: EmbeddingMetadata | None,
+    text_items: list[EmbeddedItem],
+) -> tuple[str, int]:
+    """Resolve the response model name and dimensions for hit/miss mixes."""
+
+    if result_metadata is not None:
+        return result_metadata.model_name, result_metadata.dimensions
+    first = text_items[0]
+    return (
+        first.model_name or request.model_name,
+        first.dimensions or len(first.vector),
+    )
+
+
 def create_embeddings_service(
     embedder: EmbedderProtocol,
     *,
     event_bus: EventBus,
     graph_embedding_provider: GraphEmbeddingProviderProtocol | None = None,
+    cache: EmbeddingCacheProtocol | None = None,
+    cache_namespace: str = "",
 ) -> EmbeddingsService:
     """Create the default embeddings service."""
 
@@ -208,6 +312,8 @@ def create_embeddings_service(
         embedder,
         event_bus=event_bus,
         graph_embedding_provider=graph_embedding_provider,
+        cache=cache,
+        cache_namespace=cache_namespace,
     )
 
 

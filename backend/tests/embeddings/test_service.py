@@ -10,6 +10,7 @@ from embeddings.adapters.protocols import (
     EmbedderProtocol,
     GraphEmbeddingProviderProtocol,
 )
+from embeddings.adapters.cache_in_memory import InMemoryLruEmbeddingCache
 from embeddings.adapters.in_memory import InMemoryEmbedder
 from embeddings.exceptions import EmbeddingConfigurationError, EmbeddingProviderError
 from embeddings.models import (
@@ -18,7 +19,7 @@ from embeddings.models import (
     EmbeddingResult,
     GraphEmbeddingBatch,
 )
-from embeddings.service import create_embeddings_service
+from embeddings.service import EmbeddingsService, create_embeddings_service
 from embeddings.service_models import EmbedRequest, EmbedSubmission
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import EmbeddingsGeneratedEvent
@@ -409,3 +410,158 @@ def test_embeddings_service_rejects_graph_dimension_mismatch_when_required() -> 
                 submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
             )
         )
+
+
+class _CountingEmbedder(EmbedderProtocol):
+    """Delegate to InMemoryEmbedder while recording every provider call."""
+
+    def __init__(self, *, dimensions: int = 4) -> None:
+        self._inner = InMemoryEmbedder(dimensions=dimensions)
+        self.requests: list[EmbeddingRequest] = []
+
+    def embed(self, request: EmbeddingRequest) -> EmbeddingResult:
+        self.requests.append(request)
+        return self._inner.embed(request)
+
+
+def _cached_service(
+    embedder: EmbedderProtocol,
+    event_bus: InMemoryEventBus,
+    *,
+    graph_embedding_provider: GraphEmbeddingProviderProtocol | None = None,
+) -> EmbeddingsService:
+    return create_embeddings_service(
+        embedder,
+        event_bus=event_bus,
+        graph_embedding_provider=graph_embedding_provider,
+        cache=InMemoryLruEmbeddingCache(max_entries=16),
+        cache_namespace="local:test-model:4",
+    )
+
+
+def test_embeddings_service_serves_repeated_content_from_cache() -> None:
+    event_bus = InMemoryEventBus()
+    embedder = _CountingEmbedder()
+    service = _cached_service(embedder, event_bus)
+    request = EmbedRequest(
+        knowledge_base_id="kb-1",
+        submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+    )
+
+    first = service.embed(request)
+    second = service.embed(request)
+
+    assert len(embedder.requests) == 1
+    assert second.items[0].vector == first.items[0].vector
+    assert second.items[0].provider == "in-memory"
+    assert second.model_name == first.model_name
+    assert second.dimensions == first.dimensions
+    assert second.request_id != first.request_id
+
+
+def test_embeddings_service_embeds_only_cache_misses_in_order() -> None:
+    event_bus = InMemoryEventBus()
+    embedder = _CountingEmbedder()
+    service = _cached_service(embedder, event_bus)
+
+    service.embed(
+        EmbedRequest(
+            submissions=[EmbedSubmission(content_id="content-1", content="Alpha")]
+        )
+    )
+    response = service.embed(
+        EmbedRequest(
+            submissions=[
+                EmbedSubmission(content_id="content-1", content="Alpha"),
+                EmbedSubmission(content_id="content-2", content="Beta"),
+            ]
+        )
+    )
+
+    assert [item.id for item in embedder.requests[-1].items] == ["content-2"]
+    assert [item.content_id for item in response.items] == [
+        "content-1",
+        "content-2",
+    ]
+
+
+def test_embeddings_service_cache_key_includes_request_model_name() -> None:
+    event_bus = InMemoryEventBus()
+    embedder = _CountingEmbedder()
+    service = _cached_service(embedder, event_bus)
+
+    service.embed(
+        EmbedRequest(
+            model_name="model-a",
+            submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+        )
+    )
+    service.embed(
+        EmbedRequest(
+            model_name="model-b",
+            submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+        )
+    )
+
+    assert len(embedder.requests) == 2
+
+
+def test_embeddings_service_without_cache_always_embeds() -> None:
+    event_bus = InMemoryEventBus()
+    embedder = _CountingEmbedder()
+    service = create_embeddings_service(embedder, event_bus=event_bus)
+    request = EmbedRequest(
+        submissions=[EmbedSubmission(content_id="content-1", content="Alpha")]
+    )
+
+    service.embed(request)
+    service.embed(request)
+
+    assert len(embedder.requests) == 2
+
+
+def test_embeddings_service_publishes_event_on_full_cache_hit() -> None:
+    event_bus = InMemoryEventBus()
+    service = _cached_service(_CountingEmbedder(), event_bus)
+    request = EmbedRequest(
+        knowledge_base_id="kb-1",
+        submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+    )
+
+    service.embed(request)
+    service.embed(request)
+
+    assert len(event_bus.published_events) == 2
+    event = event_bus.published_events[-1]
+    assert isinstance(event, EmbeddingsGeneratedEvent)
+    assert event.batches[0].item_count == 1
+
+
+def test_embeddings_service_graph_channel_covers_cached_submissions() -> None:
+    event_bus = InMemoryEventBus()
+    graph_provider = _GraphProvider(
+        vectors={"content-1": [0.3, 0.4, 0.5], "content-2": [0.6, 0.7, 0.8]}
+    )
+    service = _cached_service(
+        _CountingEmbedder(), event_bus, graph_embedding_provider=graph_provider
+    )
+
+    service.embed(
+        EmbedRequest(
+            knowledge_base_id="kb-1",
+            submissions=[EmbedSubmission(content_id="content-1", content="Alpha")],
+        )
+    )
+    service.embed(
+        EmbedRequest(
+            knowledge_base_id="kb-1",
+            include_graph_embeddings=True,
+            graph_embedding_dimension=3,
+            submissions=[
+                EmbedSubmission(content_id="content-1", content="Alpha"),
+                EmbedSubmission(content_id="content-2", content="Beta"),
+            ],
+        )
+    )
+
+    assert graph_provider.calls[-1] == ("kb-1", ["content-1", "content-2"], 3)
