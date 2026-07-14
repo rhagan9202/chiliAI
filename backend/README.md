@@ -54,7 +54,7 @@ backend/
 ├── ingestion/       # Document parsing (PDF, DOCX, HTML, JSON, TXT), chunking, entity extraction
 ├── graph/           # Abstract graph repository protocol + adapters (in-memory, Neo4j)
 ├── vectorstore/     # Abstract vector store protocol + adapters (in-memory, Qdrant)
-├── embeddings/      # Abstract embedder protocol + adapters (OpenAI, sentence-transformers)
+├── embeddings/      # Embedder protocol + adapters (OpenAI, sentence-transformers), LRU cache, usage metrics
 ├── rag/             # RAG pipeline — query → embed → search → graph expand → LLM → answer
 ├── llm/             # Abstract LLM client protocol + adapters (in-memory, OpenAI, Anthropic)
 ├── analytics/

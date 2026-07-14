@@ -22,7 +22,7 @@
 | BL-ID | Title | REQ-IDs | Priority | Status | Remaining |
 |-------|-------|---------|----------|--------|-----------|
 | BL-017 | Graph integrity + version/merge | REQ-GRAPH-001 | P1 | todo | 8 SP |
-| BL-019 | Embeddings + Vectorstore 1.0 hardening (re-scoped 2026-07-12: cache + cost/usage tracking) | REQ-VEC-001..004 | P1 | committed — Sprint 2026-26 | 5 SP |
+| BL-019 | Embeddings + Vectorstore 1.0 hardening (re-scoped 2026-07-12: cache + cost/usage tracking) | REQ-VEC-001..004 | P1 | code-complete — Sprint 2026-26 (live-stack verification pending, environment) | 0 SP dev |
 | BL-041 | Ingestion document-status projection + failure-path closure | REQ-KB-002, REQ-KB-004 | P1 | code-complete — Sprint 2026-26 (full-stack + integration verification pending, environment) | 0 SP dev |
 | BL-042 | CI migration drift/replay gate (database.04) | REQ-NFR-002 | P1 | committed — Sprint 2026-26 | 3 SP |
 | BL-043 | Ingestion structured stage logs + Prometheus counters | REQ-NFR-SEC-004 | P2 | code-complete — Sprint 2026-26 (live-scrape/full-stack verification pending, environment) | 0 SP dev |
@@ -54,15 +54,15 @@
 ### BL-019 — Embeddings 1.0 + Vectorstore 1.0 hardening (re-scoped 2026-07-12)
 - **REQ**: REQ-VEC-001..004
 - **Plans**: [docs/superpowers/plans/2026-05-19-embeddings-1-0.md](../../superpowers/plans/), [docs/superpowers/plans/2026-05-19-vectorstore-1-0.md](../../superpowers/plans/)
-- **Status**: committed — Sprint 2026-26 (was partial ~60%, re-verified 2026-07-12)
-- **Remaining estimate**: 5 SP
+- **Status**: **code-complete — Sprint 2026-26, 2026-07-14** (all 8 implementation tasks landed: `EmbeddingsConfig` cache knobs + contracts regen, `CachedEmbedding`/`build_embedding_cache_key`, `EmbeddingCacheProtocol` + `InMemoryLruEmbeddingCache` + `create_embedding_cache`/`embedding_cache_namespace`, cache-aware `EmbeddingsService` (standing TODO retired), OpenAI usage capture (`EmbeddingMetadata.total_tokens`), `embeddings/metrics.py` counters + structured usage log, DI wiring at both composition roots with hot-swap safety, this docs task). Backend gates green in-session: `pytest --cov -m "not integration"` full pass, coverage `embeddings`/`vectorstore` both ≥ 85%, `pyright` (0 errors), `ruff check --no-cache` (clean). **Not yet run**: full-stack manual verification (cache hit/miss behavior, `/metrics` scrape, usage log inspection against a running `make dev` stack) — Docker was unavailable this session; tracked as a follow-up verification pass, not additional scope. BL-019 stays **not** flipped to Done pending that verification pass.
+- **Remaining estimate**: 0 SP dev (pending live-stack verification)
 - **Re-scope ruling (product owner, 2026-07-12)**: acceptance for closing this P1 is **embedding cache + cost/usage tracking**. The roadmap-tier tail (object-store persistence of embeddings, graph-metric hybrid embedding flow, model routing, architecture guards) moved to post-v1 item **BL-045** — REQ-VEC-001..004 do not require it.
 - **Acceptance**:
   - [x] Retry/backoff + batching/token budgeting on OpenAI embeddings — `backend/embeddings/adapters/openai_adapter.py:108-134` (`_create_embeddings_with_retry`, 3 attempts, exponential backoff)
   - [x] Namespace lifecycle — `delete_namespace` on both adapters + service (`vectorstore/service.py:200`, `adapters/in_memory.py:105`, `qdrant_adapter.py:232`) with per-namespace dimension guard
   - [x] `delete_by_source_document` wired end-to-end — protocol `vectorstore/protocols.py:39`, service `:216-223`, exercised on the document-replacement path (`api/routers/knowledgebases.py:142-143`); whole-KB delete uses namespace drop via the cleanup cascade (`knowledgebases/cleanup.py:74`)
-  - [ ] Embedding cache — none (standing TODO `backend/embeddings/service.py:24`)
-  - [ ] Cost/usage tracking — none
+  - [x] Embedding cache — `EmbeddingCacheProtocol` (`embeddings/adapters/protocols.py`) + `InMemoryLruEmbeddingCache` (`embeddings/adapters/cache_in_memory.py`), SHA-256 key over `namespace + model_name + content`, `EmbeddingsConfig.cache_enabled`/`cache_max_entries`, wired at both composition roots; standing TODO at `embeddings/service.py:24` retired
+  - [x] Cost/usage tracking — `embeddings/metrics.py` (`embedding_requests_total`, `embedding_texts_total{cache_result}`, `embedding_tokens_total{provider,model,knowledge_base_id,source}`) + structured usage log per `embed()` call; OpenAI adapter surfaces `usage.total_tokens` on `EmbeddingMetadata`
   - ~~Object-store persistence of embeddings; graph-metric hybrid embedding flow; model routing; architecture guards~~ → moved to **BL-045** (post-v1, ruling 2026-07-12)
 
 ### BL-041 — Ingestion document-status projection + failure-path closure

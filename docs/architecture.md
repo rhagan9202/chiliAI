@@ -284,8 +284,10 @@ backend/
 ├── embeddings/                 # Embedding generation
 │   ├── __init__.py
 │   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
+│   ├── metrics.py              # Prometheus usage counters + token estimation (BL-019)
 │   └── adapters/
 │       ├── in_memory.py
+│       ├── cache_in_memory.py  # Per-process LRU embedding cache (BL-019)
 │       ├── openai_adapter.py
 │       └── sentence_transformers_adapter.py
 ├── rag/                        # Retrieval-augmented generation pipeline
