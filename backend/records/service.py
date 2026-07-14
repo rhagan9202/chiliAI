@@ -14,6 +14,7 @@ from records.models import (
 )
 from records.service_models import RecordIngestReceipt, RecordSubmission
 from records.validation import validate_rows_partition
+from shared.metrics import ingestion_dedup_suppressed_total
 from shared.utils import generate_id, utc_now
 
 
@@ -82,6 +83,7 @@ class RecordsService:
             knowledge_base_id=knowledge_base_id, submission_hash=submission_hash
         ):
             # Identical batch already registered — no-op (no persist, no publish).
+            ingestion_dedup_suppressed_total.labels(kind="record_batch").inc()
             return RecordIngestReceipt(
                 knowledge_base_id=knowledge_base_id,
                 feed_name=feed.name,

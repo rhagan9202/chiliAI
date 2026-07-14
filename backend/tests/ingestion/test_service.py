@@ -773,3 +773,22 @@ def test_ingest_task_failure_increments_failed_counter_and_logs(
     assert after == before + 1.0
     assert _has_stage_field(caplog.text, "stage", "parse")
     assert _has_stage_field(caplog.text, "outcome", "failed")
+
+
+def test_register_documents_duplicate_increments_dedup_counter() -> None:
+    service, _event_bus, _object_store = _service()
+    submission = DocumentSubmission(
+        filename="claims.json",
+        content=b'{"claim_id": "dedup-counter"}',
+        content_type="application/json",
+    )
+    labels = {"kind": "document"}
+
+    first = service.register_documents("kb-dedup", [submission])
+    baseline = REGISTRY.get_sample_value("ingestion_dedup_suppressed_total", labels) or 0.0
+    second = service.register_documents("kb-dedup", [submission])
+
+    assert first[0].enqueued is True
+    assert second[0].enqueued is False
+    after = REGISTRY.get_sample_value("ingestion_dedup_suppressed_total", labels) or 0.0
+    assert after == baseline + 1.0

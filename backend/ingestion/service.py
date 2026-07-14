@@ -24,7 +24,11 @@ from events.types import (
     DocumentsUploadedEvent,
     ParsedDocumentReference,
 )
-from shared.metrics import ingestion_documents_failed_total, log_stage
+from shared.metrics import (
+    ingestion_dedup_suppressed_total,
+    ingestion_documents_failed_total,
+    log_stage,
+)
 from shared.protocols import ObjectStoreProtocol
 from shared.utils import generate_id
 
@@ -172,6 +176,10 @@ class IngestionService:
                         },
                     )
 
+            if not should_publish:
+                # Suppressed by idempotent dedup: content already registered
+                # (no recovery marker) or remote-URI marker already present.
+                ingestion_dedup_suppressed_total.labels(kind="document").inc()
             if should_publish:
                 document_references.append(
                     DocumentReference(
