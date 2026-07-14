@@ -50,6 +50,7 @@ class EmbeddingMetadata(BaseModel):
     dimensions: int = Field(gt=0)
     provider: str
     created_at: datetime = Field(default_factory=utc_now)
+    total_tokens: int | None = Field(default=None, ge=0)
 
 
 class EmbeddingVector(BaseModel):

@@ -81,15 +81,18 @@ class OpenAIEmbedder:
         """Embed request items while respecting batch-size and token budgets."""
 
         vectors: dict[str, list[float]] = {}
+        total_tokens: int | None = None
 
         for batch in _iter_batches(
             request.items,
             batch_size=self._batch_size,
             token_limit=_MAX_INPUT_TOKENS,
         ):
-            batch_vectors = self._embed_batch(batch)
+            batch_vectors, batch_tokens = self._embed_batch(batch)
             for item in batch:
                 vectors[item.id] = batch_vectors[item.id]
+            if batch_tokens is not None:
+                total_tokens = (total_tokens or 0) + batch_tokens
 
         return EmbeddingResult(
             request_id=request.request_id,
@@ -98,19 +101,23 @@ class OpenAIEmbedder:
                 model_name=self._model_name,
                 dimensions=self._dimensions,
                 provider=_PROVIDER_NAME,
+                total_tokens=total_tokens,
             ),
         )
 
-    def _embed_batch(self, items: Sequence[EmbeddingItem]) -> dict[str, list[float]]:
-        """Send one provider batch and parse the resulting vectors."""
+    def _embed_batch(
+        self, items: Sequence[EmbeddingItem]
+    ) -> tuple[dict[str, list[float]], int | None]:
+        """Send one provider batch and parse vectors plus reported usage."""
 
         texts = [item.content for item in items]
         response = self._create_embeddings_with_retry(texts)
-        return _parse_embedding_response(
+        vectors = _parse_embedding_response(
             response,
             items,
             expected_dimensions=self._dimensions,
         )
+        return vectors, _extract_usage_tokens(response)
 
     def _create_embeddings_with_retry(self, texts: Sequence[str]) -> object:
         """Call the provider with exponential backoff for rate-limit failures."""
@@ -327,6 +334,18 @@ def _coerce_float(value: object) -> float:
     if hasattr(value, "__float__"):
         return float(cast(SupportsFloat, value))
     raise TypeError("Embedding value is not numeric.")
+
+
+def _extract_usage_tokens(response: object) -> int | None:
+    """Read usage.total_tokens from a provider response, if reported."""
+
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None
+    total_tokens = getattr(usage, "total_tokens", None)
+    if isinstance(total_tokens, int) and total_tokens >= 0:
+        return total_tokens
+    return None
 
 
 def _is_rate_limit_error(error: Exception) -> bool:

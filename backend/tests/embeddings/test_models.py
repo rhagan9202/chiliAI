@@ -216,3 +216,16 @@ def test_cached_embedding_requires_matching_dimensions() -> None:
 def test_cached_embedding_rejects_empty_vector() -> None:
     with pytest.raises(ValueError, match="non-empty"):
         CachedEmbedding(vector=[], model_name="m", provider="local", dimensions=1)
+
+
+def test_embedding_metadata_total_tokens_defaults_to_none() -> None:
+    metadata = EmbeddingMetadata(model_name="m", dimensions=2, provider="local")
+
+    assert metadata.total_tokens is None
+
+
+def test_embedding_metadata_rejects_negative_total_tokens() -> None:
+    with pytest.raises(ValueError, match="total_tokens"):
+        EmbeddingMetadata(
+            model_name="m", dimensions=2, provider="local", total_tokens=-1
+        )
