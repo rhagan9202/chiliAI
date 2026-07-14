@@ -104,6 +104,11 @@ _DELETE_BY_KB_SQL = """
     WHERE knowledge_base_id = %s
 """
 
+_DELETE_BY_DOCUMENT_SQL = """
+    DELETE FROM source_document_status
+    WHERE knowledge_base_id = %s AND source_document_id = %s
+"""
+
 
 class PostgresSourceDocumentStatusStore:
     """A ``SourceDocumentStatusStore`` backed by ``source_document_status``."""
@@ -212,6 +217,22 @@ class PostgresSourceDocumentStatusStore:
         except Exception as exc:  # noqa: BLE001
             raise DocumentStatusPersistenceError(
                 "Failed to delete document status rows for knowledge base."
+            ) from exc
+
+    def delete_by_document(
+        self, knowledge_base_id: str, source_document_id: str
+    ) -> bool:
+        try:
+            with self._provider.connection() as conn:
+                cursor = conn.execute(
+                    _DELETE_BY_DOCUMENT_SQL,
+                    (knowledge_base_id, source_document_id),
+                )
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as exc:  # noqa: BLE001
+            raise DocumentStatusPersistenceError(
+                "Failed to delete document status row for document."
             ) from exc
 
 

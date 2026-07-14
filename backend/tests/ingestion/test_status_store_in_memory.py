@@ -162,3 +162,23 @@ def test_delete_by_kb_removes_all_rows_for_kb() -> None:
     assert store.delete_by_kb("kb-1") == 2
     assert store.delete_by_kb("kb-1") == 0
     assert store.list(knowledge_base_id="kb-1", limit=10, offset=0) == ([], 0)
+
+
+def test_delete_by_document_removes_only_that_row() -> None:
+    store = InMemorySourceDocumentStatusStore()
+    store.apply(_transition(IngestionStatus.PARSED, doc="doc-1"))
+    store.apply(_transition(IngestionStatus.PARSED, doc="doc-2"))
+
+    assert store.delete_by_document("kb-1", "doc-1") is True
+
+    remaining, total = store.list(knowledge_base_id="kb-1", limit=10, offset=0)
+    assert total == 1
+    assert [item.source_document_id for item in remaining] == ["doc-2"]
+
+
+def test_delete_by_document_returns_false_for_missing_row() -> None:
+    store = InMemorySourceDocumentStatusStore()
+    store.apply(_transition(IngestionStatus.PARSED, doc="doc-1"))
+
+    assert store.delete_by_document("kb-1", "doc-missing") is False
+    assert store.delete_by_document("kb-missing", "doc-1") is False

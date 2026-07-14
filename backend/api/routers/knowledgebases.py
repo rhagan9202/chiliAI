@@ -362,13 +362,20 @@ async def list_knowledge_base_documents(
             status=status_filter,
         )
         projection_by_id = {row.source_document_id: row for row in status_rows}
-        records = [
-            record
-            for record in (
-                repository.get_document(knowledge_base_id, row.source_document_id)
-                for row in status_rows
+        # Load every registered document once (not per matching row: the
+        # object-store repository reloads and re-parses its whole metadata
+        # snapshot on each `get_document` call) and index into that dict.
+        document_count = hydrated_knowledge_base.document_count
+        documents_by_id: dict[str, DocumentRecord] = {}
+        if document_count > 0:
+            all_documents, _ = repository.list_documents(
+                knowledge_base_id, limit=document_count, offset=0
             )
-            if record is not None
+            documents_by_id = {document.id: document for document in all_documents}
+        records = [
+            documents_by_id[row.source_document_id]
+            for row in status_rows
+            if row.source_document_id in documents_by_id
         ]
     else:
         records, total = repository.list_documents(
@@ -435,6 +442,9 @@ async def delete_knowledge_base_document(
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
     object_store: ObjectStore = Depends(get_object_store),
     workflow_tracker: WorkflowBusyTracker = Depends(get_workflow_tracker),
+    document_status_store: SourceDocumentStatusStore = Depends(
+        get_document_status_store
+    ),
 ) -> None:
     """Delete a single document from a knowledge base and its stored artifacts."""
     existing_kb = repository.get(knowledge_base_id)
@@ -473,6 +483,10 @@ async def delete_knowledge_base_document(
         object_store.delete(key)
 
     repository.delete_document(knowledge_base_id, document_id)
+    # Purge the durable status projection row too, so it never outlives the
+    # document it describes (an orphaned row would inflate a status-filtered
+    # list's `total` past `len(items)`).
+    document_status_store.delete_by_document(knowledge_base_id, document_id)
 
 
 @router.post(

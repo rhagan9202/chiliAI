@@ -138,6 +138,32 @@ def test_list_filters_by_status_and_delete_by_kb(
     assert store.list(knowledge_base_id="kb-pg", limit=10, offset=0) == ([], 0)
 
 
+def test_delete_by_document_removes_only_that_row(
+    provider: ConnectionProvider,
+) -> None:
+    store = PostgresSourceDocumentStatusStore(provider)
+    store.apply(_transition(IngestionStatus.PARSED, doc="doc-1", occurred_at=T0))
+    store.apply(
+        _transition(IngestionStatus.FAILED, doc="doc-2", occurred_at=T1, error="x")
+    )
+
+    assert store.delete_by_document("kb-pg", "doc-1") is True
+
+    remaining, total = store.list(knowledge_base_id="kb-pg", limit=10, offset=0)
+    assert total == 1
+    assert [row.source_document_id for row in remaining] == ["doc-2"]
+
+
+def test_delete_by_document_returns_false_for_missing_row(
+    provider: ConnectionProvider,
+) -> None:
+    store = PostgresSourceDocumentStatusStore(provider)
+    store.apply(_transition(IngestionStatus.PARSED, doc="doc-1", occurred_at=T0))
+
+    assert store.delete_by_document("kb-pg", "doc-missing") is False
+    assert store.delete_by_document("kb-missing", "doc-1") is False
+
+
 def test_failed_redelivery_refreshes_last_error(
     provider: ConnectionProvider,
 ) -> None:

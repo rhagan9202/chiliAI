@@ -56,3 +56,9 @@ class SourceDocumentStatusStore(Protocol):
     def delete_by_kb(self, knowledge_base_id: str) -> int:
         """Delete all rows for a knowledge base; return the count removed."""
         ...
+
+    def delete_by_document(
+        self, knowledge_base_id: str, source_document_id: str
+    ) -> bool:
+        """Delete the row for one document; return True if a row was removed."""
+        ...

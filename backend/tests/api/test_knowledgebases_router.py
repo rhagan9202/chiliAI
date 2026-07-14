@@ -1451,3 +1451,31 @@ def test_documents_endpoint_rejects_unknown_status_filter() -> None:
         response = client.get("/knowledgebases/kb-proj/documents?status=bogus")
 
     assert response.status_code == 422
+
+
+def test_deleting_document_purges_its_status_row_from_filtered_total() -> None:
+    """Regression: an orphaned status row must not inflate `total` past `items`.
+
+    Before the fix, deleting a document left its row in the status store, so
+    a status-filtered list still counted it in `total` while dropping it from
+    `items` (e.g. `total: 1, items: []`).
+    """
+    app, _, status_store = _status_projection_harness()
+    with TestClient(app) as client:
+        delete_response = client.delete(
+            "/knowledgebases/kb-proj/documents/doc-failed"
+        )
+        assert delete_response.status_code == 204
+
+        response = client.get("/knowledgebases/kb-proj/documents?status=failed")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 0
+    assert payload["items"] == []
+    assert (
+        status_store.get_many(
+            knowledge_base_id="kb-proj", source_document_ids=["doc-failed"]
+        )
+        == {}
+    )

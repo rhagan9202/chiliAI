@@ -134,3 +134,12 @@ class InMemorySourceDocumentStatusStore:
         for key in keys:
             del self._records[key]
         return len(keys)
+
+    def delete_by_document(
+        self, knowledge_base_id: str, source_document_id: str
+    ) -> bool:
+        key = (knowledge_base_id, source_document_id)
+        if key not in self._records:
+            return False
+        del self._records[key]
+        return True
