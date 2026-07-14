@@ -16,7 +16,11 @@
 # \unrestrict carry a random token per dump), the SET/set_config preamble,
 # and blank lines are stripped. alembic_version is excluded, so the snapshot
 # is content-based and contains no Alembic revision IDs.
-set -euo pipefail
+# -E (errtrace) so the ERR trap below also fires for failures inside function
+# bodies (admin_psql/scratch_psql/alembic_cmd) -- without it bash does not
+# inherit ERR traps into functions and mid-run tool failures would leak the
+# tool's own exit code instead of the documented exit 1.
+set -Eeuo pipefail
 
 usage() {
   cat <<'EOF'
