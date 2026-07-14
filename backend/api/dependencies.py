@@ -113,6 +113,10 @@ from analytics.timeseries.adapters.in_memory import InMemoryTimeSeriesHistorySou
 from analytics.timeseries.adapters.protocols import TimeSeriesHistorySourceProtocol
 from analytics.timeseries.protocols import TimeseriesServiceProtocol
 from analytics.timeseries.service import create_timeseries_service
+from embeddings.adapters.cache_in_memory import (
+    create_embedding_cache,
+    embedding_cache_namespace,
+)
 from embeddings.adapters.in_memory import InMemoryEmbedder
 from embeddings.adapters.protocols import EmbedderProtocol
 from embeddings.protocols import EmbeddingsServiceProtocol
@@ -1174,7 +1178,13 @@ def get_embedder() -> EmbedderProtocol:
 @lru_cache(maxsize=1)
 def get_embeddings_service() -> EmbeddingsServiceProtocol:
     """Return the embeddings service assembled from configured dependencies."""
-    return create_embeddings_service(get_embedder(), event_bus=get_event_bus())
+    embeddings_config = get_domain_config().embeddings or EmbeddingsConfig()
+    return create_embeddings_service(
+        get_embedder(),
+        event_bus=get_event_bus(),
+        cache=create_embedding_cache(embeddings_config),
+        cache_namespace=embedding_cache_namespace(embeddings_config),
+    )
 
 
 @lru_cache(maxsize=1)

@@ -118,8 +118,12 @@ from analytics.risk.service_models import (
     RiskAssessmentRequest,
     RiskAssessmentResponse,
 )
+from embeddings.adapters.cache_in_memory import (
+    create_embedding_cache,
+    embedding_cache_namespace,
+)
 from embeddings.adapters.in_memory import InMemoryEmbedder
-from embeddings.adapters.protocols import EmbedderProtocol
+from embeddings.adapters.protocols import EmbedderProtocol, EmbeddingCacheProtocol
 from embeddings.models import EmbeddingMetadata, EmbeddingResult, EmbeddingVector
 from embeddings.protocols import EmbeddingsServiceProtocol
 from embeddings.service import create_embeddings_service
@@ -254,6 +258,7 @@ __all__ = [
     "build_connection_provider",
     "build_document_status_store",
     "build_embedder",
+    "build_embedding_cache",
     "build_entity_metric_repository",
     "build_explainability_context_source",
     "build_explanation_context",
@@ -844,6 +849,18 @@ def build_embedder(config: DomainConfig) -> EmbedderProtocol:
     return factory(embeddings_config)
 
 
+def build_embedding_cache(
+    config: DomainConfig,
+) -> tuple[EmbeddingCacheProtocol | None, str]:
+    """Build the config-driven embedding cache and its key namespace."""
+
+    embeddings_config = config.embeddings or EmbeddingsConfig()
+    return (
+        create_embedding_cache(embeddings_config),
+        embedding_cache_namespace(embeddings_config),
+    )
+
+
 def build_llm_client(config: DomainConfig) -> LlmClientProtocol:
     """Select an LLM client adapter from the configured provider."""
     from llm.exceptions import LlmConfigurationError
@@ -959,6 +976,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         event_bus=event_bus,
         gnn_enabled=lambda: config.capabilities.gnn,
     )
+    embedding_cache, embedding_cache_ns = build_embedding_cache(config)
     embeddings_service = create_embeddings_service(
         embedder,
         event_bus=event_bus,
@@ -967,6 +985,8 @@ def build_worker_dependencies() -> WorkerDependencies:
             if config.capabilities.gnn
             else None
         ),
+        cache=embedding_cache,
+        cache_namespace=embedding_cache_ns,
     )
     connection_provider = build_connection_provider(config)
     risk_service = create_risk_service(

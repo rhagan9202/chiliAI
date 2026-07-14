@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from prometheus_client import REGISTRY
 
 import api.dependencies as dependencies
 from config.loader import load_config
@@ -22,6 +23,7 @@ from config.schema import (
     VectorStoreConfig,
 )
 from embeddings.service import EmbeddingsService
+from embeddings.service_models import EmbedRequest, EmbedSubmission
 from events.adapters.in_memory import InMemoryEventBus
 from events.adapters.redis_streams import RedisStreamsEventBus
 from graph.service import GraphService
@@ -1081,3 +1083,69 @@ def test_create_alert_repository_unsupported_backend_raises(
 
     with pytest.raises(ConfigurationError, match="dynamodb"):
         _call_create_alert_repository()
+
+
+def test_get_embeddings_service_uses_config_driven_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={"embeddings": EmbeddingsConfig(provider="local", model="di-probe")}
+    )
+    _install_config(monkeypatch, config)
+    service = dependencies.get_embeddings_service()
+    request = EmbedRequest(
+        model_name="di-cache-model",
+        submissions=[EmbedSubmission(content_id="content-1", content="DI probe")],
+    )
+    hit_labels = {
+        "provider": "local",
+        "model": "di-cache-model",
+        "cache_result": "hit",
+    }
+    before = REGISTRY.get_sample_value("embedding_texts_total", hit_labels) or 0.0
+
+    service.embed(request)
+    service.embed(request)
+
+    after = REGISTRY.get_sample_value("embedding_texts_total", hit_labels) or 0.0
+    assert after - before == 1.0
+
+
+def test_get_embeddings_service_honors_cache_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={
+            "embeddings": EmbeddingsConfig(
+                provider="local", model="di-probe", cache_enabled=False
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+    service = dependencies.get_embeddings_service()
+    request = EmbedRequest(
+        model_name="di-nocache-model",
+        submissions=[EmbedSubmission(content_id="content-1", content="DI probe")],
+    )
+    miss_labels = {
+        "provider": "local",
+        "model": "di-nocache-model",
+        "cache_result": "miss",
+    }
+    hit_labels = {**miss_labels, "cache_result": "hit"}
+    misses_before = (
+        REGISTRY.get_sample_value("embedding_texts_total", miss_labels) or 0.0
+    )
+    hits_before = REGISTRY.get_sample_value("embedding_texts_total", hit_labels) or 0.0
+
+    service.embed(request)
+    service.embed(request)
+
+    misses_after = (
+        REGISTRY.get_sample_value("embedding_texts_total", miss_labels) or 0.0
+    )
+    hits_after = REGISTRY.get_sample_value("embedding_texts_total", hit_labels) or 0.0
+    assert misses_after - misses_before == 2.0
+    assert hits_after - hits_before == 0.0

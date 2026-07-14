@@ -54,6 +54,7 @@ from config.schema import (
 )
 from monitoring.adapters.in_memory import InMemoryObservationWriter
 from records.adapters.in_memory import InMemoryRawRecordStore
+from embeddings.adapters.cache_in_memory import InMemoryLruEmbeddingCache
 from embeddings.adapters.in_memory import InMemoryEmbedder
 from embeddings.models import (
     EmbeddingMetadata,
@@ -4976,3 +4977,35 @@ def test_handle_entities_extracted_counts_empty_extraction_and_logs(
     assert after == before + 1.0
     assert _has_stage_field(caplog.text, "stage", "validate")
     assert _has_stage_field(caplog.text, "outcome", "empty")
+
+
+def test_build_embedding_cache_returns_cache_and_namespace() -> None:
+    from agent.coordinator import build_embedding_cache
+
+    config = _base_config().model_copy(
+        update={
+            "embeddings": EmbeddingsConfig(
+                provider="local",
+                model="worker-cache-model",
+                dimensions=128,
+            ),
+        }
+    )
+
+    cache, namespace = build_embedding_cache(config)
+
+    assert isinstance(cache, InMemoryLruEmbeddingCache)
+    assert namespace == "local:worker-cache-model:128"
+
+
+def test_build_embedding_cache_disabled_returns_none() -> None:
+    from agent.coordinator import build_embedding_cache
+
+    config = _base_config().model_copy(
+        update={"embeddings": EmbeddingsConfig(cache_enabled=False)}
+    )
+
+    cache, namespace = build_embedding_cache(config)
+
+    assert cache is None
+    assert namespace == "sentence_transformers:all-MiniLM-L6-v2:384"
