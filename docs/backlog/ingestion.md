@@ -666,40 +666,46 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 ## Story ingestion.18: Add document-level status projection (SourceDocumentStatusStore)
 
 **ID:** ingestion.18
-**Status:** planned
+**Status:** done
 **Prerequisites:** [database.04, events.04]
 **Unblocks:** [ingestion.22, ingestion.23]
 **Estimated size:** L
+**Done:** 2026-07-13 · BL-041 (Sprint 2026-26) · `feat/sprint-2026-26-ingestion-visibility`
 
 **As a** Ingestion Studio user,
 **I need** a durable per-document status projection with monotonic transitions and a per-KB document list endpoint,
 **so that** I can see which documents are pending vs parsed vs failed without polling Redis Streams.
 
-### Current State
-- `SourceDocument.status: IngestionStatus` exists at `backend/ingestion/models.py:40-68` with states `PENDING`, `PARSING`, `PARSED`, `CHUNKED`, `EXTRACTED`, `VALIDATED`, `FAILED`.
-- There is no durable store for these statuses; they live only on in-memory `SourceDocument` instances during a single service call.
-- No per-KB document listing endpoint with current stage and error detail exists. (Since 2026-07-02, `GET /knowledgebases/{kb_id}/documents` does expose per-document `warning_count`/`warning_reasons` persisted by the worker onto `DocumentRecord`, and the Ingestion Studio renders them — warning surfacing is done; this story's remaining scope is the durable stage-transition projection.)
+### Current State (shipped)
+- `SourceDocumentStatusStore` protocol lives at `backend/ingestion/adapters/protocols.py` (not `ingestion/protocols.py`, as originally sketched), with `InMemorySourceDocumentStatusStore` (`ingestion/adapters/in_memory.py`) and `PostgresSourceDocumentStatusStore` (`ingestion/adapters/postgres.py`, `source_document_status` table, migration `0009_document_status`).
+- Schema deviates from the original sketch: rather than a `transition_log: list[StatusTransition]`, the table holds one current-state row per `(knowledge_base_id, source_document_id)` — `current_status`, `status_rank`, `last_error`, drop counts, `sample_reasons`, `first_event_at`, `updated_at` — with monotonicity enforced by `STATUS_RANK` comparison on upsert (SQL `CASE`/`GREATEST` in the Postgres adapter; equivalent branching in the in-memory adapter). A full transition history was judged unnecessary for the v1 UI surface (current status + last error is what the document list needs); revisit if an audit trail becomes a requirement.
+- `agent/status_projection.py::project_document_status`, called from the worker's `_dispatch_event` (`agent/coordinator.py`), is the event consumer — it subscribes to `DocumentsUploadedEvent` / `DocumentsParsedEvent` / `DocumentsFailedEvent` / `DocumentsExtractionWarningEvent` (the last one also carries the `EXTRACTED_EMPTY` transition; there is no separate `DocumentDeletedEvent` consumer — deletes are handled synchronously via `delete_by_document`/`delete_by_kb`, not projected from an event).
+- `GET /knowledgebases/{kb_id}/documents` returns `current_status`, `last_error`, `dropped_entity_count`, `dropped_relationship_count`, `drop_sample_reasons` per document and supports `?status=` filtering.
+- Out-of-order/redelivered events are no-ops per the `STATUS_RANK` monotonicity guard (unit-tested on both adapters, including the FAILED-redelivery-refreshes-`last_error` edge case).
+- Frontend Ingestion Studio consumption remains **out of scope** (unchanged from the original cross-edge note) — tracked as a follow-on FE story.
 
 ### Acceptance Criteria
-- [ ] `SourceDocumentStatusStore` protocol in `backend/ingestion/protocols.py` plus a Postgres adapter under `backend/ingestion/adapters/status_store_postgres.py`.
-- [ ] Schema: `(kb_id, source_document_id, current_status, last_error, transition_log: list[StatusTransition], updated_at)`; `transition_log` enforces monotonic ordering by `(status_rank, updated_at)`.
-- [ ] An event consumer subscribes to `DocumentsUploadedEvent` / `DocumentsParsedEvent` / `DocumentsFailedEvent` / `DocumentDeletedEvent` (from `ingestion.16`) and updates the projection.
-- [ ] `GET /knowledgebases/{kb_id}/documents` returns `{document_id, filename, current_status, last_transition_at, last_error}` for each document; supports filtering by status.
-- [ ] Out-of-order events (e.g. a stale `parsing` event arriving after `failed`) are ignored, not regressed.
-- [ ] Frontend Ingestion Studio (`chili_app/src/pages/KnowledgeBaseManagerPage.tsx`) consumes the new endpoint (cross-edge to `frontend.md`, not part of this story's AC).
+- [x] `SourceDocumentStatusStore` protocol plus in-memory and Postgres adapters (Postgres via migration `0009_document_status`).
+- [x] Durable per-document status row with monotonic ordering (`STATUS_RANK`-guarded upsert instead of a stored transition log — see Current State).
+- [x] An event consumer subscribes to `DocumentsUploadedEvent` / `DocumentsParsedEvent` / `DocumentsFailedEvent` / `DocumentsExtractionWarningEvent` and updates the projection.
+- [x] `GET /knowledgebases/{kb_id}/documents` returns durable `current_status`/`last_error`/drop counts/`drop_sample_reasons` per document; supports filtering by status.
+- [x] Out-of-order events (e.g. a stale `parsing` event arriving after `failed`) are ignored, not regressed.
+
+Frontend Ingestion Studio consumption (`chili_app/src/pages/KnowledgeBaseManagerPage.tsx`) of the new endpoint is a cross-edge to `frontend.md`, not part of this story's AC — explicitly out of scope for BL-041; tracked as a follow-on FE story.
 
 ### Verification
-- `pytest backend/tests/ingestion/test_status_store.py backend/tests/integration/test_status_projection_replay.py -v` green.
-- Manual: ingest a document, observe transitions PENDING → PARSING → PARSED → CHUNKED → EXTRACTED → VALIDATED in the projection.
+- `backend/.venv/bin/pytest --cov -m "not integration"` green (ingestion/agent/api/knowledgebases/database packages); `pyright` 0 errors; `ruff check` clean.
+- `DATABASE_URL=... pytest -m integration tests/database` — deferred to environment-level verification (dev-stack Docker networking unavailable in the implementing session); tracked in sprint 2026-26 progress notes, not additional scope.
+- Manual: ingest a document, observe transitions PENDING → PARSED → VALIDATED (or EXTRACTED_EMPTY) → and FAILED on error, in the projection — pending the same environment blocker.
 
 ### Code touch points
-- `backend/ingestion/protocols.py` (modify)
-- `backend/ingestion/adapters/status_store_postgres.py` (new)
-- `backend/database/migrations/` (new Alembic revision)
-- `backend/ingestion/consumers/status_projection.py` (new)
-- `backend/api/routers/knowledgebases.py` (modify — add list endpoint)
-- `backend/tests/ingestion/test_status_store.py` (new)
-- `backend/tests/integration/test_status_projection_replay.py` (new)
+- `backend/ingestion/adapters/protocols.py` (new)
+- `backend/ingestion/adapters/{in_memory,postgres}.py` (new)
+- `backend/database/migrations/versions/0009_document_status.py` (new Alembic revision)
+- `backend/agent/status_projection.py` (new — event consumer)
+- `backend/agent/coordinator.py` (modify — wire projector into `_dispatch_event`)
+- `backend/api/routers/knowledgebases.py` (modify — durable fields + status filter on the list endpoint)
+- `backend/tests/ingestion/test_status_store_in_memory.py`, `backend/tests/agent/test_status_projection.py`, `backend/tests/database/test_document_status_postgres.py` (new)
 
 ---
 
@@ -1203,6 +1209,10 @@ so that interrupted uploads can be completed without starting over.
 - `backend/tests/ingestion/test_orchestrator_parser.py` (new or modify)
 - `backend/tests/ingestion/test_service.py` (modify)
 
+### Coordinator-residue closure (2026-07-13 · BL-041, Sprint 2026-26)
+
+This story's original scope covered the **parse stage** (`ingestion/orchestrators/parser.py`, `ingestion/service.py::ingest_task`). A distinct residue was later identified one stage downstream, in the **worker coordinator**: `agent.coordinator.handle_documents_parsed`/`handle_documents_chunked` raised a batch-poisoning `ValueError` when a `DocumentsParsedEvent`/`DocumentsChunkedEvent` document was missing its storage key, or `ValueError`/other exceptions escaped an unguarded `object_store.get_bytes()` + artifact deserialization — burning retries to the DLQ for the whole batch instead of failing just the offending document. This is now closed: both handlers catch missing-key and load/deserialize failures per document, publish a `DocumentsFailedEvent` for that document, and continue processing the rest of the batch; chunker/extractor/`put_bytes` write-side exceptions still propagate (may be transient, so the retry/DLQ wrapper should see them). See `agent/coordinator.py::handle_documents_parsed`/`handle_documents_chunked` and `backend/tests/agent/test_coordinator.py`.
+
 ---
 
 ## Story ingestion.33: Use the full content digest for document identity to eliminate dedup collisions
@@ -1281,31 +1291,34 @@ so that interrupted uploads can be completed without starting over.
 ## Story ingestion.35: Surface empty extractions and validation drops instead of marking the document silently ready
 
 **ID:** ingestion.35
-**Status:** planned
+**Status:** done
 **Type:** bug
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** M
+**Done:** 2026-07-13 · BL-041 (Sprint 2026-26) · `feat/sprint-2026-26-ingestion-visibility`
 
 **As a** Ingestion Studio user,
 **I need** a document that yields zero valid entities, or whose entities were dropped during validation, to surface a distinct status/warning rather than completing as "ready" with no signal,
 **so that** a misconfigured extractor (or a single hallucinated extra property) does not silently produce empty knowledge bases that look successful.
 
 ### Current State
-- `validate_extraction` (`backend/ingestion/validator.py:76-112`) records dropped candidates in `entity_errors` / `relationship_errors` (`validator.py:79-80, 87, 100, 110-111`) — but the coordinator emits only `valid_entity_count` and never propagates these error maps to a user-visible surface.
-- `validate_entity` (`backend/shared/types.py`) rejects an entity for an unexpected/extra property; the LLM prompt asks the model to omit unknown fields but does not forbid extra ones, so one hallucinated property silently drops an otherwise-good entity.
-- A document with zero valid entities still emits `KnowledgeBaseReadyEvent` with `vector_count=0` (`backend/agent/coordinator.py:1258-1267`) and is marked ready — there is no "empty extraction" terminal state or warning.
+- `validate_extraction` (`backend/ingestion/validator.py:76-112`) records dropped candidates in `entity_errors` / `relationship_errors` — the durable `DocumentsExtractionWarningEvent` carries the counts and a bounded `sample_reasons` list.
+- `validate_entity` (`backend/shared/types.py`) rejects an entity for an unexpected/extra property; extra properties are stripped to `metadata.extra_properties` and reported as a `ValidationReport.warnings` notice instead of dropping the entity outright, and the LLM prompt discourages extra properties.
+- A document with zero valid entities now surfaces `IngestionStatus.EXTRACTED_EMPTY` via the durable status projection (`ingestion.18`/BL-041) instead of only completing `KnowledgeBaseReadyEvent` — see `agent/status_projection.py` and `GET /knowledgebases/{kb_id}/documents`'s `current_status`.
 
 ### Acceptance Criteria
-- [x] A document that produces zero valid entities reaches a distinct, durable terminal signal (the per-document `DocumentsExtractionWarningEvent`, plus `empty_extraction=True` + `source_document_id` on `KnowledgeBaseReadyReference`), not a silent ready.
-- [ ] `entity_errors` / `relationship_errors` counts (and a bounded sample) are surfaced via the document status projection / API so the UI can show "N entities dropped during validation: <reasons>" (cross-edge to `ingestion.18`). _Partially delivered: counts + a bounded `sample_reasons` ride the durable `DocumentsExtractionWarningEvent`, and the full `ValidationReport` is persisted to the object store; the `GET .../documents` projection/API surface remains `ingestion.18`._
+- [x] A document that produces zero valid entities reaches a distinct, durable terminal signal (the per-document `DocumentsExtractionWarningEvent`, plus `empty_extraction=True` + `source_document_id` on `KnowledgeBaseReadyReference`, plus `IngestionStatus.EXTRACTED_EMPTY` on the durable status projection), not a silent ready.
+- [x] `entity_errors` / `relationship_errors` counts (and a bounded sample) are surfaced via the document status projection / API so the UI can show "N entities dropped during validation: <reasons>" — closed by `ingestion.18`/BL-041: `GET /knowledgebases/{kb_id}/documents` exposes `dropped_entity_count`, `dropped_relationship_count`, and `drop_sample_reasons` per document.
 - [x] The "unexpected property drops the whole entity" sharp edge is mitigated: either extra properties are stripped/relegated to metadata before `validate_entity`, or the drop is reported as a typed, user-visible warning rather than a silent loss. (Coordinate with `ingestion.14` normalization.) (Implemented as strip-to-`metadata.extra_properties` + a `ValidationReport.warnings` notice; prompt hardened to discourage extra properties.)
-- [ ] Metrics: `ingestion_documents_empty_extraction_total`, `validation_entities_dropped_total{reason}` (cross-edge to `ingestion.17`). _Deferred: structured worker logs + the durable event ship now; Prometheus counters land with the `ingestion.17` observability registry._
 - [x] Unit tests cover: zero-valid-entity document (distinct signal emitted), entity dropped for extra property (warning surfaced), report counts propagate to the status surface.
 
+Metrics (`ingestion_documents_empty_extraction_total`, `validation_entities_dropped_total{reason}`) are **split out to `ingestion.17`/BL-043**: Prometheus counters land with the observability registry work and are not required for this story's "surface, don't silently succeed" acceptance bar, which is met by the durable event + status projection.
+
 ### Verification
-- `pytest backend/tests/ingestion/test_validator.py backend/tests/agent/test_coordinator_ready.py -v` green including the empty/dropped cases.
-- Manual: ingest a document that extracts nothing and confirm the UI/status shows an empty-extraction warning rather than a clean "ready".
+- `pytest backend/tests/ingestion/test_validator.py backend/tests/agent/test_coordinator_ready.py backend/tests/agent/test_status_projection.py -v` green including the empty/dropped cases.
+- `backend/.venv/bin/pytest --cov -m "not integration"` / `pyright` / `ruff check` full green (2026-07-13, `ingestion`/`agent`/`api`/`knowledgebases`/`database` packages).
+- Manual: ingest a document that extracts nothing and confirm the UI/status shows an empty-extraction warning rather than a clean "ready" — **pending environment** (dev-stack Docker networking unavailable in the implementing session; see sprint 2026-26 progress notes).
 
 ### Code touch points
 - `backend/ingestion/validator.py` (modify — surface drop reasons)

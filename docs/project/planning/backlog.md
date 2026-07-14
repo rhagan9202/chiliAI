@@ -23,7 +23,7 @@
 |-------|-------|---------|----------|--------|-----------|
 | BL-017 | Graph integrity + version/merge | REQ-GRAPH-001 | P1 | todo | 8 SP |
 | BL-019 | Embeddings + Vectorstore 1.0 hardening (re-scoped 2026-07-12: cache + cost/usage tracking) | REQ-VEC-001..004 | P1 | committed — Sprint 2026-26 | 5 SP |
-| BL-041 | Ingestion document-status projection + failure-path closure | REQ-KB-002, REQ-KB-004 | P1 | committed — Sprint 2026-26 | 6 SP |
+| BL-041 | Ingestion document-status projection + failure-path closure | REQ-KB-002, REQ-KB-004 | P1 | code-complete — Sprint 2026-26 (full-stack + integration verification pending, environment) | 0 SP dev |
 | BL-042 | CI migration drift/replay gate (database.04) | REQ-NFR-002 | P1 | committed — Sprint 2026-26 | 3 SP |
 | BL-043 | Ingestion structured stage logs + Prometheus counters | REQ-NFR-SEC-004 | P2 | committed — Sprint 2026-26 | 2 SP |
 | BL-044 | Config base + overlay layering (config.04) | REQ-CONFIG-001 | P2 | stretch — Sprint 2026-26 | 3 SP |
@@ -67,15 +67,16 @@
 
 ### BL-041 — Ingestion document-status projection + failure-path closure
 - **REQ**: REQ-KB-002, REQ-KB-004
-- **Module source**: [docs/backlog/ingestion.md](../../backlog/ingestion.md) stories ingestion.18 (slice; FE wiring split out), ingestion.32 (coordinator residue), ingestion.35 (closure)
-- **Status**: committed — Sprint 2026-26 (code-verified 2026-07-12: no `SourceDocumentStatusStore` exists; `GET /knowledgebases/{kb_id}/documents` returns computed status + warning counts only, no durable stage/`last_error`; coordinator `handle_documents_parsed/chunked` still raise `ValueError` on missing keys, `coordinator.py:1169-1172, 1234-1235`)
-- **Estimate**: 6 SP
+- **Module source**: [docs/backlog/ingestion.md](../../backlog/ingestion.md) stories ingestion.18 (slice; FE wiring split out), ingestion.32 (coordinator residue closure), ingestion.35 (closure)
+- **Status**: **code-complete — Sprint 2026-26, 2026-07-13** (all 10 implementation tasks landed, task-level reviews clean, `pytest -m "not integration"` / `pyright` / `ruff` full green on `ingestion`/`agent`/`api`/`knowledgebases`/`database`). **Full-stack manual verification and the `-m integration tests/database` subset are pending** — the dev-stack Docker environment was unavailable in this session (container networking); tracked as a follow-up verification pass, not additional scope.
+- **Estimate**: 6 SP (dev complete; 0 SP remaining pending verification)
 - **Acceptance**:
-  - [ ] `SourceDocumentStatusStore` protocol + Postgres adapter (Alembic migration `0009`); monotonic transitions (stale `parsing` after `failed` ignored)
-  - [ ] Projection consumer subscribes to `documents.uploaded/parsed/failed` + extraction-warning events
-  - [ ] `GET /knowledgebases/{kb_id}/documents` returns durable `current_status`, `last_error`, validation drop counts/sample reasons; filterable by status; contracts regenerated
-  - [ ] Coordinator residue: missing-key/`get_bytes` failures in `handle_documents_parsed/chunked` converted to per-document `DocumentsFailedEvent` (one bad doc no longer poisons its batch)
-  - [ ] Zero-valid-entity docs surface `EXTRACTED_EMPTY` via the projection (status transition, no new event type)
+  - [x] `SourceDocumentStatusStore` protocol + Postgres adapter (Alembic migration `0009_document_status`); monotonic transitions (stale `parsing` after `failed` ignored) — `backend/ingestion/adapters/{protocols,in_memory,postgres}.py`
+  - [x] Projection consumer subscribes to `documents.uploaded/parsed/failed` + extraction-warning events — `backend/agent/status_projection.py`, wired into the worker's `_dispatch_event` (`agent/coordinator.py`)
+  - [x] `GET /knowledgebases/{kb_id}/documents` returns durable `current_status`, `last_error`, validation drop counts/sample reasons; filterable by `?status=`; contracts regenerated
+  - [x] Coordinator residue: missing-key/`get_bytes` failures in `handle_documents_parsed/chunked` converted to per-document `DocumentsFailedEvent` (one bad doc no longer poisons its batch)
+  - [x] Zero-valid-entity docs surface `EXTRACTED_EMPTY` via the projection (status transition, no new event type)
+  - [x] KB-delete cascade purges the projection (`SourceDocumentStatusStore.delete_by_kb`, one step in `knowledgebases.cleanup.kb_deletion_steps`); single-document delete and changed-content reupload purge the superseded row via `delete_by_document`
   - Frontend Studio wiring is explicitly out of scope (follow-on FE story)
 
 ### BL-042 — CI migration drift/replay gate

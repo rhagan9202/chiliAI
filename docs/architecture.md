@@ -179,7 +179,7 @@ The monorepo produces the following deployable containers:
 | **Graph Database** | in-memory / Neo4j | Persists knowledge graphs. Accessed exclusively through the `graph` module's abstract repository protocol. |
 | **Vector Store** | in-memory / Qdrant | Persists embeddings. Accessed exclusively through the `vectorstore` module's abstract protocol. |
 | **Object Store** | S3 / MinIO / local FS | Persists raw uploaded files for audit trail and reprocessing. Accessed through an abstract storage protocol. |
-| **Postgres / TimescaleDB** | PostgreSQL + TimescaleDB extension | Persists structured records, time-series observations, entity metric history (hypertable), current entity metrics, risk score history, and alert history. Accessed exclusively through the `database` module's `ConnectionProvider` protocol and Alembic-managed schema. |
+| **Postgres / TimescaleDB** | PostgreSQL + TimescaleDB extension | Persists structured records, time-series observations, entity metric history (hypertable), current entity metrics, risk score history, alert history, cases, policy items, conversations, `entity_derived_signals`, scorecard runs, and the per-document ingestion status projection (`source_document_status`). Accessed exclusively through the `database` module's `ConnectionProvider` protocol and Alembic-managed schema. |
 
 ### Communication patterns
 
@@ -257,11 +257,15 @@ backend/
 │   ├── extractor.py            # Entity & relationship extraction (uses LLM adapter)
 │   ├── validator.py            # Source validation
 │   ├── orchestrators/          # Batch, format resolution, and source-document helpers
-│   └── parsers/                # Format-specific parsers
-│       ├── registry.py         # ParserRegistry, create_default_registry
-│       ├── protocols.py
-│       ├── pdf.py, docx.py, html.py, txt.py, json.py, csv.py, xlsx.py
-│       └── remote.py           # Fetch-and-parse for remote URLs
+│   ├── parsers/                # Format-specific parsers
+│   │   ├── registry.py         # ParserRegistry, create_default_registry
+│   │   ├── protocols.py
+│   │   ├── pdf.py, docx.py, html.py, txt.py, json.py, csv.py, xlsx.py
+│   │   └── remote.py           # Fetch-and-parse for remote URLs
+│   └── adapters/                # Durable per-document status projection (BL-041)
+│       ├── protocols.py        # SourceDocumentStatusStore (apply/get_many/list/delete_by_kb/delete_by_document)
+│       ├── in_memory.py        # InMemorySourceDocumentStatusStore
+│       └── postgres.py         # PostgresSourceDocumentStatusStore (source_document_status table, migration 0009_document_status)
 ├── graph/                      # Graph database access
 │   ├── __init__.py
 │   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
@@ -793,6 +797,19 @@ Triggered by `RiskScoredEvent`. Writes the full risk assessment to `risk_score_h
 **Flow 4 — Alert persistence** (`handle_alerts_created_for_graph`)
 
 Triggered by `AlertsCreatedEvent`. Writes each alert to `alert_history` for durable audit. Also snapshots `active_alert_count`, `last_alert_at`, and `last_alert_severity` onto the affected graph entities.
+
+**Flow 5 — Document status projection** (BL-041)
+
+Every drained ingestion event passes through the worker's `_dispatch_event` (`agent/coordinator.py`), which calls `agent.status_projection.project_document_status(event, document_status_store)` before/alongside its existing handler dispatch. `project_document_status` maps four subscribed event types onto a monotonic `IngestionStatus` transition per document and applies it via `SourceDocumentStatusStore.apply()`:
+
+| Event | Status transition |
+|---|---|
+| `DocumentsUploadedEvent` | `PENDING` |
+| `DocumentsParsedEvent` | `PARSED` |
+| `DocumentsFailedEvent` | `FAILED` (carries `error_message`) |
+| `DocumentsExtractionWarningEvent` | `EXTRACTED_EMPTY` when `document.empty_extraction` is `True`, else `VALIDATED` (carries drop counts + bounded `sample_reasons`) |
+
+`EXTRACTED_EMPTY` is a status value only — no new event type was introduced, so the hand-maintained event codec registry (`events/codec.py`) is untouched. The store's `apply()` is monotonic on `STATUS_RANK` (`ingestion/models.py`): a transition only advances `current_status` when its rank is strictly greater than the stored rank, so out-of-order or redelivered events (e.g. a stale `PARSED` arriving after `FAILED`) are no-ops. `last_error` is the one field that also refreshes on a same-or-higher-rank `FAILED` redelivery (so a second, newer failure message replaces the first), while a lower-rank event after `FAILED` never touches it. Drop counts and `sample_reasons` are absolute values that overwrite whenever the transition carries them, independent of rank. Both the in-memory (`ingestion/adapters/in_memory.py`) and Postgres (`ingestion/adapters/postgres.py`, `source_document_status` table via migration `0009_document_status`) adapters implement identical semantics — the Postgres adapter enforces them with a single `INSERT … ON CONFLICT DO UPDATE` guarded by `CASE`/`GREATEST` expressions rather than a read-then-write race. `GET /knowledgebases/{kb_id}/documents` reads this projection (`current_status`, `last_error`, drop counts, `drop_sample_reasons`) per document and supports `?status=` filtering; KB deletion purges the projection via `delete_by_kb`, and single-document deletion / changed-content reupload purge the superseded row via `delete_by_document` (§7.1 carries the full KB-cascade detail).
 
 #### Worker loop resilience + health honesty
 
