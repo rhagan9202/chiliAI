@@ -29,6 +29,21 @@ restart). See `docs/architecture.md` §9.3.
 
 ## Pipeline Handlers
 
+### Document status projection (BL-041)
+
+Every dispatch of `documents.uploaded` / `documents.parsed` / `documents.failed` /
+`documents.extraction_warning` also runs `agent.status_projection.project_document_status`
+at the top of `_dispatch_event`, inside the same retry/DLQ wrapper as the pipeline
+stage itself — so a projection failure is retried/dead-lettered exactly like any
+other handler failure. It writes a monotonic `DocumentStatusTransition` (via
+`WorkerDependencies.document_status_store: ingestion.adapters.protocols.SourceDocumentStatusStore`)
+so replayed/redelivered events are no-ops rather than regressing status.
+`documents.extraction_warning` is projection-only (mapped onto `VALIDATED` or
+`EXTRACTED_EMPTY`) and short-circuits `_dispatch_event` with no further pipeline
+stage. `build_document_status_store` selects `PostgresSourceDocumentStatusStore`
+when a database is configured, else `InMemorySourceDocumentStatusStore`
+(`ingestion/adapters/`).
+
 ### handle_documents_uploaded
 
 Triggered by `documents.uploaded`. Runs the ingestion pipeline: parse → chunk → extract (LLM or pattern) → upsert graph → embed → index vector store → publish `entities.extracted` / `kb.ready`.

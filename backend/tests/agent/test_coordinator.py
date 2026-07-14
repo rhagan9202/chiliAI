@@ -15,6 +15,7 @@ import pytest
 import agent.coordinator as coordinator
 from agent.coordinator import (
     WORKER_EVENT_TYPES,
+    build_document_status_store,
     build_worker_dependencies,
     drain_ingestion_events,
     handle_embeddings_complete,
@@ -77,6 +78,7 @@ from events.types import (
     EntitiesExtractedEvent,
     EntitiesValidatedEvent,
     ExtractedDocumentReference,
+    ExtractionWarningReference,
     GraphUpdatedDocumentReference,
     GraphUpdatedEvent,
     KnowledgeBaseCreatedEvent,
@@ -93,11 +95,13 @@ from monitoring.service import MonitoringService as _MonitoringService
 from graph.models import GraphUpsertResult
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.service import create_graph_service
+from ingestion.adapters.in_memory import InMemorySourceDocumentStatusStore
 from ingestion.chunker import ChunkingResult, create_document_chunker
 from ingestion.extractor import create_document_extractor
 from ingestion.models import (
     CandidateEntity,
     ExtractionResult,
+    IngestionStatus,
     ParsedDocument,
     ValidationReport,
 )
@@ -2504,6 +2508,7 @@ def test_graceful_shutdown_finishes_in_flight_event(
         event_settings=EventBusSettings(backend="in-memory"),
         workflow_run_store=workflow_run_store,
         workflow_tracker=WorkflowEventTracker(workflow_run_store),
+        document_status_store=InMemorySourceDocumentStatusStore(),
     )
 
     monkeypatch.setattr(
@@ -4646,3 +4651,111 @@ def test_handle_entities_extracted_persists_extraction_warnings() -> None:
     assert record is not None
     assert record.warning_count >= 1
     assert any("No entity candidates" in reason for reason in record.warning_reasons)
+
+
+def test_worker_subscribes_to_extraction_warning_events() -> None:
+    assert "documents.extraction_warning" in WORKER_EVENT_TYPES
+
+
+def test_build_document_status_store_falls_back_to_in_memory() -> None:
+    store = build_document_status_store(None)
+    assert isinstance(store, InMemorySourceDocumentStatusStore)
+
+
+def test_handle_event_projects_extraction_warning_to_status_store() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    status_store = InMemorySourceDocumentStatusStore()
+    service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(),
+            fetcher=HttpxRemoteDocumentFetcher(),
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    processed = handle_event(
+        EventDelivery(
+            event=DocumentsExtractionWarningEvent(
+                documents=[
+                    ExtractionWarningReference(
+                        knowledge_base_id="kb-1",
+                        source_document_id="doc-1",
+                        valid_entity_count=0,
+                        valid_relationship_count=0,
+                        dropped_entity_count=3,
+                        dropped_relationship_count=0,
+                        stripped_property_count=0,
+                        empty_extraction=True,
+                        sample_reasons=["entity cand-1: unknown type"],
+                    )
+                ]
+            )
+        ),
+        service,
+        document_chunker=create_document_chunker(),
+        document_extractor=create_document_extractor([]),
+        extraction_validator=create_extraction_validator([], []),
+        graph_service=create_graph_service(
+            InMemoryGraphRepository(),
+            object_store=object_store,
+            event_bus=event_bus,
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+        document_status_store=status_store,
+    )
+
+    assert processed == 0
+    projected = status_store.get_many(
+        knowledge_base_id="kb-1", source_document_ids=["doc-1"]
+    )["doc-1"]
+    assert projected.current_status == IngestionStatus.EXTRACTED_EMPTY
+    assert projected.dropped_entity_count == 3
+
+
+def test_handle_event_projects_failed_documents_to_status_store() -> None:
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    status_store = InMemorySourceDocumentStatusStore()
+    service = IngestionService(
+        DocumentParsingOrchestrator(
+            create_default_registry(),
+            fetcher=HttpxRemoteDocumentFetcher(),
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    handle_event(
+        EventDelivery(
+            event=DocumentsFailedEvent(
+                documents=[
+                    DocumentFailureReference(
+                        knowledge_base_id="kb-1",
+                        source_document_id="doc-1",
+                        error_message="parse exploded",
+                    )
+                ]
+            )
+        ),
+        service,
+        document_chunker=create_document_chunker(),
+        document_extractor=create_document_extractor([]),
+        extraction_validator=create_extraction_validator([], []),
+        graph_service=create_graph_service(
+            InMemoryGraphRepository(),
+            object_store=object_store,
+            event_bus=event_bus,
+        ),
+        object_store=object_store,
+        event_bus=event_bus,
+        document_status_store=status_store,
+    )
+
+    projected = status_store.get_many(
+        knowledge_base_id="kb-1", source_document_ids=["doc-1"]
+    )["doc-1"]
+    assert projected.current_status == IngestionStatus.FAILED
+    assert projected.last_error == "parse exploded"

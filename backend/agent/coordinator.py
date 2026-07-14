@@ -33,6 +33,7 @@ from agent.policy import (
     StagePolicyRegistry,
     load_stage_policy_registry_from_env,
 )
+from agent.status_projection import project_document_status
 from agent.workflow_tracking import WorkflowEventTracker
 from config.loader import load_active_config
 from config.schema import (
@@ -173,6 +174,9 @@ from graph.models import GraphUpsertResult
 from graph.protocols import GraphServiceProtocol
 from graph.service import GraphService, create_graph_service
 from graph.service_models import GraphBuildTask
+from ingestion.adapters.in_memory import InMemorySourceDocumentStatusStore
+from ingestion.adapters.postgres import PostgresSourceDocumentStatusStore
+from ingestion.adapters.protocols import SourceDocumentStatusStore
 from ingestion.chunker import ChunkingResult, DocumentChunker, create_document_chunker
 from ingestion.extractor import create_document_extractor
 from ingestion.protocols import DocumentExtractorProtocol
@@ -243,6 +247,7 @@ __all__ = [
     "assess_entities",
     "build_alert_history_writer",
     "build_connection_provider",
+    "build_document_status_store",
     "build_embedder",
     "build_entity_metric_repository",
     "build_explainability_context_source",
@@ -301,6 +306,7 @@ WORKER_EVENT_TYPES: tuple[str, ...] = (
     "documents.uploaded",
     "documents.parsed",
     "documents.failed",
+    "documents.extraction_warning",
     "documents.chunked",
     "entities.extracted",
     "entities.validated",
@@ -358,6 +364,7 @@ class WorkerDependencies:
     event_settings: EventBusSettings
     workflow_run_store: WorkflowRunStoreProtocol
     workflow_tracker: WorkflowEventTracker
+    document_status_store: SourceDocumentStatusStore
     graph_embeddings_enabled: bool = False
 
 
@@ -615,6 +622,16 @@ def build_raw_record_store(
     if provider is None:
         return InMemoryRawRecordStore()
     return PostgresRawRecordStore(provider)
+
+
+def build_document_status_store(
+    provider: ConnectionProvider | None,
+) -> SourceDocumentStatusStore:
+    """Select a document status store: Postgres when a provider exists."""
+
+    if provider is None:
+        return InMemorySourceDocumentStatusStore()
+    return PostgresSourceDocumentStatusStore(provider)
 
 
 def build_observation_writer(
@@ -975,6 +992,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         ),
     )
     raw_record_store = build_raw_record_store(connection_provider)
+    document_status_store = build_document_status_store(connection_provider)
     derived_signal_store = build_derived_signal_writer(connection_provider)
     observation_writer = build_observation_writer(connection_provider)
     policy_service = build_policy_service(connection_provider)
@@ -1042,6 +1060,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         event_settings=event_settings,
         workflow_run_store=workflow_run_store,
         workflow_tracker=workflow_tracker,
+        document_status_store=document_status_store,
         graph_embeddings_enabled=config.capabilities.gnn,
     )
 
@@ -3076,6 +3095,7 @@ def handle_event(
     peer_stats_enabled: bool = False,
     kb_repository: KnowledgeBaseRepository | None = None,
     kb_deletion_stores: KbDeletionStores | None = None,
+    document_status_store: SourceDocumentStatusStore | None = None,
 ) -> int:
     """Handle a single event and return the number of processed documents."""
 
@@ -3132,6 +3152,7 @@ def handle_event(
             peer_stats_enabled=peer_stats_enabled,
             kb_repository=kb_repository,
             kb_deletion_stores=kb_deletion_stores,
+            document_status_store=document_status_store,
             is_cancelled=is_cancelled,
         )
         if workflow_tracker is not None:
@@ -3173,9 +3194,16 @@ def _dispatch_event(
     peer_stats_enabled: bool = False,
     kb_repository: KnowledgeBaseRepository | None = None,
     kb_deletion_stores: KbDeletionStores | None = None,
+    document_status_store: SourceDocumentStatusStore | None = None,
     is_cancelled: Callable[[], bool] | None = None,
 ) -> int:
     del delivery  # reserved for future stream offsets / dlq metadata
+    # BL-041: durable per-document status projection. Runs inside the retry/DLQ
+    # wrapper; transitions are monotonic + idempotent so replays are no-ops.
+    if document_status_store is not None:
+        project_document_status(event, document_status_store)
+    if isinstance(event, DocumentsExtractionWarningEvent):
+        return 0  # projection-only event; no pipeline stage follows
     if isinstance(event, DocumentsUploadedEvent):
         return len(ingestion_service.process_documents_uploaded(event))
     if isinstance(event, DocumentsParsedEvent):
@@ -3483,6 +3511,7 @@ async def drain_ingestion_events(
     graph_embeddings_enabled: bool = False,
     kb_repository: KnowledgeBaseRepository | None = None,
     kb_deletion_stores: KbDeletionStores | None = None,
+    document_status_store: SourceDocumentStatusStore | None = None,
     sleep: Callable[[float], "asyncio.Future[None] | object"] = asyncio.sleep,
 ) -> int:
     """Consume and process available ingestion events with retry/DLQ semantics."""
@@ -3551,6 +3580,7 @@ async def drain_ingestion_events(
                 peer_stats_enabled=peer_stats_enabled,
                 kb_repository=kb_repository,
                 kb_deletion_stores=kb_deletion_stores,
+                document_status_store=document_status_store,
             )
 
         dead_lettered = False
@@ -3658,6 +3688,7 @@ async def _drain_once(
         raw_record_store=deps.raw_record_store,
         kb_deletion_stores=deps.kb_deletion_stores,
         kb_repository=deps.kb_repository,
+        document_status_store=deps.document_status_store,
         observation_writer=deps.observation_writer,
         policy_service=deps.policy_service,
         policy_rules=deps.policy_rules,
