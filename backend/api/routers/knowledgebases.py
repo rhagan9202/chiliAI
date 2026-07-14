@@ -367,7 +367,6 @@ async def list_knowledge_base_documents(
             offset=offset,
             status=status_filter,
         )
-        projection_by_id = {row.source_document_id: row for row in status_rows}
         # Load every registered document once (not per matching row: the
         # object-store repository reloads and re-parses its whole metadata
         # snapshot on each `get_document` call) and index into that dict.
@@ -378,11 +377,26 @@ async def list_knowledge_base_documents(
                 knowledge_base_id, limit=document_count, offset=0
             )
             documents_by_id = {document.id: document for document in all_documents}
-        records = [
-            documents_by_id[row.source_document_id]
-            for row in status_rows
-            if row.source_document_id in documents_by_id
-        ]
+        records: list[DocumentRecord] = []
+        matched_rows: list[SourceDocumentStatusRecord] = []
+        for row in status_rows:
+            document = documents_by_id.get(row.source_document_id)
+            if document is None:
+                # Orphan resurrection race: an in-flight pipeline event can
+                # re-create a document's status row AFTER a delete/reupload
+                # purge already ran (the row's source_document_id has no
+                # matching registered document). Left alone this would
+                # permanently inflate a status-filtered `total` past
+                # `len(items)`. Reap it opportunistically here and exclude it
+                # from both the page and the reported total.
+                document_status_store.delete_by_document(
+                    knowledge_base_id, row.source_document_id
+                )
+                total -= 1
+                continue
+            records.append(document)
+            matched_rows.append(row)
+        projection_by_id = {row.source_document_id: row for row in matched_rows}
     else:
         records, total = repository.list_documents(
             knowledge_base_id, limit=limit, offset=offset

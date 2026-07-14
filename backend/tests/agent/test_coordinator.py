@@ -124,6 +124,7 @@ from shared.types import (
     PropertyType,
 )
 from storage.adapters.in_memory import InMemoryObjectStore
+from storage.models import StoredObject
 from vectorstore.adapters.in_memory import InMemoryVectorStore
 
 
@@ -2618,7 +2619,7 @@ def test_handle_documents_parsed_publishes_failure_when_storage_key_missing(
     event_bus = InMemoryEventBus()
     object_store = InMemoryObjectStore()
     chunker = create_document_chunker()
-    labels = {"stage": "chunk", "error_class": "ValueError"}
+    labels = {"stage": "chunk", "error_class": "MissingStorageKey"}
     before = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
 
     with caplog.at_level(logging.INFO, logger="chili.ingestion.stage"):
@@ -2657,7 +2658,7 @@ def test_handle_documents_parsed_publishes_failure_when_storage_key_missing(
 
     # BL-043 controller addition: the missing-storage-key DocumentsFailedEvent
     # emission site increments ingestion_documents_failed_total{stage="chunk",
-    # error_class="ValueError"} and logs the chunk-stage "failed" outcome.
+    # error_class="MissingStorageKey"} and logs the chunk-stage "failed" outcome.
     after = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
     assert after == before + 1.0
     assert _has_stage_field(caplog.text, "stage", "chunk")
@@ -2730,13 +2731,55 @@ def test_handle_documents_parsed_isolates_bad_document_from_batch() -> None:
     assert after == before + 1.0
 
 
+def test_handle_documents_parsed_propagates_transient_object_store_error() -> None:
+    """A transient object-store failure must NOT be isolated per-document.
+
+    Per-document isolation (BL-041) only covers the two permanent failure
+    classes (missing key -> KeyError, corrupt payload -> ValidationError).
+    Anything else (e.g. a network blip surfaced as ConnectionError) must
+    propagate so run_handler_with_retry's retry/DLQ policy still applies.
+    """
+
+    class _TransientlyFailingObjectStore(InMemoryObjectStore):
+        def get_bytes(self, key: str) -> StoredObject:
+            raise ConnectionError("temporary network blip")
+
+    event_bus = InMemoryEventBus()
+    object_store = _TransientlyFailingObjectStore()
+    chunker = create_document_chunker()
+
+    with pytest.raises(ConnectionError):
+        handle_documents_parsed(
+            DocumentsParsedEvent(
+                correlation_id="corr-transient",
+                documents=[
+                    ParsedDocumentReference(
+                        knowledge_base_id="kb-1",
+                        source_document_id="doc-transient",
+                        parsed_document_id="parsed-transient",
+                        parser_name="test-parser",
+                        parsed_document_storage_key="knowledgebases/kb-1/parsed/transient.json",
+                    ),
+                ]
+            ),
+            document_chunker=chunker,
+            object_store=object_store,
+            event_bus=event_bus,
+        )
+
+    assert not any(
+        isinstance(event, DocumentsFailedEvent)
+        for event in event_bus.published_events
+    )
+
+
 def test_handle_documents_chunked_publishes_failure_when_storage_key_missing(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     event_bus = InMemoryEventBus()
     object_store = InMemoryObjectStore()
     extractor = create_document_extractor([])
-    labels = {"stage": "extract", "error_class": "ValueError"}
+    labels = {"stage": "extract", "error_class": "MissingStorageKey"}
     before = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
 
     with caplog.at_level(logging.INFO, logger="chili.ingestion.stage"):
@@ -2774,7 +2817,7 @@ def test_handle_documents_chunked_publishes_failure_when_storage_key_missing(
 
     # BL-043 controller addition: the missing-storage-key DocumentsFailedEvent
     # emission site increments ingestion_documents_failed_total{stage="extract",
-    # error_class="ValueError"} and logs the extract-stage "failed" outcome.
+    # error_class="MissingStorageKey"} and logs the extract-stage "failed" outcome.
     after = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
     assert after == before + 1.0
     assert _has_stage_field(caplog.text, "stage", "extract")
@@ -2852,6 +2895,49 @@ def test_handle_documents_chunked_isolates_unreadable_artifact_from_batch() -> N
     # error_class="ValidationError"} (invalid JSON fails ChunkingResult validation).
     after = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
     assert after == before + 1.0
+
+
+def test_handle_documents_chunked_propagates_transient_object_store_error() -> None:
+    """A transient object-store failure must NOT be isolated per-document.
+
+    Per-document isolation (BL-041) only covers the two permanent failure
+    classes (missing key -> KeyError, corrupt payload -> ValidationError).
+    Anything else (e.g. a network blip surfaced as ConnectionError) must
+    propagate so run_handler_with_retry's retry/DLQ policy still applies.
+    """
+
+    class _TransientlyFailingObjectStore(InMemoryObjectStore):
+        def get_bytes(self, key: str) -> StoredObject:
+            raise ConnectionError("temporary network blip")
+
+    event_bus = InMemoryEventBus()
+    object_store = _TransientlyFailingObjectStore()
+    extractor = create_document_extractor([])
+
+    with pytest.raises(ConnectionError):
+        handle_documents_chunked(
+            DocumentsChunkedEvent(
+                correlation_id="corr-transient-2",
+                documents=[
+                    ChunkedDocumentReference(
+                        knowledge_base_id="kb-1",
+                        source_document_id="doc-transient",
+                        parsed_document_id="parsed-transient",
+                        chunk_count=0,
+                        strategy="x",
+                        chunks_storage_key="knowledgebases/kb-1/chunks/transient.json",
+                    ),
+                ]
+            ),
+            document_extractor=extractor,
+            object_store=object_store,
+            event_bus=event_bus,
+        )
+
+    assert not any(
+        isinstance(event, DocumentsFailedEvent)
+        for event in event_bus.published_events
+    )
 
 
 def test_handle_entities_extracted_raises_when_storage_key_missing() -> None:

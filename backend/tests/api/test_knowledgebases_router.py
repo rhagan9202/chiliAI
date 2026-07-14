@@ -1591,3 +1591,38 @@ def test_deleting_document_purges_its_status_row_from_filtered_total() -> None:
         )
         == {}
     )
+
+
+def test_orphaned_status_row_is_reaped_from_filtered_listing() -> None:
+    """Regression: a resurrected orphan status row must not inflate `total` forever.
+
+    An in-flight pipeline event can re-create a document's status row AFTER
+    a delete/reupload purge already ran, leaving a row whose
+    ``source_document_id`` has no matching registered document. The
+    status-filtered listing must exclude that row from both `items` and
+    `total`, and opportunistically reap it from the store so it doesn't
+    permanently inflate `total` on every subsequent request.
+    """
+    app, _, status_store = _status_projection_harness()
+    status_store.apply(
+        DocumentStatusTransition(
+            knowledge_base_id="kb-proj",
+            source_document_id="doc-orphan",
+            status=IngestionStatus.FAILED,
+            error_message="ghost redelivery after purge",
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/knowledgebases/kb-proj/documents?status=failed")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["id"] for item in payload["items"]] == ["doc-failed"]
+    assert (
+        status_store.get_many(
+            knowledge_base_id="kb-proj", source_document_ids=["doc-orphan"]
+        )
+        == {}
+    )

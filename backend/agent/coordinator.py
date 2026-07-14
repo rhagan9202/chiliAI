@@ -22,6 +22,8 @@ from functools import partial
 from datetime import datetime, timezone
 from typing import cast
 
+from pydantic import ValidationError
+
 from agent.adapters.protocols import WorkflowRunStoreProtocol
 from agent.adapters.runtime import create_workflow_run_store_from_env
 from agent.embeddings_graph_bridge import GnnGraphEmbeddingProvider
@@ -1205,11 +1207,15 @@ def handle_documents_parsed(
 ) -> int:
     """Chunk parsed documents and publish the next workflow event.
 
-    Per-document isolation (BL-041): a missing ``parsed_document_storage_key``
-    or an unreadable/invalid parsed artifact fails only that document (a
-    ``DocumentsFailedEvent`` is published) instead of poisoning the batch and
-    burning retries to the DLQ. Chunker and object-store *write* errors still
-    propagate to the retry/DLQ wrapper — they may be transient.
+    Per-document isolation (BL-041): a missing ``parsed_document_storage_key``,
+    a not-found parsed artifact (``KeyError`` from the object store), or a
+    corrupt/invalid parsed artifact (``pydantic.ValidationError``) fails only
+    that document (a ``DocumentsFailedEvent`` is published) instead of
+    poisoning the batch and burning retries to the DLQ. These are the only
+    two permanent failure classes for this read; any other exception (e.g. a
+    transient object-store error) propagates to the retry/DLQ wrapper.
+    Chunker and object-store *write* errors also still propagate — they may
+    be transient.
     """
     references: list[ChunkedDocumentReference] = []
     failures: list[DocumentFailureReference] = []
@@ -1237,7 +1243,7 @@ def handle_documents_parsed(
             # BL-043: count adjacent to the (batched) DocumentsFailedEvent
             # publish below, at the point each failure is committed to it.
             ingestion_documents_failed_total.labels(
-                stage="chunk", error_class="ValueError"
+                stage="chunk", error_class="MissingStorageKey"
             ).inc()
             log_stage(
                 stage="chunk",
@@ -1250,7 +1256,12 @@ def handle_documents_parsed(
         try:
             stored = object_store.get_bytes(document.parsed_document_storage_key)
             parsed_document = ParsedDocument.model_validate_json(stored.content)
-        except Exception as exc:  # noqa: BLE001 - per-document isolation (BL-041)
+        except (KeyError, ValidationError) as exc:
+            # Per-document isolation (BL-041) covers only the two permanent
+            # failure classes here: a missing object-store key (KeyError) and
+            # a corrupt/invalid parsed artifact (pydantic.ValidationError).
+            # Any other exception (e.g. a transient object-store error) must
+            # propagate so run_handler_with_retry's retry/DLQ policy applies.
             logger.error(
                 "Failed to load parsed artifact. source_document_id=%s "
                 "storage_key=%s error_class=%s: %s",
@@ -1353,9 +1364,13 @@ def handle_documents_chunked(
 ) -> int:
     """Extract entity candidates from persisted chunks and publish the next event.
 
-    Per-document isolation (BL-041): a missing ``chunks_storage_key`` or an
-    unreadable/invalid chunks artifact fails only that document via a
-    ``DocumentsFailedEvent`` instead of poisoning the batch.
+    Per-document isolation (BL-041): a missing ``chunks_storage_key``, a
+    not-found chunks artifact (``KeyError`` from the object store), or a
+    corrupt/invalid chunks artifact (``pydantic.ValidationError``) fails only
+    that document via a ``DocumentsFailedEvent`` instead of poisoning the
+    batch. These are the only two permanent failure classes for this read;
+    any other exception (e.g. a transient object-store error) propagates to
+    the retry/DLQ wrapper.
     """
     references: list[ExtractedDocumentReference] = []
     failures: list[DocumentFailureReference] = []
@@ -1376,7 +1391,7 @@ def handle_documents_chunked(
             # BL-043: count adjacent to the (batched) DocumentsFailedEvent
             # publish below, at the point each failure is committed to it.
             ingestion_documents_failed_total.labels(
-                stage="extract", error_class="ValueError"
+                stage="extract", error_class="MissingStorageKey"
             ).inc()
             log_stage(
                 stage="extract",
@@ -1389,7 +1404,12 @@ def handle_documents_chunked(
         try:
             stored = object_store.get_bytes(document.chunks_storage_key)
             chunking_result = ChunkingResult.model_validate_json(stored.content)
-        except Exception as exc:  # noqa: BLE001 - per-document isolation (BL-041)
+        except (KeyError, ValidationError) as exc:
+            # Per-document isolation (BL-041) covers only the two permanent
+            # failure classes here: a missing object-store key (KeyError) and
+            # a corrupt/invalid chunks artifact (pydantic.ValidationError).
+            # Any other exception (e.g. a transient object-store error) must
+            # propagate so run_handler_with_retry's retry/DLQ policy applies.
             logger.error(
                 "Failed to load chunks artifact. source_document_id=%s "
                 "storage_key=%s error_class=%s: %s",
