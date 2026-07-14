@@ -118,6 +118,9 @@ from embeddings.adapters.protocols import EmbedderProtocol
 from embeddings.protocols import EmbeddingsServiceProtocol
 from embeddings.service import create_embeddings_service
 from events.protocols import EventBus
+from ingestion.adapters.in_memory import InMemorySourceDocumentStatusStore
+from ingestion.adapters.postgres import PostgresSourceDocumentStatusStore
+from ingestion.adapters.protocols import SourceDocumentStatusStore
 from events.runtime import EventBusSettings, create_event_bus, load_event_bus_settings
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.adapters.protocols import GraphRepository
@@ -213,6 +216,7 @@ __all__ = [
     "get_chat_message_payload",
     "get_conversation_repository",
     "get_conversation_service",
+    "get_document_status_store",
     "get_embedder",
     "get_embeddings_service",
     "get_domain_config",
@@ -1319,6 +1323,15 @@ def get_raw_record_store() -> RawRecordStore:
 
 
 @lru_cache(maxsize=1)
+def get_document_status_store() -> SourceDocumentStatusStore:
+    """Return the durable document status store (Postgres when configured)."""
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemorySourceDocumentStatusStore()
+    return PostgresSourceDocumentStatusStore(provider)
+
+
+@lru_cache(maxsize=1)
 def get_derived_signal_store() -> DerivedRiskSignalWriterProtocol:
     """Return the peerstats derived-signal store (Postgres when a DB is configured).
 
@@ -1691,6 +1704,7 @@ CONFIG_CACHE_REGISTRY: dict[str, _ClearableCache] = {
     "get_ingestion_service": get_ingestion_service,
     "get_connection_provider": get_connection_provider,
     "get_raw_record_store": get_raw_record_store,
+    "get_document_status_store": get_document_status_store,
     "get_derived_signal_store": get_derived_signal_store,
     "get_risk_history_writer": get_risk_history_writer,
     "get_observation_writer": get_observation_writer,

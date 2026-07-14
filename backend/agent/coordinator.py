@@ -754,6 +754,7 @@ def build_kb_deletion_stores(
         policy_item_repository=build_policy_item_repository(provider),
         evidence_pack_repository=ObjectStoreEvidencePackRepository(object_store),
         scorecard_run_repository=build_scorecard_run_repository(provider),
+        document_status_store=build_document_status_store(provider),
         object_store=object_store,
     )
 

@@ -26,6 +26,7 @@ _STORE_FIELDS = [
     "policy_item_repository",
     "evidence_pack_repository",
     "scorecard_run_repository",
+    "document_status_store",
     "object_store",
 ]
 
@@ -42,6 +43,7 @@ _DELETE_BY_KB_FIELDS = [
     "policy_item_repository",
     "evidence_pack_repository",
     "scorecard_run_repository",
+    "document_status_store",
 ]
 
 

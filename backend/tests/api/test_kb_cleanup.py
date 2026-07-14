@@ -22,6 +22,7 @@ _STORE_FIELDS = [
     "policy_item_repository",
     "evidence_pack_repository",
     "scorecard_run_repository",
+    "document_status_store",
     "object_store",
 ]
 
@@ -39,6 +40,7 @@ _EXPECTED_STEP_NAMES = [
     "policy",
     "evidence",
     "scorecards",
+    "document_status",
     "object_store",
 ]
 
@@ -73,5 +75,6 @@ def test_kb_deletion_steps_purges_every_durable_store() -> None:
         "policy_item_repository",
         "evidence_pack_repository",
         "scorecard_run_repository",
+        "document_status_store",
     ):
         mocks[field].delete_by_kb.assert_called_once_with("kb-1")

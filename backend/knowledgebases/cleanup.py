@@ -22,6 +22,7 @@ from analytics.risk.adapters.protocols import RiskHistoryWriter
 from cases.adapters.protocols import CaseRepository
 from conversations.adapters.protocols import ConversationRepository
 from graph.protocols import GraphServiceProtocol
+from ingestion.adapters.protocols import SourceDocumentStatusStore
 from monitoring.adapters.protocols import AlertHistoryWriter, ObservationWriter
 from policy.adapters.protocols import PolicyItemRepository
 from records.adapters.protocols import RawRecordStore
@@ -47,6 +48,7 @@ class KbDeletionStores:
     policy_item_repository: PolicyItemRepository
     evidence_pack_repository: EvidencePackRepository
     scorecard_run_repository: ScorecardRunRepository
+    document_status_store: SourceDocumentStatusStore
     object_store: ObjectStore
 
 
@@ -85,6 +87,7 @@ def kb_deletion_steps(
         ("policy", lambda: stores.policy_item_repository.delete_by_kb(kb)),
         ("evidence", lambda: stores.evidence_pack_repository.delete_by_kb(kb)),
         ("scorecards", lambda: stores.scorecard_run_repository.delete_by_kb(kb)),
+        ("document_status", lambda: stores.document_status_store.delete_by_kb(kb)),
         ("object_store", lambda: delete_object_store_prefix(stores.object_store, kb)),
     ]
 
