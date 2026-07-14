@@ -178,7 +178,6 @@ class EmbeddingResult(BaseModel):
 
 
 __all__ = [
-    "build_embedding_cache_key",
     "CachedEmbedding",
     "EmbeddingChannel",
     "EmbeddingItem",
@@ -188,4 +187,5 @@ __all__ = [
     "EmbeddingVector",
     "GraphEmbeddingBatch",
     "GraphEmbeddingStatus",
+    "build_embedding_cache_key",
 ]

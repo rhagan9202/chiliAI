@@ -44,7 +44,6 @@ from embeddings.service_models import (
 )
 
 __all__ = [
-    "build_embedding_cache_key",
     "CachedEmbedding",
     "EmbedRequest",
     "EmbedResponse",
@@ -70,6 +69,7 @@ __all__ = [
     "InMemoryLruEmbeddingCache",
     "OpenAIEmbedder",
     "SentenceTransformersEmbedder",
+    "build_embedding_cache_key",
     "create_embedding_cache",
     "create_embeddings_service",
     "embedding_cache_namespace",
