@@ -10,6 +10,10 @@ python -m agent.coordinator   # starts the Redis Streams consumer loop
 
 The coordinator registers one handler per event type and dispatches to it inside a retry/DLQ wrapper. Workflow state is written through `WorkflowRunStoreProtocol` so API and worker containers share lifecycle updates when `CHILI_WORKFLOW_RUN_STORE_BACKEND=redis`.
 
+## Health & metrics endpoint
+
+The worker starts a lightweight async HTTP server (`agent/health.py::start_health_server`) alongside the Redis Streams consumer loop, serving `GET /health` (JSON liveness/progress payload) on port `8001` by default (`agent.models.HealthSettings`). The health server also serves `GET /metrics` (Prometheus text exposition of the default `prometheus_client` registry) on the same port. Worker-side counters — `pipeline_stage_duration_seconds`, `pipeline_errors_total` (`monitoring/metrics.py`), `ingestion_documents_failed_total`, `ingestion_documents_empty_extraction_total` (`shared/metrics.py`) — are scraped here, not from the API gateway's `/metrics`: each process exposes only its own registry (no cross-process aggregation). Like `/health`, the endpoint is unauthenticated and compose-internal.
+
 ## Domain hot-swap convergence (`config.updated`)
 
 The worker builds all of its config-derived dependencies into a single

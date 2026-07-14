@@ -25,7 +25,7 @@
 | BL-019 | Embeddings + Vectorstore 1.0 hardening (re-scoped 2026-07-12: cache + cost/usage tracking) | REQ-VEC-001..004 | P1 | committed — Sprint 2026-26 | 5 SP |
 | BL-041 | Ingestion document-status projection + failure-path closure | REQ-KB-002, REQ-KB-004 | P1 | code-complete — Sprint 2026-26 (full-stack + integration verification pending, environment) | 0 SP dev |
 | BL-042 | CI migration drift/replay gate (database.04) | REQ-NFR-002 | P1 | committed — Sprint 2026-26 | 3 SP |
-| BL-043 | Ingestion structured stage logs + Prometheus counters | REQ-NFR-SEC-004 | P2 | committed — Sprint 2026-26 | 2 SP |
+| BL-043 | Ingestion structured stage logs + Prometheus counters | REQ-NFR-SEC-004 | P2 | code-complete — Sprint 2026-26 (live-scrape/full-stack verification pending, environment) | 0 SP dev |
 | BL-044 | Config base + overlay layering (config.04) | REQ-CONFIG-001 | P2 | stretch — Sprint 2026-26 | 3 SP |
 | BL-020 | KB snapshots & restore | REQ-KB-007, REQ-NFR-DR-001 | P2 | todo | 8 SP |
 | BL-021 | Graph backup/restore per adapter | REQ-GRAPH-006, REQ-NFR-DR-002 | P2 | todo | 5 SP |
@@ -150,9 +150,13 @@
 ### BL-043 — Ingestion structured stage logs + Prometheus counters
 - **REQ**: REQ-NFR-SEC-004 (structured logs); counters are an enabler for post-v1 BL-034
 - **Module source**: [docs/backlog/ingestion.md](../../backlog/ingestion.md) story ingestion.17 (logs+counters subset only — OTel spans + Grafana dashboards stay in ingestion.17, blocked on _observability.03/.05/.07)
-- **Status**: committed — Sprint 2026-26 (code-verified 2026-07-12: no ingestion-stage logs/counters exist; a generic Prometheus `/metrics` registry is already present at `api/middleware/metrics.py` to hang the counters on)
-- **Estimate**: 2 SP
-- **Acceptance**: each ingestion stage emits structured logs (`stage=`, `source_document_id=`, `kb_id=`, `duration_ms=`, `outcome=`); counters `ingestion_documents_failed_total{stage,error_class}`, `ingestion_documents_empty_extraction_total`, `ingestion_dedup_suppressed_total` on the existing `/metrics` registry.
+- **Status**: **code-complete — Sprint 2026-26, 2026-07-14** (`shared/metrics.py` counters + `log_stage` helper; worker `GET /metrics` on the health server, `agent/health.py`; parse-stage log + failure counter in `ingestion/service.py`; chunk/extract/validate stage logs + empty-extraction counter in `agent/coordinator.py`, including failure-counter increments at all four BL-041 per-document `DocumentsFailedEvent` sites; dedup counter at both suppression points. Gates green: `pytest -m "not integration"` full pass, coverage `shared` 97%/`ingestion` 93%/`records` 85%/`agent` 92%; `pyright` 0 errors; `ruff` clean). **Live-scrape/full-stack verification against the running compose stack is pending** — Docker was unavailable this session; tracked as a follow-up verification pass, not additional scope.
+- **Estimate**: 2 SP (dev complete; 0 SP remaining pending verification)
+- **Acceptance**:
+  - [x] Each ingestion stage emits a structured `ingestion_stage` log (`stage=`, `source_document_id=`, `kb_id=`, `duration_ms=`, `outcome=`) — `shared/metrics.py::log_stage`, called from `ingestion/service.py` (parse) and `agent/coordinator.py` (chunk/extract/validate)
+  - [x] `ingestion_documents_failed_total{stage,error_class}`, `ingestion_documents_empty_extraction_total`, `ingestion_dedup_suppressed_total{kind}` registered on the default `prometheus_client` registry (`shared/metrics.py`)
+  - [x] Worker-side counters scrapeable via the worker's own `GET /metrics` (`agent/health.py`, port 8001) — a separate registry from the API gateway's `/metrics`
+  - [ ] Live scrape against `make dev` confirming the counters/log lines appear as expected — deferred, environment
 
 ### BL-044 — Config base + environment overlay layering
 - **REQ**: REQ-CONFIG-001

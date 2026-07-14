@@ -632,6 +632,15 @@ Ingestion workflows exist, but blocking IO still appears in parts of the service
 **I need** every stage (storage write, parse, chunk, extract, validate, publish) to emit structured logs, Prometheus counters/histograms, and OpenTelemetry spans,
 **so that** I can trace a single document through the pipeline, spot per-stage latency regressions, and alert on parse/extract failure rates.
 
+### BL-043 partial delivery (2026-07-14, Sprint 2026-26, `feat/sprint-2026-26-ingestion-visibility`)
+
+The **logs + counters** subset of this story's scope shipped as BL-043 — the OTel spans, the `ingestion.observability` module, and the Grafana dashboard did **not**, and remain this story's open scope (still blocked on `_observability.03/.05/.07`). What actually landed, deliberately diverging from the AC wording below where noted:
+
+- Structured stage log line — `shared/metrics.py::log_stage`, logger `chili.ingestion.stage`, event name `ingestion_stage`, fields `stage=` (`parse`|`chunk`|`extract`|`validate`), `source_document_id=`, `kb_id=` (**not** `knowledge_base_id=` as the AC below specifies), `duration_ms=`, `outcome=` (`success`|`failed`|`empty`). Called from `ingestion/service.py` (parse) and `agent/coordinator.py` (chunk/extract/validate).
+- Counters on the default `prometheus_client` registry, in `shared/metrics.py` (not a dedicated `ingestion.observability` module — the contracts-library precedent of `shared/logging.py`/`shared/tracing.py` was used instead): `ingestion_documents_failed_total{stage,error_class}` (incremented adjacent to every `DocumentsFailedEvent` publish — the parse-stage site in `ingestion/service.py`, plus all four coordinator chunk/extract sites in `agent/coordinator.py`, the latter a controller addition beyond BL-043's original plan text; `error_class="ValueError"` at the missing-key sites, `type(exc).__name__` at the generic-exception sites), `ingestion_documents_empty_extraction_total` (no labels), `ingestion_dedup_suppressed_total{kind}` (`kind="document"` in `ingestion/service.py`, `kind="record_batch"` in `records/service.py` — the AC below specifies `{type,reason}`, not `{kind}`). No histograms were added under this work (`pipeline_stage_duration_seconds{stage}` already existed pre-BL-043 in `monitoring/metrics.py`).
+- Scrapeable from both processes: API gateway `GET /metrics` (`api/middleware/metrics.py`) and, newly, the worker's own `GET /metrics` on its health server (`agent/health.py`, port 8001 by default) — separate `prometheus_client` registries, no cross-process aggregation.
+- Gates green in-session (`pytest -m "not integration"`, `pyright`, `ruff`); **live scrape against a running `make dev` stack and worker-log inspection are pending** — Docker was unavailable this session, tracked as a follow-up verification pass, not additional scope.
+
 ### Current State
 - `backend/ingestion/extractor.py:38` instantiates a module logger but emits only warning-level lines on extraction failure (e.g. `extractor.py:285-286`).
 - `backend/ingestion/service.py`, `backend/ingestion/chunker.py`, and `backend/ingestion/validator.py` emit no structured stage logs.

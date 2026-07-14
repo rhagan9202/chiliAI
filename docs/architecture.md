@@ -1454,7 +1454,8 @@ Adapter selection is driven by environment configuration, not code changes.
   - `graph_query_duration_seconds` — Graph DB query latency
   - `alerts_generated_total` — Alerts created, by entity type and severity
   - `knowledgebase_documents_total` — Documents per KB
-- **Export**: `/metrics` endpoint on API container; Prometheus scrapes it
+  - Implemented today (BL-043 and prior): `pipeline_stage_duration_seconds` / `pipeline_errors_total` (`monitoring/metrics.py`), `ingestion_documents_failed_total{stage,error_class}` / `ingestion_documents_empty_extraction_total` / `ingestion_dedup_suppressed_total{kind}` (`shared/metrics.py`, the contracts-library home for counters incremented from more than one module — precedent: `shared/logging.py`, `shared/tracing.py`)
+- **Export**: `GET /metrics` on the API container (`api/middleware/metrics.py`) **and** `GET /metrics` on the worker's health server (`agent/health.py`, port `8001` by default). These are separate `prometheus_client` registries in separate processes — a worker-side increment is invisible on the API's endpoint and vice versa, so a scrape config must target both.
 
 ### 11.3 Distributed tracing
 
