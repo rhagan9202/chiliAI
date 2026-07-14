@@ -1637,6 +1637,36 @@
             "title": "Created At",
             "type": "string"
           },
+          "current_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Status"
+          },
+          "drop_sample_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Drop Sample Reasons",
+            "type": "array"
+          },
+          "dropped_entity_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Dropped Entity Count",
+            "type": "integer"
+          },
+          "dropped_relationship_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Dropped Relationship Count",
+            "type": "integer"
+          },
           "filename": {
             "title": "Filename",
             "type": "string"
@@ -1648,6 +1678,17 @@
           "knowledge_base_id": {
             "title": "Knowledge Base Id",
             "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
           },
           "size_bytes": {
             "anyOf": [
@@ -3145,6 +3186,7 @@
           "chunked",
           "extracted",
           "validated",
+          "extracted_empty",
           "failed"
         ],
         "title": "IngestionStatus",
@@ -8480,7 +8522,7 @@
     },
     "/knowledgebases/{knowledge_base_id}/documents": {
       "get": {
-        "description": "Return registered documents for a knowledge base.",
+        "description": "Return registered documents, enriched with the durable status projection.\n\n``status`` filters on the durable projection: documents without a\nprojected status row never match a filter.",
         "operationId": "list_knowledge_base_documents_knowledgebases__knowledge_base_id__documents_get",
         "parameters": [
           {
@@ -8513,6 +8555,22 @@
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IngestionStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
             }
           }
         ],

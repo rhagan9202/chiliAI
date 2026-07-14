@@ -16,6 +16,7 @@ from knowledgebases.adapters.object_store import ObjectStoreKnowledgeBaseReposit
 from knowledgebases.models import DocumentRecord
 from api.app import create_app
 from api.dependencies import (
+    get_document_status_store,
     get_event_bus,
     get_domain_config,
     get_graph_service,
@@ -39,7 +40,8 @@ from events.types import (
     KnowledgeBaseCreatedEvent,
     KnowledgeBaseDeletedEvent,
 )
-from ingestion.models import IngestionStatus
+from ingestion.adapters.in_memory import InMemorySourceDocumentStatusStore
+from ingestion.models import DocumentStatusTransition, IngestionStatus
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
@@ -1353,3 +1355,99 @@ def test_kb_delete_requires_admin_when_auth_enabled(monkeypatch: pytest.MonkeyPa
         # Admin cookie -> 404 (role passes; KB does not exist)
         client.cookies.set("chiliai_session", "sid-admin")
         assert client.delete(f"/knowledgebases/{kb_id}").status_code == 404
+
+
+def _status_projection_harness() -> tuple[
+    FastAPI, InMemoryKnowledgeBaseRepository, InMemorySourceDocumentStatusStore
+]:
+    app = create_app()
+    repository = InMemoryKnowledgeBaseRepository()
+    object_store = InMemoryObjectStore()
+    status_store = InMemorySourceDocumentStatusStore()
+    repository.create(
+        KnowledgeBase(
+            id="kb-proj",
+            name="Projection KB",
+            description="",
+            status="active",
+            created_at=utc_now(),
+        )
+    )
+    for document_id in ("doc-failed", "doc-empty", "doc-clean"):
+        repository.add_document(
+            DocumentRecord(
+                id=document_id,
+                knowledge_base_id="kb-proj",
+                filename=f"{document_id}.txt",
+                content_type="text/plain",
+                size_bytes=10,
+                status="pending",
+            )
+        )
+    status_store.apply(
+        DocumentStatusTransition(
+            knowledge_base_id="kb-proj",
+            source_document_id="doc-failed",
+            status=IngestionStatus.FAILED,
+            error_message="parser exploded",
+        )
+    )
+    status_store.apply(
+        DocumentStatusTransition(
+            knowledge_base_id="kb-proj",
+            source_document_id="doc-empty",
+            status=IngestionStatus.EXTRACTED_EMPTY,
+            dropped_entity_count=4,
+            dropped_relationship_count=1,
+            sample_reasons=["entity cand-1: unknown type"],
+        )
+    )
+    graph_service = _MetricsOnlyGraphService(
+        GraphMetrics(entity_count=0, relationship_count=0, avg_degree=0.0)
+    )
+    app.dependency_overrides[get_knowledge_base_repository] = lambda: repository
+    app.dependency_overrides[get_graph_service] = lambda: graph_service
+    app.dependency_overrides[get_object_store] = lambda: object_store
+    app.dependency_overrides[get_domain_config] = _build_config
+    app.dependency_overrides[get_document_status_store] = lambda: status_store
+    return app, repository, status_store
+
+
+def test_documents_endpoint_returns_durable_projection_fields() -> None:
+    app, _, _ = _status_projection_harness()
+    with TestClient(app) as client:
+        response = client.get("/knowledgebases/kb-proj/documents")
+
+    assert response.status_code == 200
+    items = {item["id"]: item for item in response.json()["items"]}
+    assert items["doc-failed"]["current_status"] == "failed"
+    assert items["doc-failed"]["last_error"] == "parser exploded"
+    assert items["doc-empty"]["current_status"] == "extracted_empty"
+    assert items["doc-empty"]["dropped_entity_count"] == 4
+    assert items["doc-empty"]["dropped_relationship_count"] == 1
+    assert items["doc-empty"]["drop_sample_reasons"] == [
+        "entity cand-1: unknown type"
+    ]
+    assert items["doc-clean"]["current_status"] is None
+    assert items["doc-clean"]["last_error"] is None
+    assert items["doc-clean"]["dropped_entity_count"] == 0
+
+
+def test_documents_endpoint_filters_by_durable_status() -> None:
+    app, _, _ = _status_projection_harness()
+    with TestClient(app) as client:
+        response = client.get("/knowledgebases/kb-proj/documents?status=failed")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["id"] for item in payload["items"]] == ["doc-failed"]
+    assert payload["items"][0]["current_status"] == "failed"
+
+
+def test_documents_endpoint_rejects_unknown_status_filter() -> None:
+    app, _, _ = _status_projection_harness()
+    with TestClient(app) as client:
+        response = client.get("/knowledgebases/kb-proj/documents?status=bogus")
+
+    assert response.status_code == 422

@@ -24,6 +24,7 @@ from api._kb_cleanup import (
 )
 from api.dependencies import (
     get_agent_service,
+    get_document_status_store,
     get_event_bus,
     get_domain_config,
     get_graph_service,
@@ -41,6 +42,8 @@ from config.schema import DomainConfig, ValidationConfig
 from events.protocols import EventBus
 from events.types import KnowledgeBaseCreatedEvent, KnowledgeBaseDeletedEvent
 from graph.protocols import GraphServiceProtocol
+from ingestion.adapters.protocols import SourceDocumentStatusStore
+from ingestion.models import IngestionStatus, SourceDocumentStatusRecord
 from ingestion.protocols import IngestionServiceProtocol
 from ingestion.service_models import DocumentReceipt, DocumentSubmission
 from shared.types import KnowledgeBase
@@ -91,6 +94,13 @@ class DocumentSummary(BaseModel):
     created_at: datetime
     warning_count: int = Field(default=0, ge=0)
     warning_reasons: list[str] = Field(default_factory=list)
+    # Durable ingestion projection (BL-041). ``current_status`` is None when
+    # no pipeline event has been projected for the document yet.
+    current_status: str | None = None
+    last_error: str | None = None
+    dropped_entity_count: int = Field(default=0, ge=0)
+    dropped_relationship_count: int = Field(default=0, ge=0)
+    drop_sample_reasons: list[str] = Field(default_factory=list)
 
 
 class DocumentListResponse(BaseModel):
@@ -317,11 +327,19 @@ async def list_knowledge_base_documents(
     knowledge_base_id: str,
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    status_filter: IngestionStatus | None = Query(default=None, alias="status"),
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
     graph_service: GraphServiceProtocol = Depends(get_graph_service),
     object_store: ObjectStore = Depends(get_object_store),
+    document_status_store: SourceDocumentStatusStore = Depends(
+        get_document_status_store
+    ),
 ) -> DocumentListResponse:
-    """Return registered documents for a knowledge base."""
+    """Return registered documents, enriched with the durable status projection.
+
+    ``status`` filters on the durable projection: documents without a
+    projected status row never match a filter.
+    """
     knowledge_base = repository.get(knowledge_base_id)
     if knowledge_base is None:
         raise HTTPException(
@@ -335,28 +353,75 @@ async def list_knowledge_base_documents(
         object_store,
     )
 
-    records, total = repository.list_documents(
-        knowledge_base_id, limit=limit, offset=offset
-    )
+    projection_by_id: dict[str, SourceDocumentStatusRecord]
+    if status_filter is not None:
+        status_rows, total = document_status_store.list(
+            knowledge_base_id=knowledge_base_id,
+            limit=limit,
+            offset=offset,
+            status=status_filter,
+        )
+        projection_by_id = {row.source_document_id: row for row in status_rows}
+        records = [
+            record
+            for record in (
+                repository.get_document(knowledge_base_id, row.source_document_id)
+                for row in status_rows
+            )
+            if record is not None
+        ]
+    else:
+        records, total = repository.list_documents(
+            knowledge_base_id, limit=limit, offset=offset
+        )
+        projection_by_id = document_status_store.get_many(
+            knowledge_base_id=knowledge_base_id,
+            source_document_ids=[record.id for record in records],
+        )
+
     items = [
-        DocumentSummary(
-            id=record.id,
-            knowledge_base_id=record.knowledge_base_id,
-            filename=record.filename,
-            content_type=record.content_type,
-            size_bytes=record.size_bytes,
-            status=document_status_for_knowledge_base(
-                record,
-                hydrated_knowledge_base,
-                repository,
-            ),
-            created_at=record.created_at,
-            warning_count=record.warning_count,
-            warning_reasons=record.warning_reasons,
+        _document_summary(
+            record,
+            hydrated_knowledge_base,
+            repository,
+            projection_by_id.get(record.id),
         )
         for record in records
     ]
     return DocumentListResponse(items=items, total=total)
+
+
+def _document_summary(
+    record: DocumentRecord,
+    knowledge_base: KnowledgeBase,
+    repository: KnowledgeBaseRepository,
+    projection: SourceDocumentStatusRecord | None,
+) -> DocumentSummary:
+    """Merge the registered-document record with its durable status projection."""
+    return DocumentSummary(
+        id=record.id,
+        knowledge_base_id=record.knowledge_base_id,
+        filename=record.filename,
+        content_type=record.content_type,
+        size_bytes=record.size_bytes,
+        status=document_status_for_knowledge_base(record, knowledge_base, repository),
+        created_at=record.created_at,
+        warning_count=record.warning_count,
+        warning_reasons=record.warning_reasons,
+        current_status=(
+            projection.current_status.value if projection is not None else None
+        ),
+        last_error=projection.last_error if projection is not None else None,
+        dropped_entity_count=(
+            projection.dropped_entity_count if projection is not None else 0
+        ),
+        dropped_relationship_count=(
+            projection.dropped_relationship_count if projection is not None else 0
+        ),
+        drop_sample_reasons=(
+            list(projection.sample_reasons) if projection is not None else []
+        ),
+    )
 
 
 @router.delete(
