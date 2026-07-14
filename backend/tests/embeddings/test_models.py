@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from embeddings.models import (
+    CachedEmbedding,
     EmbeddingItem,
     EmbeddingMetadata,
     EmbeddingRequest,
@@ -12,6 +13,7 @@ from embeddings.models import (
     EmbeddingVector,
     GraphEmbeddingBatch,
     GraphEmbeddingStatus,
+    build_embedding_cache_key,
 )
 from embeddings.service_models import EmbedRequest, EmbedSubmission, EmbeddedItem
 
@@ -169,3 +171,48 @@ def test_embedded_item_defaults_to_text_channel() -> None:
 
     assert item.channel == "text"
     assert item.dimensions == 1
+
+
+def test_build_embedding_cache_key_is_deterministic() -> None:
+    first = build_embedding_cache_key(
+        namespace="local:model-a:4", model_name="m", content="Alpha"
+    )
+    second = build_embedding_cache_key(
+        namespace="local:model-a:4", model_name="m", content="Alpha"
+    )
+
+    assert first == second
+    assert len(first) == 64  # sha256 hex digest
+
+
+def test_build_embedding_cache_key_varies_by_all_parts() -> None:
+    base = build_embedding_cache_key(
+        namespace="local:model-a:4", model_name="m", content="Alpha"
+    )
+
+    assert base != build_embedding_cache_key(
+        namespace="local:model-a:8", model_name="m", content="Alpha"
+    )
+    assert base != build_embedding_cache_key(
+        namespace="local:model-a:4", model_name="other", content="Alpha"
+    )
+    assert base != build_embedding_cache_key(
+        namespace="local:model-a:4", model_name="m", content="Beta"
+    )
+
+
+def test_cached_embedding_requires_matching_dimensions() -> None:
+    entry = CachedEmbedding(
+        vector=[0.1, 0.2], model_name="m", provider="local", dimensions=2
+    )
+    assert entry.dimensions == 2
+
+    with pytest.raises(ValueError, match="dimensions"):
+        CachedEmbedding(
+            vector=[0.1, 0.2], model_name="m", provider="local", dimensions=3
+        )
+
+
+def test_cached_embedding_rejects_empty_vector() -> None:
+    with pytest.raises(ValueError, match="non-empty"):
+        CachedEmbedding(vector=[], model_name="m", provider="local", dimensions=1)
