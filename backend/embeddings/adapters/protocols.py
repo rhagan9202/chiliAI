@@ -5,7 +5,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
-from embeddings.models import EmbeddingRequest, EmbeddingResult, GraphEmbeddingBatch
+from embeddings.models import (
+    CachedEmbedding,
+    EmbeddingRequest,
+    EmbeddingResult,
+    GraphEmbeddingBatch,
+)
 
 
 @runtime_checkable
@@ -35,7 +40,17 @@ class GraphEmbeddingProviderProtocol(Protocol):
     ) -> GraphEmbeddingBatch: ...
 
 
+@runtime_checkable
+class EmbeddingCacheProtocol(Protocol):
+    """Key-value cache for previously generated text embeddings."""
+
+    def get(self, key: str) -> CachedEmbedding | None: ...
+
+    def set(self, key: str, value: CachedEmbedding) -> None: ...
+
+
 __all__ = [
     "EmbedderProtocol",
+    "EmbeddingCacheProtocol",
     "GraphEmbeddingProviderProtocol",
 ]
