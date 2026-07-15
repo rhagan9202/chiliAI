@@ -13,7 +13,13 @@ selection — with **zero code changes**.
 - `loader.py` — `load_config(path=None)`: resolves the file (explicit `path`
   argument, else the active-pack pointer, else `CHILI_CONFIG_PATH`), parses
   YAML/JSON, validates, and returns a `DomainConfig`. Raises
-  `ConfigLoadError` on any failure.
+  `ConfigLoadError` on any failure. After parsing the base file, if
+  `CHILI_CONFIG_OVERLAY_PATH` is set it is split on commas into an ordered
+  list of overlay file paths, layered onto the base via `overlay.py`'s
+  `apply_overlays` (each overlay must declare `overlay_for` matching
+  `domain.name`, or it is skipped with a warning), before schema validation
+  runs. `overlay.py` — pure base+overlay deep-merge semantics (`ADR 0001`);
+  see its module docstring for merge rules.
 - `store.py` — file-backed **active-pack pointer store**. Persists which
   pack is active in a small JSON state file, `data/config/active_pack.json`
   (in containers: `/app/data/config/active_pack.json` on the shared

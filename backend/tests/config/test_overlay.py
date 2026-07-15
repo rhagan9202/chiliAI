@@ -218,6 +218,20 @@ def test_apply_overlays_stacks_in_declared_order(tmp_path: Path) -> None:
     assert merged["capabilities"]["gnn"] is True  # last wins
 
 
+def test_apply_overlays_base_without_domain_skips_safely(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    overlay = _write_yaml(
+        tmp_path / "dev.yaml",
+        {"overlay_for": "medicare_fraud", "capabilities": {"gnn": False}},
+    )
+    with caplog.at_level(logging.WARNING, logger="config.overlay"):
+        merged = apply_overlays(
+            {"capabilities": {"gnn": True}}, [overlay], parse=_parse_yaml
+        )
+    assert merged["capabilities"]["gnn"] is True
+
+
 def test_apply_overlays_known_keys_track_domain_config() -> None:
     # Guard: every top-level key DomainConfig defines is accepted in overlays.
     from config.overlay import known_top_level_keys
