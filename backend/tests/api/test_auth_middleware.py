@@ -550,3 +550,46 @@ class TestCookiePath:
         body = response.json()
         assert body["user_id"] == "user-123"
         assert body["roles"] == ["analyst"]
+
+
+def test_invalidate_uri_clears_single_entry() -> None:
+    from api.middleware.auth import JwksCache
+
+    calls: list[str] = []
+
+    def fetcher(uri: str) -> dict[str, object]:
+        calls.append(uri)
+        return {"keys": [{"kid": f"key-{len(calls)}"}]}
+
+    cache = JwksCache(fetcher=fetcher, ttl_seconds=3600)
+    cache.get("https://idp/a")
+    cache.get("https://idp/b")
+    cache.invalidate_uri("https://idp/a")
+    cache.get("https://idp/a")  # refetches
+    cache.get("https://idp/b")  # still cached
+    assert calls == ["https://idp/a", "https://idp/b", "https://idp/a"]
+
+
+def test_force_refresh_is_throttled_per_uri() -> None:
+    from api.middleware.auth import JwksCache
+
+    calls: list[str] = []
+    now = {"t": 1000.0}
+
+    def fetcher(uri: str) -> dict[str, object]:
+        calls.append(uri)
+        return {"keys": [{"kid": f"key-{len(calls)}"}]}
+
+    cache = JwksCache(fetcher=fetcher, ttl_seconds=3600, _clock=lambda: now["t"])
+    first = cache.force_refresh("https://idp/jwks")
+    assert calls == ["https://idp/jwks"]
+    # Inside the 30s window: no refetch, cached doc returned.
+    now["t"] += 10
+    second = cache.force_refresh("https://idp/jwks")
+    assert calls == ["https://idp/jwks"]
+    assert second == first
+    # Past the window: refetches.
+    now["t"] += 30
+    third = cache.force_refresh("https://idp/jwks")
+    assert calls == ["https://idp/jwks", "https://idp/jwks"]
+    assert third != first

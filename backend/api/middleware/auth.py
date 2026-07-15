@@ -79,12 +79,21 @@ class _CachedJwks:
 
 @dataclass(slots=True)
 class JwksCache:
-    """TTL cache for JWKS documents keyed by URI."""
+    """TTL cache for JWKS documents keyed by URI.
+
+    ``force_refresh`` supports kid-aware rotation (BL-022): an unknown ``kid``
+    may force one refetch per URI per ``min_forced_refresh_seconds`` so a
+    flood of bogus-kid tokens cannot hammer the IdP's JWKS endpoint.
+    """
 
     fetcher: JwksFetcher = _default_jwks_fetcher
     ttl_seconds: int = 3600
+    min_forced_refresh_seconds: int = 30
     _entries: dict[str, _CachedJwks] = field(
         default_factory=lambda: cast(dict[str, _CachedJwks], {})
+    )
+    _forced_at: dict[str, float] = field(
+        default_factory=lambda: cast(dict[str, float], {})
     )
     _clock: Callable[[], float] = field(default=time.monotonic)
 
@@ -97,8 +106,27 @@ class JwksCache:
         self._entries[uri] = _CachedJwks(document=document, fetched_at=now)
         return document
 
+    def force_refresh(self, uri: str) -> dict[str, object]:
+        """Refetch ``uri`` now, at most once per ``min_forced_refresh_seconds``."""
+
+        now = self._clock()
+        last_forced = self._forced_at.get(uri)
+        if (
+            last_forced is not None
+            and (now - last_forced) < self.min_forced_refresh_seconds
+        ):
+            return self.get(uri)
+        self._forced_at[uri] = now
+        document = self.fetcher(uri)
+        self._entries[uri] = _CachedJwks(document=document, fetched_at=now)
+        return document
+
+    def invalidate_uri(self, uri: str) -> None:
+        self._entries.pop(uri, None)
+
     def invalidate(self) -> None:
         self._entries.clear()
+        self._forced_at.clear()
 
 
 _jwks_cache: JwksCache = JwksCache()
