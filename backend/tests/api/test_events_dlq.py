@@ -222,9 +222,36 @@ def test_replay_returns_409_when_transitioned_concurrently() -> None:
     assert len(bus.published_events) == 1
 
 
+def test_list_dlq_pagination_window() -> None:
+    """Verify pagination window returns correct slice with newest-first ordering."""
+    store = InMemoryDlqRecordStore()
+    r1 = _make_record("dlq-oldest", created_at=_BASE_TIME)
+    r2 = _make_record("dlq-middle", created_at=_BASE_TIME + timedelta(minutes=5))
+    r3 = _make_record("dlq-newest", created_at=_BASE_TIME + timedelta(minutes=10))
+    store.persist(r1)
+    store.persist(r2)
+    store.persist(r3)
+    app = _build_app(store=store)
+
+    with TestClient(app) as client:
+        response = client.get("/events/dlq", params={"limit": 2, "offset": 1})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 3
+    assert len(body["items"]) == 2
+    # Newest-first: [dlq-newest, dlq-middle, dlq-oldest]
+    # offset=1, limit=2 should return: [dlq-middle, dlq-oldest]
+    assert [item["dlq_id"] for item in body["items"]] == ["dlq-middle", "dlq-oldest"]
+
+
 def test_role_gates() -> None:
     store = InMemoryDlqRecordStore()
     store.persist(_make_record("dlq-1"))
+    # Add a second record with a properly encoded event for testing replay-200.
+    event = KnowledgeBaseCreatedEvent(knowledge_base_id="kb-replay-test")
+    payload = encode_event(event)
+    store.persist(_make_record("dlq-2", event_type=event.event_type, payload=payload))
     bus = InMemoryEventBus()
 
     viewer_app = _build_app(store=store, auth_enabled=True, roles=["viewer"])
@@ -245,4 +272,9 @@ def test_role_gates() -> None:
     with TestClient(admin_app) as client:
         assert client.get("/events/dlq").status_code == 200
         assert client.get("/events/dlq/dlq-1").status_code == 200
+        # Verify discard-200 on the first record.
         assert client.post("/events/dlq/dlq-1/discard").status_code == 200
+        # Verify replay-200 on the second record (with properly encoded payload).
+        replay_response = client.post("/events/dlq/dlq-2/replay")
+        assert replay_response.status_code == 200
+        assert replay_response.json()["status"] == "replayed"
