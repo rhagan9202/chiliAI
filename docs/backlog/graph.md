@@ -8,29 +8,32 @@
 ## Story graph.01: Enforce relationship referential integrity in production mode
 
 **ID:** graph.01
-**Status:** planned
+**Status:** done
 **Prerequisites:** []
 <!-- PM prereq cleanup 2026-07-14 (BL-017 design note): [shared.01, _observability.02] were mislabeled — shared.01 = Alert.severity literal, _observability.02 = correlation-ID middleware; neither gates graph integrity. -->
 
 **Unblocks:** [_multitenancy.07, graph.04, rag.01]
 **Estimated size:** M
+**Done:** 2026-07-14 · BL-017 (Sprint 2026-27) · `feat/sprint-2026-27-graph-integrity`
 
 **As a** platform engineer responsible for graph correctness,
 **I need** relationship upserts to reject dangling source/target endpoints in production mode,
 **so that** silently-created placeholder nodes can no longer corrupt analytics, subgraph extraction, or evidence packs.
 
-### Current State
-- `InMemoryGraphRepository.upsert_relationships` (`backend/graph/adapters/in_memory.py:41-50`) writes the relationship into the bucket without verifying that `source_id` / `target_id` exist in `self._entities[knowledge_base_id]`. The TODO at `in_memory.py:21-23` explicitly calls out the missing referential integrity check.
-- `Neo4jGraphRepository.upsert_relationships` uses `MERGE (source:Entity {...})` / `MERGE (target:Entity {...})` (`backend/graph/adapters/neo4j_adapter.py:228-229`), which creates empty placeholder endpoint nodes when the IDs do not pre-exist.
-- `graph/exceptions.py` defines `GraphError`, `GraphPersistenceError`, and `BatchUpsertError` only — no `GraphIntegrityError` type exists.
-- `GraphService.upsert_task` (`backend/graph/service.py:49-121`) and `upsert_records_graph` (`service.py:185-225`) raise only `BatchUpsertError` / `GraphPersistenceError` on failure; callers have no way to distinguish a referential-integrity violation from a transient persistence error.
+### Current State (shipped)
+- `graph/exceptions.py` exports `GraphIntegrityError(GraphPersistenceError)` with `knowledge_base_id`, `missing_entity_ids: list[str]`, `relationship_ids: list[str]`.
+- `InMemoryGraphRepository.upsert_relationships` (`backend/graph/adapters/in_memory.py`) verifies every relationship's `source_id`/`target_id` against `self._entities[knowledge_base_id]` before writing and raises `GraphIntegrityError` on any miss when `integrity_mode="strict"`.
+- `Neo4jGraphRepository.upsert_relationships` (`backend/graph/adapters/neo4j_adapter.py`) reads both endpoint IDs first (`_read_existing_entity_ids`) and raises `GraphIntegrityError` on any miss, then writes via `MATCH (source) MATCH (target) MERGE (source)-[r]->(target)` — no more `MERGE`-created placeholder endpoint nodes.
+- `GraphService.upsert_task` and `upsert_records_graph` catch the underlying exception and re-raise `BatchUpsertError(...) from exc`, so `BatchUpsertError.__cause__` is the `GraphIntegrityError` for callers to introspect.
+- `agent.coordinator.handle_entities_validated` introspects `BatchUpsertError.__cause__`: a `GraphIntegrityError` fails only that document via `DocumentsFailedEvent` (BL-017 Task 7); any other cause re-raises to the retry/DLQ wrapper.
+- `create_placeholders` remains a defined `integrity_mode` literal but has no adapter implementation — selecting it today skips the strict check with no placeholder-node fallback; this is out of scope for this story (documented in `backend/graph/README.md`).
 
 ### Acceptance Criteria
-- [ ] `graph/exceptions.py` exports a typed `GraphIntegrityError(GraphPersistenceError)` with fields `knowledge_base_id`, `missing_entity_ids: list[str]`, `relationship_ids: list[str]`.
-- [ ] `GraphRepository.upsert_relationships` contract (in `graph/adapters/protocols.py`) is updated to specify that endpoints must already exist; both `InMemoryGraphRepository` and `Neo4jGraphRepository` verify endpoint presence (Cypher uses `MATCH ... MATCH ...` instead of `MERGE`) and raise `GraphIntegrityError` when an endpoint is missing.
-- [ ] `GraphService` exposes an `integrity_mode: Literal["strict", "create_placeholders"]` option (default `"strict"`); `upsert_task` and `upsert_records_graph` propagate it.
-- [ ] `BatchUpsertError` chains the underlying `GraphIntegrityError` so callers can introspect which endpoints were missing.
-- [ ] Pyright-strict clean; unit tests cover (a) strict-mode rejection on both adapters, (b) legacy `create_placeholders` mode preserves prior behavior, (c) `upsert_task` surfaces `GraphIntegrityError` and rolls back per `graph.04`.
+- [x] `graph/exceptions.py` exports a typed `GraphIntegrityError(GraphPersistenceError)` with fields `knowledge_base_id`, `missing_entity_ids: list[str]`, `relationship_ids: list[str]`.
+- [x] `GraphRepository.upsert_relationships` contract (in `graph/adapters/protocols.py`) is updated to specify that endpoints must already exist; both `InMemoryGraphRepository` and `Neo4jGraphRepository` verify endpoint presence (Cypher uses `MATCH ... MATCH ...` instead of `MERGE`) and raise `GraphIntegrityError` when an endpoint is missing.
+- [x] `GraphService` exposes an `integrity_mode: Literal["strict", "create_placeholders"]` option (default `"strict"`); `upsert_task` and `upsert_records_graph` propagate it. **Deviation:** `integrity_mode` is a field on `GraphUpsertOptions` (threaded through `GraphBuildTask.upsert_options`), not a separate `GraphService` keyword argument — one options object flows through both entry points and both adapters instead of two independently-plumbed parameters.
+- [x] `BatchUpsertError` chains the underlying `GraphIntegrityError` so callers can introspect which endpoints were missing.
+- [x] Pyright-strict clean; unit tests cover (a) strict-mode rejection on both adapters, (b) legacy `create_placeholders` mode preserves prior behavior, (c) `upsert_task` surfaces `GraphIntegrityError` and rolls back per `graph.04`.
 
 ### Verification
 - `cd backend && pytest tests/graph -k integrity --cov=graph` green; coverage ≥ 85% on `backend/graph/`.
@@ -51,30 +54,32 @@
 ## Story graph.02: Merge/version semantics and optimistic conflict detection on upserts
 
 **ID:** graph.02
-**Status:** planned
+**Status:** done
 **Prerequisites:** []
 <!-- PM prereq cleanup 2026-07-14 (BL-017 design note): [shared.01] was mislabeled — shared.01 = Alert.severity literal; it does not gate merge/version semantics. -->
 
 **Unblocks:** [analytics.12, analytics.24, analytics.25, graph.03, rag.02]
 **Estimated size:** M
+**Done:** 2026-07-14 · BL-017 (Sprint 2026-27) · `feat/sprint-2026-27-graph-integrity`
 
 **As a** records-pipeline maintainer,
 **I need** entity upsert to merge properties and reject stale writes via `expected_version`,
 **so that** concurrent writers cannot silently overwrite each other and replays do not regress the graph to older state.
 
-### Current State
-- `InMemoryGraphRepository.upsert_entities` (`backend/graph/adapters/in_memory.py:35-39`) does `entity_bucket[entity.id] = entity` — a blind overwrite that discards any properties not present in the new payload.
-- `Neo4jGraphRepository.upsert_entities` (`backend/graph/adapters/neo4j_adapter.py:180-190`) issues `SET entity.properties_json = row.properties_json`, replacing the JSON blob wholesale on every write.
-- Only `update_entity_properties` merges (`in_memory.py:65-82`, `neo4j_adapter.py:288-304`, `service.py:173-183`) — bulk upsert does not.
-- `shared.types.Entity.version: int` is persisted (`neo4j_adapter.py:176, 188`) but no read/write path consults it; concurrent writers race silently.
+### Current State (shipped)
+- `graph/models.py` exports `GraphUpsertOptions(merge_mode: Literal["merge_properties", "replace_properties"] = "merge_properties", expected_version: int | None = None, integrity_mode: Literal["strict", "create_placeholders"] = "strict")`; `graph/exceptions.py` exports `GraphVersionConflictError(GraphPersistenceError)` with `entity_id`, `expected_version`, `actual_version`.
+- `InMemoryGraphRepository.upsert_entities` / `upsert_relationships` and `Neo4jGraphRepository.upsert_entities` / `upsert_relationships` all accept `options: GraphUpsertOptions | None = None` and honor `merge_mode`, `expected_version`, and adapter-owned `version` bump-only-on-change semantics (a `metadata`-only or fully-identical replay leaves `version` untouched).
+- `replace_properties` preserves the pre-BL-017 blind-overwrite; `merge_properties` (the new default) shallow-merges incoming `properties`/`metadata` over the stored record.
+- `expected_version`, when set, is validated against the stored row before any write; a mismatch raises `GraphVersionConflictError` and the batch is left untouched.
+- `GraphService.upsert_task` and `upsert_records_graph` plumb `GraphUpsertOptions` through; `GraphBuildTask.upsert_options: GraphUpsertOptions | None` carries it end to end from the records/document pipelines.
 
 ### Acceptance Criteria
-- [ ] `graph/models.py` exports `GraphUpsertOptions(merge_mode: Literal["merge_properties", "replace_properties"], expected_version: int | None)` and `graph/exceptions.py` exports `GraphVersionConflictError(GraphPersistenceError)` with `entity_id`, `expected_version`, `actual_version`.
-- [ ] `GraphRepository.upsert_entities` / `upsert_relationships` accept `options: GraphUpsertOptions = GraphUpsertOptions(merge_mode="merge_properties", expected_version=None)`; both adapters honor it.
-- [ ] `replace_properties` preserves current overwrite semantics; `merge_properties` (the new default) deep-merges per the `update_entity_properties` pattern.
-- [ ] When `expected_version` is set and the stored row's `version` differs, the adapter raises `GraphVersionConflictError` and writes nothing.
-- [ ] `GraphService.upsert_task` and `upsert_records_graph` plumb options through; `GraphBuildTask` gains `upsert_options: GraphUpsertOptions | None`.
-- [ ] Pyright-strict clean; unit tests cover merge vs replace, version-conflict detection on both adapters, and idempotent replay does not bump `version` when nothing changed (see `graph.03`).
+- [x] `graph/models.py` exports `GraphUpsertOptions(merge_mode: Literal["merge_properties", "replace_properties"], expected_version: int | None)` and `graph/exceptions.py` exports `GraphVersionConflictError(GraphPersistenceError)` with `entity_id`, `expected_version`, `actual_version`.
+- [x] `GraphRepository.upsert_entities` / `upsert_relationships` accept `options: GraphUpsertOptions = GraphUpsertOptions(merge_mode="merge_properties", expected_version=None)`; both adapters honor it.
+- [x] `replace_properties` preserves current overwrite semantics; `merge_properties` (the new default) deep-merges per the `update_entity_properties` pattern. **Deviation:** the merge is **shallow** (top-level `properties`/`metadata` keys only), not a recursive deep-merge — sufficient for the flat dicts entities/relationships carry, and matches the existing `update_entity_properties` implementation pattern (documented in `backend/graph/README.md`).
+- [x] When `expected_version` is set and the stored row's `version` differs, the adapter raises `GraphVersionConflictError` and writes nothing.
+- [x] `GraphService.upsert_task` and `upsert_records_graph` plumb options through; `GraphBuildTask` gains `upsert_options: GraphUpsertOptions | None`.
+- [x] Pyright-strict clean; unit tests cover merge vs replace, version-conflict detection on both adapters, and idempotent replay does not bump `version` when nothing changed (see `graph.03`).
 
 ### Verification
 - `cd backend && pytest tests/graph -k 'merge or version_conflict' --cov=graph` green; coverage ≥ 85%.

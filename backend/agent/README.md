@@ -52,6 +52,29 @@ when a database is configured, else `InMemorySourceDocumentStatusStore`
 
 Triggered by `documents.uploaded`. Runs the ingestion pipeline: parse → chunk → extract (LLM or pattern) → upsert graph → embed → index vector store → publish `entities.extracted` / `kb.ready`.
 
+### Per-document failure isolation (BL-041, extended BL-017)
+
+Each pipeline stage handler (`handle_documents_parsed`, `handle_documents_chunked`,
+`handle_entities_extracted`, `handle_entities_validated`) iterates its batch and
+isolates only the **permanent** failure classes for that stage to a single
+document — publishing a `DocumentsFailedEvent` for it — instead of raising and
+poisoning the whole batch for the retry/DLQ wrapper. Any other exception (a
+transient object-store or database error) still propagates so
+`run_handler_with_retry`'s retry/DLQ policy applies to the full batch.
+
+`handle_entities_validated` (the graph stage) isolates a `GraphIntegrityError`
+chained inside `GraphService.upsert_task`'s `BatchUpsertError` — the
+document's relationships reference endpoints absent from the graph
+(`graph.01`, `GraphUpsertOptions.integrity_mode="strict"` by default). The
+handler introspects `BatchUpsertError.__cause__`: when it is a
+`GraphIntegrityError`, the document fails in isolation with
+`missing_entity_ids` / `relationship_ids` folded into the
+`DocumentFailureReference.error_message`, `ingestion_documents_failed_total{stage="graph",
+error_class="GraphIntegrityError"}` increments, and sibling documents in the
+same `entities.validated` batch still upsert and advance to `graph.updated`.
+Any other `BatchUpsertError` cause (e.g. a transient Neo4j error) re-raises
+and the whole batch retries.
+
 ### handle_records_ingested
 
 Triggered by `RecordsIngestedEvent`. Maps raw records to `Entity`/`Relationship`

@@ -32,8 +32,10 @@ ItemT = TypeVar("ItemT")
 class GraphService:
     """Persist validated runtime objects and publish graph update events."""
 
-    # TODO(production): Add idempotency (change detection / version
-    # tracking on upsert to avoid redundant writes).
+    # Optimistic-concurrency version conflicts (GraphVersionConflictError)
+    # and merge-vs-replace property semantics on upsert landed under BL-017
+    # (docs/backlog/graph.md: graph.01, graph.02). Skip-publish-on-unchanged
+    # content-hash change detection remains open — see graph.03.
 
     def __init__(
         self,

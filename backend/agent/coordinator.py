@@ -65,7 +65,7 @@ from analytics.explainability.adapters.protocols import (
     ExplainabilityContextSourceProtocol,
 )
 from analytics.explainability.exceptions import ExplainabilityError
-from graph.exceptions import GraphError
+from graph.exceptions import BatchUpsertError, GraphError, GraphIntegrityError
 from analytics.explainability.models import (
     ExplanationContext,
     ExplanationItem,
@@ -1689,28 +1689,80 @@ def handle_entities_validated(
     *,
     graph_service: GraphService,
     object_store: ObjectStore,
+    event_bus: EventBus,
 ) -> int:
-    """Upsert validated runtime objects into the graph and publish graph updates."""
+    """Upsert validated runtime objects into the graph and publish graph updates.
+
+    Per-document isolation (BL-017): a ``GraphIntegrityError`` chained inside
+    ``BatchUpsertError`` is a permanent failure — the document's relationships
+    reference endpoints that do not exist in the graph — so it fails only that
+    document via ``DocumentsFailedEvent``. Any other upsert failure (e.g. a
+    transient Neo4j error) propagates to the retry/DLQ wrapper.
+    """
     processed = 0
+    failures: list[DocumentFailureReference] = []
     for document in event.documents:
+        started_at = time.perf_counter()
         if document.validation_storage_key is None:
             raise ValueError("EntitiesValidatedEvent requires validation_storage_key for graph updates.")
         stored = object_store.get_bytes(document.validation_storage_key)
         validation_report = ValidationReport.model_validate_json(stored.content)
-        graph_service.upsert_task(
-            GraphBuildTask(
-                knowledge_base_id=document.knowledge_base_id,
-                source_document_id=document.source_document_id,
-                parsed_document_id=document.parsed_document_id,
-                extraction_result_id=document.extraction_result_id,
-                validation_report_id=document.validation_report_id,
-                validation_storage_key=document.validation_storage_key,
-                correlation_id=event.correlation_id,
-                entities=validation_report.valid_entities,
-                relationships=validation_report.valid_relationships,
+        try:
+            graph_service.upsert_task(
+                GraphBuildTask(
+                    knowledge_base_id=document.knowledge_base_id,
+                    source_document_id=document.source_document_id,
+                    parsed_document_id=document.parsed_document_id,
+                    extraction_result_id=document.extraction_result_id,
+                    validation_report_id=document.validation_report_id,
+                    validation_storage_key=document.validation_storage_key,
+                    correlation_id=event.correlation_id,
+                    entities=validation_report.valid_entities,
+                    relationships=validation_report.valid_relationships,
+                )
             )
+        except BatchUpsertError as exc:
+            cause = exc.__cause__
+            if not isinstance(cause, GraphIntegrityError):
+                raise
+            failures.append(
+                DocumentFailureReference(
+                    knowledge_base_id=document.knowledge_base_id,
+                    source_document_id=document.source_document_id,
+                    error_message=(
+                        "Graph integrity violation: relationships reference "
+                        f"missing entities {cause.missing_entity_ids} "
+                        f"(relationships: {cause.relationship_ids})."
+                    ),
+                    storage_key=document.storage_key,
+                )
+            )
+            ingestion_documents_failed_total.labels(
+                stage="graph", error_class="GraphIntegrityError"
+            ).inc()
+            log_stage(
+                stage="graph",
+                kb_id=document.knowledge_base_id,
+                source_document_id=document.source_document_id,
+                started_at=started_at,
+                outcome="failed",
+            )
+            continue
+        log_stage(
+            stage="graph",
+            kb_id=document.knowledge_base_id,
+            source_document_id=document.source_document_id,
+            started_at=started_at,
+            outcome="success",
         )
         processed += 1
+    if failures:
+        event_bus.publish(
+            DocumentsFailedEvent(
+                correlation_id=event.correlation_id,
+                documents=failures,
+            )
+        )
     return processed
 
 
@@ -3367,6 +3419,7 @@ def _dispatch_event(
             event,
             graph_service=graph_service,
             object_store=object_store,
+            event_bus=event_bus,
         )
     if isinstance(event, GraphUpdatedEvent):
         if embeddings_service is None:

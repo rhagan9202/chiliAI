@@ -122,6 +122,7 @@ from shared.types import (
     KnowledgeBase,
     PropertyDefinition,
     PropertyType,
+    Relationship,
 )
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.models import StoredObject
@@ -1169,6 +1170,7 @@ def test_handle_entities_validated_publishes_graph_updated_event() -> None:
             event_bus=event_bus,
         ),
         object_store=object_store,
+        event_bus=event_bus,
     )
 
     assert processed == 1
@@ -3021,7 +3023,115 @@ def test_handle_entities_validated_raises_when_storage_key_missing() -> None:
             ),
             graph_service=graph_service,
             object_store=object_store,
+            event_bus=event_bus,
         )
+
+
+def test_handle_entities_validated_isolates_integrity_failure() -> None:
+    """A GraphIntegrityError-caused BatchUpsertError fails only that document.
+
+    doc-bad's validation report contains a relationship whose endpoint entity
+    is absent from both the graph and the report's own valid_entities, so the
+    default strict integrity_mode rejects it. doc-good has no such defect and
+    must still be upserted and advance the pipeline (BL-017).
+    """
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+    labels = {"stage": "graph", "error_class": "GraphIntegrityError"}
+    before = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
+
+    bad_report = ValidationReport(
+        id="validate-bad",
+        extraction_result_id="extract-bad",
+        source_document_id="doc-bad",
+        valid_relationships=[
+            Relationship(
+                id="rel-bad",
+                type="referral",
+                source_id="provider-missing",
+                target_id="provider-also-missing",
+            )
+        ],
+    )
+    bad_storage_key = "knowledgebases/kb-1/validations/extract-bad.json"
+    object_store.put_bytes(
+        bad_storage_key,
+        bad_report.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    good_report = ValidationReport(
+        id="validate-good",
+        extraction_result_id="extract-good",
+        source_document_id="doc-good",
+        valid_entities=[
+            Entity(id="provider-1", type="provider", properties={}),
+        ],
+    )
+    good_storage_key = "knowledgebases/kb-1/validations/extract-good.json"
+    object_store.put_bytes(
+        good_storage_key,
+        good_report.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    event = EntitiesValidatedEvent(
+        correlation_id="corr-integrity",
+        documents=[
+            ValidatedDocumentReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-bad",
+                parsed_document_id="parsed-bad",
+                extraction_result_id="extract-bad",
+                validation_report_id="validate-bad",
+                valid_entity_count=0,
+                valid_relationship_count=1,
+                entity_error_count=0,
+                relationship_error_count=0,
+                validation_storage_key=bad_storage_key,
+            ),
+            ValidatedDocumentReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-good",
+                parsed_document_id="parsed-good",
+                extraction_result_id="extract-good",
+                validation_report_id="validate-good",
+                valid_entity_count=1,
+                valid_relationship_count=0,
+                entity_error_count=0,
+                relationship_error_count=0,
+                validation_storage_key=good_storage_key,
+            ),
+        ],
+    )
+
+    processed = handle_entities_validated(
+        event,
+        graph_service=graph_service,
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    assert processed == 1  # the good document still processed
+    failed_events = [
+        e for e in event_bus.published_events if isinstance(e, DocumentsFailedEvent)
+    ]
+    assert len(failed_events) == 1
+    assert failed_events[0].documents[0].source_document_id == "doc-bad"
+    assert "missing" in failed_events[0].documents[0].error_message.lower()
+    graph_events = [
+        e for e in event_bus.published_events if isinstance(e, GraphUpdatedEvent)
+    ]
+    assert len(graph_events) == 1  # only the good document advanced
+    assert graph_events[0].documents[0].source_document_id == "doc-good"
+
+    after = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
+    assert after == before + 1.0
 
 
 def test_handle_event_requires_embeddings_service_for_graph_updated() -> None:
