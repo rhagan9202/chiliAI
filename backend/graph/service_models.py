@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from graph.models import GraphMetrics
+from graph.models import GraphMetrics, GraphUpsertOptions
 from shared.types import Entity, Relationship
 from shared.utils import generate_id, utc_now
 
@@ -36,6 +36,7 @@ class GraphBuildTask(BaseModel):
     correlation_id: str = Field(default_factory=generate_id)
     entities: list[Entity] = Field(default_factory=_empty_entities)
     relationships: list[Relationship] = Field(default_factory=_empty_relationships)
+    upsert_options: GraphUpsertOptions | None = None
 
     @model_validator(mode="after")
     def _ensure_graph_payload(self) -> GraphBuildTask:

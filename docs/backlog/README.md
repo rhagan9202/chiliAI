@@ -30,7 +30,7 @@
 | embeddings.md | 12 | 0 | 0 | 12 | 0% |
 | events.md | 14 | 2 | 0 | 16 | 0% |
 | frontend.md | 24 | 0 | 2 | 26 | 7% |
-| graph.md | 20 | 0 | 0 | 20 | 0% |
+| graph.md | 18 | 0 | 2 | 20 | 10% |
 | ingestion.md | 23 | 0 | 12 | 35 | 34% |
 | knowledgebases.md | 13 | 0 | 0 | 13 | 0% |
 | llm.md | 17 | 0 | 0 | 17 | 0% |
@@ -40,7 +40,7 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 415 | 7 | 18 | 442 | 4% |
+| **Total** | 413 | 7 | 20 | 442 | 4% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -74,8 +74,8 @@
 - [frontend.10] frontend — size M — prereqs done
 - [frontend.13] frontend — size M — prereqs done
 - [frontend.14] frontend — size M — prereqs done
-- [graph.01] graph — size M — prereqs done
-- [graph.02] graph — size M — prereqs done
+- [knowledgebases.03] knowledgebases — size M — prereqs done
+- [records.11] records — size M — prereqs done
 - …24 more
 <!-- END: ready-set -->
 

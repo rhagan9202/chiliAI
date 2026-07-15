@@ -10,8 +10,8 @@ from events.adapters.in_memory import InMemoryEventBus
 from events.types import GraphUpdatedEvent
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.adapters.protocols import GraphRepository
-from graph.exceptions import BatchUpsertError
-from graph.models import GraphMetrics, SubgraphResult
+from graph.exceptions import BatchUpsertError, GraphIntegrityError
+from graph.models import GraphMetrics, GraphUpsertOptions, SubgraphResult
 from graph.service import GraphService, create_graph_service
 from graph.service_models import GraphBuildTask
 from shared.types import Entity, Relationship
@@ -115,9 +115,10 @@ def test_graph_service_upsert_task_chunks_large_entity_batches() -> None:
     def recording_upsert_entities(
         knowledge_base_id: str,
         entities: list[Entity],
+        options: GraphUpsertOptions | None = None,
     ) -> list[Entity]:
         entity_batch_sizes.append(len(entities))
-        return original_upsert_entities(knowledge_base_id, entities)
+        return original_upsert_entities(knowledge_base_id, entities, options)
 
     repository.upsert_entities = recording_upsert_entities  # type: ignore[method-assign]
 
@@ -160,9 +161,10 @@ def test_graph_service_upsert_task_chunks_large_relationship_batches() -> None:
     def recording_upsert_relationships(
         knowledge_base_id: str,
         relationships: list[Relationship],
+        options: GraphUpsertOptions | None = None,
     ) -> list[Relationship]:
         relationship_batch_sizes.append(len(relationships))
-        return original_upsert_relationships(knowledge_base_id, relationships)
+        return original_upsert_relationships(knowledge_base_id, relationships, options)
 
     repository.upsert_relationships = recording_upsert_relationships  # type: ignore[method-assign]
 
@@ -224,12 +226,13 @@ def test_graph_service_upsert_task_raises_batch_error_and_keeps_prior_batches() 
     def failing_upsert_relationships(
         knowledge_base_id: str,
         relationships: list[Relationship],
+        options: GraphUpsertOptions | None = None,
     ) -> list[Relationship]:
         nonlocal relationship_batch_calls
         relationship_batch_calls += 1
         if relationship_batch_calls == 2:
             raise RuntimeError("relationship upsert failed")
-        return original_upsert_relationships(knowledge_base_id, relationships)
+        return original_upsert_relationships(knowledge_base_id, relationships, options)
 
     repository.upsert_relationships = failing_upsert_relationships  # type: ignore[method-assign]
 
@@ -300,6 +303,7 @@ def test_graph_service_upsert_task_suppresses_artifact_and_event_on_entity_failu
     def failing_upsert_entities(
         knowledge_base_id: str,
         entities: list[Entity],
+        options: GraphUpsertOptions | None = None,
     ) -> list[Entity]:
         raise RuntimeError("entity upsert failed")
 
@@ -323,6 +327,55 @@ def test_graph_service_upsert_task_suppresses_artifact_and_event_on_entity_failu
     assert event_bus.published_events == []
     with pytest.raises(KeyError):
         object_store.get_bytes("knowledgebases/kb-1/graph_updates/extract-1.json")
+
+
+def test_upsert_task_chains_integrity_error() -> None:
+    repository = InMemoryGraphRepository()
+    service = create_graph_service(
+        repository,
+        object_store=InMemoryObjectStore(),
+        event_bus=InMemoryEventBus(),
+    )
+    task = GraphBuildTask(
+        knowledge_base_id="kb-1",
+        source_document_id="doc-1",
+        parsed_document_id="parsed-1",
+        extraction_result_id="extract-1",
+        validation_report_id="validate-1",
+        validation_storage_key="knowledgebases/kb-1/validations/extract-1.json",
+        entities=[Entity(id="e-1", type="provider")],
+        relationships=[
+            Relationship(id="r-1", type="billed", source_id="e-1", target_id="e-missing")
+        ],
+    )
+    with pytest.raises(BatchUpsertError) as excinfo:
+        service.upsert_task(task)
+    assert isinstance(excinfo.value.__cause__, GraphIntegrityError)
+    assert excinfo.value.__cause__.missing_entity_ids == ["e-missing"]
+
+
+def test_upsert_task_honors_create_placeholders_option() -> None:
+    repository = InMemoryGraphRepository()
+    service = create_graph_service(
+        repository,
+        object_store=InMemoryObjectStore(),
+        event_bus=InMemoryEventBus(),
+    )
+    task = GraphBuildTask(
+        knowledge_base_id="kb-1",
+        source_document_id="doc-1",
+        parsed_document_id="parsed-1",
+        extraction_result_id="extract-1",
+        validation_report_id="validate-1",
+        validation_storage_key="knowledgebases/kb-1/validations/extract-1.json",
+        entities=[],
+        relationships=[
+            Relationship(id="r-1", type="billed", source_id="e-a", target_id="e-b")
+        ],
+        upsert_options=GraphUpsertOptions(integrity_mode="create_placeholders"),
+    )
+    receipt = service.upsert_task(task)
+    assert receipt.upserted_relationship_count == 1
 
 
 @pytest.fixture()
