@@ -151,6 +151,9 @@ class TestPostgresDlqRecordStore:
             conn.execute("DELETE FROM event_dlq")
             conn.commit()
         yield connection_provider
+        with connection_provider.connection() as conn:
+            conn.execute("DELETE FROM event_dlq WHERE dlq_id LIKE 'pg-%'")
+            conn.commit()
         connection_provider.close()
 
     def test_roundtrip_and_cas(self, provider: ConnectionProvider) -> None:

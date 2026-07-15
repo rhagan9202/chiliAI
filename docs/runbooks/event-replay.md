@@ -40,11 +40,21 @@ the durable persist itself failed (rare, logged when it happens).
 ## Prerequisites for the commands below
 
 - `make dev` running (API on `:8000`, worker on `:8001`), on this branch.
-- Auth is disabled by default in dev, which makes every route pass
-  unauthenticated as the anonymous `viewer` role. The `/events/dlq` routes are
-  gated `analyst` (read) / `admin` (replay, discard) — to exercise the
-  mutation routes locally, bring the stack up with the anonymous role
-  elevated:
+- **Role gates are enforced only when the active domain pack enables `auth`**
+  (`require_role` short-circuits and returns the current user unchecked
+  whenever `domain_config.auth` is `None` or `auth.enabled` is falsy —
+  `backend/api/middleware/rbac.py:65-67`). The default dev stack ships with
+  auth disabled, so in dev **every** route — including the `admin`-gated
+  `/events/dlq/*/replay` and `/discard` mutations — is open regardless of the
+  anonymous role; `CHILI_DEV_ANONYMOUS_ROLE` has no effect in this mode
+  because the gate never inspects roles at all. This is a known gap (BL-022
+  hardens the staging/prod auth posture); do not read "gates open in dev" as
+  a bug in this runbook.
+- With a pack that enables `auth` (the staging/prod posture), the anonymous
+  user is no longer used and real role assignment governs access; the table
+  below describes that enforced-mode contract. If you need to exercise the
+  mutation routes under an auth-enabled pack locally, elevate the anonymous
+  role as a dev convenience:
 
   ```bash
   CHILI_DEV_ANONYMOUS_ROLE=admin docker compose -f docker-compose.dev.yaml up -d --build
@@ -209,6 +219,10 @@ once, never zero times.
 
 ## Role gates
 
+This table is the **enforced-mode contract** — it applies only when the
+active pack has `auth.enabled: true`. Under the default auth-disabled dev
+posture, none of these gates are checked (see the prerequisites note above).
+
 | Route | Method | Role |
 |---|---|---|
 | `/events/dlq` | GET | `analyst` |
@@ -249,11 +263,28 @@ If step 3 was skipped or incomplete, step 5 instead shows a **new** pending
 
 ## Live verification status
 
-The end-to-end walkthrough above (force a poison event → appears in
-`GET /events/dlq` → replay-while-still-broken dead-letters again as a new
-record → discard the new record → fix the cause → replay → pipeline
-completes; role gates spot-checked: viewer 403 on list, analyst 403 on
-replay) is **pending** — the controller runs it in-session immediately after
-this commit, against the full `make dev` stack restarted onto this branch.
-This runbook describes the intended and code-verified behavior; it does not
-itself constitute that live-verification pass.
+The end-to-end walkthrough above **passed** against the full `make dev`
+stack (2026-07-15, this branch):
+
+- A poison event was forced and produced a durable `pending` `DlqRecord`
+  (`retry_count: 3`, full traceback) visible via `GET /events/dlq`.
+- Replaying it while the cause was still broken transitioned the original
+  record to `replayed`, re-drove the event, and produced a **new** pending
+  record for the same underlying failure — replaying the new record again
+  correctly returned `409` (not `pending`).
+- Discarding that new record transitioned it to `discarded`; a repeat
+  discard correctly returned `409`.
+- After fixing the underlying cause, replaying the (new, still-pending)
+  record drove the pipeline to completion (`stage=graph outcome=success`),
+  with zero pending records remaining for that correlation id.
+- Role gates were verified in unit tests with `auth.enabled: true`
+  (`backend/tests/api/test_events_dlq.py`) — the live dev stack itself runs
+  auth-disabled by design, so gates are open there (see the prerequisites
+  note above; this is not a bug in this runbook).
+
+**Ops lesson recorded during this pass:** `docker compose up -d` is a no-op
+when the compose config/env is unchanged — it will not pick up new code in a
+volume-mounted service. A stale worker process kept serving pre-BL-023 code
+until an explicit `docker compose restart worker` (or `up -d --build`) was
+run. Worth remembering for any volume-mounted dev/deploy workflow, not just
+this story.

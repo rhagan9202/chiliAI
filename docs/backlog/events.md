@@ -414,6 +414,7 @@ operator playbook: `docs/runbooks/event-replay.md`; module docs:
 ### Verification
 - [x] Unit tests force handler failures and confirm DLQ persistence — `backend/tests/agent/test_coordinator.py::test_retry_exhaustion_persists_dlq_record` (+ store-failure-does-not-mask-original-error, no-store-is-a-noop) and `backend/tests/events/test_dlq_store.py` (both adapters: roundtrip, filters/pagination, CAS transitions, upsert-by-id, terminal-state guard).
 - [x] API tests cover listing and retrieving DLQ records — `backend/tests/api/test_events_dlq.py` (10 tests: list/get/replay/discard, role gates, 404/409/422 branches, concurrent-transition race, pagination window).
+- [x] **Live-stack verification passed (2026-07-15)** against the full `make dev` stack: a forced poison event produced a durable `pending` record (`retry_count: 3`, full traceback) via `GET /events/dlq`; replaying it while still broken re-drove the event and produced a new pending record, marking the original `replayed` (repeat replay then `409`'d); discarding the new record set it `discarded` (repeat discard `409`'d); fixing the cause and replaying drove the pipeline to completion (`stage=graph outcome=success`, zero pending records left). Role gates were confirmed in unit tests with auth enabled — the live dev stack runs auth-disabled by design, so `require_role` is open there (`api/middleware/rbac.py:66-67`); `docs/runbooks/event-replay.md` was corrected to state this rather than implying `CHILI_DEV_ANONYMOUS_ROLE` gates dev access.
 
 ### Code touch points
 - `backend/events/dlq_models.py`, `backend/events/protocols.py`, `backend/events/adapters/dlq_in_memory.py`, `backend/events/adapters/dlq_postgres.py`, `backend/events/exceptions.py`
@@ -607,6 +608,20 @@ operator playbook: `docs/runbooks/event-replay.md`; module docs:
 As an operator,
 I want to replay or purge dead-lettered events,
 so that recoverable failures can be retried and obsolete records can be cleared safely.
+
+### Progress note (2026-07-15, BL-023)
+BL-023 shipped by-id DLQ operations on top of events.10's durable store:
+`POST /events/dlq/{id}/replay` (decode + re-publish through the normal
+dispatch path + CAS to `replayed`) and `POST /events/dlq/{id}/discard` (CAS
+to `discarded`), both `admin`-gated — see
+`docs/runbooks/event-replay.md`. This satisfies this story's first
+acceptance item ("API supports replaying selected DLQ records back through
+the event bus") for the single-record case. events.15's remaining scope is
+**bulk/purge operations** (replay or purge *selected or expired* records in
+one call, with per-item outcome reporting) and any **live-stream replay
+integration** (replaying already-processed entries from a Redis Stream
+position/range, as distinct from re-driving one already-dead-lettered
+record — see the events.10 note above this story). Status remains `planned`.
 
 ### Acceptance Criteria
 - [ ] API supports replaying selected DLQ records back through the event bus.
