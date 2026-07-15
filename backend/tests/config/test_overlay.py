@@ -24,7 +24,12 @@ def test_merge_overlay_scalar_wins() -> None:
 
 
 def test_merge_recurses_into_nested_mappings() -> None:
-    base = {"ui": {"default_entity_type": "provider", "display_fields": {"claim": {"title": "claim_id"}}}}
+    base = {
+        "ui": {
+            "default_entity_type": "provider",
+            "display_fields": {"claim": {"title": "claim_id"}},
+        }
+    }
     overlay = {"ui": {"display_fields": {"facility": {"title": "name"}}}}
     merged = merge_config_layers(base, overlay)
     assert merged["ui"]["default_entity_type"] == "provider"
@@ -41,9 +46,9 @@ def test_merge_replaces_lists_wholesale() -> None:
 
 
 def test_merge_explicit_none_overrides() -> None:
-    assert merge_config_layers({"llm": {"api_key_env_var": "X"}}, {"llm": {"api_key_env_var": None}}) == {
-        "llm": {"api_key_env_var": None}
-    }
+    assert merge_config_layers(
+        {"llm": {"api_key_env_var": "X"}}, {"llm": {"api_key_env_var": None}}
+    ) == {"llm": {"api_key_env_var": None}}
 
 
 def test_merge_type_change_replaces_wholesale() -> None:
@@ -65,15 +70,73 @@ def test_empty_overlay_is_identity(base: dict[str, Any]) -> None:
     assert merge_config_layers(base, {}) == base
 
 
-@given(base=_configs, a=_configs, b=_configs)
-def test_merge_is_associative(base: dict[str, Any], a: dict[str, Any], b: dict[str, Any]) -> None:
+@st.composite
+def _type_stable_stack(
+    draw: st.DrawFn,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Generate (base, A, B) that conform to one shared random shape.
+
+    A "shape" is a skeleton nested dict where every path is fixed, up front,
+    as either a mapping node or a leaf (scalar/list) slot. ``base``, ``A``,
+    and ``B`` are then sampled independently against that same shape: each
+    layer may omit any key, but where a key is present it is always a dict
+    at a mapping path and never a dict at a leaf path. This is exactly the
+    "no layer changes a key's kind" precondition the amended ADR 0001
+    associativity claim requires (see docs/superpowers/specs/
+    2026-07-15-bl044-config-overlay-design.md).
+    """
+
+    def shape(depth: int) -> Any:
+        if depth == 0 or draw(st.booleans()):
+            return "leaf"
+        return {
+            draw(st.text(max_size=4)): shape(depth - 1)
+            for _ in range(draw(st.integers(0, 3)))
+        }
+
+    skeleton = shape(3)
+    if skeleton == "leaf":
+        skeleton = {}
+
+    def sample(node: Any) -> Any:
+        if node == "leaf":
+            return draw(st.one_of(_scalars, st.lists(_scalars, max_size=3)))
+        return {
+            key: sample(child)
+            for key, child in node.items()
+            if draw(st.booleans())  # each layer may omit keys
+        }
+
+    return sample(skeleton), sample(skeleton), sample(skeleton)
+
+
+@given(stack=_type_stable_stack())
+def test_merge_is_associative_on_type_stable_stacks(
+    stack: tuple[dict[str, Any], dict[str, Any], dict[str, Any]],
+) -> None:
+    base, a, b = stack
     assert merge_config_layers(merge_config_layers(base, a), b) == merge_config_layers(
         base, merge_config_layers(a, b)
     )
 
 
+def test_merge_type_flip_is_left_to_right_not_associative() -> None:
+    """Type-changing layers are applied left-to-right (ADR 0001 boundary):
+    grouping differs when a middle layer collapses a dict — this pins the
+    documented application-order semantics."""
+    base = {"k": {"z": 1}}
+    a = {"k": 5}
+    b = {"k": {"w": 2}}
+    assert merge_config_layers(merge_config_layers(base, a), b) == {"k": {"w": 2}}
+    assert merge_config_layers(base, merge_config_layers(a, b)) == {
+        "k": {"z": 1, "w": 2}
+    }
+
+
 @given(base=_configs, overlay=_configs)
-def test_overlay_lists_and_scalars_always_win(base: dict[str, Any], overlay: dict[str, Any]) -> None:
+def test_overlay_lists_and_scalars_always_win(
+    base: dict[str, Any], overlay: dict[str, Any]
+) -> None:
     merged = merge_config_layers(base, overlay)
     for key, value in overlay.items():
         if not isinstance(value, dict):

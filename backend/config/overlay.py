@@ -8,7 +8,12 @@ absence falls through to the base value or the schema default.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypeGuard
+
+
+def _is_mapping(value: object) -> TypeGuard[dict[str, Any]]:
+    """Narrow ``value`` to ``dict[str, Any]`` for pyright-strict recursion."""
+    return isinstance(value, dict)
 
 
 def merge_config_layers(
@@ -19,10 +24,8 @@ def merge_config_layers(
     merged: dict[str, Any] = dict(base)
     for key, overlay_value in overlay.items():
         base_value = merged.get(key)
-        if isinstance(base_value, dict) and isinstance(overlay_value, dict):
-            merged[key] = merge_config_layers(
-                base_value, overlay_value
-            )
+        if _is_mapping(base_value) and _is_mapping(overlay_value):
+            merged[key] = merge_config_layers(base_value, overlay_value)
         else:
             merged[key] = overlay_value
     return merged
