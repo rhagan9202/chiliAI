@@ -1477,6 +1477,108 @@
         "title": "DevSeedResponse",
         "type": "object"
       },
+      "DlqRecord": {
+        "description": "One dead-lettered event captured at retry exhaustion.",
+        "properties": {
+          "correlation_id": {
+            "title": "Correlation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dlq_id": {
+            "title": "Dlq Id",
+            "type": "string"
+          },
+          "error_message": {
+            "title": "Error Message",
+            "type": "string"
+          },
+          "error_traceback": {
+            "title": "Error Traceback",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "failed_at": {
+            "format": "date-time",
+            "title": "Failed At",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Payload",
+            "type": "object"
+          },
+          "replayed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replayed At"
+          },
+          "retry_count": {
+            "title": "Retry Count",
+            "type": "integer"
+          },
+          "status": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "replayed",
+              "discarded"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dlq_id",
+          "event_type",
+          "correlation_id",
+          "payload",
+          "error_message",
+          "error_traceback",
+          "retry_count",
+          "failed_at"
+        ],
+        "title": "DlqRecord",
+        "type": "object"
+      },
+      "DlqRecordListResponse": {
+        "description": "Paginated DLQ listing for the operator API.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DlqRecord"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "DlqRecordListResponse",
+        "type": "object"
+      },
       "DocumentFormat": {
         "description": "Supported source document formats.",
         "enum": [
@@ -7798,6 +7900,229 @@
         "summary": "Validate Pack",
         "tags": [
           "configuration"
+        ]
+      }
+    },
+    "/events/dlq": {
+      "get": {
+        "description": "List dead-lettered events, newest first, with optional filters.",
+        "operationId": "list_dlq_records_events_dlq_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "replayed",
+                    "discarded"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "event_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DlqRecordListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Dlq Records",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/events/dlq/{dlq_id}": {
+      "get": {
+        "description": "Return a single DLQ record, or 404 when unknown.",
+        "operationId": "get_dlq_record_events_dlq__dlq_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dlq_id",
+            "required": true,
+            "schema": {
+              "title": "Dlq Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DlqRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Dlq Record",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/events/dlq/{dlq_id}/discard": {
+      "post": {
+        "description": "Mark a pending DLQ record discarded. 404 unknown, 409 non-pending.",
+        "operationId": "discard_dlq_record_events_dlq__dlq_id__discard_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dlq_id",
+            "required": true,
+            "schema": {
+              "title": "Dlq Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DlqRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Discard Dlq Record",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/events/dlq/{dlq_id}/replay": {
+      "post": {
+        "description": "Re-publish a pending DLQ record's original event and mark it replayed.\n\n404 for an unknown id, 409 when the record is not pending, 422 when the\nstored payload no longer decodes against the current event registry (the\nrecord is left ``pending`` so an operator can discard or retry later).",
+        "operationId": "replay_dlq_record_events_dlq__dlq_id__replay_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dlq_id",
+            "required": true,
+            "schema": {
+              "title": "Dlq Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DlqRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replay Dlq Record",
+        "tags": [
+          "events"
         ]
       }
     },

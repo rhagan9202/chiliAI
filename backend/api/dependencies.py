@@ -121,7 +121,9 @@ from embeddings.adapters.in_memory import InMemoryEmbedder
 from embeddings.adapters.protocols import EmbedderProtocol
 from embeddings.protocols import EmbeddingsServiceProtocol
 from embeddings.service import create_embeddings_service
-from events.protocols import EventBus
+from events.adapters.dlq_in_memory import InMemoryDlqRecordStore
+from events.adapters.dlq_postgres import PostgresDlqRecordStore
+from events.protocols import DlqRecordStore, EventBus
 from ingestion.adapters.in_memory import InMemorySourceDocumentStatusStore
 from ingestion.adapters.postgres import PostgresSourceDocumentStatusStore
 from ingestion.adapters.protocols import SourceDocumentStatusStore
@@ -220,6 +222,7 @@ __all__ = [
     "get_chat_message_payload",
     "get_conversation_repository",
     "get_conversation_service",
+    "get_dlq_record_store",
     "get_document_status_store",
     "get_embedder",
     "get_embeddings_service",
@@ -1342,6 +1345,15 @@ def get_document_status_store() -> SourceDocumentStatusStore:
 
 
 @lru_cache(maxsize=1)
+def get_dlq_record_store() -> DlqRecordStore:
+    """Return the durable DLQ record store (Postgres when configured)."""
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemoryDlqRecordStore()
+    return PostgresDlqRecordStore(provider)
+
+
+@lru_cache(maxsize=1)
 def get_derived_signal_store() -> DerivedRiskSignalWriterProtocol:
     """Return the peerstats derived-signal store (Postgres when a DB is configured).
 
@@ -1715,6 +1727,7 @@ CONFIG_CACHE_REGISTRY: dict[str, _ClearableCache] = {
     "get_connection_provider": get_connection_provider,
     "get_raw_record_store": get_raw_record_store,
     "get_document_status_store": get_document_status_store,
+    "get_dlq_record_store": get_dlq_record_store,
     "get_derived_signal_store": get_derived_signal_store,
     "get_risk_history_writer": get_risk_history_writer,
     "get_observation_writer": get_observation_writer,

@@ -73,6 +73,10 @@ Postgres adapter enforces it in SQL via a `CASE WHEN event_dlq.status =
 'pending' THEN EXCLUDED.<col> ELSE event_dlq.<col> END` guard on every
 updated column.
 
+Operators read and act on this ledger through the API gateway's
+`/events/dlq` surface (`api/routers/events.py`, `api/dependencies.get_dlq_record_store`
+— see `backend/README.md` § API Endpoints), not directly against the worker.
+
 ### handle_documents_uploaded
 
 Triggered by `documents.uploaded`. Runs the ingestion pipeline: parse → chunk → extract (LLM or pattern) → upsert graph → embed → index vector store → publish `entities.extracted` / `kb.ready`.
