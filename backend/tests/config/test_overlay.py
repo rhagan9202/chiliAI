@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import logging
+from pathlib import Path
 from typing import Any
 
 from hypothesis import given
 from hypothesis import strategies as st
+import pytest
+import yaml
 
-from config.overlay import merge_config_layers
+from config.overlay import OverlayError, apply_overlays, merge_config_layers
+from config.schema import DomainConfig
 
 # Nested config-shaped dicts: string keys; scalar / list / nested-dict values.
 _scalars = st.one_of(st.none(), st.booleans(), st.integers(), st.text(max_size=8))
@@ -141,3 +146,80 @@ def test_overlay_lists_and_scalars_always_win(
     for key, value in overlay.items():
         if not isinstance(value, dict):
             assert merged[key] == value
+
+
+def _write_yaml(path: Path, data: dict[str, Any]) -> Path:
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    return path
+
+
+def _parse_yaml(path: Path) -> dict[str, Any]:
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert isinstance(loaded, dict)
+    return loaded
+
+
+BASE = {"domain": {"name": "medicare_fraud"}, "capabilities": {"peer_stats": True}}
+
+
+def test_apply_overlays_merges_matching_overlay(tmp_path: Path) -> None:
+    overlay = _write_yaml(
+        tmp_path / "dev.yaml",
+        {"overlay_for": "medicare_fraud", "capabilities": {"peer_stats": False}},
+    )
+    merged = apply_overlays(BASE, [overlay], parse=_parse_yaml)
+    assert merged["capabilities"]["peer_stats"] is False
+    assert "overlay_for" not in merged  # metadata key stripped before merge
+
+
+def test_apply_overlays_skips_domain_mismatch_with_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    overlay = _write_yaml(
+        tmp_path / "dev.yaml",
+        {"overlay_for": "af_housing", "capabilities": {"peer_stats": False}},
+    )
+    with caplog.at_level(logging.WARNING, logger="config.overlay"):
+        merged = apply_overlays(BASE, [overlay], parse=_parse_yaml)
+    assert merged["capabilities"]["peer_stats"] is True  # untouched
+    assert any(
+        "af_housing" in record.message and "medicare_fraud" in record.message
+        for record in caplog.records
+    )
+
+
+def test_apply_overlays_missing_overlay_for_raises(tmp_path: Path) -> None:
+    overlay = _write_yaml(
+        tmp_path / "dev.yaml", {"capabilities": {"peer_stats": False}}
+    )
+    with pytest.raises(OverlayError, match="overlay_for"):
+        apply_overlays(BASE, [overlay], parse=_parse_yaml)
+
+
+def test_apply_overlays_rejects_unknown_top_level_key(tmp_path: Path) -> None:
+    overlay = _write_yaml(
+        tmp_path / "dev.yaml",
+        {"overlay_for": "medicare_fraud", "embeddngs": {"provider": "local"}},
+    )
+    with pytest.raises(OverlayError, match="embeddngs"):
+        apply_overlays(BASE, [overlay], parse=_parse_yaml)
+
+
+def test_apply_overlays_stacks_in_declared_order(tmp_path: Path) -> None:
+    first = _write_yaml(
+        tmp_path / "a.yaml",
+        {"overlay_for": "medicare_fraud", "capabilities": {"gnn": False}},
+    )
+    second = _write_yaml(
+        tmp_path / "b.yaml",
+        {"overlay_for": "medicare_fraud", "capabilities": {"gnn": True}},
+    )
+    merged = apply_overlays(BASE, [first, second], parse=_parse_yaml)
+    assert merged["capabilities"]["gnn"] is True  # last wins
+
+
+def test_apply_overlays_known_keys_track_domain_config() -> None:
+    # Guard: every top-level key DomainConfig defines is accepted in overlays.
+    from config.overlay import known_top_level_keys
+
+    assert set(DomainConfig.model_fields) <= known_top_level_keys()
