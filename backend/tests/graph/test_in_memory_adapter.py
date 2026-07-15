@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from graph.adapters.in_memory import InMemoryGraphRepository
-from graph.exceptions import GraphVersionConflictError
+from graph.exceptions import GraphIntegrityError, GraphVersionConflictError
 from graph.models import GraphUpsertOptions
 from shared.types import Entity, Relationship
 
@@ -15,7 +15,10 @@ def test_in_memory_graph_repository_stores_entities_and_relationships() -> None:
 
     repository.upsert_entities(
         "kb-1",
-        [Entity(id="entity-1", type="claim", properties={"claim_id": "42"})],
+        [
+            Entity(id="entity-1", type="claim", properties={"claim_id": "42"}),
+            Entity(id="entity-2", type="provider", properties={}),
+        ],
     )
     repository.upsert_relationships(
         "kb-1",
@@ -29,7 +32,7 @@ def test_in_memory_graph_repository_stores_entities_and_relationships() -> None:
         ],
     )
 
-    assert [entity.id for entity in repository.get_entities("kb-1")] == ["entity-1"]
+    assert {entity.id for entity in repository.get_entities("kb-1")} == {"entity-1", "entity-2"}
     assert [relationship.id for relationship in repository.get_relationships("kb-1")] == [
         "relationship-1"
     ]
@@ -335,7 +338,10 @@ def test_in_memory_graph_repository_transaction_commits_changes() -> None:
     with repository.transaction("kb-1"):
         repository.upsert_entities(
             "kb-1",
-            [Entity(id="entity-1", type="claim", properties={"claim_id": "42"})],
+            [
+                Entity(id="entity-1", type="claim", properties={"claim_id": "42"}),
+                Entity(id="entity-2", type="provider", properties={}),
+            ],
         )
         repository.upsert_relationships(
             "kb-1",
@@ -349,7 +355,7 @@ def test_in_memory_graph_repository_transaction_commits_changes() -> None:
             ],
         )
 
-    assert repository.count_entities("kb-1") == 1
+    assert repository.count_entities("kb-1") == 2
     assert repository.count_relationships("kb-1") == 1
 
 
@@ -360,7 +366,10 @@ def test_in_memory_graph_repository_transaction_rolls_back_changes() -> None:
         with repository.transaction("kb-1"):
             repository.upsert_entities(
                 "kb-1",
-                [Entity(id="entity-1", type="claim", properties={"claim_id": "42"})],
+                [
+                    Entity(id="entity-1", type="claim", properties={"claim_id": "42"}),
+                    Entity(id="entity-2", type="provider", properties={}),
+                ],
             )
             repository.upsert_relationships(
                 "kb-1",
@@ -497,6 +506,12 @@ def _entity(entity_id: str, *, properties: dict[str, object] | None = None, meta
     return Entity(id=entity_id, type="provider", properties=properties or {}, metadata=metadata or {}, version=version)
 
 
+def _relationship(rel_id: str, source: str, target: str, *, weight: float | None = None) -> Relationship:
+    return Relationship(
+        id=rel_id, type="billed", source_id=source, target_id=target, weight=weight
+    )
+
+
 def test_upsert_entities_merges_properties_by_default() -> None:
     repo = InMemoryGraphRepository()
     repo.upsert_entities("kb-1", [_entity("e-1", properties={"name": "Ann", "city": "Reno"})])
@@ -620,3 +635,43 @@ def test_upsert_entities_metadata_only_change_writes_without_version_bump() -> N
     assert stored.properties == {"a": 1}
     assert stored.metadata == {"src": "doc2"}
     assert stored.version == 1  # no version bump for metadata-only change
+
+
+def test_upsert_relationships_strict_rejects_missing_endpoints() -> None:
+    repo = InMemoryGraphRepository()
+    repo.upsert_entities("kb-1", [_entity("e-1")])
+    with pytest.raises(GraphIntegrityError) as excinfo:
+        repo.upsert_relationships(
+            "kb-1",
+            [_relationship("r-1", "e-1", "e-missing"), _relationship("r-2", "e-ghost", "e-1")],
+        )
+    assert sorted(excinfo.value.missing_entity_ids) == ["e-ghost", "e-missing"]
+    assert sorted(excinfo.value.relationship_ids) == ["r-1", "r-2"]
+    assert repo.get_relationships("kb-1") == []  # nothing written
+
+
+def test_upsert_relationships_create_placeholders_preserves_legacy() -> None:
+    repo = InMemoryGraphRepository()
+    repo.upsert_relationships(
+        "kb-1",
+        [_relationship("r-1", "e-1", "e-2")],
+        GraphUpsertOptions(integrity_mode="create_placeholders"),
+    )
+    assert len(repo.get_relationships("kb-1")) == 1
+
+
+def test_upsert_relationships_merge_and_version() -> None:
+    repo = InMemoryGraphRepository()
+    repo.upsert_entities("kb-1", [_entity("e-1"), _entity("e-2")])
+    first = _relationship("r-1", "e-1", "e-2")
+    first.properties = {"amount": 10}
+    repo.upsert_relationships("kb-1", [first])
+    second = _relationship("r-1", "e-1", "e-2", weight=0.5)
+    second.properties = {"code": "A1"}
+    repo.upsert_relationships("kb-1", [second])
+    stored = repo.get_relationships("kb-1")[0]
+    assert stored.properties == {"amount": 10, "code": "A1"}
+    assert stored.weight == 0.5
+    assert stored.version == 2
+    repo.upsert_relationships("kb-1", [second.model_copy(deep=True)])
+    assert repo.get_relationships("kb-1")[0].version == 2  # no-op replay

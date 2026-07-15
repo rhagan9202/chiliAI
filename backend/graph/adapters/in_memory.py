@@ -7,7 +7,7 @@ from copy import deepcopy
 from typing import Generator
 from typing import Literal
 
-from graph.exceptions import GraphVersionConflictError
+from graph.exceptions import GraphIntegrityError, GraphVersionConflictError
 from graph.models import GraphDeleteByProvenance, GraphUpsertOptions, SubgraphResult
 from graph.adapters.protocols import GraphRepository
 from shared.provenance import SOURCE_DOCUMENT_ID_KEY
@@ -86,11 +86,70 @@ class InMemoryGraphRepository(GraphRepository):
         relationships: list[Relationship],
         options: GraphUpsertOptions | None = None,
     ) -> list[Relationship]:
+        opts = options or GraphUpsertOptions()
+        entity_bucket = self._entities.get(knowledge_base_id, {})
+        if opts.integrity_mode == "strict":
+            missing_ids: set[str] = set()
+            offending: list[str] = []
+            for relationship in relationships:
+                dangling = [
+                    endpoint
+                    for endpoint in (relationship.source_id, relationship.target_id)
+                    if endpoint not in entity_bucket
+                ]
+                if dangling:
+                    missing_ids.update(dangling)
+                    offending.append(relationship.id)
+            if missing_ids:
+                raise GraphIntegrityError(
+                    knowledge_base_id=knowledge_base_id,
+                    missing_entity_ids=sorted(missing_ids),
+                    relationship_ids=offending,
+                )
         relationship_bucket = self._relationships.setdefault(knowledge_base_id, {})
+        if opts.expected_version is not None:
+            for relationship in relationships:
+                existing = relationship_bucket.get(relationship.id)
+                if existing is not None and existing.version != opts.expected_version:
+                    raise GraphVersionConflictError(
+                        relationship.id, opts.expected_version, existing.version
+                    )
+        stored: list[Relationship] = []
         for relationship in relationships:
-            relationship_bucket[relationship.id] = relationship
+            existing = relationship_bucket.get(relationship.id)
+            if existing is None:
+                record = relationship.model_copy(update={"version": 1})
+                relationship_bucket[relationship.id] = record
+                stored.append(record)
+                continue
+            if opts.merge_mode == "merge_properties":
+                properties = {**existing.properties, **relationship.properties}
+                metadata = {**existing.metadata, **relationship.metadata}
+            else:
+                properties = dict(relationship.properties)
+                metadata = dict(relationship.metadata)
+            effective_change = (
+                properties != existing.properties
+                or relationship.type != existing.type
+                or relationship.weight != existing.weight
+            )
+            if not effective_change and metadata == existing.metadata:
+                stored.append(existing)
+                continue
+            record = existing.model_copy(
+                update={
+                    "type": relationship.type,
+                    "properties": properties,
+                    "metadata": metadata,
+                    "weight": relationship.weight,
+                    "updated_at": relationship.updated_at or utc_now(),
+                    "version": existing.version + 1 if effective_change else existing.version,
+                }
+            )
+            relationship_bucket[relationship.id] = record
+            stored.append(record)
         self._adjacency_is_stale.add(knowledge_base_id)
-        return list(relationships)
+        return stored
 
     def get_entities(self, knowledge_base_id: str) -> list[Entity]:
         return list(self._entities.get(knowledge_base_id, {}).values())
