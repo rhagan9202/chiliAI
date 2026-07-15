@@ -593,3 +593,52 @@ def test_force_refresh_is_throttled_per_uri() -> None:
     third = cache.force_refresh("https://idp/jwks")
     assert calls == ["https://idp/jwks", "https://idp/jwks"]
     assert third != first
+
+
+def test_force_refresh_throttled_with_empty_cache_still_fetches() -> None:
+    from api.middleware.auth import JwksCache
+
+    calls: list[str] = []
+    now = {"t": 1000.0}
+
+    def fetcher(uri: str) -> dict[str, object]:
+        calls.append(uri)
+        return {"keys": [{"kid": f"key-{len(calls)}"}]}
+
+    cache = JwksCache(fetcher=fetcher, ttl_seconds=3600, _clock=lambda: now["t"])
+    # First force_refresh fetches.
+    doc1 = cache.force_refresh("https://idp/jwks")
+    assert calls == ["https://idp/jwks"]
+    assert doc1 is not None
+    # Invalidate the URI, clearing the cache entry.
+    cache.invalidate_uri("https://idp/jwks")
+    # Advance clock 10s (inside the 30s throttle window).
+    now["t"] += 10
+    # force_refresh again: throttle check passes (no entry in throttle map),
+    # falls through to get(), which fetches because cache is empty.
+    doc2 = cache.force_refresh("https://idp/jwks")
+    assert calls == ["https://idp/jwks", "https://idp/jwks"]
+    assert doc2 is not None
+
+
+def test_invalidate_clears_forced_refresh_throttle() -> None:
+    from api.middleware.auth import JwksCache
+
+    calls: list[str] = []
+    now = {"t": 1000.0}
+
+    def fetcher(uri: str) -> dict[str, object]:
+        calls.append(uri)
+        return {"keys": [{"kid": f"key-{len(calls)}"}]}
+
+    cache = JwksCache(fetcher=fetcher, ttl_seconds=3600, _clock=lambda: now["t"])
+    # First force_refresh fetches and records throttle timestamp.
+    cache.force_refresh("https://idp/jwks")
+    assert calls == ["https://idp/jwks"]
+    # Advance clock 10s.
+    now["t"] += 10
+    # Invalidate the entire cache (clears throttle map).
+    cache.invalidate()
+    # force_refresh again: throttle map is empty, so it fetches immediately.
+    cache.force_refresh("https://idp/jwks")
+    assert calls == ["https://idp/jwks", "https://idp/jwks"]
