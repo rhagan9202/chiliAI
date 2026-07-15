@@ -79,12 +79,21 @@ class _CachedJwks:
 
 @dataclass(slots=True)
 class JwksCache:
-    """TTL cache for JWKS documents keyed by URI."""
+    """TTL cache for JWKS documents keyed by URI.
+
+    ``force_refresh`` supports kid-aware rotation (BL-022): an unknown ``kid``
+    may force one refetch per URI per ``min_forced_refresh_seconds`` so a
+    flood of bogus-kid tokens cannot hammer the IdP's JWKS endpoint.
+    """
 
     fetcher: JwksFetcher = _default_jwks_fetcher
     ttl_seconds: int = 3600
+    min_forced_refresh_seconds: int = 30
     _entries: dict[str, _CachedJwks] = field(
         default_factory=lambda: cast(dict[str, _CachedJwks], {})
+    )
+    _forced_at: dict[str, float] = field(
+        default_factory=lambda: cast(dict[str, float], {})
     )
     _clock: Callable[[], float] = field(default=time.monotonic)
 
@@ -97,8 +106,27 @@ class JwksCache:
         self._entries[uri] = _CachedJwks(document=document, fetched_at=now)
         return document
 
+    def force_refresh(self, uri: str) -> dict[str, object]:
+        """Refetch ``uri`` now, at most once per ``min_forced_refresh_seconds``."""
+
+        now = self._clock()
+        last_forced = self._forced_at.get(uri)
+        if (
+            last_forced is not None
+            and (now - last_forced) < self.min_forced_refresh_seconds
+        ):
+            return self.get(uri)
+        self._forced_at[uri] = now
+        document = self.fetcher(uri)
+        self._entries[uri] = _CachedJwks(document=document, fetched_at=now)
+        return document
+
+    def invalidate_uri(self, uri: str) -> None:
+        self._entries.pop(uri, None)
+
     def invalidate(self) -> None:
         self._entries.clear()
+        self._forced_at.clear()
 
 
 _jwks_cache: JwksCache = JwksCache()
@@ -147,6 +175,32 @@ def build_anonymous_user() -> User:
     return User(user_id="anonymous", roles=[role])
 
 
+def _token_kid(token: str) -> str | None:
+    """Return the token header's ``kid``, or None (malformed headers -> None,
+    letting jwt.decode produce the canonical 401)."""
+
+    try:
+        from jose import jwt
+    except ImportError:  # pragma: no cover - guarded by [auth] extra
+        return None
+    try:
+        header = cast(dict[str, object], jwt.get_unverified_header(token))
+    except Exception:  # noqa: BLE001 - malformed header falls through to decode
+        return None
+    kid = header.get("kid")
+    return kid if isinstance(kid, str) else None
+
+
+def _jwks_has_kid(jwks: dict[str, object], kid: str) -> bool:
+    keys = jwks.get("keys")
+    if not isinstance(keys, list):
+        return False
+    for key in cast(list[object], keys):
+        if isinstance(key, dict) and cast(dict[str, object], key).get("kid") == kid:
+            return True
+    return False
+
+
 def decode_token(
     token: str,
     *,
@@ -189,6 +243,21 @@ def decode_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unable to retrieve JWKS for token validation.",
         ) from exc
+
+    token_kid = _token_kid(token)
+    if token_kid is not None and not _jwks_has_kid(jwks, token_kid):
+        try:
+            jwks = jwks_cache.force_refresh(auth_config.jwks_uri)
+        except Exception as exc:  # noqa: BLE001 - refetch failures map to 401
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to refresh JWKS for token validation.",
+            ) from exc
+        if not _jwks_has_kid(jwks, token_kid):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token signing key is unknown.",
+            )
 
     try:
         claims = cast(

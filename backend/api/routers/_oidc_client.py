@@ -63,6 +63,7 @@ def build_authorize_url(
     *,
     state: str,
     code_challenge: str,
+    nonce: str,
 ) -> str:
     endpoint = _require(auth_config.authorize_endpoint, field="authorize_endpoint")
     redirect_uri = _require(auth_config.redirect_uri, field="redirect_uri")
@@ -76,6 +77,7 @@ def build_authorize_url(
         "state": state,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
+        "nonce": nonce,
     }
     return f"{endpoint}?{urlencode(params)}"
 

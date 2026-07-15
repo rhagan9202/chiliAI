@@ -70,11 +70,12 @@ def login(
         )
 
     state = generate_id()
+    nonce = generate_id()
     verifier, challenge = generate_pkce_pair()
 
     try:
         url = build_authorize_url(
-            auth_config, state=state, code_challenge=challenge
+            auth_config, state=state, code_challenge=challenge, nonce=nonce
         )
     except OidcConfigurationError as exc:
         raise HTTPException(
@@ -85,7 +86,7 @@ def login(
     # Persist the verifier only after the URL was built successfully so a
     # misconfigured AuthConfig does not orphan PKCE state.
     session_store.save_pkce_state(
-        state=state, verifier=verifier, ttl_seconds=PKCE_STATE_TTL_SECONDS
+        state=state, verifier=verifier, ttl_seconds=PKCE_STATE_TTL_SECONDS, nonce=nonce
     )
     return RedirectResponse(url=url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
@@ -106,12 +107,13 @@ def callback(
             detail="Auth is disabled.",
         )
 
-    verifier = session_store.pop_pkce_state(state)
-    if verifier is None:
+    pkce = session_store.pop_pkce_state(state)
+    if pkce is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unknown or expired state.",
         )
+    verifier = pkce.verifier
 
     secret = _client_secret(auth_config)
     oidc = OidcClient(auth_config=auth_config, client_secret=secret)
@@ -137,6 +139,17 @@ def callback(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"IdP returned an invalid token: {exc.detail}",
         ) from exc
+
+    # Nonce binds the id_token to this login attempt (BL-022). It is an
+    # id_token claim by OIDC spec, so the access-token fallback path skips it —
+    # see docs/auth/idp-templates.md.
+    if tokens.id_token:
+        if claims.get("nonce") != pkce.nonce:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="id_token nonce mismatch.",
+            )
+
     user_id = str(claims.get("sub") or "unknown")
     raw_email = claims.get("email")
     email = raw_email if isinstance(raw_email, str) else None

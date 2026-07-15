@@ -6,52 +6,52 @@
 ## Story _security.01: Ship reference production IdP profiles and JWKS-rotation hardening
 
 **ID:** _security.01
-**Status:** planned
+**Status:** done
 **Prerequisites:** []
 **Unblocks:** [llm.04, rag.09, vectorstore.10]
 **Estimated size:** L
-**Spec:** docs/superpowers/specs/2026-05-08-auth-rbac-enforcement-design.md
+**Spec:** docs/superpowers/specs/2026-05-08-auth-rbac-enforcement-design.md, docs/superpowers/specs/2026-07-15-bl022-oidc-hardening-design.md
+**Done:** 2026-07-15 · BL-022 (Sprint 2026-27 stretch) · feat/sprint-2026-27-oidc-hardening
 
 **As a** platform operator deploying chiliAI against a production identity provider,
 **I need** a documented, tested integration recipe per major OIDC IdP plus signed-token validation that tolerates JWKS key rotation,
 **so that** I can stand up auth in staging/production without bespoke debugging and survive an IdP `kid` rollover without an outage.
 
 ### Current State
-- `AuthConfig` (`backend/config/schema.py:261-285`) defines OIDC fields generically (`issuer_url`, `audience`, `jwks_uri`, `client_id`, `client_secret_env_var`, `authorize_endpoint`, `token_endpoint`, `end_session_endpoint`, `redirect_uri`, `scopes`) but ships no per-IdP recipe or template config.
-- `decode_token` (`backend/api/middleware/auth.py:136-206`) hard-codes `algorithms=["RS256"]` and validates `audience` + `issuer` only; there is no `kid`-based key selection test, no key-rollover fixture in `tests/api/`, and no negative test asserting that a token signed by a rotated-out key is rejected.
-- `JwksCache` (`backend/api/middleware/auth.py:80-101`) caches the entire JWKS document with a single TTL and exposes only `invalidate()`; there is no "miss-on-unknown-kid → force refetch" path, so a fresh key rolled in mid-window cannot validate until TTL expires.
-- The `/auth/callback` flow (`backend/api/routers/auth.py:128-144`) decodes the `id_token` for identity but never verifies it as an `id_token` (no `nonce`, no `azp`/`at_hash` checks); the design spec §3 calls this out as "signed `id_token` validation" still owed.
-- No reference YAML exists under `backend/config/defaults/` for Auth0, Okta, Cognito, Keycloak, or Google Workspace; ops has no copy-paste starting point.
+- `AuthConfig` (`backend/config/schema.py`) defines OIDC fields generically (`issuer_url`, `audience`, `jwks_uri`, `roles_claim`, `client_id`, `client_secret_env_var`, `authorize_endpoint`, `token_endpoint`, `end_session_endpoint`, `redirect_uri`, `scopes`, `cookie_secure`, `cookie_domain`, `session_ttl_seconds`) and ships worked Keycloak/Okta templates at `docs/auth/idp-templates.md`.
+- `decode_token` (`backend/api/middleware/auth.py`) validates `algorithms=["RS256"]`, `audience`, and `issuer`, and resolves the signing key by the token header's `kid` before decoding: an unknown `kid` triggers `JwksCache.force_refresh` (throttled to once per URI per 30 seconds via `min_forced_refresh_seconds`), still-missing after refetch 401s. Rotation is covered by an injected-fetcher test matrix in `tests/api/test_auth_middleware.py` (old-key validates, new-key triggers exactly one forced refetch and validates, old-key now 401s, a second unknown-`kid` token inside the throttle window does not refetch again, refetch resumes once the injected clock advances past the throttle).
+- `JwksCache` (`backend/api/middleware/auth.py`) caches per-URI with a TTL, plus `invalidate_uri(uri)` (single-URI cache bust) and `force_refresh(uri)` (throttled forced refetch) alongside the pre-existing global `invalidate()`.
+- The `/auth/callback` flow (`backend/api/routers/auth.py`) decodes the `id_token` (or falls back to the `access_token` when no `id_token` is returned) through the validated `decode_token` path, then — when the decoded token is the `id_token` — checks `claims["nonce"]` against the nonce generated and stored alongside the PKCE verifier at `/auth/login` time (`PkceState` in `backend/api/middleware/session_store.py`, round-tripped through both the in-memory and Redis session-store adapters). The access-token fallback path skips the nonce check (nonce is an id_token claim by OIDC spec, not an access-token claim) — this is documented in the code comment and in `docs/auth/idp-templates.md`, not silently ignored.
+- `docs/auth/idp-templates.md` documents worked `AuthConfig` YAML plus IdP-side setup steps for Keycloak and Okta, a "what chiliAI validates" table, and an explicit "desk-checked, not live-verified" disclaimer.
 
 ### Acceptance Criteria
-- [ ] Per-IdP reference configs land under `backend/config/defaults/auth/` (one YAML per IdP: `auth0.yaml`, `okta.yaml`, `cognito.yaml`, `keycloak.yaml`, `google.yaml`) with comments naming required env vars and IdP-side setup steps.
-- [ ] `docs/auth_idp_recipes.md` is created describing redirect-URI registration, scopes, roles-claim mapping, and end-session URL handling for each of the five IdPs above.
-- [ ] `JwksCache.get` accepts an optional `kid` argument and refetches the JWKS document once per cache window when the requested `kid` is absent from the cached document; a hard-error backoff prevents refetch storms.
-- [ ] `decode_token` selects the JWK by `kid` from the decoded JOSE header rather than handing the full JWKS to `jwt.decode` blindly.
-- [ ] `/auth/callback` validates the `id_token` (not just decodes): asserts `aud == client_id`, `iss == issuer_url`, `exp > now`, and (when a `nonce` was issued during `/auth/login`) `nonce` round-trips.
-- [ ] A `nonce` is generated alongside the PKCE pair in `/auth/login`, stored next to the verifier via `save_pkce_state`, and verified in `/auth/callback`.
-- [ ] New unit tests cover key-rotation: a token signed by a key not in the initial JWKS triggers exactly one refetch, validates successfully on the refreshed document, and the refetch is recorded as a metric.
-- [ ] New unit tests assert rejection of unsigned/`alg:none` tokens, mismatched `kid`, expired tokens, and tokens with wrong `aud`/`iss`.
-- [ ] Coverage on `backend/api/middleware/auth.py` and `backend/api/routers/auth.py` stays ≥ 85% with the new tests.
+- [x] Per-IdP reference configuration lands as worked `AuthConfig` YAML in `docs/auth/idp-templates.md` for Keycloak and Okta, with IdP-side setup steps and required env vars named inline. **Deviation from the original AC wording:** the design note (`docs/superpowers/specs/2026-07-15-bl022-oidc-hardening-design.md` §5, product-owner-approved scope guard) narrows this from five separate `backend/config/defaults/auth/*.yaml` files (Auth0/Okta/Cognito/Keycloak/Google) to two IdPs (Keycloak, Okta) documented as YAML snippets in one doc — multi-IdP support beyond these two is explicitly out of scope for this story; Auth0/Cognito/Google templates are a follow-up if a deployment needs one.
+- [x] `docs/auth/idp-templates.md` (renamed from the originally planned `docs/auth_idp_recipes.md`) describes redirect-URI registration, scopes, roles-claim mapping, and end-session URL handling for Keycloak and Okta (the two IdPs in scope — see the deviation above).
+- [x] `JwksCache` refetches the JWKS document when the requested `kid` is absent from the cached document; a throttle (`min_forced_refresh_seconds`, default 30s, per-URI) prevents refetch storms. **Implementation detail differs from the original AC wording:** shipped as `force_refresh(uri)` called by `decode_token` on unknown `kid` (not a `kid` parameter on `JwksCache.get` itself) — same behavior, `get`'s signature is unchanged and the throttle lives on `force_refresh`.
+- [x] `decode_token` selects the JWK by `kid` from the decoded JOSE header rather than handing the full JWKS to `jwt.decode` blindly (tokens with no `kid` header keep the legacy whole-JWKS decode path unchanged).
+- [x] `/auth/callback` validates the `id_token`: `decode_token` already asserted `aud == audience`, `iss == issuer_url`, `exp > now`, and RS256 signature; this story adds the `nonce` round-trip (see below) as the remaining id_token-specific check the design spec called out.
+- [x] A `nonce` is generated alongside the PKCE pair in `/auth/login`, stored next to the verifier via `save_pkce_state(..., nonce)`, and verified in `/auth/callback` against the decoded token's `nonce` claim. **Deviation (OIDC-spec scoping, not a gap):** nonce is validated on **id_token flows only** (truthy `id_token` present) — when the flow falls back to decoding the `access_token` (no `id_token` returned by the IdP), the nonce check is skipped, because `nonce` is defined as an id_token claim by the OIDC spec and does not appear on access tokens.
+- [x] New unit tests cover key-rotation: a token signed by a key not in the initial JWKS triggers exactly one forced refetch (fetch-count asserted via the injected fetcher), validates successfully on the refreshed document, and a repeat unknown-`kid` token inside the 30s throttle window does not trigger a second refetch. **Deviation:** verified via fetch-count assertions on the injected `JwksFetcher` double rather than a separate Prometheus metric — no `chili_jwks_*` counter was added; test-double call-count is the recorded proof per the product-owner's test-double-only ruling.
+- [x] New unit tests assert rejection of unsigned/`alg:none` tokens, mismatched/unknown `kid` (both immediately-after-rotation and still-missing-after-refetch cases), malformed JOSE headers, JWKS documents with no `keys` list, expired tokens, and tokens with wrong `aud`/`iss` — `tests/api/test_auth_middleware.py`.
+- [x] Coverage on `backend/api/middleware/auth.py` and `backend/api/routers/auth.py` stays ≥ 85% with the new tests (verified in-session — see Verification).
+
+### Deviations (recorded, not gaps)
+1. **Templates are desk-checked, not live-verified.** Product-owner ruling, 2026-07-15: BL-022's stretch scope is test-double-verified only (injected JWKS fetchers and scripted claims/token doubles) — no live Keycloak or Okta tenant was stood up against this code. `docs/auth/idp-templates.md`'s header states this plainly. Standing up a real IdP and running the BFF flow end-to-end against it is the recorded residual follow-up (see `docs/project/planning/sprints/2026-27.md` § Deferred / next up).
+2. **Nonce validation is scoped to id_token flows only.** `claims.get("nonce")` is only checked when `tokens.id_token` is truthy; the access-token-only fallback path has no nonce claim to check by OIDC spec and is documented as skipping the check rather than silently ignoring it.
 
 ### Verification
-- `cd backend && pytest tests/api/test_auth_middleware.py tests/api/test_auth_router.py tests/api/test_jwks_rotation.py --cov=api.middleware.auth --cov=api.routers.auth --cov-fail-under=85`
-- `cd backend && pyright api/middleware/auth.py api/routers/auth.py config/schema.py`
-- Manual: stand up Keycloak locally per `docs/auth_idp_recipes.md`, run the BFF flow end-to-end, force a key rotation in Keycloak, observe that subsequent logins succeed without restarting the API.
+- `cd backend && DATABASE_URL=postgresql://chili:chili@localhost:5432/chili_test .venv/bin/pytest --cov -m "not integration" -q && .venv/bin/pyright && .venv/bin/ruff check --no-cache .` — full suite green, `api` package ≥ 85%, 0 pyright errors, ruff clean (see task-4-report.md for the exact in-session run).
+- No live-IdP manual verification pass exists or is deferred — the product-owner ruling above makes test-double verification the accepted bar for this story; recorded as a residual follow-up item, not as "pending."
 
 ### Code touch points
-- `backend/api/middleware/auth.py` (modify)
-- `backend/api/routers/auth.py` (modify)
-- `backend/api/middleware/session_store.py` (modify — persist `nonce` next to PKCE verifier)
-- `backend/config/defaults/auth/auth0.yaml` (new)
-- `backend/config/defaults/auth/okta.yaml` (new)
-- `backend/config/defaults/auth/cognito.yaml` (new)
-- `backend/config/defaults/auth/keycloak.yaml` (new)
-- `backend/config/defaults/auth/google.yaml` (new)
-- `docs/auth_idp_recipes.md` (new)
-- `tests/api/test_jwks_rotation.py` (new)
-- `tests/api/test_auth_middleware.py` (modify)
-- `tests/api/test_auth_router.py` (modify)
+- `backend/api/middleware/auth.py` (modified — `JwksCache.invalidate_uri`/`force_refresh`, kid-aware `decode_token`)
+- `backend/api/routers/auth.py` (modified — nonce generation/validation in login/callback)
+- `backend/api/routers/_oidc_client.py` (modified — `nonce` parameter on `build_authorize_url`)
+- `backend/api/middleware/session_store.py` (modified — `PkceState` model carrying `verifier` + `nonce`, both adapters)
+- `docs/auth/idp-templates.md` (new)
+- `tests/api/test_auth_middleware.py` (modified — kid/rotation/throttle test matrix)
+- `tests/api/test_auth_router.py` (modified — nonce round-trip/mismatch/fallback tests)
+- `tests/api/test_session_store.py` (modified — `PkceState` nonce round-trip on both adapters)
 
 ---
 

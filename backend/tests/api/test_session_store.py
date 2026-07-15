@@ -88,14 +88,26 @@ class TestInMemorySessionStore:
 
     def test_pkce_state_pop_consumes_and_returns_none_on_repeat(self) -> None:
         store = InMemorySessionStore()
-        store.save_pkce_state(state="state-1", verifier="ver-1", ttl_seconds=300)
-        assert store.pop_pkce_state("state-1") == "ver-1"
+        store.save_pkce_state(state="state-1", verifier="ver-1", ttl_seconds=300, nonce="nonce-1")
+        popped = store.pop_pkce_state("state-1")
+        assert popped is not None
+        assert popped.verifier == "ver-1"
+        assert popped.nonce == "nonce-1"
         # Popping again returns None (consumed)
         assert store.pop_pkce_state("state-1") is None
 
     def test_pkce_state_unknown_returns_none(self) -> None:
         store = InMemorySessionStore()
         assert store.pop_pkce_state("never-issued") is None
+
+    def test_pkce_state_roundtrips_nonce(self) -> None:
+        store = InMemorySessionStore()
+        store.save_pkce_state(state="s1", verifier="v1", ttl_seconds=60, nonce="n1")
+        popped = store.pop_pkce_state("s1")
+        assert popped is not None
+        assert popped.verifier == "v1"
+        assert popped.nonce == "n1"
+        assert store.pop_pkce_state("s1") is None  # pop is one-shot
 
     def test_session_not_found_error_carries_session_id(self) -> None:
         with pytest.raises(SessionNotFoundError) as excinfo:
@@ -144,9 +156,22 @@ class TestRedisSessionStore:
             store.get("redis-sid-2")
 
     def test_pkce_state_round_trip(self, store: RedisSessionStore) -> None:
-        store.save_pkce_state(state="redis-state", verifier="redis-ver", ttl_seconds=60)
-        assert store.pop_pkce_state("redis-state") == "redis-ver"
+        store.save_pkce_state(
+            state="redis-state", verifier="redis-ver", ttl_seconds=60, nonce="redis-nonce"
+        )
+        popped = store.pop_pkce_state("redis-state")
+        assert popped is not None
+        assert popped.verifier == "redis-ver"
+        assert popped.nonce == "redis-nonce"
         assert store.pop_pkce_state("redis-state") is None
+
+    def test_legacy_bare_string_pkce_record_fails_closed(self, store: RedisSessionStore) -> None:
+        # Simulate a record written by a pre-BL-022 deployment: a bare verifier
+        # string, not the PkceState JSON envelope. pop_pkce_state must fail
+        # closed (return None) rather than crash or return unvalidated data.
+        raw_key = store._pkce_key("legacy-state")
+        store._client.set(raw_key, "bare-verifier-string", ex=60)
+        assert store.pop_pkce_state("legacy-state") is None
 
     def test_touch_extends_ttl(self, store: RedisSessionStore) -> None:
         record = _record(sid="redis-touch", ttl=60)
