@@ -87,7 +87,13 @@ class WorkflowEventTracker:
         if tracked is None:
             return True
         if tracked.run.status in TERMINAL_RUN_STATUSES:
-            return False
+            # A FAILED run is not a processing gate: with per-document failure
+            # isolation (BL-041) a `documents.failed` event fails the run
+            # record while sibling documents in the same batch are still in
+            # flight — their successor events must keep processing, with the
+            # run record left frozen at FAILED. Cancelled runs stay gated
+            # (user intent); completed runs stay gated (replay safety).
+            return tracked.run.status is WorkflowRunStatus.FAILED
         updated_steps = _steps_with_status(
             tracked.run.steps,
             tracked.step_name,

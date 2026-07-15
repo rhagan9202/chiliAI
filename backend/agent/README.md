@@ -12,7 +12,7 @@ The coordinator registers one handler per event type and dispatches to it inside
 
 ## Health & metrics endpoint
 
-The worker starts a lightweight async HTTP server (`agent/health.py::start_health_server`) alongside the Redis Streams consumer loop, serving `GET /health` (JSON liveness/progress payload) on port `8001` by default (`agent.models.HealthSettings`). The health server also serves `GET /metrics` (Prometheus text exposition of the default `prometheus_client` registry) on the same port. Worker-side counters — `pipeline_stage_duration_seconds`, `pipeline_errors_total` (`monitoring/metrics.py`), `ingestion_documents_failed_total`, `ingestion_documents_empty_extraction_total` (`shared/metrics.py`) — are scraped here, not from the API gateway's `/metrics`: each process exposes only its own registry (no cross-process aggregation). Like `/health`, the endpoint is unauthenticated and compose-internal.
+The worker starts a lightweight async HTTP server (`agent/health.py::start_health_server`) alongside the Redis Streams consumer loop, serving `GET /health` (JSON liveness/progress payload) on port `8001` by default (`agent.models.HealthSettings`). The health server also serves `GET /metrics` (Prometheus text exposition of the default `prometheus_client` registry) on the same port. Worker-side counters — `pipeline_stage_duration_seconds`, `pipeline_errors_total` (`monitoring/metrics.py`), `ingestion_documents_failed_total`, `ingestion_documents_empty_extraction_total` (`shared/metrics.py`) — are scraped here, not from the API gateway's `/metrics`: each process exposes only its own registry (no cross-process aggregation). Like `/health`, the endpoint is unauthenticated; the dev compose publishes it on host port `8001` so operators can scrape it directly (`curl :8001/metrics`).
 
 ## Domain hot-swap convergence (`config.updated`)
 
@@ -97,7 +97,7 @@ Because a run is created synchronously at submit, the KB is **busy** (`ensure_kb
 
 `POST /workflows/{id}/cancel` (analyst role) marks a non-terminal run `CANCELLED`; `GET /workflows/{id}` returns a single run; `GET /workflows` lists them (viewer role). Cancellation is **cooperative**:
 
-- The tracker honours it at each event boundary (`begin_event` skips a cancelled run's remaining steps).
+- The tracker honours it at each event boundary (`begin_event` skips a cancelled run's remaining steps). A **`FAILED`** run does *not* gate processing: a per-document `documents.failed` event marks the run failed while sibling documents in the same batch are still in flight, and their successor events keep processing with the run record frozen at `FAILED` (BL-041 failure isolation). Only `CANCELLED` (user intent) and `COMPLETED` (replay safety) skip.
 - Long handlers (`handle_graph_updated_for_analytics`, `handle_records_ingested`) re-check `WorkflowEventTracker.is_run_cancelled` at loop/stage boundaries and stop early — a single in-flight synchronous stage still finishes.
 - Tracker writes use a status-only compare-and-set (`update_run_if_current` with `expected_statuses={QUEUED, RUNNING}`), so a concurrent cancel is never clobbered back to `RUNNING`/`COMPLETED`.
 

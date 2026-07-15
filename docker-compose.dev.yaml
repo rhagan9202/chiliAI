@@ -97,6 +97,11 @@ services:
     build:
       context: ./backend
     command: python -m agent.coordinator
+    ports:
+      # Worker health server (agent/health.py): GET /health for the container
+      # healthcheck below, GET /metrics for the BL-043 ingestion counters —
+      # published so operators can scrape it from the host in dev.
+      - "8001:8001"
     volumes:
       - ./backend:/app
       - chili-object-data:/app/data
