@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from hashlib import sha256
+from time import perf_counter
 
 from ingestion.models import DocumentFormat, SourceDocument, SourceType
 from ingestion.orchestrators.protocols import (
@@ -22,6 +23,11 @@ from events.types import (
     DocumentsParsedEvent,
     DocumentsUploadedEvent,
     ParsedDocumentReference,
+)
+from shared.metrics import (
+    ingestion_dedup_suppressed_total,
+    ingestion_documents_failed_total,
+    log_stage,
 )
 from shared.protocols import ObjectStoreProtocol
 from shared.utils import generate_id
@@ -170,6 +176,10 @@ class IngestionService:
                         },
                     )
 
+            if not should_publish:
+                # Suppressed by idempotent dedup: content already registered
+                # (no recovery marker) or remote-URI marker already present.
+                ingestion_dedup_suppressed_total.labels(kind="document").inc()
             if should_publish:
                 document_references.append(
                     DocumentReference(
@@ -290,6 +300,7 @@ class IngestionService:
         *,
         correlation_id: str | None = None,
     ) -> ParseResult | DocumentParseFailure:
+        started_at = perf_counter()
         outcome: ParseResult | DocumentParseFailure
         if task.storage_key is not None:
             try:
@@ -360,8 +371,21 @@ class IngestionService:
                     ]
                 )
             )
+            log_stage(
+                stage="parse",
+                kb_id=task.knowledge_base_id,
+                source_document_id=outcome.source_document.id,
+                started_at=started_at,
+                outcome="success",
+            )
             return outcome
 
+        # BL-043: count at the DocumentsFailedEvent emission point so every
+        # current and future emitter (e.g. BL-041's converted failure paths,
+        # which add their own adjacent .inc()) is reflected in the counter.
+        ingestion_documents_failed_total.labels(
+            stage="parse", error_class=outcome.error_type
+        ).inc()
         self._event_bus.publish(
             DocumentsFailedEvent(
                 correlation_id=correlation_id or generate_id(),
@@ -374,6 +398,13 @@ class IngestionService:
                     )
                 ]
             )
+        )
+        log_stage(
+            stage="parse",
+            kb_id=task.knowledge_base_id,
+            source_document_id=outcome.source_document.id,
+            started_at=started_at,
+            outcome="failed",
         )
         return outcome
 

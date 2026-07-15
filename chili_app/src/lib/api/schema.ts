@@ -823,7 +823,10 @@ export interface paths {
         };
         /**
          * List Knowledge Base Documents
-         * @description Return registered documents for a knowledge base.
+         * @description Return registered documents, enriched with the durable status projection.
+         *
+         *     ``status`` filters on the durable projection: documents without a
+         *     projected status row never match a filter.
          */
         get: operations["list_knowledge_base_documents_knowledgebases__knowledge_base_id__documents_get"];
         put?: never;
@@ -1926,12 +1929,28 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Current Status */
+            current_status?: string | null;
+            /** Drop Sample Reasons */
+            drop_sample_reasons?: string[];
+            /**
+             * Dropped Entity Count
+             * @default 0
+             */
+            dropped_entity_count: number;
+            /**
+             * Dropped Relationship Count
+             * @default 0
+             */
+            dropped_relationship_count: number;
             /** Filename */
             filename: string;
             /** Id */
             id: string;
             /** Knowledge Base Id */
             knowledge_base_id: string;
+            /** Last Error */
+            last_error?: string | null;
             /** Size Bytes */
             size_bytes?: number | null;
             /** Status */
@@ -2049,6 +2068,16 @@ export interface components {
              * @default 32
              */
             batch_size: number;
+            /**
+             * Cache Enabled
+             * @default true
+             */
+            cache_enabled: boolean;
+            /**
+             * Cache Max Entries
+             * @default 4096
+             */
+            cache_max_entries: number;
             /**
              * Dimensions
              * @default 384
@@ -2592,7 +2621,7 @@ export interface components {
          * @description Lifecycle states for a source document during ingestion.
          * @enum {string}
          */
-        IngestionStatus: "pending" | "parsing" | "parsed" | "chunked" | "extracted" | "validated" | "failed";
+        IngestionStatus: "pending" | "parsing" | "parsed" | "chunked" | "extracted" | "validated" | "extracted_empty" | "failed";
         /**
          * KbListResponse
          * @description Paginated knowledge base list response.
@@ -5534,6 +5563,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                status?: components["schemas"]["IngestionStatus"] | null;
             };
             header?: never;
             path: {

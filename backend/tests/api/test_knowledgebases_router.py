@@ -16,6 +16,7 @@ from knowledgebases.adapters.object_store import ObjectStoreKnowledgeBaseReposit
 from knowledgebases.models import DocumentRecord
 from api.app import create_app
 from api.dependencies import (
+    get_document_status_store,
     get_event_bus,
     get_domain_config,
     get_graph_service,
@@ -39,7 +40,8 @@ from events.types import (
     KnowledgeBaseCreatedEvent,
     KnowledgeBaseDeletedEvent,
 )
-from ingestion.models import IngestionStatus
+from ingestion.adapters.in_memory import InMemorySourceDocumentStatusStore
+from ingestion.models import DocumentStatusTransition, IngestionStatus
 from ingestion.orchestrators.parser import DocumentParsingOrchestrator
 from ingestion.parsers.registry import create_default_registry
 from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
@@ -800,6 +802,118 @@ def test_register_documents_cleans_replacement_after_successful_enqueue(
     assert vector_service.source_documents == set()
 
 
+def test_register_documents_replacement_purges_old_status_row(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    """Regression: a re-upload that replaces a document must purge its status row.
+
+    Before the fix, ``_cleanup_replaced_document`` deleted the superseded
+    document's `KnowledgeBaseRepository` record and derived artifacts but
+    never called ``document_status_store.delete_by_document``, leaving the
+    old status row behind — the same `total > len(items)` mismatch in
+    status-filtered listings that 56e6087 fixed for the DELETE endpoint.
+    """
+    client, _, object_store, repository = harness
+    graph_service = _RecordingReplacementGraphService()
+    vector_service = _RecordingReplacementVectorService()
+    status_store = InMemorySourceDocumentStatusStore()
+
+    class SuccessfulIngestionService:
+        def __init__(self, *, source_document_id: str, storage_key: str) -> None:
+            self._source_document_id = source_document_id
+            self._storage_key = storage_key
+
+        def register_documents(
+            self,
+            knowledge_base_id: str,
+            submissions: list[DocumentSubmission],
+            *,
+            correlation_id: str | None = None,
+        ) -> list[DocumentReceipt]:
+            del submissions, correlation_id
+            return [
+                DocumentReceipt(
+                    knowledge_base_id=knowledge_base_id,
+                    source_document_id=self._source_document_id,
+                    filename="claims.json",
+                    status=IngestionStatus.PENDING,
+                    storage_key=self._storage_key,
+                    enqueued=True,
+                )
+            ]
+
+    created = client.post(
+        "/knowledgebases", json={"name": "DocKb", "description": ""}
+    )
+    kb_id = created.json()["id"]
+    content = b'{"claim_id": "42"}'
+    content_hash = hashlib.sha256(content).hexdigest()
+    old_document_id = "old-doc"
+    old_source_key = f"knowledgebases/{kb_id}/documents/{old_document_id}/source"
+    repository.add_document(
+        DocumentRecord(
+            id=old_document_id,
+            knowledge_base_id=kb_id,
+            filename="old-name.json",
+            content_type="application/json",
+            size_bytes=len(content),
+            status=IngestionStatus.PENDING.value,
+            storage_key=old_source_key,
+            content_hash=content_hash,
+        )
+    )
+    object_store.put_bytes(old_source_key, content, media_type="application/json")
+    graph_service.source_documents.add((kb_id, old_document_id))
+    vector_service.source_documents.add((kb_id, old_document_id))
+    status_store.apply(
+        DocumentStatusTransition(
+            knowledge_base_id=kb_id,
+            source_document_id=old_document_id,
+            status=IngestionStatus.FAILED,
+            error_message="parser exploded",
+        )
+    )
+
+    app = cast(FastAPI, client.app)
+    app.dependency_overrides[get_graph_service] = lambda: graph_service
+    app.dependency_overrides[get_vector_service] = lambda: vector_service
+    app.dependency_overrides[get_document_status_store] = lambda: status_store
+    app.dependency_overrides[get_ingestion_service] = lambda: SuccessfulIngestionService(
+        source_document_id=old_document_id,
+        storage_key=old_source_key,
+    )
+
+    response = client.post(
+        f"/knowledgebases/{kb_id}/documents",
+        files=[("files", ("claims.json", content, "application/json"))],
+    )
+
+    assert response.status_code == 202
+    receipt = response.json()["documents"][0]
+    assert receipt["replaced_document_id"] == old_document_id
+
+    # The old status row must be gone — not merely superseded by a fresh one —
+    # so a stale FAILED projection can never outlive the document it described.
+    assert (
+        status_store.get_many(
+            knowledge_base_id=kb_id, source_document_ids=[old_document_id]
+        )
+        == {}
+    )
+
+    # A status-filtered list must stay internally consistent: `total` must
+    # equal `len(items)`, never counting a purged status row.
+    filtered = client.get(f"/knowledgebases/{kb_id}/documents?status=failed")
+    assert filtered.status_code == 200
+    filtered_payload = filtered.json()
+    assert filtered_payload["total"] == len(filtered_payload["items"]) == 0
+
+
 def test_register_documents_cleanup_failure_returns_500_and_preserves_new_source(
     harness: tuple[
         TestClient,
@@ -1353,3 +1467,162 @@ def test_kb_delete_requires_admin_when_auth_enabled(monkeypatch: pytest.MonkeyPa
         # Admin cookie -> 404 (role passes; KB does not exist)
         client.cookies.set("chiliai_session", "sid-admin")
         assert client.delete(f"/knowledgebases/{kb_id}").status_code == 404
+
+
+def _status_projection_harness() -> tuple[
+    FastAPI, InMemoryKnowledgeBaseRepository, InMemorySourceDocumentStatusStore
+]:
+    app = create_app()
+    repository = InMemoryKnowledgeBaseRepository()
+    object_store = InMemoryObjectStore()
+    status_store = InMemorySourceDocumentStatusStore()
+    repository.create(
+        KnowledgeBase(
+            id="kb-proj",
+            name="Projection KB",
+            description="",
+            status="active",
+            created_at=utc_now(),
+        )
+    )
+    for document_id in ("doc-failed", "doc-empty", "doc-clean"):
+        repository.add_document(
+            DocumentRecord(
+                id=document_id,
+                knowledge_base_id="kb-proj",
+                filename=f"{document_id}.txt",
+                content_type="text/plain",
+                size_bytes=10,
+                status="pending",
+            )
+        )
+    status_store.apply(
+        DocumentStatusTransition(
+            knowledge_base_id="kb-proj",
+            source_document_id="doc-failed",
+            status=IngestionStatus.FAILED,
+            error_message="parser exploded",
+        )
+    )
+    status_store.apply(
+        DocumentStatusTransition(
+            knowledge_base_id="kb-proj",
+            source_document_id="doc-empty",
+            status=IngestionStatus.EXTRACTED_EMPTY,
+            dropped_entity_count=4,
+            dropped_relationship_count=1,
+            sample_reasons=["entity cand-1: unknown type"],
+        )
+    )
+    graph_service = _MetricsOnlyGraphService(
+        GraphMetrics(entity_count=0, relationship_count=0, avg_degree=0.0)
+    )
+    app.dependency_overrides[get_knowledge_base_repository] = lambda: repository
+    app.dependency_overrides[get_graph_service] = lambda: graph_service
+    app.dependency_overrides[get_object_store] = lambda: object_store
+    app.dependency_overrides[get_domain_config] = _build_config
+    app.dependency_overrides[get_document_status_store] = lambda: status_store
+    return app, repository, status_store
+
+
+def test_documents_endpoint_returns_durable_projection_fields() -> None:
+    app, _, _ = _status_projection_harness()
+    with TestClient(app) as client:
+        response = client.get("/knowledgebases/kb-proj/documents")
+
+    assert response.status_code == 200
+    items = {item["id"]: item for item in response.json()["items"]}
+    assert items["doc-failed"]["current_status"] == "failed"
+    assert items["doc-failed"]["last_error"] == "parser exploded"
+    assert items["doc-empty"]["current_status"] == "extracted_empty"
+    assert items["doc-empty"]["dropped_entity_count"] == 4
+    assert items["doc-empty"]["dropped_relationship_count"] == 1
+    assert items["doc-empty"]["drop_sample_reasons"] == [
+        "entity cand-1: unknown type"
+    ]
+    assert items["doc-clean"]["current_status"] is None
+    assert items["doc-clean"]["last_error"] is None
+    assert items["doc-clean"]["dropped_entity_count"] == 0
+
+
+def test_documents_endpoint_filters_by_durable_status() -> None:
+    app, _, _ = _status_projection_harness()
+    with TestClient(app) as client:
+        response = client.get("/knowledgebases/kb-proj/documents?status=failed")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["id"] for item in payload["items"]] == ["doc-failed"]
+    assert payload["items"][0]["current_status"] == "failed"
+
+
+def test_documents_endpoint_rejects_unknown_status_filter() -> None:
+    app, _, _ = _status_projection_harness()
+    with TestClient(app) as client:
+        response = client.get("/knowledgebases/kb-proj/documents?status=bogus")
+
+    assert response.status_code == 422
+
+
+def test_deleting_document_purges_its_status_row_from_filtered_total() -> None:
+    """Regression: an orphaned status row must not inflate `total` past `items`.
+
+    Before the fix, deleting a document left its row in the status store, so
+    a status-filtered list still counted it in `total` while dropping it from
+    `items` (e.g. `total: 1, items: []`).
+    """
+    app, _, status_store = _status_projection_harness()
+    with TestClient(app) as client:
+        delete_response = client.delete(
+            "/knowledgebases/kb-proj/documents/doc-failed"
+        )
+        assert delete_response.status_code == 204
+
+        response = client.get("/knowledgebases/kb-proj/documents?status=failed")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 0
+    assert payload["items"] == []
+    assert (
+        status_store.get_many(
+            knowledge_base_id="kb-proj", source_document_ids=["doc-failed"]
+        )
+        == {}
+    )
+
+
+def test_orphaned_status_row_is_reaped_from_filtered_listing() -> None:
+    """Regression: a resurrected orphan status row must not inflate `total` forever.
+
+    An in-flight pipeline event can re-create a document's status row AFTER
+    a delete/reupload purge already ran, leaving a row whose
+    ``source_document_id`` has no matching registered document. The
+    status-filtered listing must exclude that row from both `items` and
+    `total`, and opportunistically reap it from the store so it doesn't
+    permanently inflate `total` on every subsequent request.
+    """
+    app, _, status_store = _status_projection_harness()
+    status_store.apply(
+        DocumentStatusTransition(
+            knowledge_base_id="kb-proj",
+            source_document_id="doc-orphan",
+            status=IngestionStatus.FAILED,
+            error_message="ghost redelivery after purge",
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/knowledgebases/kb-proj/documents?status=failed")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["id"] for item in payload["items"]] == ["doc-failed"]
+    assert (
+        status_store.get_many(
+            knowledge_base_id="kb-proj", source_document_ids=["doc-orphan"]
+        )
+        == {}
+    )

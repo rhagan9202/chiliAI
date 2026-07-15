@@ -37,10 +37,18 @@ class FakeEmbeddingRecord:
 
 
 @dataclass(frozen=True)
+class FakeUsage:
+    """Represent the usage block of a fake API response."""
+
+    total_tokens: int
+
+
+@dataclass(frozen=True)
 class FakeEmbeddingResponse:
     """Represent the fake API response surface used by the adapter."""
 
     data: list[FakeEmbeddingRecord]
+    usage: FakeUsage | None = None
 
 
 class FakeRateLimitError(Exception):
@@ -60,10 +68,12 @@ class FakeEmbeddingsEndpoint:
         vector_size: int = 3,
         outcomes: list[object] | None = None,
         reverse_response_order: bool = False,
+        usage_tokens: int | None = None,
     ) -> None:
         self._vector_size = vector_size
         self._outcomes = list(outcomes or [])
         self._reverse_response_order = reverse_response_order
+        self._usage_tokens = usage_tokens
         self.calls: list[EmbeddingCall] = []
 
     def create(self, *, input: list[str] | tuple[str, ...], model: str) -> object:
@@ -82,7 +92,14 @@ class FakeEmbeddingsEndpoint:
         ]
         if self._reverse_response_order:
             records.reverse()
-        return FakeEmbeddingResponse(data=records)
+        return FakeEmbeddingResponse(
+            data=records,
+            usage=(
+                FakeUsage(total_tokens=self._usage_tokens)
+                if self._usage_tokens is not None
+                else None
+            ),
+        )
 
 
 class FakeOpenAIClient:
@@ -403,6 +420,94 @@ def test_openai_embedder_live_smoke() -> None:
     assert len(result.vectors["probe"]) == result.metadata.dimensions
     assert result.items[0].channel == "text"
     assert result.items[0].vector == result.vectors["probe"]
+
+
+def test_openai_embedder_captures_reported_usage_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-api-key")
+    endpoint = FakeEmbeddingsEndpoint(vector_size=3, usage_tokens=7)
+    embedder = OpenAIEmbedder(
+        EmbeddingsConfig(
+            provider="openai",
+            model="text-embedding-3-small",
+            dimensions=3,
+            batch_size=4,
+            api_key_env_var="OPENAI_API_KEY",
+        ),
+        client=cast(OpenAIClientProtocol, FakeOpenAIClient(endpoint)),
+    )
+
+    result = embedder.embed(
+        EmbeddingRequest(
+            request_id="request-1",
+            model_name="ignored",
+            items=[
+                EmbeddingItem(id="item-1", content="Alpha"),
+                EmbeddingItem(id="item-2", content="Beta"),
+            ],
+        )
+    )
+
+    assert result.metadata.total_tokens == 7
+
+
+def test_openai_embedder_sums_usage_tokens_across_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-api-key")
+    endpoint = FakeEmbeddingsEndpoint(vector_size=3, usage_tokens=7)
+    embedder = OpenAIEmbedder(
+        EmbeddingsConfig(
+            provider="openai",
+            model="text-embedding-3-small",
+            dimensions=3,
+            batch_size=1,
+            api_key_env_var="OPENAI_API_KEY",
+        ),
+        client=cast(OpenAIClientProtocol, FakeOpenAIClient(endpoint)),
+    )
+
+    result = embedder.embed(
+        EmbeddingRequest(
+            request_id="request-1",
+            model_name="ignored",
+            items=[
+                EmbeddingItem(id="item-1", content="Alpha"),
+                EmbeddingItem(id="item-2", content="Beta"),
+            ],
+        )
+    )
+
+    assert len(endpoint.calls) == 2
+    assert result.metadata.total_tokens == 14
+
+
+def test_openai_embedder_reports_none_usage_when_provider_omits_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-api-key")
+    endpoint = FakeEmbeddingsEndpoint(vector_size=3)
+    embedder = OpenAIEmbedder(
+        EmbeddingsConfig(
+            provider="openai",
+            model="text-embedding-3-small",
+            dimensions=3,
+            batch_size=4,
+            api_key_env_var="OPENAI_API_KEY",
+        ),
+        client=cast(OpenAIClientProtocol, FakeOpenAIClient(endpoint)),
+    )
+
+    result = embedder.embed(
+        EmbeddingRequest(
+            request_id="request-1",
+            model_name="ignored",
+            items=[EmbeddingItem(id="item-1", content="Alpha")],
+        )
+    )
+
+    assert result.metadata.total_tokens is None
 
 
 def _vector_for_text(text: str) -> list[float]:

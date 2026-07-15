@@ -9,6 +9,9 @@ from contextlib import closing
 
 from agent.health import HealthState, build_health_payload, start_health_server
 from agent.models import HealthSettings
+from monitoring.metrics import observe_pipeline_stage
+from prometheus_client import CONTENT_TYPE_LATEST
+from shared.metrics import ingestion_documents_failed_total
 
 
 def _free_port() -> int:
@@ -128,3 +131,48 @@ def test_mark_event_processed_clears_drain_error_streak() -> None:
     assert state.status() == "degraded"
     state.mark_event_processed()
     assert state.status() == "ok"
+
+
+async def _exercise_metrics_endpoint() -> None:
+    port = _free_port()
+    settings = HealthSettings(host="127.0.0.1", port=port)
+    state = HealthState(settings=settings)
+    # Ensure the default registry has samples from both metric families the
+    # worker owns: a BL-043 counter and the pre-existing pipeline histogram.
+    ingestion_documents_failed_total.labels(
+        stage="parse", error_class="ProbeError"
+    ).inc()
+    with observe_pipeline_stage("probe.stage"):
+        pass
+
+    server = await start_health_server(state)
+    try:
+        status_code, body = await _http_get("127.0.0.1", port, "/metrics")
+        assert status_code == 200
+        text = body.decode("utf-8")
+        assert "ingestion_documents_failed_total" in text
+        assert 'error_class="ProbeError"' in text
+        assert "pipeline_stage_duration_seconds" in text
+
+        # Content type is the Prometheus exposition format, not JSON.
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(
+            b"GET /metrics HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"
+        )
+        await writer.drain()
+        raw = await reader.read()
+        writer.close()
+        await writer.wait_closed()
+        assert b"Content-Type: " + CONTENT_TYPE_LATEST.encode("ascii") in raw
+
+        # /health is unchanged by the metrics route.
+        health_status, health_body = await _http_get("127.0.0.1", port, "/health")
+        assert health_status == 200
+        assert json.loads(health_body)["status"] == "ok"
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+def test_health_server_serves_prometheus_metrics() -> None:
+    asyncio.run(_exercise_metrics_endpoint())

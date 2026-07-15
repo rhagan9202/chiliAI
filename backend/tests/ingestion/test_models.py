@@ -13,17 +13,21 @@ from ingestion.models import (
     Chunk,
     ChunkMetadata,
     DocumentFormat,
+    DocumentStatusTransition,
     ExtractionEvidence,
     ExtractionResult,
     IngestionStatus,
     ParsedDocument,
     SourceDocument,
+    SourceDocumentStatusRecord,
     SourceType,
+    STATUS_RANK,
     StructuredRecord,
     TextSpan,
     ValidationReport,
 )
 from shared.types import Entity, Relationship
+from shared.utils import utc_now
 
 
 def test_source_document_defaults() -> None:
@@ -209,3 +213,53 @@ def test_confidence_is_bounded() -> None:
             confidence=1.5,
             extraction_method="llm_prompt_v1",
         )
+
+
+def test_ingestion_status_includes_extracted_empty() -> None:
+    assert IngestionStatus.EXTRACTED_EMPTY.value == "extracted_empty"
+
+
+def test_status_rank_is_total_and_monotonic() -> None:
+    assert set(STATUS_RANK) == set(IngestionStatus)
+    assert STATUS_RANK[IngestionStatus.FAILED] == max(STATUS_RANK.values())
+    assert (
+        STATUS_RANK[IngestionStatus.PENDING]
+        < STATUS_RANK[IngestionStatus.PARSING]
+        < STATUS_RANK[IngestionStatus.PARSED]
+        < STATUS_RANK[IngestionStatus.CHUNKED]
+        < STATUS_RANK[IngestionStatus.EXTRACTED]
+        < STATUS_RANK[IngestionStatus.VALIDATED]
+        < STATUS_RANK[IngestionStatus.EXTRACTED_EMPTY]
+        < STATUS_RANK[IngestionStatus.FAILED]
+    )
+
+
+def test_document_status_transition_defaults_leave_counts_unset() -> None:
+    transition = DocumentStatusTransition(
+        knowledge_base_id="kb-1",
+        source_document_id="doc-1",
+        status=IngestionStatus.PARSED,
+    )
+    assert transition.error_message is None
+    assert transition.dropped_entity_count is None
+    assert transition.dropped_relationship_count is None
+    assert transition.sample_reasons is None
+
+
+def test_source_document_status_record_round_trips() -> None:
+    record = SourceDocumentStatusRecord(
+        knowledge_base_id="kb-1",
+        source_document_id="doc-1",
+        current_status=IngestionStatus.EXTRACTED_EMPTY,
+        status_rank=STATUS_RANK[IngestionStatus.EXTRACTED_EMPTY],
+        last_error=None,
+        dropped_entity_count=3,
+        dropped_relationship_count=1,
+        sample_reasons=["entity cand-1: unknown type"],
+        first_event_at=utc_now(),
+        updated_at=utc_now(),
+    )
+    assert (
+        SourceDocumentStatusRecord.model_validate_json(record.model_dump_json())
+        == record
+    )

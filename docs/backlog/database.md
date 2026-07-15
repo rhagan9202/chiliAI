@@ -133,27 +133,28 @@
 ## Story database.04: Add CI migration drift / replay gate
 
 **ID:** database.04
-**Status:** planned
+**Status:** done
 **Prerequisites:** []
 **Unblocks:** [_cicd.12, analytics.20, database.01, database.02, database.08, database.09, ingestion.05, ingestion.18]
 **Estimated size:** M
+**Done:** 2026-07-14 · BL-042 (Sprint 2026-26) · `feat/sprint-2026-26-ingestion-visibility`
 
 **As a** developer merging schema-touching PRs,
 **I need** CI to prove that `alembic upgrade head` applies cleanly against a fresh database and that no schema drift exists between the migration head and the live schema,
 **so that** a missing or out-of-order revision fails the PR rather than the production deploy.
 
-### Current State
-- `ci.yml` never boots Postgres, never calls `alembic upgrade head`, and never invokes `alembic check`.
-- `Makefile:33` only runs `alembic upgrade head` against the developer's local compose stack on demand.
-- A PR can add or modify SQL in a revision file with no automated proof that the revision still applies in order.
-- `_cicd.12` owns the workflow step; this story owns the migration-side tooling and fixtures it calls.
+### Current State (shipped)
+- `scripts/ci_migration_check.sh` owns the whole gate: compose `postgres` service up, scratch database `chili_migration_check` (never the dev `chili` DB), `upgrade head` → `downgrade base` → `upgrade head`, normalized `pg_dump --schema-only` from inside the container, diff vs the committed `backend/database/migrations/snapshots/head.sql` (check mode) or snapshot rewrite (`--update-snapshot`).
+- `make migrate-check` / `make migrate-snapshot` give local parity; the `migrations` CI job (`ci.yml`) runs the identical script.
+- Snapshot-diff was chosen over `alembic check` (content-based, no revision IDs in the snapshot); refresh rule documented in `backend/database/README.md`.
+- The first real CI run failed because `snapshots/head.sql` had been planned as a committed artifact but never generated — caught by the 2026-07-14 verification pass, generated via `make migrate-snapshot`, committed, and the `migrations` job now reports green.
 
 ### Acceptance Criteria
-- [ ] `scripts/ci_migration_check.sh` starts a fresh TimescaleDB container, runs `alembic upgrade head`, runs `alembic downgrade base`, runs `alembic upgrade head` again, then exits 0 — proves both directions and idempotent replay.
-- [ ] The script also runs `alembic check` (or a schema-snapshot diff using `pg_dump --schema-only` against a committed `backend/database/migrations/snapshots/head.sql`) and fails on drift between `head.sql` and the live schema.
-- [ ] A `make migrate-check` Makefile target invokes the same script for local parity with CI.
-- [ ] `backend/database/migrations/snapshots/head.sql` is committed and updated whenever a new revision lands; documented in `backend/database/README.md`.
-- [ ] `_cicd.12`'s GitHub Actions job invokes the script; this story closes when the gate reports green on `main`.
+- [x] `scripts/ci_migration_check.sh` starts a fresh TimescaleDB container, runs `alembic upgrade head`, runs `alembic downgrade base`, runs `alembic upgrade head` again, then exits 0 — proves both directions and idempotent replay.
+- [x] The script also runs `alembic check` (or a schema-snapshot diff using `pg_dump --schema-only` against a committed `backend/database/migrations/snapshots/head.sql`) and fails on drift between `head.sql` and the live schema.
+- [x] A `make migrate-check` Makefile target invokes the same script for local parity with CI.
+- [x] `backend/database/migrations/snapshots/head.sql` is committed and updated whenever a new revision lands; documented in `backend/database/README.md`.
+- [x] `_cicd.12`'s GitHub Actions job invokes the script; this story closes when the gate reports green on `main`. (Green on the sprint branch 2026-07-14; the job runs on `prod` pushes and PRs, so it re-proves at merge.)
 
 ### Verification
 - `make migrate-check` exits 0 on a clean checkout.

@@ -22,6 +22,8 @@ from functools import partial
 from datetime import datetime, timezone
 from typing import cast
 
+from pydantic import ValidationError
+
 from agent.adapters.protocols import WorkflowRunStoreProtocol
 from agent.adapters.runtime import create_workflow_run_store_from_env
 from agent.embeddings_graph_bridge import GnnGraphEmbeddingProvider
@@ -33,6 +35,7 @@ from agent.policy import (
     StagePolicyRegistry,
     load_stage_policy_registry_from_env,
 )
+from agent.status_projection import project_document_status
 from agent.workflow_tracking import WorkflowEventTracker
 from config.loader import load_active_config
 from config.schema import (
@@ -117,8 +120,12 @@ from analytics.risk.service_models import (
     RiskAssessmentRequest,
     RiskAssessmentResponse,
 )
+from embeddings.adapters.cache_in_memory import (
+    create_embedding_cache,
+    embedding_cache_namespace,
+)
 from embeddings.adapters.in_memory import InMemoryEmbedder
-from embeddings.adapters.protocols import EmbedderProtocol
+from embeddings.adapters.protocols import EmbedderProtocol, EmbeddingCacheProtocol
 from embeddings.models import EmbeddingMetadata, EmbeddingResult, EmbeddingVector
 from embeddings.protocols import EmbeddingsServiceProtocol
 from embeddings.service import create_embeddings_service
@@ -132,8 +139,10 @@ from events.types import (
     AnyEvent,
     ChunkedDocumentReference,
     ConfigUpdatedEvent,
+    DocumentFailureReference,
     DocumentsChunkedEvent,
     DocumentsExtractionWarningEvent,
+    DocumentsFailedEvent,
     DocumentsParsedEvent,
     DocumentsUploadedEvent,
     EmbeddingsCompleteDocumentReference,
@@ -171,6 +180,9 @@ from graph.models import GraphUpsertResult
 from graph.protocols import GraphServiceProtocol
 from graph.service import GraphService, create_graph_service
 from graph.service_models import GraphBuildTask
+from ingestion.adapters.in_memory import InMemorySourceDocumentStatusStore
+from ingestion.adapters.postgres import PostgresSourceDocumentStatusStore
+from ingestion.adapters.protocols import SourceDocumentStatusStore
 from ingestion.chunker import ChunkingResult, DocumentChunker, create_document_chunker
 from ingestion.extractor import create_document_extractor
 from ingestion.protocols import DocumentExtractorProtocol
@@ -217,6 +229,11 @@ from policy.adapters.protocols import PolicyItemRepository
 from policy.evaluation import PolicyEvalState, evaluate
 from policy.service import PolicyService, create_policy_service
 from shared.logging import bind_correlation_id, configure_logging, get_logger
+from shared.metrics import (
+    ingestion_documents_empty_extraction_total,
+    ingestion_documents_failed_total,
+    log_stage,
+)
 from shared.provenance import (
     SOURCE_DOCUMENT_ID_KEY,
     SOURCE_ID_KEY,
@@ -241,7 +258,9 @@ __all__ = [
     "assess_entities",
     "build_alert_history_writer",
     "build_connection_provider",
+    "build_document_status_store",
     "build_embedder",
+    "build_embedding_cache",
     "build_entity_metric_repository",
     "build_explainability_context_source",
     "build_explanation_context",
@@ -299,6 +318,7 @@ WORKER_EVENT_TYPES: tuple[str, ...] = (
     "documents.uploaded",
     "documents.parsed",
     "documents.failed",
+    "documents.extraction_warning",
     "documents.chunked",
     "entities.extracted",
     "entities.validated",
@@ -356,6 +376,7 @@ class WorkerDependencies:
     event_settings: EventBusSettings
     workflow_run_store: WorkflowRunStoreProtocol
     workflow_tracker: WorkflowEventTracker
+    document_status_store: SourceDocumentStatusStore
     graph_embeddings_enabled: bool = False
 
 
@@ -615,6 +636,16 @@ def build_raw_record_store(
     return PostgresRawRecordStore(provider)
 
 
+def build_document_status_store(
+    provider: ConnectionProvider | None,
+) -> SourceDocumentStatusStore:
+    """Select a document status store: Postgres when a provider exists."""
+
+    if provider is None:
+        return InMemorySourceDocumentStatusStore()
+    return PostgresSourceDocumentStatusStore(provider)
+
+
 def build_observation_writer(
     provider: ConnectionProvider | None,
 ) -> ObservationWriter:
@@ -735,6 +766,7 @@ def build_kb_deletion_stores(
         policy_item_repository=build_policy_item_repository(provider),
         evidence_pack_repository=ObjectStoreEvidencePackRepository(object_store),
         scorecard_run_repository=build_scorecard_run_repository(provider),
+        document_status_store=build_document_status_store(provider),
         object_store=object_store,
     )
 
@@ -817,6 +849,18 @@ def build_embedder(config: DomainConfig) -> EmbedderProtocol:
             message="Available backends: " + ", ".join(sorted(_EMBEDDING_REGISTRY)),
         )
     return factory(embeddings_config)
+
+
+def build_embedding_cache(
+    config: DomainConfig,
+) -> tuple[EmbeddingCacheProtocol | None, str]:
+    """Build the config-driven embedding cache and its key namespace."""
+
+    embeddings_config = config.embeddings or EmbeddingsConfig()
+    return (
+        create_embedding_cache(embeddings_config),
+        embedding_cache_namespace(embeddings_config),
+    )
 
 
 def build_llm_client(config: DomainConfig) -> LlmClientProtocol:
@@ -934,6 +978,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         event_bus=event_bus,
         gnn_enabled=lambda: config.capabilities.gnn,
     )
+    embedding_cache, embedding_cache_ns = build_embedding_cache(config)
     embeddings_service = create_embeddings_service(
         embedder,
         event_bus=event_bus,
@@ -942,6 +987,8 @@ def build_worker_dependencies() -> WorkerDependencies:
             if config.capabilities.gnn
             else None
         ),
+        cache=embedding_cache,
+        cache_namespace=embedding_cache_ns,
     )
     connection_provider = build_connection_provider(config)
     risk_service = create_risk_service(
@@ -973,6 +1020,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         ),
     )
     raw_record_store = build_raw_record_store(connection_provider)
+    document_status_store = build_document_status_store(connection_provider)
     derived_signal_store = build_derived_signal_writer(connection_provider)
     observation_writer = build_observation_writer(connection_provider)
     policy_service = build_policy_service(connection_provider)
@@ -1040,6 +1088,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         event_settings=event_settings,
         workflow_run_store=workflow_run_store,
         workflow_tracker=workflow_tracker,
+        document_status_store=document_status_store,
         graph_embeddings_enabled=config.capabilities.gnn,
     )
 
@@ -1156,9 +1205,22 @@ def handle_documents_parsed(
     event_bus: EventBus,
     kb_repository: KnowledgeBaseRepository | None = None,
 ) -> int:
-    """Chunk parsed documents and publish the next workflow event."""
+    """Chunk parsed documents and publish the next workflow event.
+
+    Per-document isolation (BL-041): a missing ``parsed_document_storage_key``,
+    a not-found parsed artifact (``KeyError`` from the object store), or a
+    corrupt/invalid parsed artifact (``pydantic.ValidationError``) fails only
+    that document (a ``DocumentsFailedEvent`` is published) instead of
+    poisoning the batch and burning retries to the DLQ. These are the only
+    two permanent failure classes for this read; any other exception (e.g. a
+    transient object-store error) propagates to the retry/DLQ wrapper.
+    Chunker and object-store *write* errors also still propagate — they may
+    be transient.
+    """
     references: list[ChunkedDocumentReference] = []
+    failures: list[DocumentFailureReference] = []
     for document in event.documents:
+        started_at = time.perf_counter()
         if kb_repository is not None and document.warning_count > 0:
             kb_repository.record_document_warnings(
                 document.knowledge_base_id,
@@ -1167,11 +1229,69 @@ def handle_documents_parsed(
                 reasons=list(document.warning_samples),
             )
         if document.parsed_document_storage_key is None:
-            raise ValueError(
-                "DocumentsParsedEvent requires parsed_document_storage_key for chunking."
+            failures.append(
+                DocumentFailureReference(
+                    knowledge_base_id=document.knowledge_base_id,
+                    source_document_id=document.source_document_id,
+                    error_message=(
+                        "DocumentsParsedEvent reference is missing "
+                        "parsed_document_storage_key; cannot chunk."
+                    ),
+                    storage_key=document.storage_key,
+                )
             )
-        stored = object_store.get_bytes(document.parsed_document_storage_key)
-        parsed_document = ParsedDocument.model_validate_json(stored.content)
+            # BL-043: count adjacent to the (batched) DocumentsFailedEvent
+            # publish below, at the point each failure is committed to it.
+            ingestion_documents_failed_total.labels(
+                stage="chunk", error_class="MissingStorageKey"
+            ).inc()
+            log_stage(
+                stage="chunk",
+                kb_id=document.knowledge_base_id,
+                source_document_id=document.source_document_id,
+                started_at=started_at,
+                outcome="failed",
+            )
+            continue
+        try:
+            stored = object_store.get_bytes(document.parsed_document_storage_key)
+            parsed_document = ParsedDocument.model_validate_json(stored.content)
+        except (KeyError, ValidationError) as exc:
+            # Per-document isolation (BL-041) covers only the two permanent
+            # failure classes here: a missing object-store key (KeyError) and
+            # a corrupt/invalid parsed artifact (pydantic.ValidationError).
+            # Any other exception (e.g. a transient object-store error) must
+            # propagate so run_handler_with_retry's retry/DLQ policy applies.
+            logger.error(
+                "Failed to load parsed artifact. source_document_id=%s "
+                "storage_key=%s error_class=%s: %s",
+                document.source_document_id,
+                document.parsed_document_storage_key,
+                type(exc).__name__,
+                exc,
+            )
+            failures.append(
+                DocumentFailureReference(
+                    knowledge_base_id=document.knowledge_base_id,
+                    source_document_id=document.source_document_id,
+                    error_message=(
+                        f"Failed to load parsed artifact "
+                        f"'{document.parsed_document_storage_key}': {exc}"
+                    ),
+                    storage_key=document.storage_key,
+                )
+            )
+            ingestion_documents_failed_total.labels(
+                stage="chunk", error_class=type(exc).__name__
+            ).inc()
+            log_stage(
+                stage="chunk",
+                kb_id=document.knowledge_base_id,
+                source_document_id=document.source_document_id,
+                started_at=started_at,
+                outcome="failed",
+            )
+            continue
         result = document_chunker.chunk_document(
             parsed_document,
             source_document_id=document.source_document_id,
@@ -1203,6 +1323,20 @@ def handle_documents_parsed(
                 chunks_storage_key=chunks_storage_key,
             )
         )
+        log_stage(
+            stage="chunk",
+            kb_id=document.knowledge_base_id,
+            source_document_id=document.source_document_id,
+            started_at=started_at,
+            outcome="success" if result.chunks else "empty",
+        )
+    if failures:
+        event_bus.publish(
+            DocumentsFailedEvent(
+                correlation_id=event.correlation_id,
+                documents=failures,
+            )
+        )
     if references:
         event_bus.publish(
             DocumentsChunkedEvent(
@@ -1228,13 +1362,84 @@ def handle_documents_chunked(
     object_store: ObjectStore,
     event_bus: EventBus,
 ) -> int:
-    """Extract entity candidates from persisted chunks and publish the next event."""
+    """Extract entity candidates from persisted chunks and publish the next event.
+
+    Per-document isolation (BL-041): a missing ``chunks_storage_key``, a
+    not-found chunks artifact (``KeyError`` from the object store), or a
+    corrupt/invalid chunks artifact (``pydantic.ValidationError``) fails only
+    that document via a ``DocumentsFailedEvent`` instead of poisoning the
+    batch. These are the only two permanent failure classes for this read;
+    any other exception (e.g. a transient object-store error) propagates to
+    the retry/DLQ wrapper.
+    """
     references: list[ExtractedDocumentReference] = []
+    failures: list[DocumentFailureReference] = []
     for document in event.documents:
+        started_at = time.perf_counter()
         if document.chunks_storage_key is None:
-            raise ValueError("DocumentsChunkedEvent requires chunks_storage_key for extraction.")
-        stored = object_store.get_bytes(document.chunks_storage_key)
-        chunking_result = ChunkingResult.model_validate_json(stored.content)
+            failures.append(
+                DocumentFailureReference(
+                    knowledge_base_id=document.knowledge_base_id,
+                    source_document_id=document.source_document_id,
+                    error_message=(
+                        "DocumentsChunkedEvent reference is missing "
+                        "chunks_storage_key; cannot extract."
+                    ),
+                    storage_key=document.storage_key,
+                )
+            )
+            # BL-043: count adjacent to the (batched) DocumentsFailedEvent
+            # publish below, at the point each failure is committed to it.
+            ingestion_documents_failed_total.labels(
+                stage="extract", error_class="MissingStorageKey"
+            ).inc()
+            log_stage(
+                stage="extract",
+                kb_id=document.knowledge_base_id,
+                source_document_id=document.source_document_id,
+                started_at=started_at,
+                outcome="failed",
+            )
+            continue
+        try:
+            stored = object_store.get_bytes(document.chunks_storage_key)
+            chunking_result = ChunkingResult.model_validate_json(stored.content)
+        except (KeyError, ValidationError) as exc:
+            # Per-document isolation (BL-041) covers only the two permanent
+            # failure classes here: a missing object-store key (KeyError) and
+            # a corrupt/invalid chunks artifact (pydantic.ValidationError).
+            # Any other exception (e.g. a transient object-store error) must
+            # propagate so run_handler_with_retry's retry/DLQ policy applies.
+            logger.error(
+                "Failed to load chunks artifact. source_document_id=%s "
+                "storage_key=%s error_class=%s: %s",
+                document.source_document_id,
+                document.chunks_storage_key,
+                type(exc).__name__,
+                exc,
+            )
+            failures.append(
+                DocumentFailureReference(
+                    knowledge_base_id=document.knowledge_base_id,
+                    source_document_id=document.source_document_id,
+                    error_message=(
+                        f"Failed to load chunks artifact "
+                        f"'{document.chunks_storage_key}': {exc}"
+                    ),
+                    storage_key=document.storage_key,
+                )
+            )
+            ingestion_documents_failed_total.labels(
+                stage="extract", error_class=type(exc).__name__
+            ).inc()
+            log_stage(
+                stage="extract",
+                kb_id=document.knowledge_base_id,
+                source_document_id=document.source_document_id,
+                started_at=started_at,
+                outcome="failed",
+            )
+            continue
         extraction_result = document_extractor.extract_document(chunking_result)
         extraction_storage_key = _build_extraction_storage_key(
             document.knowledge_base_id,
@@ -1265,6 +1470,25 @@ def handle_documents_chunked(
                 parsed_document_storage_key=document.parsed_document_storage_key,
                 chunks_storage_key=document.chunks_storage_key,
                 extraction_storage_key=extraction_storage_key,
+            )
+        )
+        log_stage(
+            stage="extract",
+            kb_id=document.knowledge_base_id,
+            source_document_id=document.source_document_id,
+            started_at=started_at,
+            outcome=(
+                "success"
+                if extraction_result.candidate_entities
+                or extraction_result.candidate_relationships
+                else "empty"
+            ),
+        )
+    if failures:
+        event_bus.publish(
+            DocumentsFailedEvent(
+                correlation_id=event.correlation_id,
+                documents=failures,
             )
         )
     if references:
@@ -1314,105 +1538,127 @@ def handle_entities_extracted(
     references: list[ValidatedDocumentReference] = []
     warning_references: list[ExtractionWarningReference] = []
     for document in event.documents:
-        if document.extraction_storage_key is None:
-            raise ValueError("EntitiesExtractedEvent requires extraction_storage_key for validation.")
-        stored = object_store.get_bytes(document.extraction_storage_key)
-        extraction_result = ExtractionResult.model_validate_json(stored.content)
-        validation_report = extraction_validator.validate_extraction(extraction_result)
-        validation_storage_key = _build_validation_storage_key(
-            document.knowledge_base_id,
-            extraction_result.id,
-        )
-        object_store.put_bytes(
-            validation_storage_key,
-            validation_report.model_dump_json().encode("utf-8"),
-            media_type="application/json",
-            metadata={
-                "knowledge_base_id": document.knowledge_base_id,
-                SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
-                "parsed_document_id": document.parsed_document_id,
-                "extraction_result_id": extraction_result.id,
-                "validation_report_id": validation_report.id,
-                "valid_entity_count": len(validation_report.valid_entities),
-                "valid_relationship_count": len(validation_report.valid_relationships),
-                "entity_error_count": len(validation_report.entity_errors),
-                "relationship_error_count": len(validation_report.relationship_errors),
-            },
-        )
-        references.append(
-            ValidatedDocumentReference(
-                knowledge_base_id=document.knowledge_base_id,
-                source_document_id=document.source_document_id,
-                parsed_document_id=document.parsed_document_id,
-                extraction_result_id=document.extraction_result_id,
-                validation_report_id=validation_report.id,
-                valid_entity_count=len(validation_report.valid_entities),
-                valid_relationship_count=len(validation_report.valid_relationships),
-                entity_error_count=len(validation_report.entity_errors),
-                relationship_error_count=len(validation_report.relationship_errors),
-                storage_key=document.storage_key,
-                parsed_document_storage_key=document.parsed_document_storage_key,
-                chunks_storage_key=document.chunks_storage_key,
-                extraction_storage_key=document.extraction_storage_key,
-                validation_storage_key=validation_storage_key,
-            )
-        )
-
-        valid_entity_count = len(validation_report.valid_entities)
-        dropped_entity_count = len(validation_report.entity_errors)
-        dropped_relationship_count = len(validation_report.relationship_errors)
-        stripped_property_count = len(validation_report.warnings)
-        extraction_stage_warnings = list(extraction_result.warnings)
-        empty_extraction = valid_entity_count == 0
-        if (
-            empty_extraction
-            or dropped_entity_count
-            or dropped_relationship_count
-            or stripped_property_count
-            or extraction_stage_warnings
-        ):
-            logger.warning(
-                "ingestion extraction warning stage=validate knowledge_base_id=%s "
-                "source_document_id=%s valid_entities=%d dropped_entities=%d "
-                "dropped_relationships=%d stripped_properties=%d empty=%s",
+        started_at = time.perf_counter()
+        try:
+            if document.extraction_storage_key is None:
+                raise ValueError(
+                    "EntitiesExtractedEvent requires extraction_storage_key for validation."
+                )
+            stored = object_store.get_bytes(document.extraction_storage_key)
+            extraction_result = ExtractionResult.model_validate_json(stored.content)
+            validation_report = extraction_validator.validate_extraction(extraction_result)
+            validation_storage_key = _build_validation_storage_key(
                 document.knowledge_base_id,
-                document.source_document_id,
-                valid_entity_count,
-                dropped_entity_count,
-                dropped_relationship_count,
-                stripped_property_count,
-                empty_extraction,
+                extraction_result.id,
             )
-            sample_reasons = _collect_extraction_warning_reasons(
-                validation_report, extraction_stage_warnings
+            object_store.put_bytes(
+                validation_storage_key,
+                validation_report.model_dump_json().encode("utf-8"),
+                media_type="application/json",
+                metadata={
+                    "knowledge_base_id": document.knowledge_base_id,
+                    SOURCE_DOCUMENT_ID_KEY: document.source_document_id,
+                    "parsed_document_id": document.parsed_document_id,
+                    "extraction_result_id": extraction_result.id,
+                    "validation_report_id": validation_report.id,
+                    "valid_entity_count": len(validation_report.valid_entities),
+                    "valid_relationship_count": len(validation_report.valid_relationships),
+                    "entity_error_count": len(validation_report.entity_errors),
+                    "relationship_error_count": len(validation_report.relationship_errors),
+                },
             )
-            warning_references.append(
-                ExtractionWarningReference(
+            references.append(
+                ValidatedDocumentReference(
                     knowledge_base_id=document.knowledge_base_id,
                     source_document_id=document.source_document_id,
-                    valid_entity_count=valid_entity_count,
+                    parsed_document_id=document.parsed_document_id,
+                    extraction_result_id=document.extraction_result_id,
+                    validation_report_id=validation_report.id,
+                    valid_entity_count=len(validation_report.valid_entities),
                     valid_relationship_count=len(validation_report.valid_relationships),
-                    dropped_entity_count=dropped_entity_count,
-                    dropped_relationship_count=dropped_relationship_count,
-                    stripped_property_count=stripped_property_count,
-                    empty_extraction=empty_extraction,
-                    sample_reasons=sample_reasons,
+                    entity_error_count=len(validation_report.entity_errors),
+                    relationship_error_count=len(validation_report.relationship_errors),
+                    storage_key=document.storage_key,
+                    parsed_document_storage_key=document.parsed_document_storage_key,
+                    chunks_storage_key=document.chunks_storage_key,
+                    extraction_storage_key=document.extraction_storage_key,
                     validation_storage_key=validation_storage_key,
                 )
             )
-            if kb_repository is not None:
-                warning_total = (
-                    dropped_entity_count
-                    + dropped_relationship_count
-                    + stripped_property_count
-                    + len(extraction_stage_warnings)
-                ) or 1  # an unexplained empty extraction still counts once
-                kb_repository.record_document_warnings(
+
+            valid_entity_count = len(validation_report.valid_entities)
+            dropped_entity_count = len(validation_report.entity_errors)
+            dropped_relationship_count = len(validation_report.relationship_errors)
+            stripped_property_count = len(validation_report.warnings)
+            extraction_stage_warnings = list(extraction_result.warnings)
+            empty_extraction = valid_entity_count == 0
+            if empty_extraction:
+                ingestion_documents_empty_extraction_total.inc()
+            if (
+                empty_extraction
+                or dropped_entity_count
+                or dropped_relationship_count
+                or stripped_property_count
+                or extraction_stage_warnings
+            ):
+                logger.warning(
+                    "ingestion extraction warning stage=validate knowledge_base_id=%s "
+                    "source_document_id=%s valid_entities=%d dropped_entities=%d "
+                    "dropped_relationships=%d stripped_properties=%d empty=%s",
                     document.knowledge_base_id,
                     document.source_document_id,
-                    additional_count=warning_total,
-                    reasons=sample_reasons,
+                    valid_entity_count,
+                    dropped_entity_count,
+                    dropped_relationship_count,
+                    stripped_property_count,
+                    empty_extraction,
                 )
+                sample_reasons = _collect_extraction_warning_reasons(
+                    validation_report, extraction_stage_warnings
+                )
+                warning_references.append(
+                    ExtractionWarningReference(
+                        knowledge_base_id=document.knowledge_base_id,
+                        source_document_id=document.source_document_id,
+                        valid_entity_count=valid_entity_count,
+                        valid_relationship_count=len(validation_report.valid_relationships),
+                        dropped_entity_count=dropped_entity_count,
+                        dropped_relationship_count=dropped_relationship_count,
+                        stripped_property_count=stripped_property_count,
+                        empty_extraction=empty_extraction,
+                        sample_reasons=sample_reasons,
+                        validation_storage_key=validation_storage_key,
+                    )
+                )
+                if kb_repository is not None:
+                    warning_total = (
+                        dropped_entity_count
+                        + dropped_relationship_count
+                        + stripped_property_count
+                        + len(extraction_stage_warnings)
+                    ) or 1  # an unexplained empty extraction still counts once
+                    kb_repository.record_document_warnings(
+                        document.knowledge_base_id,
+                        document.source_document_id,
+                        additional_count=warning_total,
+                        reasons=sample_reasons,
+                    )
+        except Exception:
+            log_stage(
+                stage="validate",
+                kb_id=document.knowledge_base_id,
+                source_document_id=document.source_document_id,
+                started_at=started_at,
+                outcome="failed",
+            )
+            raise
+        log_stage(
+            stage="validate",
+            kb_id=document.knowledge_base_id,
+            source_document_id=document.source_document_id,
+            started_at=started_at,
+            outcome="empty" if empty_extraction else "success",
+        )
     if references:
         event_bus.publish(
             EntitiesValidatedEvent(
@@ -2982,6 +3228,7 @@ def handle_event(
     peer_stats_enabled: bool = False,
     kb_repository: KnowledgeBaseRepository | None = None,
     kb_deletion_stores: KbDeletionStores | None = None,
+    document_status_store: SourceDocumentStatusStore | None = None,
 ) -> int:
     """Handle a single event and return the number of processed documents."""
 
@@ -3038,6 +3285,7 @@ def handle_event(
             peer_stats_enabled=peer_stats_enabled,
             kb_repository=kb_repository,
             kb_deletion_stores=kb_deletion_stores,
+            document_status_store=document_status_store,
             is_cancelled=is_cancelled,
         )
         if workflow_tracker is not None:
@@ -3079,9 +3327,16 @@ def _dispatch_event(
     peer_stats_enabled: bool = False,
     kb_repository: KnowledgeBaseRepository | None = None,
     kb_deletion_stores: KbDeletionStores | None = None,
+    document_status_store: SourceDocumentStatusStore | None = None,
     is_cancelled: Callable[[], bool] | None = None,
 ) -> int:
     del delivery  # reserved for future stream offsets / dlq metadata
+    # BL-041: durable per-document status projection. Runs inside the retry/DLQ
+    # wrapper; transitions are monotonic + idempotent so replays are no-ops.
+    if document_status_store is not None:
+        project_document_status(event, document_status_store)
+    if isinstance(event, DocumentsExtractionWarningEvent):
+        return 0  # projection-only event; no pipeline stage follows
     if isinstance(event, DocumentsUploadedEvent):
         return len(ingestion_service.process_documents_uploaded(event))
     if isinstance(event, DocumentsParsedEvent):
@@ -3389,6 +3644,7 @@ async def drain_ingestion_events(
     graph_embeddings_enabled: bool = False,
     kb_repository: KnowledgeBaseRepository | None = None,
     kb_deletion_stores: KbDeletionStores | None = None,
+    document_status_store: SourceDocumentStatusStore | None = None,
     sleep: Callable[[float], "asyncio.Future[None] | object"] = asyncio.sleep,
 ) -> int:
     """Consume and process available ingestion events with retry/DLQ semantics."""
@@ -3457,6 +3713,7 @@ async def drain_ingestion_events(
                 peer_stats_enabled=peer_stats_enabled,
                 kb_repository=kb_repository,
                 kb_deletion_stores=kb_deletion_stores,
+                document_status_store=document_status_store,
             )
 
         dead_lettered = False
@@ -3564,6 +3821,7 @@ async def _drain_once(
         raw_record_store=deps.raw_record_store,
         kb_deletion_stores=deps.kb_deletion_stores,
         kb_repository=deps.kb_repository,
+        document_status_store=deps.document_status_store,
         observation_writer=deps.observation_writer,
         policy_service=deps.policy_service,
         policy_rules=deps.policy_rules,

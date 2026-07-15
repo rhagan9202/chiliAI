@@ -26,12 +26,12 @@
 | analytics.md | 33 | 0 | 0 | 33 | 0% |
 | api.md | 27 | 0 | 1 | 29 | 3% |
 | config.md | 15 | 0 | 0 | 15 | 0% |
-| database.md | 13 | 0 | 0 | 13 | 0% |
+| database.md | 12 | 0 | 1 | 13 | 7% |
 | embeddings.md | 12 | 0 | 0 | 12 | 0% |
 | events.md | 14 | 2 | 0 | 16 | 0% |
 | frontend.md | 24 | 0 | 2 | 26 | 7% |
 | graph.md | 20 | 0 | 0 | 20 | 0% |
-| ingestion.md | 25 | 0 | 10 | 35 | 28% |
+| ingestion.md | 23 | 0 | 12 | 35 | 34% |
 | knowledgebases.md | 13 | 0 | 0 | 13 | 0% |
 | llm.md | 17 | 0 | 0 | 17 | 0% |
 | monitoring.md | 20 | 0 | 0 | 20 | 0% |
@@ -40,11 +40,11 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 418 | 7 | 15 | 442 | 3% |
+| **Total** | 415 | 7 | 18 | 442 | 4% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
-> **Priority flag (ingestion):** the graph-corrupting relationship defects are fixed — `ingestion.30` (use the model's relationship output instead of fabricating Cartesian edges), `ingestion.31` (resolve endpoints onto cross-chunk-deduplicated survivors), `ingestion.32` (failure-event escape paths), and `ingestion.33` (full-digest document identity) are all done. `ingestion.34` (record-derived entities now stamped `source_kind="record"`) is done. `ingestion.35` (documents with zero valid entities silently marked ready) has its core fix shipped — empty/degraded extractions now emit a durable `DocumentsExtractionWarningEvent` and the validator strips hallucinated extra properties instead of dropping entities — but it stays `planned` pending its metrics (`ingestion.17`) and status-projection/API (`ingestion.18`) cross-edges. See [ingestion.md](ingestion.md) story 35.
+> **Priority flag (ingestion):** the graph-corrupting relationship defects are fixed — `ingestion.30` (use the model's relationship output instead of fabricating Cartesian edges), `ingestion.31` (resolve endpoints onto cross-chunk-deduplicated survivors), `ingestion.32` (failure-event escape paths, plus the 2026-07-13 coordinator-residue closure), and `ingestion.33` (full-digest document identity) are all done. `ingestion.34` (record-derived entities now stamped `source_kind="record"`) is done. `ingestion.18` (durable per-document `SourceDocumentStatusStore` projection + `GET /knowledgebases/{kb_id}/documents` status/drop-count/status-filter surface; frontend Ingestion Studio wiring split to a follow-on FE story) and `ingestion.35` (documents with zero valid entities now surface `EXTRACTED_EMPTY` via the projection; only its Prometheus counters split out to `ingestion.17`/BL-043) both landed 2026-07-13 as BL-041 (Sprint 2026-26). Full-stack manual + `-m integration` verification for BL-041 is pending — the dev-stack Docker environment was unavailable in the implementing session. See [ingestion.md](ingestion.md) stories 18 and 35.
 <!-- BEGIN: ready-set -->
 - [_cicd.01] _cicd — size S — prereqs done
 - [api.26] api — size S — prereqs done
@@ -53,6 +53,7 @@
 - [_cicd.02] _cicd — size M — prereqs done
 - [_cicd.03] _cicd — size M — prereqs done
 - [_cicd.04] _cicd — size M — prereqs done
+- [_cicd.12] _cicd — size M — prereqs done
 - [_infra.02] _infra — size M — prereqs done
 - [_security.09] _security — size M — prereqs done
 - [_security.11] _security — size M — prereqs done
@@ -65,7 +66,6 @@
 - [config.02] config — size M — prereqs done
 - [config.03] config — size M — prereqs done
 - [database.03] database — size M — prereqs done
-- [database.04] database — size M — prereqs done
 - [database.05] database — size M — prereqs done
 - [database.07] database — size M — prereqs done
 - [embeddings.01] embeddings — size M — prereqs done
@@ -74,9 +74,9 @@
 - [frontend.10] frontend — size M — prereqs done
 - [frontend.13] frontend — size M — prereqs done
 - [frontend.14] frontend — size M — prereqs done
-- [ingestion.35] ingestion — size M — prereqs done
-- [knowledgebases.03] knowledgebases — size M — prereqs done
-- …23 more
+- [graph.01] graph — size M — prereqs done
+- [graph.02] graph — size M — prereqs done
+- …24 more
 <!-- END: ready-set -->
 
 ## Critical path

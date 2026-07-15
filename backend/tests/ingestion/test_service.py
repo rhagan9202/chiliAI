@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from hashlib import sha256
 
 import httpx
 import pytest
+from prometheus_client import REGISTRY
 
 from events.adapters.in_memory import InMemoryEventBus
 from events.protocols import DlqErrorInfo, EventDelivery
@@ -700,3 +702,93 @@ def test_process_documents_uploaded_isolates_missing_object_failure() -> None:
     published_types = [type(event) for event in event_bus.published_events]
     assert DocumentsFailedEvent in published_types
     assert DocumentsParsedEvent in published_types
+
+
+def _has_stage_field(text: str, key: str, value: str) -> bool:
+    """Match a structured field under either renderer: console (key=value) or JSON."""
+    return f"{key}={value}" in text or f'"{key}": "{value}"' in text
+
+
+def test_ingest_task_emits_parse_stage_log_with_success_outcome(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    service, _event_bus, object_store = _service()
+    storage_key = "knowledgebases/kb-1/documents/doc-1/claims.json"
+    object_store.put_bytes(
+        storage_key, b'{"claim_id": "42"}', media_type="application/json"
+    )
+
+    with caplog.at_level(logging.INFO, logger="chili.ingestion.stage"):
+        outcome = service.ingest_task(
+            IngestionTask(
+                knowledge_base_id="kb-1",
+                source_document=SourceDocument(
+                    id="doc-1",
+                    source_type=SourceType.FILE_UPLOAD,
+                    filename="claims.json",
+                ),
+                storage_key=storage_key,
+                content_type="application/json",
+            ),
+            correlation_id="corr-stage-log",
+        )
+
+    assert isinstance(outcome, ParseResult)
+    assert _has_stage_field(caplog.text, "stage", "parse")
+    assert _has_stage_field(caplog.text, "kb_id", "kb-1")
+    assert _has_stage_field(caplog.text, "source_document_id", "doc-1")
+    assert _has_stage_field(caplog.text, "outcome", "success")
+    assert "duration_ms" in caplog.text
+
+
+def test_ingest_task_failure_increments_failed_counter_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    service, event_bus, _object_store = _service()
+    labels = {"stage": "parse", "error_class": "RemoteFetchError"}
+    before = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
+    uploaded = DocumentsUploadedEvent(
+        correlation_id="corr-failed-counter",
+        documents=[
+            DocumentReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-failed-counter",
+                filename=None,
+                content_type=None,
+                storage_key=None,
+                uri=None,
+                document_format=None,
+                size_bytes=None,
+            )
+        ],
+    )
+
+    with caplog.at_level(logging.INFO, logger="chili.ingestion.stage"):
+        outcomes = service.process_documents_uploaded(uploaded)
+
+    assert isinstance(outcomes[0], DocumentParseFailure)
+    assert outcomes[0].error_type == "RemoteFetchError"
+    assert isinstance(event_bus.published_events[-1], DocumentsFailedEvent)
+    after = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
+    assert after == before + 1.0
+    assert _has_stage_field(caplog.text, "stage", "parse")
+    assert _has_stage_field(caplog.text, "outcome", "failed")
+
+
+def test_register_documents_duplicate_increments_dedup_counter() -> None:
+    service, _event_bus, _object_store = _service()
+    submission = DocumentSubmission(
+        filename="claims.json",
+        content=b'{"claim_id": "dedup-counter"}',
+        content_type="application/json",
+    )
+    labels = {"kind": "document"}
+
+    first = service.register_documents("kb-dedup", [submission])
+    baseline = REGISTRY.get_sample_value("ingestion_dedup_suppressed_total", labels) or 0.0
+    second = service.register_documents("kb-dedup", [submission])
+
+    assert first[0].enqueued is True
+    assert second[0].enqueued is False
+    after = REGISTRY.get_sample_value("ingestion_dedup_suppressed_total", labels) or 0.0
+    assert after == baseline + 1.0

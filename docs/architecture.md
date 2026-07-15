@@ -179,7 +179,7 @@ The monorepo produces the following deployable containers:
 | **Graph Database** | in-memory / Neo4j | Persists knowledge graphs. Accessed exclusively through the `graph` module's abstract repository protocol. |
 | **Vector Store** | in-memory / Qdrant | Persists embeddings. Accessed exclusively through the `vectorstore` module's abstract protocol. |
 | **Object Store** | S3 / MinIO / local FS | Persists raw uploaded files for audit trail and reprocessing. Accessed through an abstract storage protocol. |
-| **Postgres / TimescaleDB** | PostgreSQL + TimescaleDB extension | Persists structured records, time-series observations, entity metric history (hypertable), current entity metrics, risk score history, and alert history. Accessed exclusively through the `database` module's `ConnectionProvider` protocol and Alembic-managed schema. |
+| **Postgres / TimescaleDB** | PostgreSQL + TimescaleDB extension | Persists structured records, time-series observations, entity metric history (hypertable), current entity metrics, risk score history, alert history, cases, policy items, conversations, `entity_derived_signals`, scorecard runs, and the per-document ingestion status projection (`source_document_status`). Accessed exclusively through the `database` module's `ConnectionProvider` protocol and Alembic-managed schema. |
 
 ### Communication patterns
 
@@ -257,11 +257,15 @@ backend/
 │   ├── extractor.py            # Entity & relationship extraction (uses LLM adapter)
 │   ├── validator.py            # Source validation
 │   ├── orchestrators/          # Batch, format resolution, and source-document helpers
-│   └── parsers/                # Format-specific parsers
-│       ├── registry.py         # ParserRegistry, create_default_registry
-│       ├── protocols.py
-│       ├── pdf.py, docx.py, html.py, txt.py, json.py, csv.py, xlsx.py
-│       └── remote.py           # Fetch-and-parse for remote URLs
+│   ├── parsers/                # Format-specific parsers
+│   │   ├── registry.py         # ParserRegistry, create_default_registry
+│   │   ├── protocols.py
+│   │   ├── pdf.py, docx.py, html.py, txt.py, json.py, csv.py, xlsx.py
+│   │   └── remote.py           # Fetch-and-parse for remote URLs
+│   └── adapters/                # Durable per-document status projection (BL-041)
+│       ├── protocols.py        # SourceDocumentStatusStore (apply/get_many/list/delete_by_kb/delete_by_document)
+│       ├── in_memory.py        # InMemorySourceDocumentStatusStore
+│       └── postgres.py         # PostgresSourceDocumentStatusStore (source_document_status table, migration 0009_document_status)
 ├── graph/                      # Graph database access
 │   ├── __init__.py
 │   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
@@ -280,8 +284,10 @@ backend/
 ├── embeddings/                 # Embedding generation
 │   ├── __init__.py
 │   ├── service.py, service_models.py, protocols.py, models.py, exceptions.py
+│   ├── metrics.py              # Prometheus usage counters + token estimation (BL-019)
 │   └── adapters/
 │       ├── in_memory.py
+│       ├── cache_in_memory.py  # Per-process LRU embedding cache (BL-019)
 │       ├── openai_adapter.py
 │       └── sentence_transformers_adapter.py
 ├── rag/                        # Retrieval-augmented generation pipeline
@@ -794,6 +800,19 @@ Triggered by `RiskScoredEvent`. Writes the full risk assessment to `risk_score_h
 
 Triggered by `AlertsCreatedEvent`. Writes each alert to `alert_history` for durable audit. Also snapshots `active_alert_count`, `last_alert_at`, and `last_alert_severity` onto the affected graph entities.
 
+**Flow 5 — Document status projection** (BL-041)
+
+Every drained ingestion event passes through the worker's `_dispatch_event` (`agent/coordinator.py`), which calls `agent.status_projection.project_document_status(event, document_status_store)` before/alongside its existing handler dispatch. `project_document_status` maps four subscribed event types onto a monotonic `IngestionStatus` transition per document and applies it via `SourceDocumentStatusStore.apply()`:
+
+| Event | Status transition |
+|---|---|
+| `DocumentsUploadedEvent` | `PENDING` |
+| `DocumentsParsedEvent` | `PARSED` |
+| `DocumentsFailedEvent` | `FAILED` (carries `error_message`) |
+| `DocumentsExtractionWarningEvent` | `EXTRACTED_EMPTY` when `document.empty_extraction` is `True`, else `VALIDATED` (carries drop counts + bounded `sample_reasons`) |
+
+`EXTRACTED_EMPTY` is a status value only — no new event type was introduced, so the hand-maintained event codec registry (`events/codec.py`) is untouched. The store's `apply()` is monotonic on `STATUS_RANK` (`ingestion/models.py`): a transition only advances `current_status` when its rank is strictly greater than the stored rank, so out-of-order or redelivered events (e.g. a stale `PARSED` arriving after `FAILED`) are no-ops. `last_error` is the one field that also refreshes on a same-or-higher-rank `FAILED` redelivery (so a second, newer failure message replaces the first), while a lower-rank event after `FAILED` never touches it. Drop counts and `sample_reasons` are absolute values that overwrite whenever the transition carries them, independent of rank. Both the in-memory (`ingestion/adapters/in_memory.py`) and Postgres (`ingestion/adapters/postgres.py`, `source_document_status` table via migration `0009_document_status`) adapters implement identical semantics — the Postgres adapter enforces them with a single `INSERT … ON CONFLICT DO UPDATE` guarded by `CASE`/`GREATEST` expressions rather than a read-then-write race. `GET /knowledgebases/{kb_id}/documents` reads this projection (`current_status`, `last_error`, drop counts, `drop_sample_reasons`) per document and supports `?status=` filtering; KB deletion purges the projection via `delete_by_kb`, and single-document deletion / changed-content reupload purge the superseded row via `delete_by_document` (§7.1 carries the full KB-cascade detail).
+
 #### Worker loop resilience + health honesty
 
 The `run_worker` loop wraps each drain iteration (workflow reconcile + `drain_ingestion_events`) in a resilience guard: a transient failure (e.g. a Redis outage in `consume`/`ack`, or the reconcile) is recorded, logged, and followed by a short backoff (`DRAIN_ERROR_BACKOFF_SECONDS`) before continuing — it never crashes the worker process (only `CancelledError` ends the loop, for graceful shutdown). The drain itself is factored into `_drain_once` so the loop body stays small enough to guard.
@@ -840,9 +859,9 @@ Every `Entity` and `Relationship` produced by the document pipeline now carries 
 
 **KB delete cascade (207 sequence) + workflow-busy 409 guard**
 
-`DELETE /knowledgebases/{id}` executes a complete cascade across **every** per-KB durable store, then deletes KB repository metadata. The single authoritative ordered step list is `knowledgebases.cleanup.kb_deletion_steps` (operating on a `knowledgebases.cleanup.KbDeletionStores` bundle): graph namespace (`GraphService.delete_knowledge_base`), vector namespace (`VectorService.delete_knowledge_base`), `raw_records` + `record_submissions` (`RawRecordStore.delete_by_kb`), peerstats `entity_derived_signals`, `risk_score_history`, `observations`, `alert_history`, `entity_metric_history` + `entity_metrics_current`, `conversations`, `cases`, `policy_items`, evidence packs (each via its repository's `delete_by_kb`), and object-store payloads. The API assembles the bundle from DI (`api._kb_cleanup.get_kb_deletion_stores`) and each step runs best-effort (`_run`); any failure surfaces in the 207 body and flags the KB `pending_cleanup`. On a 207, the worker consumes the `KnowledgeBaseDeletedEvent(cleanup_pending=True)` and **replays the same `kb_deletion_steps`** (its bundle built in `build_worker_dependencies`), then deletes KB metadata once every store is purged — so the cascade lives in exactly one place and the sync + retry paths can never diverge. If an active workflow run exists for the KB at delete time the API returns 409 to prevent mid-pipeline teardown.
+`DELETE /knowledgebases/{id}` executes a complete cascade across **every** per-KB durable store, then deletes KB repository metadata. The single authoritative ordered step list is `knowledgebases.cleanup.kb_deletion_steps` (operating on a `knowledgebases.cleanup.KbDeletionStores` bundle): graph namespace (`GraphService.delete_knowledge_base`), vector namespace (`VectorService.delete_knowledge_base`), `raw_records` + `record_submissions` (`RawRecordStore.delete_by_kb`), peerstats `entity_derived_signals`, `risk_score_history`, `observations`, `alert_history`, `entity_metric_history` + `entity_metrics_current`, `conversations`, `cases`, `policy_items`, evidence packs, scorecard runs (each via its repository's `delete_by_kb`), the document-status projection (`SourceDocumentStatusStore.delete_by_kb`), and object-store payloads. The API assembles the bundle from DI (`api._kb_cleanup.get_kb_deletion_stores`) and each step runs best-effort (`_run`); any failure surfaces in the 207 body and flags the KB `pending_cleanup`. On a 207, the worker consumes the `KnowledgeBaseDeletedEvent(cleanup_pending=True)` and **replays the same `kb_deletion_steps`** (its bundle built in `build_worker_dependencies`), then deletes KB metadata once every store is purged — so the cascade lives in exactly one place and the sync + retry paths can never diverge. If an active workflow run exists for the KB at delete time the API returns 409 to prevent mid-pipeline teardown.
 
-`GraphService` and `VectorService` additionally expose `delete_by_source_document(kb_id, doc_id)` for document-level (rather than KB-level) provenance cleanup.
+`GraphService` and `VectorService` additionally expose `delete_by_source_document(kb_id, doc_id)` for document-level (rather than KB-level) provenance cleanup. `SourceDocumentStatusStore` similarly exposes `delete_by_document(kb_id, doc_id)`, called from the single-document delete endpoint so a status-filtered `GET .../documents?status=...` list's `total` never outlives the document it counted. Because an in-flight pipeline event can still re-create a status row for an already-deleted document (an orphan resurrection race), the status-filtered listing itself defends against this: it excludes any row with no matching registered document from both `items` and `total` and opportunistically reaps it via `delete_by_document`, so an orphan never permanently inflates `total`.
 
 **Document re-upload semantics**
 
@@ -936,8 +955,8 @@ Knowledge bases are the core organizational unit for ingested content and their 
 | **Add documents** | `POST /knowledgebases/{id}/documents` | Upload to object store → parse → chunk → extract entities → upsert graph → embed → index | Incremental — merges with existing graph |
 | **View KB summary** | `GET /knowledgebases/{id}` | Read persisted metadata → merge live graph/object-store signals → persist projected status/counts | Returns document count, entity/relationship counts, and indexing status from the live KB projection |
 | **List documents** | `GET /knowledgebases/{id}/documents` | Read persisted document metadata → derive status from KB projection | Paginated list with persisted/derived ingestion status per document |
-| **Remove document** | `DELETE /knowledgebases/{id}/documents/{doc_id}` | Delete document metadata and object-store payloads | Graph/vector cascade cleanup via `delete_by_source_document` is called on the re-upload (changed-content) path; it is not yet wired to the document-delete endpoint |
-| **Delete KB** | `DELETE /knowledgebases/{id}` | Cascade-purge every per-KB store (graph, vector, raw_records+submissions, derived signals, risk history, observations, alert history, metrics, conversations, cases, policy, evidence, object store) → delete KB metadata → publish `kb.delete`. Shared step list: `knowledgebases.cleanup.kb_deletion_steps` (API + worker retry replay the same cascade) | Full 207 cascade implemented; workflow-busy 409 guard prevents deletion during active pipeline run |
+| **Remove document** | `DELETE /knowledgebases/{id}/documents/{doc_id}` | Delete document metadata, object-store payloads, and the document's row (if any) in the durable status projection (`SourceDocumentStatusStore.delete_by_document`) | Graph/vector cascade cleanup via `delete_by_source_document` is called on the re-upload (changed-content) path; it is not yet wired to the document-delete endpoint |
+| **Delete KB** | `DELETE /knowledgebases/{id}` | Cascade-purge every per-KB store (graph, vector, raw_records+submissions, derived signals, risk history, observations, alert history, metrics, conversations, cases, policy, evidence, scorecard runs, document-status projection, object store) → delete KB metadata → publish `kb.delete`. Shared step list: `knowledgebases.cleanup.kb_deletion_steps` (API + worker retry replay the same cascade) | Full 207 cascade implemented; workflow-busy 409 guard prevents deletion during active pipeline run |
 | **Rebuild RAG index** | Planned | Re-embed all content → replace vector index | No current public route |
 
 ### 7.2 Metadata projection and lifecycle boundaries
@@ -949,7 +968,7 @@ The API owns the lightweight KB/document metadata projection through the `Knowle
 
 Graph entities, relationships, and metrics remain owned by the `graph` module. KB list/detail/document reads call projection helpers that merge persisted KB metadata with live graph metrics and graph-build artifacts, then write changed status/count fields back through the repository. SSE workspace snapshots use the same projection path for `knowledge_base_statuses`, avoiding seeded demo state for live KB status.
 
-Deleting a KB executes a full cascade across every per-KB durable store — graph, vector, `raw_records` + `record_submissions`, peerstats `entity_derived_signals`, `risk_score_history`, `observations`, `alert_history`, `entity_metric_history`/`entity_metrics_current`, `conversations`, `cases`, `policy_items`, evidence packs, and object-store payloads — then KB repository metadata. The ordered step list lives in `knowledgebases.cleanup.kb_deletion_steps` (shared by the API endpoint and the worker's retry handler, so the two cannot drift); adding a new per-KB store is one field on `KbDeletionStores` + one step. A workflow-busy 409 guard prevents deletion while an active pipeline run is in progress. Document-level (single-document) graph/vector cleanup is supported via `delete_by_source_document(kb_id, doc_id)` on both graph and vector protocols.
+Deleting a KB executes a full cascade across every per-KB durable store — graph, vector, `raw_records` + `record_submissions`, peerstats `entity_derived_signals`, `risk_score_history`, `observations`, `alert_history`, `entity_metric_history`/`entity_metrics_current`, `conversations`, `cases`, `policy_items`, evidence packs, scorecard runs, the document-status projection, and object-store payloads — then KB repository metadata. The ordered step list lives in `knowledgebases.cleanup.kb_deletion_steps` (shared by the API endpoint and the worker's retry handler, so the two cannot drift); adding a new per-KB store is one field on `KbDeletionStores` + one step. A workflow-busy 409 guard prevents deletion while an active pipeline run is in progress. Document-level (single-document) cleanup purges graph/vector provenance via `delete_by_source_document(kb_id, doc_id)` and the status-projection row via `SourceDocumentStatusStore.delete_by_document(kb_id, doc_id)`.
 
 ### 7.3 Provenance tracking
 
@@ -1437,7 +1456,8 @@ Adapter selection is driven by environment configuration, not code changes.
   - `graph_query_duration_seconds` — Graph DB query latency
   - `alerts_generated_total` — Alerts created, by entity type and severity
   - `knowledgebase_documents_total` — Documents per KB
-- **Export**: `/metrics` endpoint on API container; Prometheus scrapes it
+  - Implemented today (BL-043 and prior): `pipeline_stage_duration_seconds` / `pipeline_errors_total` (`monitoring/metrics.py`), `ingestion_documents_failed_total{stage,error_class}` / `ingestion_documents_empty_extraction_total` / `ingestion_dedup_suppressed_total{kind}` (`shared/metrics.py`, the contracts-library home for counters incremented from more than one module — precedent: `shared/logging.py`, `shared/tracing.py`)
+- **Export**: `GET /metrics` on the API container (`api/middleware/metrics.py`) **and** `GET /metrics` on the worker's health server (`agent/health.py`, port `8001` by default). These are separate `prometheus_client` registries in separate processes — a worker-side increment is invisible on the API's endpoint and vice versa, so a scrape config must target both.
 
 ### 11.3 Distributed tracing
 
@@ -1554,7 +1574,7 @@ Adapter selection is driven by environment configuration, not code changes.
 
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
-| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion (LLM-driven `LlmDocumentExtractor` + Ollama adapter + `FallbackLlmClient`; registered PDF/DOCX/HTML/TXT/JSON/CSV/XLSX parsers), graph/vector/embedding/LLM/RAG services, analytics modules (timeseries/gnn/risk/explainability/metrics), monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, `database/` (psycopg 3 + Alembic + TimescaleDB) connection provider, `records/` structured-ingestion pipeline (raw_records + embed+index step + NPPES/DE-SynPUF feeds), KB delete cascade purging every per-KB store (graph/vector/raw_records+submissions/derived signals/risk history/observations/alert history/metrics/conversations/cases/policy/evidence/object store; shared step list in `knowledgebases.cleanup`, replayed by both the API and the worker) with 207 partial-failure + complete worker retry, document re-upload idempotency with `replaced_document_id`, `delete_by_source_document` on graph and vector protocols, `delete_by_kb` on raw records, provenance metadata constants (`shared/provenance.py`), Tennessee subset tooling (`tools/sample_data/build_tennessee_subset.py`), and Plan C per-consumer Postgres adapters with write-back flows in `agent/coordinator.py` | Add a production-grade KB metadata adapter/migration path, wire `delete_by_source_document` to the document-delete endpoint, add production-mode adapter guardrails, and add audit-grade workflow history |
+| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion (LLM-driven `LlmDocumentExtractor` + Ollama adapter + `FallbackLlmClient`; registered PDF/DOCX/HTML/TXT/JSON/CSV/XLSX parsers), graph/vector/embedding/LLM/RAG services, analytics modules (timeseries/gnn/risk/explainability/metrics), monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, `database/` (psycopg 3 + Alembic + TimescaleDB) connection provider, `records/` structured-ingestion pipeline (raw_records + embed+index step + NPPES/DE-SynPUF feeds), KB delete cascade purging every per-KB store (graph/vector/raw_records+submissions/derived signals/risk history/observations/alert history/metrics/conversations/cases/policy/evidence/scorecard runs/document-status projection/object store; shared step list in `knowledgebases.cleanup`, replayed by both the API and the worker) with 207 partial-failure + complete worker retry, document re-upload idempotency with `replaced_document_id`, `delete_by_source_document` on graph and vector protocols, `delete_by_document` on the document-status store (called from the single-document delete endpoint), `delete_by_kb` on raw records, provenance metadata constants (`shared/provenance.py`), Tennessee subset tooling (`tools/sample_data/build_tennessee_subset.py`), and Plan C per-consumer Postgres adapters with write-back flows in `agent/coordinator.py` | Add a production-grade KB metadata adapter/migration path, wire `delete_by_source_document` to the document-delete endpoint, add production-mode adapter guardrails, and add audit-grade workflow history |
 | `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, live KB-scoped Investigation Workbench, Case Management, Policy Intelligence, RAG Chat, read-only Configuration summary, and realtime SSE hook | Complete config save endpoint integration, add dedicated workflow/evidence navigation surfaces, and production UX/performance polish |
 | `docs/` | Architecture, onboarding guide, security checklist, live module backlogs, curated project planning, superpowers plans/specs, wiki, ledger, and archived historical material | Keep active docs synchronized with implementation and archive stale snapshots |
 | `infra/` | Docker Compose, flat Kubernetes manifests, and Helm chart | Add cloud-provider Terraform/Pulumi and production hardening as needed |

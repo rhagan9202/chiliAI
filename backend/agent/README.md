@@ -10,6 +10,10 @@ python -m agent.coordinator   # starts the Redis Streams consumer loop
 
 The coordinator registers one handler per event type and dispatches to it inside a retry/DLQ wrapper. Workflow state is written through `WorkflowRunStoreProtocol` so API and worker containers share lifecycle updates when `CHILI_WORKFLOW_RUN_STORE_BACKEND=redis`.
 
+## Health & metrics endpoint
+
+The worker starts a lightweight async HTTP server (`agent/health.py::start_health_server`) alongside the Redis Streams consumer loop, serving `GET /health` (JSON liveness/progress payload) on port `8001` by default (`agent.models.HealthSettings`). The health server also serves `GET /metrics` (Prometheus text exposition of the default `prometheus_client` registry) on the same port. Worker-side counters — `pipeline_stage_duration_seconds`, `pipeline_errors_total` (`monitoring/metrics.py`), `ingestion_documents_failed_total`, `ingestion_documents_empty_extraction_total` (`shared/metrics.py`) — are scraped here, not from the API gateway's `/metrics`: each process exposes only its own registry (no cross-process aggregation). Like `/health`, the endpoint is unauthenticated; the dev compose publishes it on host port `8001` so operators can scrape it directly (`curl :8001/metrics`).
+
 ## Domain hot-swap convergence (`config.updated`)
 
 The worker builds all of its config-derived dependencies into a single
@@ -28,6 +32,21 @@ change the `events` backend/URI across a hot-swap (transport changes require a
 restart). See `docs/architecture.md` §9.3.
 
 ## Pipeline Handlers
+
+### Document status projection (BL-041)
+
+Every dispatch of `documents.uploaded` / `documents.parsed` / `documents.failed` /
+`documents.extraction_warning` also runs `agent.status_projection.project_document_status`
+at the top of `_dispatch_event`, inside the same retry/DLQ wrapper as the pipeline
+stage itself — so a projection failure is retried/dead-lettered exactly like any
+other handler failure. It writes a monotonic `DocumentStatusTransition` (via
+`WorkerDependencies.document_status_store: ingestion.adapters.protocols.SourceDocumentStatusStore`)
+so replayed/redelivered events are no-ops rather than regressing status.
+`documents.extraction_warning` is projection-only (mapped onto `VALIDATED` or
+`EXTRACTED_EMPTY`) and short-circuits `_dispatch_event` with no further pipeline
+stage. `build_document_status_store` selects `PostgresSourceDocumentStatusStore`
+when a database is configured, else `InMemorySourceDocumentStatusStore`
+(`ingestion/adapters/`).
 
 ### handle_documents_uploaded
 
@@ -78,7 +97,7 @@ Because a run is created synchronously at submit, the KB is **busy** (`ensure_kb
 
 `POST /workflows/{id}/cancel` (analyst role) marks a non-terminal run `CANCELLED`; `GET /workflows/{id}` returns a single run; `GET /workflows` lists them (viewer role). Cancellation is **cooperative**:
 
-- The tracker honours it at each event boundary (`begin_event` skips a cancelled run's remaining steps).
+- The tracker honours it at each event boundary (`begin_event` skips a cancelled run's remaining steps). A **`FAILED`** run does *not* gate processing: a per-document `documents.failed` event marks the run failed while sibling documents in the same batch are still in flight, and their successor events keep processing with the run record frozen at `FAILED` (BL-041 failure isolation). Only `CANCELLED` (user intent) and `COMPLETED` (replay safety) skip.
 - Long handlers (`handle_graph_updated_for_analytics`, `handle_records_ingested`) re-check `WorkflowEventTracker.is_run_cancelled` at loop/stage boundaries and stop early — a single in-flight synchronous stage still finishes.
 - Tracker writes use a status-only compare-and-set (`update_run_if_current` with `expected_statuses={QUEUED, RUNNING}`), so a concurrent cancel is never clobbered back to `RUNNING`/`COMPLETED`.
 

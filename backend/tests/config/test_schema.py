@@ -678,12 +678,18 @@ class TestEmbeddingsConfig:
         assert config.dimensions == 384
         assert config.batch_size == 32
         assert config.api_key_env_var is None
+        assert config.cache_enabled is True
+        assert config.cache_max_entries == 4096
 
     def test_dimensions_and_batch_size_must_be_positive(self) -> None:
         with pytest.raises(ValidationError, match="dimensions"):
             EmbeddingsConfig(dimensions=0)
         with pytest.raises(ValidationError, match="batch_size"):
             EmbeddingsConfig(batch_size=0)
+
+    def test_cache_max_entries_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError, match="cache_max_entries"):
+            EmbeddingsConfig(cache_max_entries=0)
 
 
 class TestObjectStoreConfig:

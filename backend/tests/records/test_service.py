@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from prometheus_client import REGISTRY
 
 from config.schema import RecordEntityMapping, RecordFeedConfig, RecordsConfig
 from events.adapters.in_memory import InMemoryEventBus
@@ -244,3 +245,26 @@ def test_register_records_dedup_is_row_order_independent() -> None:
     assert first.duplicate is False
     assert second.duplicate is True
     assert second.accepted_count == 0
+
+
+def test_register_records_duplicate_increments_dedup_counter() -> None:
+    store = InMemoryRawRecordStore()
+    bus = InMemoryEventBus()
+    service = create_records_service(
+        store, event_bus=bus, records_config=_records_config()
+    )
+    submission = RecordSubmission(
+        feed_name="claims_feed",
+        rows=[{"claim_id": "c-dedup-1", "amount": "10"}],
+        source_type="api_push",
+    )
+    labels = {"kind": "record_batch"}
+
+    first = service.register_records("kb-dedup", submission)
+    baseline = REGISTRY.get_sample_value("ingestion_dedup_suppressed_total", labels) or 0.0
+    second = service.register_records("kb-dedup", submission)
+
+    assert first.duplicate is False
+    assert second.duplicate is True
+    after = REGISTRY.get_sample_value("ingestion_dedup_suppressed_total", labels) or 0.0
+    assert after == baseline + 1.0

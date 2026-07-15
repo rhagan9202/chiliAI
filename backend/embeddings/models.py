@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from typing import Literal, cast
 
@@ -49,6 +50,7 @@ class EmbeddingMetadata(BaseModel):
     dimensions: int = Field(gt=0)
     provider: str
     created_at: datetime = Field(default_factory=utc_now)
+    total_tokens: int | None = Field(default=None, ge=0)
 
 
 class EmbeddingVector(BaseModel):
@@ -104,6 +106,37 @@ class GraphEmbeddingStatus(BaseModel):
     failure_message: str | None = None
 
 
+class CachedEmbedding(BaseModel):
+    """A cached text-channel embedding with its producing model identity."""
+
+    vector: list[float]
+    model_name: str
+    provider: str
+    dimensions: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _validate_vector(self) -> CachedEmbedding:
+        if not self.vector:
+            raise ValueError("CachedEmbedding vector must be non-empty.")
+        if len(self.vector) != self.dimensions:
+            raise ValueError("CachedEmbedding vector length must match dimensions.")
+        return self
+
+
+def build_embedding_cache_key(
+    *, namespace: str, model_name: str, content: str
+) -> str:
+    """Build a collision-resistant cache key for one text + model identity."""
+
+    digest = hashlib.sha256()
+    digest.update(namespace.encode("utf-8"))
+    digest.update(b"\x1f")
+    digest.update(model_name.encode("utf-8"))
+    digest.update(b"\x1f")
+    digest.update(content.encode("utf-8"))
+    return digest.hexdigest()
+
+
 class EmbeddingResult(BaseModel):
     """Internal embedding batch result returned by an embedder adapter."""
 
@@ -145,6 +178,7 @@ class EmbeddingResult(BaseModel):
 
 
 __all__ = [
+    "CachedEmbedding",
     "EmbeddingChannel",
     "EmbeddingItem",
     "EmbeddingMetadata",
@@ -153,4 +187,5 @@ __all__ = [
     "EmbeddingVector",
     "GraphEmbeddingBatch",
     "GraphEmbeddingStatus",
+    "build_embedding_cache_key",
 ]

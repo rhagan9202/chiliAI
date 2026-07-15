@@ -47,7 +47,24 @@ class IngestionStatus(str, Enum):
     CHUNKED = "chunked"
     EXTRACTED = "extracted"
     VALIDATED = "validated"
+    EXTRACTED_EMPTY = "extracted_empty"
     FAILED = "failed"
+
+
+# Monotonic ordering for the durable per-document status projection (BL-041).
+# A transition only changes the stored status when its rank is strictly
+# greater, so a stale `parsing` arriving after `failed` is ignored and event
+# redelivery is a no-op. Gaps of 10 leave room for future stages.
+STATUS_RANK: dict[IngestionStatus, int] = {
+    IngestionStatus.PENDING: 0,
+    IngestionStatus.PARSING: 10,
+    IngestionStatus.PARSED: 20,
+    IngestionStatus.CHUNKED: 30,
+    IngestionStatus.EXTRACTED: 40,
+    IngestionStatus.VALIDATED: 50,
+    IngestionStatus.EXTRACTED_EMPTY: 60,
+    IngestionStatus.FAILED: 70,
+}
 
 
 class SourceDocument(BaseModel):
@@ -67,6 +84,39 @@ class SourceDocument(BaseModel):
     processed_at: datetime | None = None
     error_detail: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class DocumentStatusTransition(BaseModel):
+    """One projected status observation for a source document.
+
+    ``None`` count/reason fields mean "leave the stored value unchanged";
+    populated fields carry absolute values from the validation report and
+    overwrite (idempotent on redelivery).
+    """
+
+    knowledge_base_id: str
+    source_document_id: str
+    status: IngestionStatus
+    error_message: str | None = None
+    dropped_entity_count: int | None = Field(default=None, ge=0)
+    dropped_relationship_count: int | None = Field(default=None, ge=0)
+    sample_reasons: list[str] | None = None
+    occurred_at: datetime = Field(default_factory=utc_now)
+
+
+class SourceDocumentStatusRecord(BaseModel):
+    """Durable current-status projection row for a source document."""
+
+    knowledge_base_id: str
+    source_document_id: str
+    current_status: IngestionStatus
+    status_rank: int = Field(ge=0)
+    last_error: str | None = None
+    dropped_entity_count: int = Field(default=0, ge=0)
+    dropped_relationship_count: int = Field(default=0, ge=0)
+    sample_reasons: list[str] = Field(default_factory=list)
+    first_event_at: datetime
+    updated_at: datetime
 
 
 class StructuredRecord(BaseModel):
@@ -249,13 +299,16 @@ __all__ = [
     "Chunk",
     "ChunkMetadata",
     "DocumentFormat",
+    "DocumentStatusTransition",
     "ExtractionEvidence",
     "ExtractionResult",
     "IngestionStatus",
     "ParsedDocument",
     "ParserWarning",
     "SourceDocument",
+    "SourceDocumentStatusRecord",
     "SourceType",
+    "STATUS_RANK",
     "StructuredRecord",
     "TextSpan",
     "ValidationReport",

@@ -1,4 +1,10 @@
-"""Lightweight async health-check HTTP server for the worker process."""
+"""Lightweight async health-check and metrics HTTP server for the worker process.
+
+Serves ``GET /health`` (JSON liveness/progress payload) and ``GET /metrics``
+(Prometheus exposition of the default registry). The worker increments its
+pipeline metrics in-process, so this endpoint — not the API gateway's
+``/metrics`` — is where worker-side counters are scraped.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +12,8 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
+
+from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 
 from agent.models import HealthSettings
 from shared.utils import utc_now
@@ -17,6 +25,8 @@ __all__ = [
 ]
 
 logger = logging.getLogger("chili.worker.health")
+
+_JSON_CONTENT_TYPE = "application/json"
 
 
 class HealthState:
@@ -162,15 +172,14 @@ async def _handle_client(
             if not header_line or header_line in (b"\r\n", b"\n"):
                 break
 
-        response_body, status_line = _route_request(request_line, state)
-        body_bytes = response_body.encode("utf-8")
+        response_body, status_line, content_type = _route_request(request_line, state)
         response = (
             f"HTTP/1.1 {status_line}\r\n"
-            "Content-Type: application/json\r\n"
-            f"Content-Length: {len(body_bytes)}\r\n"
+            f"Content-Type: {content_type}\r\n"
+            f"Content-Length: {len(response_body)}\r\n"
             "Connection: close\r\n"
             "\r\n"
-        ).encode("ascii") + body_bytes
+        ).encode("ascii") + response_body
         writer.write(response)
         await writer.drain()
     except Exception:  # noqa: BLE001 - guard against transport-layer surprises
@@ -183,27 +192,31 @@ async def _handle_client(
             pass
 
 
-def _route_request(request_line: bytes, state: HealthState) -> tuple[str, str]:
-    """Return the response body and HTTP status line for a single request."""
+def _route_request(
+    request_line: bytes, state: HealthState
+) -> tuple[bytes, str, str]:
+    """Return the response body, HTTP status line, and content type."""
 
-    try:
-        decoded_line = request_line.decode("ascii", errors="replace").strip()
-    except UnicodeDecodeError:
-        return _error_payload("Invalid request"), "400 Bad Request"
+    decoded_line = request_line.decode("ascii", errors="replace").strip()
 
     parts = decoded_line.split(" ")
     if len(parts) < 2:
-        return _error_payload("Invalid request"), "400 Bad Request"
+        return _error_payload("Invalid request"), "400 Bad Request", _JSON_CONTENT_TYPE
 
     method, path = parts[0], parts[1]
     if method != "GET":
-        return _error_payload("Method not allowed"), "405 Method Not Allowed"
-    if path != "/health":
-        return _error_payload("Not found"), "404 Not Found"
+        return (
+            _error_payload("Method not allowed"),
+            "405 Method Not Allowed",
+            _JSON_CONTENT_TYPE,
+        )
+    if path == "/health":
+        payload = build_health_payload(state)
+        return json.dumps(payload).encode("utf-8"), "200 OK", _JSON_CONTENT_TYPE
+    if path == "/metrics":
+        return generate_latest(REGISTRY), "200 OK", CONTENT_TYPE_LATEST
+    return _error_payload("Not found"), "404 Not Found", _JSON_CONTENT_TYPE
 
-    payload = build_health_payload(state)
-    return json.dumps(payload), "200 OK"
 
-
-def _error_payload(message: str) -> str:
-    return json.dumps({"error": message})
+def _error_payload(message: str) -> bytes:
+    return json.dumps({"error": message}).encode("utf-8")

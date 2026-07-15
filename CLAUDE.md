@@ -54,7 +54,7 @@ make test-e2e     # Playwright e2e against a fresh full dev stack
 make seed-housing # seed the Air Force housing demo KB via the running API (housing pack required)
 make prod         # production stack (built images, nginx, no hot reload)
 ```
-Service URLs: frontend `:5173`, API `:8000`, Neo4j `:7474`, Qdrant `:6333`, MinIO console `:9001`. `.env` is loaded from `.env.example` (gitignored).
+Service URLs: frontend `:5173`, API `:8000`, worker health/metrics `:8001`, Neo4j `:7474`, Qdrant `:6333`, MinIO console `:9001`. `.env` is loaded from `.env.example` (gitignored).
 
 ### Backend (`cd backend`)
 ```bash

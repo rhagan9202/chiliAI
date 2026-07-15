@@ -359,6 +359,53 @@ def test_tracker_skips_cancelled_workflow() -> None:
     assert run.steps[0].status is WorkflowStepStatus.PENDING
 
 
+def test_tracker_skips_completed_workflow() -> None:
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-1",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.COMPLETED,
+                steps=[WorkflowStepState(step_name="parse")],
+                metadata={"correlation_id": "corr-1"},
+            )
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+
+    assert tracker.begin_event(_uploaded_event()) is False
+
+
+def test_tracker_processes_surviving_documents_after_per_document_failure() -> None:
+    """A run failed by a per-document ``documents.failed`` must not swallow
+    the batch's surviving documents (BL-041 failure isolation): successor
+    events keep processing while the run record stays frozen at FAILED."""
+    run_store = InMemoryWorkflowRunStore(
+        runs=[
+            WorkflowRun(
+                workflow_id="workflow-1",
+                knowledge_base_id="kb-1",
+                trigger_event_type="documents.uploaded",
+                status=WorkflowRunStatus.FAILED,
+                steps=[
+                    WorkflowStepState(
+                        step_name="parse", status=WorkflowStepStatus.FAILED
+                    ),
+                    WorkflowStepState(step_name="chunk"),
+                ],
+                metadata={"correlation_id": "corr-1"},
+            )
+        ]
+    )
+    tracker = WorkflowEventTracker(run_store)
+
+    assert tracker.begin_event(_uploaded_event()) is True
+    run = run_store.get_run("workflow-1")
+    assert run.status is WorkflowRunStatus.FAILED
+    assert run.steps[0].status is WorkflowStepStatus.FAILED
+
+
 # ---------------------------------------------------------------------------
 # is_busy tests
 # ---------------------------------------------------------------------------

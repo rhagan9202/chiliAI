@@ -43,6 +43,17 @@ api-shell: ## Open a shell in the API container
 migrate: ## Run database migrations inside the API container
 	$(COMPOSE_DEV) exec api alembic upgrade head
 
+# BL-042 / database.04: replay all migrations on a scratch database
+# (chili_migration_check) on the compose postgres service and diff the schema
+# against backend/database/migrations/snapshots/head.sql. Never touches the
+# dev 'chili' database. Regenerate the snapshot in every migration PR.
+.PHONY: migrate-check migrate-snapshot
+migrate-check: ## Replay migrations on a scratch TimescaleDB and diff schema vs committed snapshot
+	scripts/ci_migration_check.sh
+
+migrate-snapshot: ## Regenerate backend/database/migrations/snapshots/head.sql (run after adding a migration)
+	scripts/ci_migration_check.sh --update-snapshot
+
 test: ## Run backend tests inside the API container
 	$(COMPOSE_DEV) exec api pytest --cov
 

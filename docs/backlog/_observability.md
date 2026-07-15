@@ -48,7 +48,7 @@
 **ID:** _observability.02
 **Status:** planned
 **Prerequisites:** [_observability.01]
-**Unblocks:** [_observability.03, _observability.10, _observability.11, agent.17, graph.01, graph.07, graph.10, graph.13, graph.16, llm.09, llm.10, records.06]
+**Unblocks:** [_observability.03, _observability.10, _observability.11, agent.17, graph.07, graph.10, graph.13, graph.16, llm.09, llm.10, records.06]
 **Estimated size:** S
 
 **As an** API operator,

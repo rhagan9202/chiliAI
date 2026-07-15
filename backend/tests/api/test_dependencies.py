@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from prometheus_client import REGISTRY
 
 import api.dependencies as dependencies
 from config.loader import load_config
@@ -22,6 +23,7 @@ from config.schema import (
     VectorStoreConfig,
 )
 from embeddings.service import EmbeddingsService
+from embeddings.service_models import EmbedRequest, EmbedSubmission
 from events.adapters.in_memory import InMemoryEventBus
 from events.adapters.redis_streams import RedisStreamsEventBus
 from graph.service import GraphService
@@ -34,6 +36,8 @@ from monitoring.service import MonitoringService
 from monitoring.service_models import MonitoringEvaluationRequest
 from records.adapters.in_memory import InMemoryRawRecordStore
 from records.adapters.postgres import PostgresRawRecordStore
+from ingestion.adapters.in_memory import InMemorySourceDocumentStatusStore
+from ingestion.adapters.postgres import PostgresSourceDocumentStatusStore
 from shared.exceptions import ConfigurationError
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.adapters.local_fs_adapter import LocalFsObjectStore
@@ -64,6 +68,7 @@ def clear_dependency_caches() -> None:
         dependencies.get_session_store,
         dependencies.get_connection_provider,
         dependencies.get_raw_record_store,
+        dependencies.get_document_status_store,
         dependencies.get_knowledge_base_repository,
         dependencies.get_parser_registry,
         dependencies.get_remote_fetcher,
@@ -957,6 +962,31 @@ def test_get_raw_record_store_returns_in_memory_when_provider_is_none(
     assert isinstance(store, InMemoryRawRecordStore)
 
 
+def test_get_document_status_store_returns_postgres_store_when_provider_non_null(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    fake_provider = MagicMock()
+    _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: fake_provider)
+
+    store = dependencies.get_document_status_store()
+
+    assert isinstance(store, PostgresSourceDocumentStatusStore)
+
+
+def test_get_document_status_store_returns_in_memory_when_provider_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: None)
+
+    store = dependencies.get_document_status_store()
+
+    assert isinstance(store, InMemorySourceDocumentStatusStore)
+
+
 # ---------------------------------------------------------------------------
 # get_knowledge_base_repository: object_store branch and unsupported backend
 # ---------------------------------------------------------------------------
@@ -1053,3 +1083,69 @@ def test_create_alert_repository_unsupported_backend_raises(
 
     with pytest.raises(ConfigurationError, match="dynamodb"):
         _call_create_alert_repository()
+
+
+def test_get_embeddings_service_uses_config_driven_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={"embeddings": EmbeddingsConfig(provider="local", model="di-probe")}
+    )
+    _install_config(monkeypatch, config)
+    service = dependencies.get_embeddings_service()
+    request = EmbedRequest(
+        model_name="di-cache-model",
+        submissions=[EmbedSubmission(content_id="content-1", content="DI probe")],
+    )
+    hit_labels = {
+        "provider": "local",
+        "model": "di-cache-model",
+        "cache_result": "hit",
+    }
+    before = REGISTRY.get_sample_value("embedding_texts_total", hit_labels) or 0.0
+
+    service.embed(request)
+    service.embed(request)
+
+    after = REGISTRY.get_sample_value("embedding_texts_total", hit_labels) or 0.0
+    assert after - before == 1.0
+
+
+def test_get_embeddings_service_honors_cache_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(
+        update={
+            "embeddings": EmbeddingsConfig(
+                provider="local", model="di-probe", cache_enabled=False
+            )
+        }
+    )
+    _install_config(monkeypatch, config)
+    service = dependencies.get_embeddings_service()
+    request = EmbedRequest(
+        model_name="di-nocache-model",
+        submissions=[EmbedSubmission(content_id="content-1", content="DI probe")],
+    )
+    miss_labels = {
+        "provider": "local",
+        "model": "di-nocache-model",
+        "cache_result": "miss",
+    }
+    hit_labels = {**miss_labels, "cache_result": "hit"}
+    misses_before = (
+        REGISTRY.get_sample_value("embedding_texts_total", miss_labels) or 0.0
+    )
+    hits_before = REGISTRY.get_sample_value("embedding_texts_total", hit_labels) or 0.0
+
+    service.embed(request)
+    service.embed(request)
+
+    misses_after = (
+        REGISTRY.get_sample_value("embedding_texts_total", miss_labels) or 0.0
+    )
+    hits_after = REGISTRY.get_sample_value("embedding_texts_total", hit_labels) or 0.0
+    assert misses_after - misses_before == 2.0
+    assert hits_after - hits_before == 0.0

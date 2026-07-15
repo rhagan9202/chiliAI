@@ -61,6 +61,17 @@
 **I need** identical text to skip the provider call by returning a cached vector,
 **so that** re-uploads, deduplicated records, and repeated RAG queries do not pay full provider cost or latency for content we have already embedded.
 
+### BL-019 partial delivery (2026-07-14, Sprint 2026-26, `feat/sprint-2026-26-ingestion-visibility`)
+
+The **in-process cache** subset of this story's scope shipped as BL-019 — `RedisEmbeddingCache`, TTL eviction, and the `DomainConfig.embeddings.cache` sub-config wrapper did **not**, and remain this story's open scope (re-scoped to post-v1 **BL-045**, product-owner ruling 2026-07-12). What actually landed, deliberately diverging from the AC wording below where noted:
+
+- `EmbeddingCacheProtocol` at `embeddings/adapters/protocols.py` with `get(key) -> CachedEmbedding | None` / `set(key, entry)` (a typed `CachedEmbedding`, not a raw `list[float]` plus separate model/dimensions args as the AC below sketches).
+- Cache key: `build_embedding_cache_key(namespace, model_name, content)` (`embeddings/models.py`) — SHA-256 over `namespace + model_name + content`, `namespace = "{provider}:{model}:{dimensions}"` (`embedding_cache_namespace`, `embeddings/adapters/cache_in_memory.py`) — a model/dimension change changes the namespace, so implicit invalidation replaces the AC's separate "bypass on model_name mismatch" bullet.
+- One concrete adapter: `InMemoryLruEmbeddingCache` (`embeddings/adapters/cache_in_memory.py`), a thread-safe per-process LRU (`cache_max_entries`), not TTL-based. `RedisEmbeddingCache` deferred to BL-045.
+- Config: flat `EmbeddingsConfig.cache_enabled` (default `true`) / `EmbeddingsConfig.cache_max_entries` (default `4096`) on the existing config, not a new `DomainConfig.embeddings.cache` sub-model.
+- `EmbeddingsService` constructor accepts the optional cache and checks/writes through it on `embed()`; wired at both composition roots (`api/dependencies.py`, worker `build_worker_dependencies`) with hot-swap-safe generation-guarded caching.
+- Gates green in-session (`pytest --cov -m "not integration"`, `pyright`, `ruff`); live-stack verification **passed 2026-07-14**: identical query embedded twice against `make dev` showed `cache_result="miss"` then `cache_result="hit"` on `embedding_texts_total` with `embedding_tokens_total` flat (cached call spends zero tokens).
+
 ### Current State
 - `EmbeddingsService.embed` always invokes the adapter; the service-level `TODO(production)` explicitly calls out the missing content-hash cache and chunking logic (`backend/embeddings/service.py:20-49`).
 - No cache abstraction exists in `backend/embeddings/`; `llm` has no shared cache surface either.
@@ -145,6 +156,16 @@
 **I need** per-provider latency, batch size, vector count, and error-class metrics plus structured logs from every embedding call,
 **so that** I can attribute slow ingestion to a specific provider/model and alert on embedder-level error spikes without parsing coordinator logs.
 
+### BL-019 partial delivery (2026-07-14, Sprint 2026-26, `feat/sprint-2026-26-ingestion-visibility`)
+
+The **Prometheus counters + structured log** subset of this story's scope shipped as BL-019 — OpenTelemetry spans, latency/batch-size histograms, and the `_observability.03`/`_observability.05` telemetry-convention alignment did **not**, and remain this story's open scope (blocked on those prereqs, same pattern as `ingestion.17`/BL-043). What actually landed, deliberately diverging from the AC wording below where noted:
+
+- Counters on the default `prometheus_client` registry, `embeddings/metrics.py`: `embedding_requests_total{provider,model}`, `embedding_texts_total{provider,model,cache_result}` (hit/miss), `embedding_tokens_total{provider,model,knowledge_base_id,source}` (`source` = `reported`|`estimated`) — narrower label sets than the AC's `{provider,model,channel,status}` / `embeddings_retries_total`.
+- One structured log line per `embed()` call (`embedding usage: provider=... model=... knowledge_base_id=... texts=... cache_hits=... cache_misses=... tokens=... token_source=...`), not the OTel span the AC specifies.
+- Served from the API `/metrics` route (existing registry); worker-process `/metrics` exposure for these counters lands with BL-043's health-server pattern (`agent/health.py`), tracked as a small follow-up, not new scope.
+- No histograms (`embeddings_latency_seconds`, `embeddings_batch_size`) and no OpenTelemetry spans — both remain blocked on `_observability.03`/`.05`.
+- Gates green in-session; live scrape against a running stack deferred — Docker was unavailable this session.
+
 ### Current State
 - `EmbeddingsService` and adapters emit no metrics, traces, or structured logs (`backend/embeddings/service.py:38-105`, `backend/embeddings/adapters/openai_adapter.py:80-138`).
 - The coordinator only emits `observe_pipeline_stage("embeddings", ...)` at the workflow boundary, so per-provider latency and error-class breakdown are invisible.
@@ -183,6 +204,15 @@
 **As a** finance / platform owner,
 **I need** OpenAI input-token counts and sentence-transformers compute units recorded per request, knowledge base, and tenant,
 **so that** embedding spend can be attributed to the workload that incurred it and rolled up alongside LLM cost.
+
+### BL-019 partial delivery (2026-07-14, Sprint 2026-26, `feat/sprint-2026-26-ingestion-visibility`)
+
+The **token usage tracking** subset of this story's scope shipped as BL-019 — `EmbeddingCostRecord`, `cost_per_million_tokens` config, per-tenant cost attribution, and the `_observability.06` cost-attribution surface did **not**, and remain this story's open scope (re-scoped to post-v1 **BL-045**, product-owner ruling 2026-07-12: acceptance for BL-019 is usage tracking, not USD cost attribution). What actually landed, deliberately diverging from the AC wording below where noted:
+
+- OpenAI adapter sums `usage.total_tokens` across all embed batches into `EmbeddingMetadata.total_tokens` (`embeddings/adapters/openai_adapter.py`) — the AC's `usage.prompt_tokens`-per-request field does not exist on this response shape; `total_tokens` is the total the API returns.
+- `embedding_tokens_total{provider,model,knowledge_base_id,source}` Prometheus counter (`embeddings/metrics.py`) replaces the AC's per-record `EmbeddingCostRecord`/estimated-cost-USD model; `source="reported"` when the provider returns usage, `source="estimated"` (chars/4, cache misses only) for local/sentence-transformers. Fully cached calls spend zero tokens.
+- No `cost_per_million_tokens` config, no dollar-cost computation, and no tenant-scoped roll-up — a durable per-request usage ledger and cost attribution remain BL-045, not this delivery.
+- Gates green in-session; live verification **passed 2026-07-14**: `/metrics` scrape shows `embedding_requests_total`, `embedding_texts_total{cache_result}`, `embedding_tokens_total{source="estimated"}` and the structured usage log emits `token_source=estimated`/`cached` per call against the running stack.
 
 ### Current State
 - `_estimate_tokens` exists only inside the OpenAI adapter's batcher (`backend/embeddings/adapters/openai_adapter.py:225-228`); the value is never surfaced.
