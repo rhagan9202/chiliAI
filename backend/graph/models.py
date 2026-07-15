@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +17,14 @@ def _empty_entities() -> list[Entity]:
 
 def _empty_relationships() -> list[Relationship]:
     return []
+
+
+class GraphUpsertOptions(BaseModel):
+    """Caller-selectable semantics for bulk graph upserts (BL-017)."""
+
+    merge_mode: Literal["merge_properties", "replace_properties"] = "merge_properties"
+    expected_version: int | None = None
+    integrity_mode: Literal["strict", "create_placeholders"] = "strict"
 
 
 class GraphUpsertResult(BaseModel):
@@ -58,6 +67,7 @@ class GraphDeleteByProvenance(BaseModel):
 __all__ = [
     "GraphDeleteByProvenance",
     "GraphMetrics",
+    "GraphUpsertOptions",
     "GraphUpsertResult",
     "SubgraphResult",
 ]

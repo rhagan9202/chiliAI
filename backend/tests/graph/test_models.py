@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from graph.models import GraphMetrics, SubgraphResult
+from graph.exceptions import GraphIntegrityError, GraphVersionConflictError
+from graph.models import GraphMetrics, GraphUpsertOptions, SubgraphResult
 from graph.service_models import GraphBuildTask
 from shared.types import Entity, Relationship
 
@@ -78,3 +79,32 @@ def test_graph_build_task_rejects_blank_validation_storage_key() -> None:
             validation_report_id="validate-1",
             validation_storage_key="  ",
         )
+
+
+def test_graph_integrity_error_carries_missing_endpoints() -> None:
+    error = GraphIntegrityError(
+        knowledge_base_id="kb-1",
+        missing_entity_ids=["e-2", "e-3"],
+        relationship_ids=["r-1"],
+    )
+    assert error.knowledge_base_id == "kb-1"
+    assert error.missing_entity_ids == ["e-2", "e-3"]
+    assert error.relationship_ids == ["r-1"]
+    assert "e-2" in str(error)
+
+
+def test_graph_version_conflict_error_carries_versions() -> None:
+    error = GraphVersionConflictError(
+        entity_id="e-1", expected_version=3, actual_version=5
+    )
+    assert error.entity_id == "e-1"
+    assert error.expected_version == 3
+    assert error.actual_version == 5
+    assert "e-1" in str(error)
+
+
+def test_graph_upsert_options_defaults() -> None:
+    options = GraphUpsertOptions()
+    assert options.merge_mode == "merge_properties"
+    assert options.expected_version is None
+    assert options.integrity_mode == "strict"
