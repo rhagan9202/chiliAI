@@ -515,6 +515,45 @@ def test_callback_access_token_fallback_skips_nonce(
     assert "chiliai_session=" in response.headers.get("set-cookie", "")
 
 
+def test_callback_empty_string_id_token_uses_fallback_and_skips_nonce(
+    app_with_auth: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the IdP returns empty-string id_token (falsy), the gate and decode
+    both use truthiness, so they agree on the fallback (access_token). Nonce
+    check is skipped, and the callback succeeds."""
+    import httpx
+
+    from api.middleware import auth as auth_module
+    from api.routers import _oidc_client
+
+    store = InMemorySessionStore()
+    store.save_pkce_state(
+        state="state-empty-id-token", verifier="ver", ttl_seconds=300, nonce="expected"
+    )
+    domain = _domain_with_auth()
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    monkeypatch.setattr(
+        _oidc_client.OidcClient,
+        "_http",
+        lambda self: httpx.Client(
+            transport=httpx.MockTransport(_fake_token_handler(id_token="")), timeout=5.0
+        ),
+    )
+    monkeypatch.setattr(
+        auth_module,
+        "decode_token",
+        _stub_jwks_decoder({"sub": "user-cb"}),  # no nonce claim at all
+    )
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/callback?code=c&state=state-empty-id-token")
+
+    assert response.status_code == 307
+    assert "chiliai_session=" in response.headers.get("set-cookie", "")
+
+
 def test_logout_clears_cookie_and_session(app_with_auth: FastAPI) -> None:
     store = InMemorySessionStore()
     store.save(

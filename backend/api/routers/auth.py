@@ -143,7 +143,7 @@ def callback(
     # Nonce binds the id_token to this login attempt (BL-022). It is an
     # id_token claim by OIDC spec, so the access-token fallback path skips it —
     # see docs/auth/idp-templates.md.
-    if tokens.id_token is not None:
+    if tokens.id_token:
         if claims.get("nonce") != pkce.nonce:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
