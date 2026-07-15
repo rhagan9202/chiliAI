@@ -12,7 +12,11 @@ import pytest
 from config.schema import GraphDbConfig
 from graph.adapters import neo4j_adapter
 from graph.adapters.neo4j_adapter import Neo4jGraphRepository
-from graph.exceptions import GraphPersistenceError, GraphVersionConflictError
+from graph.exceptions import (
+    GraphIntegrityError,
+    GraphPersistenceError,
+    GraphVersionConflictError,
+)
 from graph.models import GraphUpsertOptions
 from shared.types import Entity, Relationship
 
@@ -41,6 +45,37 @@ def _entity_record(
             "updated_at": updated_at,
             "version": version,
         }
+    }
+
+
+def _relationship_record(
+    relationship_id: str,
+    source_id: str,
+    target_id: str,
+    *,
+    rel_type: str = "billed",
+    properties_json: str = "{}",
+    version: int = 1,
+    weight: float | None = None,
+    created_at: str = "2026-04-20T00:00:00+00:00",
+    updated_at: str | None = None,
+) -> FakeRecord:
+    """Build a fake write-result record shaped like
+    `RETURN relationship, source_id, target_id`.
+    """
+
+    return {
+        "relationship": {
+            "relationship_id": relationship_id,
+            "type": rel_type,
+            "properties_json": properties_json,
+            "created_at": created_at,
+            "updated_at": updated_at,
+            "version": version,
+            "weight": weight,
+        },
+        "source_id": source_id,
+        "target_id": target_id,
     }
 
 
@@ -192,6 +227,11 @@ def test_neo4j_repository_upserts_entities_and_relationships_with_merge(
             }
         ],
         [
+            {"entity_id": "entity-1"},
+            {"entity_id": "entity-2"},
+        ],  # strict-mode endpoint existence read for the relationship upsert
+        [],  # existing-relationships read: relationship-1 does not exist yet
+        [
             {
                 "relationship": {
                     "relationship_id": "relationship-1",
@@ -298,6 +338,158 @@ def test_upsert_entities_version_conflict_raises_before_write(
         )
 
     assert all(mode == "read" for _, _, mode in driver.queries[-1:])  # no write issued
+
+
+def test_upsert_relationships_strict_raises_on_missing_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    driver.queries = []  # drop schema-init writes issued at construction
+    driver.results = [[{"entity_id": "e-1"}]]  # existence read finds only e-1
+
+    with pytest.raises(GraphIntegrityError) as excinfo:
+        repository.upsert_relationships(
+            "kb-1",
+            [Relationship(id="r-1", type="billed", source_id="e-1", target_id="e-missing")],
+        )
+
+    assert excinfo.value.missing_entity_ids == ["e-missing"]
+    assert excinfo.value.relationship_ids == ["r-1"]
+    assert len(driver.queries) == 1  # only the existence read ran
+    assert driver.queries[0][2] == "read"
+
+
+def test_upsert_relationships_strict_write_uses_match_endpoints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    driver.results = [
+        [{"entity_id": "e-1"}, {"entity_id": "e-2"}],  # existence read
+        [],  # existing-relationships read
+        [_relationship_record("r-1", "e-1", "e-2", version=1)],  # write
+    ]
+
+    repository.upsert_relationships(
+        "kb-1", [Relationship(id="r-1", type="billed", source_id="e-1", target_id="e-2")]
+    )
+
+    write_query = driver.queries[-1][0]
+    assert "MATCH (source" in write_query and "MATCH (target" in write_query
+    assert "MERGE (source:" not in write_query and "MERGE (target:" not in write_query
+
+
+def test_upsert_relationships_merges_and_bumps_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    driver.results = [
+        [{"entity_id": "e-1"}, {"entity_id": "e-2"}],  # existence read
+        [
+            {
+                "relationship_id": "r-1",
+                "type": "billed",
+                "properties_json": '{"amount": 10}',
+                "version": 1,
+                "weight": None,
+            }
+        ],  # existing-relationships read
+        [_relationship_record("r-1", "e-1", "e-2", properties_json='{"amount": 10, "code": "A1"}', version=2)],
+    ]
+
+    stored = repository.upsert_relationships(
+        "kb-1",
+        [
+            Relationship(
+                id="r-1", type="billed", source_id="e-1", target_id="e-2", properties={"code": "A1"}
+            )
+        ],
+    )
+
+    write_query, write_params, _ = driver.queries[-1]
+    assert "MATCH (source" in write_query
+    rows = cast(list[dict[str, object]], write_params["rows"])
+    assert rows[0]["properties_json"] == '{"amount": 10, "code": "A1"}'
+    assert rows[0]["version"] == 2
+    assert stored[0].version == 2
+
+
+def test_upsert_relationships_version_conflict_raises_before_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    driver.results = [
+        [{"entity_id": "e-1"}, {"entity_id": "e-2"}],  # existence read
+        [
+            {
+                "relationship_id": "r-1",
+                "type": "billed",
+                "properties_json": "{}",
+                "version": 4,
+                "weight": None,
+            }
+        ],  # existing-relationships read
+    ]
+
+    with pytest.raises(GraphVersionConflictError):
+        repository.upsert_relationships(
+            "kb-1",
+            [Relationship(id="r-1", type="billed", source_id="e-1", target_id="e-2")],
+            GraphUpsertOptions(expected_version=2),
+        )
+
+    assert all(mode == "read" for _, _, mode in driver.queries[-2:])  # no write issued
+
+
+def test_upsert_relationships_create_placeholders_uses_merge_endpoints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    driver.queries = []  # drop schema-init writes issued at construction
+    driver.results = [
+        [],  # existing-relationships read: relationship does not exist yet
+        [_relationship_record("r-1", "e-1", "e-missing", version=1)],  # write
+    ]
+
+    repository.upsert_relationships(
+        "kb-1",
+        [Relationship(id="r-1", type="billed", source_id="e-1", target_id="e-missing")],
+        GraphUpsertOptions(integrity_mode="create_placeholders"),
+    )
+
+    # No existence-check read ran; only the existing-relationships read + write.
+    assert len(driver.queries) == 2
+    write_query = driver.queries[-1][0]
+    assert "MERGE (source:" in write_query and "MERGE (target:" in write_query
 
 
 def test_neo4j_repository_reads_searches_counts_and_deletes(
@@ -893,6 +1085,27 @@ def test_neo4j_repository_transaction_rolls_back_changes(
             raise RuntimeError("rollback")
 
     assert repository.get_entity([knowledge_base_id], "rollback-entity") is None
+
+
+@pytest.mark.integration
+def test_strict_upsert_creates_no_phantom_node(
+    neo4j_repository: tuple[Neo4jGraphRepository, str],
+) -> None:
+    """Spec §7: a strict-mode relationship upsert referencing a missing
+    endpoint must raise before any write — proving the endpoint clause is a
+    `MATCH` (which cannot auto-vivify a node) rather than a `MERGE`.
+    """
+    repository, knowledge_base_id = neo4j_repository
+
+    repository.upsert_entities(knowledge_base_id, [Entity(id="e-1", type="provider")])
+    with pytest.raises(GraphIntegrityError):
+        repository.upsert_relationships(
+            knowledge_base_id,
+            [Relationship(id="r-1", type="billed", source_id="e-1", target_id="e-phantom")],
+        )
+
+    assert repository.get_entity([knowledge_base_id], "e-phantom") is None
+    assert repository.get_relationships(knowledge_base_id) == []
 
 
 def test_neo4j_repository_ensures_fulltext_index_for_entity_properties(

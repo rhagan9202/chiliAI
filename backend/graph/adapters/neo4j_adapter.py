@@ -13,7 +13,11 @@ from typing import Literal, Protocol, cast
 
 from config.schema import GraphDbConfig
 from graph.adapters.protocols import GraphRepository
-from graph.exceptions import GraphPersistenceError, GraphVersionConflictError
+from graph.exceptions import (
+    GraphIntegrityError,
+    GraphPersistenceError,
+    GraphVersionConflictError,
+)
 from graph.models import GraphDeleteByProvenance, GraphUpsertOptions, SubgraphResult
 from shared.provenance import SOURCE_DOCUMENT_ID_KEY
 from shared.types import Entity, Relationship
@@ -271,29 +275,69 @@ class Neo4jGraphRepository(GraphRepository):
         relationships: list[Relationship],
         options: GraphUpsertOptions | None = None,
     ) -> list[Relationship]:
-        # TODO(BL-017 Task 5): honor `options` (referential-integrity /
-        # expected_version conflict pre-pass) here; still blind-overwrites
-        # like the pre-BL-017 in-memory adapter until that task lands.
-        payload = [
-            {
-                "relationship_id": relationship.id,
-                "type": relationship.type,
-                "source_id": relationship.source_id,
-                "target_id": relationship.target_id,
-                "properties_json": _dump_json_property(relationship.properties),
-                "created_at": relationship.created_at.isoformat(),
-                "updated_at": relationship.updated_at.isoformat()
-                if relationship.updated_at
-                else None,
-                "version": relationship.version,
-                "weight": relationship.weight,
-            }
-            for relationship in relationships
-        ]
+        opts = options or GraphUpsertOptions()
+        if opts.integrity_mode == "strict":
+            endpoint_ids = sorted(
+                {r.source_id for r in relationships} | {r.target_id for r in relationships}
+            )
+            found = self._read_existing_entity_ids(knowledge_base_id, endpoint_ids)
+            missing = [eid for eid in endpoint_ids if eid not in found]
+            if missing:
+                offending = [
+                    r.id
+                    for r in relationships
+                    if r.source_id in set(missing) or r.target_id in set(missing)
+                ]
+                raise GraphIntegrityError(
+                    knowledge_base_id=knowledge_base_id,
+                    missing_entity_ids=missing,
+                    relationship_ids=offending,
+                )
+        existing_rows = self._read_existing_relationships(
+            knowledge_base_id, [r.id for r in relationships]
+        )
+        payload: list[dict[str, object]] = []
+        for relationship in relationships:
+            existing = existing_rows.get(relationship.id)
+            if existing is None:
+                payload.append(self._relationship_row(relationship, version=1))
+                continue
+            if (
+                opts.expected_version is not None
+                and existing["version"] != opts.expected_version
+            ):
+                raise GraphVersionConflictError(
+                    relationship.id,
+                    opts.expected_version,
+                    cast(int, existing["version"]),
+                )
+            new_properties_json = _dump_json_property(relationship.properties)
+            if opts.merge_mode == "merge_properties":
+                new_properties_json = _dump_json_property(
+                    {
+                        **json.loads(cast(str, existing["properties_json"])),
+                        **relationship.properties,
+                    }
+                )
+            effective_change = (
+                new_properties_json != existing["properties_json"]
+                or relationship.type != existing["type"]
+                or relationship.weight != existing["weight"]
+            )
+            version = cast(int, existing["version"]) + (1 if effective_change else 0)
+            row = self._relationship_row(relationship, version=version)
+            row["properties_json"] = new_properties_json
+            payload.append(row)
+        endpoint_clause = (
+            f"MATCH (source:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: row.source_id}})\n"
+            f"        MATCH (target:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: row.target_id}})"
+            if opts.integrity_mode == "strict"
+            else f"MERGE (source:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: row.source_id}})\n"
+            f"        MERGE (target:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: row.target_id}})"
+        )
         query = f"""
         UNWIND $rows AS row
-        MERGE (source:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: row.source_id}})
-        MERGE (target:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: row.target_id}})
+        {endpoint_clause}
         MERGE (source)-[relationship:{_RELATIONSHIP_LABEL} {{
             knowledge_base_id: $knowledge_base_id,
             relationship_id: row.relationship_id
@@ -306,17 +350,75 @@ class Neo4jGraphRepository(GraphRepository):
             relationship.weight = row.weight
         RETURN relationship, source.entity_id AS source_id, target.entity_id AS target_id
         """
-
         try:
             records = self._run_write(
-                query,
-                knowledge_base_id=knowledge_base_id,
-                rows=payload,
+                query, knowledge_base_id=knowledge_base_id, rows=payload
             )
         except Neo4jError as exc:
             raise GraphPersistenceError("Failed to upsert Neo4j relationships.") from exc
-
         return [self._record_to_relationship(record) for record in records]
+
+    def _read_existing_entity_ids(
+        self, knowledge_base_id: str, entity_ids: list[str]
+    ) -> set[str]:
+        query = f"""
+        UNWIND $ids AS id
+        MATCH (entity:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: id}})
+        RETURN entity.entity_id AS entity_id
+        """
+        try:
+            records = self._run_read(
+                query, knowledge_base_id=knowledge_base_id, ids=entity_ids
+            )
+        except Neo4jError as exc:
+            raise GraphPersistenceError("Failed to verify Neo4j entity endpoints.") from exc
+        return {cast(str, record["entity_id"]) for record in records}
+
+    def _read_existing_relationships(
+        self, knowledge_base_id: str, relationship_ids: list[str]
+    ) -> dict[str, dict[str, object]]:
+        query = f"""
+        UNWIND $ids AS id
+        MATCH ()-[relationship:{_RELATIONSHIP_LABEL} {{knowledge_base_id: $knowledge_base_id, relationship_id: id}}]->()
+        RETURN relationship.relationship_id AS relationship_id,
+               relationship.type AS type,
+               relationship.properties_json AS properties_json,
+               relationship.version AS version, relationship.weight AS weight
+        """
+        try:
+            records = self._run_read(
+                query, knowledge_base_id=knowledge_base_id, ids=relationship_ids
+            )
+        except Neo4jError as exc:
+            raise GraphPersistenceError(
+                "Failed to read existing Neo4j relationships."
+            ) from exc
+        return {
+            cast(str, record["relationship_id"]): {
+                "type": record["type"],
+                "properties_json": record["properties_json"],
+                "version": record["version"],
+                "weight": record["weight"],
+            }
+            for record in records
+        }
+
+    def _relationship_row(
+        self, relationship: Relationship, *, version: int
+    ) -> dict[str, object]:
+        return {
+            "relationship_id": relationship.id,
+            "type": relationship.type,
+            "source_id": relationship.source_id,
+            "target_id": relationship.target_id,
+            "properties_json": _dump_json_property(relationship.properties),
+            "created_at": relationship.created_at.isoformat(),
+            "updated_at": relationship.updated_at.isoformat()
+            if relationship.updated_at
+            else None,
+            "version": version,
+            "weight": relationship.weight,
+        }
 
     def get_entities(self, knowledge_base_id: str) -> list[Entity]:
         query = f"""
