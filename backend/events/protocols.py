@@ -86,7 +86,17 @@ class EventBus(Protocol):
 class DlqRecordStore(Protocol):
     """Durable operational ledger of dead-lettered events (BL-023)."""
 
-    def persist(self, record: DlqRecord) -> DlqRecord: ...
+    def persist(self, record: DlqRecord) -> DlqRecord:
+        """Upsert ``record`` keyed on ``dlq_id``.
+
+        Persisting the same ``dlq_id`` twice replaces the stored record with
+        the latest one rather than erroring or creating a duplicate entry —
+        the in-memory adapter overwrites the dict slot in place, and the
+        Postgres adapter does the equivalent via
+        ``INSERT ... ON CONFLICT (dlq_id) DO UPDATE SET`` over every non-PK
+        column.
+        """
+        ...
 
     def list(
         self,

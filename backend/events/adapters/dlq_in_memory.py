@@ -14,11 +14,12 @@ class InMemoryDlqRecordStore(DlqRecordStore):
 
     def __init__(self) -> None:
         self._records: dict[str, DlqRecord] = {}
-        self._order: list[str] = []
 
     def persist(self, record: DlqRecord) -> DlqRecord:
+        # Upsert by dlq_id: a repeat persist() for an existing id replaces the
+        # stored record in place rather than appending a second entry (see
+        # events.protocols.DlqRecordStore.persist).
         self._records[record.dlq_id] = record
-        self._order.append(record.dlq_id)
         return record
 
     def list(
@@ -30,11 +31,14 @@ class InMemoryDlqRecordStore(DlqRecordStore):
         offset: int = 0,
     ) -> tuple[list[DlqRecord], int]:
         matched = [
-            self._records[dlq_id]
-            for dlq_id in reversed(self._order)  # newest first
-            if (status is None or self._records[dlq_id].status == status)
-            and (event_type is None or self._records[dlq_id].event_type == event_type)
+            record
+            for record in self._records.values()
+            if (status is None or record.status == status)
+            and (event_type is None or record.event_type == event_type)
         ]
+        # Deterministic newest-first ordering: (created_at DESC, dlq_id DESC),
+        # matching the Postgres adapter's ORDER BY.
+        matched.sort(key=lambda record: (record.created_at, record.dlq_id), reverse=True)
         return matched[offset : offset + limit], len(matched)
 
     def get(self, dlq_id: str) -> DlqRecord | None:
