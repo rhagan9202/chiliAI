@@ -614,8 +614,8 @@ def test_force_refresh_throttled_with_empty_cache_still_fetches() -> None:
     cache.invalidate_uri("https://idp/jwks")
     # Advance clock 10s (inside the 30s throttle window).
     now["t"] += 10
-    # force_refresh again: throttle check passes (no entry in throttle map),
-    # falls through to get(), which fetches because cache is empty.
+    # force_refresh again: throttle map still has the entry, so throttle applies,
+    # falling through to get(), which refetches because cache is empty.
     doc2 = cache.force_refresh("https://idp/jwks")
     assert calls == ["https://idp/jwks", "https://idp/jwks"]
     assert doc2 is not None
@@ -632,13 +632,20 @@ def test_invalidate_clears_forced_refresh_throttle() -> None:
         return {"keys": [{"kid": f"key-{len(calls)}"}]}
 
     cache = JwksCache(fetcher=fetcher, ttl_seconds=3600, _clock=lambda: now["t"])
-    # First force_refresh fetches and records throttle timestamp.
+    # First force_refresh fetches and records throttle timestamp at t=1000.
     cache.force_refresh("https://idp/jwks")
     assert calls == ["https://idp/jwks"]
-    # Advance clock 10s.
+    # Advance clock 10s (to t=1010).
     now["t"] += 10
     # Invalidate the entire cache (clears throttle map).
     cache.invalidate()
-    # force_refresh again: throttle map is empty, so it fetches immediately.
+    # force_refresh again at t=1010: throttle map is empty, so it fetches immediately
+    # and stamps the throttle map at t=1010.
     cache.force_refresh("https://idp/jwks")
     assert calls == ["https://idp/jwks", "https://idp/jwks"]
+    # Advance clock 25s more (to t=1035, within the 30s window from the new stamp at t=1010).
+    now["t"] += 25
+    # force_refresh again at t=1035: throttle applies (stamp at t=1010 + 25s < 30s window),
+    # so it returns get() without refetching.
+    cache.force_refresh("https://idp/jwks")
+    assert calls == ["https://idp/jwks", "https://idp/jwks"]  # no third fetch
