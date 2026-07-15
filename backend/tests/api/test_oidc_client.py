@@ -61,6 +61,7 @@ def test_build_authorize_url_includes_required_query_params(auth_config: AuthCon
         auth_config,
         state="state-123",
         code_challenge="chal-xyz",
+        nonce="nonce-123",
     )
     parsed = urlparse(url)
     qs = parse_qs(parsed.query)
@@ -74,6 +75,7 @@ def test_build_authorize_url_includes_required_query_params(auth_config: AuthCon
     assert qs["state"] == ["state-123"]
     assert qs["code_challenge"] == ["chal-xyz"]
     assert qs["code_challenge_method"] == ["S256"]
+    assert qs["nonce"] == ["nonce-123"]
 
 
 def test_build_end_session_url_includes_id_token_hint(auth_config: AuthConfig) -> None:
@@ -188,4 +190,4 @@ def test_build_end_session_url_omits_id_token_hint_when_none(
 def test_build_authorize_url_raises_when_endpoint_missing(auth_config: AuthConfig) -> None:
     cfg = auth_config.model_copy(update={"authorize_endpoint": None})
     with pytest.raises(OidcConfigurationError, match="authorize_endpoint"):
-        build_authorize_url(cfg, state="s", code_challenge="c")
+        build_authorize_url(cfg, state="s", code_challenge="c", nonce="n")

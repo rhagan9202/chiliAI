@@ -5,18 +5,31 @@ from __future__ import annotations
 import json
 from typing import Protocol, cast, runtime_checkable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from api.middleware.exceptions import SessionNotFoundError as SessionNotFoundError
 
 
 __all__ = [
     "InMemorySessionStore",
+    "PkceState",
     "RedisSessionStore",
     "SessionNotFoundError",
     "SessionRecord",
     "SessionStoreProtocol",
 ]
+
+
+class PkceState(BaseModel):
+    """PKCE verifier + OIDC nonce persisted for the duration of a login attempt.
+
+    The nonce binds the eventual id_token to this specific authorization
+    request (BL-022); it rides alongside the PKCE verifier in the same
+    short-lived state record so both are consumed together in the callback.
+    """
+
+    verifier: str
+    nonce: str
 
 
 class SessionRecord(BaseModel):
@@ -47,8 +60,10 @@ class SessionStoreProtocol(Protocol):
     def get(self, session_id: str) -> SessionRecord: ...
     def delete(self, session_id: str) -> None: ...
     def touch(self, session_id: str, *, ttl_seconds: int) -> None: ...
-    def save_pkce_state(self, *, state: str, verifier: str, ttl_seconds: int) -> None: ...
-    def pop_pkce_state(self, state: str) -> str | None: ...
+    def save_pkce_state(
+        self, *, state: str, verifier: str, ttl_seconds: int, nonce: str
+    ) -> None: ...
+    def pop_pkce_state(self, state: str) -> PkceState | None: ...
 
 
 class InMemorySessionStore:
@@ -56,7 +71,7 @@ class InMemorySessionStore:
 
     def __init__(self) -> None:
         self._records: dict[str, SessionRecord] = {}
-        self._pkce: dict[str, str] = {}
+        self._pkce: dict[str, PkceState] = {}
 
     def save(self, record: SessionRecord) -> None:
         self._records[record.session_id] = record
@@ -76,11 +91,13 @@ class InMemorySessionStore:
             raise SessionNotFoundError(session_id)
         self._records[session_id] = record.model_copy(update={"ttl_seconds": ttl_seconds})
 
-    def save_pkce_state(self, *, state: str, verifier: str, ttl_seconds: int) -> None:
+    def save_pkce_state(
+        self, *, state: str, verifier: str, ttl_seconds: int, nonce: str
+    ) -> None:
         del ttl_seconds  # InMemory store has no TTL; PKCE state is short-lived per process.
-        self._pkce[state] = verifier
+        self._pkce[state] = PkceState(verifier=verifier, nonce=nonce)
 
-    def pop_pkce_state(self, state: str) -> str | None:
+    def pop_pkce_state(self, state: str) -> PkceState | None:
         return self._pkce.pop(state, None)
 
 
@@ -137,11 +154,17 @@ class RedisSessionStore:
         updated = record.model_copy(update={"ttl_seconds": ttl_seconds})
         self.save(updated)
 
-    def save_pkce_state(self, *, state: str, verifier: str, ttl_seconds: int) -> None:
-        self._client.set(self._pkce_key(state), verifier, ex=ttl_seconds)
+    def save_pkce_state(
+        self, *, state: str, verifier: str, ttl_seconds: int, nonce: str
+    ) -> None:
+        payload = PkceState(verifier=verifier, nonce=nonce).model_dump_json()
+        self._client.set(self._pkce_key(state), payload, ex=ttl_seconds)
 
-    def pop_pkce_state(self, state: str) -> str | None:
+    def pop_pkce_state(self, state: str) -> PkceState | None:
         raw = self._client.getdel(self._pkce_key(state))
         if raw is None:
             return None
-        return cast(str, raw)
+        try:
+            return PkceState.model_validate_json(cast(str, raw))
+        except ValidationError:
+            return None  # legacy bare-string record: fail closed (BL-022)

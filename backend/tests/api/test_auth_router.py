@@ -125,6 +125,26 @@ def test_login_redirects_to_authorize_endpoint_with_pkce_and_state(app_with_auth
     assert store.pop_pkce_state(state) is not None
 
 
+def test_login_includes_nonce_in_authorize_url(app_with_auth: FastAPI) -> None:
+    from urllib.parse import parse_qs, urlparse
+
+    store = InMemorySessionStore()
+    domain = _domain_with_auth()
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/login")
+
+    assert response.status_code == 307
+    location = response.headers["location"]
+    qs = parse_qs(urlparse(location).query)
+    assert "nonce" in qs
+    nonce = qs["nonce"][0]
+    assert nonce
+    assert nonce != qs["state"][0]
+
+
 def test_login_returns_500_when_oidc_config_incomplete(app_with_auth: FastAPI) -> None:
     base = load_config(MEDICARE_YAML)
     incomplete = base.model_copy(
@@ -182,7 +202,7 @@ def test_callback_exchanges_code_and_creates_session_cookie(
     from api.routers import _oidc_client
 
     store = InMemorySessionStore()
-    store.save_pkce_state(state="state-1", verifier="ver-1", ttl_seconds=300)
+    store.save_pkce_state(state="state-1", verifier="ver-1", ttl_seconds=300, nonce="nonce-1")
 
     domain = _domain_with_auth()
     app_with_auth.dependency_overrides[get_session_store] = lambda: store
@@ -208,7 +228,9 @@ def test_callback_exchanges_code_and_creates_session_cookie(
     monkeypatch.setattr(
         auth_module,
         "decode_token",
-        _stub_jwks_decoder({"sub": "user-cb", "roles": ["analyst"], "email": "cb@example.com"}),
+        _stub_jwks_decoder(
+            {"sub": "user-cb", "roles": ["analyst"], "email": "cb@example.com", "nonce": "nonce-1"}
+        ),
     )
 
     with TestClient(app_with_auth, follow_redirects=False) as client:
@@ -259,7 +281,7 @@ def test_callback_propagates_idp_token_error(
     from api.routers import _oidc_client
 
     store = InMemorySessionStore()
-    store.save_pkce_state(state="state-err", verifier="ver", ttl_seconds=300)
+    store.save_pkce_state(state="state-err", verifier="ver", ttl_seconds=300, nonce="nonce-err")
     domain = _domain_with_auth()
     app_with_auth.dependency_overrides[get_session_store] = lambda: store
     app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
@@ -290,7 +312,9 @@ def test_callback_returns_400_when_id_token_validation_fails(
     from api.routers import _oidc_client
 
     store = InMemorySessionStore()
-    store.save_pkce_state(state="state-bad-tok", verifier="ver", ttl_seconds=300)
+    store.save_pkce_state(
+        state="state-bad-tok", verifier="ver", ttl_seconds=300, nonce="nonce-bad-tok"
+    )
     domain = _domain_with_auth()
     app_with_auth.dependency_overrides[get_session_store] = lambda: store
     app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
@@ -324,6 +348,171 @@ def test_callback_returns_400_when_id_token_validation_fails(
 
     assert response.status_code == 400
     assert "IdP returned an invalid token" in response.json()["detail"]
+
+
+def _fake_token_handler(*, id_token: str | None) -> "object":
+    import httpx
+
+    def fake_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "acc-tok",
+                "refresh_token": "ref-tok",
+                "id_token": id_token,
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            },
+        )
+
+    return fake_handler
+
+
+def test_callback_rejects_nonce_mismatch(
+    app_with_auth: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import httpx
+
+    from api.middleware import auth as auth_module
+    from api.routers import _oidc_client
+
+    store = InMemorySessionStore()
+    store.save_pkce_state(
+        state="state-nonce-mismatch", verifier="ver", ttl_seconds=300, nonce="expected"
+    )
+    domain = _domain_with_auth()
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    monkeypatch.setattr(
+        _oidc_client.OidcClient,
+        "_http",
+        lambda self: httpx.Client(
+            transport=httpx.MockTransport(_fake_token_handler(id_token="id-tok")), timeout=5.0
+        ),
+    )
+    monkeypatch.setattr(
+        auth_module,
+        "decode_token",
+        _stub_jwks_decoder({"sub": "user-cb", "nonce": "wrong"}),
+    )
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/callback?code=c&state=state-nonce-mismatch")
+
+    assert response.status_code == 400
+    assert "nonce" in response.json()["detail"].lower()
+    assert "set-cookie" not in response.headers
+
+
+def test_callback_rejects_missing_nonce_claim(
+    app_with_auth: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import httpx
+
+    from api.middleware import auth as auth_module
+    from api.routers import _oidc_client
+
+    store = InMemorySessionStore()
+    store.save_pkce_state(
+        state="state-nonce-missing", verifier="ver", ttl_seconds=300, nonce="expected"
+    )
+    domain = _domain_with_auth()
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    monkeypatch.setattr(
+        _oidc_client.OidcClient,
+        "_http",
+        lambda self: httpx.Client(
+            transport=httpx.MockTransport(_fake_token_handler(id_token="id-tok")), timeout=5.0
+        ),
+    )
+    monkeypatch.setattr(
+        auth_module,
+        "decode_token",
+        _stub_jwks_decoder({"sub": "user-cb"}),  # no "nonce" key
+    )
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/callback?code=c&state=state-nonce-missing")
+
+    assert response.status_code == 400
+    assert "nonce" in response.json()["detail"].lower()
+
+
+def test_callback_accepts_matching_nonce(
+    app_with_auth: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import httpx
+
+    from api.middleware import auth as auth_module
+    from api.routers import _oidc_client
+
+    store = InMemorySessionStore()
+    store.save_pkce_state(
+        state="state-nonce-match", verifier="ver", ttl_seconds=300, nonce="expected"
+    )
+    domain = _domain_with_auth()
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    monkeypatch.setattr(
+        _oidc_client.OidcClient,
+        "_http",
+        lambda self: httpx.Client(
+            transport=httpx.MockTransport(_fake_token_handler(id_token="id-tok")), timeout=5.0
+        ),
+    )
+    monkeypatch.setattr(
+        auth_module,
+        "decode_token",
+        _stub_jwks_decoder({"sub": "user-cb", "nonce": "expected"}),
+    )
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/callback?code=c&state=state-nonce-match")
+
+    assert response.status_code == 307
+    assert "chiliai_session=" in response.headers.get("set-cookie", "")
+
+
+def test_callback_access_token_fallback_skips_nonce(
+    app_with_auth: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the IdP omits id_token, we decode the access_token; nonce is an
+    id_token-only claim per OIDC, so its absence must not block the fallback."""
+    import httpx
+
+    from api.middleware import auth as auth_module
+    from api.routers import _oidc_client
+
+    store = InMemorySessionStore()
+    store.save_pkce_state(
+        state="state-nonce-fallback", verifier="ver", ttl_seconds=300, nonce="expected"
+    )
+    domain = _domain_with_auth()
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    monkeypatch.setattr(
+        _oidc_client.OidcClient,
+        "_http",
+        lambda self: httpx.Client(
+            transport=httpx.MockTransport(_fake_token_handler(id_token=None)), timeout=5.0
+        ),
+    )
+    monkeypatch.setattr(
+        auth_module,
+        "decode_token",
+        _stub_jwks_decoder({"sub": "user-cb"}),  # no nonce claim at all
+    )
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/callback?code=c&state=state-nonce-fallback")
+
+    assert response.status_code == 307
+    assert "chiliai_session=" in response.headers.get("set-cookie", "")
 
 
 def test_logout_clears_cookie_and_session(app_with_auth: FastAPI) -> None:
