@@ -81,6 +81,9 @@ callback lives there, not on the SPA origin).
    `client_secret_env_var` to an env var name and provision that secret;
    chiliAI's `/auth/callback` sends `client_secret` on the token-exchange
    request either way (`api/routers/_oidc_client.py::OidcClient.exchange_code`).
+   **Note:** `client_secret_env_var` must name an environment variable that
+   exists at runtime even for public clients (an empty value is acceptable);
+   the callback will error if the variable is absent.
 2. **Require PKCE with S256.** In the client's Advanced settings, set "Proof
    Key for Code Exchange Code Challenge Method" to `S256`. chiliAI always
    generates an S256 challenge (`generate_pkce_pair` in
@@ -109,7 +112,11 @@ callback lives there, not on the SPA origin).
    unknown-`kid` tokens arrive in that window. In practice: the **first**
    post-rotation login triggers one extra JWKS fetch and succeeds; nothing
    needs restarting, and the realm's old key can be removed once you're
-   confident no still-valid token was signed with it.
+   confident no still-valid token was signed with it. **Bounded worst case:**
+   If the 30-second forced-refresh window was consumed just before a rotation
+   (by unknown-`kid` noise or a transient JWKS fetch failure), tokens signed
+   by the new key receive 401s for at most 30 seconds, then recover
+   automatically on the next unknown-`kid` token — no restart needed.
 6. **`aud` must equal `client_id`.** Per OIDC Core, an ID token's `aud` claim
    is the client_id of the client the token was issued to — Keycloak sets
    this automatically. `decode_token` (`api/middleware/auth.py`) checks
