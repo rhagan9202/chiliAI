@@ -1,6 +1,6 @@
 # Agent Module
 
-`agent/` is the workflow coordinator for the chiliAI pipeline worker. It consumes events from Redis Streams, runs multi-step pipeline handlers, tracks workflow lifecycle state, and routes failures to a dead-letter queue.
+`agent/` is the workflow coordinator for the chiliAI pipeline worker. It consumes events from Redis Streams, runs multi-step pipeline handlers, tracks workflow lifecycle state, and routes failures to a dead-letter queue — persisting a durable, operator-replayable record for each one (BL-023; see § Durable DLQ record persistence below and [`docs/runbooks/event-replay.md`](../../docs/runbooks/event-replay.md)).
 
 ## Worker Entry Point
 
@@ -47,6 +47,39 @@ so replayed/redelivered events are no-ops rather than regressing status.
 stage. `build_document_status_store` selects `PostgresSourceDocumentStatusStore`
 when a database is configured, else `InMemorySourceDocumentStatusStore`
 (`ingestion/adapters/`).
+
+### Durable DLQ record persistence (BL-023)
+
+`run_handler_with_retry` accepts an optional `dlq_record_store:
+events.protocols.DlqRecordStore | None`. After retries are exhausted and
+`event_bus.publish_to_dlq` succeeds (the Redis Streams DLQ entry that backs
+the ACK contract), it also persists a durable `events.dlq_models.DlqRecord`
+capturing the event type, correlation id, encoded payload, and error/retry
+context — giving operators a queryable, replayable ledger of dead-lettered
+events beyond the Streams DLQ. This is best-effort: a persist failure is
+logged and swallowed rather than propagated, so a durable-store outage never
+masks the original handler error. `build_dlq_record_store` (next to
+`build_document_status_store`) selects `PostgresDlqRecordStore` when a
+database is configured, else `InMemoryDlqRecordStore` (`events/adapters/`);
+the worker threads it through `WorkerDependencies.dlq_record_store` →
+`drain_ingestion_events` → the single `run_handler_with_retry` call site.
+
+Persisting the same `dlq_id` twice is an upsert, but with a terminal-state
+guard: once a record's `status` is `replayed` or `discarded` (via
+`DlqRecordStore.mark_replayed`/`mark_discarded`), a later `persist()` for
+that id is a no-op — the stored record is returned unchanged rather than
+reverted to `pending`. The in-memory adapter checks this in Python; the
+Postgres adapter enforces it in SQL via a `CASE WHEN event_dlq.status =
+'pending' THEN EXCLUDED.<col> ELSE event_dlq.<col> END` guard on every
+updated column.
+
+Operators read and act on this ledger through the API gateway's
+`/events/dlq` surface (`api/routers/events.py`, `api/dependencies.get_dlq_record_store`
+— see `backend/README.md` § API Endpoints), not directly against the worker.
+See [`docs/runbooks/event-replay.md`](../../docs/runbooks/event-replay.md) for
+the operator playbook, including why `replay` publishes before it CASes the
+record to `replayed` (accepted double-publish-under-race tradeoff, safe
+because downstream handlers are idempotent by construction).
 
 ### handle_documents_uploaded
 

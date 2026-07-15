@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
+from events.dlq_models import DlqRecord, DlqRecordStatus
 from events.types import AnyEvent
 from shared.utils import utc_now
 
@@ -81,9 +82,52 @@ class EventBus(Protocol):
     ) -> str | None: ...
 
 
+@runtime_checkable
+class DlqRecordStore(Protocol):
+    """Durable operational ledger of dead-lettered events (BL-023)."""
+
+    def persist(self, record: DlqRecord) -> DlqRecord:
+        """Upsert ``record`` keyed on ``dlq_id``.
+
+        Persisting the same ``dlq_id`` twice replaces the stored record with
+        the latest one rather than erroring or creating a duplicate entry —
+        the in-memory adapter overwrites the dict slot in place, and the
+        Postgres adapter does the equivalent via
+        ``INSERT ... ON CONFLICT (dlq_id) DO UPDATE SET`` over every non-PK
+        column.
+
+        Terminal-state guard: if the stored record's ``status`` is already
+        ``"replayed"`` or ``"discarded"``, this is a no-op — the existing
+        record is returned unchanged rather than reverted back to
+        ``"pending"``. Only a stored record that is ``"pending"`` (or a
+        ``dlq_id`` not yet seen) is replaced by ``record``. The in-memory
+        adapter checks this in Python; the Postgres adapter enforces it in
+        SQL via a ``CASE WHEN event_dlq.status = 'pending' THEN
+        EXCLUDED.<col> ELSE event_dlq.<col> END`` guard on every updated
+        column.
+        """
+        ...
+
+    def list(
+        self,
+        *,
+        status: DlqRecordStatus | None = None,
+        event_type: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[DlqRecord], int]: ...
+
+    def get(self, dlq_id: str) -> DlqRecord | None: ...
+
+    def mark_replayed(self, dlq_id: str) -> DlqRecord | None: ...
+
+    def mark_discarded(self, dlq_id: str) -> DlqRecord | None: ...
+
+
 __all__ = [
     "DlqEntry",
     "DlqErrorInfo",
+    "DlqRecordStore",
     "EventBus",
     "EventDelivery",
 ]

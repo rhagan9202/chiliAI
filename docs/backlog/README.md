@@ -28,7 +28,7 @@
 | config.md | 14 | 0 | 1 | 15 | 6% |
 | database.md | 12 | 0 | 1 | 13 | 7% |
 | embeddings.md | 12 | 0 | 0 | 12 | 0% |
-| events.md | 14 | 2 | 0 | 16 | 0% |
+| events.md | 13 | 2 | 1 | 16 | 6% |
 | frontend.md | 24 | 0 | 2 | 26 | 7% |
 | graph.md | 18 | 0 | 2 | 20 | 10% |
 | ingestion.md | 23 | 0 | 12 | 35 | 34% |
@@ -40,7 +40,7 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 412 | 7 | 21 | 442 | 4% |
+| **Total** | 411 | 7 | 22 | 442 | 4% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -76,7 +76,7 @@
 - [frontend.06] frontend — size M — prereqs done
 - [frontend.10] frontend — size M — prereqs done
 - [frontend.13] frontend — size M — prereqs done
-- …30 more
+- …31 more
 <!-- END: ready-set -->
 
 ## Critical path

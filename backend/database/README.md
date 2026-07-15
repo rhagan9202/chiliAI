@@ -31,7 +31,9 @@ z-score risk signals). Migration 0007 adds `cases.feedback_history` for
 analyst feedback history. Migration 0008 adds `scorecard_runs` (generated
 scorecard persistence). Migration 0009 adds
 `source_document_status` (durable per-document ingestion status projection,
-BL-041). Head is `0009` — 13 tables total.
+BL-041). Migration 0010 adds `event_dlq` (durable, replayable event
+dead-letter records, BL-023 — see `backend/events/README.md` and
+`docs/runbooks/event-replay.md`). Head is `0010` — 14 tables total.
 
 ## Commands
 
@@ -75,14 +77,12 @@ the snapshot just to silence a drift you did not intend. The snapshot is
 content-based (`alembic_version` is excluded, so no revision IDs appear in
 it); renumbering revision files does not invalidate it.
 
-**Status:** the script, Makefile targets, and CI job are implemented and
-merged on this branch. Generating the initial committed snapshot at head
-`0009` and a live pass of `make migrate-check` / the CI job require a
-Docker-capable environment and are deferred to a follow-up verification pass
-in this sprint — `backend/database/migrations/snapshots/head.sql` does not
-exist yet, so the CI job currently fails on a missing file (not drift) until
-that snapshot lands. Do not treat the mechanism as proven live until that
-pass runs and this note is removed.
+**Status:** the script, Makefile targets, CI job, and committed
+`snapshots/head.sql` are all live as of migration `0009` (BL-042, Sprint
+2026-26) and re-verified through `0010` (BL-023, Sprint 2026-27) — every
+migration added since has run `make migrate-snapshot` and committed the
+refreshed snapshot in the same commit as the migration, and `make
+migrate-check` reports clean replay against the live schema.
 
 ## Configuration
 

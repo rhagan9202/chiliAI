@@ -69,6 +69,19 @@ CREATE TABLE public.entity_metrics_current (
     value double precision NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
+CREATE TABLE public.event_dlq (
+    dlq_id text NOT NULL,
+    event_type text NOT NULL,
+    correlation_id text NOT NULL,
+    payload jsonb NOT NULL,
+    error_message text NOT NULL,
+    error_traceback text NOT NULL,
+    retry_count integer NOT NULL,
+    failed_at timestamp with time zone NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    replayed_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
 CREATE TABLE public.observations (
     knowledge_base_id text NOT NULL,
     entity_id text NOT NULL,
@@ -164,6 +177,8 @@ ALTER TABLE ONLY public.entity_metric_history
     ADD CONSTRAINT entity_metric_history_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name, observed_at);
 ALTER TABLE ONLY public.entity_metrics_current
     ADD CONSTRAINT entity_metrics_current_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name);
+ALTER TABLE ONLY public.event_dlq
+    ADD CONSTRAINT event_dlq_pkey PRIMARY KEY (dlq_id);
 ALTER TABLE ONLY public.observations
     ADD CONSTRAINT observations_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name, observed_at);
 ALTER TABLE ONLY public.policy_items
@@ -186,6 +201,7 @@ CREATE INDEX ix_cases_status ON public.cases USING btree (knowledge_base_id, sta
 CREATE INDEX ix_conversations_kb ON public.conversations USING btree (knowledge_base_id, updated_at DESC);
 CREATE INDEX ix_entity_derived_signals_latest ON public.entity_derived_signals USING btree (knowledge_base_id, entity_id, metric_name, computed_at DESC);
 CREATE INDEX ix_entity_metric_history_metric_range ON public.entity_metric_history USING btree (knowledge_base_id, metric_name, observed_at);
+CREATE INDEX ix_event_dlq_status_created ON public.event_dlq USING btree (status, created_at DESC);
 CREATE INDEX ix_observations_batch ON public.observations USING btree (knowledge_base_id, batch_id);
 CREATE INDEX ix_policy_items_status ON public.policy_items USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX ix_raw_records_correlation ON public.raw_records USING btree (knowledge_base_id, correlation_id);

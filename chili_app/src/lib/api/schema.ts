@@ -577,6 +577,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/events/dlq": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Dlq Records
+         * @description List dead-lettered events, newest first, with optional filters.
+         */
+        get: operations["list_dlq_records_events_dlq_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events/dlq/{dlq_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Dlq Record
+         * @description Return a single DLQ record, or 404 when unknown.
+         */
+        get: operations["get_dlq_record_events_dlq__dlq_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events/dlq/{dlq_id}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard Dlq Record
+         * @description Mark a pending DLQ record discarded. 404 unknown, 409 non-pending.
+         */
+        post: operations["discard_dlq_record_events_dlq__dlq_id__discard_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events/dlq/{dlq_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay Dlq Record
+         * @description Re-publish a pending DLQ record's original event and mark it replayed.
+         *
+         *     404 for an unknown id, 409 when the record is not pending, 422 when the
+         *     stored payload no longer decodes against the current event registry (the
+         *     record is left ``pending`` so an operator can discard or retry later).
+         */
+        post: operations["replay_dlq_record_events_dlq__dlq_id__replay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events/stream": {
         parameters: {
             query?: never;
@@ -1862,6 +1946,56 @@ export interface components {
             knowledge_base_id: string;
             /** Policy Item Id */
             policy_item_id: string;
+        };
+        /**
+         * DlqRecord
+         * @description One dead-lettered event captured at retry exhaustion.
+         */
+        DlqRecord: {
+            /** Correlation Id */
+            correlation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /** Dlq Id */
+            dlq_id: string;
+            /** Error Message */
+            error_message: string;
+            /** Error Traceback */
+            error_traceback: string;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Failed At
+             * Format: date-time
+             */
+            failed_at: string;
+            /** Payload */
+            payload: {
+                [key: string]: string;
+            };
+            /** Replayed At */
+            replayed_at?: string | null;
+            /** Retry Count */
+            retry_count: number;
+            /**
+             * Status
+             * @default pending
+             * @enum {string}
+             */
+            status: "pending" | "replayed" | "discarded";
+        };
+        /**
+         * DlqRecordListResponse
+         * @description Paginated DLQ listing for the operator API.
+         */
+        DlqRecordListResponse: {
+            /** Items */
+            items: components["schemas"]["DlqRecord"][];
+            /** Total */
+            total: number;
         };
         /**
          * DocumentFormat
@@ -5122,6 +5256,133 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidatePackResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_dlq_records_events_dlq_get: {
+        parameters: {
+            query?: {
+                status?: ("pending" | "replayed" | "discarded") | null;
+                event_type?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DlqRecordListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dlq_record_events_dlq__dlq_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dlq_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DlqRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discard_dlq_record_events_dlq__dlq_id__discard_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dlq_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DlqRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replay_dlq_record_events_dlq__dlq_id__replay_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dlq_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DlqRecord"];
                 };
             };
             /** @description Validation Error */

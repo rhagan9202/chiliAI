@@ -351,7 +351,7 @@
 ### Current State
 - There is no script under `scripts/` for replaying Redis stream entries (no `XRANGE`/`XREVRANGE` consumer exists outside the live consumer loop).
 - The only retry path is the in-flight one in `backend/agent/coordinator.py:2345-2412 run_handler_with_retry`, which routes to DLQ on retry exhaustion rather than replaying earlier entries.
-- DLQ replay is intentionally split into events.10; this story covers the live-stream replay surface.
+- DLQ replay is intentionally split into events.10; this story covers the live-stream replay surface. **events.10 has since shipped** (2026-07-15, BL-023): a dead-lettered event can be inspected and re-driven via `GET/POST /events/dlq*`. This story remains open and unchanged — it is a distinct capability (replaying arbitrary already-processed entries from a given Redis Stream position/range, not just re-driving one dead-lettered event by id).
 - `backend/events/adapters/redis_streams.py` exposes no `range`-style reader on the protocol.
 
 ### Acceptance Criteria
@@ -381,33 +381,48 @@
 ## Story events.10: Persist event dead-letter queue records
 
 **ID:** events.10
-**Status:** planned
+**Status:** done
 **Prerequisites:** [events.04, events.09]
 **Unblocks:** [events.15, ingestion.28]
 **Estimated size:** L
+**Done:** 2026-07-15 · BL-023 (Sprint 2026-27) · `feat/sprint-2026-27-event-replay`
 
 ### Narrative
 As an operator,
 I want failed event deliveries to be persisted in a dead-letter queue,
 so that transient and poison-message failures can be inspected after the fact.
 
-### Current State
-Event publishing and retry behavior exist, but failed events are not exposed as durable operational records.
+### Current State (shipped)
+`events.protocols.DlqRecordStore` (`InMemoryDlqRecordStore` /
+`PostgresDlqRecordStore` over the `event_dlq` table, migration
+`0010_event_dlq`) persists a durable `DlqRecord` alongside the existing Redis
+`.dlq` stream write, on every `run_handler_with_retry` retry-exhaustion path
+(`agent/coordinator.py`). `api/routers/events.py` exposes `GET /events/dlq`
+(list, paginated/filterable), `GET /events/dlq/{id}` (detail), `POST
+/events/dlq/{id}/replay` (decode + re-publish + CAS to `replayed`), and `POST
+/events/dlq/{id}/discard` (CAS to `discarded`) — `analyst`-gated reads,
+`admin`-gated mutations. Full design: `docs/superpowers/specs/2026-07-15-bl023-event-replay-design.md`;
+operator playbook: `docs/runbooks/event-replay.md`; module docs:
+`backend/events/README.md`.
 
 ### Acceptance Criteria
-- [ ] Event bus records exhausted delivery failures with event payload, handler, error, attempt count, and timestamps.
-- [ ] Repository/API read paths list and fetch DLQ records with pagination.
-- [ ] Sensitive payload fields are redacted according to existing event logging conventions.
-- [ ] DLQ records are linked to original event IDs where available.
+- [x] Event bus records exhausted delivery failures with event payload, handler, error, attempt count, and timestamps — `DlqRecord` (`event_type`, `correlation_id`, codec-encoded `payload`, `error_message`, `error_traceback`, `retry_count`, `failed_at`), persisted by `run_handler_with_retry` after `publish_to_dlq` succeeds.
+- [x] Repository/API read paths list and fetch DLQ records with pagination — `GET /events/dlq` (limit/offset, `status`/`event_type` filters, newest-first) and `GET /events/dlq/{dlq_id}`.
+- [x] Sensitive payload fields are redacted according to existing event logging conventions. **Deviation (deliberate skip per design ruling):** no existing redaction conventions exist anywhere in the repo to follow, and event payloads are reference-shaped by construction (IDs, storage keys, counts — never document content or credentials, verified across every model in `events/types.py`). No redaction machinery ships in v1; if a future event type ever carries a sensitive field, redaction is that event type's own design concern.
+- [x] DLQ records are linked to original event IDs where available — via `correlation_id` (the Redis stream message id is not available at the wrapper, since delivery is already ACKed/exhausted by the time retries are spent).
 
 ### Verification
-- [ ] Unit tests force handler failures and confirm DLQ persistence.
-- [ ] API tests cover listing and retrieving DLQ records.
+- [x] Unit tests force handler failures and confirm DLQ persistence — `backend/tests/agent/test_coordinator.py::test_retry_exhaustion_persists_dlq_record` (+ store-failure-does-not-mask-original-error, no-store-is-a-noop) and `backend/tests/events/test_dlq_store.py` (both adapters: roundtrip, filters/pagination, CAS transitions, upsert-by-id, terminal-state guard).
+- [x] API tests cover listing and retrieving DLQ records — `backend/tests/api/test_events_dlq.py` (10 tests: list/get/replay/discard, role gates, 404/409/422 branches, concurrent-transition race, pagination window).
+- [x] **Live-stack verification passed (2026-07-15)** against the full `make dev` stack: a forced poison event produced a durable `pending` record (`retry_count: 3`, full traceback) via `GET /events/dlq`; replaying it while still broken re-drove the event and produced a new pending record, marking the original `replayed` (repeat replay then `409`'d); discarding the new record set it `discarded` (repeat discard `409`'d); fixing the cause and replaying drove the pipeline to completion (`stage=graph outcome=success`, zero pending records left). Role gates were confirmed in unit tests with auth enabled — the live dev stack runs auth-disabled by design, so `require_role` is open there (`api/middleware/rbac.py:66-67`); `docs/runbooks/event-replay.md` was corrected to state this rather than implying `CHILI_DEV_ANONYMOUS_ROLE` gates dev access.
 
 ### Code touch points
-- `backend/app/events/**`
-- `backend/app/api/**`
-- `backend/tests/**`
+- `backend/events/dlq_models.py`, `backend/events/protocols.py`, `backend/events/adapters/dlq_in_memory.py`, `backend/events/adapters/dlq_postgres.py`, `backend/events/exceptions.py`
+- `backend/database/migrations/versions/0010_event_dlq.py`, `backend/database/migrations/snapshots/head.sql`
+- `backend/agent/coordinator.py`
+- `backend/api/dependencies.py`, `backend/api/routers/events.py`
+- `backend/tests/events/test_dlq_store.py`, `backend/tests/agent/test_coordinator.py`, `backend/tests/api/test_events_dlq.py`
+- `docs/runbooks/event-replay.md`, `backend/events/README.md`
 
 ---
 ## Story events.11: Tenant-aware stream-naming strategy
@@ -593,6 +608,20 @@ Event publishing and retry behavior exist, but failed events are not exposed as 
 As an operator,
 I want to replay or purge dead-lettered events,
 so that recoverable failures can be retried and obsolete records can be cleared safely.
+
+### Progress note (2026-07-15, BL-023)
+BL-023 shipped by-id DLQ operations on top of events.10's durable store:
+`POST /events/dlq/{id}/replay` (decode + re-publish through the normal
+dispatch path + CAS to `replayed`) and `POST /events/dlq/{id}/discard` (CAS
+to `discarded`), both `admin`-gated — see
+`docs/runbooks/event-replay.md`. This satisfies this story's first
+acceptance item ("API supports replaying selected DLQ records back through
+the event bus") for the single-record case. events.15's remaining scope is
+**bulk/purge operations** (replay or purge *selected or expired* records in
+one call, with per-item outcome reporting) and any **live-stream replay
+integration** (replaying already-processed entries from a Redis Stream
+position/range, as distinct from re-driving one already-dead-lettered
+record — see the events.10 note above this story). Status remains `planned`.
 
 ### Acceptance Criteria
 - [ ] API supports replaying selected DLQ records back through the event bus.

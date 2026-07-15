@@ -515,7 +515,7 @@ conversations/                  # Durable RAG chat conversations (BL-012)
 | `conversations` | Durable chat conversation/message persistence and retrieval | `shared.types`, `database.ConnectionProvider` | `api`, `rag`, `llm` internals |
 | `shared` | Domain types, protocols, utilities | Python stdlib only | Everything — must be leaf dependency |
 | `config` | Configuration loading and validation | `shared.types` | Everything except `shared` |
-| `events` | Event bus abstraction | `shared.types` | Everything except `shared` |
+| `events` | Event bus abstraction; durable DLQ ledger (`DlqRecordStore`, BL-023) | `shared.types`, `database.ConnectionProvider` (Postgres DLQ adapter) | Everything except `shared`, `database` |
 | `storage` | Object/file storage abstraction | `shared.types` | Everything except `shared` |
 | `database` | Connection pooling, schema migrations | `config`, `shared` | domain logic, business logic, imports of any capability module |
 | `records` | Structured-record validation, raw_records persistence, feed mapping | `config`, `shared`, `events`, `database`, `monitoring.models` | imports of `graph`/`analytics` internals — communicates downstream only by publishing `RecordsIngestedEvent` |
@@ -942,6 +942,57 @@ The Department of the Air Force housing demo exercises the platform's domain-rec
 **Seed path.** `make seed-housing` (→ `tools/seed_housing_demo.py`) drives the *running* API over real HTTP: creates a fresh KB, uploads the six housing feed fixture CSVs through `POST /records/{kb}/files`, waits for the ingest workflows, and optionally generates scorecard runs (`SEED_ARGS="--scorecards"`). Requires the stack running with the housing pack (`make dev-domain DOMAIN=department_air_force_housing`). Reseeding uses a fresh KB each run — the housing read models aggregate the newest KB of the active domain.
 
 **Provenance.** Every UH (8-metric) and MFH (12-metric) template metric traces to a congressional mandate; the statutory basis, per-metric citations, and the honest simplifications the demo makes are documented in the research dossier at [`docs/research/housing-scorecard-mandates.md`](research/housing-scorecard-mandates.md).
+
+### 6.9 Dead-letter queue: durable records + operator replay (BL-023)
+
+`run_handler_with_retry` (`agent/coordinator.py`) publishes exhausted pipeline
+handler failures to a capped, per-event-type Redis Streams `{stream}.dlq`
+archive (`EventBus.publish_to_dlq`) — transport, not an operational record.
+BL-023 adds a durable, queryable, replayable layer on top of that transport:
+
+- **`event_dlq` table** (Alembic migration `0010_event_dlq`) or an in-memory
+  adapter for tests/no-database dev, behind the `events.protocols.DlqRecordStore`
+  protocol (`InMemoryDlqRecordStore` / `PostgresDlqRecordStore`,
+  `backend/events/adapters/`). Selection mirrors the BL-041 document-status
+  store: Postgres when a database connection provider is configured, else
+  in-memory (`build_dlq_record_store` in the worker, `get_dlq_record_store` in
+  the API gateway — both must select the **same** Postgres backend for the
+  API to see worker-written records, or the in-memory case degenerates to two
+  independent, process-local ledgers).
+- **Writer**: after a successful `publish_to_dlq`, the worker best-effort
+  persists a `DlqRecord` (event type, correlation id, codec-encoded payload,
+  error message/traceback, retry count, timestamps). A persistence failure is
+  logged and swallowed — it never masks the original handler failure, since
+  the Redis archive entry from the step above already exists as a fallback.
+  `persist` is an upsert keyed on `dlq_id` with a terminal-state guard: once a
+  record is `replayed` or `discarded`, a later `persist` for that id is a
+  no-op rather than reverting it to `pending`.
+- **Operator API** (`GET/POST /events/dlq*` on the existing `/events` router):
+  list (paginated, filterable by `status`/`event_type`) and inspect
+  (`analyst`-gated — tracebacks can leak internals); replay and discard
+  (`admin`-gated — they mutate pipeline state). Replay decodes the stored
+  payload and re-publishes it through the normal `EventBus.publish` path, so
+  it re-enters ordinary dispatch — per-document isolation (BL-041/BL-017) and
+  status-projection idempotency apply exactly as they would to a fresh
+  delivery, and a still-broken cause dead-letters again as a **new** record
+  rather than looping the original.
+- **Concurrency tradeoff (accepted by design)**: replay publishes the event
+  before it CAS-transitions the record to `replayed`, so a race between two
+  operator actions on the same record can publish the event once while only
+  one call wins the transition (the other gets `409`) — never zero times.
+  The alternative ordering (CAS first) risks the opposite: a record marked
+  `replayed` with no event ever published if the process fails between the
+  two steps. Accepted because downstream handlers are idempotent by
+  construction (BL-041 monotonic projections, BL-017 replay-stable upserts),
+  so a harmless extra publish is strictly safer than a silent loss.
+- **Redaction is deliberately out of scope for v1** — no existing
+  repo-wide redaction convention exists to follow, and event payloads are
+  reference-shaped by construction (ids, storage keys, counts — never
+  document content or credentials).
+
+Full operator playbook (triage, replay/discard decision, curl examples, the
+`event_dlq`-vs-`.dlq`-stream relationship): [`docs/runbooks/event-replay.md`](runbooks/event-replay.md).
+Module design: [`backend/events/README.md`](../backend/events/README.md).
 
 ---
 
@@ -1580,7 +1631,7 @@ Adapter selection is driven by environment configuration, not code changes.
 
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
-| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion (LLM-driven `LlmDocumentExtractor` + Ollama adapter + `FallbackLlmClient`; registered PDF/DOCX/HTML/TXT/JSON/CSV/XLSX parsers), graph/vector/embedding/LLM/RAG services, analytics modules (timeseries/gnn/risk/explainability/metrics), monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, `database/` (psycopg 3 + Alembic + TimescaleDB) connection provider, `records/` structured-ingestion pipeline (raw_records + embed+index step + NPPES/DE-SynPUF feeds), KB delete cascade purging every per-KB store (graph/vector/raw_records+submissions/derived signals/risk history/observations/alert history/metrics/conversations/cases/policy/evidence/scorecard runs/document-status projection/object store; shared step list in `knowledgebases.cleanup`, replayed by both the API and the worker) with 207 partial-failure + complete worker retry, document re-upload idempotency with `replaced_document_id`, `delete_by_source_document` on graph and vector protocols, `delete_by_document` on the document-status store (called from the single-document delete endpoint), `delete_by_kb` on raw records, provenance metadata constants (`shared/provenance.py`), Tennessee subset tooling (`tools/sample_data/build_tennessee_subset.py`), and Plan C per-consumer Postgres adapters with write-back flows in `agent/coordinator.py` | Add a production-grade KB metadata adapter/migration path, wire `delete_by_source_document` to the document-delete endpoint, add production-mode adapter guardrails, and add audit-grade workflow history |
+| `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion (LLM-driven `LlmDocumentExtractor` + Ollama adapter + `FallbackLlmClient`; registered PDF/DOCX/HTML/TXT/JSON/CSV/XLSX parsers), graph/vector/embedding/LLM/RAG services, analytics modules (timeseries/gnn/risk/explainability/metrics), monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, `database/` (psycopg 3 + Alembic + TimescaleDB) connection provider, `records/` structured-ingestion pipeline (raw_records + embed+index step + NPPES/DE-SynPUF feeds), KB delete cascade purging every per-KB store (graph/vector/raw_records+submissions/derived signals/risk history/observations/alert history/metrics/conversations/cases/policy/evidence/scorecard runs/document-status projection/object store; shared step list in `knowledgebases.cleanup`, replayed by both the API and the worker) with 207 partial-failure + complete worker retry, document re-upload idempotency with `replaced_document_id`, `delete_by_source_document` on graph and vector protocols, `delete_by_document` on the document-status store (called from the single-document delete endpoint), `delete_by_kb` on raw records, provenance metadata constants (`shared/provenance.py`), Tennessee subset tooling (`tools/sample_data/build_tennessee_subset.py`), Plan C per-consumer Postgres adapters with write-back flows in `agent/coordinator.py`, and a durable/replayable event dead-letter ledger with an `analyst`/`admin`-gated operator API surface (`event_dlq` table, `/events/dlq*`, BL-023 — see §6.9) | Add a production-grade KB metadata adapter/migration path, wire `delete_by_source_document` to the document-delete endpoint, add production-mode adapter guardrails, and add audit-grade workflow history |
 | `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, live KB-scoped Investigation Workbench, Case Management, Policy Intelligence, RAG Chat, read-only Configuration summary, and realtime SSE hook | Complete config save endpoint integration, add dedicated workflow/evidence navigation surfaces, and production UX/performance polish |
 | `docs/` | Architecture, onboarding guide, security checklist, live module backlogs, curated project planning, superpowers plans/specs, wiki, ledger, and archived historical material | Keep active docs synchronized with implementation and archive stale snapshots |
 | `infra/` | Docker Compose, flat Kubernetes manifests, and Helm chart | Add cloud-provider Terraform/Pulumi and production hardening as needed |
