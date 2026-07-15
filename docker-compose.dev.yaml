@@ -60,6 +60,7 @@ services:
       # e.g. `make dev-domain DOMAIN=food_supply_chain`. Must stay in lockstep
       # with the worker service below.
       - CHILI_CONFIG_PATH=${CHILI_CONFIG_PATH:-/app/config/defaults/medicare_fraud_cms_desynpuf.yaml}
+      - CHILI_CONFIG_OVERLAY_PATH=${CHILI_CONFIG_OVERLAY_PATH:-}
       - CHILI_DEV_ANONYMOUS_ROLE=${CHILI_DEV_ANONYMOUS_ROLE:-viewer}
       - CHILI_KB_REPOSITORY_BACKEND=object_store
       - CHILI_ALERT_REPOSITORY_BACKEND=object_store
@@ -110,6 +111,7 @@ services:
       # Must match the API service's CHILI_CONFIG_PATH — api and worker always
       # move to a new domain pack together.
       - CHILI_CONFIG_PATH=${CHILI_CONFIG_PATH:-/app/config/defaults/medicare_fraud_cms_desynpuf.yaml}
+      - CHILI_CONFIG_OVERLAY_PATH=${CHILI_CONFIG_OVERLAY_PATH:-}
       - CHILI_DEV_ANONYMOUS_ROLE=${CHILI_DEV_ANONYMOUS_ROLE:-viewer}
       - CHILI_WORKFLOW_RUN_STORE_BACKEND=redis
       - CHILI_EVENT_BUS_BACKEND=redis
