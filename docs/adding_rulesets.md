@@ -34,10 +34,14 @@ CHILI_CONFIG_PATH=/app/config/defaults/medicare_fraud_cms_desynpuf.yaml
 **2. Each default config independently chooses whether to ship a `policy_rules:` block:**
 ```
 HAS policy_rules:  medicare_fraud.yaml                 ← threshold max_billed_amount: 5000
-HAS policy_rules:  medicare_fraud_dev.yaml             ← threshold max_billed_amount: 100
 HAS policy_rules:  medicare_fraud_cms_desynpuf.yaml    ← THIS is what the stack uses (added for the demo)
 no  policy_rules:  food_supply_chain.yaml
 ```
+`medicare_fraud_dev.yaml` also carries a `policy_rules` block (threshold
+`max_billed_amount: 100`), but it now lives at `backend/config/overlays/` as
+a **partial overlay** over `medicare_fraud.yaml` (ADR 0001,
+`CHILI_CONFIG_OVERLAY_PATH`) rather than a standalone config — see Example B
+below.
 
 **3. The worker only evaluates rules from the loaded config.** In `backend/agent/coordinator.py`:
 ```python
@@ -70,7 +74,10 @@ rules.
    rules." Nothing is broken.
 
 ### Example B — making live (worker-generated) items appear
-Point the stack at a config that ships rules. For instance `medicare_fraud_dev.yaml` contains:
+Point the stack at a config that ships rules. For instance, layering the dev
+overlay onto the base pack (`CHILI_CONFIG_PATH=config/defaults/medicare_fraud.yaml
+CHILI_CONFIG_OVERLAY_PATH=config/overlays/medicare_fraud_dev.yaml`) merges in
+this `policy_rules` block:
 ```yaml
 policy_rules:
   - id: billing_thresholds

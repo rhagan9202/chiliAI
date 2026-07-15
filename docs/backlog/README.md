@@ -25,7 +25,7 @@
 | agent.md | 19 | 0 | 1 | 20 | 5% |
 | analytics.md | 33 | 0 | 0 | 33 | 0% |
 | api.md | 27 | 0 | 1 | 29 | 3% |
-| config.md | 15 | 0 | 0 | 15 | 0% |
+| config.md | 14 | 0 | 1 | 15 | 6% |
 | database.md | 12 | 0 | 1 | 13 | 7% |
 | embeddings.md | 12 | 0 | 0 | 12 | 0% |
 | events.md | 14 | 2 | 0 | 16 | 0% |
@@ -40,7 +40,7 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 413 | 7 | 20 | 442 | 4% |
+| **Total** | 412 | 7 | 21 | 442 | 4% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -48,6 +48,7 @@
 <!-- BEGIN: ready-set -->
 - [_cicd.01] _cicd — size S — prereqs done
 - [api.26] api — size S — prereqs done
+- [ingestion.08] ingestion — size S — prereqs done
 - [shared.01] shared — size S — prereqs done
 - [shared.17] shared — size S — prereqs done
 - [_cicd.02] _cicd — size M — prereqs done
@@ -59,6 +60,8 @@
 - [_security.11] _security — size M — prereqs done
 - [agent.01] agent — size M — prereqs done
 - [agent.04] agent — size M — prereqs done
+- [agent.05] agent — size M — prereqs done
+- [agent.10] agent — size M — prereqs done
 - [agent.11] agent — size M — prereqs done
 - [agent.13] agent — size M — prereqs done
 - [agent.15] agent — size M — prereqs done
@@ -73,10 +76,7 @@
 - [frontend.06] frontend — size M — prereqs done
 - [frontend.10] frontend — size M — prereqs done
 - [frontend.13] frontend — size M — prereqs done
-- [frontend.14] frontend — size M — prereqs done
-- [knowledgebases.03] knowledgebases — size M — prereqs done
-- [records.11] records — size M — prereqs done
-- …24 more
+- …30 more
 <!-- END: ready-set -->
 
 ## Critical path

@@ -137,42 +137,54 @@
 ## Story config.04: Support base + environment overlay layering for domain config
 
 **ID:** config.04
-**Status:** planned
+**Status:** done
 **Prerequisites:** [config.03]
-**Progress note (2026-07-03, feat/domain-packs-and-config-manager):** overlay layering itself has NOT landed — no `overlay.py`, no `CHILI_CONFIG_OVERLAY_PATH`, no merge ADR. What did land is adjacent switch ergonomics (d466249): `CHILI_CONFIG_PATH` is parameterized in both compose files (api + worker in lockstep, medicare default) and `make dev-domain DOMAIN=<pack>` selects a whole pack. Whole-pack selection reduces but does not remove the duplication this story targets; the ACs below all remain open.
+**Progress note (2026-07-03, feat/domain-packs-and-config-manager):** overlay layering itself has NOT landed — no `overlay.py`, no `CHILI_CONFIG_OVERLAY_PATH`, no merge ADR. What did land is adjacent switch ergonomics (d466249): `CHILI_CONFIG_PATH` is parameterized in both compose files (api + worker in lockstep, medicare default) and `make dev-domain DOMAIN=<pack>` selects a whole pack. Whole-pack selection reduces but does not remove the duplication this story targets; the ACs below all remain open. — **superseded 2026-07-15, see "Current State (shipped)" below.**
 **Unblocks:** [agent.05, agent.10, config.08, ingestion.08, ingestion.09, ingestion.13, ingestion.15]
 **Estimated size:** M
+**Done:** 2026-07-15 · BL-044 (Sprint 2026-27) · `feat/sprint-2026-27-config-overlay`
 
 **As a** platform engineer,
 **I need** a documented overlay strategy that lets `medicare_fraud_dev.yaml` declare only its dev-specific overrides instead of duplicating the base file,
 **so that** environment drift between dev/staging/prod is localized and reviewable.
 
-### Current State
-- `backend/config/loader.py:30-34` carries a `TODO(production)` for "base + env-specific layer" merging.
-- `backend/config/defaults/medicare_fraud.yaml` (228 lines) and `medicare_fraud_dev.yaml` (244 lines) duplicate the entire entity/relationship/records surface to flip a handful of knobs.
-- No `CHILI_CONFIG_OVERLAY_PATH` env, no documented precedence rules, no overlay-merge tests.
-- Open question (Wave 1) on deep-merge with list-replace vs. list-merge-by-key — must be locked before implementation.
+### Current State (shipped)
+- `docs/architecture/decisions/0001-config-overlay-merge-semantics.md` (the repo's first ADR) records the merge semantics: mappings deep-merge with overlay keys winning recursively; lists and scalars replace wholesale; explicit `null` sets a field to `None`; no key-removal operator.
+- `backend/config/overlay.py` ships the pure merge (`merge_config_layers`) and the guarded application (`apply_overlays`, `OverlayError`, public `known_top_level_keys()`). Every overlay must declare `overlay_for: <domain.name>`; a mismatch against the base's `domain.name` skips the overlay with a structured warning (product-owner ruling 2026-07-15, hot-swap safety) rather than failing the boot; a missing `overlay_for` or an unknown top-level key raises `OverlayError` → `ConfigLoadError`.
+- `backend/config/loader.py`'s `load_config` reads `CHILI_CONFIG_OVERLAY_PATH` (comma-separated, declared order, last wins) and applies the overlay stack after parsing, before `model_validate` — on every load path (explicit `path`, plain env, and `load_active_config`'s pointer resolution, since it delegates to `load_config`). The loader's overlay-related `TODO(production)` line is retired.
+- `backend/config/overlays/medicare_fraud_dev.yaml` replaces the retired `backend/config/defaults/medicare_fraud_dev.yaml` full pack: 115 lines vs. the old 284 (**59% reduction**, not the ~80% originally estimated — see annotations below).
+- `backend/tests/config/test_overlay.py`: hypothesis property tests for associativity-on-type-stable-stacks, empty-overlay identity, and list-replacement, plus example-based tests for nested-dict merge, explicit-`null` override, unknown-key rejection, `overlay_for` match/mismatch(caplog)/missing, comma-separated stacking order, and a golden equivalence test (`test_medicare_dev_overlay_reproduces_old_full_config`) proving `medicare_fraud.yaml ⊕ overlays/medicare_fraud_dev.yaml` reproduces the retired full dev file exactly (modulo the documented `peer_stats` exception), loaded from a checked-in fixture (`backend/tests/config/fixtures/medicare_fraud_dev_full_snapshot.yaml`) rather than git history, since CI's checkout is shallow. `backend/tests/config/test_loader.py` covers the `CHILI_CONFIG_OVERLAY_PATH` env wiring (set/unset/comma-separated). `backend/tests/api/test_config_router.py`'s dev-config fixture now points at the overlay path.
+- `backend/README.md`, `backend/config/README.md`, and `docs/architecture.md` §9.2 document the overlay model, directory layout, and the extended path/overlay precedence line.
 
 ### Acceptance Criteria
-- [ ] ADR under `docs/architecture/decisions/` records the merge semantics (deep-merge with list-replace **or** list-merge-by-key — pick one, document the tradeoff).
-- [ ] `backend/config/overlay.py` ships the merge function with property-based tests covering associativity (base ⊕ A ⊕ B === base ⊕ (A ⊕ B)), idempotency of empty overlay, and list-handling per ADR.
-- [ ] `load_config` accepts `CHILI_CONFIG_PATH` (base, required) and `CHILI_CONFIG_OVERLAY_PATH` (optional, comma-separated for stack-of-overlays); overlays applied in declared order before `model_validate`.
-- [ ] `medicare_fraud_dev.yaml` refactored to a minimal overlay on top of `medicare_fraud.yaml` (delete duplicated entity/relationship/records blocks); diff in the same commit demonstrates ~80% line reduction.
-- [ ] `backend/config/loader.py` rejects an overlay that introduces a top-level key not defined on `DomainConfig` (catch typos like `embeddngs:`).
-- [ ] `backend/README.md` documents the overlay model with a worked example.
+- [x] ADR under `docs/architecture/decisions/` records the merge semantics (deep-merge with list-replace **or** list-merge-by-key — pick one, document the tradeoff). Deep-merge + wholesale list-replace chosen (ADR 0001).
+- [x] `backend/config/overlay.py` ships the merge function with property-based tests covering associativity (base ⊕ A ⊕ B === base ⊕ (A ⊕ B)), idempotency of empty overlay, and list-handling per ADR. **Deviation (Task-1 review, amended in the spec and ADR 0001):** unrestricted associativity is false — a middle layer that collapses a mapping to a scalar makes grouping order observable. Associativity is property-tested only on *type-stable* layer stacks; a deterministic test (`test_merge_type_flip_is_left_to_right_not_associative`) pins the type-flip case to left-to-right (application-order) semantics instead.
+- [x] `load_config` accepts `CHILI_CONFIG_PATH` (base, required) and `CHILI_CONFIG_OVERLAY_PATH` (optional, comma-separated for stack-of-overlays); overlays applied in declared order before `model_validate`.
+- [x] `medicare_fraud_dev.yaml` refactored to a minimal overlay on top of `medicare_fraud.yaml` (delete duplicated entity/relationship/records blocks); diff in the same commit demonstrates ~80% line reduction. **Deviation:** measured reduction is **59%** (284 → 115 lines), not ~80% — see annotation (1) below.
+- [x] `backend/config/loader.py` rejects an overlay that introduces a top-level key not defined on `DomainConfig` (catch typos like `embeddngs:`). Implemented in `apply_overlays` via `known_top_level_keys()` (`DomainConfig.model_fields` ∪ `{overlay_for}`); the loader surfaces it as `ConfigLoadError`.
+- [x] `backend/README.md` documents the overlay model with a worked example. Also documented in `backend/config/README.md` and `docs/architecture.md` §9.2 per Task 5.
+
+### Story annotations (2026-07-15)
+1. **Measured reduction is 59%, not the AC's ~80% estimate.** List-replace semantics (ADR 0001) force the overlay to restate the whole `policy_rules` list even though only one scalar threshold (`max_billed_amount`) differs from the base — that single restated block accounts for most of the shortfall against the original ~80% estimate. The ADR documents this as a deliberate trade-off against the added complexity of keyed list-merging.
+2. **The overlay lives in `backend/config/overlays/`, not `backend/config/defaults/`.** This keeps the pack catalog (`api/routers/config.py`, which iterates `defaults/` for discovery/switch) from ever listing a partial, non-standalone-loadable config as a switchable pack.
+3. **`config/` is not yet in pyright's strict `include` scope** (`backend/pyproject.toml`'s `tool.pyright.include` has no `config` entry). `backend/config/overlay.py` and `backend/tests/config/test_overlay.py` are independently strict-clean (`pyright config/overlay.py tests/config/test_overlay.py` → 0 errors), but a pre-existing strict error exists elsewhere in the package at `backend/config/schema.py:682` (`reportUnknownVariableType` on `ScorecardsConfig.templates`). Hardening the whole `config` package into the strict include scope is follow-up work, not part of this story (also recorded in `docs/project/planning/sprints/2026-27.md`'s fix-later notes).
 
 ### Verification
-- `pytest backend/tests/config/test_overlay.py -q` green; coverage ≥ 85%.
-- Manual: boot API with `CHILI_CONFIG_PATH=backend/config/defaults/medicare_fraud.yaml CHILI_CONFIG_OVERLAY_PATH=backend/config/defaults/medicare_fraud_dev.yaml` and confirm dev-specific knobs (e.g. `monitoring.evaluation_interval_seconds`) are applied.
-- `pyright` clean.
+- `cd backend && DATABASE_URL=postgresql://chili:chili@localhost:5432/chili_test .venv/bin/pytest --cov -m "not integration" -q` green; `backend/tests/config/test_overlay.py` covers the merge/guard/golden-equivalence surface described above.
+- `pyright` clean (bare, repo-wide gate); `ruff check --no-cache .` clean.
+- Manual: boot API with `CHILI_CONFIG_PATH=backend/config/defaults/medicare_fraud.yaml CHILI_CONFIG_OVERLAY_PATH=backend/config/overlays/medicare_fraud_dev.yaml` and confirm dev-specific knobs (e.g. `monitoring.evaluation_interval_seconds`) are applied; then hot-swap to another pack with the overlay env var still set and confirm the structured skip warning + clean base config. **Live-stack verification pending — the controller runs it in-session immediately after the Task 5 commit** (Docker commands must not run in subagents per house rule); not yet observed at the time this story was marked done.
 
 ### Code touch points
 - `backend/config/overlay.py` (new)
 - `backend/config/loader.py` (modify)
-- `backend/config/defaults/medicare_fraud_dev.yaml` (rewrite as overlay)
+- `backend/config/overlays/medicare_fraud_dev.yaml` (new; moved+rewritten from `backend/config/defaults/medicare_fraud_dev.yaml`, which is deleted)
 - `backend/tests/config/test_overlay.py` (new)
-- `docs/architecture/decisions/<NNNN>-config-overlay-semantics.md` (new)
-- `backend/README.md` (modify)
+- `backend/tests/config/fixtures/medicare_fraud_dev_full_snapshot.yaml` (new; checked-in golden fixture)
+- `backend/tests/config/test_loader.py` (modify — env overlay wiring)
+- `backend/tests/api/test_config_router.py` (modify — dev-config fixture points at the overlay)
+- `backend/pyproject.toml` (modify — `hypothesis` added to `[dev]`)
+- `docs/architecture/decisions/0001-config-overlay-merge-semantics.md` (new)
+- `backend/README.md`, `backend/config/README.md`, `docs/architecture.md` (modify)
 
 ---
 

@@ -13,7 +13,7 @@ For the live, dependency-ordered list of production-readiness work per backend m
 ### What's functional
 
 - **`shared/`** — Generic platform types (`Entity`, `Relationship`, `Alert`, `EvidencePack`, `KnowledgeBase`), config-definition types (`EntityDefinition`, `PropertyDefinition`, `PropertyType`, `RelationshipDefinition`), protocols (`Configurable`), and utilities. **No hardcoded domain-specific types** — all domain entities use `Entity(type, properties)` validated against config. `shared/metrics.py` (BL-043) is the contracts-library home for Prometheus counters incremented from more than one module (`ingestion/service.py` + `agent/coordinator.py` + `records/service.py`), alongside the same-pattern `shared/logging.py` and `shared/tracing.py`.
-- **`config/`** — Domain configuration schema (`DomainConfig` Pydantic model with cross-field validation), YAML/JSON loader, the file-backed active-pack pointer store (`store.py`: pointer > `CHILI_CONFIG_PATH` resolution, atomic writes to `data/config/active_pack.json`), and default domain packs (`medicare_fraud.yaml`, `medicare_fraud_dev.yaml`, `medicare_fraud_cms_desynpuf.yaml`, `food_supply_chain.yaml`, `department_air_force_housing.yaml`). See [`config/README.md`](config/README.md) for the pack-authoring contract and domain-switch ergonomics.
+- **`config/`** — Domain configuration schema (`DomainConfig` Pydantic model with cross-field validation), YAML/JSON loader with base + environment overlay layering (`overlay.py`, `CHILI_CONFIG_OVERLAY_PATH`; see "Config overlays" below and [ADR 0001](../docs/architecture/decisions/0001-config-overlay-merge-semantics.md)), the file-backed active-pack pointer store (`store.py`: pointer > `CHILI_CONFIG_PATH` resolution, atomic writes to `data/config/active_pack.json`), default domain packs (`medicare_fraud.yaml`, `medicare_fraud_cms_desynpuf.yaml`, `food_supply_chain.yaml`, `department_air_force_housing.yaml`), and the `overlays/` directory (`medicare_fraud_dev.yaml`). See [`config/README.md`](config/README.md) for the pack-authoring contract and domain-switch ergonomics.
 - **`api/app.py`** — FastAPI app factory with `/health`, CORS, metrics instrumentation, and all API routers.
 - **`api/routers/config.py`** — Viewer-gated reads (`GET /config/domain|features|domain/schema`) plus admin-gated pack management: `GET /config/packs` (discovery + active-pack state) and `POST /config/validate|apply|switch` (dry-run validation; no-restart domain hot-swap via the swap-once-success pipeline — validate + production auth guardrail → persist pointer → atomic DI cache reset → publish `ConfigUpdatedEvent`). Pack references are confined to allow-listed config directories. See [`docs/architecture.md` §9.3](../docs/architecture.md#93-active-pack-hot-swap-no-restart-domain-switch).
 - **`api/dependencies.py`** — Dependency injection wiring. `get_domain_config()` resolves the active pack (pointer > env) and process-caches; `reset_domain_config_caches()` clears it plus every config-keyed factory cache and bumps a monotonic swap-generation token (`get_config_generation`) with generation-guarded memoizers, so hot-swaps are atomic (a request sees a wholly-old or wholly-new dependency graph). `enforce_production_guardrail()` (applied at boot and to every hot-swap candidate) refuses auth-disabled or incomplete-OIDC configs under `CHILI_ENV=staging|production`. `get_api_state()` reads from `request.app.state.api_state`, attached per-app in `create_app()`. Graph, vectorstore, storage, embedding, and LLM adapters are selected from config with lazy optional imports.
@@ -215,11 +215,38 @@ cfg = load_config("config/defaults/medicare_fraud.yaml")
 
 | File | Domain |
 |------|--------|
-| `config/defaults/medicare_fraud.yaml` | Medicare fraud detection (4 entities, 4 relationships, all capabilities) |
-| `config/defaults/medicare_fraud_dev.yaml` | Medicare fraud variant wired for the dev Compose stack (Neo4j graph, Redis event bus, object-store KB/alert repos, Redis workflow run store) |
+| `config/defaults/medicare_fraud.yaml` | Medicare fraud detection (4 entities, 4 relationships, all capabilities). Also the base pack for the dev overlay below. |
 | `config/defaults/medicare_fraud_cms_desynpuf.yaml` | CMS DE-SynPUF Medicare fraud exemplar with wider records/feed mappings — the **default** pack for `make dev` / `make prod` |
 | `config/defaults/food_supply_chain.yaml` | Food supply chain integrity — exemplar-parity peer pack (8 entities, 11 relationships, 4 records feeds, 3 policy rule packs, full `ui` section, dev-stack infra pins) |
 | `config/defaults/department_air_force_housing.yaml` | Department of the Air Force housing oversight — 6 records feeds (UMD, BAH, inventory, market, demographics, resident experience) and statutory UH/MFH scorecard templates with per-metric provenance (see [`../docs/research/housing-scorecard-mandates.md`](../docs/research/housing-scorecard-mandates.md)) |
+
+`config/overlays/medicare_fraud_dev.yaml` is **not** in this table — it is a
+partial overlay (see "Config overlays" below), not a standalone pack, so it
+never appears in the pack catalog / Config Manager pack list.
+
+### Config overlays
+
+`CHILI_CONFIG_OVERLAY_PATH` layers one or more environment overlay files
+onto the base pack named by `CHILI_CONFIG_PATH` (or the active-pack pointer)
+before schema validation — comma-separated, declared order, last wins.
+Worked example (dev-environment knobs on top of the minimal base pack):
+
+```bash
+CHILI_CONFIG_PATH=config/defaults/medicare_fraud.yaml \
+CHILI_CONFIG_OVERLAY_PATH=config/overlays/medicare_fraud_dev.yaml \
+  uvicorn api.app:create_app --factory --reload --port 8000
+```
+
+Mappings deep-merge (overlay keys win recursively); lists and scalars
+replace wholesale; an explicit `null` sets a field to `None`. Every overlay
+declares `overlay_for: <domain.name>` — a mismatch against the resolved
+base's `domain.name` skips the overlay with a warning (so the env var
+survives a hot-swap to a different pack) rather than failing the boot; a
+missing `overlay_for` or an unknown top-level key is a hard error. Full
+rationale, the associativity boundary, and the list-replace trade-off:
+[ADR 0001](../docs/architecture/decisions/0001-config-overlay-merge-semantics.md).
+Directory layout and the loader/`overlay.py` contract:
+[`config/README.md`](config/README.md).
 
 ### Creating a new domain
 

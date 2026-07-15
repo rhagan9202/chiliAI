@@ -392,14 +392,16 @@ backend/
 │   └── provenance.py           # Canonical metadata-key constants for provenance fields
 ├── config/                     # Domain configuration
 │   ├── __init__.py
-│   ├── loader.py               # Reads YAML/JSON domain config
+│   ├── loader.py               # Reads YAML/JSON domain config; applies overlays (below) before validation
+│   ├── overlay.py              # Base + environment overlay merge (ADR 0001)
 │   ├── schema.py               # Pydantic DomainConfig + sub-models
-│   └── defaults/               # Example domain configs
-│       ├── medicare_fraud.yaml
-│       ├── medicare_fraud_dev.yaml
-│       ├── medicare_fraud_cms_desynpuf.yaml  # CMS DE-SynPUF + NPPES feeds (9 feeds)
-│       ├── department_air_force_housing.yaml # DAF housing pack (6 feeds, UH/MFH scorecard templates)
-│       └── food_supply_chain.yaml
+│   ├── defaults/               # Complete, independently loadable domain packs
+│   │   ├── medicare_fraud.yaml
+│   │   ├── medicare_fraud_cms_desynpuf.yaml  # CMS DE-SynPUF + NPPES feeds (9 feeds)
+│   │   ├── department_air_force_housing.yaml # DAF housing pack (6 feeds, UH/MFH scorecard templates)
+│   │   └── food_supply_chain.yaml
+│   └── overlays/                # Partial environment overlays (not pack-catalog packs)
+│       └── medicare_fraud_dev.yaml  # dev overlay over defaults/medicare_fraud.yaml
 ├── events/                     # Event bus abstraction
 │   ├── __init__.py
 │   ├── protocols.py            # Abstract EventBus protocol
@@ -1311,6 +1313,10 @@ ui:
 3. Error — no silent default.
 
 Consequence: once a pack has been switched via the UI/API, the persisted pointer **overrides** `CHILI_CONFIG_PATH` on every subsequent boot until it is cleared (switch back, or delete the state file).
+
+**Base + environment overlays.** After the base file resolves via the precedence above and is parsed, `config.loader.load_config` reads `CHILI_CONFIG_OVERLAY_PATH` (comma-separated, declared order, last wins) and layers each overlay onto the base via `config.overlay.apply_overlays` — **before** `DomainConfig` validation runs. Overlay application happens on every load path (explicit `path`, plain `CHILI_CONFIG_PATH`, and the pointer-following `load_active_config`, which delegates to `load_config`), so it composes with pack hot-swap rather than bypassing it. Merge semantics: mappings deep-merge with overlay keys winning recursively; lists and scalars replace wholesale; an explicit `null` sets a field to `None`; there are no key-removal semantics. Every overlay file must declare `overlay_for: <domain.name>` — a mismatch against the resolved base's `domain.name` **skips the overlay with a warning** instead of failing the boot, which is what lets `CHILI_CONFIG_OVERLAY_PATH` survive a runtime hot-swap to an unrelated pack; a missing `overlay_for` or an unknown top-level key is a hard `ConfigLoadError`. Overlays live in `backend/config/overlays/`, a directory the pack catalog (`api/routers/config.py`) does not iterate, so an overlay never appears as a switchable pack. Full rationale, the list-replace trade-off, and the associativity boundary (type-stable layer stacks only — see the amendment below): [ADR 0001](architecture/decisions/0001-config-overlay-merge-semantics.md).
+
+Combined precedence, spanning both mechanisms: **path resolution** is explicit `path` argument > active-pack pointer > `CHILI_CONFIG_PATH` env var (as above); **overlay layering** then applies on top of whichever base won, in declared order — **base ← overlay₁ ← overlay₂ …** (last wins).
 
 ### 9.3 Active-pack hot-swap (no-restart domain switch)
 

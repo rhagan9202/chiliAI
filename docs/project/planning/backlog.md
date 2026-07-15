@@ -1,7 +1,7 @@
 # chiliAI v1 Consolidated Backlog
 
 > Owned by the Project Manager agent. The single source of truth for v1-scoped, prioritized work items.
-> Version: 5 · Last updated: 2026-07-14
+> Version: 5 · Last updated: 2026-07-15
 >
 > This file is a **curated v1 backlog** that consolidates and prioritizes work derived from:
 > - `docs/project/planning/requirements.md` (canonical requirements, v1.2 · 2026-07-12)
@@ -26,7 +26,7 @@
 | BL-041 | Ingestion document-status projection + failure-path closure | REQ-KB-002, REQ-KB-004 | P1 | done — Sprint 2026-26 (full-stack + integration verified 2026-07-14; tracker isolation fix landed in the pass) | 0 SP |
 | BL-042 | CI migration drift/replay gate (database.04) | REQ-NFR-002 | P1 | done — Sprint 2026-26 (CI `migrations` job green 2026-07-14; missing snapshot caught + committed in verification) | 0 SP |
 | BL-043 | Ingestion structured stage logs + Prometheus counters | REQ-NFR-SEC-004 | P2 | done — Sprint 2026-26 (live scrape + stage-log inspection verified 2026-07-14) | 0 SP |
-| BL-044 | Config base + overlay layering (config.04) | REQ-CONFIG-001 | P2 | committed — Sprint 2026-27 (un-pulled 2026-26 stretch) | 3 SP |
+| BL-044 | Config base + overlay layering (config.04) | REQ-CONFIG-001 | P2 | done — Sprint 2026-27 (gates green in-session 2026-07-15; live-stack verification pending — controller runs it in-session immediately after this commit) | 0 SP |
 | BL-020 | KB snapshots & restore | REQ-KB-007, REQ-NFR-DR-001 | P2 | todo | 8 SP |
 | BL-021 | Graph backup/restore per adapter | REQ-GRAPH-006, REQ-NFR-DR-002 | P2 | todo | 5 SP |
 | BL-022 | OIDC hardening | REQ-AUTH-001 | P2 | stretch — Sprint 2026-27 (4 of 7 AC items shipped) | ~4 SP |
@@ -160,10 +160,16 @@
 
 ### BL-044 — Config base + environment overlay layering
 - **REQ**: REQ-CONFIG-001
-- **Module source**: [docs/backlog/config.md](../../backlog/config.md) story config.04
-- **Status**: **committed — Sprint 2026-27** (un-pulled 2026-26 stretch; code re-verified 2026-07-14: no `overlay.py`, no `CHILI_CONFIG_OVERLAY_PATH`, loader TODO intact at `backend/config/loader.py:31`)
-- **Estimate**: 3 SP
-- **Acceptance**: merge-semantics ADR; `backend/config/overlay.py` with property-based merge tests; `CHILI_CONFIG_OVERLAY_PATH` (stackable); `medicare_fraud_dev.yaml` shrunk to a minimal overlay; unknown-top-level-key rejection. The ingestion roadmap's named next lever — unblocks ingestion.08/09/13/15 + agent.05/10 + config.08.
+- **Module source**: [docs/backlog/config.md](../../backlog/config.md) story config.04 (done)
+- **Status**: **done — Sprint 2026-27, 2026-07-15** (`docs/architecture/decisions/0001-config-overlay-merge-semantics.md` — the repo's first ADR — plus `backend/config/overlay.py`/`loader.py`, `backend/config/overlays/medicare_fraud_dev.yaml` replacing the retired full-pack duplicate, and property-based + golden-equivalence tests, all landed on `feat/sprint-2026-27-config-overlay`. Backend gates green in-session: `pytest --cov -m "not integration"` full pass, `pyright` 0 errors, `ruff check --no-cache` clean. **Live-stack verification pending — the controller runs it in-session immediately after this commit** (boot with the overlay applied and confirm a dev knob via `GET /config/domain`; hot-swap to another pack with the overlay env var still set and confirm the structured skip warning + clean base config) — not yet observed at the time this entry was written.
+- **Estimate**: 0 SP (delivered)
+- **Acceptance**:
+  - [x] Merge-semantics ADR (`docs/architecture/decisions/0001-config-overlay-merge-semantics.md`) — deep-merge mappings, wholesale list/scalar replacement, `overlay_for` skip-with-warning guard. **Amended during implementation** (Task-1 review): unrestricted associativity is false (a middle layer collapsing a mapping to a scalar makes grouping order observable); associativity is evidenced by hypothesis property tests only on type-stable layer stacks, and the type-flip case is pinned to left-to-right application-order semantics by a deterministic test.
+  - [x] `backend/config/overlay.py` with property-based merge tests (`backend/tests/config/test_overlay.py`).
+  - [x] Stackable `CHILI_CONFIG_OVERLAY_PATH` (comma-separated, declared order, last wins) wired into every `load_config` call path.
+  - [x] `medicare_fraud_dev.yaml` shrunk to a minimal overlay over `medicare_fraud.yaml`, moved from `config/defaults/` to `config/overlays/` (not pack-catalog-visible). **Measured reduction: 59%** (284 → 115 lines) — short of the story's ~80% estimate because list-replace semantics force the whole `policy_rules` block to be restated for a single differing threshold; documented as a deliberate trade-off in ADR 0001.
+  - [x] Unknown-top-level-key rejection (`OverlayError` naming the key, surfaced as `ConfigLoadError`).
+  - The ingestion roadmap's named next lever — unblocks ingestion.08/09/13/15 + agent.05/10 + config.08.
 
 ---
 
@@ -248,6 +254,7 @@ Full detail for each pass lives in this file's git history (`git log -p -- docs/
 - **2026-07-12 requirements v1.2 reconciliation (v3)** — after the Requirements Gatherer refresh: BL-016 closed at the v1 bar per product-owner rulings (OQ-1..4: wizard post-v1, config-write hardening post-v1, API-only scorecard generation, housing = supported exemplar-tier domain); BL-038/BL-039 moved from [NO-REQ] to Done under the new REQ-SCORE-*/REQ-HOUSING-* families; BL-040 appended for the post-v1 config tail.
 - **2026-07-14 sprint 2026-27 planning (v5)** — Sprint 2026-26 closed (all four stories done + live-verified same day; the deferred verification pass caught the missing BL-042 snapshot and a workflow-tracker batch-poisoning bug, both fixed). Sprint 2026-27 committed (user-approved from three proposed compositions: 25 SP nominal / 14 SP core, 2026-07-15 → 2026-07-28): **BL-017** (P1, committed — the final v1-required item, hard-gated on its pre-sprint design note), **BL-044** (committed — un-pulled 2026-26 stretch), **BL-023** (committed — replay closeout), **BL-022** (stretch). Statuses re-verified against code 2026-07-14.
 - **2026-07-14 BL-017 closeout (same day, Task 7)** — all seven implementation tasks landed on `feat/sprint-2026-27-graph-integrity`; `docs/backlog/graph.md` graph.01/graph.02 flipped to done with two documented deviations (`integrity_mode` lives on `GraphUpsertOptions` rather than a separate `GraphService` kwarg; `merge_properties` is shallow, not the story text's "deep-merge"). Backend gates green in-session (targeted + full-suite pytest, `graph` coverage 89%, pyright, ruff). Live-stack verification intentionally deferred to immediately after this commit (Docker commands must not run in subagents per house rule) — BL-017 marked done on the code-complete basis with that pass still outstanding.
+- **2026-07-15 BL-044 closeout (Task 5)** — all five implementation tasks landed on `feat/sprint-2026-27-config-overlay`: pure merge + hypothesis property tests (Task 1), `apply_overlays` guard (Task 2), `CHILI_CONFIG_OVERLAY_PATH` loader wiring (Task 3), `medicare_fraud_dev.yaml` rewritten as a 115-line overlay with a golden equivalence test (Task 4), and this ADR/docs/closeout pass (Task 5). `docs/backlog/config.md` config.04 flipped to done with the measured 59%-vs-~80% reduction and the type-stable-associativity algebra amendment recorded as deviations; `docs/architecture/decisions/0001-config-overlay-merge-semantics.md` is the repo's first ADR. Backend gates green in-session (full-suite pytest, pyright, ruff — see this file's BL-044 entry for the run). Live-stack verification intentionally deferred to immediately after this commit (Docker commands must not run in subagents per house rule) — BL-044 marked done on the code-complete basis with that pass still outstanding.
 - **2026-07-12 sprint 2026-26 planning (v4)** — Sprint 2026-26 committed (user-approved: 25 SP nominal / 16 SP core, 2026-07-13 → 2026-07-26): appended BL-041/BL-042 (P1, committed), BL-043 (P2, committed), BL-044 (P2, stretch); BL-019 re-scoped by product-owner ruling (acceptance = cache + cost/usage tracking; committed) with its roadmap tail preserved as post-v1 **BL-045**. Supersedes and deletes the June `2026-26-slice-…-DRAFT.md` (residue code-verified 2026-07-12).
 - **2026-06-23 PM run (module-backlog dependency-graph cleaning)** — platform-wide audit of all 24 module backlogs: 18 mislabeled/dangling prerequisite edges corrected, 2 new stories added (analytics.33 extraction-quality metric, storage.14 object-store health probes), 3 substantially-shipped stories annotated (api.02/api.03/analytics.11), and 3 PM decisions recorded (frontend.04 → `[api.28, rag.01]`; `_security.06` is the canonical audit-log story with `_observability.10` dropped; `agent.18` owns `PostgresWorkflowRunStore` with `database.01` refocused on the migration).
 
