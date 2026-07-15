@@ -835,3 +835,107 @@ class TestKidAwareResolution:
         claims = decode_token(token, auth_config=auth_config, jwks_cache=cache)
         assert claims["sub"] == "user-123"
         assert len(calls) == 1
+
+    def test_refetch_failure_maps_to_401(self, rsa_pem: str) -> None:
+        """Token with unknown kid; fetcher succeeds initially but raises on force_refresh.
+
+        This exercises lines 251-252: the exception handler in the force_refresh path
+        that raises HTTPException 401 with "Unable to refresh JWKS for token validation."
+        """
+        from api.middleware.auth import JwksCache, decode_token
+
+        auth_config = _kid_auth_config()
+        # Initial JWKS without the token's kid
+        jwks_initial: dict[str, object] = {
+            "keys": [_public_jwk_from_pem(rsa_pem, kid="kid-other")]
+        }
+        call_count = {"n": 0}
+
+        def fetcher(uri: str) -> dict[str, object]:
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                # First call (initial cache.get) succeeds
+                return jwks_initial
+            # Second call (force_refresh) raises
+            raise RuntimeError("Simulated JWKS fetch failure on refresh")
+
+        cache = JwksCache(fetcher=fetcher, ttl_seconds=3600)
+        token = _make_token(
+            rsa_pem,
+            issuer="https://issuer.example",
+            audience="chili",
+            kid="kid-missing",
+        )
+
+        # Token kid is not in initial JWKS, triggering force_refresh, which raises
+        with pytest.raises(HTTPException) as exc_info:
+            decode_token(token, auth_config=auth_config, jwks_cache=cache)
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail == "Unable to refresh JWKS for token validation."
+
+    def test_malformed_token_header_falls_through_to_canonical_401(
+        self, rsa_pem: str
+    ) -> None:
+        """Garbage non-JWT string falls through to jwt.decode's canonical 401.
+
+        This exercises the code path where a malformed token header is handled by
+        jwt.decode (not by _token_kid), resulting in a canonical JWTError that maps
+        to HTTPException 401, not a 500/unhandled exception.
+        """
+        from api.middleware.auth import JwksCache, decode_token
+
+        auth_config = _kid_auth_config()
+        jwks: dict[str, object] = {"keys": [_public_jwk_from_pem(rsa_pem)]}
+
+        def fetcher(uri: str) -> dict[str, object]:
+            return jwks
+
+        cache = JwksCache(fetcher=fetcher, ttl_seconds=3600)
+
+        # Not a JWT at all
+        garbage_token = "not-a-jwt"
+
+        # jwt.decode raises JWTError, which gets caught and converted to 401
+        with pytest.raises(HTTPException) as exc_info:
+            decode_token(garbage_token, auth_config=auth_config, jwks_cache=cache)
+        assert exc_info.value.status_code == 401
+
+    def test_jwks_without_keys_list_treated_as_kid_missing(
+        self, rsa_pem: str
+    ) -> None:
+        """Fetcher returns malformed JWKS (no "keys" key); kid-miss path runs.
+
+        This exercises lines 196-197: the defensive check in _jwks_has_kid where
+        `keys` is not a list. The initial cache.get returns {"malformed": true},
+        _jwks_has_kid returns False (non-list branch), forcing a refresh, which
+        returns the same malformed doc, triggering the 401 "Token signing key is unknown."
+        """
+        from api.middleware.auth import JwksCache, decode_token
+
+        auth_config = _kid_auth_config()
+        # Malformed JWKS: missing "keys" field
+        malformed_jwks: dict[str, object] = {"malformed": True}
+        calls: list[str] = []
+
+        def fetcher(uri: str) -> dict[str, object]:
+            calls.append(uri)
+            return malformed_jwks
+
+        cache = JwksCache(fetcher=fetcher, ttl_seconds=3600)
+        token = _make_token(
+            rsa_pem,
+            issuer="https://issuer.example",
+            audience="chili",
+            kid="kid-1",
+        )
+
+        # Token has a kid, but malformed JWKS has no "keys" key.
+        # Initial check: _jwks_has_kid sees no list -> False (line 196 branch)
+        # Forced refresh: same malformed doc -> _jwks_has_kid still False
+        # Result: 401 "Token signing key is unknown."
+        with pytest.raises(HTTPException) as exc_info:
+            decode_token(token, auth_config=auth_config, jwks_cache=cache)
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail == "Token signing key is unknown."
+        # Verify we fetched twice: once for cache.get, once for force_refresh
+        assert len(calls) == 2
