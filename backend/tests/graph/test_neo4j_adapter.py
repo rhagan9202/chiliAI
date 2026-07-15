@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Generator
+from typing import cast
 from uuid import uuid4
 
 import pytest
@@ -11,10 +12,36 @@ import pytest
 from config.schema import GraphDbConfig
 from graph.adapters import neo4j_adapter
 from graph.adapters.neo4j_adapter import Neo4jGraphRepository
-from graph.exceptions import GraphPersistenceError
+from graph.exceptions import GraphPersistenceError, GraphVersionConflictError
+from graph.models import GraphUpsertOptions
 from shared.types import Entity, Relationship
 
 FakeRecord = dict[str, object]
+
+
+def _entity_record(
+    entity_id: str,
+    *,
+    entity_type: str = "provider",
+    properties_json: str = "{}",
+    metadata_json: str = "{}",
+    version: int = 1,
+    created_at: str = "2026-04-20T00:00:00+00:00",
+    updated_at: str | None = None,
+) -> FakeRecord:
+    """Build a fake write-result record shaped like `RETURN entity`."""
+
+    return {
+        "entity": {
+            "entity_id": entity_id,
+            "type": entity_type,
+            "properties_json": properties_json,
+            "metadata_json": metadata_json,
+            "created_at": created_at,
+            "updated_at": updated_at,
+            "version": version,
+        }
+    }
 
 
 class _FakeGraphDatabase:
@@ -150,6 +177,7 @@ def test_neo4j_repository_upserts_entities_and_relationships_with_merge(
     driver = _FakeGraphDatabase.driver_instance
     assert driver is not None
     driver.results = [
+        [],  # read pass: no existing row for entity-1
         [
             {
                 "entity": {
@@ -200,6 +228,76 @@ def test_neo4j_repository_upserts_entities_and_relationships_with_merge(
     assert relationships[0].id == "relationship-1"
     assert any("MERGE (entity:Entity" in entry[0] for entry in driver.queries)
     assert any("MERGE (source)-[relationship:RELATES" in entry[0] for entry in driver.queries)
+
+
+def test_upsert_entities_merges_and_bumps_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    # Read pass returns the existing row; write pass echoes the merged entity.
+    driver.results = [
+        [
+            {
+                "entity_id": "e-1",
+                "type": "provider",
+                "properties_json": '{"city": "Reno", "name": "Ann"}',
+                "metadata_json": "{}",
+                "version": 1,
+            }
+        ],
+        [_entity_record("e-1", properties_json='{"city": "Boise", "name": "Ann"}', version=2)],
+    ]
+
+    stored = repository.upsert_entities(
+        "kb-1", [Entity(id="e-1", type="provider", properties={"city": "Boise"})]
+    )
+
+    read_query, read_params, _ = driver.queries[-2]
+    write_query, write_params, _ = driver.queries[-1]
+    assert "MATCH" in read_query and read_params["ids"] == ["e-1"]
+    assert "MERGE" in write_query
+    rows = cast(list[dict[str, object]], write_params["rows"])
+    assert rows[0]["properties_json"] == '{"city": "Boise", "name": "Ann"}'
+    assert rows[0]["version"] == 2
+    assert stored[0].version == 2
+
+
+def test_upsert_entities_version_conflict_raises_before_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    driver.results = [
+        [
+            {
+                "entity_id": "e-1",
+                "type": "provider",
+                "properties_json": "{}",
+                "metadata_json": "{}",
+                "version": 4,
+            }
+        ]
+    ]
+
+    with pytest.raises(GraphVersionConflictError):
+        repository.upsert_entities(
+            "kb-1",
+            [Entity(id="e-1", type="provider")],
+            GraphUpsertOptions(expected_version=2),
+        )
+
+    assert all(mode == "read" for _, _, mode in driver.queries[-1:])  # no write issued
 
 
 def test_neo4j_repository_reads_searches_counts_and_deletes(
@@ -471,6 +569,7 @@ def test_neo4j_repository_transaction_commits_and_reuses_driver_transaction(
     driver = _FakeGraphDatabase.driver_instance
     assert driver is not None
     driver.results = [
+        [],  # read pass: no existing row for entity-1
         [
             {
                 "entity": {
@@ -483,7 +582,7 @@ def test_neo4j_repository_transaction_commits_and_reuses_driver_transaction(
                     "version": 1,
                 }
             }
-        ]
+        ],
     ]
 
     with repository.transaction("kb-1"):

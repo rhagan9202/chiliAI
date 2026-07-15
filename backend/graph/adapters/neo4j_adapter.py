@@ -13,7 +13,7 @@ from typing import Literal, Protocol, cast
 
 from config.schema import GraphDbConfig
 from graph.adapters.protocols import GraphRepository
-from graph.exceptions import GraphPersistenceError
+from graph.exceptions import GraphPersistenceError, GraphVersionConflictError
 from graph.models import GraphDeleteByProvenance, GraphUpsertOptions, SubgraphResult
 from shared.provenance import SOURCE_DOCUMENT_ID_KEY
 from shared.types import Entity, Relationship
@@ -170,21 +170,45 @@ class Neo4jGraphRepository(GraphRepository):
         entities: list[Entity],
         options: GraphUpsertOptions | None = None,
     ) -> list[Entity]:
-        # TODO(BL-017 Task 4): honor `options` (merge_mode / expected_version
-        # conflict pre-pass) here; still blind-overwrites like the pre-BL-017
-        # in-memory adapter until that task lands.
-        payload = [
-            {
-                "entity_id": entity.id,
-                "type": entity.type,
-                "properties_json": _dump_json_property(entity.properties),
-                "metadata_json": _dump_json_property(entity.metadata),
-                "created_at": entity.created_at.isoformat(),
-                "updated_at": entity.updated_at.isoformat() if entity.updated_at else None,
-                "version": entity.version,
-            }
-            for entity in entities
-        ]
+        opts = options or GraphUpsertOptions()
+        existing_rows = self._read_existing_entities(
+            knowledge_base_id, [entity.id for entity in entities]
+        )
+        payload: list[dict[str, object]] = []
+        for entity in entities:
+            existing = existing_rows.get(entity.id)
+            if existing is None:
+                payload.append(self._entity_row(entity, version=1))
+                continue
+            if (
+                opts.expected_version is not None
+                and existing["version"] != opts.expected_version
+            ):
+                raise GraphVersionConflictError(
+                    entity.id, opts.expected_version, cast(int, existing["version"])
+                )
+            new_properties_json = _dump_json_property(entity.properties)
+            new_metadata_json = _dump_json_property(entity.metadata)
+            if opts.merge_mode == "merge_properties":
+                merged_properties = {
+                    **json.loads(cast(str, existing["properties_json"])),
+                    **entity.properties,
+                }
+                merged_metadata = {
+                    **json.loads(cast(str, existing["metadata_json"])),
+                    **entity.metadata,
+                }
+                new_properties_json = _dump_json_property(merged_properties)
+                new_metadata_json = _dump_json_property(merged_metadata)
+            effective_change = (
+                new_properties_json != existing["properties_json"]
+                or entity.type != existing["type"]
+            )
+            version = cast(int, existing["version"]) + (1 if effective_change else 0)
+            row = self._entity_row(entity, version=version)
+            row["properties_json"] = new_properties_json
+            row["metadata_json"] = new_metadata_json
+            payload.append(row)
         query = f"""
         UNWIND $rows AS row
         MERGE (entity:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: row.entity_id}})
@@ -196,17 +220,50 @@ class Neo4jGraphRepository(GraphRepository):
             entity.version = row.version
         RETURN entity
         """
-
         try:
             records = self._run_write(
-                query,
-                knowledge_base_id=knowledge_base_id,
-                rows=payload,
+                query, knowledge_base_id=knowledge_base_id, rows=payload
             )
         except Neo4jError as exc:
             raise GraphPersistenceError("Failed to upsert Neo4j entities.") from exc
-
         return [self._record_to_entity(record, "entity") for record in records]
+
+    def _read_existing_entities(
+        self, knowledge_base_id: str, entity_ids: list[str]
+    ) -> dict[str, dict[str, object]]:
+        query = f"""
+        UNWIND $ids AS id
+        MATCH (entity:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: id}})
+        RETURN entity.entity_id AS entity_id, entity.type AS type,
+               entity.properties_json AS properties_json,
+               entity.metadata_json AS metadata_json, entity.version AS version
+        """
+        try:
+            records = self._run_read(
+                query, knowledge_base_id=knowledge_base_id, ids=entity_ids
+            )
+        except Neo4jError as exc:
+            raise GraphPersistenceError("Failed to read existing Neo4j entities.") from exc
+        return {
+            cast(str, record["entity_id"]): {
+                "type": record["type"],
+                "properties_json": record["properties_json"],
+                "metadata_json": record["metadata_json"],
+                "version": record["version"],
+            }
+            for record in records
+        }
+
+    def _entity_row(self, entity: Entity, *, version: int) -> dict[str, object]:
+        return {
+            "entity_id": entity.id,
+            "type": entity.type,
+            "properties_json": _dump_json_property(entity.properties),
+            "metadata_json": _dump_json_property(entity.metadata),
+            "created_at": entity.created_at.isoformat(),
+            "updated_at": entity.updated_at.isoformat() if entity.updated_at else None,
+            "version": version,
+        }
 
     def upsert_relationships(
         self,
