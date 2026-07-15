@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
+from events.dlq_models import DlqRecord, DlqRecordStatus
 from events.types import AnyEvent
 from shared.utils import utc_now
 
@@ -81,9 +82,32 @@ class EventBus(Protocol):
     ) -> str | None: ...
 
 
+@runtime_checkable
+class DlqRecordStore(Protocol):
+    """Durable operational ledger of dead-lettered events (BL-023)."""
+
+    def persist(self, record: DlqRecord) -> DlqRecord: ...
+
+    def list(
+        self,
+        *,
+        status: DlqRecordStatus | None = None,
+        event_type: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[DlqRecord], int]: ...
+
+    def get(self, dlq_id: str) -> DlqRecord | None: ...
+
+    def mark_replayed(self, dlq_id: str) -> DlqRecord | None: ...
+
+    def mark_discarded(self, dlq_id: str) -> DlqRecord | None: ...
+
+
 __all__ = [
     "DlqEntry",
     "DlqErrorInfo",
+    "DlqRecordStore",
     "EventBus",
     "EventDelivery",
 ]
