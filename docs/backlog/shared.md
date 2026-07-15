@@ -10,7 +10,7 @@
 **ID:** shared.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [_multitenancy.01, _plugins.01, graph.01, graph.02, graph.05, graph.06, shared.02]
+**Unblocks:** [_multitenancy.01, _plugins.01, graph.05, graph.06, shared.02]
 **Estimated size:** S
 
 **As a** platform contracts owner,

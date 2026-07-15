@@ -74,9 +74,9 @@
 - [frontend.10] frontend — size M — prereqs done
 - [frontend.13] frontend — size M — prereqs done
 - [frontend.14] frontend — size M — prereqs done
-- [knowledgebases.03] knowledgebases — size M — prereqs done
-- [records.11] records — size M — prereqs done
-- …22 more
+- [graph.01] graph — size M — prereqs done
+- [graph.02] graph — size M — prereqs done
+- …24 more
 <!-- END: ready-set -->
 
 ## Critical path

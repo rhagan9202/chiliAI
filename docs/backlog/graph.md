@@ -9,7 +9,9 @@
 
 **ID:** graph.01
 **Status:** planned
-**Prerequisites:** [shared.01, _observability.02]
+**Prerequisites:** []
+<!-- PM prereq cleanup 2026-07-14 (BL-017 design note): [shared.01, _observability.02] were mislabeled — shared.01 = Alert.severity literal, _observability.02 = correlation-ID middleware; neither gates graph integrity. -->
+
 **Unblocks:** [_multitenancy.07, graph.04, rag.01]
 **Estimated size:** M
 
@@ -50,7 +52,9 @@
 
 **ID:** graph.02
 **Status:** planned
-**Prerequisites:** [shared.01]
+**Prerequisites:** []
+<!-- PM prereq cleanup 2026-07-14 (BL-017 design note): [shared.01] was mislabeled — shared.01 = Alert.severity literal; it does not gate merge/version semantics. -->
+
 **Unblocks:** [analytics.12, analytics.24, analytics.25, graph.03, rag.02]
 **Estimated size:** M
 
