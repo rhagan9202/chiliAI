@@ -237,3 +237,42 @@ def test_apply_overlays_known_keys_track_domain_config() -> None:
     from config.overlay import known_top_level_keys
 
     assert set(DomainConfig.model_fields) <= known_top_level_keys()
+
+
+REPO_CONFIG = Path(__file__).resolve().parent.parent.parent / "config"
+DEV_SNAPSHOT = (
+    Path(__file__).resolve().parent / "fixtures" / "medicare_fraud_dev_full_snapshot.yaml"
+)
+
+
+def test_medicare_dev_overlay_reproduces_old_full_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """base ⊕ dev-overlay must equal the retired full dev file, except:
+    - merged config KEEPS base's `peer_stats` section (old dev file omitted
+      it; the capability flag `capabilities.peer_stats: false` gates it off);
+    - merged `capabilities.peer_stats` is False (old file expressed this by
+      omission; schema default is False, so validated output is identical).
+
+    The retired file (formerly `config/defaults/medicare_fraud_dev.yaml`) is
+    preserved verbatim as a checked-in snapshot fixture rather than fetched
+    via `git show HEAD~1:...`: CI's checkout is shallow (fetch-depth unset ==
+    depth 1 on `actions/checkout@v4`), so history-dependent lookups are not
+    available at test-run time.
+    """
+    from config.loader import load_config
+
+    old_raw = DEV_SNAPSHOT.read_text(encoding="utf-8")
+    old_config = DomainConfig.model_validate(yaml.safe_load(old_raw))
+
+    monkeypatch.setenv(
+        "CHILI_CONFIG_OVERLAY_PATH", str(REPO_CONFIG / "overlays" / "medicare_fraud_dev.yaml")
+    )
+    merged = load_config(REPO_CONFIG / "defaults" / "medicare_fraud.yaml")
+
+    old_dump = old_config.model_dump()
+    merged_dump = merged.model_dump()
+    # Documented exception: base's peer_stats section survives (gated off).
+    merged_dump.pop("peer_stats", None)
+    old_dump.pop("peer_stats", None)
+    assert merged_dump == old_dump
