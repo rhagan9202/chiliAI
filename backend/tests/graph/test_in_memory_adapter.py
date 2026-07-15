@@ -493,8 +493,8 @@ def test_in_memory_search_entities_limit_applies_across_combined_kb_results() ->
     assert len(results) == 4
 
 
-def _entity(entity_id: str, *, properties: dict[str, object] | None = None, version: int = 1) -> Entity:
-    return Entity(id=entity_id, type="provider", properties=properties or {}, version=version)
+def _entity(entity_id: str, *, properties: dict[str, object] | None = None, metadata: dict[str, object] | None = None, version: int = 1) -> Entity:
+    return Entity(id=entity_id, type="provider", properties=properties or {}, metadata=metadata or {}, version=version)
 
 
 def test_upsert_entities_merges_properties_by_default() -> None:
@@ -552,3 +552,71 @@ def test_upsert_entities_version_conflict_writes_nothing() -> None:
     assert excinfo.value.expected_version == 7
     assert excinfo.value.actual_version == 1
     assert repo.get_entities("kb-1")[0].properties == {"a": 1}  # nothing written
+
+
+def test_upsert_entities_expected_version_match_allows_write() -> None:
+    """Upsert with expected_version matching current version should succeed and bump version."""
+    repo = InMemoryGraphRepository()
+    repo.upsert_entities("kb-1", [_entity("e-1", properties={"a": 1})])
+    stored = repo.get_entities("kb-1")[0]
+    assert stored.version == 1
+
+    # Upsert with expected_version=1 (current version) should succeed
+    repo.upsert_entities(
+        "kb-1",
+        [_entity("e-1", properties={"a": 2})],
+        GraphUpsertOptions(expected_version=1),
+    )
+
+    stored = repo.get_entities("kb-1")[0]
+    assert stored.properties == {"a": 2}
+    assert stored.version == 2
+
+
+def test_upsert_entities_conflict_in_batch_writes_nothing() -> None:
+    """Batch upsert with version conflict should fail atomically (write nothing)."""
+    repo = InMemoryGraphRepository()
+    repo.upsert_entities(
+        "kb-1",
+        [_entity("e-1", properties={"a": 1}), _entity("e-2", properties={"b": 1})],
+    )
+
+    # Both entities should be at version 1
+    assert repo.get_entities("kb-1")[0].version == 1
+    assert repo.get_entities("kb-1")[1].version == 1
+
+    # Attempt batch upsert with expected_version=7 (mismatch)
+    with pytest.raises(GraphVersionConflictError):
+        repo.upsert_entities(
+            "kb-1",
+            [_entity("e-1", properties={"a": 99}), _entity("e-2", properties={"b": 99})],
+            GraphUpsertOptions(expected_version=7),
+        )
+
+    # Both entities should be unchanged (pre-pass atomic check prevented write)
+    entities = {e.id: e for e in repo.get_entities("kb-1")}
+    assert entities["e-1"].properties == {"a": 1}
+    assert entities["e-1"].version == 1
+    assert entities["e-2"].properties == {"b": 1}
+    assert entities["e-2"].version == 1
+
+
+def test_upsert_entities_metadata_only_change_writes_without_version_bump() -> None:
+    """Upsert with only metadata change should update metadata but not bump version."""
+    repo = InMemoryGraphRepository()
+    repo.upsert_entities(
+        "kb-1", [_entity("e-1", properties={"a": 1}, metadata={"src": "doc1"})]
+    )
+    stored = repo.get_entities("kb-1")[0]
+    assert stored.version == 1
+    assert stored.metadata == {"src": "doc1"}
+
+    # Upsert same properties but different metadata (shallow merge key overwrite)
+    repo.upsert_entities(
+        "kb-1", [_entity("e-1", properties={"a": 1}, metadata={"src": "doc2"})]
+    )
+
+    stored = repo.get_entities("kb-1")[0]
+    assert stored.properties == {"a": 1}
+    assert stored.metadata == {"src": "doc2"}
+    assert stored.version == 1  # no version bump for metadata-only change
