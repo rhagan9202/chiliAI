@@ -175,6 +175,32 @@ def build_anonymous_user() -> User:
     return User(user_id="anonymous", roles=[role])
 
 
+def _token_kid(token: str) -> str | None:
+    """Return the token header's ``kid``, or None (malformed headers -> None,
+    letting jwt.decode produce the canonical 401)."""
+
+    try:
+        from jose import jwt
+    except ImportError:  # pragma: no cover - guarded by [auth] extra
+        return None
+    try:
+        header = cast(dict[str, object], jwt.get_unverified_header(token))
+    except Exception:  # noqa: BLE001 - malformed header falls through to decode
+        return None
+    kid = header.get("kid")
+    return kid if isinstance(kid, str) else None
+
+
+def _jwks_has_kid(jwks: dict[str, object], kid: str) -> bool:
+    keys = jwks.get("keys")
+    if not isinstance(keys, list):
+        return False
+    for key in cast(list[object], keys):
+        if isinstance(key, dict) and cast(dict[str, object], key).get("kid") == kid:
+            return True
+    return False
+
+
 def decode_token(
     token: str,
     *,
@@ -217,6 +243,21 @@ def decode_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unable to retrieve JWKS for token validation.",
         ) from exc
+
+    token_kid = _token_kid(token)
+    if token_kid is not None and not _jwks_has_kid(jwks, token_kid):
+        try:
+            jwks = jwks_cache.force_refresh(auth_config.jwks_uri)
+        except Exception as exc:  # noqa: BLE001 - refetch failures map to 401
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to refresh JWKS for token validation.",
+            ) from exc
+        if not _jwks_has_kid(jwks, token_kid):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token signing key is unknown.",
+            )
 
     try:
         claims = cast(

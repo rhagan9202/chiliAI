@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterator
 from typing import cast
 
 import pytest
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 pytest.importorskip("jose")
@@ -43,6 +43,23 @@ _MEDICARE_YAML = _DEFAULTS_DIR / "medicare_fraud.yaml"
 @pytest.fixture(scope="module")
 def rsa_pem() -> str:
     """Return a freshly generated RSA private key in PEM PKCS8 format."""
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem_bytes = key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    return pem_bytes.decode("utf-8")
+
+
+@pytest.fixture(scope="module")
+def rsa_pem_2() -> str:
+    """Return a second, distinct RSA private key in PEM PKCS8 format.
+
+    Used alongside ``rsa_pem`` to build the kid-rotation matrix (BL-022):
+    two keypairs with distinct ``kid``s simulate an IdP JWKS rotation.
+    """
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     pem_bytes = key.private_bytes(
@@ -98,6 +115,7 @@ def _make_token(
     audience: str,
     claims_extra: dict[str, object] | None = None,
     expires_in: int = 3600,
+    kid: str | None = "kid-1",
 ) -> str:
     import time
 
@@ -111,11 +129,24 @@ def _make_token(
     }
     if claims_extra is not None:
         claims.update(claims_extra)
+    headers = {"kid": kid} if kid is not None else None
     return jwt.encode(
         claims,
         pem,
         algorithm="RS256",
-        headers={"kid": "kid-1"},
+        headers=headers,
+    )
+
+
+def _kid_auth_config() -> AuthConfig:
+    """AuthConfig shared by the kid-rotation matrix tests (BL-022)."""
+
+    return AuthConfig(
+        enabled=True,
+        issuer_url="https://issuer.example",
+        audience="chili",
+        jwks_uri="https://issuer.example/.well-known/jwks.json",
+        roles_claim="roles",
     )
 
 
@@ -649,3 +680,158 @@ def test_invalidate_clears_forced_refresh_throttle() -> None:
     # so it returns get() without refetching.
     cache.force_refresh("https://idp/jwks")
     assert calls == ["https://idp/jwks", "https://idp/jwks"]  # no third fetch
+
+
+class TestKidAwareResolution:
+    """Rotation matrix for kid-aware resolution in decode_token (BL-022)."""
+
+    def test_unknown_kid_forces_one_refetch_and_validates(
+        self, rsa_pem: str, rsa_pem_2: str
+    ) -> None:
+        from api.middleware.auth import JwksCache, decode_token
+
+        auth_config = _kid_auth_config()
+        jwks_old: dict[str, object] = {
+            "keys": [_public_jwk_from_pem(rsa_pem, kid="kid-old")]
+        }
+        jwks_new: dict[str, object] = {
+            "keys": [_public_jwk_from_pem(rsa_pem_2, kid="kid-new")]
+        }
+        rotated = {"done": False}
+        calls: list[str] = []
+
+        def fetcher(uri: str) -> dict[str, object]:
+            calls.append(uri)
+            return jwks_new if rotated["done"] else jwks_old
+
+        cache = JwksCache(fetcher=fetcher, ttl_seconds=3600)
+
+        token_old = _make_token(
+            rsa_pem,
+            issuer="https://issuer.example",
+            audience="chili",
+            kid="kid-old",
+        )
+        # 1. token signed by OLD key, kid=old -> validates, fetch_count == 1
+        claims_old = decode_token(token_old, auth_config=auth_config, jwks_cache=cache)
+        assert claims_old["sub"] == "user-123"
+        assert len(calls) == 1
+
+        # 2. rotate: fetcher now returns JWKS_NEW only
+        rotated["done"] = True
+
+        token_new = _make_token(
+            rsa_pem_2,
+            issuer="https://issuer.example",
+            audience="chili",
+            kid="kid-new",
+        )
+        # 3. token signed by NEW key, kid=new -> decode_token succeeds,
+        #    fetch_count == 2 (exactly one forced refetch)
+        claims_new = decode_token(token_new, auth_config=auth_config, jwks_cache=cache)
+        assert claims_new["sub"] == "user-123"
+        assert len(calls) == 2
+
+        # 4. token signed by OLD key -> 401, fetch_count == 2 (old kid known-missing,
+        #    but: unknown kid inside the throttle window -> no refetch)
+        with pytest.raises(HTTPException) as exc_info:
+            decode_token(token_old, auth_config=auth_config, jwks_cache=cache)
+        assert exc_info.value.status_code == 401
+        assert len(calls) == 2
+
+    def test_unknown_kid_still_missing_after_refetch_is_401(self, rsa_pem: str) -> None:
+        from api.middleware.auth import JwksCache, decode_token
+
+        auth_config = _kid_auth_config()
+        # fetcher always returns a JWKS without the token's kid
+        jwks_without_kid: dict[str, object] = {
+            "keys": [_public_jwk_from_pem(rsa_pem, kid="kid-other")]
+        }
+        calls: list[str] = []
+
+        def fetcher(uri: str) -> dict[str, object]:
+            calls.append(uri)
+            return jwks_without_kid
+
+        cache = JwksCache(fetcher=fetcher, ttl_seconds=3600)
+        token = _make_token(
+            rsa_pem,
+            issuer="https://issuer.example",
+            audience="chili",
+            kid="kid-missing",
+        )
+
+        # decode_token -> HTTPException 401 "Token signing key is unknown."
+        with pytest.raises(HTTPException) as exc_info:
+            decode_token(token, auth_config=auth_config, jwks_cache=cache)
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail == "Token signing key is unknown."
+        # fetch_count == 2 (initial get + one forced refresh)
+        assert len(calls) == 2
+
+    def test_unknown_kid_inside_throttle_window_does_not_refetch(
+        self, rsa_pem: str
+    ) -> None:
+        from api.middleware.auth import JwksCache, decode_token
+
+        auth_config = _kid_auth_config()
+        jwks_without_kid: dict[str, object] = {
+            "keys": [_public_jwk_from_pem(rsa_pem, kid="kid-other")]
+        }
+        calls: list[str] = []
+        now = {"t": 1000.0}
+
+        def fetcher(uri: str) -> dict[str, object]:
+            calls.append(uri)
+            return jwks_without_kid
+
+        # injected clock
+        cache = JwksCache(fetcher=fetcher, ttl_seconds=3600, _clock=lambda: now["t"])
+        token = _make_token(
+            rsa_pem,
+            issuer="https://issuer.example",
+            audience="chili",
+            kid="kid-missing",
+        )
+
+        # first unknown kid consumes the forced refresh (fetch_count 2)
+        with pytest.raises(HTTPException):
+            decode_token(token, auth_config=auth_config, jwks_cache=cache)
+        assert len(calls) == 2
+
+        # second unknown-kid token within 30s -> 401 with fetch_count still 2
+        now["t"] += 10
+        with pytest.raises(HTTPException):
+            decode_token(token, auth_config=auth_config, jwks_cache=cache)
+        assert len(calls) == 2
+
+        # advance clock past 30s -> third unknown-kid token -> fetch_count 3
+        now["t"] += 30
+        with pytest.raises(HTTPException):
+            decode_token(token, auth_config=auth_config, jwks_cache=cache)
+        assert len(calls) == 3
+
+    def test_token_without_kid_header_keeps_legacy_path(self, rsa_pem: str) -> None:
+        from api.middleware.auth import JwksCache, decode_token
+
+        auth_config = _kid_auth_config()
+        jwks: dict[str, object] = {"keys": [_public_jwk_from_pem(rsa_pem, kid="kid-1")]}
+        calls: list[str] = []
+
+        def fetcher(uri: str) -> dict[str, object]:
+            calls.append(uri)
+            return jwks
+
+        cache = JwksCache(fetcher=fetcher, ttl_seconds=3600)
+        # token minted without a kid header, key present in JWKS
+        token = _make_token(
+            rsa_pem,
+            issuer="https://issuer.example",
+            audience="chili",
+            kid=None,
+        )
+
+        # validates, no forced refresh
+        claims = decode_token(token, auth_config=auth_config, jwks_cache=cache)
+        assert claims["sub"] == "user-123"
+        assert len(calls) == 1
