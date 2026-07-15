@@ -958,7 +958,10 @@ backend/config/defaults/
   medicare_fraud_cms_desynpuf.yaml   (exemplar — default for make dev/prod)
   food_supply_chain.yaml             (exemplar-parity peer pack)
   medicare_fraud.yaml                (minimal variant)
-  medicare_fraud_dev.yaml            (dev variant)
+backend/config/overlays/
+  medicare_fraud_dev.yaml            (dev overlay over medicare_fraud.yaml,
+                                       applied via CHILI_CONFIG_OVERLAY_PATH
+                                       — ADR 0001; not a standalone pack)
 ```
 
 ### 14.2 Adding a new domain

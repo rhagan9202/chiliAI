@@ -285,11 +285,16 @@ class UiConfig(BaseModel):
 
 ## Default Config Files
 
-Located in `backend/config/defaults/`:
+Located in `backend/config/defaults/` (complete, independently loadable packs):
 - `medicare_fraud.yaml` — full Medicare fraud detection domain
 - `medicare_fraud_cms_desynpuf.yaml` — DE-SynPUF / NPPES exemplar (updated 2026-05-22; see below)
-- `medicare_fraud_dev.yaml` — dev/test variant
 - `food_supply_chain.yaml` — food supply chain domain example
+- `department_air_force_housing.yaml` — Department of the Air Force housing oversight
+
+`backend/config/overlays/medicare_fraud_dev.yaml` — dev/test overlay over
+`medicare_fraud.yaml`, applied via `CHILI_CONFIG_OVERLAY_PATH` (ADR 0001:
+`docs/architecture/decisions/0001-config-overlay-merge-semantics.md`). It is
+a partial config (no `entities`/`relationships`/etc.), not a standalone pack.
 
 ### `medicare_fraud_cms_desynpuf.yaml` feed inventory (2026-05-22)
 

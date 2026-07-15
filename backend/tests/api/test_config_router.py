@@ -15,8 +15,9 @@ from config.loader import load_config
 from config.schema import DomainConfig
 
 DEFAULTS_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "defaults"
+OVERLAYS_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "overlays"
 MEDICARE_YAML = DEFAULTS_DIR / "medicare_fraud.yaml"
-MEDICARE_DEV_YAML = DEFAULTS_DIR / "medicare_fraud_dev.yaml"
+MEDICARE_DEV_OVERLAY = OVERLAYS_DIR / "medicare_fraud_dev.yaml"
 
 
 def _skip_policy_audit(app: FastAPI) -> None:
@@ -85,9 +86,10 @@ class TestConfigRouter:
         assert data["default_entity_type"] == "provider"
         assert data["default_role"] == "analyst"
 
-    def test_dev_config_returns_ui_features(self) -> None:
+    def test_dev_config_returns_ui_features(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CHILI_CONFIG_OVERLAY_PATH", str(MEDICARE_DEV_OVERLAY))
         app = create_app()
-        config = load_config(MEDICARE_DEV_YAML)
+        config = load_config(MEDICARE_YAML)
         app.dependency_overrides[get_domain_config] = lambda: config
 
         with TestClient(app) as dev_client:

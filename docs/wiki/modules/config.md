@@ -29,10 +29,17 @@ def load_config(path: str | None = None) -> DomainConfig:
 
 ## Default Config Files
 
-Located in `backend/config/defaults/`:
+Located in `backend/config/defaults/` (complete, independently loadable packs):
 - `medicare_fraud.yaml`
-- `medicare_fraud_dev.yaml`
+- `medicare_fraud_cms_desynpuf.yaml`
 - `food_supply_chain.yaml`
+- `department_air_force_housing.yaml`
+
+`backend/config/overlays/medicare_fraud_dev.yaml` is a **partial** dev-environment
+overlay over `medicare_fraud.yaml`, applied via `CHILI_CONFIG_OVERLAY_PATH`
+(deep-merge + list-replace semantics, `overlay_for` domain guard — ADR 0001,
+`backend/config/overlay.py`). It is not a standalone pack and is not iterated
+by the pack catalog.
 
 ---
 

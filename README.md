@@ -76,7 +76,7 @@ bash scripts/smoke_graph_workflow.sh
 make prod                      # or: docker compose up --build -d
 ```
 
-The development Compose stack wires API and worker through Redis Streams, shared local filesystem object storage, and Neo4j graph persistence via `backend/config/defaults/medicare_fraud_dev.yaml`. The smoke script creates a temporary KB, uploads a Medicare-domain JSON document, waits for the graph pipeline, validates Investigation search/detail/neighborhood APIs, and prints an Investigation route containing a real generated entity ID.
+The development Compose stack wires API and worker through Redis Streams, shared local filesystem object storage, and Neo4j graph persistence via `backend/config/defaults/medicare_fraud_cms_desynpuf.yaml` (the default pack for `make dev`/`make prod`; see `backend/config/README.md` for the full pack list and the `CHILI_CONFIG_OVERLAY_PATH` environment-overlay mechanism). The smoke script creates a temporary KB, uploads a Medicare-domain JSON document, waits for the graph pipeline, validates Investigation search/detail/neighborhood APIs, and prints an Investigation route containing a real generated entity ID.
 
 | Service | Dev URL | Prod URL |
 |---------|---------|----------|

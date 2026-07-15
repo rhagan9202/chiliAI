@@ -10,6 +10,7 @@ from typing import Any, cast
 import yaml
 from pydantic import ValidationError
 
+from config.overlay import OverlayError, apply_overlays
 from config.schema import DomainConfig
 from config.store import ActivePackStoreError, resolve_config_path
 
@@ -28,15 +29,20 @@ def load_config(path: str | Path | None = None) -> DomainConfig:
     Raises ``ConfigLoadError`` on file-not-found, parse errors, or
     schema validation failures.
     """
-    # TODO(production): Support config overlay/merging (base + env-specific layer).
-    # Add secrets resolution for ${ENV_VAR} placeholders in config values.
-    # Cache the loaded DomainConfig and support hot-reload via file watcher or
-    # API endpoint. See docs/archive/config_engine_plan.md for the historical
-    # config engine plan.
+    # TODO(production): Add secrets resolution for ${ENV_VAR} placeholders in
+    # config values. Cache the loaded DomainConfig and support hot-reload via
+    # file watcher or API endpoint. See docs/archive/config_engine_plan.md for
+    # the historical config engine plan.
     resolved = _resolve_path(path)
 
     raw = _read_file(resolved)
     data = _parse_content(raw, resolved)
+    overlay_paths = _overlay_paths_from_env()
+    if overlay_paths:
+        try:
+            data = apply_overlays(data, overlay_paths, parse=_parse_config_file)
+        except OverlayError as exc:
+            raise ConfigLoadError(str(exc)) from exc
     return _validate(data)
 
 
@@ -108,6 +114,15 @@ def _parse_content(raw: str, path: Path) -> dict[str, Any]:
             f"Config file {path} must contain a mapping at the top level."
         )
     return cast(dict[str, Any], data)
+
+
+def _overlay_paths_from_env() -> list[Path]:
+    raw = os.environ.get("CHILI_CONFIG_OVERLAY_PATH", "")
+    return [Path(part.strip()) for part in raw.split(",") if part.strip()]
+
+
+def _parse_config_file(path: Path) -> dict[str, Any]:
+    return _parse_content(_read_file(path), path)
 
 
 def _validate(data: dict[str, Any]) -> DomainConfig:

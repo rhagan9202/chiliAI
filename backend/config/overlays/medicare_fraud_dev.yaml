@@ -1,0 +1,115 @@
+# Dev-environment overlay for the medicare_fraud base pack (ADR 0001).
+# Layers onto config/defaults/medicare_fraud.yaml via CHILI_CONFIG_OVERLAY_PATH.
+overlay_for: medicare_fraud
+
+# --- dev infra sections (copied verbatim from the old full dev file) ---
+analytics:
+  metrics_recompute_min_interval_seconds: 300
+
+database:
+  backend: postgres
+  dsn_env_var: DATABASE_URL
+  pool_size: 10
+  pool_max_overflow: 5
+  statement_timeout_ms: 30000
+
+embeddings:
+  provider: local
+  model: local-default
+  dimensions: 384
+  batch_size: 32
+  api_key_env_var: null
+
+events:
+  backend: redis
+  uri: redis://redis:6379
+  stream_prefix: chili
+  consumer_group: chili-workers
+
+graph:
+  backend: neo4j
+  uri: bolt://neo4j:7687
+  pool_size: 10
+  auth_env_var: null
+
+llm:
+  provider: local
+  model: local-default
+  api_key_env_var: null
+  temperature: 0.7
+  max_tokens: 4096
+
+monitoring:
+  evaluation_interval_seconds: 300
+  dedup_window_seconds: 3600
+  max_alerts_per_entity: 10
+  max_alerts_per_evaluation: 100
+  grouping_window_seconds: 300
+
+storage:
+  backend: local
+  endpoint_url: null
+  bucket: null
+  base_path: /app/data/objects
+  credentials_env_var: null
+
+vectorstore:
+  backend: qdrant
+  uri: http://qdrant:6333
+  dimensions: 384
+  distance_metric: cosine
+
+# --- dev knob flips ---
+capabilities:
+  peer_stats: false   # base sets true; dev runs without the peerstats stage
+
+# list-replace semantics (ADR 0001): the whole policy_rules list is restated
+# because dev changes one threshold inside it.
+policy_rules:
+  - id: billing_thresholds
+    name: "Billing thresholds"
+    description: "Flag claims whose billed amount exceeds the configured ceiling."
+    thresholds:
+      max_billed_amount: 100
+    rules:
+      - id: claim_over_billed
+        title_template: "Claim {target_ref} exceeds the billing threshold"
+        severity: high
+        target_kind: entity
+        target_selector:
+          entity_type: claim
+        predicate:
+          field: properties.amount
+          op: gt
+          value:
+            config_ref: max_billed_amount
+        citations:
+          - citation_id: lcd-billing-001
+            title: "LCD billing-amount guidance"
+            source_ref: "policy://medicare/lcd/billing-001"
+            excerpt: "Claims above the LCD ceiling require documented justification."
+  - id: graph_scale
+    name: "Graph growth watch"
+    thresholds:
+      max_entities: 100000
+    rules:
+      - id: kb_entity_volume
+        title_template: "Knowledge base {target_ref} crossed the entity-volume watch line"
+        severity: medium
+        target_kind: metric
+        target_selector:
+          metric_name: entity_count
+        predicate:
+          field: metric.entity_count
+          op: gt
+          value:
+            config_ref: max_entities
+
+# deep-merge addition: facility card in the workbench; the rest of ui comes
+# from the base.
+ui:
+  display_fields:
+    facility:
+      title: name
+      subtitle: type
+      chips: [facility_id]

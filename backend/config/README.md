@@ -13,7 +13,13 @@ selection — with **zero code changes**.
 - `loader.py` — `load_config(path=None)`: resolves the file (explicit `path`
   argument, else the active-pack pointer, else `CHILI_CONFIG_PATH`), parses
   YAML/JSON, validates, and returns a `DomainConfig`. Raises
-  `ConfigLoadError` on any failure.
+  `ConfigLoadError` on any failure. After parsing the base file, if
+  `CHILI_CONFIG_OVERLAY_PATH` is set it is split on commas into an ordered
+  list of overlay file paths, layered onto the base via `overlay.py`'s
+  `apply_overlays` (each overlay must declare `overlay_for` matching
+  `domain.name`, or it is skipped with a warning), before schema validation
+  runs. `overlay.py` — pure base+overlay deep-merge semantics (`ADR 0001`);
+  see its module docstring for merge rules.
 - `store.py` — file-backed **active-pack pointer store**. Persists which
   pack is active in a small JSON state file, `data/config/active_pack.json`
   (in containers: `/app/data/config/active_pack.json` on the shared
@@ -26,7 +32,10 @@ selection — with **zero code changes**.
   (`POST /config/apply|switch`) only after the candidate pack fully
   validates; a corrupt pointer file fails loudly rather than silently
   reverting the deployment to a different domain.
-- `defaults/` — the shipped domain packs:
+- `defaults/` — the shipped domain packs (each a complete, independently
+  loadable `DomainConfig`; iterated by the config API's pack catalog, so
+  every file here is discoverable/switchable via the Config Manager /
+  `POST /config/switch`):
   - `medicare_fraud_cms_desynpuf.yaml` — the exemplar pack (CMS DE-SynPUF
     Medicare fraud detection). **Default** for `make dev` and `make prod`.
   - `food_supply_chain.yaml` — food supply chain integrity (fraud,
@@ -38,7 +47,85 @@ selection — with **zero code changes**.
     and MFH (12-metric) statutory scorecard templates whose per-metric
     provenance is documented in
     [`../../docs/research/housing-scorecard-mandates.md`](../../docs/research/housing-scorecard-mandates.md).
-  - `medicare_fraud.yaml`, `medicare_fraud_dev.yaml` — minimal/dev variants.
+  - `medicare_fraud.yaml` — minimal variant; also the base pack the dev
+    overlay below layers onto.
+- `overlays/` — environment overlay files (ADR 0001), layered onto a base
+  pack via `CHILI_CONFIG_OVERLAY_PATH` (see "Config overlays" below). An
+  overlay is a **partial** config — it omits required `DomainConfig`
+  sections like `entities` — so it is never itself loadable as a standalone
+  pack, and the pack catalog does not iterate this directory.
+  - `medicare_fraud_dev.yaml` — the dev-environment overlay for
+    `defaults/medicare_fraud.yaml`: dev-stack infra pins (Neo4j, Redis,
+    Qdrant, Postgres, local object storage), `capabilities.peer_stats:
+    false`, a lower `policy_rules` billing threshold, and a `ui` display-field
+    addition. Moved here from `defaults/` and rewritten as a 115-line overlay
+    (was a 284-line full-pack duplicate — a 59% reduction).
+
+## Config overlays (base + environment layering)
+
+Environment configs (dev/staging/prod knob flips) no longer duplicate the
+whole domain surface. `CHILI_CONFIG_OVERLAY_PATH` names one or more overlay
+files (comma-separated, declared order, last wins) layered onto the base
+pack **before** schema validation:
+
+```bash
+CHILI_CONFIG_PATH=config/defaults/medicare_fraud.yaml \
+CHILI_CONFIG_OVERLAY_PATH=config/overlays/medicare_fraud_dev.yaml \
+  uvicorn api.app:create_app --factory --reload --port 8000
+```
+
+Merge semantics (full rationale in
+[`../../docs/architecture/decisions/0001-config-overlay-merge-semantics.md`](../../docs/architecture/decisions/0001-config-overlay-merge-semantics.md)):
+
+- Mappings **deep-merge** — overlay keys win recursively.
+- Lists and scalars **replace wholesale** — no list-merge-by-key.
+- An explicit `null` sets a field to `None`; absence falls through to the
+  base value or the schema default. There is no key-removal operator.
+- Every overlay file must declare `overlay_for: <domain.name>`. If it
+  matches the base's `domain.name` the overlay applies; a mismatch **skips
+  the overlay with a warning** rather than failing the boot — this is what
+  lets `CHILI_CONFIG_OVERLAY_PATH` survive a runtime hot-swap to a different
+  pack (the swap just runs clean base config for the foreign overlay). A
+  missing `overlay_for`, or any top-level key not in
+  `DomainConfig.model_fields` (checked via the public
+  `config.overlay.known_top_level_keys()`), is a hard `OverlayError` —
+  raised as `ConfigLoadError` by `load_config` — so a typo like
+  `embeddngs:` fails loudly instead of silently not applying.
+- The guard is **domain-scoped, not pack-scoped**: `overlay_for` matches
+  `domain.name`, and multiple packs can share a domain. Both
+  `defaults/medicare_fraud.yaml` and `defaults/medicare_fraud_cms_desynpuf.yaml`
+  declare `domain.name: medicare_fraud`, so the dev overlay applies to
+  **either** of them when `CHILI_CONFIG_OVERLAY_PATH` is set — including the
+  DE-SynPUF pack's `policy_rules` list being replaced wholesale by the
+  overlay's. Keep this in mind before exporting the overlay var against the
+  default (`medicare_fraud_cms_desynpuf`) stack.
+- Overlays also apply when the config API loads packs on your behalf:
+  `POST /config/apply|switch` validates and activates the **merged** result,
+  and each row of `GET /config/packs` reflects loading that pack in the
+  current environment (same-domain packs merged, others skipped with the
+  warning). `POST /config/validate` is the one deliberate exception — it is a
+  pack-level dry run of the raw pack/content and does **not** apply overlays,
+  so its verdict can differ from what `apply` ultimately serves; `apply` still
+  fully validates the merged config before any state mutates.
+
+`config/overlay.py` implements the pure merge (`merge_config_layers`) and
+the guarded per-overlay application (`apply_overlays`); `config/loader.py`
+wires `CHILI_CONFIG_OVERLAY_PATH` into every `load_config` call — explicit
+`path`, plain env resolution, and the pointer-following `load_active_config`
+all apply the same overlay stack, since `load_active_config` delegates to
+`load_config`.
+
+`backend/tests/config/test_overlay.py` covers this with hypothesis
+property tests (deep-merge associativity **on type-stable stacks**, empty-
+overlay identity, list-replacement — see ADR 0001 for the type-flip
+boundary case) plus example-based tests (`overlay_for` match/mismatch/
+missing, unknown-key rejection, comma-separated stacking order) and a golden
+equivalence test (`test_medicare_dev_overlay_reproduces_old_full_config`)
+that proves `medicare_fraud.yaml ⊕ overlays/medicare_fraud_dev.yaml`
+reproduces the retired full dev file byte-for-byte (modulo the documented
+`peer_stats` exception), loading the retired file from a checked-in fixture
+(`backend/tests/config/fixtures/medicare_fraud_dev_full_snapshot.yaml`)
+rather than git history, since CI's checkout is shallow.
 
 ## Switching domains
 

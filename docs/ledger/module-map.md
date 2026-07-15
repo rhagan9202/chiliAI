@@ -200,7 +200,7 @@ Entity-metric persistence (no service, no events). Adapters: `InMemoryEntityMetr
 
 **Key exports:** `DomainConfig`, `load_config`
 
-**Config files:** `defaults/medicare_fraud.yaml`, `defaults/medicare_fraud_dev.yaml`, `defaults/medicare_fraud_cms_desynpuf.yaml`, `defaults/food_supply_chain.yaml`
+**Config files:** `defaults/medicare_fraud.yaml`, `defaults/medicare_fraud_cms_desynpuf.yaml`, `defaults/food_supply_chain.yaml`, `defaults/department_air_force_housing.yaml`; `overlays/medicare_fraud_dev.yaml` (dev overlay over `defaults/medicare_fraud.yaml`, applied via `CHILI_CONFIG_OVERLAY_PATH` — ADR 0001, `overlay.py`, BL-044)
 
 **New in 2026-05-22:**
 - `LlmConfig.provider` gains `"ollama"` literal
