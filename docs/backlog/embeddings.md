@@ -70,7 +70,7 @@ The **in-process cache** subset of this story's scope shipped as BL-019 — `Red
 - One concrete adapter: `InMemoryLruEmbeddingCache` (`embeddings/adapters/cache_in_memory.py`), a thread-safe per-process LRU (`cache_max_entries`), not TTL-based. `RedisEmbeddingCache` deferred to BL-045.
 - Config: flat `EmbeddingsConfig.cache_enabled` (default `true`) / `EmbeddingsConfig.cache_max_entries` (default `4096`) on the existing config, not a new `DomainConfig.embeddings.cache` sub-model.
 - `EmbeddingsService` constructor accepts the optional cache and checks/writes through it on `embed()`; wired at both composition roots (`api/dependencies.py`, worker `build_worker_dependencies`) with hot-swap-safe generation-guarded caching.
-- Gates green in-session (`pytest --cov -m "not integration"`, `pyright`, `ruff`); live-stack verification deferred — Docker was unavailable this session, tracked as a follow-up verification pass, not additional scope.
+- Gates green in-session (`pytest --cov -m "not integration"`, `pyright`, `ruff`); live-stack verification **passed 2026-07-14**: identical query embedded twice against `make dev` showed `cache_result="miss"` then `cache_result="hit"` on `embedding_texts_total` with `embedding_tokens_total` flat (cached call spends zero tokens).
 
 ### Current State
 - `EmbeddingsService.embed` always invokes the adapter; the service-level `TODO(production)` explicitly calls out the missing content-hash cache and chunking logic (`backend/embeddings/service.py:20-49`).
@@ -212,7 +212,7 @@ The **token usage tracking** subset of this story's scope shipped as BL-019 — 
 - OpenAI adapter sums `usage.total_tokens` across all embed batches into `EmbeddingMetadata.total_tokens` (`embeddings/adapters/openai_adapter.py`) — the AC's `usage.prompt_tokens`-per-request field does not exist on this response shape; `total_tokens` is the total the API returns.
 - `embedding_tokens_total{provider,model,knowledge_base_id,source}` Prometheus counter (`embeddings/metrics.py`) replaces the AC's per-record `EmbeddingCostRecord`/estimated-cost-USD model; `source="reported"` when the provider returns usage, `source="estimated"` (chars/4, cache misses only) for local/sentence-transformers. Fully cached calls spend zero tokens.
 - No `cost_per_million_tokens` config, no dollar-cost computation, and no tenant-scoped roll-up — a durable per-request usage ledger and cost attribution remain BL-045, not this delivery.
-- Gates green in-session; live verification deferred — Docker was unavailable this session.
+- Gates green in-session; live verification **passed 2026-07-14**: `/metrics` scrape shows `embedding_requests_total`, `embedding_texts_total{cache_result}`, `embedding_tokens_total{source="estimated"}` and the structured usage log emits `token_source=estimated`/`cached` per call against the running stack.
 
 ### Current State
 - `_estimate_tokens` exists only inside the OpenAI adapter's batcher (`backend/embeddings/adapters/openai_adapter.py:225-228`); the value is never surfaced.

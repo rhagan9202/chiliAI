@@ -26,7 +26,7 @@
 | analytics.md | 33 | 0 | 0 | 33 | 0% |
 | api.md | 27 | 0 | 1 | 29 | 3% |
 | config.md | 15 | 0 | 0 | 15 | 0% |
-| database.md | 13 | 0 | 0 | 13 | 0% |
+| database.md | 12 | 0 | 1 | 13 | 7% |
 | embeddings.md | 12 | 0 | 0 | 12 | 0% |
 | events.md | 14 | 2 | 0 | 16 | 0% |
 | frontend.md | 24 | 0 | 2 | 26 | 7% |
@@ -40,7 +40,7 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 416 | 7 | 17 | 442 | 3% |
+| **Total** | 415 | 7 | 18 | 442 | 4% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -53,6 +53,7 @@
 - [_cicd.02] _cicd — size M — prereqs done
 - [_cicd.03] _cicd — size M — prereqs done
 - [_cicd.04] _cicd — size M — prereqs done
+- [_cicd.12] _cicd — size M — prereqs done
 - [_infra.02] _infra — size M — prereqs done
 - [_security.09] _security — size M — prereqs done
 - [_security.11] _security — size M — prereqs done
@@ -65,7 +66,6 @@
 - [config.02] config — size M — prereqs done
 - [config.03] config — size M — prereqs done
 - [database.03] database — size M — prereqs done
-- [database.04] database — size M — prereqs done
 - [database.05] database — size M — prereqs done
 - [database.07] database — size M — prereqs done
 - [embeddings.01] embeddings — size M — prereqs done

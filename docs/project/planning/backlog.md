@@ -22,10 +22,10 @@
 | BL-ID | Title | REQ-IDs | Priority | Status | Remaining |
 |-------|-------|---------|----------|--------|-----------|
 | BL-017 | Graph integrity + version/merge | REQ-GRAPH-001 | P1 | todo | 8 SP |
-| BL-019 | Embeddings + Vectorstore 1.0 hardening (re-scoped 2026-07-12: cache + cost/usage tracking) | REQ-VEC-001..004 | P1 | code-complete — Sprint 2026-26 (live-stack verification pending, environment) | 0 SP dev |
-| BL-041 | Ingestion document-status projection + failure-path closure | REQ-KB-002, REQ-KB-004 | P1 | code-complete — Sprint 2026-26 (full-stack + integration verification pending, environment) | 0 SP dev |
-| BL-042 | CI migration drift/replay gate (database.04) | REQ-NFR-002 | P1 | committed — Sprint 2026-26 | 3 SP |
-| BL-043 | Ingestion structured stage logs + Prometheus counters | REQ-NFR-SEC-004 | P2 | code-complete — Sprint 2026-26 (live-scrape/full-stack verification pending, environment) | 0 SP dev |
+| BL-019 | Embeddings + Vectorstore 1.0 hardening (re-scoped 2026-07-12: cache + cost/usage tracking) | REQ-VEC-001..004 | P1 | done — Sprint 2026-26 (live-stack verified 2026-07-14) | 0 SP |
+| BL-041 | Ingestion document-status projection + failure-path closure | REQ-KB-002, REQ-KB-004 | P1 | done — Sprint 2026-26 (full-stack + integration verified 2026-07-14; tracker isolation fix landed in the pass) | 0 SP |
+| BL-042 | CI migration drift/replay gate (database.04) | REQ-NFR-002 | P1 | done — Sprint 2026-26 (CI `migrations` job green 2026-07-14; missing snapshot caught + committed in verification) | 0 SP |
+| BL-043 | Ingestion structured stage logs + Prometheus counters | REQ-NFR-SEC-004 | P2 | done — Sprint 2026-26 (live scrape + stage-log inspection verified 2026-07-14) | 0 SP |
 | BL-044 | Config base + overlay layering (config.04) | REQ-CONFIG-001 | P2 | stretch — Sprint 2026-26 | 3 SP |
 | BL-020 | KB snapshots & restore | REQ-KB-007, REQ-NFR-DR-001 | P2 | todo | 8 SP |
 | BL-021 | Graph backup/restore per adapter | REQ-GRAPH-006, REQ-NFR-DR-002 | P2 | todo | 5 SP |
@@ -54,8 +54,8 @@
 ### BL-019 — Embeddings 1.0 + Vectorstore 1.0 hardening (re-scoped 2026-07-12)
 - **REQ**: REQ-VEC-001..004
 - **Plans**: [docs/superpowers/plans/2026-05-19-embeddings-1-0.md](../../superpowers/plans/), [docs/superpowers/plans/2026-05-19-vectorstore-1-0.md](../../superpowers/plans/)
-- **Status**: **code-complete — Sprint 2026-26, 2026-07-14** (all 8 implementation tasks landed: `EmbeddingsConfig` cache knobs + contracts regen, `CachedEmbedding`/`build_embedding_cache_key`, `EmbeddingCacheProtocol` + `InMemoryLruEmbeddingCache` + `create_embedding_cache`/`embedding_cache_namespace`, cache-aware `EmbeddingsService` (standing TODO retired), OpenAI usage capture (`EmbeddingMetadata.total_tokens`), `embeddings/metrics.py` counters + structured usage log, DI wiring at both composition roots with hot-swap safety, this docs task). Backend gates green in-session: `pytest --cov -m "not integration"` full pass, coverage `embeddings`/`vectorstore` both ≥ 85%, `pyright` (0 errors), `ruff check --no-cache` (clean). **Not yet run**: full-stack manual verification (cache hit/miss behavior, `/metrics` scrape, usage log inspection against a running `make dev` stack) — Docker was unavailable this session; tracked as a follow-up verification pass, not additional scope. BL-019 stays **not** flipped to Done pending that verification pass.
-- **Remaining estimate**: 0 SP dev (pending live-stack verification)
+- **Status**: **code-complete — Sprint 2026-26, 2026-07-14** (all 8 implementation tasks landed: `EmbeddingsConfig` cache knobs + contracts regen, `CachedEmbedding`/`build_embedding_cache_key`, `EmbeddingCacheProtocol` + `InMemoryLruEmbeddingCache` + `create_embedding_cache`/`embedding_cache_namespace`, cache-aware `EmbeddingsService` (standing TODO retired), OpenAI usage capture (`EmbeddingMetadata.total_tokens`), `embeddings/metrics.py` counters + structured usage log, DI wiring at both composition roots with hot-swap safety, this docs task). Backend gates green in-session: `pytest --cov -m "not integration"` full pass, coverage `embeddings`/`vectorstore` both ≥ 85%, `pyright` (0 errors), `ruff check --no-cache` (clean). **Live-stack verification passed 2026-07-14**: against `make dev`, an identical chat question asked twice showed `embedding_texts_total{cache_result="miss"}=1` then `{cache_result="hit"}=1` with `embedding_tokens_total` flat (fully cached call spends zero tokens), and the structured usage log emitted `token_source=estimated tokens=13` on miss / `token_source=cached tokens=0` on hit. **Done.**
+- **Remaining estimate**: 0 SP
 - **Re-scope ruling (product owner, 2026-07-12)**: acceptance for closing this P1 is **embedding cache + cost/usage tracking**. The roadmap-tier tail (object-store persistence of embeddings, graph-metric hybrid embedding flow, model routing, architecture guards) moved to post-v1 item **BL-045** — REQ-VEC-001..004 do not require it.
 - **Acceptance**:
   - [x] Retry/backoff + batching/token budgeting on OpenAI embeddings — `backend/embeddings/adapters/openai_adapter.py:108-134` (`_create_embeddings_with_retry`, 3 attempts, exponential backoff)
@@ -68,8 +68,8 @@
 ### BL-041 — Ingestion document-status projection + failure-path closure
 - **REQ**: REQ-KB-002, REQ-KB-004
 - **Module source**: [docs/backlog/ingestion.md](../../backlog/ingestion.md) stories ingestion.18 (slice; FE wiring split out), ingestion.32 (coordinator residue closure), ingestion.35 (closure)
-- **Status**: **code-complete — Sprint 2026-26, 2026-07-13** (all 10 implementation tasks landed, task-level reviews clean, `pytest -m "not integration"` / `pyright` / `ruff` full green on `ingestion`/`agent`/`api`/`knowledgebases`/`database`). **Full-stack manual verification and the `-m integration tests/database` subset are pending** — the dev-stack Docker environment was unavailable in this session (container networking); tracked as a follow-up verification pass, not additional scope.
-- **Estimate**: 6 SP (dev complete; 0 SP remaining pending verification)
+- **Status**: **code-complete — Sprint 2026-26, 2026-07-13** (all 10 implementation tasks landed, task-level reviews clean, `pytest -m "not integration"` / `pyright` / `ruff` full green on `ingestion`/`agent`/`api`/`knowledgebases`/`database`). **Full-stack verification passed 2026-07-14**: malformed PDF → `current_status=failed` with a parse reason, zero-entity doc → `extracted_empty`, `?status=` filter correct, `DATABASE_URL=…chili_test pytest -m integration tests/database` 22 passed. The pass also caught and fixed a residual batch-poisoning path: `WorkflowEventTracker.begin_event` treated a run failed by a per-document `documents.failed` as a hard gate, stranding sibling documents (e.g. a mixed batch left the healthy doc at `parsed` forever). Fixed so a `FAILED` run no longer gates sibling processing (run record stays frozen at FAILED; `CANCELLED`/`COMPLETED` still gate) — re-verified live: same mixed batch now ends `failed` + `extracted_empty`. **Done.**
+- **Estimate**: 6 SP (delivered)
 - **Acceptance**:
   - [x] `SourceDocumentStatusStore` protocol + Postgres adapter (Alembic migration `0009_document_status`); monotonic transitions (stale `parsing` after `failed` ignored) — `backend/ingestion/adapters/{protocols,in_memory,postgres}.py`
   - [x] Projection consumer subscribes to `documents.uploaded/parsed/failed` + extraction-warning events — `backend/agent/status_projection.py`, wired into the worker's `_dispatch_event` (`agent/coordinator.py`)
@@ -82,8 +82,8 @@
 ### BL-042 — CI migration drift/replay gate
 - **REQ**: REQ-NFR-002 (quality-gate; protects REQ-KB-006/REQ-INT-004 persistence)
 - **Module source**: [docs/backlog/database.md](../../backlog/database.md) story database.04
-- **Status**: committed — Sprint 2026-26 (code-verified 2026-07-12: no `scripts/ci_migration_check.sh`, no `snapshots/head.sql`, no `migrate-check` target; CI runs apply-only `alembic upgrade head` at `ci.yml:87`)
-- **Estimate**: 3 SP
+- **Status**: **done — Sprint 2026-26, 2026-07-14.** `scripts/ci_migration_check.sh`, `make migrate-check`/`migrate-snapshot`, and the independent `migrations` CI job all landed 2026-07-13/14. The deferred push-verification (2026-07-14) caught that `snapshots/head.sql` was planned as a committed artifact but never generated — the job's first real run failed exactly as designed; snapshot generated via `make migrate-snapshot`, committed, and the `migrations` job now reports green on the sprint branch (full CI run green).
+- **Estimate**: 3 SP (delivered)
 - **Acceptance**: `scripts/ci_migration_check.sh` (fresh TimescaleDB → upgrade head → downgrade base → upgrade head + drift check vs committed `snapshots/head.sql`); `make migrate-check` local parity; CI job wired (cross-edge `_cicd.12`). Paired with BL-041's migration `0009` so the new status table gets drift protection from day one.
 
 ---
@@ -150,13 +150,13 @@
 ### BL-043 — Ingestion structured stage logs + Prometheus counters
 - **REQ**: REQ-NFR-SEC-004 (structured logs); counters are an enabler for post-v1 BL-034
 - **Module source**: [docs/backlog/ingestion.md](../../backlog/ingestion.md) story ingestion.17 (logs+counters subset only — OTel spans + Grafana dashboards stay in ingestion.17, blocked on _observability.03/.05/.07)
-- **Status**: **code-complete — Sprint 2026-26, 2026-07-14** (`shared/metrics.py` counters + `log_stage` helper; worker `GET /metrics` on the health server, `agent/health.py`; parse-stage log + failure counter in `ingestion/service.py`; chunk/extract/validate stage logs + empty-extraction counter in `agent/coordinator.py`, including failure-counter increments at all four BL-041 per-document `DocumentsFailedEvent` sites; dedup counter at both suppression points. Gates green: `pytest -m "not integration"` full pass, coverage `shared` 97%/`ingestion` 93%/`records` 85%/`agent` 92%; `pyright` 0 errors; `ruff` clean). **Live-scrape/full-stack verification against the running compose stack is pending** — Docker was unavailable this session; tracked as a follow-up verification pass, not additional scope.
-- **Estimate**: 2 SP (dev complete; 0 SP remaining pending verification)
+- **Status**: **code-complete — Sprint 2026-26, 2026-07-14** (`shared/metrics.py` counters + `log_stage` helper; worker `GET /metrics` on the health server, `agent/health.py`; parse-stage log + failure counter in `ingestion/service.py`; chunk/extract/validate stage logs + empty-extraction counter in `agent/coordinator.py`, including failure-counter increments at all four BL-041 per-document `DocumentsFailedEvent` sites; dedup counter at both suppression points. Gates green: `pytest -m "not integration"` full pass, coverage `shared` 97%/`ingestion` 93%/`records` 85%/`agent` 92%; `pyright` 0 errors; `ruff` clean). **Live-scrape verification passed 2026-07-14**: worker `GET :8001/metrics` scraped from the host shows `ingestion_documents_failed_total{stage="parse",error_class="ParserError"}` and `ingestion_documents_empty_extraction_total` incrementing per ingested batch; API `GET :8000/metrics` shows `ingestion_dedup_suppressed_total{kind="document"}` on a re-upload; worker logs carry `ingestion_stage` lines with all five fields for parse/chunk/extract/validate. The pass added the missing `8001:8001` host port mapping for the worker to `docker-compose.dev.yaml` (the endpoint was previously container-internal only). **Done.**
+- **Estimate**: 2 SP (delivered)
 - **Acceptance**:
   - [x] Each ingestion stage emits a structured `ingestion_stage` log (`stage=`, `source_document_id=`, `kb_id=`, `duration_ms=`, `outcome=`) — `shared/metrics.py::log_stage`, called from `ingestion/service.py` (parse) and `agent/coordinator.py` (chunk/extract/validate)
   - [x] `ingestion_documents_failed_total{stage,error_class}`, `ingestion_documents_empty_extraction_total`, `ingestion_dedup_suppressed_total{kind}` registered on the default `prometheus_client` registry (`shared/metrics.py`)
   - [x] Worker-side counters scrapeable via the worker's own `GET /metrics` (`agent/health.py`, port 8001) — a separate registry from the API gateway's `/metrics`
-  - [ ] Live scrape against `make dev` confirming the counters/log lines appear as expected — deferred, environment
+  - [x] Live scrape against `make dev` confirming the counters/log lines appear as expected — verified 2026-07-14 (host scrape of `:8001/metrics` + `:8000/metrics`, worker `ingestion_stage` log inspection)
 
 ### BL-044 — Config base + environment overlay layering
 - **REQ**: REQ-CONFIG-001
