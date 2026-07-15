@@ -9,7 +9,13 @@ from events.protocols import EventBus
 from events.types import GraphUpdatedDocumentReference, GraphUpdatedEvent
 from graph.adapters.protocols import GraphRepository
 from graph.exceptions import BatchUpsertError, GraphPersistenceError
-from graph.models import GraphDeleteByProvenance, GraphMetrics, GraphUpsertResult, SubgraphResult
+from graph.models import (
+    GraphDeleteByProvenance,
+    GraphMetrics,
+    GraphUpsertOptions,
+    GraphUpsertResult,
+    SubgraphResult,
+)
 from graph.service_models import (
     EntitySearchQuery,
     GraphBuildReceipt,
@@ -120,6 +126,7 @@ class GraphService:
         return receipt
 
     def _upsert_entities(self, task: GraphBuildTask) -> list[Entity]:
+        options = task.upsert_options or GraphUpsertOptions()
         stored_entities: list[Entity] = []
         for entity_batch in self._chunk_items(task.entities):
             try:
@@ -128,6 +135,7 @@ class GraphService:
                         self._repository.upsert_entities(
                             task.knowledge_base_id,
                             entity_batch,
+                            options,
                         )
                     )
             except Exception as exc:
@@ -144,6 +152,7 @@ class GraphService:
         *,
         successful_entity_count: int,
     ) -> list[Relationship]:
+        options = task.upsert_options or GraphUpsertOptions()
         stored_relationships: list[Relationship] = []
         for relationship_batch in self._chunk_items(task.relationships):
             try:
@@ -152,6 +161,7 @@ class GraphService:
                         self._repository.upsert_relationships(
                             task.knowledge_base_id,
                             relationship_batch,
+                            options,
                         )
                     )
             except Exception as exc:
@@ -186,6 +196,7 @@ class GraphService:
         knowledge_base_id: str,
         entities: list[Entity],
         relationships: list[Relationship],
+        options: GraphUpsertOptions | None = None,
     ) -> tuple[list[Entity], list[Relationship]]:
         """Upsert entities and relationships from a structured-records feed.
 
@@ -195,12 +206,15 @@ class GraphService:
         worker's Flow 1 handler is safely replayable.
         """
 
+        resolved_options = options or GraphUpsertOptions()
         stored_entities: list[Entity] = []
         for entity_batch in self._chunk_items(entities):
             try:
                 with self._repository.transaction(knowledge_base_id):
                     stored_entities.extend(
-                        self._repository.upsert_entities(knowledge_base_id, entity_batch)
+                        self._repository.upsert_entities(
+                            knowledge_base_id, entity_batch, resolved_options
+                        )
                     )
             except Exception as exc:
                 raise BatchUpsertError(
@@ -213,7 +227,9 @@ class GraphService:
             try:
                 with self._repository.transaction(knowledge_base_id):
                     stored_relationships.extend(
-                        self._repository.upsert_relationships(knowledge_base_id, relationship_batch)
+                        self._repository.upsert_relationships(
+                            knowledge_base_id, relationship_batch, resolved_options
+                        )
                     )
             except Exception as exc:
                 raise BatchUpsertError(
