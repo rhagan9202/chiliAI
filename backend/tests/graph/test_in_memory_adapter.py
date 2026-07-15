@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 from graph.adapters.in_memory import InMemoryGraphRepository
+from graph.exceptions import GraphVersionConflictError
+from graph.models import GraphUpsertOptions
 from shared.types import Entity, Relationship
 
 
@@ -489,3 +491,64 @@ def test_in_memory_search_entities_limit_applies_across_combined_kb_results() ->
 
     # Exactly limit=4 entities returned, drawn from the combined scope.
     assert len(results) == 4
+
+
+def _entity(entity_id: str, *, properties: dict[str, object] | None = None, version: int = 1) -> Entity:
+    return Entity(id=entity_id, type="provider", properties=properties or {}, version=version)
+
+
+def test_upsert_entities_merges_properties_by_default() -> None:
+    repo = InMemoryGraphRepository()
+    repo.upsert_entities("kb-1", [_entity("e-1", properties={"name": "Ann", "city": "Reno"})])
+    repo.upsert_entities("kb-1", [_entity("e-1", properties={"city": "Boise", "npi": "123"})])
+    stored = repo.get_entities("kb-1")[0]
+    assert stored.properties == {"name": "Ann", "city": "Boise", "npi": "123"}
+
+
+def test_upsert_entities_replace_mode_preserves_legacy_overwrite() -> None:
+    repo = InMemoryGraphRepository()
+    repo.upsert_entities("kb-1", [_entity("e-1", properties={"name": "Ann", "city": "Reno"})])
+    repo.upsert_entities(
+        "kb-1",
+        [_entity("e-1", properties={"city": "Boise"})],
+        GraphUpsertOptions(merge_mode="replace_properties"),
+    )
+    assert repo.get_entities("kb-1")[0].properties == {"city": "Boise"}
+
+
+def test_upsert_entities_explicit_none_overwrites_in_merge_mode() -> None:
+    repo = InMemoryGraphRepository()
+    repo.upsert_entities("kb-1", [_entity("e-1", properties={"city": "Reno"})])
+    repo.upsert_entities("kb-1", [_entity("e-1", properties={"city": None})])
+    assert repo.get_entities("kb-1")[0].properties == {"city": None}
+
+
+def test_upsert_entities_version_is_adapter_owned() -> None:
+    repo = InMemoryGraphRepository()
+    repo.upsert_entities("kb-1", [_entity("e-1", properties={"a": 1}, version=99)])
+    assert repo.get_entities("kb-1")[0].version == 1  # incoming version ignored
+    repo.upsert_entities("kb-1", [_entity("e-1", properties={"a": 2}, version=99)])
+    assert repo.get_entities("kb-1")[0].version == 2  # effective change bumps
+
+
+def test_upsert_entities_noop_replay_does_not_bump_version() -> None:
+    repo = InMemoryGraphRepository()
+    payload = _entity("e-1", properties={"a": 1})
+    repo.upsert_entities("kb-1", [payload])
+    repo.upsert_entities("kb-1", [payload.model_copy(deep=True)])
+    assert repo.get_entities("kb-1")[0].version == 1
+
+
+def test_upsert_entities_version_conflict_writes_nothing() -> None:
+    repo = InMemoryGraphRepository()
+    repo.upsert_entities("kb-1", [_entity("e-1", properties={"a": 1})])
+    with pytest.raises(GraphVersionConflictError) as excinfo:
+        repo.upsert_entities(
+            "kb-1",
+            [_entity("e-1", properties={"a": 2})],
+            GraphUpsertOptions(expected_version=7),
+        )
+    assert excinfo.value.entity_id == "e-1"
+    assert excinfo.value.expected_version == 7
+    assert excinfo.value.actual_version == 1
+    assert repo.get_entities("kb-1")[0].properties == {"a": 1}  # nothing written

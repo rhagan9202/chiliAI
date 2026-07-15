@@ -7,20 +7,18 @@ from copy import deepcopy
 from typing import Generator
 from typing import Literal
 
-from graph.models import GraphDeleteByProvenance, SubgraphResult
+from graph.exceptions import GraphVersionConflictError
+from graph.models import GraphDeleteByProvenance, GraphUpsertOptions, SubgraphResult
 from graph.adapters.protocols import GraphRepository
 from shared.provenance import SOURCE_DOCUMENT_ID_KEY
 from shared.types import Entity, Relationship
+from shared.utils import utc_now
 
 __all__ = ["InMemoryGraphRepository"]
 
 
 class InMemoryGraphRepository(GraphRepository):
     """Persist graph objects in process-local dictionaries keyed by knowledge base."""
-
-    # TODO(production): Add referential integrity checks (relationships must
-    # reference existing entity IDs). Add property merge logic on upsert
-    # (currently blindly overwrites).
 
     def __init__(self) -> None:
         self._entities: dict[str, dict[str, Entity]] = {}
@@ -32,16 +30,61 @@ class InMemoryGraphRepository(GraphRepository):
     def transaction(self, knowledge_base_id: str) -> AbstractContextManager[None]:
         return self._transaction_scope(knowledge_base_id)
 
-    def upsert_entities(self, knowledge_base_id: str, entities: list[Entity]) -> list[Entity]:
+    def upsert_entities(
+        self,
+        knowledge_base_id: str,
+        entities: list[Entity],
+        options: GraphUpsertOptions | None = None,
+    ) -> list[Entity]:
+        opts = options or GraphUpsertOptions()
         entity_bucket = self._entities.setdefault(knowledge_base_id, {})
+        if opts.expected_version is not None:
+            # Conflict pre-pass over the whole batch: a conflict writes nothing.
+            for entity in entities:
+                existing = entity_bucket.get(entity.id)
+                if existing is not None and existing.version != opts.expected_version:
+                    raise GraphVersionConflictError(
+                        entity.id, opts.expected_version, existing.version
+                    )
+        stored: list[Entity] = []
         for entity in entities:
-            entity_bucket[entity.id] = entity
-        return list(entities)
+            existing = entity_bucket.get(entity.id)
+            if existing is None:
+                # version is platform-owned: inserts always start at 1.
+                record = entity.model_copy(update={"version": 1})
+                entity_bucket[entity.id] = record
+                stored.append(record)
+                continue
+            if opts.merge_mode == "merge_properties":
+                properties = {**existing.properties, **entity.properties}
+                metadata = {**existing.metadata, **entity.metadata}
+            else:
+                properties = dict(entity.properties)
+                metadata = dict(entity.metadata)
+            effective_change = (
+                properties != existing.properties or entity.type != existing.type
+            )
+            if not effective_change and metadata == existing.metadata:
+                stored.append(existing)  # true no-op: row untouched
+                continue
+            record = existing.model_copy(
+                update={
+                    "type": entity.type,
+                    "properties": properties,
+                    "metadata": metadata,
+                    "updated_at": entity.updated_at or utc_now(),
+                    "version": existing.version + 1 if effective_change else existing.version,
+                }
+            )
+            entity_bucket[entity.id] = record
+            stored.append(record)
+        return stored
 
     def upsert_relationships(
         self,
         knowledge_base_id: str,
         relationships: list[Relationship],
+        options: GraphUpsertOptions | None = None,
     ) -> list[Relationship]:
         relationship_bucket = self._relationships.setdefault(knowledge_base_id, {})
         for relationship in relationships:

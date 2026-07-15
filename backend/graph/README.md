@@ -48,3 +48,13 @@ The full 207 cascade on `DELETE /knowledgebases/{id}` touches: graph (this metho
 Read-side methods on `GraphServiceProtocol` (`get_entity`, `search_entities`) accept `knowledge_base_ids: list[str]` and span all listed KBs. The API handler boundary uses `shared.kb_scope.resolve_kb_scope(primary, domain_config, kb_repo)` to expand a single primary KB id into the full read scope, auto-attaching the domain's `default_reference_kb_id` (the "policy graph") when configured.
 
 Write methods (`upsert_task`, `update_entity_properties`, `delete_knowledge_base`, `upsert_entities`, `upsert_relationships`) and the neighborhood traversal (`query_neighborhood`, `get_neighbors`) and metrics aggregation (`compute_metrics`) stay scoped to a single KB. Cross-KB joining of distinct entities — e.g., a provider node in claims-KB and the same NPI in policy-KB — is the consumer's responsibility (RAG context builder, UI presentation), not the graph adapter's.
+
+## Entity Upsert Semantics (`GraphUpsertOptions`, BL-017)
+
+`upsert_entities` / `upsert_relationships` take a trailing `options: GraphUpsertOptions | None = None` (`graph/models.py`). Defaults preserve today's behavior for existing callers that pass no options.
+
+- **`merge_mode`** (`"merge_properties"` default, or `"replace_properties"`): on update, `merge_properties` does a shallow dict merge of the incoming `properties`/`metadata` over the stored record (explicit `None` values overwrite, since they're present keys in the incoming dict); `replace_properties` reproduces the pre-BL-017 blind-overwrite.
+- **Adapter-owned `version`**: the incoming payload's `version` field is always ignored. New entities always start at `version=1`. On update, `version` increments only on an *effective* change (merged `properties`/`type`/`metadata` differ from what's stored) — replaying an identical payload is a true no-op and leaves `version` untouched.
+- **`expected_version` conflict pre-pass**: when set, the adapter validates every entity in the batch against the stored `version` *before* writing anything; a mismatch raises `GraphVersionConflictError(entity_id, expected_version, actual_version)` (`graph/exceptions.py`) and the whole batch is left untouched (no partial writes).
+
+**Status by adapter:** `InMemoryGraphRepository.upsert_entities` implements all three of the above (BL-017 Task 2). `InMemoryGraphRepository.upsert_relationships` and both `Neo4jGraphRepository` upsert methods currently accept `options` for protocol-signature compatibility but do not yet act on it — they still blind-overwrite (relationship merge/integrity semantics land in BL-017 Task 3; Neo4j entity/relationship parity in Tasks 4–5).

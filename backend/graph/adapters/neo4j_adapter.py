@@ -14,7 +14,7 @@ from typing import Literal, Protocol, cast
 from config.schema import GraphDbConfig
 from graph.adapters.protocols import GraphRepository
 from graph.exceptions import GraphPersistenceError
-from graph.models import GraphDeleteByProvenance, SubgraphResult
+from graph.models import GraphDeleteByProvenance, GraphUpsertOptions, SubgraphResult
 from shared.provenance import SOURCE_DOCUMENT_ID_KEY
 from shared.types import Entity, Relationship
 
@@ -164,7 +164,15 @@ class Neo4jGraphRepository(GraphRepository):
     def transaction(self, knowledge_base_id: str) -> AbstractContextManager[None]:
         return self._transaction_scope()
 
-    def upsert_entities(self, knowledge_base_id: str, entities: list[Entity]) -> list[Entity]:
+    def upsert_entities(
+        self,
+        knowledge_base_id: str,
+        entities: list[Entity],
+        options: GraphUpsertOptions | None = None,
+    ) -> list[Entity]:
+        # TODO(BL-017 Task 4): honor `options` (merge_mode / expected_version
+        # conflict pre-pass) here; still blind-overwrites like the pre-BL-017
+        # in-memory adapter until that task lands.
         payload = [
             {
                 "entity_id": entity.id,
@@ -204,7 +212,11 @@ class Neo4jGraphRepository(GraphRepository):
         self,
         knowledge_base_id: str,
         relationships: list[Relationship],
+        options: GraphUpsertOptions | None = None,
     ) -> list[Relationship]:
+        # TODO(BL-017 Task 5): honor `options` (referential-integrity /
+        # expected_version conflict pre-pass) here; still blind-overwrites
+        # like the pre-BL-017 in-memory adapter until that task lands.
         payload = [
             {
                 "relationship_id": relationship.id,

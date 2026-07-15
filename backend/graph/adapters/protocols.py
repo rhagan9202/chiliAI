@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import AbstractContextManager
 from typing import Literal, Protocol, runtime_checkable
 
-from graph.models import GraphDeleteByProvenance, SubgraphResult
+from graph.models import GraphDeleteByProvenance, GraphUpsertOptions, SubgraphResult
 from shared.types import Entity, Relationship
 
 
@@ -21,7 +21,12 @@ class GraphRepository(Protocol):
     # Add production adapters: Neo4jGraphRepository, MemgraphGraphRepository.
     # See docs/architecture.md §5 graph module.
 
-    def upsert_entities(self, knowledge_base_id: str, entities: list[Entity]) -> list[Entity]: ...
+    def upsert_entities(
+        self,
+        knowledge_base_id: str,
+        entities: list[Entity],
+        options: GraphUpsertOptions | None = None,
+    ) -> list[Entity]: ...
 
     def transaction(self, knowledge_base_id: str) -> AbstractContextManager[None]: ...
 
@@ -29,6 +34,7 @@ class GraphRepository(Protocol):
         self,
         knowledge_base_id: str,
         relationships: list[Relationship],
+        options: GraphUpsertOptions | None = None,
     ) -> list[Relationship]: ...
 
     def get_entities(self, knowledge_base_id: str) -> list[Entity]: ...
