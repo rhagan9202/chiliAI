@@ -136,6 +136,11 @@ require a documented justification in this file.
 - **DLQ.** Handlers that exhaust retries route the original event to the DLQ
   via `event_bus.publish_to_dlq()` (`agent/coordinator.py`). DLQ entries
   preserve the original payload, traceback, and retry count for forensics.
+- **Durable DLQ + operator replay (BL-023).** A durable `event_dlq` record is
+  also persisted per dead-lettered event, readable/replayable through
+  `/events/dlq*` (`api/routers/events.py`). Reads require `analyst` (not
+  `viewer` — tracebacks can leak internals); replay/discard require `admin`
+  (they mutate pipeline state). See `docs/runbooks/event-replay.md`.
 - **Build provenance.** CI uploads `coverage.xml` and `dist/` as artifacts so
   releases are reproducible from the workflow run.
 

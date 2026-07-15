@@ -30,7 +30,7 @@
 | BL-020 | KB snapshots & restore | REQ-KB-007, REQ-NFR-DR-001 | P2 | todo | 8 SP |
 | BL-021 | Graph backup/restore per adapter | REQ-GRAPH-006, REQ-NFR-DR-002 | P2 | todo | 5 SP |
 | BL-022 | OIDC hardening | REQ-AUTH-001 | P2 | stretch — Sprint 2026-27 (4 of 7 AC items shipped) | ~4 SP |
-| BL-023 | Event replay operationalization | REQ-WORKFLOW-005, REQ-NFR-DR-003 | P2 | committed — Sprint 2026-27 (3 of 6 AC items shipped) | ~3 SP |
+| BL-023 | Event replay operationalization | REQ-WORKFLOW-005, REQ-NFR-DR-003 | P2 | done — Sprint 2026-27 (live-stack verification pending — controller runs in-session) | 0 SP |
 | BL-024 | Load testing & SLO baselines | REQ-NFR-SCALE-PROD | P2 | todo | 8 SP |
 | BL-027 | Resource-level per-KB ACL | REQ-AUTH-006 (ext) | P2 | todo | 8 SP |
 | BL-028 | Multi-KB scope in RAG | REQ-RAG-002 | P2 | todo | 5 SP |
@@ -118,16 +118,16 @@
 
 ### BL-023 — Event replay operationalization (D-11)
 - **REQ**: REQ-WORKFLOW-005, REQ-NFR-DR-003
-- **Module source**: [docs/backlog/events.md](../../backlog/events.md)
-- **Status**: **committed — Sprint 2026-27** (3 of 6 AC items shipped; re-verified 2026-07-12 — remaining scope is durable DLQ persistence, a replay surface, and an operator runbook)
-- **Remaining estimate**: ~3 SP
+- **Module source**: [docs/backlog/events.md](../../backlog/events.md) story events.10 (done)
+- **Status**: **done — Sprint 2026-27, 2026-07-15** (5 implementation/docs tasks landed on `feat/sprint-2026-27-event-replay`: `DlqRecord`/`DlqRecordStore` protocol + in-memory adapter, Postgres adapter + migration `0010_event_dlq` + snapshot refresh, retry-wrapper persistence + worker wiring + terminal-state persist guard, the `/events/dlq` API surface (list/inspect/replay/discard, role-gated) + contracts regen, and this runbook/docs/closeout pass). Backend gates green in-session: full-suite `pytest --cov -m "not integration"`, `pyright` (0 errors), `ruff check --no-cache .` (clean); `events` package coverage ≥ 85%. **Live-stack verification against `make dev` is intentionally deferred to immediately after this commit** (Docker commands must not run in subagents per house rule) — marked done on the code-complete basis, with the controller running that pass in-session next (force a poison event → appears in `GET /events/dlq`; replay while still broken → dead-letters again as a new record; discard; fix the cause → replay → pipeline completes; role gates: viewer 403 on list, analyst 403 on replay).
+- **Remaining estimate**: 0 SP (pending live verification only)
 - **Acceptance**:
   - [x] Stale-pending reclaim via `xautoclaim` — `backend/events/adapters/redis_streams.py:107-124`
   - [x] DLQ stream publish (`{stream}.dlq`) — `redis_streams.py:160-176`
   - [x] Handler retry/DLQ wrapper (documented `docs/security_checklist.md:136`)
-  - [ ] Durable DLQ persistence — no table/migration (in-memory adapter keeps a Python list, `adapters/in_memory.py:25`)
-  - [ ] Replay API or operator script — no `replay` surface in `backend/api/` or `scripts/`
-  - [ ] Operator runbook — `docs/runbooks/` does not exist
+  - [x] Durable DLQ persistence — `event_dlq` table (migration `0010_event_dlq`), `events.protocols.DlqRecordStore` + `InMemoryDlqRecordStore`/`PostgresDlqRecordStore` (`events/adapters/`), persisted by `run_handler_with_retry` on retry exhaustion (`agent/coordinator.py`)
+  - [x] Replay API or operator script — `GET/POST /events/dlq*` on `api/routers/events.py` (`analyst`-gated reads, `admin`-gated replay/discard)
+  - [x] Operator runbook — [`docs/runbooks/event-replay.md`](../../runbooks/event-replay.md)
 
 ### BL-024 — Load testing & SLO baselines (D-12)
 - **REQ**: REQ-NFR-SCALE-PROD

@@ -1,6 +1,6 @@
 # Agent Module
 
-`agent/` is the workflow coordinator for the chiliAI pipeline worker. It consumes events from Redis Streams, runs multi-step pipeline handlers, tracks workflow lifecycle state, and routes failures to a dead-letter queue.
+`agent/` is the workflow coordinator for the chiliAI pipeline worker. It consumes events from Redis Streams, runs multi-step pipeline handlers, tracks workflow lifecycle state, and routes failures to a dead-letter queue — persisting a durable, operator-replayable record for each one (BL-023; see § Durable DLQ record persistence below and [`docs/runbooks/event-replay.md`](../../docs/runbooks/event-replay.md)).
 
 ## Worker Entry Point
 
@@ -76,6 +76,10 @@ updated column.
 Operators read and act on this ledger through the API gateway's
 `/events/dlq` surface (`api/routers/events.py`, `api/dependencies.get_dlq_record_store`
 — see `backend/README.md` § API Endpoints), not directly against the worker.
+See [`docs/runbooks/event-replay.md`](../../docs/runbooks/event-replay.md) for
+the operator playbook, including why `replay` publishes before it CASes the
+record to `replayed` (accepted double-publish-under-race tradeoff, safe
+because downstream handlers are idempotent by construction).
 
 ### handle_documents_uploaded
 
