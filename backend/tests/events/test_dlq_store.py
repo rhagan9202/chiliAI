@@ -148,7 +148,7 @@ class TestPostgresDlqRecordStore:
         )
         assert connection_provider is not None
         with connection_provider.connection() as conn:
-            conn.execute("DELETE FROM event_dlq")
+            conn.execute("DELETE FROM event_dlq WHERE dlq_id LIKE 'pg-%'")
             conn.commit()
         yield connection_provider
         with connection_provider.connection() as conn:
@@ -173,9 +173,11 @@ class TestPostgresDlqRecordStore:
         store.persist(_record("pg-d-2", event_type="a.x"))
         updated = _record("pg-d-2", event_type="b.y")
         store.persist(updated)
-        items, total = store.list()
-        assert total == 1
-        assert items[0].event_type == "b.y"
+        items, _ = store.list()
+        # Filter to this test's record only (others may exist from previous test runs)
+        pg_d_2_items = [item for item in items if item.dlq_id == "pg-d-2"]
+        assert len(pg_d_2_items) == 1
+        assert pg_d_2_items[0].event_type == "b.y"
 
     def test_persist_does_not_revert_terminal_state(
         self, provider: ConnectionProvider
@@ -196,6 +198,19 @@ class TestPostgresDlqRecordStore:
         assert fetched is not None
         assert fetched.status == "discarded"
         assert fetched.event_type == "a.x"
+
+    def test_mark_discarded_is_cas_on_pending_pg(self, provider: ConnectionProvider) -> None:
+        """Verify discard CAS semantics on Postgres backend: only pending → discarded,
+        and repeat-discard returns None (BL-023 T3 repeat-discard CAS)."""
+        store = PostgresDlqRecordStore(provider)
+        store.persist(_record("pg-d-3"))
+        updated = store.mark_discarded("pg-d-3")
+        assert updated is not None
+        assert updated.status == "discarded"
+        # Second discard should return None (CAS failure)
+        assert store.mark_discarded("pg-d-3") is None
+        # Replayed should also return None (not pending anymore)
+        assert store.mark_replayed("pg-d-3") is None
 
     def test_list_filters_and_total(self, provider: ConnectionProvider) -> None:
         store = PostgresDlqRecordStore(provider)

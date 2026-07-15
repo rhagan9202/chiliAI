@@ -137,6 +137,10 @@ the durable persist itself failed (rare, logged when it happens).
   another way) → **discard**. Discard is **terminal** — there is no
   "un-discard." The raw entry still exists in the Redis `.dlq` stream if you
   ever need to recover the original payload by hand.
+- **Knowledge base has been deleted** — replaying degrades to the standard
+  per-document failure path (orphaned rows are tolerated/reaped per BL-041),
+  but achieves nothing: the KB no longer exists to receive the ingested
+  entities/relationships. **Discard** such records to clear the DLQ.
 
 ### Replay
 
