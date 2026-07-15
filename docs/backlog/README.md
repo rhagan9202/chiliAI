@@ -21,7 +21,7 @@
 | _multitenancy.md | 16 | 0 | 0 | 16 | 0% |
 | _observability.md | 11 | 1 | 0 | 13 | 0% |
 | _plugins.md | 16 | 0 | 0 | 16 | 0% |
-| _security.md | 12 | 0 | 0 | 12 | 0% |
+| _security.md | 11 | 0 | 1 | 12 | 8% |
 | agent.md | 19 | 0 | 1 | 20 | 5% |
 | analytics.md | 33 | 0 | 0 | 33 | 0% |
 | api.md | 27 | 0 | 1 | 29 | 3% |
@@ -40,7 +40,7 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 411 | 7 | 22 | 442 | 4% |
+| **Total** | 410 | 7 | 23 | 442 | 5% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -76,7 +76,7 @@
 - [frontend.06] frontend — size M — prereqs done
 - [frontend.10] frontend — size M — prereqs done
 - [frontend.13] frontend — size M — prereqs done
-- …31 more
+- …30 more
 <!-- END: ready-set -->
 
 ## Critical path

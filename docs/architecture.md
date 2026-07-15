@@ -1531,7 +1531,7 @@ Adapter selection is driven by environment configuration, not code changes.
 
 ## 12. Security
 
-> **Current state**: Authentication and authorization middleware, `/auth/*` routes, cookie/Bearer token handling, frontend login/session flow, route-level `require_role`, and auth-enabled default-deny startup audit are implemented. Remaining hardening focuses on production IdP profiles, tenant isolation, and resource-level authorization.
+> **Current state**: Authentication and authorization middleware, `/auth/*` routes, cookie/Bearer token handling, frontend login/session flow, route-level `require_role`, auth-enabled default-deny startup audit, kid-aware JWKS rotation, and OIDC nonce validation are implemented (BL-022, 2026-07-15). Remaining hardening focuses on tenant isolation, resource-level authorization, and live-IdP verification of the desk-checked Keycloak/Okta templates.
 
 ### 12.1 Authentication
 
@@ -1539,6 +1539,7 @@ Adapter selection is driven by environment configuration, not code changes.
 - **Protocols**: JWT verification with support for OIDC/OAuth2 identity providers
 - **Configuration**: Auth enabled/disabled via domain config. When disabled, requests run as an anonymous `viewer`. When enabled, protected routes accept the `chiliai_session` cookie or a Bearer token.
 - **Token flow**: The frontend uses a BFF-style cookie session; Bearer tokens remain supported for API clients.
+- **Token validation (BL-022)**: `decode_token` (`backend/api/middleware/auth.py`) validates RS256 signature, `iss`, `aud`, and `exp` against the JWKS at `AuthConfig.jwks_uri`. `JwksCache` resolves the signing key by the token header's `kid`; an unknown `kid` triggers one forced JWKS refetch, throttled to at most once per URI per 30 seconds, so an IdP key rotation recovers automatically without a restart or waiting out the TTL. The OIDC login/callback flow additionally generates a `nonce` alongside the PKCE verifier and validates it against the decoded `id_token`'s `nonce` claim — id_token flows only (truthy `id_token` present); the access-token fallback path has no `nonce` claim to check. See [`docs/auth/idp-templates.md`](auth/idp-templates.md) for worked Keycloak/Okta configuration (desk-checked against IdP documentation, not verified against a live IdP).
 
 ### 12.2 Authorization
 
@@ -1617,7 +1618,7 @@ Adapter selection is driven by environment configuration, not code changes.
 | Capability | Description | Priority |
 |------------|-------------|----------|
 | **CI/CD pipeline** | Baseline lint, type-check, test, build, and dependency audits run in GitHub Actions. | Add deploy/promotion jobs once environments are finalized. |
-| **Authentication & RBAC** | Pluggable auth middleware, role enforcement. See §12. Implemented 2026-05-08; remaining hardening: production IdP profiles, tenant isolation, resource-level authorization. | Medium — production IdP and tenant isolation before multi-user deployment |
+| **Authentication & RBAC** | Pluggable auth middleware, role enforcement. See §12. Implemented 2026-05-08; JWKS kid-rotation + OIDC nonce validation + desk-checked Keycloak/Okta templates added 2026-07-15 (BL-022). Remaining hardening: tenant isolation, resource-level authorization, live-IdP verification of the templates. | Medium — tenant isolation before multi-user deployment |
 | **Multi-tenancy** | Tenant-isolated data, config, and KB namespaces. | Medium — after auth |
 | **Configuration UI wizard** | Sectioned, schema-driven configuration wizard. A first Config Manager page exists (pack switcher + raw YAML editor with dry-run validation and hot-swap apply, §9.3); typed per-section forms, drafts, and a config write path remain. | Medium |
 | **Model training pipeline** | Scheduled/triggered GNN training, embedding fine-tuning. | Medium |
