@@ -91,6 +91,22 @@ Merge semantics (full rationale in
   `config.overlay.known_top_level_keys()`), is a hard `OverlayError` —
   raised as `ConfigLoadError` by `load_config` — so a typo like
   `embeddngs:` fails loudly instead of silently not applying.
+- The guard is **domain-scoped, not pack-scoped**: `overlay_for` matches
+  `domain.name`, and multiple packs can share a domain. Both
+  `defaults/medicare_fraud.yaml` and `defaults/medicare_fraud_cms_desynpuf.yaml`
+  declare `domain.name: medicare_fraud`, so the dev overlay applies to
+  **either** of them when `CHILI_CONFIG_OVERLAY_PATH` is set — including the
+  DE-SynPUF pack's `policy_rules` list being replaced wholesale by the
+  overlay's. Keep this in mind before exporting the overlay var against the
+  default (`medicare_fraud_cms_desynpuf`) stack.
+- Overlays also apply when the config API loads packs on your behalf:
+  `POST /config/apply|switch` validates and activates the **merged** result,
+  and each row of `GET /config/packs` reflects loading that pack in the
+  current environment (same-domain packs merged, others skipped with the
+  warning). `POST /config/validate` is the one deliberate exception — it is a
+  pack-level dry run of the raw pack/content and does **not** apply overlays,
+  so its verdict can differ from what `apply` ultimately serves; `apply` still
+  fully validates the merged config before any state mutates.
 
 `config/overlay.py` implements the pure merge (`merge_config_layers`) and
 the guarded per-overlay application (`apply_overlays`); `config/loader.py`

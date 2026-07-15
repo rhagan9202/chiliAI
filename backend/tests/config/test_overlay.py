@@ -259,6 +259,13 @@ def test_medicare_dev_overlay_reproduces_old_full_config(
     via `git show HEAD~1:...`: CI's checkout is shallow (fetch-depth unset ==
     depth 1 on `actions/checkout@v4`), so history-dependent lookups are not
     available at test-run time.
+
+    The snapshot is FROZEN HISTORY pinning the BL-044 refactor equivalence.
+    A deliberate future edit to `defaults/medicare_fraud.yaml` or
+    `overlays/medicare_fraud_dev.yaml` is SUPPOSED to break this test: apply
+    the same semantic change to the snapshot fixture (keeping the diff
+    reviewable) — or, once base/overlay have legitimately diverged far from
+    the 2026-07 refactor, retire the test and fixture together.
     """
     from config.loader import load_config
 

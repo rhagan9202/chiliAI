@@ -78,8 +78,14 @@ def default_chili_config_path(
     an active-pack pointer written on the developer machine (or by another
     test) can never retarget the suite away from ``CHILI_CONFIG_PATH`` — see
     ``config/store.py`` (pointer > env precedence).
+
+    ``CHILI_CONFIG_OVERLAY_PATH`` is scrubbed for the same reason: a developer
+    shell following the README overlay worked example would otherwise layer
+    the dev overlay onto every ``load_config`` call in the suite (BL-044).
+    Overlay tests set it explicitly via their own ``monkeypatch``.
     """
 
+    monkeypatch.delenv("CHILI_CONFIG_OVERLAY_PATH", raising=False)
     monkeypatch.setenv("CHILI_CONFIG_PATH", str(DEFAULT_CONFIG_PATH))
     monkeypatch.setenv("CHILI_ENV", "local")
     monkeypatch.setenv(
