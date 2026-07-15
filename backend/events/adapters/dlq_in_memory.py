@@ -18,7 +18,12 @@ class InMemoryDlqRecordStore(DlqRecordStore):
     def persist(self, record: DlqRecord) -> DlqRecord:
         # Upsert by dlq_id: a repeat persist() for an existing id replaces the
         # stored record in place rather than appending a second entry (see
-        # events.protocols.DlqRecordStore.persist).
+        # events.protocols.DlqRecordStore.persist). Terminal-state guard: a
+        # stored record that is already replayed/discarded is never reverted
+        # back to pending — return it unchanged instead.
+        existing = self._records.get(record.dlq_id)
+        if existing is not None and existing.status != "pending":
+            return existing
         self._records[record.dlq_id] = record
         return record
 

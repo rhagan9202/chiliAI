@@ -48,6 +48,31 @@ stage. `build_document_status_store` selects `PostgresSourceDocumentStatusStore`
 when a database is configured, else `InMemorySourceDocumentStatusStore`
 (`ingestion/adapters/`).
 
+### Durable DLQ record persistence (BL-023)
+
+`run_handler_with_retry` accepts an optional `dlq_record_store:
+events.protocols.DlqRecordStore | None`. After retries are exhausted and
+`event_bus.publish_to_dlq` succeeds (the Redis Streams DLQ entry that backs
+the ACK contract), it also persists a durable `events.dlq_models.DlqRecord`
+capturing the event type, correlation id, encoded payload, and error/retry
+context — giving operators a queryable, replayable ledger of dead-lettered
+events beyond the Streams DLQ. This is best-effort: a persist failure is
+logged and swallowed rather than propagated, so a durable-store outage never
+masks the original handler error. `build_dlq_record_store` (next to
+`build_document_status_store`) selects `PostgresDlqRecordStore` when a
+database is configured, else `InMemoryDlqRecordStore` (`events/adapters/`);
+the worker threads it through `WorkerDependencies.dlq_record_store` →
+`drain_ingestion_events` → the single `run_handler_with_retry` call site.
+
+Persisting the same `dlq_id` twice is an upsert, but with a terminal-state
+guard: once a record's `status` is `replayed` or `discarded` (via
+`DlqRecordStore.mark_replayed`/`mark_discarded`), a later `persist()` for
+that id is a no-op — the stored record is returned unchanged rather than
+reverted to `pending`. The in-memory adapter checks this in Python; the
+Postgres adapter enforces it in SQL via a `CASE WHEN event_dlq.status =
+'pending' THEN EXCLUDED.<col> ELSE event_dlq.<col> END` guard on every
+updated column.
+
 ### handle_documents_uploaded
 
 Triggered by `documents.uploaded`. Runs the ingestion pipeline: parse → chunk → extract (LLM or pattern) → upsert graph → embed → index vector store → publish `entities.extracted` / `kb.ready`.

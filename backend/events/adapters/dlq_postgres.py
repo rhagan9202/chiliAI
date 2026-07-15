@@ -6,7 +6,12 @@ connection handling, cursor usage, and JSONB round-tripping style.
 ``persist`` is an upsert keyed on ``dlq_id``: a repeat ``persist`` call for an
 id that already exists replaces every non-PK column via
 ``ON CONFLICT (dlq_id) DO UPDATE SET`` rather than erroring or duplicating a
-row (see ``events.protocols.DlqRecordStore.persist``). ``mark_replayed`` /
+row (see ``events.protocols.DlqRecordStore.persist``). Every updated column
+in that upsert carries a terminal-state guard —
+``CASE WHEN event_dlq.status = 'pending' THEN EXCLUDED.<col> ELSE
+event_dlq.<col> END`` — so a ``persist`` against a row that is already
+``replayed``/``discarded`` is a no-op: the row (and the value returned) is
+unchanged rather than reverted back to ``pending``. ``mark_replayed`` /
 ``mark_discarded`` are compare-and-swap transitions implemented in SQL: the
 ``UPDATE ... WHERE dlq_id = %s AND status = 'pending'`` only touches a row
 still pending, and returns ``None`` when no row comes back (already
@@ -35,16 +40,26 @@ _UPSERT_SQL = f"""
     INSERT INTO event_dlq ({_COLUMNS})
     VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (dlq_id) DO UPDATE SET
-        event_type = EXCLUDED.event_type,
-        correlation_id = EXCLUDED.correlation_id,
-        payload = EXCLUDED.payload,
-        error_message = EXCLUDED.error_message,
-        error_traceback = EXCLUDED.error_traceback,
-        retry_count = EXCLUDED.retry_count,
-        failed_at = EXCLUDED.failed_at,
-        status = EXCLUDED.status,
-        replayed_at = EXCLUDED.replayed_at,
-        created_at = EXCLUDED.created_at
+        event_type = CASE WHEN event_dlq.status = 'pending'
+            THEN EXCLUDED.event_type ELSE event_dlq.event_type END,
+        correlation_id = CASE WHEN event_dlq.status = 'pending'
+            THEN EXCLUDED.correlation_id ELSE event_dlq.correlation_id END,
+        payload = CASE WHEN event_dlq.status = 'pending'
+            THEN EXCLUDED.payload ELSE event_dlq.payload END,
+        error_message = CASE WHEN event_dlq.status = 'pending'
+            THEN EXCLUDED.error_message ELSE event_dlq.error_message END,
+        error_traceback = CASE WHEN event_dlq.status = 'pending'
+            THEN EXCLUDED.error_traceback ELSE event_dlq.error_traceback END,
+        retry_count = CASE WHEN event_dlq.status = 'pending'
+            THEN EXCLUDED.retry_count ELSE event_dlq.retry_count END,
+        failed_at = CASE WHEN event_dlq.status = 'pending'
+            THEN EXCLUDED.failed_at ELSE event_dlq.failed_at END,
+        status = CASE WHEN event_dlq.status = 'pending'
+            THEN EXCLUDED.status ELSE event_dlq.status END,
+        replayed_at = CASE WHEN event_dlq.status = 'pending'
+            THEN EXCLUDED.replayed_at ELSE event_dlq.replayed_at END,
+        created_at = CASE WHEN event_dlq.status = 'pending'
+            THEN EXCLUDED.created_at ELSE event_dlq.created_at END
     RETURNING {_COLUMNS}
 """
 

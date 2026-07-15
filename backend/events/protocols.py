@@ -95,6 +95,16 @@ class DlqRecordStore(Protocol):
         Postgres adapter does the equivalent via
         ``INSERT ... ON CONFLICT (dlq_id) DO UPDATE SET`` over every non-PK
         column.
+
+        Terminal-state guard: if the stored record's ``status`` is already
+        ``"replayed"`` or ``"discarded"``, this is a no-op — the existing
+        record is returned unchanged rather than reverted back to
+        ``"pending"``. Only a stored record that is ``"pending"`` (or a
+        ``dlq_id`` not yet seen) is replaced by ``record``. The in-memory
+        adapter checks this in Python; the Postgres adapter enforces it in
+        SQL via a ``CASE WHEN event_dlq.status = 'pending' THEN
+        EXCLUDED.<col> ELSE event_dlq.<col> END`` guard on every updated
+        column.
         """
         ...
 

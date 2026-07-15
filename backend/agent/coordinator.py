@@ -130,7 +130,11 @@ from embeddings.models import EmbeddingMetadata, EmbeddingResult, EmbeddingVecto
 from embeddings.protocols import EmbeddingsServiceProtocol
 from embeddings.service import create_embeddings_service
 from embeddings.service_models import EmbedRequest, EmbedSubmission
-from events.protocols import DlqErrorInfo, EventBus, EventDelivery
+from events.adapters.dlq_in_memory import InMemoryDlqRecordStore
+from events.adapters.dlq_postgres import PostgresDlqRecordStore
+from events.codec import encode_event
+from events.dlq_models import DlqRecord
+from events.protocols import DlqErrorInfo, DlqRecordStore, EventBus, EventDelivery
 from events.runtime import EventBusSettings, create_event_bus, load_event_bus_settings
 from events.types import (
     AlertCreatedReference,
@@ -243,6 +247,7 @@ from shared.provenance import (
 )
 from shared.tracing import setup_tracing, start_pipeline_span
 from shared.types import Alert, Entity
+from shared.utils import generate_id
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.protocols import ObjectStore
 from vectorstore.adapters.in_memory import InMemoryVectorStore
@@ -258,6 +263,7 @@ __all__ = [
     "assess_entities",
     "build_alert_history_writer",
     "build_connection_provider",
+    "build_dlq_record_store",
     "build_document_status_store",
     "build_embedder",
     "build_embedding_cache",
@@ -377,6 +383,7 @@ class WorkerDependencies:
     workflow_run_store: WorkflowRunStoreProtocol
     workflow_tracker: WorkflowEventTracker
     document_status_store: SourceDocumentStatusStore
+    dlq_record_store: DlqRecordStore
     graph_embeddings_enabled: bool = False
 
 
@@ -644,6 +651,16 @@ def build_document_status_store(
     if provider is None:
         return InMemorySourceDocumentStatusStore()
     return PostgresSourceDocumentStatusStore(provider)
+
+
+def build_dlq_record_store(
+    provider: ConnectionProvider | None,
+) -> DlqRecordStore:
+    """Select a durable DLQ record store: Postgres when a provider exists (BL-023)."""
+
+    if provider is None:
+        return InMemoryDlqRecordStore()
+    return PostgresDlqRecordStore(provider)
 
 
 def build_observation_writer(
@@ -1021,6 +1038,7 @@ def build_worker_dependencies() -> WorkerDependencies:
     )
     raw_record_store = build_raw_record_store(connection_provider)
     document_status_store = build_document_status_store(connection_provider)
+    dlq_record_store = build_dlq_record_store(connection_provider)
     derived_signal_store = build_derived_signal_writer(connection_provider)
     observation_writer = build_observation_writer(connection_provider)
     policy_service = build_policy_service(connection_provider)
@@ -1089,6 +1107,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         workflow_run_store=workflow_run_store,
         workflow_tracker=workflow_tracker,
         document_status_store=document_status_store,
+        dlq_record_store=dlq_record_store,
         graph_embeddings_enabled=config.capabilities.gnn,
     )
 
@@ -3566,6 +3585,7 @@ async def run_handler_with_retry(
     stage_policy: StagePolicy | None = None,
     sleep: Callable[[float], "asyncio.Future[None] | object"] = asyncio.sleep,
     on_failure: Callable[[BaseException], None] | None = None,
+    dlq_record_store: DlqRecordStore | None = None,
 ) -> int:
     """Run ``handler`` with exponential-backoff retry and DLQ on exhaustion.
 
@@ -3585,6 +3605,17 @@ async def run_handler_with_retry(
     safe. Callers that ACK inside a broad ``except`` MUST NOT catch and
     swallow DLQ publish failures; doing so would silently drop events.
     See ``drain_ingestion_events`` for the canonical caller pattern.
+
+    Durable DLQ record (BL-023)
+    ---------------------------
+    After ``publish_to_dlq`` succeeds, if ``dlq_record_store`` is provided
+    this also persists a durable :class:`~events.dlq_models.DlqRecord` for
+    operator visibility/replay. This is best-effort: a failure to persist
+    is logged and swallowed rather than propagated, so a durable-store
+    outage never masks the original handler error or affects the ACK
+    contract above — the Redis Streams DLQ entry (used for the ACK
+    contract) is written independently and is unaffected by a persist
+    failure.
 
     Execution thread
     ----------------
@@ -3653,6 +3684,27 @@ async def run_handler_with_retry(
     if on_failure is not None:
         on_failure(last_exc)
     event_bus.publish_to_dlq(event, error_info)
+    if dlq_record_store is not None:
+        try:
+            dlq_record_store.persist(
+                DlqRecord(
+                    dlq_id=generate_id(),
+                    event_type=event.event_type,
+                    correlation_id=event.correlation_id,
+                    payload=encode_event(event),
+                    error_message=error_info.error_message,
+                    error_traceback=error_info.traceback,
+                    retry_count=error_info.retry_count,
+                    failed_at=error_info.failed_at,
+                )
+            )
+        except Exception:  # noqa: BLE001 - never mask the original handler error
+            logger.exception(
+                "Failed to persist durable DLQ record; the Redis DLQ entry "
+                "still exists. event_type=%s correlation_id=%s",
+                event.event_type,
+                event.correlation_id,
+            )
     return 0
 
 
@@ -3698,6 +3750,7 @@ async def drain_ingestion_events(
     kb_repository: KnowledgeBaseRepository | None = None,
     kb_deletion_stores: KbDeletionStores | None = None,
     document_status_store: SourceDocumentStatusStore | None = None,
+    dlq_record_store: DlqRecordStore | None = None,
     sleep: Callable[[float], "asyncio.Future[None] | object"] = asyncio.sleep,
 ) -> int:
     """Consume and process available ingestion events with retry/DLQ semantics."""
@@ -3788,6 +3841,7 @@ async def drain_ingestion_events(
             stage_policy=policies.get(delivery.event.event_type),
             sleep=sleep,
             on_failure=_record_failure,
+            dlq_record_store=dlq_record_store,
         )
         ackable.append(delivery)
         if health_state is not None:
@@ -3875,6 +3929,7 @@ async def _drain_once(
         kb_deletion_stores=deps.kb_deletion_stores,
         kb_repository=deps.kb_repository,
         document_status_store=deps.document_status_store,
+        dlq_record_store=deps.dlq_record_store,
         observation_writer=deps.observation_writer,
         policy_service=deps.policy_service,
         policy_rules=deps.policy_rules,

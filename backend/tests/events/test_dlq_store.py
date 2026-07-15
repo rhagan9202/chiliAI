@@ -99,6 +99,25 @@ def test_persist_is_upsert_by_id() -> None:
     assert items[0].event_type == "b.y"
 
 
+def test_persist_does_not_revert_terminal_state() -> None:
+    """A persist() against a discarded/replayed dlq_id must not revert it —
+    the stored record is returned unchanged (BL-023 T3 controller addition)."""
+
+    store = InMemoryDlqRecordStore()
+    store.persist(_record("d-1", event_type="a.x"))
+    discarded = store.mark_discarded("d-1")
+    assert discarded is not None
+
+    result = store.persist(_record("d-1", event_type="b.y"))
+
+    assert result.status == "discarded"
+    assert result.event_type == "a.x"
+    stored = store.get("d-1")
+    assert stored is not None
+    assert stored.status == "discarded"
+    assert stored.event_type == "a.x"
+
+
 @pytest.fixture
 def database_url() -> str:
     """Return the test database DSN, skipping the test when it is unset."""
@@ -154,6 +173,26 @@ class TestPostgresDlqRecordStore:
         items, total = store.list()
         assert total == 1
         assert items[0].event_type == "b.y"
+
+    def test_persist_does_not_revert_terminal_state(
+        self, provider: ConnectionProvider
+    ) -> None:
+        """A persist() against a discarded dlq_id must not revert it — the
+        stored row is unchanged (BL-023 T3 controller addition)."""
+
+        store = PostgresDlqRecordStore(provider)
+        store.persist(_record("pg-d-4", event_type="a.x"))
+        discarded = store.mark_discarded("pg-d-4")
+        assert discarded is not None
+
+        result = store.persist(_record("pg-d-4", event_type="b.y"))
+
+        assert result.status == "discarded"
+        assert result.event_type == "a.x"
+        fetched = store.get("pg-d-4")
+        assert fetched is not None
+        assert fetched.status == "discarded"
+        assert fetched.event_type == "a.x"
 
     def test_list_filters_and_total(self, provider: ConnectionProvider) -> None:
         store = PostgresDlqRecordStore(provider)

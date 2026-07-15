@@ -64,6 +64,9 @@ from embeddings.models import (
 )
 from embeddings.service import EmbeddingsService, create_embeddings_service
 from embeddings.service_models import EmbedRequest, EmbedResponse, EmbeddedItem
+from events.adapters.dlq_in_memory import InMemoryDlqRecordStore
+from events.codec import encode_event
+from events.dlq_models import DlqRecord
 from events.protocols import DlqErrorInfo, EventDelivery
 from events.runtime import EventBusSettings
 from events.adapters.in_memory import InMemoryEventBus
@@ -2248,6 +2251,92 @@ def test_run_handler_with_retry_propagates_dlq_publish_failure() -> None:
 
 
 # ---------------------------------------------------------------------------
+# BL-023 T3 — durable DLQ record persistence at retry exhaustion
+# ---------------------------------------------------------------------------
+
+
+def test_retry_exhaustion_persists_dlq_record() -> None:
+    event_bus = InMemoryEventBus()
+    dlq_store = InMemoryDlqRecordStore()
+    event = KnowledgeBaseCreatedEvent(
+        correlation_id="corr-persist", knowledge_base_id="kb-1"
+    )
+
+    def failing_handler() -> int:
+        raise RuntimeError("boom")
+
+    asyncio.run(
+        run_handler_with_retry(
+            failing_handler,
+            event=event,
+            event_bus=event_bus,
+            retry_policy=RetryPolicy(max_retries=1, base_delay_seconds=0.0),
+            sleep=_instant_sleep,
+            dlq_record_store=dlq_store,
+        )
+    )
+
+    records, total = dlq_store.list()
+    assert total == 1
+    record = records[0]
+    assert record.event_type == event.event_type
+    assert record.correlation_id == event.correlation_id
+    assert record.payload == encode_event(event)
+    assert record.error_message == "boom"
+    assert record.retry_count == 1
+    assert record.status == "pending"
+    assert len(event_bus.dlq_entries) == 1  # stream publish still happened
+
+
+def test_dlq_store_failure_does_not_mask_handler_error() -> None:
+    event_bus = InMemoryEventBus()
+
+    class ExplodingStore(InMemoryDlqRecordStore):
+        def persist(self, record: DlqRecord) -> DlqRecord:
+            raise RuntimeError("store down")
+
+    def failing_handler() -> int:
+        raise RuntimeError("boom")
+
+    result = asyncio.run(
+        run_handler_with_retry(
+            failing_handler,
+            event=KnowledgeBaseCreatedEvent(
+                correlation_id="corr-store-down", knowledge_base_id="kb-1"
+            ),
+            event_bus=event_bus,
+            retry_policy=RetryPolicy(max_retries=0, base_delay_seconds=0.0),
+            sleep=_instant_sleep,
+            dlq_record_store=ExplodingStore(),
+        )
+    )
+
+    assert result == 0  # ACK contract preserved
+    assert len(event_bus.dlq_entries) == 1  # stream DLQ still succeeded
+
+
+def test_no_dlq_record_store_is_a_noop() -> None:
+    event_bus = InMemoryEventBus()
+
+    def failing_handler() -> int:
+        raise RuntimeError("boom")
+
+    result = asyncio.run(
+        run_handler_with_retry(
+            failing_handler,
+            event=KnowledgeBaseCreatedEvent(
+                correlation_id="corr-no-store", knowledge_base_id="kb-1"
+            ),
+            event_bus=event_bus,
+            retry_policy=RetryPolicy(max_retries=0, base_delay_seconds=0.0),
+            sleep=_instant_sleep,
+        )
+    )
+
+    assert result == 0
+
+
+# ---------------------------------------------------------------------------
 # E4-S04 — DLQ wiring through drain_ingestion_events
 # ---------------------------------------------------------------------------
 
@@ -2515,6 +2604,7 @@ def test_graceful_shutdown_finishes_in_flight_event(
         workflow_run_store=workflow_run_store,
         workflow_tracker=WorkflowEventTracker(workflow_run_store),
         document_status_store=InMemorySourceDocumentStatusStore(),
+        dlq_record_store=InMemoryDlqRecordStore(),
     )
 
     monkeypatch.setattr(
