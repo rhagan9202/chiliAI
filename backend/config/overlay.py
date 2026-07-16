@@ -61,10 +61,10 @@ def apply_overlays(
     The guard is **pack-scoped**: an overlay whose ``overlay_for`` does not
     match ``base_path.stem`` (the base pack's filename, e.g.
     ``medicare_fraud`` for ``medicare_fraud.yaml``) is skipped with a warning
-    (hot-swap safety — see ADR 0001 and its 2026-07-15 amendment). ``domain
-    .name`` is never read here — two packs sharing a ``domain.name`` do not
-    share an overlay. A missing ``overlay_for`` or an unknown top-level key
-    raises ``OverlayError``.
+    (hot-swap safety — see ADR 0001 and its 2026-07-15 amendment).
+    ``domain.name`` is never read here — two packs sharing a ``domain.name``
+    do not share an overlay. A missing ``overlay_for`` or an unknown
+    top-level key raises ``OverlayError``.
     """
 
     base_name = base_path.stem
