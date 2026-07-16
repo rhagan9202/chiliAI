@@ -239,11 +239,13 @@ CHILI_CONFIG_OVERLAY_PATH=config/overlays/medicare_fraud_dev.yaml \
 
 Mappings deep-merge (overlay keys win recursively); lists and scalars
 replace wholesale; an explicit `null` sets a field to `None`. Every overlay
-declares `overlay_for: <domain.name>` — a mismatch against the resolved
-base's `domain.name` skips the overlay with a warning (so the env var
-survives a hot-swap to a different pack) rather than failing the boot; a
-missing `overlay_for` or an unknown top-level key is a hard error. Full
-rationale, the associativity boundary, and the list-replace trade-off:
+declares `overlay_for: <pack filename stem>` — a mismatch against the
+resolved base pack's filename stem skips the overlay with a warning (so the
+env var survives a hot-swap to a different pack) rather than failing the
+boot; a missing `overlay_for` or an unknown top-level key is a hard error.
+The guard is pack-scoped (not `domain.name`-scoped) per the 2026-07-15 ADR
+0001 amendment — packs sharing a `domain.name` no longer share an overlay.
+Full rationale, the associativity boundary, and the list-replace trade-off:
 [ADR 0001](../docs/architecture/decisions/0001-config-overlay-merge-semantics.md).
 Directory layout and the loader/`overlay.py` contract:
 [`config/README.md`](config/README.md).

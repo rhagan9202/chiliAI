@@ -53,21 +53,21 @@ def apply_overlays(
     base_data: dict[str, Any],
     overlay_paths: list[Path],
     *,
+    base_path: Path,
     parse: Callable[[Path], dict[str, Any]],
 ) -> dict[str, Any]:
     """Layer each overlay onto ``base_data`` in declared order.
 
-    An overlay whose ``overlay_for`` does not match the base's
-    ``domain.name`` is skipped with a warning (hot-swap safety — see ADR
-    0001); a missing ``overlay_for`` or an unknown top-level key raises
-    ``OverlayError``.
+    The guard is **pack-scoped**: an overlay whose ``overlay_for`` does not
+    match ``base_path.stem`` (the base pack's filename, e.g.
+    ``medicare_fraud`` for ``medicare_fraud.yaml``) is skipped with a warning
+    (hot-swap safety — see ADR 0001 and its 2026-07-15 amendment). ``domain
+    .name`` is never read here — two packs sharing a ``domain.name`` do not
+    share an overlay. A missing ``overlay_for`` or an unknown top-level key
+    raises ``OverlayError``.
     """
 
-    base_domain = base_data.get("domain", {})
-    if not _is_mapping(base_domain):
-        base_name: str | None = None
-    else:
-        base_name = base_domain.get("name")
+    base_name = base_path.stem
     merged = base_data
     known_keys_set = known_top_level_keys()
     for path in overlay_paths:
@@ -86,7 +86,7 @@ def apply_overlays(
         if target != base_name:
             logger.warning(
                 "Skipping overlay %s: overlay_for=%r does not match base "
-                "domain.name=%r (hot-swap safety, ADR 0001).",
+                "pack %r (pack-scoped guard, ADR 0001 amendment 2026-07-15).",
                 path,
                 target,
                 base_name,

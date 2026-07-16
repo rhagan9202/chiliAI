@@ -57,12 +57,6 @@ def _write_minimal_config(path: Path) -> Path:
     return path
 
 
-def _load_yaml(path: Path) -> dict[str, Any]:
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
-    assert isinstance(loaded, dict)
-    return loaded
-
-
 @pytest.mark.parametrize("yaml_path", _all_default_yamls(), ids=lambda p: p.name)
 def test_all_defaults_load_successfully(yaml_path: Path) -> None:
     cfg = load_config(yaml_path)
@@ -241,11 +235,10 @@ def test_load_config_applies_env_overlay(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     base_path = _write_minimal_config(tmp_path / "base.yaml")
-    base_domain_name = _load_yaml(base_path)["domain"]["name"]
     overlay_path = tmp_path / "dev-overlay.yaml"
     overlay_path.write_text(
         yaml.safe_dump(
-            {"overlay_for": base_domain_name, "capabilities": {"rag_chat": False}}
+            {"overlay_for": base_path.stem, "capabilities": {"rag_chat": False}}
         ),
         encoding="utf-8",
     )
@@ -280,15 +273,15 @@ def test_load_config_overlay_paths_comma_separated(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     base_path = _write_minimal_config(tmp_path / "base.yaml")
-    name = _load_yaml(base_path)["domain"]["name"]
+    stem = base_path.stem
     a = tmp_path / "a.yaml"
     a.write_text(
-        yaml.safe_dump({"overlay_for": name, "capabilities": {"gnn": False}}),
+        yaml.safe_dump({"overlay_for": stem, "capabilities": {"gnn": False}}),
         encoding="utf-8",
     )
     b = tmp_path / "b.yaml"
     b.write_text(
-        yaml.safe_dump({"overlay_for": name, "capabilities": {"gnn": True}}),
+        yaml.safe_dump({"overlay_for": stem, "capabilities": {"gnn": True}}),
         encoding="utf-8",
     )
     monkeypatch.setenv("CHILI_CONFIG_OVERLAY_PATH", f" {a} , {b} ")

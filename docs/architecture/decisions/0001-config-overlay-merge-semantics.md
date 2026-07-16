@@ -70,3 +70,15 @@ The decision is narrowed accordingly:
   this held the dev-file reduction to 59% rather than ~80%.
 - Overlays cannot delete keys; "off" states must be expressible as explicit
   values (e.g. `capabilities.peer_stats: false`).
+
+## Amendment (2026-07-15) — guard re-scoped from domain to pack
+
+The original decision matched `overlay_for` against the base config's
+`domain.name`. In practice `medicare_fraud.yaml` and
+`medicare_fraud_cms_desynpuf.yaml` share `domain.name: medicare_fraud`, so the
+dev overlay silently applied to BOTH packs — including wholesale-replacing the
+DE-SynPUF pack's three policy-rule packs with dev's two. Product-owner
+re-ruling 2026-07-15: `overlay_for` now matches the base pack's **filename
+stem**. Consequence: an overlay targets exactly one pack file; hot-swap safety
+is preserved (mismatches still skip with a warning); overlays for a renamed
+pack must be updated alongside the rename.

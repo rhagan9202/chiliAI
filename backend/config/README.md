@@ -16,9 +16,9 @@ selection — with **zero code changes**.
   `ConfigLoadError` on any failure. After parsing the base file, if
   `CHILI_CONFIG_OVERLAY_PATH` is set it is split on commas into an ordered
   list of overlay file paths, layered onto the base via `overlay.py`'s
-  `apply_overlays` (each overlay must declare `overlay_for` matching
-  `domain.name`, or it is skipped with a warning), before schema validation
-  runs. `overlay.py` — pure base+overlay deep-merge semantics (`ADR 0001`);
+  `apply_overlays` (each overlay must declare `overlay_for` matching the base
+  pack's filename stem, or it is skipped with a warning), before schema
+  validation runs. `overlay.py` — pure base+overlay deep-merge semantics (`ADR 0001`);
   see its module docstring for merge rules.
 - `store.py` — file-backed **active-pack pointer store**. Persists which
   pack is active in a small JSON state file, `data/config/active_pack.json`
@@ -81,24 +81,27 @@ Merge semantics (full rationale in
 - Lists and scalars **replace wholesale** — no list-merge-by-key.
 - An explicit `null` sets a field to `None`; absence falls through to the
   base value or the schema default. There is no key-removal operator.
-- Every overlay file must declare `overlay_for: <domain.name>`. If it
-  matches the base's `domain.name` the overlay applies; a mismatch **skips
-  the overlay with a warning** rather than failing the boot — this is what
-  lets `CHILI_CONFIG_OVERLAY_PATH` survive a runtime hot-swap to a different
-  pack (the swap just runs clean base config for the foreign overlay). A
-  missing `overlay_for`, or any top-level key not in
-  `DomainConfig.model_fields` (checked via the public
-  `config.overlay.known_top_level_keys()`), is a hard `OverlayError` —
-  raised as `ConfigLoadError` by `load_config` — so a typo like
-  `embeddngs:` fails loudly instead of silently not applying.
-- The guard is **domain-scoped, not pack-scoped**: `overlay_for` matches
-  `domain.name`, and multiple packs can share a domain. Both
-  `defaults/medicare_fraud.yaml` and `defaults/medicare_fraud_cms_desynpuf.yaml`
-  declare `domain.name: medicare_fraud`, so the dev overlay applies to
-  **either** of them when `CHILI_CONFIG_OVERLAY_PATH` is set — including the
-  DE-SynPUF pack's `policy_rules` list being replaced wholesale by the
-  overlay's. Keep this in mind before exporting the overlay var against the
-  default (`medicare_fraud_cms_desynpuf`) stack.
+- Every overlay file must declare `overlay_for: <pack filename stem>` (e.g.
+  `medicare_fraud` for `defaults/medicare_fraud.yaml`). If it matches the base
+  pack's filename stem the overlay applies; a mismatch **skips the overlay
+  with a warning** rather than failing the boot — this is what lets
+  `CHILI_CONFIG_OVERLAY_PATH` survive a runtime hot-swap to a different pack
+  (the swap just runs clean base config for the foreign overlay). A missing
+  `overlay_for`, or any top-level key not in `DomainConfig.model_fields`
+  (checked via the public `config.overlay.known_top_level_keys()`), is a hard
+  `OverlayError` — raised as `ConfigLoadError` by `load_config` — so a typo
+  like `embeddngs:` fails loudly instead of silently not applying.
+- The guard is **pack-scoped, not domain-scoped**: `overlay_for` matches the
+  base config file's filename stem (`apply_overlays(..., base_path=...)`),
+  never `domain.name`. This was re-ruled by the product owner on 2026-07-15
+  ([ADR 0001 amendment](../../docs/architecture/decisions/0001-config-overlay-merge-semantics.md#amendment-2026-07-15--guard-re-scoped-from-domain-to-pack))
+  after `defaults/medicare_fraud.yaml` and
+  `defaults/medicare_fraud_cms_desynpuf.yaml` — which share
+  `domain.name: medicare_fraud` — were found to both silently accept the dev
+  overlay, wholesale-replacing the DE-SynPUF pack's `policy_rules` with dev's.
+  Under the pack-scoped guard the dev overlay (`overlay_for: medicare_fraud`)
+  applies only to `medicare_fraud.yaml`; it is skipped-with-warning against
+  `medicare_fraud_cms_desynpuf.yaml` and every other pack.
 - Overlays also apply when the config API loads packs on your behalf:
   `POST /config/apply|switch` validates and activates the **merged** result,
   and each row of `GET /config/packs` reflects loading that pack in the

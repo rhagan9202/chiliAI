@@ -162,17 +162,20 @@ def _parse_yaml(path: Path) -> dict[str, Any]:
 BASE = {"domain": {"name": "medicare_fraud"}, "capabilities": {"peer_stats": True}}
 
 
+BASE_PATH = Path("medicare_fraud.yaml")
+
+
 def test_apply_overlays_merges_matching_overlay(tmp_path: Path) -> None:
     overlay = _write_yaml(
         tmp_path / "dev.yaml",
         {"overlay_for": "medicare_fraud", "capabilities": {"peer_stats": False}},
     )
-    merged = apply_overlays(BASE, [overlay], parse=_parse_yaml)
+    merged = apply_overlays(BASE, [overlay], base_path=BASE_PATH, parse=_parse_yaml)
     assert merged["capabilities"]["peer_stats"] is False
     assert "overlay_for" not in merged  # metadata key stripped before merge
 
 
-def test_apply_overlays_skips_domain_mismatch_with_warning(
+def test_apply_overlays_skips_pack_mismatch_with_warning(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     overlay = _write_yaml(
@@ -180,7 +183,7 @@ def test_apply_overlays_skips_domain_mismatch_with_warning(
         {"overlay_for": "af_housing", "capabilities": {"peer_stats": False}},
     )
     with caplog.at_level(logging.WARNING, logger="config.overlay"):
-        merged = apply_overlays(BASE, [overlay], parse=_parse_yaml)
+        merged = apply_overlays(BASE, [overlay], base_path=BASE_PATH, parse=_parse_yaml)
     assert merged["capabilities"]["peer_stats"] is True  # untouched
     assert any(
         "af_housing" in record.message and "medicare_fraud" in record.message
@@ -193,7 +196,7 @@ def test_apply_overlays_missing_overlay_for_raises(tmp_path: Path) -> None:
         tmp_path / "dev.yaml", {"capabilities": {"peer_stats": False}}
     )
     with pytest.raises(OverlayError, match="overlay_for"):
-        apply_overlays(BASE, [overlay], parse=_parse_yaml)
+        apply_overlays(BASE, [overlay], base_path=BASE_PATH, parse=_parse_yaml)
 
 
 def test_apply_overlays_rejects_unknown_top_level_key(tmp_path: Path) -> None:
@@ -202,7 +205,7 @@ def test_apply_overlays_rejects_unknown_top_level_key(tmp_path: Path) -> None:
         {"overlay_for": "medicare_fraud", "embeddngs": {"provider": "local"}},
     )
     with pytest.raises(OverlayError, match="embeddngs"):
-        apply_overlays(BASE, [overlay], parse=_parse_yaml)
+        apply_overlays(BASE, [overlay], base_path=BASE_PATH, parse=_parse_yaml)
 
 
 def test_apply_overlays_stacks_in_declared_order(tmp_path: Path) -> None:
@@ -214,29 +217,69 @@ def test_apply_overlays_stacks_in_declared_order(tmp_path: Path) -> None:
         tmp_path / "b.yaml",
         {"overlay_for": "medicare_fraud", "capabilities": {"gnn": True}},
     )
-    merged = apply_overlays(BASE, [first, second], parse=_parse_yaml)
+    merged = apply_overlays(BASE, [first, second], base_path=BASE_PATH, parse=_parse_yaml)
     assert merged["capabilities"]["gnn"] is True  # last wins
 
 
-def test_apply_overlays_base_without_domain_skips_safely(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
+def test_apply_overlays_base_without_domain_key_matches_by_pack_stem(
+    tmp_path: Path,
 ) -> None:
+    # The guard is pack-scoped (base_path.stem), so a base dict with no
+    # "domain" key at all still matches correctly — domain.name is never read.
     overlay = _write_yaml(
         tmp_path / "dev.yaml",
         {"overlay_for": "medicare_fraud", "capabilities": {"gnn": False}},
     )
+    merged = apply_overlays(
+        {"capabilities": {"gnn": True}},
+        [overlay],
+        base_path=BASE_PATH,
+        parse=_parse_yaml,
+    )
+    assert merged["capabilities"]["gnn"] is False  # applied: stem matched
+
+
+def test_overlay_skips_same_domain_different_pack(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """DE-SynPUF regression: two packs sharing domain.name must NOT share
+    an overlay — the guard must key off the base pack's filename stem, not
+    domain.name, or a dev overlay for medicare_fraud.yaml silently applies to
+    medicare_fraud_cms_desynpuf.yaml too."""
+    overlay = _write_yaml(
+        tmp_path / "dev.yaml",
+        {"overlay_for": "medicare_fraud", "capabilities": {"peer_stats": False}},
+    )
     with caplog.at_level(logging.WARNING, logger="config.overlay"):
         merged = apply_overlays(
-            {"capabilities": {"gnn": True}}, [overlay], parse=_parse_yaml
+            BASE,  # domain.name == "medicare_fraud"
+            [overlay],
+            base_path=Path("/some/dir/medicare_fraud_cms_desynpuf.yaml"),
+            parse=_parse_yaml,
         )
-    assert merged["capabilities"]["gnn"] is True
+    assert merged["capabilities"]["peer_stats"] is True  # untouched: skipped
+    assert any(
+        "medicare_fraud_cms_desynpuf" in record.message
+        and "medicare_fraud" in record.message
+        for record in caplog.records
+    )
 
 
-def test_apply_overlays_known_keys_track_domain_config() -> None:
-    # Guard: every top-level key DomainConfig defines is accepted in overlays.
-    from config.overlay import known_top_level_keys
-
-    assert set(DomainConfig.model_fields) <= known_top_level_keys()
+def test_shipped_dev_overlay_passes_unknown_key_guard_and_canary_fails(
+    tmp_path: Path,
+) -> None:
+    """The unknown-key guard fires on realistic content: the SHIPPED dev overlay
+    passes, and the same overlay plus one canary typo key is rejected naming it."""
+    overlays_dir = Path(__file__).resolve().parent.parent.parent / "config" / "overlays"
+    shipped = yaml.safe_load((overlays_dir / "medicare_fraud_dev.yaml").read_text())
+    base = {"domain": {"name": "medicare_fraud"}}
+    good = _write_yaml(tmp_path / "medicare_fraud_dev.yaml", shipped)
+    apply_overlays(base, [good], base_path=Path("medicare_fraud.yaml"), parse=_parse_yaml)  # no raise
+    shipped_bad = dict(shipped)
+    shipped_bad["embeddngs"] = {"provider": "local"}
+    bad = _write_yaml(tmp_path / "bad.yaml", shipped_bad)
+    with pytest.raises(OverlayError, match="embeddngs"):
+        apply_overlays(base, [bad], base_path=Path("medicare_fraud.yaml"), parse=_parse_yaml)
 
 
 REPO_CONFIG = Path(__file__).resolve().parent.parent.parent / "config"

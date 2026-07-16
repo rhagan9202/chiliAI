@@ -40,7 +40,9 @@ def load_config(path: str | Path | None = None) -> DomainConfig:
     overlay_paths = _overlay_paths_from_env()
     if overlay_paths:
         try:
-            data = apply_overlays(data, overlay_paths, parse=_parse_config_file)
+            data = apply_overlays(
+                data, overlay_paths, base_path=resolved, parse=_parse_config_file
+            )
         except OverlayError as exc:
             raise ConfigLoadError(str(exc)) from exc
     return _validate(data)

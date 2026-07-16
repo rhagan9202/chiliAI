@@ -37,9 +37,9 @@ Located in `backend/config/defaults/` (complete, independently loadable packs):
 
 `backend/config/overlays/medicare_fraud_dev.yaml` is a **partial** dev-environment
 overlay over `medicare_fraud.yaml`, applied via `CHILI_CONFIG_OVERLAY_PATH`
-(deep-merge + list-replace semantics, `overlay_for` domain guard — ADR 0001,
-`backend/config/overlay.py`). It is not a standalone pack and is not iterated
-by the pack catalog.
+(deep-merge + list-replace semantics, `overlay_for` pack-scoped guard — ADR
+0001 + its 2026-07-15 amendment, `backend/config/overlay.py`). It is not a
+standalone pack and is not iterated by the pack catalog.
 
 ---
 
