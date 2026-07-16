@@ -105,8 +105,9 @@ Merge semantics (full rationale in
 - Overlays also apply when the config API loads packs on your behalf:
   `POST /config/apply|switch` validates and activates the **merged** result,
   and each row of `GET /config/packs` reflects loading that pack in the
-  current environment (same-domain packs merged, others skipped with the
-  warning). `POST /config/validate` is the one deliberate exception — it is a
+  current environment (the pack whose filename stem matches `overlay_for`
+  gets the overlay merged; others are skipped with the warning).
+  `POST /config/validate` is the one deliberate exception — it is a
   pack-level dry run of the raw pack/content and does **not** apply overlays,
   so its verdict can differ from what `apply` ultimately serves; `apply` still
   fully validates the merged config before any state mutates.
