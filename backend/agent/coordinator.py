@@ -762,6 +762,11 @@ def build_kb_deletion_stores(
     Reuses the already-built worker stores and constructs the few extra stores
     (vector service, conversation/case/policy/evidence repositories) that the
     worker otherwise needs only for KB-delete retries.
+
+    ``alert_projection_store`` is deliberately left ``None``: the alert read
+    projection is API-owned (``api._alert_store``) and this module must not
+    import from ``api``. The cascade skips that step here; the API's DELETE
+    route always runs it.
     """
 
     return KbDeletionStores(

@@ -18,7 +18,7 @@
 
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 
-import { KB_BASELINE_PATH, type KbBaseline } from './helpers/kbBaseline'
+import { KB_BASELINE_PATH, deleteKbsNotInBaseline, type KbBaseline } from './helpers/kbBaseline'
 
 const API = process.env['E2E_API_URL'] ?? 'http://localhost:8000'
 
@@ -28,40 +28,18 @@ async function globalTeardown(): Promise<void> {
     return
   }
   const baseline = JSON.parse(readFileSync(KB_BASELINE_PATH, 'utf-8')) as KbBaseline
-  const preExisting = new Set(baseline.knowledge_base_ids)
 
-  const res = await fetch(`${API}/knowledgebases`)
-  if (!res.ok) {
-    console.warn(`[e2e] GET /knowledgebases failed (${res.status}) — skipping KB teardown`)
-    return
-  }
-  const payload = (await res.json()) as { items: { id: string; name: string }[] }
-  const created = payload.items.filter((kb) => !preExisting.has(kb.id))
-
-  let failures = 0
-  for (const kb of created) {
-    const del = await fetch(`${API}/knowledgebases/${encodeURIComponent(kb.id)}`, {
-      method: 'DELETE',
-    })
-    if (del.ok) {
-      console.log(`[e2e] teardown deleted KB "${kb.name}" (${kb.id})`)
-    } else {
-      failures += 1
-      console.error(
-        `[e2e] teardown FAILED to delete KB "${kb.name}" (${kb.id}): ${del.status} ${await del
-          .text()
-          .catch(() => '')}`,
-      )
-    }
-  }
+  const result = await deleteKbsNotInBaseline(API, baseline, '[e2e] teardown')
   console.log(
-    `[e2e] KB teardown: ${created.length - failures}/${created.length} run-created KBs deleted, ${preExisting.size} pre-existing KBs untouched`,
+    `[e2e] KB teardown: ${result.deleted}/${result.deleted + result.failed} run-created KBs deleted, ${baseline.knowledge_base_ids.length} pre-existing KBs untouched`,
   )
-  if (failures === 0) {
+  if (result.failed === 0) {
+    // Baseline stays on disk after a FAILED teardown so the next run's
+    // stale-baseline reclaim (global-setup) can retry these deletions.
     rmSync(KB_BASELINE_PATH, { force: true })
   } else {
     throw new Error(
-      `[e2e] KB teardown left ${failures} run-created KB(s) behind — delete them manually before demoing (they poison newest-ready KB resolution).`,
+      `[e2e] KB teardown left ${result.failed} run-created KB(s) behind — delete them manually before demoing (they poison newest-ready KB resolution).`,
     )
   }
 }

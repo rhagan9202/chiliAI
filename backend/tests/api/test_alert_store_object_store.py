@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from api._alert_store import (
     ObjectStoreAlertProjectionRepository,
     AlertProjectionRecord,
+    InMemoryAlertProjectionRepository,
     acknowledge_alert_projection,
     count_active_alerts,
     project_alert_detail,
@@ -108,6 +109,38 @@ def test_list_returns_newest_first_with_pagination() -> None:
 
     assert total == 3
     assert [record.alert.id for record in records] == ["middle", "old"]
+
+
+def test_remove_by_knowledge_base_prunes_only_that_kb_and_persists() -> None:
+    object_store = InMemoryObjectStore()
+    repository = ObjectStoreAlertProjectionRepository(object_store)
+    repository.upsert(_record("a-1", knowledge_base_id="kb-1"))
+    repository.upsert(_record("a-2", knowledge_base_id="kb-2"))
+    repository.upsert(_record("a-3", knowledge_base_id="kb-1"))
+
+    removed = repository.remove_by_knowledge_base("kb-1")
+
+    assert removed == 2
+    reloaded = ObjectStoreAlertProjectionRepository(object_store)
+    records, total = reloaded.list(limit=10, offset=0)
+    assert total == 1
+    assert [record.alert.id for record in records] == ["a-2"]
+    # Idempotent: a second pass finds nothing to remove.
+    assert reloaded.remove_by_knowledge_base("kb-1") == 0
+
+
+def test_remove_by_knowledge_base_in_memory_prunes_only_that_kb() -> None:
+    repository = InMemoryAlertProjectionRepository()
+    repository.upsert(_record("a-1", knowledge_base_id="kb-1"))
+    repository.upsert(_record("a-2", knowledge_base_id="kb-2"))
+
+    removed = repository.remove_by_knowledge_base("kb-1")
+
+    assert removed == 1
+    records, total = repository.list(limit=10, offset=0)
+    assert total == 1
+    assert [record.alert.id for record in records] == ["a-2"]
+    assert repository.remove_by_knowledge_base("kb-1") == 0
 
 
 def test_acknowledge_persists_across_repository_instances() -> None:

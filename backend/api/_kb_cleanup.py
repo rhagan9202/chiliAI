@@ -14,8 +14,10 @@ from analytics.explainability.repository import EvidencePackRepository
 from analytics.metrics.adapters.protocols import EntityMetricRepository
 from analytics.peerstats.adapters.protocols import DerivedRiskSignalWriterProtocol
 from analytics.risk.adapters.protocols import RiskHistoryWriter
+from api._alert_store import AlertProjectionRepository
 from api.dependencies import (
     get_alert_history_writer,
+    get_alert_repository,
     get_case_repository,
     get_conversation_repository,
     get_derived_signal_store,
@@ -72,6 +74,7 @@ def get_kb_deletion_stores(
         get_document_status_store
     ),
     object_store: ObjectStore = Depends(get_object_store),
+    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
 ) -> KbDeletionStores:
     """Assemble the KB-delete cascade store bundle from DI."""
 
@@ -91,6 +94,7 @@ def get_kb_deletion_stores(
         scorecard_run_repository=scorecard_run_repository,
         document_status_store=document_status_store,
         object_store=object_store,
+        alert_projection_store=alert_repository,
     )
 
 

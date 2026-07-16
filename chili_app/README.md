@@ -214,6 +214,11 @@ newest ready/active KB, the leaked KB silently degrades the demo to an empty
 view. Teardown fails loudly (non-zero) if any run-created KB could not be
 deleted. Pre-existing KBs are never touched.
 
+If a run is interrupted (crash, Ctrl-C) teardown never fires, but the stale
+baseline file survives — the next run's global setup detects it and reclaims
+the interrupted run's leaked KBs against that stale baseline **before**
+taking a fresh snapshot, so leaked KBs can never be adopted as pre-existing.
+
 ### Serial execution (shared mutable state)
 
 `playwright.config.ts` sets `fullyParallel: false` and `workers: 1`. The whole

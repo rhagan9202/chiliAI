@@ -21,9 +21,9 @@
  * talks to the real API/worker/services.
  */
 
-import { writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 
-import { KB_BASELINE_PATH, type KbBaseline } from './helpers/kbBaseline'
+import { KB_BASELINE_PATH, deleteKbsNotInBaseline, type KbBaseline } from './helpers/kbBaseline'
 import type { SeededIds } from './helpers/seeded'
 
 const API = process.env['E2E_API_URL'] ?? 'http://localhost:8000'
@@ -40,6 +40,28 @@ async function waitForApi(attempts = 90): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }
   throw new Error(`API at ${API} did not become healthy. Is the stack running (make dev)?`)
+}
+
+/**
+ * A baseline file at setup time means the previous run never reached
+ * global-teardown (crash, Ctrl-C, system hang): its KBs are still on the
+ * stack. Reclaim them against the STALE baseline before snapshotting anew —
+ * otherwise the fresh snapshot would adopt the leaked KBs as "pre-existing"
+ * and no future run would ever clean them up.
+ */
+async function reclaimStaleBaseline(): Promise<void> {
+  if (!existsSync(KB_BASELINE_PATH)) return
+  const stale = JSON.parse(readFileSync(KB_BASELINE_PATH, 'utf-8')) as KbBaseline
+  console.warn(
+    `[e2e] stale ${KB_BASELINE_PATH} from ${stale.captured_at} — previous run was interrupted; reclaiming its leaked KBs`,
+  )
+  const result = await deleteKbsNotInBaseline(API, stale, '[e2e] stale-baseline reclaim:')
+  if (result.failed > 0) {
+    throw new Error(
+      `[e2e] stale-baseline reclaim left ${result.failed} leaked KB(s) behind — delete them manually before running e2e.`,
+    )
+  }
+  console.log(`[e2e] stale-baseline reclaim: ${result.deleted} leaked KB(s) deleted`)
 }
 
 async function snapshotKnowledgeBases(): Promise<void> {
@@ -73,7 +95,9 @@ async function fetchActiveDomainName(): Promise<string> {
 async function globalSetup(): Promise<void> {
   await waitForApi()
 
-  // Snapshot BEFORE any seeding so the dev-seed KB itself is torn down too.
+  // Reclaim any KBs leaked by a previous interrupted run BEFORE snapshotting,
+  // then snapshot BEFORE any seeding so the dev-seed KB itself is torn down too.
+  await reclaimStaleBaseline()
   await snapshotKnowledgeBases()
 
   // E2E_SKIP_DEV_SEED=1 skips the /admin/dev-seed scenario. Use it ONLY when

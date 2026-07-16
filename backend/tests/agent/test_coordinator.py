@@ -4533,7 +4533,10 @@ def test_dispatch_runs_kb_cleanup_when_wired_and_guards_when_not() -> None:
     ]
     mocks = {field: MagicMock() for field in store_fields}
     mocks["object_store"].list_keys.return_value = []
-    bundle = cast(KbDeletionStores, SimpleNamespace(**mocks))
+    # Worker bundle: no API-owned alert projection store (cascade skips it).
+    bundle = cast(
+        KbDeletionStores, SimpleNamespace(**mocks, alert_projection_store=None)
+    )
     kb_repository = MagicMock()
 
     def _dispatch(stores: KbDeletionStores | None) -> int:
