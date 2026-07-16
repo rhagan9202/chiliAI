@@ -4752,6 +4752,12 @@
             "minimum": 0.0,
             "title": "Rejected Count",
             "type": "integer"
+          },
+          "suppressed_existing_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Suppressed Existing Count",
+            "type": "integer"
           }
         },
         "required": [

@@ -30,6 +30,11 @@ class RecordIngestReceipt(BaseModel):
     accepted_count: int = Field(ge=0)
     duplicate: bool = False
     duplicate_count: int = Field(default=0, ge=0)
+    # Rows whose record_id already existed (any content) and were silently
+    # dropped by the store's per-row dedup during persist(). Distinct from
+    # `duplicate`/`duplicate_count`, which flag a whole batch that is an
+    # identical resubmission (no-op, no persist at all).
+    suppressed_existing_count: int = Field(default=0, ge=0)
     rejected_count: int = Field(default=0, ge=0)
     rejected: list[RejectedRow] = Field(
         default_factory=lambda: cast(list[RejectedRow], [])

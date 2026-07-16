@@ -3485,6 +3485,11 @@ export interface components {
              * @default 0
              */
             rejected_count: number;
+            /**
+             * Suppressed Existing Count
+             * @default 0
+             */
+            suppressed_existing_count: number;
         };
         /**
          * RecordObservationMapping
