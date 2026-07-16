@@ -30,14 +30,20 @@ async function globalTeardown(): Promise<void> {
   const baseline = JSON.parse(readFileSync(KB_BASELINE_PATH, 'utf-8')) as KbBaseline
 
   const result = await deleteKbsNotInBaseline(API, baseline, '[e2e] teardown')
+  if (!result.listed) {
+    // Listing failed — nothing was deleted. Keep the baseline on disk so the
+    // next run's stale-baseline reclaim (global-setup) can retry.
+    console.warn(`[e2e] KB teardown skipped (listing failed) — ${KB_BASELINE_PATH} kept for reclaim`)
+    return
+  }
   console.log(
     `[e2e] KB teardown: ${result.deleted}/${result.deleted + result.failed} run-created KBs deleted, ${baseline.knowledge_base_ids.length} pre-existing KBs untouched`,
   )
   if (result.failed === 0) {
-    // Baseline stays on disk after a FAILED teardown so the next run's
-    // stale-baseline reclaim (global-setup) can retry these deletions.
     rmSync(KB_BASELINE_PATH, { force: true })
   } else {
+    // Baseline stays on disk after a FAILED teardown so the next run's
+    // stale-baseline reclaim (global-setup) can retry these deletions.
     throw new Error(
       `[e2e] KB teardown left ${result.failed} run-created KB(s) behind — delete them manually before demoing (they poison newest-ready KB resolution).`,
     )
