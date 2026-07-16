@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable, Generator
+from datetime import datetime
 from typing import cast
 from uuid import uuid4
 
@@ -490,6 +492,180 @@ def test_upsert_relationships_create_placeholders_uses_merge_endpoints(
     assert len(driver.queries) == 2
     write_query = driver.queries[-1][0]
     assert "MERGE (source:" in write_query and "MERGE (target:" in write_query
+
+
+def test_relationship_metadata_persists_and_merges(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    driver.results = [
+        [{"entity_id": "e-1"}, {"entity_id": "e-2"}],  # existence read
+        [
+            {
+                "relationship_id": "r-1",
+                "type": "billed",
+                "properties_json": "{}",
+                "metadata_json": '{"src": "doc1"}',
+                "version": 1,
+                "weight": None,
+            }
+        ],  # existing-relationships read
+        [_relationship_record("r-1", "e-1", "e-2", version=1)],  # write echo
+    ]
+
+    repository.upsert_relationships(
+        "kb-1",
+        [
+            Relationship(
+                id="r-1",
+                type="billed",
+                source_id="e-1",
+                target_id="e-2",
+                metadata={"note": "x"},
+            )
+        ],
+    )
+
+    write_query, write_params, _ = driver.queries[-1]
+    rows = cast(list[dict[str, object]], write_params["rows"])
+    # payload keys win on conflict; shallow-merged with the persisted metadata.
+    assert rows[0]["metadata_json"] == '{"note": "x", "src": "doc1"}'
+    assert rows[0]["version"] == 1  # metadata-only change: no version bump
+    assert "relationship.metadata_json = row.metadata_json" in write_query
+
+
+def test_relationship_read_without_metadata_property_defaults_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    # Legacy fake relationship record shaped like a pre-metadata row: no
+    # metadata_json key at all (see _relationship_record helper).
+    driver.results = [[_relationship_record("r-1", "e-1", "e-2")]]
+
+    relationships = repository.get_relationships("kb-1")
+
+    assert relationships[0].id == "r-1"
+    assert relationships[0].metadata == {}
+
+
+def test_updated_at_stamped_on_effective_entity_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    driver.results = [
+        [
+            {
+                "entity_id": "e-1",
+                "type": "provider",
+                "properties_json": '{"city": "Reno"}',
+                "metadata_json": "{}",
+                "version": 1,
+            }
+        ],
+        [_entity_record("e-1", properties_json='{"city": "Boise"}', version=2)],
+    ]
+
+    repository.upsert_entities(
+        "kb-1", [Entity(id="e-1", type="provider", properties={"city": "Boise"})]
+    )
+
+    write_params = driver.queries[-1][1]
+    rows = cast(list[dict[str, object]], write_params["rows"])
+    updated_at = rows[0]["updated_at"]
+    assert isinstance(updated_at, str) and updated_at != ""
+    datetime.fromisoformat(updated_at)  # must be a real timestamp, not passthrough None
+
+
+def test_intra_batch_duplicate_entity_id_folds_sequentially(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    driver.results = [
+        [],  # read pass: no existing row for e-1
+        [_entity_record("e-1", properties_json='{"a": 1, "b": 2}', version=1)],  # write echo
+    ]
+
+    repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="e-1", type="provider", properties={"a": 1}),
+            Entity(id="e-1", type="provider", properties={"b": 2}),
+        ],
+    )
+
+    write_params = driver.queries[-1][1]
+    rows = cast(list[dict[str, object]], write_params["rows"])
+    assert len(rows) == 1  # duplicate ids fold into a single row
+    assert json.loads(cast(str, rows[0]["properties_json"])) == {"a": 1, "b": 2}
+    assert rows[0]["version"] == 1  # still a single logical insert, not two bumps
+
+
+def test_mixed_match_conflict_batch_writes_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(neo4j_adapter, "GraphDatabase", _FakeGraphDatabase)
+    repository = Neo4jGraphRepository(
+        GraphDbConfig(backend="neo4j", uri="bolt://localhost:7687", pool_size=5),
+        auth=("neo4j", "password"),
+    )
+    driver = _FakeGraphDatabase.driver_instance
+    assert driver is not None
+    driver.queries = []  # drop schema-init writes issued at construction
+    driver.results = [
+        [
+            {
+                "entity_id": "e-1",
+                "type": "provider",
+                "properties_json": "{}",
+                "metadata_json": "{}",
+                "version": 1,
+            },
+            {
+                "entity_id": "e-2",
+                "type": "provider",
+                "properties_json": "{}",
+                "metadata_json": "{}",
+                "version": 3,
+            },
+        ]  # existing-rows read: e-1 matches expected_version, e-2 conflicts
+    ]
+
+    with pytest.raises(GraphVersionConflictError):
+        repository.upsert_entities(
+            "kb-1",
+            [
+                Entity(id="e-1", type="provider", properties={"a": 1}),
+                Entity(id="e-2", type="provider", properties={"b": 1}),
+            ],
+            GraphUpsertOptions(expected_version=1),
+        )
+
+    assert len(driver.queries) == 1  # only the existing-rows read ran
+    assert driver.queries[0][2] == "read"
 
 
 def test_neo4j_repository_reads_searches_counts_and_deletes(
@@ -1106,6 +1282,35 @@ def test_strict_upsert_creates_no_phantom_node(
 
     assert repository.get_entity([knowledge_base_id], "e-phantom") is None
     assert repository.get_relationships(knowledge_base_id) == []
+
+
+@pytest.mark.integration
+def test_relationship_metadata_roundtrips_live(
+    neo4j_repository: tuple[Neo4jGraphRepository, str],
+) -> None:
+    repository, knowledge_base_id = neo4j_repository
+
+    repository.upsert_entities(
+        knowledge_base_id,
+        [Entity(id="e-1", type="provider"), Entity(id="e-2", type="claim")],
+    )
+    rel = Relationship(
+        id="r-1",
+        type="billed_for",
+        source_id="e-2",
+        target_id="e-1",
+        metadata={"src": "doc1"},
+    )
+    repository.upsert_relationships(knowledge_base_id, [rel])
+    stored = repository.get_relationships(knowledge_base_id)[0]
+    assert stored.metadata == {"src": "doc1"}
+
+    repository.upsert_relationships(
+        knowledge_base_id, [rel.model_copy(update={"metadata": {"extra": "y"}})]
+    )
+    merged = repository.get_relationships(knowledge_base_id)[0]
+    assert merged.metadata == {"src": "doc1", "extra": "y"}
+    assert merged.version == 1  # metadata-only change: no bump
 
 
 def test_neo4j_repository_ensures_fulltext_index_for_entity_properties(
