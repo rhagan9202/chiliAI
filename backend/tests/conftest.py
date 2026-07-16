@@ -37,8 +37,14 @@ def _setdefault_test_service_urls() -> None:
     ``.venv`` case).
     """
 
+    # DELIBERATELY chili_test, never the dev-stack ``chili`` DB: the migration
+    # integration tests run ``alembic downgrade base`` against DATABASE_URL,
+    # which empties every app table. Defaulting to the dev DB has destroyed
+    # seeded demo state twice (2026-05, 2026-07-16). The dev compose stack
+    # creates ``chili_test`` via infra/postgres/init-test-db.sql; explicit
+    # DATABASE_URL (CI, in-container ``make test``) still wins.
     os.environ.setdefault(
-        "DATABASE_URL", "postgresql://chili:chili@localhost:5432/chili"
+        "DATABASE_URL", "postgresql://chili:chili@localhost:5432/chili_test"
     )
     os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
     os.environ.setdefault(

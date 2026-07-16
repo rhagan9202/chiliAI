@@ -45,7 +45,7 @@
 - Backend uses Python 3.12 as declared in `backend/.python-version` and `backend/pyproject.toml`:
   - API server: `uvicorn api.app:create_app --factory --reload --port 8000`
   - Worker: `python -m agent.coordinator`
-  - Tests: `pytest --cov` — ⚠️ on the host this WIPES the dev-stack Postgres data (the migration tests downgrade/upgrade against the default `DATABASE_URL`); when the stack holds seeded/demo state, use `DATABASE_URL=postgresql://chili:chili@localhost:5432/chili_test pytest --cov` (see `backend/README.md`).
+  - Tests: `pytest --cov` — DB-touching tests default to the `chili_test` scratch DB (conftest; created on fresh dev volumes by `infra/postgres/init-test-db.sql`). ⚠️ Never export the dev `chili` DSN as `DATABASE_URL` for a test run: the migration tests downgrade/upgrade against it and empty every app table (see `backend/README.md`).
   - Type check/lint: `pyright`, `ruff check .`
 - CI runs backend lint/typecheck/tests and frontend lint/typecheck/tests/build. Keep touched areas green.
 - Tooling gotchas (mirrored from `CLAUDE.md` — keep in sync):

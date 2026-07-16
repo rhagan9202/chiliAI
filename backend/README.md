@@ -143,19 +143,20 @@ make seed-housing SEED_ARGS="--scorecards"                 # ...and generate sco
 > `OPENAI_API_KEY` (paid API), `SENTENCE_TRANSFORMERS_SMOKE_MODEL` (model
 > download), and the Ollama e2e (`OLLAMA_MODEL` + a reachable Ollama server).
 >
-> ⚠️ **Host `pytest --cov` WIPES the dev-stack Postgres data.** Because
-> `DATABASE_URL` defaults to the dev stack's `…:5432/chili`,
+> ⚠️ **Postgres-touching tests default to `chili_test`, never the dev DB.**
 > `tests/database/test_migrations.py` runs `alembic downgrade base` →
-> `upgrade head` against it — dropping and recreating **every** app table
-> (`raw_records`, `observations`, `scorecard_runs`, metric/alert history, …)
-> empty. KB metadata survives (it lives in the object store), which is worse:
-> the KB shells remain while their data is gone — this has destroyed seeded
-> demo state (e.g. `make seed-housing`) in practice. When the stack holds
-> demo state you care about, point the suite at a scratch database in the
-> same instance first, e.g.
-> `DATABASE_URL=postgresql://chili:chili@localhost:5432/chili_test pytest --cov`
-> (create it once: `CREATE DATABASE chili_test;` — migration 0001 installs
-> the TimescaleDB extension itself). Otherwise plan to reseed afterwards.
+> `upgrade head` against `DATABASE_URL` — dropping and recreating **every**
+> app table empty. Historically the conftest defaulted `DATABASE_URL` to the
+> dev stack's `…:5432/chili`, which destroyed seeded demo state twice
+> (2026-05, 2026-07-16 — KB shells survive in the object store while their
+> rows vanish). Since 2026-07-16 `tests/conftest.py` defaults to
+> `…:5432/chili_test` instead; the dev compose stack creates that DB on
+> fresh volumes (`infra/postgres/init-test-db.sql`). On a pre-existing
+> volume create it once:
+> `docker exec chiliai-postgres-1 psql -U chili -c "CREATE DATABASE chili_test"`
+> (migration 0001 installs the TimescaleDB extension itself). An explicitly
+> exported `DATABASE_URL` still wins — never export the dev `chili` DSN when
+> running the suite.
 
 ## Quality Requirements
 

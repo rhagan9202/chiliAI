@@ -173,6 +173,9 @@ services:
       - POSTGRES_PASSWORD=chili
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      # Creates the chili_test integration-test DB on fresh volumes so host
+      # pytest can never target (and wipe) the dev `chili` DB by default.
+      - ./infra/postgres/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U chili -d chili"]
       interval: 10s
