@@ -260,6 +260,41 @@ def test_callback_exchanges_code_and_creates_session_cookie(
     assert saved.id_token == "id-tok"
 
 
+def test_callback_idp_response_missing_access_token_is_400(
+    app_with_auth: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A malformed IdP token-endpoint response (fails OidcTokens validation) is a 400, not a 500."""
+    import httpx
+
+    from api.routers import _oidc_client
+
+    store = InMemorySessionStore()
+    store.save_pkce_state(
+        state="state-malformed", verifier="ver", ttl_seconds=300, nonce="nonce-malformed"
+    )
+    domain = _domain_with_auth()
+    app_with_auth.dependency_overrides[get_session_store] = lambda: store
+    app_with_auth.dependency_overrides[get_domain_config] = lambda: domain
+
+    def fake_handler(request: httpx.Request) -> httpx.Response:
+        # Missing required fields (access_token, expires_in) -> OidcTokens.model_validate
+        # raises pydantic.ValidationError inside exchange_code.
+        return httpx.Response(200, json={"token_type": "Bearer"})
+
+    monkeypatch.setattr(
+        _oidc_client.OidcClient,
+        "_http",
+        lambda self: httpx.Client(transport=httpx.MockTransport(fake_handler), timeout=5.0),
+    )
+
+    with TestClient(app_with_auth, follow_redirects=False) as client:
+        response = client.get("/auth/callback?code=c&state=state-malformed")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "IdP token endpoint returned an invalid response."
+    assert "set-cookie" not in response.headers
+
+
 def test_callback_rejects_unknown_state(app_with_auth: FastAPI) -> None:
     store = InMemorySessionStore()  # no PKCE state stored
     domain = _domain_with_auth()

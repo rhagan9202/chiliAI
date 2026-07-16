@@ -115,6 +115,15 @@ class RecordsService:
                     record_count=accepted,
                 )
             )
+        # Rows whose record_id already existed are silently dropped by the
+        # store's per-row dedup during persist() (dedup behavior itself is
+        # unchanged) — surface that so it isn't just "accepted came back
+        # lower" with no visible cause.
+        suppressed_existing = len(raw_records) - accepted
+        if suppressed_existing > 0:
+            ingestion_dedup_suppressed_total.labels(kind="record_row").inc(
+                suppressed_existing
+            )
         return RecordIngestReceipt(
             knowledge_base_id=knowledge_base_id,
             feed_name=feed.name,
@@ -122,6 +131,7 @@ class RecordsService:
             correlation_id=correlation_id,
             accepted_count=accepted,
             duplicate=False,
+            suppressed_existing_count=suppressed_existing,
             rejected_count=len(rejected),
             rejected=rejected,
         )

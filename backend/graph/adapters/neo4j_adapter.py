@@ -21,10 +21,13 @@ from graph.exceptions import (
 from graph.models import GraphDeleteByProvenance, GraphUpsertOptions, SubgraphResult
 from shared.provenance import SOURCE_DOCUMENT_ID_KEY
 from shared.types import Entity, Relationship
+from shared.utils import utc_now
 
 
 class Neo4jRecordProtocol(Protocol):
     def __getitem__(self, key: str) -> object: ...
+
+    def get(self, key: str, default: object | None = None) -> object | None: ...
 
 
 class Neo4jPropertyContainerProtocol(Protocol):
@@ -178,41 +181,24 @@ class Neo4jGraphRepository(GraphRepository):
         existing_rows = self._read_existing_entities(
             knowledge_base_id, [entity.id for entity in entities]
         )
-        payload: list[dict[str, object]] = []
+        if opts.expected_version is not None:
+            # Conflict pre-pass over the whole batch (against persisted state,
+            # not intra-batch fold state): a conflict anywhere writes nothing.
+            for entity in entities:
+                existing = existing_rows.get(entity.id)
+                if existing is not None and existing["version"] != opts.expected_version:
+                    raise GraphVersionConflictError(
+                        entity.id, opts.expected_version, cast(int, existing["version"])
+                    )
+        payload_by_id: dict[str, dict[str, object]] = {}
         for entity in entities:
-            existing = existing_rows.get(entity.id)
-            if existing is None:
-                payload.append(self._entity_row(entity, version=1))
-                continue
-            if (
-                opts.expected_version is not None
-                and existing["version"] != opts.expected_version
-            ):
-                raise GraphVersionConflictError(
-                    entity.id, opts.expected_version, cast(int, existing["version"])
-                )
-            new_properties_json = _dump_json_property(entity.properties)
-            new_metadata_json = _dump_json_property(entity.metadata)
-            if opts.merge_mode == "merge_properties":
-                merged_properties = {
-                    **json.loads(cast(str, existing["properties_json"])),
-                    **entity.properties,
-                }
-                merged_metadata = {
-                    **json.loads(cast(str, existing["metadata_json"])),
-                    **entity.metadata,
-                }
-                new_properties_json = _dump_json_property(merged_properties)
-                new_metadata_json = _dump_json_property(merged_metadata)
-            effective_change = (
-                new_properties_json != existing["properties_json"]
-                or entity.type != existing["type"]
+            payload_by_id[entity.id] = self._fold_entity_row(
+                entity,
+                persisted=existing_rows.get(entity.id),
+                prior_row=payload_by_id.get(entity.id),
+                merge_mode=opts.merge_mode,
             )
-            version = cast(int, existing["version"]) + (1 if effective_change else 0)
-            row = self._entity_row(entity, version=version)
-            row["properties_json"] = new_properties_json
-            row["metadata_json"] = new_metadata_json
-            payload.append(row)
+        payload = list(payload_by_id.values())
         query = f"""
         UNWIND $rows AS row
         MERGE (entity:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: row.entity_id}})
@@ -252,22 +238,100 @@ class Neo4jGraphRepository(GraphRepository):
             cast(str, record["entity_id"]): {
                 "type": record["type"],
                 "properties_json": record["properties_json"],
-                "metadata_json": record["metadata_json"],
+                "metadata_json": record.get("metadata_json") or "{}",
                 "version": record["version"],
             }
             for record in records
         }
 
-    def _entity_row(self, entity: Entity, *, version: int) -> dict[str, object]:
+    def _entity_row(
+        self,
+        entity: Entity,
+        *,
+        version: int,
+        properties_json: str | None = None,
+        metadata_json: str | None = None,
+    ) -> dict[str, object]:
         return {
             "entity_id": entity.id,
             "type": entity.type,
-            "properties_json": _dump_json_property(entity.properties),
-            "metadata_json": _dump_json_property(entity.metadata),
+            "properties_json": (
+                properties_json
+                if properties_json is not None
+                else _dump_json_property(entity.properties)
+            ),
+            "metadata_json": (
+                metadata_json
+                if metadata_json is not None
+                else _dump_json_property(entity.metadata)
+            ),
             "created_at": entity.created_at.isoformat(),
             "updated_at": entity.updated_at.isoformat() if entity.updated_at else None,
             "version": version,
         }
+
+    def _fold_entity_row(
+        self,
+        entity: Entity,
+        *,
+        persisted: dict[str, object] | None,
+        prior_row: dict[str, object] | None,
+        merge_mode: Literal["merge_properties", "replace_properties"],
+    ) -> dict[str, object]:
+        """Compute the write payload row for one entity occurrence.
+
+        `persisted` is the row read from Neo4j before this batch ran (constant
+        across all occurrences of this id within the batch). `prior_row` is
+        the row already computed for an earlier occurrence of the same id
+        *within this same batch* (BL-017 tail: intra-batch duplicate-id fold).
+        Property/metadata merging cascades through `prior_row` when present so
+        later occurrences merge onto earlier ones; version/effective-change
+        arithmetic always compares against `persisted` so folding duplicates
+        within one call still yields a single logical version transition.
+        """
+
+        if persisted is None and prior_row is None:
+            return self._entity_row(entity, version=1)
+
+        base_row = prior_row if prior_row is not None else persisted
+        assert base_row is not None  # narrows for type-checking; guaranteed by the guard above
+        base_properties_json = cast(str, base_row["properties_json"])
+        base_metadata_json = cast(str, base_row["metadata_json"])
+
+        new_properties_json = _dump_json_property(entity.properties)
+        new_metadata_json = _dump_json_property(entity.metadata)
+        if merge_mode == "merge_properties":
+            merged_properties = {
+                **json.loads(base_properties_json),
+                **entity.properties,
+            }
+            merged_metadata = {
+                **json.loads(base_metadata_json),
+                **entity.metadata,
+            }
+            new_properties_json = _dump_json_property(merged_properties)
+            new_metadata_json = _dump_json_property(merged_metadata)
+
+        if persisted is not None:
+            effective_change = (
+                new_properties_json != persisted["properties_json"]
+                or entity.type != persisted["type"]
+            )
+            version = cast(int, persisted["version"]) + (1 if effective_change else 0)
+        else:
+            version = 1
+
+        row = self._entity_row(
+            entity,
+            version=version,
+            properties_json=new_properties_json,
+            metadata_json=new_metadata_json,
+        )
+        if persisted is not None:
+            # UPDATE path: stamp updated_at even when the row is written
+            # unconditionally (Neo4j has no true no-op skip, unlike in-memory).
+            row["updated_at"] = (entity.updated_at or utc_now()).isoformat()
+        return row
 
     def upsert_relationships(
         self,
@@ -283,10 +347,11 @@ class Neo4jGraphRepository(GraphRepository):
             found = self._read_existing_entity_ids(knowledge_base_id, endpoint_ids)
             missing = [eid for eid in endpoint_ids if eid not in found]
             if missing:
+                missing_set = set(missing)
                 offending = [
                     r.id
                     for r in relationships
-                    if r.source_id in set(missing) or r.target_id in set(missing)
+                    if r.source_id in missing_set or r.target_id in missing_set
                 ]
                 raise GraphIntegrityError(
                     knowledge_base_id=knowledge_base_id,
@@ -296,38 +361,26 @@ class Neo4jGraphRepository(GraphRepository):
         existing_rows = self._read_existing_relationships(
             knowledge_base_id, [r.id for r in relationships]
         )
-        payload: list[dict[str, object]] = []
+        if opts.expected_version is not None:
+            # Conflict pre-pass over the whole batch (against persisted state,
+            # not intra-batch fold state): a conflict anywhere writes nothing.
+            for relationship in relationships:
+                existing = existing_rows.get(relationship.id)
+                if existing is not None and existing["version"] != opts.expected_version:
+                    raise GraphVersionConflictError(
+                        relationship.id,
+                        opts.expected_version,
+                        cast(int, existing["version"]),
+                    )
+        payload_by_id: dict[str, dict[str, object]] = {}
         for relationship in relationships:
-            existing = existing_rows.get(relationship.id)
-            if existing is None:
-                payload.append(self._relationship_row(relationship, version=1))
-                continue
-            if (
-                opts.expected_version is not None
-                and existing["version"] != opts.expected_version
-            ):
-                raise GraphVersionConflictError(
-                    relationship.id,
-                    opts.expected_version,
-                    cast(int, existing["version"]),
-                )
-            new_properties_json = _dump_json_property(relationship.properties)
-            if opts.merge_mode == "merge_properties":
-                new_properties_json = _dump_json_property(
-                    {
-                        **json.loads(cast(str, existing["properties_json"])),
-                        **relationship.properties,
-                    }
-                )
-            effective_change = (
-                new_properties_json != existing["properties_json"]
-                or relationship.type != existing["type"]
-                or relationship.weight != existing["weight"]
+            payload_by_id[relationship.id] = self._fold_relationship_row(
+                relationship,
+                persisted=existing_rows.get(relationship.id),
+                prior_row=payload_by_id.get(relationship.id),
+                merge_mode=opts.merge_mode,
             )
-            version = cast(int, existing["version"]) + (1 if effective_change else 0)
-            row = self._relationship_row(relationship, version=version)
-            row["properties_json"] = new_properties_json
-            payload.append(row)
+        payload = list(payload_by_id.values())
         endpoint_clause = (
             f"MATCH (source:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: row.source_id}})\n"
             f"        MATCH (target:{_ENTITY_LABEL} {{knowledge_base_id: $knowledge_base_id, entity_id: row.target_id}})"
@@ -345,6 +398,7 @@ class Neo4jGraphRepository(GraphRepository):
         ON CREATE SET relationship.created_at = row.created_at
         SET relationship.type = row.type,
             relationship.properties_json = row.properties_json,
+            relationship.metadata_json = row.metadata_json,
             relationship.updated_at = row.updated_at,
             relationship.version = row.version,
             relationship.weight = row.weight
@@ -383,6 +437,7 @@ class Neo4jGraphRepository(GraphRepository):
         RETURN relationship.relationship_id AS relationship_id,
                relationship.type AS type,
                relationship.properties_json AS properties_json,
+               relationship.metadata_json AS metadata_json,
                relationship.version AS version, relationship.weight AS weight
         """
         try:
@@ -397,6 +452,9 @@ class Neo4jGraphRepository(GraphRepository):
             cast(str, record["relationship_id"]): {
                 "type": record["type"],
                 "properties_json": record["properties_json"],
+                # Legacy rows (pre-metadata) return null / lack the key entirely
+                # in fake records — normalize to an empty JSON object.
+                "metadata_json": record.get("metadata_json") or "{}",
                 "version": record["version"],
                 "weight": record["weight"],
             }
@@ -404,14 +462,28 @@ class Neo4jGraphRepository(GraphRepository):
         }
 
     def _relationship_row(
-        self, relationship: Relationship, *, version: int
+        self,
+        relationship: Relationship,
+        *,
+        version: int,
+        properties_json: str | None = None,
+        metadata_json: str | None = None,
     ) -> dict[str, object]:
         return {
             "relationship_id": relationship.id,
             "type": relationship.type,
             "source_id": relationship.source_id,
             "target_id": relationship.target_id,
-            "properties_json": _dump_json_property(relationship.properties),
+            "properties_json": (
+                properties_json
+                if properties_json is not None
+                else _dump_json_property(relationship.properties)
+            ),
+            "metadata_json": (
+                metadata_json
+                if metadata_json is not None
+                else _dump_json_property(relationship.metadata)
+            ),
             "created_at": relationship.created_at.isoformat(),
             "updated_at": relationship.updated_at.isoformat()
             if relationship.updated_at
@@ -419,6 +491,67 @@ class Neo4jGraphRepository(GraphRepository):
             "version": version,
             "weight": relationship.weight,
         }
+
+    def _fold_relationship_row(
+        self,
+        relationship: Relationship,
+        *,
+        persisted: dict[str, object] | None,
+        prior_row: dict[str, object] | None,
+        merge_mode: Literal["merge_properties", "replace_properties"],
+    ) -> dict[str, object]:
+        """Compute the write payload row for one relationship occurrence.
+
+        Mirrors `_fold_entity_row`: `persisted` is the pre-batch Neo4j row,
+        `prior_row` is the row computed for an earlier occurrence of the same
+        id within this batch. Merging cascades through `prior_row`; the
+        version/effective-change arithmetic compares against `persisted` only,
+        and metadata changes alone never bump the version.
+        """
+
+        if persisted is None and prior_row is None:
+            return self._relationship_row(relationship, version=1)
+
+        base_row = prior_row if prior_row is not None else persisted
+        assert base_row is not None  # narrows for type-checking; guaranteed by the guard above
+        base_properties_json = cast(str, base_row["properties_json"])
+        base_metadata_json = cast(str, base_row["metadata_json"])
+
+        new_properties_json = _dump_json_property(relationship.properties)
+        new_metadata_json = _dump_json_property(relationship.metadata)
+        if merge_mode == "merge_properties":
+            merged_properties = {
+                **json.loads(base_properties_json),
+                **relationship.properties,
+            }
+            merged_metadata = {
+                **json.loads(base_metadata_json),
+                **relationship.metadata,
+            }
+            new_properties_json = _dump_json_property(merged_properties)
+            new_metadata_json = _dump_json_property(merged_metadata)
+
+        if persisted is not None:
+            effective_change = (
+                new_properties_json != persisted["properties_json"]
+                or relationship.type != persisted["type"]
+                or relationship.weight != persisted["weight"]
+            )
+            version = cast(int, persisted["version"]) + (1 if effective_change else 0)
+        else:
+            version = 1
+
+        row = self._relationship_row(
+            relationship,
+            version=version,
+            properties_json=new_properties_json,
+            metadata_json=new_metadata_json,
+        )
+        if persisted is not None:
+            # UPDATE path: stamp updated_at even when the row is written
+            # unconditionally (Neo4j has no true no-op skip, unlike in-memory).
+            row["updated_at"] = (relationship.updated_at or utc_now()).isoformat()
+        return row
 
     def get_entities(self, knowledge_base_id: str) -> list[Entity]:
         query = f"""
@@ -913,6 +1046,7 @@ class Neo4jGraphRepository(GraphRepository):
             source_id=source_id,
             target_id=target_id,
             properties=_load_json_mapping(container, "properties"),
+            metadata=_load_json_mapping(container, "metadata"),
             created_at=cast(datetime, container["created_at"]),
             updated_at=cast(datetime | None, container.get("updated_at")),
             version=cast(int, container.get("version", 1)),

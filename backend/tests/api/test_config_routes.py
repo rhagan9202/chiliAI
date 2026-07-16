@@ -199,6 +199,156 @@ class TestValidate:
 
 
 # ---------------------------------------------------------------------------
+# POST /config/validate?with_overlays
+# ---------------------------------------------------------------------------
+
+
+class TestValidateOverlays:
+    def test_validate_with_overlays_applies_env_overlay(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # Zero-mutation baseline (mirrors TestValidate.test_validate_never_mutates_anything).
+        generation_before = dependencies.get_config_generation()
+        assert read_active_pack() is None
+
+        # Overlay flips a knob (display_name) that keeps the config valid but
+        # is observable in the response — proving the overlay was applied.
+        good_overlay = tmp_path / "good.yaml"
+        good_overlay.write_text(
+            "overlay_for: medicare_fraud\n"
+            "domain:\n"
+            "  display_name: Medicare Fraud Detection (Overlay)\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("CHILI_CONFIG_OVERLAY_PATH", str(good_overlay))
+
+        resp = client.post(
+            "/config/validate",
+            json={"pack": "medicare_fraud"},
+            params={"with_overlays": "true"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is True
+        assert data["pack_name"] == "medicare_fraud"
+        assert data["display_name"] == "Medicare Fraud Detection (Overlay)"
+        assert data["errors"] == []
+
+        # An overlay with an unknown top-level key raises OverlayError, which
+        # must be wrapped into a valid=False response, not a raised exception.
+        bad_overlay = tmp_path / "bad.yaml"
+        bad_overlay.write_text(
+            "overlay_for: medicare_fraud\nnot_a_real_section: true\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("CHILI_CONFIG_OVERLAY_PATH", str(bad_overlay))
+
+        resp2 = client.post(
+            "/config/validate",
+            json={"pack": "medicare_fraud"},
+            params={"with_overlays": "true"},
+        )
+        assert resp2.status_code == 200
+        data2 = resp2.json()
+        assert data2["valid"] is False
+        assert data2["pack_name"] is None
+        assert len(data2["errors"]) == 1
+        assert data2["errors"][0]["error_type"] == "overlay_error"
+        assert "unknown top-level keys" in data2["errors"][0]["message"]
+
+        # Neither call mutated the pointer, generation, or active config.
+        assert read_active_pack() is None
+        assert dependencies.get_config_generation() == generation_before
+
+    def test_validate_with_overlays_malformed_overlay_file_returns_valid_false(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A malformed overlay file must degrade gracefully like a malformed
+        base pack file — never an unhandled 500 (apply_overlays calls
+        parse() on every overlay file with no internal try/except, and the
+        router's own _parse_pack_file raises _PackParseError on bad YAML)."""
+        generation_before = dependencies.get_config_generation()
+        assert read_active_pack() is None
+
+        malformed_overlay = tmp_path / "malformed.yaml"
+        malformed_overlay.write_text("{{ not: yaml: [", encoding="utf-8")
+        monkeypatch.setenv("CHILI_CONFIG_OVERLAY_PATH", str(malformed_overlay))
+
+        resp = client.post(
+            "/config/validate",
+            json={"pack": "medicare_fraud"},
+            params={"with_overlays": "true"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is False
+        assert data["pack_name"] is None
+        assert len(data["errors"]) == 1
+        assert data["errors"][0]["error_type"] == "parse_error"
+        assert str(malformed_overlay) in data["errors"][0]["message"]
+
+        assert read_active_pack() is None
+        assert dependencies.get_config_generation() == generation_before
+
+    def test_validate_with_overlays_skips_overlay_for_different_pack(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """overlay_for not matching the requested pack's stem is skipped
+        (pack-scoped guard, ADR 0001 amendment) — the un-overlaid pack still
+        validates on its own terms."""
+        mismatched_overlay = tmp_path / "mismatched.yaml"
+        mismatched_overlay.write_text(
+            "overlay_for: some_other_pack\n"
+            "domain:\n"
+            "  display_name: Should Not Apply\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("CHILI_CONFIG_OVERLAY_PATH", str(mismatched_overlay))
+
+        resp = client.post(
+            "/config/validate",
+            json={"pack": "medicare_fraud"},
+            params={"with_overlays": "true"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is True
+        assert data["pack_name"] == "medicare_fraud"
+        assert data["display_name"] == "Medicare Fraud Detection"
+        assert data["errors"] == []
+
+    def test_validate_without_overlays_ignores_env(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # Same env var set as the "bad" overlay above — if it were applied,
+        # this would come back valid=False with an overlay_error. Omitting
+        # with_overlays must ignore it entirely (pack-only verdict).
+        bad_overlay = tmp_path / "bad.yaml"
+        bad_overlay.write_text(
+            "overlay_for: medicare_fraud\nnot_a_real_section: true\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("CHILI_CONFIG_OVERLAY_PATH", str(bad_overlay))
+
+        resp = client.post("/config/validate", json={"pack": "medicare_fraud"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is True
+        assert data["pack_name"] == "medicare_fraud"
+        assert data["errors"] == []
+
+    def test_validate_with_overlays_rejects_inline_content(
+        self, client: TestClient
+    ) -> None:
+        resp = client.post(
+            "/config/validate",
+            json={"content": {"domain": {"name": "x"}}},
+            params={"with_overlays": "true"},
+        )
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
 # POST /config/apply and /config/switch
 # ---------------------------------------------------------------------------
 
@@ -266,6 +416,32 @@ class TestApplyAndSwitch:
         assert resp.status_code == 200
         assert resp.json()["pack_name"] == "food_supply_chain"
         assert resp.json()["reason"] == "apply"
+
+    def test_apply_reconfigures_jwks_cache_ttl_from_new_pack(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Hot-swap wiring (BL-022 fix-later): the JWKS cache TTL follows the
+        newly-activated pack's ``auth.jwks_cache_seconds``, not just the
+        value set at process startup."""
+        from api.middleware.auth import configure_jwks_cache, get_jwks_cache
+
+        monkeypatch.setenv(PACK_DIRS_ENV_VAR, str(tmp_path))
+        pack_dict = yaml.safe_load(MEDICARE_YAML.read_text())
+        pack_dict["auth"] = {"enabled": False, "jwks_cache_seconds": 222}
+        custom_pack = tmp_path / "custom_ttl.yaml"
+        custom_pack.write_text(yaml.safe_dump(pack_dict))
+
+        configure_jwks_cache(None)
+        assert get_jwks_cache().ttl_seconds == 3600
+        try:
+            resp = client.post("/config/apply", json={"pack": str(custom_pack)})
+            assert resp.status_code == 200
+            assert get_jwks_cache().ttl_seconds == 222
+        finally:
+            configure_jwks_cache(None)
 
     def test_apply_without_active_pack_is_rejected(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch

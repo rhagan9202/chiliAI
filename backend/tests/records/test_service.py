@@ -268,3 +268,78 @@ def test_register_records_duplicate_increments_dedup_counter() -> None:
     assert second.duplicate is True
     after = REGISTRY.get_sample_value("ingestion_dedup_suppressed_total", labels) or 0.0
     assert after == baseline + 1.0
+
+
+def test_register_records_changed_row_resubmission_suppressed_not_duplicate() -> None:
+    """A re-pushed row with the same record_id but CHANGED content is silently
+    dropped by the per-row dedup in the store — that's existing, unchanged
+    behavior. This test locks down that it now surfaces: accepted_count == 0,
+    suppressed_existing_count == 1, and the batch is NOT flagged `duplicate`
+    (the submission_hash differs because the content changed, so the
+    batch-level no-op path is not taken; the row is just silently absorbed by
+    persist())."""
+    store = InMemoryRawRecordStore()
+    bus = InMemoryEventBus()
+    service = create_records_service(store, event_bus=bus, records_config=_records_config())
+
+    first = service.register_records(
+        "kb-1",
+        RecordSubmission(
+            feed_name="claims_feed",
+            rows=[{"claim_id": "c1", "amount": "10"}],
+            source_type="api_push",
+        ),
+    )
+    labels = {"kind": "record_row"}
+    baseline = REGISTRY.get_sample_value("ingestion_dedup_suppressed_total", labels) or 0.0
+
+    second = service.register_records(
+        "kb-1",
+        RecordSubmission(
+            feed_name="claims_feed",
+            rows=[{"claim_id": "c1", "amount": "999"}],  # same record_id, changed content
+            source_type="api_push",
+        ),
+    )
+
+    assert first.accepted_count == 1
+    assert second.accepted_count == 0
+    assert second.suppressed_existing_count == 1
+    assert second.duplicate is False
+    after = REGISTRY.get_sample_value("ingestion_dedup_suppressed_total", labels) or 0.0
+    assert after == baseline + 1.0
+
+
+def test_register_records_mixed_batch_accepts_fresh_and_suppresses_changed_row() -> None:
+    """A batch with one brand-new row and one changed re-push of an existing
+    record_id accepts the new row and suppresses the stale one, both counted
+    separately on the receipt."""
+    store = InMemoryRawRecordStore()
+    bus = InMemoryEventBus()
+    service = create_records_service(store, event_bus=bus, records_config=_records_config())
+
+    first = service.register_records(
+        "kb-1",
+        RecordSubmission(
+            feed_name="claims_feed",
+            rows=[{"claim_id": "c1", "amount": "10"}],
+            source_type="api_push",
+        ),
+    )
+    assert first.accepted_count == 1
+
+    second = service.register_records(
+        "kb-1",
+        RecordSubmission(
+            feed_name="claims_feed",
+            rows=[
+                {"claim_id": "c1", "amount": "999"},  # changed content, same id -> suppressed
+                {"claim_id": "c2", "amount": "20"},  # fresh row -> accepted
+            ],
+            source_type="api_push",
+        ),
+    )
+
+    assert second.accepted_count == 1
+    assert second.suppressed_existing_count == 1
+    assert second.duplicate is False

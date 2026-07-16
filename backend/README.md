@@ -143,19 +143,20 @@ make seed-housing SEED_ARGS="--scorecards"                 # ...and generate sco
 > `OPENAI_API_KEY` (paid API), `SENTENCE_TRANSFORMERS_SMOKE_MODEL` (model
 > download), and the Ollama e2e (`OLLAMA_MODEL` + a reachable Ollama server).
 >
-> ⚠️ **Host `pytest --cov` WIPES the dev-stack Postgres data.** Because
-> `DATABASE_URL` defaults to the dev stack's `…:5432/chili`,
+> ⚠️ **Postgres-touching tests default to `chili_test`, never the dev DB.**
 > `tests/database/test_migrations.py` runs `alembic downgrade base` →
-> `upgrade head` against it — dropping and recreating **every** app table
-> (`raw_records`, `observations`, `scorecard_runs`, metric/alert history, …)
-> empty. KB metadata survives (it lives in the object store), which is worse:
-> the KB shells remain while their data is gone — this has destroyed seeded
-> demo state (e.g. `make seed-housing`) in practice. When the stack holds
-> demo state you care about, point the suite at a scratch database in the
-> same instance first, e.g.
-> `DATABASE_URL=postgresql://chili:chili@localhost:5432/chili_test pytest --cov`
-> (create it once: `CREATE DATABASE chili_test;` — migration 0001 installs
-> the TimescaleDB extension itself). Otherwise plan to reseed afterwards.
+> `upgrade head` against `DATABASE_URL` — dropping and recreating **every**
+> app table empty. Historically the conftest defaulted `DATABASE_URL` to the
+> dev stack's `…:5432/chili`, which destroyed seeded demo state twice
+> (2026-05, 2026-07-16 — KB shells survive in the object store while their
+> rows vanish). Since 2026-07-16 `tests/conftest.py` defaults to
+> `…:5432/chili_test` instead; the dev compose stack creates that DB on
+> fresh volumes (`infra/postgres/init-test-db.sql`). On a pre-existing
+> volume create it once:
+> `docker exec chiliai-postgres-1 psql -U chili -c "CREATE DATABASE chili_test"`
+> (migration 0001 installs the TimescaleDB extension itself). An explicitly
+> exported `DATABASE_URL` still wins — never export the dev `chili` DSN when
+> running the suite.
 
 ## Quality Requirements
 
@@ -239,11 +240,13 @@ CHILI_CONFIG_OVERLAY_PATH=config/overlays/medicare_fraud_dev.yaml \
 
 Mappings deep-merge (overlay keys win recursively); lists and scalars
 replace wholesale; an explicit `null` sets a field to `None`. Every overlay
-declares `overlay_for: <domain.name>` — a mismatch against the resolved
-base's `domain.name` skips the overlay with a warning (so the env var
-survives a hot-swap to a different pack) rather than failing the boot; a
-missing `overlay_for` or an unknown top-level key is a hard error. Full
-rationale, the associativity boundary, and the list-replace trade-off:
+declares `overlay_for: <pack filename stem>` — a mismatch against the
+resolved base pack's filename stem skips the overlay with a warning (so the
+env var survives a hot-swap to a different pack) rather than failing the
+boot; a missing `overlay_for` or an unknown top-level key is a hard error.
+The guard is pack-scoped (not `domain.name`-scoped) per the 2026-07-15 ADR
+0001 amendment — packs sharing a `domain.name` no longer share an overlay.
+Full rationale, the associativity boundary, and the list-replace trade-off:
 [ADR 0001](../docs/architecture/decisions/0001-config-overlay-merge-semantics.md).
 Directory layout and the loader/`overlay.py` contract:
 [`config/README.md`](config/README.md).
@@ -259,7 +262,7 @@ Directory layout and the loader/`overlay.py` contract:
 - KB and document metadata are owned by the FastAPI gateway behind `KnowledgeBaseRepository`.
 - Graph entities, relationships, and graph metrics remain owned by `graph/` behind `GraphServiceProtocol` and `GraphRepository` adapters.
 - `GET /knowledgebases`, `GET /knowledgebases/{id}`, `GET /knowledgebases/{id}/documents`, and `GET /events/stream` use the same live projection helpers so visible status/counts stay aligned.
-- `DELETE /knowledgebases/{id}` performs a per-KB cascade across every durable store (graph, vector store, raw records, derived signals, risk history, observations, alert history, entity metrics, conversations, cases, policy items, evidence packs, scorecard runs, the document-status projection, and the object-store prefix — see `knowledgebases.cleanup.kb_deletion_steps` for the authoritative, ordered step list), then KB metadata. If any step fails the endpoint returns 207 with `pending_cleanup=true`; the KB record is flagged and a `KnowledgeBaseDeletedEvent(cleanup_pending=True)` is published. The worker coordinator picks up that event and retries the full cascade. A subsequent DELETE for a `pending_cleanup` KB also retries the idempotent cascade instead of permanently rejecting the stale metadata row. All cleanup calls are idempotent.
+- `DELETE /knowledgebases/{id}` performs a per-KB cascade across every durable store (graph, vector store, raw records, derived signals, risk history, observations, alert history, the API's alert read projection, entity metrics, conversations, cases, policy items, evidence packs, scorecard runs, the document-status projection, and the object-store prefix — see `knowledgebases.cleanup.kb_deletion_steps` for the authoritative, ordered step list), then KB metadata. The alert-projection step runs only in the API's bundle (the store is API-owned; the worker's retry bundle skips it rather than import across the module boundary). If any step fails the endpoint returns 207 with `pending_cleanup=true`; the KB record is flagged and a `KnowledgeBaseDeletedEvent(cleanup_pending=True)` is published. The worker coordinator picks up that event and retries the full cascade. A subsequent DELETE for a `pending_cleanup` KB also retries the idempotent cascade instead of permanently rejecting the stale metadata row. All cleanup calls are idempotent.
 - `DELETE /knowledgebases/{id}/documents/{document_id}` deletes one document's object-store artifacts, its `KnowledgeBaseRepository` record, and its row (if any) in the durable document-status projection (`SourceDocumentStatusStore.delete_by_document`) — this keeps a status-filtered `GET .../documents?status=...` list's `total` from ever counting a document that no longer exists. `POST /knowledgebases/{id}/documents` performs the same status-row purge for the superseded document when a re-upload replaces it (`_cleanup_replaced_document` in `api/routers/knowledgebases.py`), so the replacement path can't reintroduce the same orphaned-row mismatch.
 - The `object_store` KB repository is intended for local/dev single-writer durability. Add a dedicated production metadata adapter, optional dependency, and migration story before treating it as a high-concurrency production database.
 

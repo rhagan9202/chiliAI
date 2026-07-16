@@ -616,6 +616,36 @@ def test_upsert_entities_conflict_in_batch_writes_nothing() -> None:
     assert entities["e-2"].version == 1
 
 
+def test_upsert_entities_mixed_match_conflict_batch_writes_nothing() -> None:
+    """One entity's version matches expected_version, the other conflicts —
+    the conflict pre-pass is all-or-nothing, so the whole batch writes nothing."""
+    repo = InMemoryGraphRepository()
+    repo.upsert_entities("kb-1", [_entity("e-1", properties={"a": 1})])  # -> version 1
+    repo.upsert_entities("kb-1", [_entity("e-2", properties={"b": 1})])
+    repo.upsert_entities("kb-1", [_entity("e-2", properties={"b": 2})])
+    repo.upsert_entities("kb-1", [_entity("e-2", properties={"b": 3})])  # -> version 3
+
+    before = {e.id: e for e in repo.get_entities("kb-1")}
+    assert before["e-1"].version == 1
+    assert before["e-2"].version == 3
+
+    with pytest.raises(GraphVersionConflictError):
+        repo.upsert_entities(
+            "kb-1",
+            [
+                _entity("e-1", properties={"a": 99}),
+                _entity("e-2", properties={"b": 99}),
+            ],
+            GraphUpsertOptions(expected_version=1),
+        )
+
+    after = {e.id: e for e in repo.get_entities("kb-1")}
+    assert after["e-1"].properties == {"a": 1}
+    assert after["e-1"].version == 1
+    assert after["e-2"].properties == {"b": 3}
+    assert after["e-2"].version == 3
+
+
 def test_upsert_entities_metadata_only_change_writes_without_version_bump() -> None:
     """Upsert with only metadata change should update metadata but not bump version."""
     repo = InMemoryGraphRepository()

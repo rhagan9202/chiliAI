@@ -13,6 +13,7 @@ from api.dependencies import (
     load_chili_environment,
     reset_domain_config_caches,
 )
+from api.middleware.auth import configure_jwks_cache
 from api.middleware.metrics import register_metrics
 from api.middleware.policy_registry import assert_complete
 from api.routers.alerts import router as alerts_router
@@ -76,6 +77,7 @@ def create_app() -> FastAPI:
     pointer = read_active_pack()
     config = load_config(pointer.config_path) if pointer is not None else load_config()
     enforce_production_guardrail(config.auth)
+    configure_jwks_cache(config.auth)
 
     app = FastAPI(
         title="chiliAI API",

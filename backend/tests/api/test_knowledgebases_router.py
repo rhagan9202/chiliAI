@@ -15,7 +15,12 @@ from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from knowledgebases.adapters.object_store import ObjectStoreKnowledgeBaseRepository
 from knowledgebases.models import DocumentRecord
 from api.app import create_app
+from api._alert_store import (
+    AlertProjectionRecord,
+    InMemoryAlertProjectionRepository,
+)
 from api.dependencies import (
+    get_alert_repository,
     get_document_status_store,
     get_event_bus,
     get_domain_config,
@@ -48,7 +53,7 @@ from ingestion.parsers.remote import HttpxRemoteDocumentFetcher
 from ingestion.service import IngestionService
 from ingestion.service_models import DocumentReceipt, DocumentSubmission
 from graph.models import GraphDeleteByProvenance, GraphMetrics
-from shared.types import KnowledgeBase
+from shared.types import Alert, KnowledgeBase
 from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore
 from api.routers.knowledgebases import read_upload_file_with_limit
@@ -505,6 +510,55 @@ def test_delete_knowledge_base_removes_artifacts_and_publishes_event(
     # Subsequent GET / DELETE should both be 404.
     assert client.get(f"/knowledgebases/{kb_id}").status_code == 404
     assert client.delete(f"/knowledgebases/{kb_id}").status_code == 404
+
+
+def test_delete_knowledge_base_prunes_alert_projections(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    """DELETE /knowledgebases/{id} removes the KB's alert read-model records so
+    the alert feed cannot show orphaned alerts with dead investigate links."""
+    client, _, _, _ = harness
+
+    alert_repo = InMemoryAlertProjectionRepository()
+    app = cast(FastAPI, client.app)
+    app.dependency_overrides[get_alert_repository] = lambda: alert_repo
+
+    created = client.post(
+        "/knowledgebases", json={"name": "AlertOwner", "description": ""}
+    )
+    kb_id = created.json()["id"]
+
+    alert = Alert(
+        id="alert-doomed",
+        entity_type="provider",
+        entity_id="provider-1",
+        severity="high",
+        title="Outlier billing",
+        reasoning="Above peers.",
+        evidence_pack_id="evidence-1",
+        created_at=utc_now(),
+    )
+    alert_repo.upsert(
+        AlertProjectionRecord(alert=alert, knowledge_base_id=kb_id)
+    )
+    alert_repo.upsert(
+        AlertProjectionRecord(
+            alert=alert.model_copy(update={"id": "alert-survivor"}),
+            knowledge_base_id="other-kb",
+        )
+    )
+
+    response = client.delete(f"/knowledgebases/{kb_id}")
+
+    assert response.status_code == 204
+    records, total = alert_repo.list(limit=10, offset=0)
+    assert total == 1
+    assert [record.alert.id for record in records] == ["alert-survivor"]
 
 
 def test_delete_knowledge_base_retries_pending_cleanup_kb(

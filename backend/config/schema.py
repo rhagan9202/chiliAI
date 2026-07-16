@@ -679,7 +679,7 @@ class ScorecardTemplateConfig(BaseModel):
 class ScorecardsConfig(BaseModel):
     """Collection of configured scorecard templates for the domain."""
 
-    templates: list[ScorecardTemplateConfig] = Field(default_factory=list)
+    templates: list[ScorecardTemplateConfig] = Field(default_factory=lambda: [])
 
     @model_validator(mode="after")
     def _validate_template_ids(self) -> ScorecardsConfig:

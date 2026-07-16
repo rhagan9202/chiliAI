@@ -58,7 +58,8 @@ ingestion_dedup_suppressed_total: Counter = Counter(
     "ingestion_dedup_suppressed_total",
     "Ingestion submissions suppressed by idempotent deduplication "
     "(kind=document: re-uploaded source document; kind=record_batch: "
-    "identical structured-records batch).",
+    "identical structured-records batch; kind=record_row: individual row(s) "
+    "within an accepted batch whose record_id already existed in storage).",
     ["kind"],
 )
 

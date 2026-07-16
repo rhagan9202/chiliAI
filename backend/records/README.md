@@ -14,8 +14,10 @@ the `observations` table.
   digest over feed name + sorted per-row content hashes).
 - `service_models.py` — `RecordSubmission`, `RecordIngestReceipt` (API
   boundary). The receipt carries `accepted_count`, `duplicate` /
-  `duplicate_count` (submission-level dedup), and `rejected_count` / `rejected`
-  (per-row format rejections).
+  `duplicate_count` (submission-level dedup), `suppressed_existing_count`
+  (row-level dedup — rows whose `record_id` already existed and were
+  silently dropped by `RawRecordStore.persist()`), and `rejected_count` /
+  `rejected` (per-row format rejections).
 - `validation.py` — `coerce_row` and two validators: `validate_rows_partition`
   splits a batch into coerced-valid rows and `RejectedRow`s **without raising**
   (used by the service so good rows still ingest); `validate_rows` retains the
@@ -82,6 +84,17 @@ re-run the handler safely.
   validation no longer abort the whole batch. Valid rows ingest; rejected rows
   are reported in the receipt as `rejected_count` / `rejected` (`RejectedRow`
   with `index` + `reason`).
+- **Per-row existing-id suppression** — `RawRecordStore.persist()` dedupes by
+  `(knowledge_base_id, record_type, record_id)`: a row whose `record_id`
+  already exists in storage is dropped even if its content changed (this
+  behavior is unchanged). `register_records` now surfaces that instead of
+  letting it show up only as `accepted_count` coming back lower than the
+  batch size: `suppressed_existing = len(raw_records) - accepted` is set on
+  the receipt as `suppressed_existing_count`, and
+  `ingestion_dedup_suppressed_total.labels(kind="record_row")` (see
+  `shared/metrics.py`) is incremented by that amount whenever it is > 0. This
+  is independent of `duplicate`/`duplicate_count`, which flag a whole batch
+  that is an identical resubmission (submission-level, no-op path).
 - **Format gate** — each `RecordFeedConfig` declares
   `accepted_formats` (default `["csv", "jsonl"]`). The file-upload endpoint
   rejects an upload whose format is not in the resolved feed's

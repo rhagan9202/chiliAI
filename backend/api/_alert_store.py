@@ -82,6 +82,8 @@ class AlertProjectionRepository(Protocol):
 
     def count_by_statuses(self, statuses: set[str]) -> int: ...
 
+    def remove_by_knowledge_base(self, knowledge_base_id: str) -> int: ...
+
 
 class InMemoryAlertProjectionRepository:
     """Process-local alert read projection repository."""
@@ -131,6 +133,20 @@ class InMemoryAlertProjectionRepository:
         return sum(
             1 for record in self._alerts.values() if record.alert.status in statuses
         )
+
+    def remove_by_knowledge_base(self, knowledge_base_id: str) -> int:
+        doomed = [
+            alert_id
+            for alert_id, record in self._alerts.items()
+            if record.knowledge_base_id == knowledge_base_id
+        ]
+        for alert_id in doomed:
+            del self._alerts[alert_id]
+        if doomed:
+            self._alert_order = [
+                alert_id for alert_id in self._alert_order if alert_id in self._alerts
+            ]
+        return len(doomed)
 
     def _sorted_alert_ids(self) -> list[str]:
         return sorted(
@@ -207,6 +223,23 @@ class ObjectStoreAlertProjectionRepository:
         return sum(
             1 for record in snapshot.alerts.values() if record.alert.status in statuses
         )
+
+    def remove_by_knowledge_base(self, knowledge_base_id: str) -> int:
+        snapshot = self._load_snapshot()
+        kept = {
+            alert_id: record
+            for alert_id, record in snapshot.alerts.items()
+            if record.knowledge_base_id != knowledge_base_id
+        }
+        removed = len(snapshot.alerts) - len(kept)
+        if removed == 0:
+            return 0
+        snapshot.alerts = kept
+        snapshot.alert_order = [
+            alert_id for alert_id in snapshot.alert_order if alert_id in kept
+        ]
+        self._save_snapshot(snapshot)
+        return removed
 
     def _load_snapshot(self) -> _AlertProjectionSnapshot:
         if not self._object_store.exists(self._storage_key):

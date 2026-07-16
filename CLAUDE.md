@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - When planning a change, search up the directory for the nearest README.md files and applicable instruction files (CLAUDE.md, `.github/copilot-instructions.md`, `.github/instructions/*.md`) to understand the current state and relevant constraints.
 
 ### Tooling gotchas (cost real time; will recur)
-- **Host `pytest --cov` WIPES the dev-stack Postgres data**: `DATABASE_URL` defaults to the dev stack's `…:5432/chili`, and `tests/database/test_migrations.py` runs `alembic downgrade base` → `upgrade head` against it, emptying every app table while KB shells survive in the object store. When the stack holds seeded/demo state, run `DATABASE_URL=postgresql://chili:chili@localhost:5432/chili_test pytest --cov` (details: `backend/README.md` § Development Commands).
+- **Never point `DATABASE_URL` at the dev `chili` DB when running tests**: `tests/database/test_migrations.py` runs `alembic downgrade base` → `upgrade head` against it, emptying every app table while KB shells survive in the object store. Since 2026-07-16 `tests/conftest.py` defaults to `…:5432/chili_test` (created on fresh volumes by `infra/postgres/init-test-db.sql`; on older volumes: `docker exec chiliai-postgres-1 psql -U chili -c "CREATE DATABASE chili_test"`), but an explicit env export still wins — this applies to `--cov` runs AND the `-m integration` subset (details: `backend/README.md` § Development Commands).
 - `ruff`'s cache dir is not writable in the sandbox — run `backend/.venv/bin/ruff check --no-cache .`.
 - Bare `pyright` (no args) is the real gate — its `tool.pyright.include` covers many `tests/**`, so test code must be strict-clean too. Never import private `_helpers` into an included test dir (triggers `reportPrivateUsage`); test through the public surface (promote a helper to public if needed). Per-file `pyright <file>` can miss include-scoped test errors.
 - Playwright `page.route` patterns must be `/api/`-anchored — an unanchored `/cases`-style pattern also intercepts the SPA page navigation `localhost:5173/cases` and renders JSON as the page body.
@@ -49,7 +49,7 @@ make down         # stop dev stack
 make clean        # stop + remove volumes
 make api-shell    # shell into the API container
 make migrate      # alembic upgrade head inside the API container
-make test         # run backend pytest --cov inside the API container
+make test         # run backend pytest --cov via the host venv (against chili_test, never the dev DB)
 make test-e2e     # Playwright e2e against a fresh full dev stack
 make seed-housing # seed the Air Force housing demo KB via the running API (housing pack required)
 make prod         # production stack (built images, nginx, no hot reload)

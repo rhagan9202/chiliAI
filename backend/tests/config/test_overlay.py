@@ -4,15 +4,23 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Literal, cast
 
 from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import JsonValue
 import pytest
 import yaml
 
 from config.overlay import OverlayError, apply_overlays, merge_config_layers
 from config.schema import DomainConfig
+
+
+def _nested(value: JsonValue, key: str) -> JsonValue:
+    """Index one level into a ``JsonValue`` known (by test setup) to be a mapping."""
+    assert isinstance(value, dict)
+    return value[key]
+
 
 # Nested config-shaped dicts: string keys; scalar / list / nested-dict values.
 _scalars = st.one_of(st.none(), st.booleans(), st.integers(), st.text(max_size=8))
@@ -29,24 +37,26 @@ def test_merge_overlay_scalar_wins() -> None:
 
 
 def test_merge_recurses_into_nested_mappings() -> None:
-    base = {
+    base: dict[str, JsonValue] = {
         "ui": {
             "default_entity_type": "provider",
             "display_fields": {"claim": {"title": "claim_id"}},
         }
     }
-    overlay = {"ui": {"display_fields": {"facility": {"title": "name"}}}}
+    overlay: dict[str, JsonValue] = {
+        "ui": {"display_fields": {"facility": {"title": "name"}}}
+    }
     merged = merge_config_layers(base, overlay)
-    assert merged["ui"]["default_entity_type"] == "provider"
-    assert merged["ui"]["display_fields"] == {
+    assert _nested(merged["ui"], "default_entity_type") == "provider"
+    assert _nested(merged["ui"], "display_fields") == {
         "claim": {"title": "claim_id"},
         "facility": {"title": "name"},
     }
 
 
 def test_merge_replaces_lists_wholesale() -> None:
-    base = {"policy_rules": [{"id": "a"}, {"id": "b"}]}
-    overlay = {"policy_rules": [{"id": "c"}]}
+    base: dict[str, JsonValue] = {"policy_rules": [{"id": "a"}, {"id": "b"}]}
+    overlay: dict[str, JsonValue] = {"policy_rules": [{"id": "c"}]}
     assert merge_config_layers(base, overlay)["policy_rules"] == [{"id": "c"}]
 
 
@@ -63,22 +73,25 @@ def test_merge_type_change_replaces_wholesale() -> None:
 
 
 def test_merge_does_not_mutate_inputs() -> None:
-    base = {"a": {"x": 1}}
-    overlay = {"a": {"y": 2}}
+    base: dict[str, JsonValue] = {"a": {"x": 1}}
+    overlay: dict[str, JsonValue] = {"a": {"y": 2}}
     merge_config_layers(base, overlay)
     assert base == {"a": {"x": 1}}
     assert overlay == {"a": {"y": 2}}
 
 
 @given(base=_configs)
-def test_empty_overlay_is_identity(base: dict[str, Any]) -> None:
+def test_empty_overlay_is_identity(base: dict[str, JsonValue]) -> None:
     assert merge_config_layers(base, {}) == base
+
+
+type _Skeleton = Literal["leaf"] | dict[str, _Skeleton]
 
 
 @st.composite
 def _type_stable_stack(
     draw: st.DrawFn,
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, JsonValue], dict[str, JsonValue], dict[str, JsonValue]]:
     """Generate (base, A, B) that conform to one shared random shape.
 
     A "shape" is a skeleton nested dict where every path is fixed, up front,
@@ -91,33 +104,42 @@ def _type_stable_stack(
     2026-07-15-bl044-config-overlay-design.md).
     """
 
-    def shape(depth: int) -> Any:
+    def shape(depth: int) -> _Skeleton:
         if depth == 0 or draw(st.booleans()):
             return "leaf"
-        return {
-            draw(st.text(max_size=4)): shape(depth - 1)
-            for _ in range(draw(st.integers(0, 3)))
-        }
+        return cast(
+            dict[str, _Skeleton],
+            {
+                draw(st.text(max_size=4)): shape(depth - 1)
+                for _ in range(draw(st.integers(0, 3)))
+            },
+        )
 
     skeleton = shape(3)
     if skeleton == "leaf":
         skeleton = {}
 
-    def sample(node: Any) -> Any:
+    def sample(node: _Skeleton) -> JsonValue:
         if node == "leaf":
-            return draw(st.one_of(_scalars, st.lists(_scalars, max_size=3)))
+            return cast(
+                JsonValue, draw(st.one_of(_scalars, st.lists(_scalars, max_size=3)))
+            )
         return {
             key: sample(child)
             for key, child in node.items()
             if draw(st.booleans())  # each layer may omit keys
         }
 
-    return sample(skeleton), sample(skeleton), sample(skeleton)
+    return (
+        cast(dict[str, JsonValue], sample(skeleton)),
+        cast(dict[str, JsonValue], sample(skeleton)),
+        cast(dict[str, JsonValue], sample(skeleton)),
+    )
 
 
 @given(stack=_type_stable_stack())
 def test_merge_is_associative_on_type_stable_stacks(
-    stack: tuple[dict[str, Any], dict[str, Any], dict[str, Any]],
+    stack: tuple[dict[str, JsonValue], dict[str, JsonValue], dict[str, JsonValue]],
 ) -> None:
     base, a, b = stack
     assert merge_config_layers(merge_config_layers(base, a), b) == merge_config_layers(
@@ -129,9 +151,9 @@ def test_merge_type_flip_is_left_to_right_not_associative() -> None:
     """Type-changing layers are applied left-to-right (ADR 0001 boundary):
     grouping differs when a middle layer collapses a dict — this pins the
     documented application-order semantics."""
-    base = {"k": {"z": 1}}
-    a = {"k": 5}
-    b = {"k": {"w": 2}}
+    base: dict[str, JsonValue] = {"k": {"z": 1}}
+    a: dict[str, JsonValue] = {"k": 5}
+    b: dict[str, JsonValue] = {"k": {"w": 2}}
     assert merge_config_layers(merge_config_layers(base, a), b) == {"k": {"w": 2}}
     assert merge_config_layers(base, merge_config_layers(a, b)) == {
         "k": {"z": 1, "w": 2}
@@ -140,7 +162,7 @@ def test_merge_type_flip_is_left_to_right_not_associative() -> None:
 
 @given(base=_configs, overlay=_configs)
 def test_overlay_lists_and_scalars_always_win(
-    base: dict[str, Any], overlay: dict[str, Any]
+    base: dict[str, JsonValue], overlay: dict[str, JsonValue]
 ) -> None:
     merged = merge_config_layers(base, overlay)
     for key, value in overlay.items():
@@ -148,18 +170,24 @@ def test_overlay_lists_and_scalars_always_win(
             assert merged[key] == value
 
 
-def _write_yaml(path: Path, data: dict[str, Any]) -> Path:
+def _write_yaml(path: Path, data: dict[str, JsonValue]) -> Path:
     path.write_text(yaml.safe_dump(data), encoding="utf-8")
     return path
 
 
-def _parse_yaml(path: Path) -> dict[str, Any]:
+def _parse_yaml(path: Path) -> dict[str, JsonValue]:
     loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
-    return loaded
+    return cast(dict[str, JsonValue], loaded)
 
 
-BASE = {"domain": {"name": "medicare_fraud"}, "capabilities": {"peer_stats": True}}
+BASE: dict[str, JsonValue] = {
+    "domain": {"name": "medicare_fraud"},
+    "capabilities": {"peer_stats": True},
+}
+
+
+BASE_PATH = Path("medicare_fraud.yaml")
 
 
 def test_apply_overlays_merges_matching_overlay(tmp_path: Path) -> None:
@@ -167,12 +195,12 @@ def test_apply_overlays_merges_matching_overlay(tmp_path: Path) -> None:
         tmp_path / "dev.yaml",
         {"overlay_for": "medicare_fraud", "capabilities": {"peer_stats": False}},
     )
-    merged = apply_overlays(BASE, [overlay], parse=_parse_yaml)
-    assert merged["capabilities"]["peer_stats"] is False
+    merged = apply_overlays(BASE, [overlay], base_path=BASE_PATH, parse=_parse_yaml)
+    assert _nested(merged["capabilities"], "peer_stats") is False
     assert "overlay_for" not in merged  # metadata key stripped before merge
 
 
-def test_apply_overlays_skips_domain_mismatch_with_warning(
+def test_apply_overlays_skips_pack_mismatch_with_warning(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     overlay = _write_yaml(
@@ -180,8 +208,8 @@ def test_apply_overlays_skips_domain_mismatch_with_warning(
         {"overlay_for": "af_housing", "capabilities": {"peer_stats": False}},
     )
     with caplog.at_level(logging.WARNING, logger="config.overlay"):
-        merged = apply_overlays(BASE, [overlay], parse=_parse_yaml)
-    assert merged["capabilities"]["peer_stats"] is True  # untouched
+        merged = apply_overlays(BASE, [overlay], base_path=BASE_PATH, parse=_parse_yaml)
+    assert _nested(merged["capabilities"], "peer_stats") is True  # untouched
     assert any(
         "af_housing" in record.message and "medicare_fraud" in record.message
         for record in caplog.records
@@ -193,7 +221,7 @@ def test_apply_overlays_missing_overlay_for_raises(tmp_path: Path) -> None:
         tmp_path / "dev.yaml", {"capabilities": {"peer_stats": False}}
     )
     with pytest.raises(OverlayError, match="overlay_for"):
-        apply_overlays(BASE, [overlay], parse=_parse_yaml)
+        apply_overlays(BASE, [overlay], base_path=BASE_PATH, parse=_parse_yaml)
 
 
 def test_apply_overlays_rejects_unknown_top_level_key(tmp_path: Path) -> None:
@@ -202,7 +230,7 @@ def test_apply_overlays_rejects_unknown_top_level_key(tmp_path: Path) -> None:
         {"overlay_for": "medicare_fraud", "embeddngs": {"provider": "local"}},
     )
     with pytest.raises(OverlayError, match="embeddngs"):
-        apply_overlays(BASE, [overlay], parse=_parse_yaml)
+        apply_overlays(BASE, [overlay], base_path=BASE_PATH, parse=_parse_yaml)
 
 
 def test_apply_overlays_stacks_in_declared_order(tmp_path: Path) -> None:
@@ -214,29 +242,69 @@ def test_apply_overlays_stacks_in_declared_order(tmp_path: Path) -> None:
         tmp_path / "b.yaml",
         {"overlay_for": "medicare_fraud", "capabilities": {"gnn": True}},
     )
-    merged = apply_overlays(BASE, [first, second], parse=_parse_yaml)
-    assert merged["capabilities"]["gnn"] is True  # last wins
+    merged = apply_overlays(BASE, [first, second], base_path=BASE_PATH, parse=_parse_yaml)
+    assert _nested(merged["capabilities"], "gnn") is True  # last wins
 
 
-def test_apply_overlays_base_without_domain_skips_safely(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
+def test_apply_overlays_base_without_domain_key_matches_by_pack_stem(
+    tmp_path: Path,
 ) -> None:
+    # The guard is pack-scoped (base_path.stem), so a base dict with no
+    # "domain" key at all still matches correctly — domain.name is never read.
     overlay = _write_yaml(
         tmp_path / "dev.yaml",
         {"overlay_for": "medicare_fraud", "capabilities": {"gnn": False}},
     )
+    merged = apply_overlays(
+        {"capabilities": {"gnn": True}},
+        [overlay],
+        base_path=BASE_PATH,
+        parse=_parse_yaml,
+    )
+    assert _nested(merged["capabilities"], "gnn") is False  # applied: stem matched
+
+
+def test_overlay_skips_same_domain_different_pack(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """DE-SynPUF regression: two packs sharing domain.name must NOT share
+    an overlay — the guard must key off the base pack's filename stem, not
+    domain.name, or a dev overlay for medicare_fraud.yaml silently applies to
+    medicare_fraud_cms_desynpuf.yaml too."""
+    overlay = _write_yaml(
+        tmp_path / "dev.yaml",
+        {"overlay_for": "medicare_fraud", "capabilities": {"peer_stats": False}},
+    )
     with caplog.at_level(logging.WARNING, logger="config.overlay"):
         merged = apply_overlays(
-            {"capabilities": {"gnn": True}}, [overlay], parse=_parse_yaml
+            BASE,  # domain.name == "medicare_fraud"
+            [overlay],
+            base_path=Path("/some/dir/medicare_fraud_cms_desynpuf.yaml"),
+            parse=_parse_yaml,
         )
-    assert merged["capabilities"]["gnn"] is True
+    assert _nested(merged["capabilities"], "peer_stats") is True  # untouched: skipped
+    assert any(
+        "medicare_fraud_cms_desynpuf" in record.message
+        and "medicare_fraud" in record.message
+        for record in caplog.records
+    )
 
 
-def test_apply_overlays_known_keys_track_domain_config() -> None:
-    # Guard: every top-level key DomainConfig defines is accepted in overlays.
-    from config.overlay import known_top_level_keys
-
-    assert set(DomainConfig.model_fields) <= known_top_level_keys()
+def test_shipped_dev_overlay_passes_unknown_key_guard_and_canary_fails(
+    tmp_path: Path,
+) -> None:
+    """The unknown-key guard fires on realistic content: the SHIPPED dev overlay
+    passes, and the same overlay plus one canary typo key is rejected naming it."""
+    overlays_dir = Path(__file__).resolve().parent.parent.parent / "config" / "overlays"
+    shipped = yaml.safe_load((overlays_dir / "medicare_fraud_dev.yaml").read_text())
+    base: dict[str, JsonValue] = {"domain": {"name": "medicare_fraud"}}
+    good = _write_yaml(tmp_path / "medicare_fraud_dev.yaml", shipped)
+    apply_overlays(base, [good], base_path=Path("medicare_fraud.yaml"), parse=_parse_yaml)  # no raise
+    shipped_bad = dict(shipped)
+    shipped_bad["embeddngs"] = {"provider": "local"}
+    bad = _write_yaml(tmp_path / "bad.yaml", shipped_bad)
+    with pytest.raises(OverlayError, match="embeddngs"):
+        apply_overlays(base, [bad], base_path=Path("medicare_fraud.yaml"), parse=_parse_yaml)
 
 
 REPO_CONFIG = Path(__file__).resolve().parent.parent.parent / "config"
