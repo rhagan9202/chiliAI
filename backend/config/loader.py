@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import yaml
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from config.overlay import OverlayError, apply_overlays
 from config.schema import DomainConfig
@@ -94,7 +94,7 @@ def _read_file(path: Path) -> str:
         raise ConfigLoadError(f"Cannot read config file {path}: {exc}") from exc
 
 
-def _parse_content(raw: str, path: Path) -> dict[str, Any]:
+def _parse_content(raw: str, path: Path) -> dict[str, JsonValue]:
     suffix = path.suffix.lower()
     try:
         if suffix in (".yaml", ".yml"):
@@ -115,7 +115,7 @@ def _parse_content(raw: str, path: Path) -> dict[str, Any]:
         raise ConfigLoadError(
             f"Config file {path} must contain a mapping at the top level."
         )
-    return cast(dict[str, Any], data)
+    return cast(dict[str, JsonValue], data)
 
 
 def _overlay_paths_from_env() -> list[Path]:
@@ -123,11 +123,11 @@ def _overlay_paths_from_env() -> list[Path]:
     return [Path(part.strip()) for part in raw.split(",") if part.strip()]
 
 
-def _parse_config_file(path: Path) -> dict[str, Any]:
+def _parse_config_file(path: Path) -> dict[str, JsonValue]:
     return _parse_content(_read_file(path), path)
 
 
-def _validate(data: dict[str, Any]) -> DomainConfig:
+def _validate(data: dict[str, JsonValue]) -> DomainConfig:
     try:
         return DomainConfig.model_validate(data)
     except ValidationError as exc:

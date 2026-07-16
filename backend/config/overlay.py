@@ -11,22 +11,24 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TypeGuard
+from typing import TypeGuard
+
+from pydantic import JsonValue
 
 logger = logging.getLogger(__name__)
 
 
-def _is_mapping(value: object) -> TypeGuard[dict[str, Any]]:
-    """Narrow ``value`` to ``dict[str, Any]`` for pyright-strict recursion."""
+def _is_mapping(value: object) -> TypeGuard[dict[str, JsonValue]]:
+    """Narrow ``value`` to ``dict[str, JsonValue]`` for pyright-strict recursion."""
     return isinstance(value, dict)
 
 
 def merge_config_layers(
-    base: dict[str, Any], overlay: dict[str, Any]
-) -> dict[str, Any]:
+    base: dict[str, JsonValue], overlay: dict[str, JsonValue]
+) -> dict[str, JsonValue]:
     """Return ``base`` with ``overlay`` layered on top (pure; inputs untouched)."""
 
-    merged: dict[str, Any] = dict(base)
+    merged: dict[str, JsonValue] = dict(base)
     for key, overlay_value in overlay.items():
         base_value = merged.get(key)
         if _is_mapping(base_value) and _is_mapping(overlay_value):
@@ -50,12 +52,12 @@ def known_top_level_keys() -> set[str]:
 
 
 def apply_overlays(
-    base_data: dict[str, Any],
+    base_data: dict[str, JsonValue],
     overlay_paths: list[Path],
     *,
     base_path: Path,
-    parse: Callable[[Path], dict[str, Any]],
-) -> dict[str, Any]:
+    parse: Callable[[Path], dict[str, JsonValue]],
+) -> dict[str, JsonValue]:
     """Layer each overlay onto ``base_data`` in declared order.
 
     The guard is **pack-scoped**: an overlay whose ``overlay_for`` does not

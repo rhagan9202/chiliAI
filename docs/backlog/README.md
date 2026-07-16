@@ -37,10 +37,11 @@
 | monitoring.md | 20 | 0 | 0 | 20 | 0% |
 | rag.md | 17 | 0 | 0 | 17 | 0% |
 | records.md | 10 | 2 | 1 | 13 | 7% |
+| scorecards.md | 3 | 0 | 0 | 3 | 0% |
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 410 | 7 | 23 | 442 | 5% |
+| **Total** | 413 | 7 | 23 | 445 | 5% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -76,7 +77,7 @@
 - [frontend.06] frontend — size M — prereqs done
 - [frontend.10] frontend — size M — prereqs done
 - [frontend.13] frontend — size M — prereqs done
-- …30 more
+- …33 more
 <!-- END: ready-set -->
 
 ## Critical path
@@ -143,6 +144,7 @@
 - [monitoring.md](monitoring.md) — claim stream consumer, alert generation
 - [rag.md](rag.md) — query → embed → search → graph expand → LLM
 - [records.md](records.md) — structured/tabular ingestion (CSV/JSONL/api-push)
+- [scorecards.md](scorecards.md) — durable scorecard templates, evaluation, export
 - [shared.md](shared.md) — domain types, protocols, utilities
 - [storage.md](storage.md) — object storage protocol + adapters
 - [vectorstore.md](vectorstore.md) — vector store protocol + adapters

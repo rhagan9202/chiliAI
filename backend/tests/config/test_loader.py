@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 import yaml
@@ -32,7 +31,7 @@ def _all_default_yamls() -> list[Path]:
     return sorted(DEFAULTS_DIR.glob("*.yaml"))
 
 
-def _minimal_config_dict() -> dict[str, Any]:
+def _minimal_config_dict() -> dict[str, object]:
     return {
         "domain": {"name": "minimal", "display_name": "Minimal", "description": "d"},
         "entities": [
