@@ -417,6 +417,32 @@ class TestApplyAndSwitch:
         assert resp.json()["pack_name"] == "food_supply_chain"
         assert resp.json()["reason"] == "apply"
 
+    def test_apply_reconfigures_jwks_cache_ttl_from_new_pack(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Hot-swap wiring (BL-022 fix-later): the JWKS cache TTL follows the
+        newly-activated pack's ``auth.jwks_cache_seconds``, not just the
+        value set at process startup."""
+        from api.middleware.auth import configure_jwks_cache, get_jwks_cache
+
+        monkeypatch.setenv(PACK_DIRS_ENV_VAR, str(tmp_path))
+        pack_dict = yaml.safe_load(MEDICARE_YAML.read_text())
+        pack_dict["auth"] = {"enabled": False, "jwks_cache_seconds": 222}
+        custom_pack = tmp_path / "custom_ttl.yaml"
+        custom_pack.write_text(yaml.safe_dump(pack_dict))
+
+        configure_jwks_cache(None)
+        assert get_jwks_cache().ttl_seconds == 3600
+        try:
+            resp = client.post("/config/apply", json={"pack": str(custom_pack)})
+            assert resp.status_code == 200
+            assert get_jwks_cache().ttl_seconds == 222
+        finally:
+            configure_jwks_cache(None)
+
     def test_apply_without_active_pack_is_rejected(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:

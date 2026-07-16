@@ -939,3 +939,80 @@ class TestKidAwareResolution:
         assert exc_info.value.detail == "Token signing key is unknown."
         # Verify we fetched twice: once for cache.get, once for force_refresh
         assert len(calls) == 2
+
+
+def test_configure_jwks_cache_applies_config_ttl() -> None:
+    """configure_jwks_cache wires AuthConfig.jwks_cache_seconds into the process cache (BL-022 tail)."""
+    from api.middleware.auth import configure_jwks_cache, get_jwks_cache
+
+    configure_jwks_cache(
+        AuthConfig(
+            enabled=True,
+            issuer_url="https://issuer.example",
+            audience="chili",
+            jwks_uri="https://issuer.example/.well-known/jwks.json",
+            jwks_cache_seconds=120,
+        )
+    )
+    assert get_jwks_cache().ttl_seconds == 120
+
+    # None (auth disabled / no config) resets to the 3600s default.
+    configure_jwks_cache(None)
+    assert get_jwks_cache().ttl_seconds == 3600
+
+
+def test_forced_refresh_counter_outcomes(rsa_pem: str) -> None:
+    """chili_jwks_forced_refresh_total tracks refreshed/throttled/failed outcomes."""
+    from prometheus_client import REGISTRY
+
+    from api.middleware.auth import JwksCache, decode_token
+
+    def _sample(outcome: str) -> float:
+        value = REGISTRY.get_sample_value(
+            "chili_jwks_forced_refresh_total", {"outcome": outcome}
+        )
+        return value if value is not None else 0.0
+
+    before_refreshed = _sample("refreshed")
+    before_throttled = _sample("throttled")
+    before_failed = _sample("failed")
+
+    calls: list[str] = []
+    now = {"t": 1000.0}
+
+    def fetcher(uri: str) -> dict[str, object]:
+        calls.append(uri)
+        return {"keys": [{"kid": f"key-{len(calls)}"}]}
+
+    cache = JwksCache(fetcher=fetcher, ttl_seconds=3600, _clock=lambda: now["t"])
+    cache.force_refresh("https://idp/jwks")  # refreshed: first call, no throttle yet
+    cache.force_refresh("https://idp/jwks")  # throttled: within the 30s window
+
+    assert _sample("refreshed") == before_refreshed + 1.0
+    assert _sample("throttled") == before_throttled + 1.0
+
+    # failed: decode_token's refetch-exception handler around force_refresh.
+    auth_config = _kid_auth_config()
+    jwks_initial: dict[str, object] = {
+        "keys": [_public_jwk_from_pem(rsa_pem, kid="kid-other")]
+    }
+    call_count = {"n": 0}
+
+    def failing_fetcher(uri: str) -> dict[str, object]:
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return jwks_initial
+        raise RuntimeError("Simulated JWKS fetch failure on refresh")
+
+    fail_cache = JwksCache(fetcher=failing_fetcher, ttl_seconds=3600)
+    token = _make_token(
+        rsa_pem,
+        issuer="https://issuer.example",
+        audience="chili",
+        kid="kid-missing",
+    )
+
+    with pytest.raises(HTTPException):
+        decode_token(token, auth_config=auth_config, jwks_cache=fail_cache)
+
+    assert _sample("failed") == before_failed + 1.0

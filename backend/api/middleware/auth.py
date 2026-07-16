@@ -28,6 +28,7 @@ from fastapi import (
     WebSocketException,
     status,
 )
+from prometheus_client import Counter
 from pydantic import BaseModel, Field
 
 from api.dependencies import get_domain_config, get_session_store
@@ -41,12 +42,29 @@ __all__ = [
     "SESSION_COOKIE_NAME",
     "User",
     "build_anonymous_user",
+    "chili_jwks_forced_refresh_total",
+    "configure_jwks_cache",
     "decode_token",
     "get_jwks_cache",
     "get_current_user",
     "get_current_websocket_user",
     "set_jwks_fetcher",
 ]
+
+DEFAULT_JWKS_TTL_SECONDS = 3600
+
+# Registered here (module-local, default registry) rather than in
+# shared/metrics.py: that module's counters are documented and scoped as
+# ingestion telemetry (see its module docstring), and auth is API-side —
+# consistent with http_requests_total living in api/middleware/metrics.py
+# rather than a shared module. Tracks JWKS forced-refresh churn (BL-022
+# fix-later): a flood of unknown-kid tokens should be visible in
+# /metrics even though the throttle already caps IdP load.
+chili_jwks_forced_refresh_total: Counter = Counter(
+    "chili_jwks_forced_refresh_total",
+    "JWKS forced-refresh attempts by outcome (refreshed, throttled, failed).",
+    ["outcome"],
+)
 
 
 class User(BaseModel):
@@ -115,10 +133,12 @@ class JwksCache:
             last_forced is not None
             and (now - last_forced) < self.min_forced_refresh_seconds
         ):
+            chili_jwks_forced_refresh_total.labels(outcome="throttled").inc()
             return self.get(uri)
         self._forced_at[uri] = now
         document = self.fetcher(uri)
         self._entries[uri] = _CachedJwks(document=document, fetched_at=now)
+        chili_jwks_forced_refresh_total.labels(outcome="refreshed").inc()
         return document
 
     def invalidate_uri(self, uri: str) -> None:
@@ -153,6 +173,28 @@ def get_jwks_cache() -> JwksCache:
     """Return the process-wide JWKS cache."""
 
     return _jwks_cache
+
+
+def configure_jwks_cache(auth_config: AuthConfig | None) -> None:
+    """Apply ``AuthConfig.jwks_cache_seconds`` to the process-wide JWKS cache.
+
+    Called once at ``create_app`` startup and again after every domain
+    hot-swap (``api/routers/config.py``'s ``_activate_pack``) so the cache TTL
+    tracks whichever pack is currently active. ``auth_config=None`` (auth
+    disabled, or no domain config yet) resets the TTL to the
+    :data:`DEFAULT_JWKS_TTL_SECONDS` default rather than leaving a stale
+    value from a previously active pack.
+
+    Mutates the existing cache instance's ``ttl_seconds`` in place — it does
+    not replace the singleton (that would drop already-cached JWKS documents
+    and the configured fetcher, which :func:`set_jwks_fetcher` owns).
+    """
+
+    _jwks_cache.ttl_seconds = (
+        auth_config.jwks_cache_seconds
+        if auth_config is not None
+        else DEFAULT_JWKS_TTL_SECONDS
+    )
 
 
 _DEV_OVERRIDABLE_ROLES = frozenset({"viewer", "analyst", "service", "admin"})
@@ -249,6 +291,7 @@ def decode_token(
         try:
             jwks = jwks_cache.force_refresh(auth_config.jwks_uri)
         except Exception as exc:  # noqa: BLE001 - refetch failures map to 401
+            chili_jwks_forced_refresh_total.labels(outcome="failed").inc()
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Unable to refresh JWKS for token validation.",

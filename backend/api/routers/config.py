@@ -61,6 +61,7 @@ from api.dependencies import (
     get_domain_config_features_payload,
     get_domain_config_schema_payload,
 )
+from api.middleware.auth import configure_jwks_cache
 from api.middleware.rbac import require_role
 from api.state import ApiState
 from config.loader import ConfigLoadError, _overlay_paths_from_env, load_config
@@ -409,6 +410,12 @@ def _activate_pack(
         ) from exc
     pre_swap_event_bus = _capture_pre_swap_event_bus()
     generation = dependencies.reset_domain_config_caches(request.app)
+    # BL-022 fix-later: jwks_cache_seconds is config-driven but the JWKS cache
+    # is a process-wide singleton outside CONFIG_CACHE_REGISTRY (it survives
+    # reset_domain_config_caches by design — invalidating it would drop
+    # in-flight kid-rotation state). Re-derive its TTL from the pack that just
+    # became active; new_config was already loaded + guardrail-checked above.
+    configure_jwks_cache(new_config.auth)
     rag_degraded = _rag_degraded_to_fallback(request)
     event_published = _publish_config_updated(
         pre_swap_event_bus, new_config, candidate, previous_pack_name, reason

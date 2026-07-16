@@ -14,6 +14,7 @@ import time
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
+from pydantic import ValidationError
 
 import api.middleware.auth as _auth_module
 from api.dependencies import get_domain_config, get_session_store
@@ -123,6 +124,14 @@ def callback(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"IdP token endpoint rejected the code: {exc.response.text}",
+        ) from exc
+    except ValidationError as exc:
+        # The IdP responded 2xx but the body doesn't match OidcTokens (missing
+        # access_token/expires_in, wrong types, etc.) — a client-observable
+        # upstream fault, not a chiliAI bug, so 400 rather than 500.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="IdP token endpoint returned an invalid response.",
         ) from exc
 
     # Decode id_token (or access_token if id_token is absent) to extract user identity.
