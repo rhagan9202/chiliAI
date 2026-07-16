@@ -199,6 +199,91 @@ class TestValidate:
 
 
 # ---------------------------------------------------------------------------
+# POST /config/validate?with_overlays
+# ---------------------------------------------------------------------------
+
+
+class TestValidateOverlays:
+    def test_validate_with_overlays_applies_env_overlay(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # Overlay flips a knob (display_name) that keeps the config valid but
+        # is observable in the response — proving the overlay was applied.
+        good_overlay = tmp_path / "good.yaml"
+        good_overlay.write_text(
+            "overlay_for: medicare_fraud\n"
+            "domain:\n"
+            "  display_name: Medicare Fraud Detection (Overlay)\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("CHILI_CONFIG_OVERLAY_PATH", str(good_overlay))
+
+        resp = client.post(
+            "/config/validate",
+            json={"pack": "medicare_fraud"},
+            params={"with_overlays": "true"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is True
+        assert data["pack_name"] == "medicare_fraud"
+        assert data["display_name"] == "Medicare Fraud Detection (Overlay)"
+        assert data["errors"] == []
+
+        # An overlay with an unknown top-level key raises OverlayError, which
+        # must be wrapped into a valid=False response, not a raised exception.
+        bad_overlay = tmp_path / "bad.yaml"
+        bad_overlay.write_text(
+            "overlay_for: medicare_fraud\nnot_a_real_section: true\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("CHILI_CONFIG_OVERLAY_PATH", str(bad_overlay))
+
+        resp2 = client.post(
+            "/config/validate",
+            json={"pack": "medicare_fraud"},
+            params={"with_overlays": "true"},
+        )
+        assert resp2.status_code == 200
+        data2 = resp2.json()
+        assert data2["valid"] is False
+        assert data2["pack_name"] is None
+        assert len(data2["errors"]) == 1
+        assert data2["errors"][0]["error_type"] == "overlay_error"
+        assert "unknown top-level keys" in data2["errors"][0]["message"]
+
+    def test_validate_without_overlays_ignores_env(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # Same env var set as the "bad" overlay above — if it were applied,
+        # this would come back valid=False with an overlay_error. Omitting
+        # with_overlays must ignore it entirely (pack-only verdict).
+        bad_overlay = tmp_path / "bad.yaml"
+        bad_overlay.write_text(
+            "overlay_for: medicare_fraud\nnot_a_real_section: true\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("CHILI_CONFIG_OVERLAY_PATH", str(bad_overlay))
+
+        resp = client.post("/config/validate", json={"pack": "medicare_fraud"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is True
+        assert data["pack_name"] == "medicare_fraud"
+        assert data["errors"] == []
+
+    def test_validate_with_overlays_rejects_inline_content(
+        self, client: TestClient
+    ) -> None:
+        resp = client.post(
+            "/config/validate",
+            json={"content": {"domain": {"name": "x"}}},
+            params={"with_overlays": "true"},
+        )
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
 # POST /config/apply and /config/switch
 # ---------------------------------------------------------------------------
 

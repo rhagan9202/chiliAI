@@ -5238,7 +5238,10 @@ export interface operations {
     };
     validate_pack_config_validate_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Layer the CHILI_CONFIG_OVERLAY_PATH env overlays onto the candidate before validating (pack references only; 422 for inline content). */
+                with_overlays?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;

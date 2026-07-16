@@ -7865,6 +7865,20 @@
       "post": {
         "description": "Dry-run full validation of a pack; never mutates pointer, caches, or state.",
         "operationId": "validate_pack_config_validate_post",
+        "parameters": [
+          {
+            "description": "Layer the CHILI_CONFIG_OVERLAY_PATH env overlays onto the candidate before validating (pack references only; 422 for inline content).",
+            "in": "query",
+            "name": "with_overlays",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Layer the CHILI_CONFIG_OVERLAY_PATH env overlays onto the candidate before validating (pack references only; 422 for inline content).",
+              "title": "With Overlays",
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {

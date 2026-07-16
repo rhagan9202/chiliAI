@@ -6,7 +6,10 @@ implement the domain hot-swap surface (E4):
 
 - ``GET /config/packs`` — list packs in the allowed config directories plus
   the active-pack resolution state.
-- ``POST /config/validate`` — dry-run full validation (zero mutation).
+- ``POST /config/validate`` — dry-run full validation (zero mutation);
+  ``?with_overlays=true`` additionally layers the ``CHILI_CONFIG_OVERLAY_PATH``
+  env overlays onto a pack-reference candidate before validating (422 for
+  inline ``content``, which has no base path to scope the overlay guard).
 - ``POST /config/apply`` — validate → persist pointer → swap caches → emit
   ``config.updated`` (reason ``"apply"``).
 - ``POST /config/switch`` — same pipeline for activating a different pack
@@ -37,7 +40,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import ValidationError
 
 from api import dependencies
@@ -60,7 +63,8 @@ from api.dependencies import (
 )
 from api.middleware.rbac import require_role
 from api.state import ApiState
-from config.loader import ConfigLoadError, load_config
+from config.loader import ConfigLoadError, _overlay_paths_from_env, load_config
+from config.overlay import OverlayError, apply_overlays
 from config.schema import DomainConfig
 from config.store import (
     CONFIG_PATH_ENV_VAR,
@@ -456,9 +460,26 @@ async def list_packs() -> PackListResponse:
     response_model=ValidatePackResponse,
     dependencies=[Depends(require_role("admin"))],
 )
-async def validate_pack(payload: ValidatePackRequest) -> ValidatePackResponse:
+async def validate_pack(
+    payload: ValidatePackRequest,
+    with_overlays: bool = Query(
+        default=False,
+        description=(
+            "Layer the CHILI_CONFIG_OVERLAY_PATH env overlays onto the candidate "
+            "before validating (pack references only; 422 for inline content)."
+        ),
+    ),
+) -> ValidatePackResponse:
     """Dry-run full validation of a pack; never mutates pointer, caches, or state."""
     if payload.content is not None:
+        if with_overlays:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    "with_overlays requires a pack reference; inline 'content' has "
+                    "no base path to scope the overlay_for guard against."
+                ),
+            )
         data = payload.content
     else:
         # The request model guarantees exactly one of pack/content is set.
@@ -475,6 +496,26 @@ async def validate_pack(payload: ValidatePackRequest) -> ValidatePackResponse:
                     )
                 ],
             )
+        if with_overlays:
+            overlay_paths = _overlay_paths_from_env()
+            if overlay_paths:
+                try:
+                    data = apply_overlays(
+                        data,
+                        overlay_paths,
+                        base_path=pack_path,
+                        parse=_parse_pack_file,
+                    )
+                except OverlayError as exc:
+                    return ValidatePackResponse(
+                        valid=False,
+                        errors=[
+                            ConfigValidationIssue(
+                                message=str(exc),
+                                error_type="overlay_error",
+                            )
+                        ],
+                    )
     try:
         candidate = DomainConfig.model_validate(data)
     except ValidationError as exc:

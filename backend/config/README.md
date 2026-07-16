@@ -107,10 +107,18 @@ Merge semantics (full rationale in
   and each row of `GET /config/packs` reflects loading that pack in the
   current environment (the pack whose filename stem matches `overlay_for`
   gets the overlay merged; others are skipped with the warning).
-  `POST /config/validate` is the one deliberate exception — it is a
-  pack-level dry run of the raw pack/content and does **not** apply overlays,
-  so its verdict can differ from what `apply` ultimately serves; `apply` still
-  fully validates the merged config before any state mutates.
+  `POST /config/validate` defaults to a pack-level dry run of the raw
+  pack/content that does **not** apply overlays, so its verdict can differ
+  from what `apply` ultimately serves; pass `?with_overlays=true` to instead
+  dry-run the merged result — the endpoint applies the same
+  `apply_overlays(..., base_path=<resolved pack file>)` used by `apply`, then
+  validates. This only works for a pack reference (`{"pack": ...}`): inline
+  `{"content": ...}` has no base pack file to scope the `overlay_for` guard
+  against, so `with_overlays=true` with `content` is a `422`. An `OverlayError`
+  from a malformed overlay comes back as `valid=false` with
+  `error_type="overlay_error"` rather than an HTTP error, consistent with the
+  parse-error handling on the same endpoint. `apply` still fully validates the
+  merged config before any state mutates, independent of this flag.
 
 `config/overlay.py` implements the pure merge (`merge_config_layers`) and
 the guarded per-overlay application (`apply_overlays`); `config/loader.py`
