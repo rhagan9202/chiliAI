@@ -65,7 +65,12 @@ from analytics.explainability.adapters.protocols import (
     ExplainabilityContextSourceProtocol,
 )
 from analytics.explainability.exceptions import ExplainabilityError
-from graph.exceptions import BatchUpsertError, GraphError, GraphIntegrityError
+from graph.exceptions import (
+    BatchUpsertError,
+    GraphError,
+    GraphIntegrityError,
+    GraphVersionConflictError,
+)
 from analytics.explainability.models import (
     ExplanationContext,
     ExplanationItem,
@@ -1712,11 +1717,13 @@ def handle_entities_validated(
 ) -> int:
     """Upsert validated runtime objects into the graph and publish graph updates.
 
-    Per-document isolation (BL-017): a ``GraphIntegrityError`` chained inside
-    ``BatchUpsertError`` is a permanent failure — the document's relationships
-    reference endpoints that do not exist in the graph — so it fails only that
-    document via ``DocumentsFailedEvent``. Any other upsert failure (e.g. a
-    transient Neo4j error) propagates to the retry/DLQ wrapper.
+    Per-document isolation (BL-017): a ``GraphIntegrityError`` or
+    ``GraphVersionConflictError`` chained inside ``BatchUpsertError`` is a
+    permanent failure — the document's relationships reference endpoints that
+    do not exist in the graph, or its upsert lost an optimistic-concurrency
+    race — so it fails only that document via ``DocumentsFailedEvent``. Any
+    other upsert failure (e.g. a transient Neo4j error) propagates to the
+    retry/DLQ wrapper.
     """
     processed = 0
     failures: list[DocumentFailureReference] = []
@@ -1742,22 +1749,26 @@ def handle_entities_validated(
             )
         except BatchUpsertError as exc:
             cause = exc.__cause__
-            if not isinstance(cause, GraphIntegrityError):
+            if not isinstance(cause, (GraphIntegrityError, GraphVersionConflictError)):
                 raise
+            if isinstance(cause, GraphIntegrityError):
+                error_message = (
+                    "Graph integrity violation: relationships reference "
+                    f"missing entities {cause.missing_entity_ids} "
+                    f"(relationships: {cause.relationship_ids})."
+                )
+            else:
+                error_message = f"Graph version conflict: {cause}"
             failures.append(
                 DocumentFailureReference(
                     knowledge_base_id=document.knowledge_base_id,
                     source_document_id=document.source_document_id,
-                    error_message=(
-                        "Graph integrity violation: relationships reference "
-                        f"missing entities {cause.missing_entity_ids} "
-                        f"(relationships: {cause.relationship_ids})."
-                    ),
+                    error_message=error_message,
                     storage_key=document.storage_key,
                 )
             )
             ingestion_documents_failed_total.labels(
-                stage="graph", error_class="GraphIntegrityError"
+                stage="graph", error_class=type(cause).__name__
             ).inc()
             log_stage(
                 stage="graph",

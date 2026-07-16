@@ -98,9 +98,11 @@ from events.types import (
     VectorsIndexedEvent,
 )
 from monitoring.service import MonitoringService as _MonitoringService
+from graph.exceptions import BatchUpsertError, GraphVersionConflictError
 from graph.models import GraphUpsertResult
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.service import create_graph_service
+from graph.service_models import GraphBuildReceipt, GraphBuildTask
 from ingestion.adapters.in_memory import InMemorySourceDocumentStatusStore
 from ingestion.chunker import ChunkingResult, create_document_chunker
 from ingestion.extractor import create_document_extractor
@@ -3214,6 +3216,122 @@ def test_handle_entities_validated_isolates_integrity_failure() -> None:
     assert len(failed_events) == 1
     assert failed_events[0].documents[0].source_document_id == "doc-bad"
     assert "missing" in failed_events[0].documents[0].error_message.lower()
+    graph_events = [
+        e for e in event_bus.published_events if isinstance(e, GraphUpdatedEvent)
+    ]
+    assert len(graph_events) == 1  # only the good document advanced
+    assert graph_events[0].documents[0].source_document_id == "doc-good"
+
+    after = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
+    assert after == before + 1.0
+
+
+def test_handle_entities_validated_isolates_version_conflict_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A GraphVersionConflictError-caused BatchUpsertError fails only that document.
+
+    doc-bad's upsert races a concurrent writer and loses the optimistic-
+    concurrency check (BL-017 extension). doc-good has no such conflict and
+    must still be upserted and advance the pipeline.
+    """
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    graph_service = create_graph_service(
+        InMemoryGraphRepository(),
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+    labels = {"stage": "graph", "error_class": "GraphVersionConflictError"}
+    before = REGISTRY.get_sample_value("ingestion_documents_failed_total", labels) or 0.0
+
+    real_upsert_task = graph_service.upsert_task
+
+    def fake_upsert_task(task: GraphBuildTask) -> GraphBuildReceipt:
+        if task.source_document_id == "doc-bad":
+            conflict = GraphVersionConflictError("e-1", 1, 2)
+            raise BatchUpsertError(
+                successful_entity_count=0,
+                successful_relationship_count=0,
+            ) from conflict
+        return real_upsert_task(task)
+
+    monkeypatch.setattr(graph_service, "upsert_task", fake_upsert_task)
+
+    bad_report = ValidationReport(
+        id="validate-bad",
+        extraction_result_id="extract-bad",
+        source_document_id="doc-bad",
+        valid_entities=[
+            Entity(id="e-1", type="provider", properties={}),
+        ],
+    )
+    bad_storage_key = "knowledgebases/kb-1/validations/extract-bad.json"
+    object_store.put_bytes(
+        bad_storage_key,
+        bad_report.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    good_report = ValidationReport(
+        id="validate-good",
+        extraction_result_id="extract-good",
+        source_document_id="doc-good",
+        valid_entities=[
+            Entity(id="provider-1", type="provider", properties={}),
+        ],
+    )
+    good_storage_key = "knowledgebases/kb-1/validations/extract-good.json"
+    object_store.put_bytes(
+        good_storage_key,
+        good_report.model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    event = EntitiesValidatedEvent(
+        correlation_id="corr-version-conflict",
+        documents=[
+            ValidatedDocumentReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-bad",
+                parsed_document_id="parsed-bad",
+                extraction_result_id="extract-bad",
+                validation_report_id="validate-bad",
+                valid_entity_count=1,
+                valid_relationship_count=0,
+                entity_error_count=0,
+                relationship_error_count=0,
+                validation_storage_key=bad_storage_key,
+            ),
+            ValidatedDocumentReference(
+                knowledge_base_id="kb-1",
+                source_document_id="doc-good",
+                parsed_document_id="parsed-good",
+                extraction_result_id="extract-good",
+                validation_report_id="validate-good",
+                valid_entity_count=1,
+                valid_relationship_count=0,
+                entity_error_count=0,
+                relationship_error_count=0,
+                validation_storage_key=good_storage_key,
+            ),
+        ],
+    )
+
+    processed = handle_entities_validated(
+        event,
+        graph_service=graph_service,
+        object_store=object_store,
+        event_bus=event_bus,
+    )
+
+    assert processed == 1  # the good document still processed
+    failed_events = [
+        e for e in event_bus.published_events if isinstance(e, DocumentsFailedEvent)
+    ]
+    assert len(failed_events) == 1
+    assert failed_events[0].documents[0].source_document_id == "doc-bad"
+    assert "version" in failed_events[0].documents[0].error_message.lower()
     graph_events = [
         e for e in event_bus.published_events if isinstance(e, GraphUpdatedEvent)
     ]
