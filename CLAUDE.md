@@ -49,7 +49,7 @@ make down         # stop dev stack
 make clean        # stop + remove volumes
 make api-shell    # shell into the API container
 make migrate      # alembic upgrade head inside the API container
-make test         # run backend pytest --cov inside the API container
+make test         # run backend pytest --cov via the host venv (against chili_test, never the dev DB)
 make test-e2e     # Playwright e2e against a fresh full dev stack
 make seed-housing # seed the Air Force housing demo KB via the running API (housing pack required)
 make prod         # production stack (built images, nginx, no hot reload)

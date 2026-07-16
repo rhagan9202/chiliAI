@@ -51,14 +51,25 @@ async function waitForApi(attempts = 90): Promise<void> {
  */
 async function reclaimStaleBaseline(): Promise<void> {
   if (!existsSync(KB_BASELINE_PATH)) return
-  const stale = JSON.parse(readFileSync(KB_BASELINE_PATH, 'utf-8')) as KbBaseline
+  let stale: KbBaseline
+  try {
+    stale = JSON.parse(readFileSync(KB_BASELINE_PATH, 'utf-8')) as KbBaseline
+  } catch (error) {
+    throw new Error(
+      `[e2e] ${KB_BASELINE_PATH} exists but is unreadable (${String(error)}) — a previous run ` +
+        'was interrupted mid-write. Inspect the stack for leaked KBs, delete them manually, ' +
+        'then remove the file and re-run.',
+    )
+  }
   console.warn(
     `[e2e] stale ${KB_BASELINE_PATH} from ${stale.captured_at} — previous run was interrupted; reclaiming its leaked KBs`,
   )
   const result = await deleteKbsNotInBaseline(API, stale, '[e2e] stale-baseline reclaim:')
-  if (result.failed > 0) {
+  // A failed listing or deletion must abort BEFORE snapshotKnowledgeBases()
+  // runs — a fresh snapshot would adopt the leaked KBs as pre-existing forever.
+  if (!result.listed || result.failed > 0) {
     throw new Error(
-      `[e2e] stale-baseline reclaim left ${result.failed} leaked KB(s) behind — delete them manually before running e2e.`,
+      `[e2e] stale-baseline reclaim ${result.listed ? `left ${result.failed} leaked KB(s) behind` : 'could not list KBs'} — resolve manually before running e2e.`,
     )
   }
   console.log(`[e2e] stale-baseline reclaim: ${result.deleted} leaked KB(s) deleted`)

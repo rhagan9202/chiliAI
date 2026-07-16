@@ -54,8 +54,12 @@ migrate-check: ## Replay migrations on a scratch TimescaleDB and diff schema vs 
 migrate-snapshot: ## Regenerate backend/database/migrations/snapshots/head.sql (run after adding a migration)
 	scripts/ci_migration_check.sh --update-snapshot
 
-test: ## Run backend tests inside the API container
-	$(COMPOSE_DEV) exec api pytest --cov
+# The dev image ships runtime deps only (no pytest) since the 2026-05-15 slim,
+# so the suite runs via the host venv — explicitly against chili_test: the
+# migration tests downgrade/upgrade DATABASE_URL's database, and the dev
+# `chili` DB must never be that target.
+test: ## Run backend tests via the host venv (against chili_test, never the dev DB)
+	cd backend && DATABASE_URL=postgresql://chili:chili@localhost:5432/chili_test .venv/bin/pytest --cov
 
 test-e2e: ## Run Playwright e2e against the full dev stack (real API/worker/services)
 	$(COMPOSE_DEV) down -v

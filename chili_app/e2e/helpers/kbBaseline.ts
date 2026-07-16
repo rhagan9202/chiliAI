@@ -16,6 +16,8 @@ export type KbBaseline = {
 }
 
 export type KbCleanupResult = {
+  /** False when the KB listing itself failed — nothing was attempted. */
+  listed: boolean
   deleted: number
   failed: number
 }
@@ -36,7 +38,7 @@ export async function deleteKbsNotInBaseline(
   const res = await fetch(`${api}/knowledgebases`)
   if (!res.ok) {
     console.warn(`${logPrefix} GET /knowledgebases failed (${res.status}) — skipping KB cleanup`)
-    return { deleted: 0, failed: 0 }
+    return { listed: false, deleted: 0, failed: 0 }
   }
   const payload = (await res.json()) as { items: { id: string; name: string }[] }
   const created = payload.items.filter((kb) => !preExisting.has(kb.id))
@@ -57,5 +59,5 @@ export async function deleteKbsNotInBaseline(
       )
     }
   }
-  return { deleted: created.length - failed, failed }
+  return { listed: true, deleted: created.length - failed, failed }
 }

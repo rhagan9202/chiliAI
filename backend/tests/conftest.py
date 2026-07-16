@@ -6,12 +6,11 @@ against the full running stack, the defaults below point those vars at the live
 dev stack (``make dev`` / ``docker-compose.dev.yaml``) so the tests RUN instead of
 silently skipping — no per-shell exports needed.
 
-``os.environ.setdefault`` is used so an explicitly-provided value always wins:
-inside the API container ``make test`` inherits the compose service hostnames
-(``postgres``/``redis``/``neo4j``/``qdrant``), while host ``.venv`` runs fall back
-to the localhost-published ports. The stack must be up; if a service is
-unreachable the integration test fails (surfacing a real problem) rather than
-skipping.
+``os.environ.setdefault`` is used so an explicitly-provided value always wins
+(CI and ``make test`` both export ``DATABASE_URL`` explicitly), while bare host
+``.venv`` runs fall back to the localhost-published ports. The stack must be
+up; if a service is unreachable the integration test fails (surfacing a real
+problem) rather than skipping.
 
 Smokes that are not docker-compose stack services are intentionally NOT defaulted
 and remain opt-in (they need an external secret, a model download, or a separate
@@ -41,8 +40,8 @@ def _setdefault_test_service_urls() -> None:
     # integration tests run ``alembic downgrade base`` against DATABASE_URL,
     # which empties every app table. Defaulting to the dev DB has destroyed
     # seeded demo state twice (2026-05, 2026-07-16). The dev compose stack
-    # creates ``chili_test`` via infra/postgres/init-test-db.sql; explicit
-    # DATABASE_URL (CI, in-container ``make test``) still wins.
+    # creates ``chili_test`` via infra/postgres/init-test-db.sql; an explicit
+    # DATABASE_URL (CI, ``make test`` — both export chili-test-safe DSNs) wins.
     os.environ.setdefault(
         "DATABASE_URL", "postgresql://chili:chili@localhost:5432/chili_test"
     )
