@@ -506,6 +506,20 @@ async def validate_pack(
                         base_path=pack_path,
                         parse=_parse_pack_file,
                     )
+                except _PackParseError as exc:
+                    # apply_overlays calls parse() (== _parse_pack_file) on every
+                    # overlay file with no internal try/except of its own — a
+                    # missing/unreadable/malformed overlay file must degrade the
+                    # same way a malformed base pack file does, never a 500.
+                    return ValidatePackResponse(
+                        valid=False,
+                        errors=[
+                            ConfigValidationIssue(
+                                message=str(exc),
+                                error_type="parse_error",
+                            )
+                        ],
+                    )
                 except OverlayError as exc:
                     return ValidatePackResponse(
                         valid=False,

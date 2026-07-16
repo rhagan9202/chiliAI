@@ -207,6 +207,10 @@ class TestValidateOverlays:
     def test_validate_with_overlays_applies_env_overlay(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
+        # Zero-mutation baseline (mirrors TestValidate.test_validate_never_mutates_anything).
+        generation_before = dependencies.get_config_generation()
+        assert read_active_pack() is None
+
         # Overlay flips a knob (display_name) that keeps the config valid but
         # is observable in the response — proving the overlay was applied.
         good_overlay = tmp_path / "good.yaml"
@@ -251,6 +255,67 @@ class TestValidateOverlays:
         assert len(data2["errors"]) == 1
         assert data2["errors"][0]["error_type"] == "overlay_error"
         assert "unknown top-level keys" in data2["errors"][0]["message"]
+
+        # Neither call mutated the pointer, generation, or active config.
+        assert read_active_pack() is None
+        assert dependencies.get_config_generation() == generation_before
+
+    def test_validate_with_overlays_malformed_overlay_file_returns_valid_false(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A malformed overlay file must degrade gracefully like a malformed
+        base pack file — never an unhandled 500 (apply_overlays calls
+        parse() on every overlay file with no internal try/except, and the
+        router's own _parse_pack_file raises _PackParseError on bad YAML)."""
+        generation_before = dependencies.get_config_generation()
+        assert read_active_pack() is None
+
+        malformed_overlay = tmp_path / "malformed.yaml"
+        malformed_overlay.write_text("{{ not: yaml: [", encoding="utf-8")
+        monkeypatch.setenv("CHILI_CONFIG_OVERLAY_PATH", str(malformed_overlay))
+
+        resp = client.post(
+            "/config/validate",
+            json={"pack": "medicare_fraud"},
+            params={"with_overlays": "true"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is False
+        assert data["pack_name"] is None
+        assert len(data["errors"]) == 1
+        assert data["errors"][0]["error_type"] == "parse_error"
+        assert str(malformed_overlay) in data["errors"][0]["message"]
+
+        assert read_active_pack() is None
+        assert dependencies.get_config_generation() == generation_before
+
+    def test_validate_with_overlays_skips_overlay_for_different_pack(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """overlay_for not matching the requested pack's stem is skipped
+        (pack-scoped guard, ADR 0001 amendment) — the un-overlaid pack still
+        validates on its own terms."""
+        mismatched_overlay = tmp_path / "mismatched.yaml"
+        mismatched_overlay.write_text(
+            "overlay_for: some_other_pack\n"
+            "domain:\n"
+            "  display_name: Should Not Apply\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("CHILI_CONFIG_OVERLAY_PATH", str(mismatched_overlay))
+
+        resp = client.post(
+            "/config/validate",
+            json={"pack": "medicare_fraud"},
+            params={"with_overlays": "true"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is True
+        assert data["pack_name"] == "medicare_fraud"
+        assert data["display_name"] == "Medicare Fraud Detection"
+        assert data["errors"] == []
 
     def test_validate_without_overlays_ignores_env(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
