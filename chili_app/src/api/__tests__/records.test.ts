@@ -55,6 +55,7 @@ describe('records API', () => {
       accepted_count: 1,
       duplicate: false,
       duplicate_count: 0,
+      suppressed_existing_count: 0,
       rejected_count: 0,
       created_at: '2026-05-16T12:00:00Z',
     }
@@ -77,6 +78,7 @@ describe('records API', () => {
       accepted_count: 1,
       duplicate: false,
       duplicate_count: 0,
+      suppressed_existing_count: 0,
       rejected_count: 0,
       created_at: '2026-05-16T12:00:00Z',
     }
@@ -110,6 +112,7 @@ describe('records API', () => {
       accepted_count: 1,
       duplicate: false,
       duplicate_count: 0,
+      suppressed_existing_count: 0,
       rejected_count: 0,
       created_at: '2026-05-16T12:00:00Z',
     }
@@ -148,6 +151,7 @@ describe('records API', () => {
       accepted_count: 1,
       duplicate: false,
       duplicate_count: 0,
+      suppressed_existing_count: 0,
       rejected_count: 0,
       created_at: '2026-05-16T12:00:00Z',
     }
@@ -181,6 +185,7 @@ describe('records API', () => {
       accepted_count: 1,
       duplicate: false,
       duplicate_count: 0,
+      suppressed_existing_count: 0,
       rejected_count: 0,
       created_at: '2026-05-16T12:00:00Z',
     }

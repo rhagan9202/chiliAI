@@ -47,6 +47,7 @@ const receipts: IngestionReceiptEntry[] = [
       accepted_count: 2,
       duplicate: false,
       duplicate_count: 0,
+      suppressed_existing_count: 0,
       rejected_count: 0,
       created_at: '2026-05-17T12:02:00Z',
     },
