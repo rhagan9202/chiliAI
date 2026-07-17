@@ -74,37 +74,40 @@ Graph storage and workflows exist, but analytics inference is still represented 
 
 ## Story analytics.03: GNN: Add Neo4j/graph-backed `GraphSnapshotSourceProtocol` adapter
 **ID:** analytics.03
-**Status:** planned
+**Status:** done
 **Prerequisites:** [graph.06]
 **Unblocks:** [analytics.04]
 **Estimated size:** L
+**Done:** 2026-07-16 · Sprint 2026-28 B1 (GNN live) · `feat/sprint-2026-28-b1-gnn-live`
+
 **As a** fraud-analytics engineer,
 **I need** a graph-DB-backed `GraphSnapshotSource` that loads nodes + edges from Neo4j (and the in-memory backend) for a knowledge base,
 **so that** `GnnService.analyze` can run against real ingested graphs rather than only what tests put into the in-memory source.
 
-### Current State
-- `GraphSnapshotSourceProtocol` (`backend/analytics/gnn/adapters/protocols.py:11-21`) has an explicit `TODO(production)` calling for filtered + incremental loads.
-- Only `InMemoryGraphSnapshotSource` (`backend/analytics/gnn/adapters/in_memory.py:11-44`) exists.
-- `get_graph_snapshot_source` (`backend/api/dependencies.py:660-662`) always returns `InMemoryGraphSnapshotSource()` with no config branch.
-- `GraphServiceProtocol` exposes neighborhood/search but no whole-KB snapshot export today.
+### Current State (shipped)
+- `GraphRepositorySnapshotSource` (`backend/analytics/gnn/adapters/graph_repository_source.py`) reads `repository.get_entities`/`get_relationships` for a `knowledge_base_id` and assembles a bounded `GraphSnapshot` — degree-weighted numeric features per node, clamped/weighted edges — against **any** `GraphRepository` implementation (in-memory or Neo4j), so it is not Neo4j-specific.
+- Both the worker (`agent.coordinator.build_graph_snapshot_source`) and the API (`api.dependencies.get_graph_snapshot_source`) construct this adapter unconditionally over the already-configured `GraphRepository`, so backend selection continues to flow through the single existing `DomainConfig.graph.backend` setting rather than a second GNN-specific literal.
+- `load_clusters` delegates to `ClusterSummaryStoreProtocol` (in-memory or object-store), returning `[]` when nothing has been persisted for the KB yet.
+- Live-Neo4j coverage: `backend/tests/analytics/gnn/test_gnn_live_integration.py::test_gnn_snapshot_source_round_trips_live_neo4j` (`@pytest.mark.integration`) seeds a KB through a real `Neo4jGraphRepository`, loads a snapshot, and runs `GnnService.analyze` end to end.
 
 ### Acceptance Criteria
-- [ ] `GraphGraphSnapshotSource` adapter at `backend/analytics/gnn/adapters/graph_backed.py` consumes the new graph paginated/iterator surface from graph.06 and assembles `GraphSnapshot` instances bounded by an explicit `max_nodes` parameter.
-- [ ] `load_clusters` reads cluster summaries that were written back by the analytics.24 handler (when present); empty list otherwise.
-- [ ] `get_graph_snapshot_source` picks adapter by `DomainConfig.analytics.gnn_snapshot_backend: Literal["in_memory","graph"]`.
-- [ ] Coverage ≥ 85% on the new adapter (integration test marked `@pytest.mark.integration` for the Neo4j path).
+- [x] A graph-repository-backed snapshot source assembles `GraphSnapshot` instances bounded by an explicit `max_nodes` parameter. **Deviation:** shipped as `GraphRepositorySnapshotSource` at `backend/analytics/gnn/adapters/graph_repository_source.py` (not `graph_backed.py`) and bounds via client-side top-degree truncation over a full-KB read (`get_entities`/`get_relationships`), not a paginated/iterator push-down at the graph query layer — `graph.06`'s streaming surface was never a hard prerequisite in practice; the `DomainConfig.gnn.snapshot_max_nodes` cap (default 5000, see analytics.04) keeps this bounded for the sprint's KB sizes.
+- [x] `load_clusters` reads persisted cluster summaries when present, empty list otherwise. **Deviation:** reads from a dedicated `ClusterSummaryStoreProtocol` (in-memory/object-store adapters in `backend/analytics/gnn/adapters/cluster_store.py`), not from `cluster_id`/`anomaly_score` properties written onto graph entities by an analytics.24-style handler — see analytics.05 for why this path was chosen.
+- [x] Backend selection is config-driven. **Deviation:** no `DomainConfig.analytics.gnn_snapshot_backend` literal was added; instead both factories (`build_graph_snapshot_source`, `get_graph_snapshot_source`) always wrap the already-injected `GraphRepository`, so switching `DomainConfig.graph.backend` between `in_memory`/`neo4j` is sufficient — one config surface instead of two that could drift out of sync.
+- [x] Coverage ≥ 85% on the new adapter (integration test marked `@pytest.mark.integration` for the Neo4j path). `analytics/gnn/adapters/graph_repository_source.py` is at 97% line coverage; the live-Neo4j round trip is covered by `test_gnn_live_integration.py`.
 
 ### Verification
 - `pytest -m "not integration" backend/tests/analytics/gnn` green.
-- `pytest -m integration backend/tests/analytics/gnn/test_graph_backed_source.py` green when Neo4j extras are installed.
+- `pytest -m integration backend/tests/analytics/gnn/test_gnn_live_integration.py` green against the dev Neo4j stack (renamed from the originally planned `test_graph_backed_source.py`).
 - `pyright` clean.
 
 ### Code touch points
-- `backend/analytics/gnn/adapters/graph_backed.py` (new)
-- `backend/analytics/gnn/adapters/protocols.py` (modify)
-- `backend/api/dependencies.py` (modify)
-- `backend/config/schema.py` (modify)
-- `backend/tests/analytics/gnn/test_graph_backed_source.py` (new)
+- `backend/analytics/gnn/adapters/graph_repository_source.py` (new — planned as `graph_backed.py`)
+- `backend/analytics/gnn/adapters/cluster_store.py` (new — in-memory + object-store `ClusterSummaryStoreProtocol` adapters)
+- `backend/agent/coordinator.py` (modify — `build_graph_snapshot_source`)
+- `backend/api/dependencies.py` (modify — `get_graph_snapshot_source`)
+- `backend/config/schema.py` (modify — `DomainConfig.gnn.snapshot_max_nodes`, not a backend literal)
+- `backend/tests/analytics/gnn/test_gnn_live_integration.py` (new — planned as `test_graph_backed_source.py`)
 
 ---
 
@@ -118,16 +121,19 @@ Graph storage and workflows exist, but analytics inference is still represented 
 **I need** GNN analysis to stay within bounded memory on production-sized KBs (no full Laplacian, no O(n²) link prediction),
 **so that** worker pods do not OOM when a KB exceeds a few thousand nodes.
 
+> **Delivered slice (Sprint 2026-28 B1, 2026-07-16, `feat/sprint-2026-28-b1-gnn-live`):** the snapshot-loading half of this story shipped: `GraphRepositorySnapshotSource` (`backend/analytics/gnn/adapters/graph_repository_source.py`) bounds the node set it hands to `GnnService` via `DomainConfig.gnn.snapshot_max_nodes` (default 5000) — entities are ranked by degree and only the top-`max_nodes` are kept, with the drop count logged as a warning (`"GNN snapshot truncated for kb=%s..."`). This bounds the *input* to `analyze()`. It does **not** address the two algorithmic complexity items below, which remain open: `_compute_embeddings`'s full `node_count × node_count` Laplacian + dense `np.linalg.eigh` (still O(n³) time / O(n²) memory once inside the 5000-node cap) and `_predict_links`'s O(n²) all-pairs double loop. No per-stage memory/duration counters were added. Story stays `planned` until those are done; do not re-close without addressing them.
+
 ### Current State
 - `_compute_embeddings` materializes a full `node_count × node_count` Laplacian and calls `np.linalg.eigh` — O(n³) time and O(n²) memory (`backend/analytics/gnn/service.py:287-345`).
 - `_predict_links` is O(n²) double-loop over all node pairs (`backend/analytics/gnn/service.py:214-237`).
-- No `max_nodes` guard exists in `GnnAnalysisRequest` and no per-stage memory metric is emitted.
+- `GraphRepositorySnapshotSource` now caps the *node count fed into* the above two functions at `DomainConfig.gnn.snapshot_max_nodes` (default 5000) — see delivered-slice note above — but does not change their per-call complexity.
+- No per-stage memory metric is emitted.
 
 ### Acceptance Criteria
-- [ ] `GnnAnalysisRequest` gains `max_nodes: int = 5000` (or similar) and `analyze()` raises `GnnInsufficientGraphError` (or new `GnnGraphTooLargeError`) when the source returns more nodes.
-- [ ] `_compute_embeddings` is replaced by a sparse-matrix path (`scipy.sparse.linalg.eigsh` with `k=dimension`) so memory is O(n·k) rather than O(n²).
-- [ ] `_predict_links` is replaced by approximate nearest-neighbor candidate selection (e.g. FAISS / annoy or a degree-capped neighborhood) and is documented in the README.
-- [ ] Per-stage memory / duration counters emitted via the observability primitive from `_observability.04`.
+- [ ] `GnnAnalysisRequest` gains `max_nodes: int = 5000` (or similar) and `analyze()` raises `GnnInsufficientGraphError` (or new `GnnGraphTooLargeError`) when the source returns more nodes. **Partially delivered differently:** the cap lives on `DomainConfig.gnn.snapshot_max_nodes` (source-side truncation with a logged warning), not on `GnnAnalysisRequest` (caller-side rejection) — `analyze()` never sees more than `max_nodes` and never raises for an oversized graph; it silently analyzes the top-degree subset instead. Still open: an explicit reject-vs-truncate policy choice, and a request-level override.
+- [ ] `_compute_embeddings` is replaced by a sparse-matrix path (`scipy.sparse.linalg.eigsh` with `k=dimension`) so memory is O(n·k) rather than O(n²). **Not delivered.**
+- [ ] `_predict_links` is replaced by approximate nearest-neighbor candidate selection (e.g. FAISS / annoy or a degree-capped neighborhood) and is documented in the README. **Not delivered.**
+- [ ] Per-stage memory / duration counters emitted via the observability primitive from `_observability.04`. **Not delivered.**
 
 ### Verification
 - `pytest backend/tests/analytics/gnn/test_service.py -q` green.
@@ -144,31 +150,37 @@ Graph storage and workflows exist, but analytics inference is still represented 
 
 ## Story analytics.05: GNN: Surface in-graph `ClusterSummary` persistence
 **ID:** analytics.05
-**Status:** planned
+**Status:** done
 **Prerequisites:** [analytics.24]
 **Unblocks:** []
 **Estimated size:** M
+**Done:** 2026-07-16 · Sprint 2026-28 B1 (GNN live) · `feat/sprint-2026-28-b1-gnn-live`
+
 **As a** fraud analyst,
 **I need** `GET /analytics/gnn/clusters` to return clusters derived from the graph (written back by the self-reinforcing loop) rather than only what tests stuff into the in-memory source,
 **so that** cluster summaries are durable across worker restarts and reflect the latest analyze run.
 
-### Current State
-- `GnnService.list_clusters` reads `_snapshot_source.load_clusters` (`backend/analytics/gnn/service.py:149-169`).
-- `InMemoryGraphSnapshotSource.load_clusters` (`backend/analytics/gnn/adapters/in_memory.py:43-44`) returns whatever fixtures pushed in via `put_clusters`; no production adapter writes cluster summaries anywhere.
+### Current State (shipped)
+- `GnnService.list_clusters` reads `_snapshot_source.load_clusters` (`backend/analytics/gnn/service.py:149-169`), unchanged.
+- Flow B (`agent.coordinator.handle_graph_updated_for_analytics`) persists each successful GNN stage's community results through `_persist_gnn_clusters` immediately after `_run_gnn_stage` returns, writing one `ClusterSummary` per detected community (`cluster_id=community_id`, `entity_ids=member_entity_ids`, `anomaly_score` = the max scored-node score among the community's members) to a `ClusterSummaryStoreProtocol`.
+- Both API and worker build an `ObjectStoreClusterSummaryStore` over the configured object store (`system/analytics/gnn_clusters/<kb>.json`), so `/analytics/gnn/clusters` now serves real, durable, worker-restart-surviving pipeline output instead of only whatever a test pushed into an in-memory fixture. An empty `communities` list still writes — it honestly replaces stale clusters rather than leaving them stranded.
+- Store failures are logged as a warning and never fail the pipeline (`_persist_gnn_clusters`'s `except Exception` guard).
+- Prerequisite analytics.24's write-back (`community_id`/`centrality_score` properties written directly onto graph entities) also exists and predates this story — see analytics.24's delivered-slice note; the two mechanisms are complementary, not the same one: entity properties support per-entity graph queries/exports, while the `ClusterSummary` store is what `/analytics/gnn/clusters` actually reads.
 
 ### Acceptance Criteria
-- [ ] `GraphGraphSnapshotSource.load_clusters` (analytics.03) reads `cluster_id`/`anomaly_score` from graph entity properties written by the analytics.24 handler.
-- [ ] When no clusters exist, `list_clusters` returns an empty list (no error) — covered by a regression test.
-- [ ] Coverage ≥ 85% on the read path.
+- [x] Cluster summaries are durable and reflect the latest `analyze()` run rather than only in-memory-source fixtures. **Deviation:** delivered via a dedicated `ClusterSummaryStoreProtocol` (`backend/analytics/gnn/adapters/cluster_store.py`, in-memory + object-store adapters) populated by Flow B's `_persist_gnn_clusters`, not by `GraphRepositorySnapshotSource.load_clusters` reading `cluster_id`/`anomaly_score` graph-entity properties written by an analytics.24 handler. The object-store path was chosen because "all entities carrying a given `cluster_id`" is not a query the graph protocols expose without a full scan, whereas the analyze-time community list is already grouped and cheap to persist as one small per-KB record.
+- [x] When no clusters exist, `list_clusters` returns an empty list (no error). Covered by `test_gnn_service_list_clusters_returns_empty_when_disabled` (capability off) and both cluster-store adapters' "unseeded KB" tests in `backend/tests/analytics/gnn/test_cluster_store.py`.
+- [x] Coverage ≥ 85% on the read path — `analytics/gnn/adapters/cluster_store.py` and `analytics/gnn/adapters/graph_repository_source.py` are both ≥ 97% line coverage; `GnnService.list_clusters` is exercised by `backend/tests/analytics/gnn/test_service.py`.
 
 ### Verification
-- `pytest backend/tests/analytics/gnn/test_service.py::test_list_clusters_from_graph -q` green.
-- Manual integration: run a GNN analyze, observe `cluster_id` written on entities, then call `/analytics/gnn/clusters` and confirm the summaries match.
+- `pytest backend/tests/analytics/gnn -q` green (28 tests, includes `test_cluster_store.py`, `test_graph_repository_source.py::test_load_clusters_delegates_to_store`, and the live-Neo4j round trip). **Deviation:** no test named exactly `test_list_clusters_from_graph` — coverage is spread across the files above instead of one named test.
+- Manual/live integration: `backend/tests/analytics/gnn/test_gnn_live_integration.py` runs a real GNN `analyze()` against a live-Neo4j-seeded KB and asserts `>=1` community is produced; the full manual "ingest → cluster persists → `GET /analytics/gnn/clusters` returns it" loop is exercised by the controller's Step 5 live demo pass (Sprint 2026-28 B1 task 6).
 
 ### Code touch points
-- `backend/analytics/gnn/adapters/graph_backed.py` (modify)
-- `backend/analytics/gnn/service.py` (modify)
-- `backend/tests/analytics/gnn/test_service.py` (modify)
+- `backend/analytics/gnn/adapters/cluster_store.py` (new)
+- `backend/agent/coordinator.py` (modify — `_persist_gnn_clusters`, Flow B wiring)
+- `backend/api/dependencies.py` (modify — `get_graph_snapshot_source` cluster-store wiring)
+- `backend/tests/analytics/gnn/test_cluster_store.py`, `test_graph_repository_source.py`, `test_gnn_live_integration.py` (new/modified)
 
 ---
 
@@ -798,16 +810,18 @@ Graph storage and workflows exist, but analytics inference is still represented 
 **I need** a worker handler that consumes `GnnAnalyzedEvent` and writes `cluster_id`, `predicted_neighbor_ids`, and `anomaly_score` back onto graph entities,
 **so that** subsequent risk and timeseries analyses can use GNN-derived structural features.
 
+> **Delivered slice (verified during Sprint 2026-28 B1 planning/close, 2026-07-16, `feat/sprint-2026-28-b1-gnn-live`; not new work from B1 itself):** `agent.coordinator._write_analytics_properties_to_graph` (called from `handle_graph_updated_for_analytics` right after the risk stage) already writes `community_id` (from the scored node's `cluster_id`, falling back to the containing community's `community_id`) and `centrality_score` (the scored node's normalized `score`) onto each upserted entity via `GraphService.update_entity_properties`, best-effort (logs a warning, never fails the pipeline). This covers the `cluster_id`/`anomaly_score`-shaped half of the ask. **Not delivered:** `predicted_neighbor_ids` is never written back — `GnnAnalysisResponse.predicted_links` is computed and returned to callers but nothing persists it onto entities. Architecturally this also isn't the `GnnAnalyzedEvent`-consuming handler the story specifies: it's an inline call within the same synchronous Flow B pass that ran the GNN stage (using the in-memory `gnn_response`), not a separate `handle_gnn_analyzed_for_graph` triggered by re-consuming the event — so it can't independently redeliver/retry the graph write from the event log the way the story's design implies. The property contract is undocumented: `backend/agent/AGENT.md` does not exist and `backend/agent/README.md` does not mention `community_id`/`centrality_score`. Story stays `planned`; the remaining gap is the `predicted_neighbor_ids` write-back, an explicit event-consuming handler (or a documented rationale for the inline approach), and the property-contract doc.
+
 ### Current State
-- `GnnAnalyzedEvent` carries reference counts only (`backend/events/types.py:258-269`).
-- No `handle_gnn_analyzed_for_graph` exists in `backend/agent/coordinator.py`.
+- `GnnAnalyzedEvent` carries reference counts only (`backend/events/types.py:258-269`); it does not carry per-entity `cluster_id`/`score` fields.
+- No `handle_gnn_analyzed_for_graph` event-consuming handler exists in `backend/agent/coordinator.py` — see the delivered-slice note above for the inline mechanism that partially substitutes for it.
 - Architecture §6.7 (`docs/architecture.md:757-764`) calls for this feedback loop.
 
 ### Acceptance Criteria
-- [ ] `GnnAnalyzedEvent` (or a new `GnnAnalyzedDetailEvent`) gains optional per-entity reference fields (`cluster_id`, `score`) sufficient for the handler to update entities without re-fetching the full analysis (cross-edge to events.04 for catalog drift).
-- [ ] New `handle_gnn_analyzed_for_graph` handler in `backend/agent/coordinator.py` calls `GraphService.update_entity_properties` for each scored node, idempotent on redelivery.
-- [ ] Property contract (`cluster_id`, `predicted_neighbor_ids`, `anomaly_score`, `gnn_analyzed_at`) documented in `backend/agent/AGENT.md`.
-- [ ] Coverage ≥ 85% on the handler.
+- [ ] `GnnAnalyzedEvent` (or a new `GnnAnalyzedDetailEvent`) gains optional per-entity reference fields (`cluster_id`, `score`) sufficient for the handler to update entities without re-fetching the full analysis (cross-edge to events.04 for catalog drift). **Not delivered** — the existing write-back reads straight from the in-process `GnnAnalysisResponse`, not from event fields.
+- [ ] New `handle_gnn_analyzed_for_graph` handler in `backend/agent/coordinator.py` calls `GraphService.update_entity_properties` for each scored node, idempotent on redelivery. **Partially delivered differently:** `_write_analytics_properties_to_graph` does call `update_entity_properties` per entity (property-merge semantics make it idempotent on redelivery) with `community_id`/`centrality_score`, but as an inline step of Flow B, not a standalone event-consuming handler; `predicted_neighbor_ids` is not written.
+- [ ] Property contract (`cluster_id`, `predicted_neighbor_ids`, `anomaly_score`, `gnn_analyzed_at`) documented in `backend/agent/AGENT.md`. **Not delivered** — `AGENT.md` doesn't exist; the shipped property names (`community_id`, `centrality_score`) also differ from the ones specified here (`cluster_id`, `anomaly_score`, `gnn_analyzed_at`) and are undocumented in `backend/agent/README.md`.
+- [ ] Coverage ≥ 85% on the handler. The existing inline write-back is covered by `backend/tests/agent/` coordinator tests (not a dedicated `test_handle_gnn_analyzed.py`).
 
 ### Verification
 - `pytest backend/tests/agent/test_handle_gnn_analyzed.py -q` green.

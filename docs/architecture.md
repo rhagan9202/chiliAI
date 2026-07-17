@@ -316,7 +316,9 @@ backend/
 │   │       └── postgres.py     # PostgresObservationStore / PostgresObservationSource
 │   ├── gnn/                    # Graph neural network analysis (standard module shape)
 │   │   └── adapters/
-│   │       └── in_memory.py
+│   │       ├── in_memory.py
+│   │       ├── graph_repository_source.py  # GraphSnapshotSourceProtocol over any GraphRepository, bounded by gnn.snapshot_max_nodes
+│   │       └── cluster_store.py            # ClusterSummaryStoreProtocol: in-memory + object-store adapters
 │   ├── risk/                   # Risk scoring engine (standard module shape)
 │   │   └── adapters/
 │   │       ├── in_memory.py
@@ -924,6 +926,14 @@ The analytics pipeline is designed as a **feedback loop**: analysis results (ris
 - Time-series anomaly detection can incorporate graph-derived features
 - Risk scoring aggregates signals from both time-series and GNN outputs
 - Each monitoring cycle produces a progressively richer graph
+
+**What's implemented today (Sprint 2026-28 B1).** The GNN half of this loop is live, not fixture-only, on two independent paths that read from the same in-flight `GnnAnalysisResult` (both best-effort — a store failure logs a warning and never fails the pipeline):
+1. **Per-entity graph properties.** `agent.coordinator._write_analytics_properties_to_graph` (Flow B, right after the risk stage) writes `community_id` and `centrality_score` onto each upserted entity alongside `risk_score`/`risk_level` — so a graph query or export sees GNN structure inline with risk. This existed before B1; B1 only verified and documented it.
+2. **Per-KB cluster summaries.** `agent.coordinator._persist_gnn_clusters` (Flow B, immediately after the GNN stage) writes one `ClusterSummary` per detected community to a `ClusterSummaryStoreProtocol` (`analytics/gnn/adapters/cluster_store.py`; object-store-backed in the API/worker, in-memory for tests), so `GET /analytics/gnn/clusters` (`GnnService.list_clusters`) serves the latest real pipeline output instead of only whatever a test seeded — see § "Analytics Runtime Notes" in `backend/README.md`.
+
+The snapshot side of the loop is also live: `GraphRepositorySnapshotSource` (`analytics/gnn/adapters/graph_repository_source.py`) loads nodes/edges for `GnnService.analyze` from the real configured `GraphRepository` (in-memory or Neo4j), bounded by `DomainConfig.gnn.snapshot_max_nodes` (top-degree nodes kept). `backend/tests/analytics/gnn/test_gnn_live_integration.py` (`@pytest.mark.integration`) proves the round trip end to end against a live Neo4j instance: seed entities/relationships → load a snapshot → `analyze()` → scored nodes + communities.
+
+**Not yet implemented:** `predicted_links` (GNN link predictions) are computed by `analyze()` but never written back to the graph or persisted anywhere durable — only the scored/community half of the loop closes today. Time-series anomaly flags are not written back to the graph either. Both gaps are tracked in `docs/backlog/analytics.md` (analytics.24, analytics.25).
 
 ### 6.8 Housing scorecards & executive dashboard (branch `af_housing`)
 
