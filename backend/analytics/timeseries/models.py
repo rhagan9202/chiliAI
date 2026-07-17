@@ -56,9 +56,25 @@ class TimeSeriesAnalysisResult(BaseModel):
     anomalies: list[AnomalyPoint] = Field(default_factory=list[AnomalyPoint])
 
 
+class TimeseriesAnomalyRecord(BaseModel):
+    """A persisted anomalous interval bucket for one entity series."""
+
+    knowledge_base_id: str
+    entity_id: str
+    metric_name: str
+    observed_at: datetime
+    observed_value: float
+    expected_value: float
+    z_score: float = Field(ge=0.0)
+    severity: float = Field(ge=0.0, le=1.0)
+    detection_strategy: str
+    correlation_id: str
+
+
 __all__ = [
     "AnomalyPoint",
     "TimeSeriesAnalysisResult",
     "TimeSeriesObservation",
     "TimeSeriesSeries",
+    "TimeseriesAnomalyRecord",
 ]

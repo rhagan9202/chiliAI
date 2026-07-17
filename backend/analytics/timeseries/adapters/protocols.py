@@ -5,7 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from analytics.timeseries.models import TimeSeriesObservation, TimeSeriesSeries
+from analytics.timeseries.models import (
+    TimeSeriesObservation,
+    TimeSeriesSeries,
+    TimeseriesAnomalyRecord,
+)
 
 
 @runtime_checkable
@@ -35,6 +39,26 @@ class TimeSeriesHistorySourceProtocol(Protocol):
     ) -> list[TimeSeriesObservation]: ...
 
 
+@runtime_checkable
+class TimeseriesAnomalyStoreProtocol(Protocol):
+    """Persist and read detected series anomalies idempotently."""
+
+    def write_anomalies(self, records: list[TimeseriesAnomalyRecord]) -> int:
+        """Upsert each record on its (kb, entity, metric, observed_at) key."""
+        ...
+
+    def load_anomalies(
+        self, *, knowledge_base_id: str, entity_id: str, metric_name: str
+    ) -> list[TimeseriesAnomalyRecord]:
+        """Return the entity metric's anomalies ordered by observed_at."""
+        ...
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        """Delete all anomalies for a knowledge base; return rows removed."""
+        ...
+
+
 __all__ = [
     "TimeSeriesHistorySourceProtocol",
+    "TimeseriesAnomalyStoreProtocol",
 ]

@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from analytics.timeseries.models import TimeSeriesObservation, TimeSeriesSeries
+from analytics.timeseries.models import (
+    TimeSeriesObservation,
+    TimeSeriesSeries,
+    TimeseriesAnomalyRecord,
+)
 
-__all__ = ["InMemoryTimeSeriesHistorySource"]
+__all__ = ["InMemoryTimeSeriesHistorySource", "InMemoryTimeseriesAnomalyStore"]
 
 
 class InMemoryTimeSeriesHistorySource:
@@ -76,3 +80,39 @@ class InMemoryTimeSeriesHistorySource:
 
 def _series_key(knowledge_base_id: str, entity_id: str, metric_name: str) -> tuple[str, str, str]:
     return (knowledge_base_id, entity_id, metric_name)
+
+
+class InMemoryTimeseriesAnomalyStore:
+    """Dict-backed anomaly store keyed like the Postgres PK."""
+
+    def __init__(self) -> None:
+        self._records: dict[tuple[str, str, str, datetime], TimeseriesAnomalyRecord] = {}
+
+    def write_anomalies(self, records: list[TimeseriesAnomalyRecord]) -> int:
+        for record in records:
+            key = (
+                record.knowledge_base_id,
+                record.entity_id,
+                record.metric_name,
+                record.observed_at,
+            )
+            self._records[key] = record
+        return len(records)
+
+    def load_anomalies(
+        self, *, knowledge_base_id: str, entity_id: str, metric_name: str
+    ) -> list[TimeseriesAnomalyRecord]:
+        matches = [
+            record
+            for record in self._records.values()
+            if record.knowledge_base_id == knowledge_base_id
+            and record.entity_id == entity_id
+            and record.metric_name == metric_name
+        ]
+        return sorted(matches, key=lambda record: record.observed_at)
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int:
+        keys = [key for key in self._records if key[0] == knowledge_base_id]
+        for key in keys:
+            del self._records[key]
+        return len(keys)
