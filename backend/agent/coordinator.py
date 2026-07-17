@@ -2141,18 +2141,18 @@ def _persist_gnn_clusters(
 ) -> None:
     """Persist pipeline community results so /analytics/gnn/clusters serves real data."""
     score_by_entity = {node.entity_id: node.score for node in gnn_response.scored_nodes}
-    summaries = [
-        ClusterSummary(
-            cluster_id=community.community_id,
-            entity_ids=list(community.member_entity_ids),
-            anomaly_score=max(
-                (score_by_entity.get(member, 0.0) for member in community.member_entity_ids),
-                default=0.0,
-            ),
-        )
-        for community in gnn_response.communities
-    ]
     try:
+        summaries = [
+            ClusterSummary(
+                cluster_id=community.community_id,
+                entity_ids=list(community.member_entity_ids),
+                anomaly_score=max(
+                    (score_by_entity.get(member, 0.0) for member in community.member_entity_ids),
+                    default=0.0,
+                ),
+            )
+            for community in gnn_response.communities
+        ]
         cluster_store.put_clusters(knowledge_base_id, summaries)
     except Exception as exc:  # noqa: BLE001 - persistence must not fail the pipeline
         logger.warning(

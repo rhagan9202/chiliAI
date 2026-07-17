@@ -4116,6 +4116,124 @@ def test_analytics_handler_tolerates_cluster_store_failure(
     assert "kb-1" in caplog.text
 
 
+def test_analytics_handler_empty_communities_still_replaces_stale_clusters() -> None:
+    """B1 Task 4: an honest empty ``communities`` list still writes through the
+    cluster store, replacing whatever was persisted for this KB previously —
+    a future ``if summaries:`` guard regression would leave the stale seed in
+    place and fail this test."""
+    from typing import cast
+
+    from agent.coordinator import handle_graph_updated_for_analytics
+    from analytics.gnn.adapters.cluster_store import InMemoryClusterSummaryStore
+    from analytics.gnn.models import ClusterSummary
+    from analytics.gnn.service import GnnService
+    from analytics.gnn.service_models import GnnAnalysisRequest, GnnAnalysisResponse
+    from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
+    from analytics.risk.models import RiskProfile, RiskSignal
+    from analytics.risk.service import create_risk_service
+    from analytics.explainability.service import create_explainability_service
+
+    class _EmptyCommunitiesGnnService:
+        """Stands in for a real ``GnnService`` (duck-typed, like the
+        cancellation test's ``_Boom`` above) whose analysis found no
+        communities worth reporting for this snapshot."""
+
+        def analyze(self, request: GnnAnalysisRequest) -> GnnAnalysisResponse:
+            return GnnAnalysisResponse(
+                request_id="req-empty-communities",
+                knowledge_base_id=request.knowledge_base_id,
+                node_count=2,
+                edge_count=1,
+                communities=[],
+            )
+
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    object_store.put_bytes(
+        "gk-empty-communities",
+        GraphUpsertResult(
+            knowledge_base_id="kb-1",
+            source_document_id="doc-A",
+            parsed_document_id="parsed-A",
+            extraction_result_id="extract-A",
+            validation_report_id="validate-A",
+            upserted_entity_ids=["provider-1"],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    graph_repository = InMemoryGraphRepository()
+    graph_repository.upsert_entities(
+        "kb-1",
+        [Entity(id="provider-1", type="claim", properties={"name": "Provider 1"})],
+    )
+    graph_service = create_graph_service(
+        graph_repository, object_store=object_store, event_bus=event_bus
+    )
+
+    cluster_store = InMemoryClusterSummaryStore()
+    cluster_store.put_clusters(
+        "kb-1",
+        [
+            ClusterSummary(
+                cluster_id="stale-cluster",
+                entity_ids=["stale-entity"],
+                anomaly_score=0.9,
+            )
+        ],
+    )
+    assert cluster_store.load_clusters(knowledge_base_id="kb-1"), "seed must land first"
+
+    risk_service = create_risk_service(
+        InMemoryRiskSignalSource(
+            profiles=[
+                RiskProfile(
+                    knowledge_base_id="kb-1",
+                    entity_id="provider-1",
+                    signals=[
+                        RiskSignal(signal_name="anomaly", value=0.7, weight=0.5),
+                        RiskSignal(signal_name="velocity", value=0.6, weight=0.5),
+                    ],
+                )
+            ]
+        ),
+        event_bus=event_bus,
+    )
+    explainability_service = create_explainability_service(
+        _AcceptingExplainabilityContextSource(),
+        event_bus=event_bus,
+    )
+
+    alerts = handle_graph_updated_for_analytics(
+        GraphUpdatedEvent(
+            correlation_id="corr-empty-communities",
+            documents=[
+                GraphUpdatedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-A",
+                    parsed_document_id="parsed-A",
+                    extraction_result_id="extract-A",
+                    validation_report_id="validate-A",
+                    upserted_entity_count=1,
+                    upserted_relationship_count=0,
+                    validation_storage_key="vk-empty-communities",
+                    graph_update_storage_key="gk-empty-communities",
+                )
+            ],
+        ),
+        gnn_service=cast(GnnService, _EmptyCommunitiesGnnService()),
+        risk_service=risk_service,
+        explainability_service=explainability_service,
+        graph_service=graph_service,
+        event_bus=event_bus,
+        object_store=object_store,
+        gnn_cluster_store=cluster_store,
+    )
+
+    assert alerts == 1
+    assert cluster_store.load_clusters(knowledge_base_id="kb-1") == []
+
+
 def test_analytics_handler_emits_analysis_failed_when_risk_profile_missing() -> None:
     pytest.importorskip("networkx")
     pytest.importorskip("numpy")
