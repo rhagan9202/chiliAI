@@ -52,10 +52,42 @@ def test_load_snapshot_builds_features_and_edges() -> None:
     # degree first, then numeric properties sorted by name; non-numeric skipped
     assert nodes["e-1"].feature_values == [2.0, 100.0]
     assert nodes["e-2"].feature_values == [1.0, 25.5]
-    assert nodes["e-3"].feature_values == [1.0]  # degree only — invariant holds
+    assert nodes["e-3"].feature_values == [1.0, 0.0]  # degree + padded 0.0 (no "amount" property)
     edges = {(edge.source_id, edge.target_id): edge.weight for edge in snapshot.edges}
     assert edges[("e-2", "e-1")] == 2.0
     assert edges[("e-3", "e-1")] == 1.0  # default weight when relationship weight is None
+
+
+def test_load_snapshot_pads_features_over_union_of_numeric_properties() -> None:
+    """Heterogeneous entity types (disjoint numeric property sets) must still produce
+    uniform-length feature vectors — every kept entity's vector spans the sorted union
+    of numeric property names, padded with 0.0 where an entity lacks a given property."""
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="e-a", type="provider", properties={"a": 1.5}),
+            Entity(id="e-b", type="claim", properties={"b": 2.0, "c": 3.0}),
+            Entity(id="e-none", type="beneficiary", properties={}),
+        ],
+    )
+    repository.upsert_relationships(
+        "kb-1",
+        [
+            Relationship(id="r-1", type="rel", source_id="e-a", target_id="e-b"),
+            Relationship(id="r-2", type="rel", source_id="e-b", target_id="e-none"),
+        ],
+    )
+
+    snapshot = _source(repository).load_snapshot(knowledge_base_id="kb-1")
+
+    nodes = {node.entity_id: node for node in snapshot.nodes}
+    lengths = {len(node.feature_values) for node in nodes.values()}
+    assert lengths == {4}  # 1 (degree) + 3 (union of property names: a, b, c)
+    # sorted union order is a, b, c; missing properties pad with 0.0
+    assert nodes["e-a"].feature_values == [1.0, 1.5, 0.0, 0.0]
+    assert nodes["e-b"].feature_values == [2.0, 0.0, 2.0, 3.0]
+    assert nodes["e-none"].feature_values == [1.0, 0.0, 0.0, 0.0]
 
 
 def test_load_snapshot_empty_kb_raises_unavailable() -> None:

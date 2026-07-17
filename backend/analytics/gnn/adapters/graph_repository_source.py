@@ -18,24 +18,25 @@ __all__ = ["GraphRepositorySnapshotSource"]
 _DEFAULT_MAX_NODES = 5000
 
 
-def _numeric_features(entity: Entity) -> list[float]:
-    """Numeric property values sorted by property name; bools excluded, non-finite skipped."""
-    values: list[tuple[str, float]] = []
+def _numeric_feature_map(entity: Entity) -> dict[str, float]:
+    """Entity's numeric properties as name -> value; bools excluded, non-finite skipped,
+    float-parseable strings included."""
+    values: dict[str, float] = {}
     for name, value in entity.properties.items():
         if isinstance(value, bool):
             continue
         if isinstance(value, (int, float)):
             float_val = float(value)
             if math.isfinite(float_val):
-                values.append((name, float_val))
+                values[name] = float_val
         elif isinstance(value, str):
             try:
                 float_val = float(value)
-                if math.isfinite(float_val):
-                    values.append((name, float_val))
             except ValueError:
                 continue
-    return [value for _, value in sorted(values)]
+            if math.isfinite(float_val):
+                values[name] = float_val
+    return values
 
 
 class GraphRepositorySnapshotSource:
@@ -78,10 +79,17 @@ class GraphRepositorySnapshotSource:
             entities = kept
         kept_ids = {entity.id for entity in entities}
 
+        # Heterogeneous entity types carry disjoint numeric property sets; build the sorted
+        # union of numeric property names across kept entities so every feature vector has
+        # the same dimension, padding with 0.0 where an entity lacks a given property.
+        feature_maps = {entity.id: _numeric_feature_map(entity) for entity in entities}
+        feature_names = sorted({name for feature_map in feature_maps.values() for name in feature_map})
+
         nodes = [
             GraphNodeSignal(
                 entity_id=entity.id,
-                feature_values=[float(degree[entity.id])] + _numeric_features(entity),
+                feature_values=[float(degree[entity.id])]
+                + [feature_maps[entity.id].get(name, 0.0) for name in feature_names],
                 metadata={"entity_type": entity.type},
             )
             for entity in entities
