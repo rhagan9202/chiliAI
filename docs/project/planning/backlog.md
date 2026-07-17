@@ -34,6 +34,15 @@
 | BL-024 | Load testing & SLO baselines | REQ-NFR-SCALE-PROD | P2 | todo | 8 SP |
 | BL-027 | Resource-level per-KB ACL | REQ-AUTH-006 (ext) | P2 | todo | 8 SP |
 | BL-028 | Multi-KB scope in RAG | REQ-RAG-002 | P2 | todo | 5 SP |
+| BL-046 | GNN live: repository-backed snapshot source + cluster persistence (analytics.03/.05, partial .04/.24) | REQ-ANALYTICS (GNN) | P1 (sprint 2026-28) | committed — Sprint 2026-28 B1 | 5 SP |
+| BL-047 | Timeseries anomaly detection into the ingest pipeline (analytics.06/07) | REQ-ANALYTICS (timeseries) | P1 (sprint 2026-28) | committed — Sprint 2026-28 B2 | 3 SP |
+| BL-048 | Explainability engine: LLM narratives + production SHAP (analytics.13/.14) | REQ-ANALYTICS (explainability) | P1 (sprint 2026-28) | committed — Sprint 2026-28 B3 | 5 SP |
+| BL-049 | Workbench reshape design pass (IntegrityAI-inspired, design-only) | REQ-UI | P1 (sprint 2026-28) | committed — Sprint 2026-28 U1 | 2 SP |
+| BL-050 | Workbench reshape + analytics surfacing implementation | REQ-UI | P1 (sprint 2026-28) | committed — Sprint 2026-28 U2 | 8 SP |
+| BL-051 | Complete CMS demo: presenter script, make demo-cms, fraud rule packs, e2e walkthrough | REQ-DEMO | P1 (sprint 2026-28) | committed — Sprint 2026-28 D1 | 3 SP |
+| BL-052 | Trained GNN (BL-030 pulled forward as stretch): PyTorch Geometric behind existing protocols | REQ-ANALYTICS (GNN) | stretch (sprint 2026-28) | stretch — strictly after BL-051 demo-ready | 8 SP |
+
+Sprint 2026-28 committed set (owner directive + approved design note `docs/superpowers/specs/2026-07-16-sprint28-cms-fraud-workbench-design.md`): BL-046..051 core (26 SP, two-track), BL-052 stretch. BL-030 remains the post-v1 record; BL-052 is its sprint-scoped stretch slice.
 
 **Big picture:** the v1 feature surface is complete (all P0s and P1 user-facing verticals shipped — see Done), and the config surface gained a full write/hot-swap path plus a third domain (Air Force housing scorecards) since 2026-06-23. What remains active is purely a hardening/DR/security-depth tail. Requirements v1.2 (2026-07-12) resolved all prior [NO-REQ]/contested items: BL-016 closed at its v1 bar (wizard + write hardening → post-v1, tracked as BL-040), and BL-038/BL-039 gained the REQ-SCORE-*/REQ-HOUSING-* families.
 
