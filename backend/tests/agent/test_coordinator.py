@@ -4332,6 +4332,130 @@ def test_analytics_handler_emits_analysis_failed_when_risk_profile_missing() -> 
     assert failures[0].entity_id == "provider-1"
 
 
+def test_analytics_handler_writes_gnn_properties_when_risk_stage_yields_nothing() -> None:
+    """Live-pass fix (B1): a KB with no derived risk signals still gets its
+    GNN community_id/centrality_score written back. Before the fix, the
+    fan-out loop's ``if risk_response is None: continue`` skipped
+    ``_write_analytics_properties_to_graph`` entirely whenever the risk stage
+    came back empty — even though the GNN properties never depended on risk."""
+    from typing import cast
+
+    pytest.importorskip("networkx")
+    pytest.importorskip("numpy")
+
+    from analytics.explainability.service import ExplainabilityService
+    from analytics.gnn.adapters.cluster_store import InMemoryClusterSummaryStore
+    from analytics.gnn.adapters.graph_repository_source import (
+        GraphRepositorySnapshotSource,
+    )
+    from analytics.gnn.service import create_gnn_service
+    from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
+    from analytics.risk.service import create_risk_service
+    from agent.coordinator import handle_graph_updated_for_analytics
+    from events.types import AnalysisFailedEvent
+
+    class _Boom:
+        """Any use of explainability proves the risk-absent gating regressed:
+        explainability genuinely needs a risk response, so it must not run."""
+
+        def __getattr__(self, name: str) -> object:
+            raise AssertionError(f"explainability used despite no risk response: {name}")
+
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    object_store.put_bytes(
+        "gk-no-risk-signals",
+        GraphUpsertResult(
+            knowledge_base_id="kb-1",
+            source_document_id="doc-A",
+            parsed_document_id="parsed-A",
+            extraction_result_id="extract-A",
+            validation_report_id="validate-A",
+            upserted_entity_ids=["provider-1"],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    graph_repository = InMemoryGraphRepository()
+    graph_repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="provider-1", type="claim", properties={"name": "Provider 1"}),
+            Entity(id="other-1", type="claim", properties={"name": "Other 1"}),
+        ],
+    )
+    graph_repository.upsert_relationships(
+        "kb-1",
+        [
+            Relationship(
+                id="rel-provider-other",
+                type="referral",
+                source_id="provider-1",
+                target_id="other-1",
+                weight=1.0,
+            )
+        ],
+    )
+    cluster_store = InMemoryClusterSummaryStore()
+    snapshot_source = GraphRepositorySnapshotSource(graph_repository, cluster_store)
+    gnn_service = create_gnn_service(snapshot_source, event_bus=event_bus)
+
+    # This KB has no derived risk signals registered anywhere — a legitimate,
+    # common state (not an error). RiskService.assess raises for a profile
+    # that was never registered, so _run_risk_stage returns None.
+    risk_service = create_risk_service(InMemoryRiskSignalSource(), event_bus=event_bus)
+
+    graph_service = create_graph_service(
+        graph_repository, object_store=object_store, event_bus=event_bus
+    )
+
+    alerts = handle_graph_updated_for_analytics(
+        GraphUpdatedEvent(
+            correlation_id="corr-no-risk-signals",
+            documents=[
+                GraphUpdatedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-A",
+                    parsed_document_id="parsed-A",
+                    extraction_result_id="extract-A",
+                    validation_report_id="validate-A",
+                    upserted_entity_count=1,
+                    upserted_relationship_count=0,
+                    validation_storage_key="vk-no-risk-signals",
+                    graph_update_storage_key="gk-no-risk-signals",
+                )
+            ],
+        ),
+        gnn_service=gnn_service,
+        risk_service=risk_service,
+        explainability_service=cast(ExplainabilityService, _Boom()),
+        graph_service=graph_service,
+        event_bus=event_bus,
+        object_store=object_store,
+    )
+
+    # No alerts: explainability is correctly gated on a real risk response,
+    # and _Boom would have raised had it been invoked despite that gating.
+    assert alerts == 0
+    failures = [
+        e for e in event_bus.published_events if isinstance(e, AnalysisFailedEvent)
+    ]
+    assert len(failures) == 1
+    assert failures[0].stage == "risk"
+    assert failures[0].entity_id == "provider-1"
+
+    # The GNN write-back must not depend on risk succeeding: community_id and
+    # centrality_score land on the graph even though risk yielded nothing.
+    updated = graph_repository.get_entity(["kb-1"], "provider-1")
+    assert updated is not None
+    assert "community_id" in updated.properties
+    assert "centrality_score" in updated.properties
+    # No risk trio: nothing to write since risk never assessed this entity.
+    assert "risk_score" not in updated.properties
+    assert "risk_level" not in updated.properties
+    assert "risk_assessed_at" not in updated.properties
+
+
 def test_analytics_handler_stops_immediately_when_cancelled() -> None:
     """A cancelled run aborts Flow B at the first loop boundary: no GNN/risk/
     explainability work runs and no alerts.created / analysis.failed is published."""

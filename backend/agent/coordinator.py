@@ -2037,9 +2037,11 @@ def handle_graph_updated_for_analytics(
                 entity_id=entity_id,
                 event_bus=event_bus,
             )
-            if risk_response is None:
-                continue
 
+            # GNN-derived properties (community_id/centrality_score) don't
+            # depend on risk, so this write-back runs regardless of the risk
+            # stage's outcome — a KB with no derived risk signals is a
+            # legitimate, common state, not a reason to drop them.
             _write_analytics_properties_to_graph(
                 graph_service=graph_service,
                 knowledge_base_id=knowledge_base_id,
@@ -2047,6 +2049,9 @@ def handle_graph_updated_for_analytics(
                 gnn_response=gnn_response,
                 risk_response=risk_response,
             )
+
+            if risk_response is None:
+                continue
 
             alert_reference = _run_explainability_stage(
                 event=event,
@@ -2414,19 +2419,21 @@ def _write_analytics_properties_to_graph(
     knowledge_base_id: str,
     entity_id: str,
     gnn_response: GnnAnalysisResponse,
-    risk_response: RiskAssessmentResponse,
+    risk_response: RiskAssessmentResponse | None,
 ) -> None:
-    properties: dict[str, object] = {
-        "risk_score": float(risk_response.overall_score),
-        "risk_level": risk_response.risk_level,
-        "risk_assessed_at": datetime.now(tz=timezone.utc).isoformat(),
-    }
+    properties: dict[str, object] = {}
+    if risk_response is not None:
+        properties["risk_score"] = float(risk_response.overall_score)
+        properties["risk_level"] = risk_response.risk_level
+        properties["risk_assessed_at"] = datetime.now(tz=timezone.utc).isoformat()
     centrality_score = _resolve_centrality_score(gnn_response, entity_id)
     if centrality_score is not None:
         properties["centrality_score"] = centrality_score
     community_id = _resolve_community_id(gnn_response, entity_id)
     if community_id is not None:
         properties["community_id"] = community_id
+    if not properties:
+        return
     try:
         graph_service.update_entity_properties(
             knowledge_base_id, entity_id, properties
