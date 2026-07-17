@@ -43,6 +43,21 @@ repository adapters and no service or events. `analytics/peerstats` computes
 record-column peer z-scores and persists derived risk signals consumed by
 `analytics/risk`.
 
+`analytics/gnn` is a worked example of the protocol-plus-adapter pattern this
+guide prescribes, now live end to end: `GraphRepositorySnapshotSource`
+(`adapters/graph_repository_source.py`) implements `GraphSnapshotSourceProtocol`
+against **any** `GraphRepository` (in-memory or Neo4j) rather than a
+GNN-specific data source, bounding the node set it hands to `GnnService` by
+`DomainConfig.gnn.snapshot_max_nodes`. Cluster results get their own small
+protocol, `ClusterSummaryStoreProtocol` (`adapters/cluster_store.py`), with
+in-memory and object-store adapters — a second protocol was worth adding here
+because cluster persistence has a different lifecycle (write-once-per-analyze,
+read-many by the clusters endpoint) than the read-only graph snapshot. See
+`backend/README.md` § Analytics Runtime Notes for the full worker/API wiring
+and cascade-delete behavior, and
+`backend/tests/analytics/gnn/test_gnn_live_integration.py` for the live-Neo4j
+round trip that proves the whole path (`@pytest.mark.integration`).
+
 ## Where script code belongs
 
 Use this mapping when converting a script or notebook into the codebase:

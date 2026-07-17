@@ -15,6 +15,7 @@ from config.schema import (
     DomainInfo,
     EmbeddingsConfig,
     EventBusConfig,
+    GnnConfig,
     GraphDbConfig,
     IngestionConfig,
     IngestionSourceConfig,
@@ -65,6 +66,7 @@ def _make_config(
     events: EventBusConfig | None = None,
     monitoring: MonitoringConfig | None = None,
     rag: RagConfig | None = None,
+    gnn: GnnConfig | None = None,
     schema_version: str = "1.0",
     default_reference_kb_id: str | None = None,
 ) -> DomainConfig:
@@ -90,6 +92,7 @@ def _make_config(
         events=events,
         monitoring=monitoring,
         rag=rag,
+        gnn=gnn,
         alerts=AlertsConfig(thresholds={}),
         ui=UiConfig(
             default_entity_type="alpha",
@@ -913,6 +916,42 @@ def test_domain_config_defaults_analytics_section() -> None:
     )
     assert config.analytics is not None
     assert config.analytics.metrics_recompute_min_interval_seconds == 300
+
+
+# ---------------------------------------------------------------------------
+# GnnConfig
+# ---------------------------------------------------------------------------
+
+
+def test_gnn_config_defaults() -> None:
+    config = GnnConfig()
+    assert config.snapshot_max_nodes == 5000
+
+
+def test_gnn_config_rejects_non_positive_snapshot_max_nodes() -> None:
+    with pytest.raises(ValidationError):
+        GnnConfig(snapshot_max_nodes=0)
+    with pytest.raises(ValidationError):
+        GnnConfig(snapshot_max_nodes=-1)
+
+
+def test_domain_config_defaults_gnn_section() -> None:
+    """A config that omits `gnn` gets the default GnnConfig."""
+    cfg = _make_config()
+    assert cfg.gnn is not None
+    assert cfg.gnn.snapshot_max_nodes == 5000
+
+
+def test_domain_config_gnn_section_explicit_value_round_trips() -> None:
+    """An explicitly configured `gnn` section survives dump/reload."""
+    cfg = _make_config(gnn=GnnConfig(snapshot_max_nodes=1234))
+
+    data = cfg.model_dump()
+    restored = DomainConfig.model_validate(data)
+
+    assert restored == cfg
+    assert restored.gnn is not None
+    assert restored.gnn.snapshot_max_nodes == 1234
 
 
 # ---------------------------------------------------------------------------

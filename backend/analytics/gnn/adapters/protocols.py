@@ -21,6 +21,18 @@ class GraphSnapshotSourceProtocol(Protocol):
     def load_clusters(self, *, knowledge_base_id: str) -> list[ClusterSummary]: ...
 
 
+@runtime_checkable
+class ClusterSummaryStoreProtocol(Protocol):
+    """Store and retrieve cluster summaries by knowledge base."""
+
+    def put_clusters(self, knowledge_base_id: str, clusters: list[ClusterSummary]) -> None: ...
+
+    def load_clusters(self, *, knowledge_base_id: str) -> list[ClusterSummary]: ...
+
+    def delete_by_kb(self, knowledge_base_id: str) -> None: ...
+
+
 __all__ = [
+    "ClusterSummaryStoreProtocol",
     "GraphSnapshotSourceProtocol",
 ]

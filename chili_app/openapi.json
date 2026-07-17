@@ -1918,6 +1918,17 @@
             ],
             "default": null
           },
+          "gnn": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GnnConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "graph": {
             "anyOf": [
               {
@@ -2581,6 +2592,19 @@
           "knowledge_base_id"
         ],
         "title": "GnnClusterResponse",
+        "type": "object"
+      },
+      "GnnConfig": {
+        "description": "Configuration for the GNN analytics graph-snapshot source.",
+        "properties": {
+          "snapshot_max_nodes": {
+            "default": 5000,
+            "exclusiveMinimum": 0,
+            "title": "Snapshot Max Nodes",
+            "type": "integer"
+          }
+        },
+        "title": "GnnConfig",
         "type": "object"
       },
       "GraphDbConfig": {

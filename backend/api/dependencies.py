@@ -84,6 +84,7 @@ from config.schema import (
     DomainConfig,
     EmbeddingsConfig,
     EventBusConfig,
+    GnnConfig,
     GraphDbConfig,
     LlmConfig,
     MonitoringConfig,
@@ -91,7 +92,8 @@ from config.schema import (
     RecordsConfig,
     VectorStoreConfig,
 )
-from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
+from analytics.gnn.adapters.cluster_store import ObjectStoreClusterSummaryStore
+from analytics.gnn.adapters.graph_repository_source import GraphRepositorySnapshotSource
 from analytics.gnn.adapters.protocols import GraphSnapshotSourceProtocol
 from analytics.gnn.protocols import GnnServiceProtocol
 from analytics.gnn.service import create_gnn_service
@@ -1279,8 +1281,18 @@ def get_timeseries_service() -> TimeseriesServiceProtocol:
 
 @lru_cache(maxsize=1)
 def get_graph_snapshot_source() -> GraphSnapshotSourceProtocol:
-    """Return the GNN graph snapshot source. In-memory by default."""
-    return InMemoryGraphSnapshotSource()
+    """Return the GNN graph snapshot source, repository-backed (B1).
+
+    Mirrors the worker's ``build_graph_snapshot_source`` wiring: bounded by
+    ``DomainConfig.gnn.snapshot_max_nodes`` with cluster summaries served from
+    an object-store-backed cluster store over the configured object store.
+    """
+    gnn_config = get_domain_config().gnn or GnnConfig()
+    return GraphRepositorySnapshotSource(
+        get_graph_repository(),
+        ObjectStoreClusterSummaryStore(get_object_store()),
+        max_nodes=gnn_config.snapshot_max_nodes,
+    )
 
 
 def _gnn_capability_enabled() -> bool:

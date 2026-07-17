@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   AlertListResponse,
   AnalyticsOverviewResponse,
+  DomainConfig,
   GnnClusterResponse,
   KnowledgeBaseListResponse,
   MetricTimeseriesResponse,
@@ -16,6 +17,7 @@ import { DashboardPage } from '../DashboardPage'
 const mocks = vi.hoisted(() => ({
   useAlerts: vi.fn(),
   useAnalyticsOverview: vi.fn(),
+  useDomainConfig: vi.fn(),
   useGnnClusters: vi.fn(),
   useKnowledgeBases: vi.fn(),
   useMetricTimeseries: vi.fn(),
@@ -24,6 +26,8 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../../api/alerts', () => ({ useAlerts: mocks.useAlerts }))
+
+vi.mock('../../api/config', () => ({ useDomainConfig: mocks.useDomainConfig }))
 
 vi.mock('../../api/analytics', () => ({
   useAnalyticsOverview: mocks.useAnalyticsOverview,
@@ -179,6 +183,26 @@ const clusters: GnnClusterResponse = {
   ],
 }
 
+const domainConfig: DomainConfig = {
+  domain: {
+    name: 'medicare_fraud',
+    display_name: 'Medicare Fraud Detection',
+    description: 'Fraud investigation domain',
+  },
+  entities: [],
+  relationships: [],
+  capabilities: {
+    timeseries: true,
+    gnn: true,
+    risk_scoring: true,
+    rag_chat: true,
+    explainability: true,
+    peer_stats: false,
+  },
+  ingestion: {},
+  alerts: { thresholds: {} },
+}
+
 const metricTimeseries: MetricTimeseriesResponse = {
   knowledge_base_id: 'kb-ready',
   metric_name: 'claim_volume',
@@ -207,6 +231,7 @@ function setupDefaultMocks() {
   mocks.useAlerts.mockReturnValue(querySuccess(alerts))
   mocks.useWorkflows.mockReturnValue(querySuccess(workflows))
   mocks.useKnowledgeBases.mockReturnValue(querySuccess(knowledgeBases))
+  mocks.useDomainConfig.mockReturnValue(querySuccess(domainConfig))
   mocks.useRiskScores.mockReturnValue(querySuccess(riskScores))
   mocks.useGnnClusters.mockReturnValue(querySuccess(clusters))
   mocks.useMetricTimeseries.mockReturnValue(querySuccess(metricTimeseries))
@@ -321,6 +346,82 @@ describe('DashboardPage', () => {
       start: '2026-05-16T16:00:00.000Z',
       end: now,
     })
+  })
+
+  it('binds to the ready KB from the active domain, skipping a leftover ready KB from another domain', async () => {
+    mocks.useKnowledgeBases.mockReturnValue(querySuccess({
+      items: [
+        {
+          id: 'kb-housing',
+          name: 'Air Force Housing Demo',
+          description: 'Leftover KB from a previously-active domain pack.',
+          status: 'ready',
+          document_count: 4,
+          entity_count: 10,
+          relationship_count: 20,
+          created_at: now,
+          updated_at: now,
+          pending_cleanup: false,
+          domain: 'af_housing',
+        },
+        {
+          id: 'kb-medicare',
+          name: 'TN Demo KB',
+          description: 'Active medicare_fraud domain KB with live GNN clusters.',
+          status: 'ready',
+          document_count: 12,
+          entity_count: 454,
+          relationship_count: 900,
+          created_at: now,
+          updated_at: now,
+          pending_cleanup: false,
+          domain: 'medicare_fraud',
+        },
+      ],
+      total: 2,
+    } satisfies KnowledgeBaseListResponse))
+
+    renderDashboard()
+    clickTab(/policy signals/i)
+
+    const panel = screen.getByRole('tabpanel', { name: /policy signals/i })
+    expect(within(panel).getByText('TN Demo KB')).toBeInTheDocument()
+    expect(screen.queryByText('Air Force Housing Demo')).not.toBeInTheDocument()
+    expect(mocks.useRiskScores).toHaveBeenCalledWith({ knowledgeBaseId: 'kb-medicare', limit: 5 })
+    expect(mocks.useGnnClusters).toHaveBeenCalledWith('kb-medicare')
+    expect(mocks.useMetricTimeseries).toHaveBeenCalledWith({
+      knowledgeBaseId: 'kb-medicare',
+      metric: 'claim_volume',
+      start: '2026-05-16T16:00:00.000Z',
+      end: now,
+    })
+  })
+
+  it('treats an unstamped legacy knowledge base (no domain field) as in-scope for the active domain', async () => {
+    mocks.useKnowledgeBases.mockReturnValue(querySuccess({
+      items: [
+        {
+          id: 'kb-legacy',
+          name: 'Legacy KB',
+          description: 'Created before domain stamping existed.',
+          status: 'ready',
+          document_count: 6,
+          entity_count: 30,
+          relationship_count: 60,
+          created_at: now,
+          updated_at: now,
+          pending_cleanup: false,
+        },
+      ],
+      total: 1,
+    } satisfies KnowledgeBaseListResponse))
+
+    renderDashboard()
+    clickTab(/policy signals/i)
+
+    const panel = screen.getByRole('tabpanel', { name: /policy signals/i })
+    expect(within(panel).getByText('Legacy KB')).toBeInTheDocument()
+    expect(mocks.useRiskScores).toHaveBeenCalledWith({ knowledgeBaseId: 'kb-legacy', limit: 5 })
   })
 
   it('keeps the metric time range stable across tab updates', async () => {

@@ -95,6 +95,12 @@ class IngestionConfig(BaseModel):
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
 
 
+class GnnConfig(BaseModel):
+    """Configuration for the GNN analytics graph-snapshot source."""
+
+    snapshot_max_nodes: int = Field(default=5000, gt=0)
+
+
 class GraphDbConfig(BaseModel):
     """Configuration for selecting the graph database backend."""
 
@@ -760,6 +766,7 @@ class DomainConfig(BaseModel):
     validation: ValidationConfig | None = None
     records: RecordsConfig | None = None
     analytics: AnalyticsConfig | None = None
+    gnn: GnnConfig | None = None
     peer_stats: PeerStatsConfig | None = None
     scorecards: ScorecardsConfig = Field(default_factory=ScorecardsConfig)
     policy_rules: list[PolicyRulePack] = Field(
@@ -816,6 +823,8 @@ class DomainConfig(BaseModel):
             self.records = RecordsConfig()
         if self.analytics is None:
             self.analytics = AnalyticsConfig()
+        if self.gnn is None:
+            self.gnn = GnnConfig()
 
         errors: list[str] = []
 
@@ -1050,6 +1059,7 @@ __all__ = [
     "DatabaseConfig",
     "DomainConfig",
     "DomainInfo",
+    "GnnConfig",
     "GraphDbConfig",
     "IngestionConfig",
     "IngestionSourceConfig",

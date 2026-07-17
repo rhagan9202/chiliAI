@@ -43,6 +43,18 @@ class AlertProjectionPurger(Protocol):
     def remove_by_knowledge_base(self, knowledge_base_id: str) -> int: ...
 
 
+class GnnClusterPurger(Protocol):
+    """The slice of the GNN cluster-summary store the cascade needs.
+
+    Defined structurally here (rather than importing the analytics-owned
+    ``ClusterSummaryStoreProtocol``) so this module keeps its
+    no-cross-module-imports rule; ``ObjectStoreClusterSummaryStore``
+    satisfies it without registration.
+    """
+
+    def delete_by_kb(self, knowledge_base_id: str) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class KbDeletionStores:
     """Every durable store purged by the KB-delete cascade."""
@@ -62,6 +74,10 @@ class KbDeletionStores:
     scorecard_run_repository: ScorecardRunRepository
     document_status_store: SourceDocumentStatusStore
     object_store: ObjectStore
+    # Analytics-owned (not API-owned): unlike alert_projection_store below,
+    # both the API's bundle and the worker's retry bundle build their own
+    # ObjectStoreClusterSummaryStore, so this field is always required.
+    gnn_cluster_store: GnnClusterPurger
     # The API gateway owns the alert read projection, so only the API's bundle
     # carries it; the worker's retry bundle leaves it None and the step is
     # skipped (never reported as a phantom success). The projection is a
@@ -107,6 +123,7 @@ def kb_deletion_steps(
         ("observations", lambda: stores.observation_writer.delete_by_kb(kb)),
         ("alert_history", lambda: stores.alert_history_writer.delete_by_kb(kb)),
         maybe_alert_projection,
+        ("gnn_clusters", lambda: stores.gnn_cluster_store.delete_by_kb(kb)),
         ("metrics", lambda: stores.entity_metric_repository.delete_by_kb(kb)),
         ("conversations", lambda: stores.conversation_repository.delete_by_kb(kb)),
         ("cases", lambda: stores.case_repository.delete_by_kb(kb)),
@@ -121,6 +138,7 @@ def kb_deletion_steps(
 
 __all__ = [
     "AlertProjectionPurger",
+    "GnnClusterPurger",
     "KbDeletionStores",
     "delete_object_store_prefix",
     "kb_deletion_steps",

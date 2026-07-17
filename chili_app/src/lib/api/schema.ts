@@ -2127,6 +2127,8 @@ export interface components {
             /** @default null */
             events: components["schemas"]["EventBusConfig"] | null;
             /** @default null */
+            gnn: components["schemas"]["GnnConfig"] | null;
+            /** @default null */
             graph: components["schemas"]["GraphDbConfig"] | null;
             ingestion: components["schemas"]["IngestionConfig"];
             /** @default null */
@@ -2422,6 +2424,17 @@ export interface components {
             clusters?: components["schemas"]["ClusterResult"][];
             /** Knowledge Base Id */
             knowledge_base_id: string;
+        };
+        /**
+         * GnnConfig
+         * @description Configuration for the GNN analytics graph-snapshot source.
+         */
+        GnnConfig: {
+            /**
+             * Snapshot Max Nodes
+             * @default 5000
+             */
+            snapshot_max_nodes: number;
         };
         /**
          * GraphDbConfig

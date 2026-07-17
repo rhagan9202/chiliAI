@@ -13,7 +13,7 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY pyproject.toml README.md ./
-RUN pip install --no-cache-dir ".[neo4j,qdrant,postgres]"
+RUN pip install --no-cache-dir ".[neo4j,qdrant,postgres,analytics]"
 
 # ---- runtime stage ----
 FROM python:3.12-slim AS runtime

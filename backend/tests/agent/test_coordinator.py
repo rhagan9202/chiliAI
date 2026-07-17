@@ -46,6 +46,7 @@ from config.schema import (
     DomainConfig,
     EmbeddingsConfig,
     EventBusConfig,
+    GnnConfig,
     GraphDbConfig,
     LlmConfig,
     ObjectStoreConfig,
@@ -550,6 +551,110 @@ def test_build_worker_dependencies_wires_policy(
     assert deps.policy_service is not None
     assert isinstance(deps.policy_rules, list)
     assert deps.policy_rules, "medicare_fraud.yaml ships policy rule packs"
+
+
+def test_build_graph_snapshot_source_returns_repository_backed_source() -> None:
+    """B1: the factory wires a GraphRepositorySnapshotSource over the given repository."""
+    from analytics.gnn.adapters.cluster_store import ObjectStoreClusterSummaryStore
+    from analytics.gnn.adapters.graph_repository_source import GraphRepositorySnapshotSource
+
+    defaults_dir = (
+        __file__
+        .replace("tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml")
+    )
+    config = load_config(defaults_dir)
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="e1", type="provider", properties={}),
+            Entity(id="e2", type="provider", properties={}),
+        ],
+    )
+    cluster_store = ObjectStoreClusterSummaryStore(InMemoryObjectStore())
+
+    source = coordinator.build_graph_snapshot_source(
+        config, repository=repository, cluster_store=cluster_store
+    )
+
+    assert isinstance(source, GraphRepositorySnapshotSource)
+    snapshot = source.load_snapshot(knowledge_base_id="kb-1")
+    assert {node.entity_id for node in snapshot.nodes} == {"e1", "e2"}
+
+
+def test_build_graph_snapshot_source_honors_configured_snapshot_max_nodes() -> None:
+    """B1: DomainConfig.gnn.snapshot_max_nodes bounds the returned snapshot."""
+    from analytics.gnn.adapters.cluster_store import ObjectStoreClusterSummaryStore
+
+    defaults_dir = (
+        __file__
+        .replace("tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml")
+    )
+    config = load_config(defaults_dir).model_copy(
+        update={"gnn": GnnConfig(snapshot_max_nodes=1)}
+    )
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="e1", type="provider", properties={}),
+            Entity(id="e2", type="provider", properties={}),
+        ],
+    )
+    cluster_store = ObjectStoreClusterSummaryStore(InMemoryObjectStore())
+
+    source = coordinator.build_graph_snapshot_source(
+        config, repository=repository, cluster_store=cluster_store
+    )
+    snapshot = source.load_snapshot(knowledge_base_id="kb-1")
+
+    assert len(snapshot.nodes) == 1
+
+
+def test_build_worker_dependencies_wires_shared_gnn_cluster_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B1 coordination: worker deps expose the same cluster store the GNN
+    service's snapshot source reads from, so a later persistence step (Task
+    4) writing through ``deps.gnn_cluster_store`` is immediately visible to
+    ``deps.gnn_service``."""
+    from analytics.gnn.adapters.cluster_store import ObjectStoreClusterSummaryStore
+    from analytics.gnn.models import ClusterSummary
+    from analytics.gnn.service_models import GnnClusterRequest
+
+    defaults_dir = (
+        __file__
+        .replace("tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml")
+    )
+    monkeypatch.setattr(
+        "agent.coordinator.load_active_config", lambda: load_config(defaults_dir)
+    )
+    monkeypatch.setattr(
+        "agent.coordinator.load_event_bus_settings",
+        lambda: EventBusSettings(backend="in-memory"),
+    )
+
+    deps = build_worker_dependencies()
+
+    assert isinstance(deps.gnn_cluster_store, ObjectStoreClusterSummaryStore)
+
+    deps.gnn_cluster_store.put_clusters(
+        "kb-1",
+        [
+            ClusterSummary(
+                cluster_id="cluster-1",
+                entity_ids=["e1", "e2"],
+                anomaly_score=0.5,
+                label="test",
+            )
+        ],
+    )
+
+    response = deps.gnn_service.list_clusters(
+        GnnClusterRequest(knowledge_base_id="kb-1")
+    )
+
+    assert [c.cluster_id for c in response.clusters] == ["cluster-1"]
 
 
 def test_worker_event_bus_explicit_config_preserves_env_recovery_and_trim_defaults(
@@ -2531,6 +2636,7 @@ def test_graceful_shutdown_finishes_in_flight_event(
         InMemoryExplainabilityContextSource,
     )
     from analytics.explainability.service import create_explainability_service
+    from analytics.gnn.adapters.cluster_store import InMemoryClusterSummaryStore
     from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
     from analytics.gnn.service import create_gnn_service
     from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
@@ -2577,6 +2683,7 @@ def test_graceful_shutdown_finishes_in_flight_event(
         gnn_service=create_gnn_service(
             InMemoryGraphSnapshotSource(), event_bus=event_bus
         ),
+        gnn_cluster_store=InMemoryClusterSummaryStore(),
         risk_service=create_risk_service(
             InMemoryRiskSignalSource(), event_bus=event_bus
         ),
@@ -3680,13 +3787,12 @@ def test_handle_event_dispatches_analytics_pipeline_for_graph_updated() -> None:
     pytest.importorskip("networkx")
     pytest.importorskip("numpy")
 
-    from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
-    from analytics.gnn.models import (
-        GraphEdgeSignal,
-        GraphNodeSignal,
-        GraphSnapshot,
+    from analytics.gnn.adapters.cluster_store import InMemoryClusterSummaryStore
+    from analytics.gnn.adapters.graph_repository_source import (
+        GraphRepositorySnapshotSource,
     )
     from analytics.gnn.service import create_gnn_service
+    from analytics.gnn.service_models import GnnAnalysisRequest
     from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
     from analytics.risk.models import RiskProfile, RiskSignal
     from analytics.risk.service import create_risk_service
@@ -3727,22 +3833,33 @@ def test_handle_event_dispatches_analytics_pipeline_for_graph_updated() -> None:
         media_type="application/json",
     )
 
-    snapshot_source = InMemoryGraphSnapshotSource(
-        snapshots=[
-            GraphSnapshot(
-                knowledge_base_id="kb-1",
-                nodes=[
-                    GraphNodeSignal(entity_id="provider-1", feature_values=[0.4, 0.2]),
-                    GraphNodeSignal(entity_id="other-1", feature_values=[0.1, 0.9]),
-                ],
-                edges=[
-                    GraphEdgeSignal(
-                        source_id="provider-1", target_id="other-1", weight=1.0
-                    ),
-                ],
-            )
-        ]
+    # B1 Task 4: the snapshot now comes from the graph repository itself (via
+    # Task 3's GraphRepositorySnapshotSource) rather than a hand-built
+    # GraphSnapshot, and a cluster store sits alongside it so the pipeline's
+    # persisted community summaries can be asserted on below.
+    graph_repository = InMemoryGraphRepository()
+    graph_repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="provider-1", type="claim", properties={"name": "Provider 1"}),
+            Entity(id="other-1", type="claim", properties={"name": "Other 1"}),
+        ],
     )
+    graph_repository.upsert_relationships(
+        "kb-1",
+        [
+            Relationship(
+                id="rel-provider-other",
+                type="referral",
+                source_id="provider-1",
+                target_id="other-1",
+                weight=1.0,
+            )
+        ],
+    )
+    cluster_store = InMemoryClusterSummaryStore()
+    snapshot_source = GraphRepositorySnapshotSource(graph_repository, cluster_store)
+
     signal_source = InMemoryRiskSignalSource(
         profiles=[
             RiskProfile(
@@ -3756,15 +3873,21 @@ def test_handle_event_dispatches_analytics_pipeline_for_graph_updated() -> None:
         ]
     )
     gnn_service = create_gnn_service(snapshot_source, event_bus=event_bus)
+    # Precompute the expected analysis response from the same (still
+    # unmutated) repository/snapshot so the persisted-cluster assertions
+    # below have an independent oracle, not a re-derivation of the
+    # implementation under test. This call is read-only aside from
+    # publishing a GnnAnalyzedEvent, which doesn't affect the type-filtered
+    # assertions further down.
+    expected_response = gnn_service.analyze(
+        GnnAnalysisRequest(knowledge_base_id="kb-1")
+    )
+    assert expected_response.communities, "test setup must yield >=1 community"
+
     risk_service = create_risk_service(signal_source, event_bus=event_bus)
     explainability_service = create_explainability_service(
         _AcceptingExplainabilityContextSource(),
         event_bus=event_bus,
-    )
-    graph_repository = InMemoryGraphRepository()
-    graph_repository.upsert_entities(
-        "kb-1",
-        [Entity(id="provider-1", type="claim", properties={"name": "Provider 1"})],
     )
     graph_service = create_graph_service(
         graph_repository, object_store=object_store, event_bus=event_bus
@@ -3808,6 +3931,7 @@ def test_handle_event_dispatches_analytics_pipeline_for_graph_updated() -> None:
         gnn_service=gnn_service,
         risk_service=risk_service,
         explainability_service=explainability_service,
+        gnn_cluster_store=cluster_store,
     )
 
     assert processed == 1
@@ -3831,6 +3955,283 @@ def test_handle_event_dispatches_analytics_pipeline_for_graph_updated() -> None:
     assert "risk_assessed_at" in updated.properties
     assert "centrality_score" in updated.properties
     assert "community_id" in updated.properties
+
+    # B1 Task 4: pipeline GNN communities are persisted through the shared
+    # cluster store (an honest empty list would replace stale clusters too,
+    # but this snapshot yields >=1 community per the setup assertion above).
+    score_by_entity = {
+        node.entity_id: node.score for node in expected_response.scored_nodes
+    }
+    persisted = cluster_store.load_clusters(knowledge_base_id="kb-1")
+    assert {c.cluster_id for c in persisted} == {
+        community.community_id for community in expected_response.communities
+    }
+    for community in expected_response.communities:
+        match = next(c for c in persisted if c.cluster_id == community.community_id)
+        assert set(match.entity_ids) == set(community.member_entity_ids)
+        expected_score = max(
+            (score_by_entity.get(member, 0.0) for member in community.member_entity_ids),
+            default=0.0,
+        )
+        assert match.anomaly_score == pytest.approx(expected_score)
+
+
+def test_analytics_handler_tolerates_cluster_store_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """B1 Task 4: a cluster store whose put_clusters raises must not fail the
+    pipeline — the handler completes, a warning is logged, and downstream
+    stages (risk, explainability, alerts.created) are unaffected."""
+    pytest.importorskip("networkx")
+    pytest.importorskip("numpy")
+
+    from agent.coordinator import handle_graph_updated_for_analytics
+    from analytics.gnn.adapters.cluster_store import InMemoryClusterSummaryStore
+    from analytics.gnn.adapters.graph_repository_source import (
+        GraphRepositorySnapshotSource,
+    )
+    from analytics.gnn.models import ClusterSummary
+    from analytics.gnn.service import create_gnn_service
+    from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
+    from analytics.risk.models import RiskProfile, RiskSignal
+    from analytics.risk.service import create_risk_service
+    from analytics.explainability.service import create_explainability_service
+    from events.types import AlertsCreatedEvent
+
+    class _RaisingClusterStore:
+        """Same instance a real worker would use for both reads (via the
+        snapshot source) and writes (via the Flow B handler) — only writes
+        fail here, mirroring an object-store outage on put_clusters."""
+
+        def __init__(self) -> None:
+            self._delegate = InMemoryClusterSummaryStore()
+
+        def put_clusters(
+            self, knowledge_base_id: str, clusters: list[ClusterSummary]
+        ) -> None:
+            raise RuntimeError("object store unavailable")
+
+        def load_clusters(self, *, knowledge_base_id: str) -> list[ClusterSummary]:
+            return self._delegate.load_clusters(knowledge_base_id=knowledge_base_id)
+
+        def delete_by_kb(self, knowledge_base_id: str) -> None:
+            self._delegate.delete_by_kb(knowledge_base_id)
+
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    object_store.put_bytes(
+        "gk-store-failure",
+        GraphUpsertResult(
+            knowledge_base_id="kb-1",
+            source_document_id="doc-A",
+            parsed_document_id="parsed-A",
+            extraction_result_id="extract-A",
+            validation_report_id="validate-A",
+            upserted_entity_ids=["provider-1"],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    graph_repository = InMemoryGraphRepository()
+    graph_repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="provider-1", type="claim", properties={"name": "Provider 1"}),
+            Entity(id="other-1", type="claim", properties={"name": "Other 1"}),
+        ],
+    )
+    graph_repository.upsert_relationships(
+        "kb-1",
+        [
+            Relationship(
+                id="rel-provider-other",
+                type="referral",
+                source_id="provider-1",
+                target_id="other-1",
+                weight=1.0,
+            )
+        ],
+    )
+    raising_store = _RaisingClusterStore()
+    snapshot_source = GraphRepositorySnapshotSource(graph_repository, raising_store)
+    gnn_service = create_gnn_service(snapshot_source, event_bus=event_bus)
+    risk_service = create_risk_service(
+        InMemoryRiskSignalSource(
+            profiles=[
+                RiskProfile(
+                    knowledge_base_id="kb-1",
+                    entity_id="provider-1",
+                    signals=[
+                        RiskSignal(signal_name="anomaly", value=0.7, weight=0.5),
+                        RiskSignal(signal_name="velocity", value=0.6, weight=0.5),
+                    ],
+                )
+            ]
+        ),
+        event_bus=event_bus,
+    )
+    explainability_service = create_explainability_service(
+        _AcceptingExplainabilityContextSource(),
+        event_bus=event_bus,
+    )
+    graph_service = create_graph_service(
+        graph_repository, object_store=object_store, event_bus=event_bus
+    )
+
+    caplog.set_level(logging.WARNING, logger="chili.worker")
+
+    alerts = handle_graph_updated_for_analytics(
+        GraphUpdatedEvent(
+            correlation_id="corr-cluster-store-failure",
+            documents=[
+                GraphUpdatedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-A",
+                    parsed_document_id="parsed-A",
+                    extraction_result_id="extract-A",
+                    validation_report_id="validate-A",
+                    upserted_entity_count=1,
+                    upserted_relationship_count=0,
+                    validation_storage_key="vk-store-failure",
+                    graph_update_storage_key="gk-store-failure",
+                )
+            ],
+        ),
+        gnn_service=gnn_service,
+        risk_service=risk_service,
+        explainability_service=explainability_service,
+        graph_service=graph_service,
+        event_bus=event_bus,
+        object_store=object_store,
+        gnn_cluster_store=raising_store,
+    )
+
+    assert alerts == 1
+    alert_events = [
+        e for e in event_bus.published_events if isinstance(e, AlertsCreatedEvent)
+    ]
+    assert len(alert_events) == 1
+    assert alert_events[0].alerts[0].entity_id == "provider-1"
+    assert "Failed to persist GNN cluster summaries" in caplog.text
+    assert "kb-1" in caplog.text
+
+
+def test_analytics_handler_empty_communities_still_replaces_stale_clusters() -> None:
+    """B1 Task 4: an honest empty ``communities`` list still writes through the
+    cluster store, replacing whatever was persisted for this KB previously —
+    a future ``if summaries:`` guard regression would leave the stale seed in
+    place and fail this test."""
+    from typing import cast
+
+    from agent.coordinator import handle_graph_updated_for_analytics
+    from analytics.gnn.adapters.cluster_store import InMemoryClusterSummaryStore
+    from analytics.gnn.models import ClusterSummary
+    from analytics.gnn.service import GnnService
+    from analytics.gnn.service_models import GnnAnalysisRequest, GnnAnalysisResponse
+    from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
+    from analytics.risk.models import RiskProfile, RiskSignal
+    from analytics.risk.service import create_risk_service
+    from analytics.explainability.service import create_explainability_service
+
+    class _EmptyCommunitiesGnnService:
+        """Stands in for a real ``GnnService`` (duck-typed, like the
+        cancellation test's ``_Boom`` above) whose analysis found no
+        communities worth reporting for this snapshot."""
+
+        def analyze(self, request: GnnAnalysisRequest) -> GnnAnalysisResponse:
+            return GnnAnalysisResponse(
+                request_id="req-empty-communities",
+                knowledge_base_id=request.knowledge_base_id,
+                node_count=2,
+                edge_count=1,
+                communities=[],
+            )
+
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    object_store.put_bytes(
+        "gk-empty-communities",
+        GraphUpsertResult(
+            knowledge_base_id="kb-1",
+            source_document_id="doc-A",
+            parsed_document_id="parsed-A",
+            extraction_result_id="extract-A",
+            validation_report_id="validate-A",
+            upserted_entity_ids=["provider-1"],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    graph_repository = InMemoryGraphRepository()
+    graph_repository.upsert_entities(
+        "kb-1",
+        [Entity(id="provider-1", type="claim", properties={"name": "Provider 1"})],
+    )
+    graph_service = create_graph_service(
+        graph_repository, object_store=object_store, event_bus=event_bus
+    )
+
+    cluster_store = InMemoryClusterSummaryStore()
+    cluster_store.put_clusters(
+        "kb-1",
+        [
+            ClusterSummary(
+                cluster_id="stale-cluster",
+                entity_ids=["stale-entity"],
+                anomaly_score=0.9,
+            )
+        ],
+    )
+    assert cluster_store.load_clusters(knowledge_base_id="kb-1"), "seed must land first"
+
+    risk_service = create_risk_service(
+        InMemoryRiskSignalSource(
+            profiles=[
+                RiskProfile(
+                    knowledge_base_id="kb-1",
+                    entity_id="provider-1",
+                    signals=[
+                        RiskSignal(signal_name="anomaly", value=0.7, weight=0.5),
+                        RiskSignal(signal_name="velocity", value=0.6, weight=0.5),
+                    ],
+                )
+            ]
+        ),
+        event_bus=event_bus,
+    )
+    explainability_service = create_explainability_service(
+        _AcceptingExplainabilityContextSource(),
+        event_bus=event_bus,
+    )
+
+    alerts = handle_graph_updated_for_analytics(
+        GraphUpdatedEvent(
+            correlation_id="corr-empty-communities",
+            documents=[
+                GraphUpdatedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-A",
+                    parsed_document_id="parsed-A",
+                    extraction_result_id="extract-A",
+                    validation_report_id="validate-A",
+                    upserted_entity_count=1,
+                    upserted_relationship_count=0,
+                    validation_storage_key="vk-empty-communities",
+                    graph_update_storage_key="gk-empty-communities",
+                )
+            ],
+        ),
+        gnn_service=cast(GnnService, _EmptyCommunitiesGnnService()),
+        risk_service=risk_service,
+        explainability_service=explainability_service,
+        graph_service=graph_service,
+        event_bus=event_bus,
+        object_store=object_store,
+        gnn_cluster_store=cluster_store,
+    )
+
+    assert alerts == 1
+    assert cluster_store.load_clusters(knowledge_base_id="kb-1") == []
 
 
 def test_analytics_handler_emits_analysis_failed_when_risk_profile_missing() -> None:
@@ -3929,6 +4330,130 @@ def test_analytics_handler_emits_analysis_failed_when_risk_profile_missing() -> 
     assert len(failures) == 1
     assert failures[0].stage == "risk"
     assert failures[0].entity_id == "provider-1"
+
+
+def test_analytics_handler_writes_gnn_properties_when_risk_stage_yields_nothing() -> None:
+    """Live-pass fix (B1): a KB with no derived risk signals still gets its
+    GNN community_id/centrality_score written back. Before the fix, the
+    fan-out loop's ``if risk_response is None: continue`` skipped
+    ``_write_analytics_properties_to_graph`` entirely whenever the risk stage
+    came back empty — even though the GNN properties never depended on risk."""
+    from typing import cast
+
+    pytest.importorskip("networkx")
+    pytest.importorskip("numpy")
+
+    from analytics.explainability.service import ExplainabilityService
+    from analytics.gnn.adapters.cluster_store import InMemoryClusterSummaryStore
+    from analytics.gnn.adapters.graph_repository_source import (
+        GraphRepositorySnapshotSource,
+    )
+    from analytics.gnn.service import create_gnn_service
+    from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
+    from analytics.risk.service import create_risk_service
+    from agent.coordinator import handle_graph_updated_for_analytics
+    from events.types import AnalysisFailedEvent
+
+    class _Boom:
+        """Any use of explainability proves the risk-absent gating regressed:
+        explainability genuinely needs a risk response, so it must not run."""
+
+        def __getattr__(self, name: str) -> object:
+            raise AssertionError(f"explainability used despite no risk response: {name}")
+
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    object_store.put_bytes(
+        "gk-no-risk-signals",
+        GraphUpsertResult(
+            knowledge_base_id="kb-1",
+            source_document_id="doc-A",
+            parsed_document_id="parsed-A",
+            extraction_result_id="extract-A",
+            validation_report_id="validate-A",
+            upserted_entity_ids=["provider-1"],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+
+    graph_repository = InMemoryGraphRepository()
+    graph_repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="provider-1", type="claim", properties={"name": "Provider 1"}),
+            Entity(id="other-1", type="claim", properties={"name": "Other 1"}),
+        ],
+    )
+    graph_repository.upsert_relationships(
+        "kb-1",
+        [
+            Relationship(
+                id="rel-provider-other",
+                type="referral",
+                source_id="provider-1",
+                target_id="other-1",
+                weight=1.0,
+            )
+        ],
+    )
+    cluster_store = InMemoryClusterSummaryStore()
+    snapshot_source = GraphRepositorySnapshotSource(graph_repository, cluster_store)
+    gnn_service = create_gnn_service(snapshot_source, event_bus=event_bus)
+
+    # This KB has no derived risk signals registered anywhere — a legitimate,
+    # common state (not an error). RiskService.assess raises for a profile
+    # that was never registered, so _run_risk_stage returns None.
+    risk_service = create_risk_service(InMemoryRiskSignalSource(), event_bus=event_bus)
+
+    graph_service = create_graph_service(
+        graph_repository, object_store=object_store, event_bus=event_bus
+    )
+
+    alerts = handle_graph_updated_for_analytics(
+        GraphUpdatedEvent(
+            correlation_id="corr-no-risk-signals",
+            documents=[
+                GraphUpdatedDocumentReference(
+                    knowledge_base_id="kb-1",
+                    source_document_id="doc-A",
+                    parsed_document_id="parsed-A",
+                    extraction_result_id="extract-A",
+                    validation_report_id="validate-A",
+                    upserted_entity_count=1,
+                    upserted_relationship_count=0,
+                    validation_storage_key="vk-no-risk-signals",
+                    graph_update_storage_key="gk-no-risk-signals",
+                )
+            ],
+        ),
+        gnn_service=gnn_service,
+        risk_service=risk_service,
+        explainability_service=cast(ExplainabilityService, _Boom()),
+        graph_service=graph_service,
+        event_bus=event_bus,
+        object_store=object_store,
+    )
+
+    # No alerts: explainability is correctly gated on a real risk response,
+    # and _Boom would have raised had it been invoked despite that gating.
+    assert alerts == 0
+    failures = [
+        e for e in event_bus.published_events if isinstance(e, AnalysisFailedEvent)
+    ]
+    assert len(failures) == 1
+    assert failures[0].stage == "risk"
+    assert failures[0].entity_id == "provider-1"
+
+    # The GNN write-back must not depend on risk succeeding: community_id and
+    # centrality_score land on the graph even though risk yielded nothing.
+    updated = graph_repository.get_entity(["kb-1"], "provider-1")
+    assert updated is not None
+    assert "community_id" in updated.properties
+    assert "centrality_score" in updated.properties
+    # No risk trio: nothing to write since risk never assessed this entity.
+    assert "risk_score" not in updated.properties
+    assert "risk_level" not in updated.properties
+    assert "risk_assessed_at" not in updated.properties
 
 
 def test_analytics_handler_stops_immediately_when_cancelled() -> None:
@@ -4104,6 +4629,95 @@ def test_analytics_handler_skips_missing_gnn_snapshot_without_failing_flow_a() -
         e for e in event_bus.published_events if isinstance(e, AnalysisFailedEvent)
     ]
     assert failures == []
+
+
+def test_analytics_handler_skips_single_entity_kb_without_failing_flow_a(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A KB whose graph snapshot has exactly one node is a controlled GNN skip,
+    not a failure.
+
+    Regression test: a fresh KB's first ingest upserts a single entity, so the
+    graph snapshot has only one node. GnnService.analyze() raises
+    GnnInsufficientGraphError for snapshots with fewer than two nodes, which
+    used to fall through to the generic GnnError handler and publish a
+    misleading analysis.failed(stage="gnn") event on every single-entity KB
+    until a second entity arrived.
+    """
+    from typing import cast
+
+    from agent.coordinator import handle_graph_updated_for_analytics
+    from analytics.explainability.service import ExplainabilityService
+    from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
+    from analytics.gnn.models import GraphNodeSignal, GraphSnapshot
+    from analytics.gnn.service import create_gnn_service
+    from analytics.risk.service import RiskService
+    from graph.service import GraphService
+
+    class _Boom:
+        def __getattr__(self, name: str) -> object:
+            raise AssertionError(f"service used despite GNN insufficient-graph skip: {name}")
+
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    object_store.put_bytes(
+        "gk-single",
+        GraphUpsertResult(
+            knowledge_base_id="kb-1",
+            source_document_id="doc-A",
+            parsed_document_id="parsed-A",
+            extraction_result_id="extract-A",
+            validation_report_id="validate-A",
+            upserted_entity_ids=["provider-1"],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    gnn_service = create_gnn_service(
+        InMemoryGraphSnapshotSource(
+            [
+                GraphSnapshot(
+                    knowledge_base_id="kb-1",
+                    nodes=[
+                        GraphNodeSignal(entity_id="provider-1", feature_values=[1.0]),
+                    ],
+                )
+            ]
+        ),
+        event_bus=event_bus,
+    )
+
+    with caplog.at_level(logging.INFO, logger="chili.worker"):
+        alerts = handle_graph_updated_for_analytics(
+            GraphUpdatedEvent(
+                correlation_id="corr-single-entity",
+                documents=[
+                    GraphUpdatedDocumentReference(
+                        knowledge_base_id="kb-1",
+                        source_document_id="doc-A",
+                        parsed_document_id="parsed-A",
+                        extraction_result_id="extract-A",
+                        validation_report_id="validate-A",
+                        upserted_entity_count=1,
+                        upserted_relationship_count=0,
+                        validation_storage_key="vk-single",
+                        graph_update_storage_key="gk-single",
+                    )
+                ],
+            ),
+            gnn_service=gnn_service,
+            risk_service=cast(RiskService, _Boom()),
+            explainability_service=cast(ExplainabilityService, _Boom()),
+            graph_service=cast(GraphService, _Boom()),
+            event_bus=event_bus,
+            object_store=object_store,
+        )
+
+    assert alerts == 0
+    failures = [
+        e for e in event_bus.published_events if isinstance(e, AnalysisFailedEvent)
+    ]
+    assert failures == []
+    assert "insufficient" in caplog.text.lower()
 
 
 def test_handle_event_emits_analysis_failed_when_analytics_fanout_raises(
@@ -4530,6 +5144,7 @@ def test_dispatch_runs_kb_cleanup_when_wired_and_guards_when_not() -> None:
         "entity_metric_repository", "conversation_repository", "case_repository",
         "policy_item_repository", "evidence_pack_repository",
         "scorecard_run_repository", "document_status_store", "object_store",
+        "gnn_cluster_store",
     ]
     mocks = {field: MagicMock() for field in store_fields}
     mocks["object_store"].list_keys.return_value = []

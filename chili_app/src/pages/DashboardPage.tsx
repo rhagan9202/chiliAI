@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 
 import { useAlerts } from '../api/alerts'
 import { useAnalyticsOverview, useGnnClusters, useMetricTimeseries, useRiskScores } from '../api/analytics'
+import { useDomainConfig } from '../api/config'
 import { useKnowledgeBases } from '../api/knowledgebases'
 import { useWorkflows } from '../api/workflows'
 import { TrendBars } from '../components/charts/TrendBars'
@@ -14,6 +15,7 @@ import { ConfidenceBar } from '../components/ui/ConfidenceBar'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
 import { Card } from '../components/ui/Card'
+import { isDomainMismatch } from '../components/knowledgebase/domainMismatch'
 import { KpiCard } from '../components/ui/KpiCard'
 import { LoadingState } from '../components/ui/LoadingState'
 import { RiskBadge } from '../components/ui/RiskBadge'
@@ -75,8 +77,16 @@ export function DashboardPage() {
   const alertsQuery = useAlerts()
   const workflowsQuery = useWorkflows()
   const knowledgeBasesQuery = useKnowledgeBases()
+  const domainConfigQuery = useDomainConfig()
   const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
-  const activeKnowledgeBase = knowledgeBases.find((kb) => kb.status === 'ready') ?? null
+  const activeDomainName = domainConfigQuery.data?.domain.name ?? null
+  // Scope to the active domain pack before picking the ready KB: a leftover KB
+  // from a previously-active domain pack must not win over the active pack's
+  // own ready KB. Unstamped legacy KBs (no domain) are never a mismatch.
+  const scopedKnowledgeBases = knowledgeBases.filter(
+    (kb) => !isDomainMismatch(kb.domain ?? null, activeDomainName),
+  )
+  const activeKnowledgeBase = scopedKnowledgeBases.find((kb) => kb.status === 'ready') ?? null
   const riskScoresQuery = useRiskScores(
     activeKnowledgeBase ? { knowledgeBaseId: activeKnowledgeBase.id, limit: 5 } : null,
   )
