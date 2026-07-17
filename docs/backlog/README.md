@@ -23,7 +23,7 @@
 | _plugins.md | 16 | 0 | 0 | 16 | 0% |
 | _security.md | 11 | 0 | 1 | 12 | 8% |
 | agent.md | 19 | 0 | 1 | 20 | 5% |
-| analytics.md | 33 | 0 | 0 | 33 | 0% |
+| analytics.md | 32 | 0 | 2 | 34 | 5% |
 | api.md | 27 | 0 | 1 | 29 | 3% |
 | config.md | 14 | 0 | 1 | 15 | 6% |
 | database.md | 12 | 0 | 1 | 13 | 7% |
@@ -41,7 +41,7 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 413 | 7 | 23 | 445 | 5% |
+| **Total** | 412 | 7 | 25 | 446 | 5% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -67,6 +67,7 @@
 - [agent.13] agent — size M — prereqs done
 - [agent.15] agent — size M — prereqs done
 - [analytics.33] analytics — size M — prereqs done
+- [analytics.34] analytics — size M — prereqs done
 - [config.02] config — size M — prereqs done
 - [config.03] config — size M — prereqs done
 - [database.03] database — size M — prereqs done
@@ -76,8 +77,7 @@
 - [embeddings.06] embeddings — size M — prereqs done
 - [frontend.06] frontend — size M — prereqs done
 - [frontend.10] frontend — size M — prereqs done
-- [frontend.13] frontend — size M — prereqs done
-- …33 more
+- …34 more
 <!-- END: ready-set -->
 
 ## Critical path
