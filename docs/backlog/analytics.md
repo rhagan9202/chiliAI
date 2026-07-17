@@ -1116,3 +1116,41 @@ so that downstream features can consume scored entities consistently.
 ### Code touch points
 - `backend/analytics/metrics/extraction_quality.py` (new)
 - `backend/tests/analytics/metrics/test_extraction_quality.py` (new)
+
+---
+
+## Story analytics.34: Trigger GNN/graph analytics after records-only ingestion
+
+**ID:** analytics.34
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** []
+**Estimated size:** M
+
+**As a** fraud-analytics engineer,
+**I need** records-only knowledge bases (CSV/JSONL/API-push feeds with no document ingest) to trigger GNN, risk, and explainability analytics the same way document ingest does,
+**so that** KBs populated exclusively through `records/` are not permanently invisible to `/analytics/gnn/clusters` and the rest of Flow B.
+
+### Current State
+- `GraphService.upsert_records_graph` (`backend/graph/service.py:196-209`) deliberately upserts entities/relationships for a structured-records feed but publishes no `GraphUpdatedEvent` — the docstring says records writes have "no parsed-document lineage" and the worker's Flow 1 handler must stay safely replayable.
+- `agent.coordinator.handle_graph_updated_for_analytics` (Flow B: GNN → risk → explainability → alerts) is subscribed only to `GraphUpdatedEvent`, so it never runs for a KB whose only writes came through `handle_records_ingested` / `upsert_records_graph`.
+- Observed directly during Sprint 2026-28 B1 (GNN live, `feat/sprint-2026-28-b1-gnn-live`): a pure-records KB shows zero GNN clusters indefinitely, with no error or log signal that anything is missing — the gap is silent, distinct from the controlled `GnnSnapshotUnavailableError`/`GnnInsufficientGraphError` skips Flow B already logs for document-driven KBs that are merely too small yet.
+- `docs/backlog/records.md` story `records.12` (planned) documents the same `upsert_records_graph`-does-not-publish-`GraphUpdatedEvent` design gap and proposes an opt-in `RecordsConfig.emit_graph_updated_event` toggle aimed at Flow 2/3 (graph metrics, risk recompute). If `records.12` ships as designed, Flow B would pick up the resulting `GraphUpdatedEvent` for free (it already subscribes to that event type) — this story exists to decide and implement the analytics-specific trigger regardless of whether `records.12`'s general toggle lands first.
+
+### Acceptance Criteria
+- [ ] A design decision is recorded between the two options below (or `records.12`'s toggle is adopted explicitly as the mechanism, with this story then reduced to "confirm Flow B fires under the toggle"):
+  - **Option A — `RecordsIngestedEvent`-triggered Flow B:** `handle_graph_updated_for_analytics` (or a thin wrapper) is additionally invoked in response to `RecordsIngestedEvent`, resolving the upserted entity ids from the records-upsert result rather than a `graph_update_storage_key`.
+  - **Option B — explicit analytics trigger after records upsert:** `handle_records_ingested` calls the GNN/risk/explainability fan-out directly (in-process, or via a new dedicated event) immediately after `upsert_records_graph` succeeds, without changing what `GraphUpdatedEvent` means for documents.
+- [ ] Whichever option is chosen, it is gated so high-volume records feeds are not forced into a GNN/risk recompute on every batch (e.g. reuse `MetricsRecomputeThrottle` or an equivalent throttle already used by Flow 2).
+- [ ] `backend/records/README.md` and `backend/analytics/README.md` both note that GNN/risk/explainability analytics fire for records-ingested KBs once this ships (cross-reference `records.12` if that story's toggle is the chosen mechanism).
+- [ ] Coverage ≥ 85% on the new/modified handler path.
+
+### Verification
+- `pytest backend/tests/agent -q -k records` green, including a new test asserting a records-only KB (no document ingest) produces at least one GNN cluster/community after the triggering mechanism runs.
+- `pyright` clean.
+
+### Code touch points
+- `backend/agent/coordinator.py` (modify — `handle_records_ingested` and/or `handle_graph_updated_for_analytics` wiring)
+- `backend/config/schema.py` (modify, if a throttle/toggle field is added)
+- `backend/records/README.md`, `backend/analytics/README.md` (modify)
+- `backend/tests/agent/test_handle_records_ingested.py` (modify/new)
