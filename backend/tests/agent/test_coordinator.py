@@ -46,6 +46,7 @@ from config.schema import (
     DomainConfig,
     EmbeddingsConfig,
     EventBusConfig,
+    GnnConfig,
     GraphDbConfig,
     LlmConfig,
     ObjectStoreConfig,
@@ -550,6 +551,110 @@ def test_build_worker_dependencies_wires_policy(
     assert deps.policy_service is not None
     assert isinstance(deps.policy_rules, list)
     assert deps.policy_rules, "medicare_fraud.yaml ships policy rule packs"
+
+
+def test_build_graph_snapshot_source_returns_repository_backed_source() -> None:
+    """B1: the factory wires a GraphRepositorySnapshotSource over the given repository."""
+    from analytics.gnn.adapters.cluster_store import ObjectStoreClusterSummaryStore
+    from analytics.gnn.adapters.graph_repository_source import GraphRepositorySnapshotSource
+
+    defaults_dir = (
+        __file__
+        .replace("tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml")
+    )
+    config = load_config(defaults_dir)
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="e1", type="provider", properties={}),
+            Entity(id="e2", type="provider", properties={}),
+        ],
+    )
+    cluster_store = ObjectStoreClusterSummaryStore(InMemoryObjectStore())
+
+    source = coordinator.build_graph_snapshot_source(
+        config, repository=repository, cluster_store=cluster_store
+    )
+
+    assert isinstance(source, GraphRepositorySnapshotSource)
+    snapshot = source.load_snapshot(knowledge_base_id="kb-1")
+    assert {node.entity_id for node in snapshot.nodes} == {"e1", "e2"}
+
+
+def test_build_graph_snapshot_source_honors_configured_snapshot_max_nodes() -> None:
+    """B1: DomainConfig.gnn.snapshot_max_nodes bounds the returned snapshot."""
+    from analytics.gnn.adapters.cluster_store import ObjectStoreClusterSummaryStore
+
+    defaults_dir = (
+        __file__
+        .replace("tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml")
+    )
+    config = load_config(defaults_dir).model_copy(
+        update={"gnn": GnnConfig(snapshot_max_nodes=1)}
+    )
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="e1", type="provider", properties={}),
+            Entity(id="e2", type="provider", properties={}),
+        ],
+    )
+    cluster_store = ObjectStoreClusterSummaryStore(InMemoryObjectStore())
+
+    source = coordinator.build_graph_snapshot_source(
+        config, repository=repository, cluster_store=cluster_store
+    )
+    snapshot = source.load_snapshot(knowledge_base_id="kb-1")
+
+    assert len(snapshot.nodes) == 1
+
+
+def test_build_worker_dependencies_wires_shared_gnn_cluster_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B1 coordination: worker deps expose the same cluster store the GNN
+    service's snapshot source reads from, so a later persistence step (Task
+    4) writing through ``deps.gnn_cluster_store`` is immediately visible to
+    ``deps.gnn_service``."""
+    from analytics.gnn.adapters.cluster_store import ObjectStoreClusterSummaryStore
+    from analytics.gnn.models import ClusterSummary
+    from analytics.gnn.service_models import GnnClusterRequest
+
+    defaults_dir = (
+        __file__
+        .replace("tests/agent/test_coordinator.py", "config/defaults/medicare_fraud.yaml")
+    )
+    monkeypatch.setattr(
+        "agent.coordinator.load_active_config", lambda: load_config(defaults_dir)
+    )
+    monkeypatch.setattr(
+        "agent.coordinator.load_event_bus_settings",
+        lambda: EventBusSettings(backend="in-memory"),
+    )
+
+    deps = build_worker_dependencies()
+
+    assert isinstance(deps.gnn_cluster_store, ObjectStoreClusterSummaryStore)
+
+    deps.gnn_cluster_store.put_clusters(
+        "kb-1",
+        [
+            ClusterSummary(
+                cluster_id="cluster-1",
+                entity_ids=["e1", "e2"],
+                anomaly_score=0.5,
+                label="test",
+            )
+        ],
+    )
+
+    response = deps.gnn_service.list_clusters(
+        GnnClusterRequest(knowledge_base_id="kb-1")
+    )
+
+    assert [c.cluster_id for c in response.clusters] == ["cluster-1"]
 
 
 def test_worker_event_bus_explicit_config_preserves_env_recovery_and_trim_defaults(
@@ -2531,6 +2636,7 @@ def test_graceful_shutdown_finishes_in_flight_event(
         InMemoryExplainabilityContextSource,
     )
     from analytics.explainability.service import create_explainability_service
+    from analytics.gnn.adapters.cluster_store import InMemoryClusterSummaryStore
     from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
     from analytics.gnn.service import create_gnn_service
     from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
@@ -2577,6 +2683,7 @@ def test_graceful_shutdown_finishes_in_flight_event(
         gnn_service=create_gnn_service(
             InMemoryGraphSnapshotSource(), event_bus=event_bus
         ),
+        gnn_cluster_store=InMemoryClusterSummaryStore(),
         risk_service=create_risk_service(
             InMemoryRiskSignalSource(), event_bus=event_bus
         ),

@@ -249,12 +249,15 @@ Section checklist for a first-class pack:
    properties), and `roles` (landing page + page list + permission hints).
    Cover **every** entity in `display_fields` so all entity types render.
 10. **Infra sections** (`graph`, `vectorstore`, `embeddings`, `llm`,
-   `storage`, `events`, `database`, `monitoring`, `analytics`, `rag`) —
+   `storage`, `events`, `database`, `monitoring`, `analytics`, `gnn`, `rag`) —
    omit for in-memory/local defaults, or pin real backends. The shipped
    packs pin the dev-stack services (neo4j, qdrant, redis, postgres, local
    object storage, local LLM with fallback chain). Only implemented adapter
    backends are legal literals. Secrets are **never** inline — use the
    `*_env_var` pattern (the value is the *name* of an environment variable).
+   `gnn.snapshot_max_nodes` (default `5000`) bounds how many entities the
+   GNN snapshot source (worker and API) loads per knowledge base, keeping
+   top-degree nodes when a KB exceeds the cap.
 
 ## Validation
 

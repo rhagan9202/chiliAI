@@ -10,12 +10,14 @@ import pytest
 from prometheus_client import REGISTRY
 
 import api.dependencies as dependencies
+from analytics.gnn.adapters.graph_repository_source import GraphRepositorySnapshotSource
 from config.loader import load_config
 from config.schema import (
     DatabaseConfig,
     DomainConfig,
     EmbeddingsConfig,
     EventBusConfig,
+    GnnConfig,
     GraphDbConfig,
     LlmConfig,
     MonitoringConfig,
@@ -39,6 +41,7 @@ from records.adapters.postgres import PostgresRawRecordStore
 from ingestion.adapters.in_memory import InMemorySourceDocumentStatusStore
 from ingestion.adapters.postgres import PostgresSourceDocumentStatusStore
 from shared.exceptions import ConfigurationError
+from shared.types import Entity
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.adapters.local_fs_adapter import LocalFsObjectStore
 from vectorstore.service import VectorService
@@ -74,6 +77,8 @@ def clear_dependency_caches() -> None:
         dependencies.get_remote_fetcher,
         dependencies.get_parser_orchestrator,
         dependencies.get_ingestion_recovery_store,
+        dependencies.get_graph_snapshot_source,
+        dependencies.get_gnn_service,
     ]
     for factory in cacheable_factories:
         factory.cache_clear()
@@ -114,6 +119,63 @@ def test_factories_are_cached_for_same_config(
     assert dependencies.get_object_store() is dependencies.get_object_store()
     assert dependencies.get_graph_service() is dependencies.get_graph_service()
     assert dependencies.get_vectorstore_service() is dependencies.get_vectorstore_service()
+
+
+def test_get_graph_snapshot_source_returns_repository_backed_source(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    """B1: the API-side factory mirrors the worker's repository-backed source."""
+    _install_config(monkeypatch, base_config)
+
+    repository = dependencies.get_graph_repository()
+    repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="e1", type="provider", properties={}),
+            Entity(id="e2", type="provider", properties={}),
+        ],
+    )
+
+    source = dependencies.get_graph_snapshot_source()
+
+    assert isinstance(source, GraphRepositorySnapshotSource)
+    snapshot = source.load_snapshot(knowledge_base_id="kb-1")
+    assert {node.entity_id for node in snapshot.nodes} == {"e1", "e2"}
+
+
+def test_get_graph_snapshot_source_is_cached_for_same_config(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    _install_config(monkeypatch, base_config)
+
+    assert (
+        dependencies.get_graph_snapshot_source()
+        is dependencies.get_graph_snapshot_source()
+    )
+
+
+def test_get_graph_snapshot_source_honors_configured_snapshot_max_nodes(
+    monkeypatch: pytest.MonkeyPatch,
+    base_config: DomainConfig,
+) -> None:
+    config = base_config.model_copy(update={"gnn": GnnConfig(snapshot_max_nodes=1)})
+    _install_config(monkeypatch, config)
+
+    repository = dependencies.get_graph_repository()
+    repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="e1", type="provider", properties={}),
+            Entity(id="e2", type="provider", properties={}),
+        ],
+    )
+
+    snapshot = dependencies.get_graph_snapshot_source().load_snapshot(
+        knowledge_base_id="kb-1"
+    )
+    assert len(snapshot.nodes) == 1
 
 
 def test_monitoring_service_uses_configured_rate_limit(

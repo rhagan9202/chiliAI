@@ -44,6 +44,7 @@ from config.schema import (
     DomainConfig,
     EmbeddingsConfig,
     EventBusConfig,
+    GnnConfig,
     GraphDbConfig,
     LlmConfig,
     ObjectStoreConfig,
@@ -81,8 +82,12 @@ from analytics.explainability.service import (
     ExplainabilityService,
     create_explainability_service,
 )
-from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
-from analytics.gnn.adapters.protocols import GraphSnapshotSourceProtocol
+from analytics.gnn.adapters.cluster_store import ObjectStoreClusterSummaryStore
+from analytics.gnn.adapters.graph_repository_source import GraphRepositorySnapshotSource
+from analytics.gnn.adapters.protocols import (
+    ClusterSummaryStoreProtocol,
+    GraphSnapshotSourceProtocol,
+)
 from analytics.gnn.exceptions import GnnDisabledError, GnnError, GnnSnapshotUnavailableError
 from analytics.gnn.service import GnnService, create_gnn_service
 from analytics.gnn.service_models import GnnAnalysisRequest, GnnAnalysisResponse
@@ -365,6 +370,7 @@ class WorkerDependencies:
     vector_store: VectorStoreProtocol
     llm_client: LlmClientProtocol
     gnn_service: GnnService
+    gnn_cluster_store: ClusterSummaryStoreProtocol
     risk_service: RiskService
     peerstats_service: PeerStatsService
     peer_stats_config: PeerStatsConfig
@@ -561,16 +567,23 @@ _EMBEDDING_REGISTRY: dict[str, _EmbedderFactory] = {
 
 
 def build_graph_snapshot_source(
-    _config: DomainConfig,
+    config: DomainConfig,
+    *,
+    repository: GraphRepository,
+    cluster_store: ClusterSummaryStoreProtocol,
 ) -> GraphSnapshotSourceProtocol:
-    """Return the configured GNN snapshot source adapter.
+    """Return the graph-repository-backed GNN snapshot source (B1).
 
-    The platform currently ships an in-memory adapter for tests; production
-    adapters can later be wired through ``DomainConfig`` once an analytics
-    section exists.
+    Bounded by ``config.gnn.snapshot_max_nodes``. ``cluster_store`` is built
+    once by the caller (from the worker's shared object store) and passed in
+    rather than constructed here, so the persistence step that writes cluster
+    summaries and the snapshot source that reads them share one instance.
     """
 
-    return InMemoryGraphSnapshotSource()
+    gnn_config = config.gnn or GnnConfig()
+    return GraphRepositorySnapshotSource(
+        repository, cluster_store, max_nodes=gnn_config.snapshot_max_nodes
+    )
 
 
 def build_risk_signal_source(
@@ -1000,8 +1013,11 @@ def build_worker_dependencies() -> WorkerDependencies:
         object_store=object_store,
         event_bus=event_bus,
     )
+    gnn_cluster_store = ObjectStoreClusterSummaryStore(object_store)
     gnn_service = create_gnn_service(
-        build_graph_snapshot_source(config),
+        build_graph_snapshot_source(
+            config, repository=graph_repository, cluster_store=gnn_cluster_store
+        ),
         event_bus=event_bus,
         gnn_enabled=lambda: config.capabilities.gnn,
     )
@@ -1094,6 +1110,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         vector_store=vector_store,
         llm_client=llm_client,
         gnn_service=gnn_service,
+        gnn_cluster_store=gnn_cluster_store,
         risk_service=risk_service,
         peerstats_service=peerstats_service,
         peer_stats_config=peer_stats_config,

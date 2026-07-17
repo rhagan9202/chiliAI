@@ -1279,6 +1279,9 @@ analytics:
   metrics:
     backend: in_memory           # in_memory | postgres
 
+gnn:
+  snapshot_max_nodes: 5000       # cap on entities loaded per KB snapshot (top-degree kept)
+
 rag:
   top_k: 8
   graph_expansion_hops: 1
