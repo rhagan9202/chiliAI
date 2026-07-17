@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastapi import Depends
 
 from analytics.explainability.repository import EvidencePackRepository
+from analytics.gnn.adapters.cluster_store import ObjectStoreClusterSummaryStore
 from analytics.metrics.adapters.protocols import EntityMetricRepository
 from analytics.peerstats.adapters.protocols import DerivedRiskSignalWriterProtocol
 from analytics.risk.adapters.protocols import RiskHistoryWriter
@@ -94,6 +95,7 @@ def get_kb_deletion_stores(
         scorecard_run_repository=scorecard_run_repository,
         document_status_store=document_status_store,
         object_store=object_store,
+        gnn_cluster_store=ObjectStoreClusterSummaryStore(object_store),
         alert_projection_store=alert_repository,
     )
 

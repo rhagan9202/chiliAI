@@ -774,13 +774,17 @@ def build_kb_deletion_stores(
     """Assemble the shared KB-delete cascade bundle for the worker.
 
     Reuses the already-built worker stores and constructs the few extra stores
-    (vector service, conversation/case/policy/evidence repositories) that the
-    worker otherwise needs only for KB-delete retries.
+    (vector service, conversation/case/policy/evidence repositories, cluster
+    summary store) that the worker otherwise needs only for KB-delete retries.
+    ``gnn_cluster_store`` is built fresh from ``object_store`` here (it does
+    not need to be the same instance as ``WorkerDependencies.gnn_cluster_store``
+    — object-store-backed state is shared by construction).
 
     ``alert_projection_store`` is deliberately left ``None``: the alert read
     projection is API-owned (``api._alert_store``) and this module must not
     import from ``api``. The cascade skips that step here; the API's DELETE
-    route always runs it.
+    route always runs it. ``gnn_cluster_store`` is analytics-owned (not
+    API-owned), so unlike the alert projection it is always required.
     """
 
     return KbDeletionStores(
@@ -809,6 +813,7 @@ def build_kb_deletion_stores(
         scorecard_run_repository=build_scorecard_run_repository(provider),
         document_status_store=build_document_status_store(provider),
         object_store=object_store,
+        gnn_cluster_store=ObjectStoreClusterSummaryStore(object_store),
     )
 
 

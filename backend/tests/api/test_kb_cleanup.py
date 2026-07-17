@@ -25,6 +25,7 @@ _STORE_FIELDS = [
     "document_status_store",
     "object_store",
     "alert_projection_store",
+    "gnn_cluster_store",
 ]
 
 _EXPECTED_STEP_NAMES = [
@@ -36,6 +37,7 @@ _EXPECTED_STEP_NAMES = [
     "observations",
     "alert_history",
     "alert_projection",
+    "gnn_clusters",
     "metrics",
     "conversations",
     "cases",
@@ -78,6 +80,7 @@ def test_kb_deletion_steps_purges_every_durable_store() -> None:
         "evidence_pack_repository",
         "scorecard_run_repository",
         "document_status_store",
+        "gnn_cluster_store",
     ):
         mocks[field].delete_by_kb.assert_called_once_with("kb-1")
     mocks["alert_projection_store"].remove_by_knowledge_base.assert_called_once_with(

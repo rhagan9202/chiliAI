@@ -4931,6 +4931,7 @@ def test_dispatch_runs_kb_cleanup_when_wired_and_guards_when_not() -> None:
         "entity_metric_repository", "conversation_repository", "case_repository",
         "policy_item_repository", "evidence_pack_repository",
         "scorecard_run_repository", "document_status_store", "object_store",
+        "gnn_cluster_store",
     ]
     mocks = {field: MagicMock() for field in store_fields}
     mocks["object_store"].list_keys.return_value = []
