@@ -89,6 +89,7 @@ from analytics.gnn.adapters.protocols import (
     GraphSnapshotSourceProtocol,
 )
 from analytics.gnn.exceptions import GnnDisabledError, GnnError, GnnSnapshotUnavailableError
+from analytics.gnn.models import ClusterSummary
 from analytics.gnn.service import GnnService, create_gnn_service
 from analytics.gnn.service_models import GnnAnalysisRequest, GnnAnalysisResponse
 from analytics.metrics.adapters.in_memory import InMemoryEntityMetricRepository
@@ -1964,6 +1965,7 @@ def handle_graph_updated_for_analytics(
     object_store: ObjectStore | None = None,
     entity_metric_repository: EntityMetricRepository | None = None,
     metrics_throttle: MetricsRecomputeThrottle | None = None,
+    gnn_cluster_store: ClusterSummaryStoreProtocol | None = None,
     is_cancelled: Callable[[], bool] | None = None,
 ) -> int:
     """Run Flow B (GNN -> risk -> explainability -> alerts.created).
@@ -1972,6 +1974,10 @@ def handle_graph_updated_for_analytics(
     surfaced as ``analysis.failed`` events without aborting the pipeline.
     Successful runs additionally write analytics-derived properties back to
     the graph (E7-S11) before publishing the ``alerts.created`` aggregate.
+    When a ``gnn_cluster_store`` is supplied, each successful GNN stage also
+    persists its community summaries so ``/analytics/gnn/clusters`` serves
+    real, up-to-date data (B1); with no store configured, persistence is
+    skipped (e.g. unit scaffolding).
     """
 
     # Evidence packs are persisted to the shared object store so the API can
@@ -2004,6 +2010,13 @@ def handle_graph_updated_for_analytics(
         )
         if gnn_response is None:
             continue
+
+        if gnn_cluster_store is not None:
+            _persist_gnn_clusters(
+                cluster_store=gnn_cluster_store,
+                knowledge_base_id=knowledge_base_id,
+                gnn_response=gnn_response,
+            )
 
         for entity_id in upserted_entity_ids:
             if is_cancelled is not None and is_cancelled():
@@ -2118,6 +2131,33 @@ def _run_gnn_stage(
             error_message=str(exc),
         )
         return None
+
+
+def _persist_gnn_clusters(
+    *,
+    cluster_store: ClusterSummaryStoreProtocol,
+    knowledge_base_id: str,
+    gnn_response: GnnAnalysisResponse,
+) -> None:
+    """Persist pipeline community results so /analytics/gnn/clusters serves real data."""
+    score_by_entity = {node.entity_id: node.score for node in gnn_response.scored_nodes}
+    summaries = [
+        ClusterSummary(
+            cluster_id=community.community_id,
+            entity_ids=list(community.member_entity_ids),
+            anomaly_score=max(
+                (score_by_entity.get(member, 0.0) for member in community.member_entity_ids),
+                default=0.0,
+            ),
+        )
+        for community in gnn_response.communities
+    ]
+    try:
+        cluster_store.put_clusters(knowledge_base_id, summaries)
+    except Exception as exc:  # noqa: BLE001 - persistence must not fail the pipeline
+        logger.warning(
+            "Failed to persist GNN cluster summaries kb=%s: %s", knowledge_base_id, exc
+        )
 
 
 def _risk_request_id(
@@ -3312,6 +3352,7 @@ def handle_event(
     vector_store: VectorStoreProtocol | None = None,
     graph_repository: GraphRepository | None = None,
     gnn_service: GnnService | None = None,
+    gnn_cluster_store: ClusterSummaryStoreProtocol | None = None,
     risk_service: RiskService | None = None,
     explainability_service: ExplainabilityService | None = None,
     monitoring_service: MonitoringService | None = None,
@@ -3370,6 +3411,7 @@ def handle_event(
             vector_store=vector_store,
             graph_repository=graph_repository,
             gnn_service=gnn_service,
+            gnn_cluster_store=gnn_cluster_store,
             risk_service=risk_service,
             explainability_service=explainability_service,
             monitoring_service=monitoring_service,
@@ -3412,6 +3454,7 @@ def _dispatch_event(
     vector_store: VectorStoreProtocol | None,
     graph_repository: GraphRepository | None,
     gnn_service: GnnService | None,
+    gnn_cluster_store: ClusterSummaryStoreProtocol | None,
     risk_service: RiskService | None,
     explainability_service: ExplainabilityService | None,
     monitoring_service: MonitoringService | None,
@@ -3499,6 +3542,7 @@ def _dispatch_event(
                     object_store=object_store,
                     entity_metric_repository=entity_metric_repository,
                     metrics_throttle=metrics_throttle,
+                    gnn_cluster_store=gnn_cluster_store,
                     is_cancelled=is_cancelled,
                 )
             except Exception as exc:  # noqa: BLE001 - analytics must not re-run Flow A
@@ -3754,6 +3798,7 @@ async def drain_ingestion_events(
     vector_store: VectorStoreProtocol | None = None,
     graph_repository: GraphRepository | None = None,
     gnn_service: GnnService | None = None,
+    gnn_cluster_store: ClusterSummaryStoreProtocol | None = None,
     risk_service: RiskService | None = None,
     explainability_service: ExplainabilityService | None = None,
     monitoring_service: MonitoringService | None = None,
@@ -3832,6 +3877,7 @@ async def drain_ingestion_events(
                 vector_store=vector_store,
                 graph_repository=graph_repository,
                 gnn_service=gnn_service,
+                gnn_cluster_store=gnn_cluster_store,
                 risk_service=risk_service,
                 explainability_service=explainability_service,
                 monitoring_service=monitoring_service,
@@ -3954,6 +4000,7 @@ async def _drain_once(
         vector_store=deps.vector_store,
         graph_repository=deps.graph_repository,
         gnn_service=deps.gnn_service,
+        gnn_cluster_store=deps.gnn_cluster_store,
         risk_service=deps.risk_service,
         explainability_service=deps.explainability_service,
         monitoring_service=deps.monitoring_service,
