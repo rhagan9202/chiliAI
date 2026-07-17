@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 
 from analytics.gnn.adapters.protocols import ClusterSummaryStoreProtocol
 from analytics.gnn.exceptions import GnnSnapshotUnavailableError
@@ -18,16 +19,20 @@ _DEFAULT_MAX_NODES = 5000
 
 
 def _numeric_features(entity: Entity) -> list[float]:
-    """Numeric property values sorted by property name; bools excluded."""
+    """Numeric property values sorted by property name; bools excluded, non-finite skipped."""
     values: list[tuple[str, float]] = []
     for name, value in entity.properties.items():
         if isinstance(value, bool):
             continue
         if isinstance(value, (int, float)):
-            values.append((name, float(value)))
+            float_val = float(value)
+            if math.isfinite(float_val):
+                values.append((name, float_val))
         elif isinstance(value, str):
             try:
-                values.append((name, float(value)))
+                float_val = float(value)
+                if math.isfinite(float_val):
+                    values.append((name, float_val))
             except ValueError:
                 continue
     return [value for _, value in sorted(values)]
@@ -81,15 +86,34 @@ class GraphRepositorySnapshotSource:
             )
             for entity in entities
         ]
-        edges = [
-            GraphEdgeSignal(
-                source_id=relationship.source_id,
-                target_id=relationship.target_id,
-                weight=relationship.weight if relationship.weight is not None else 1.0,
+
+        # Track negative weights for logging
+        clamped_count = 0
+        edges: list[GraphEdgeSignal] = []
+        for relationship in relationships:
+            if relationship.source_id not in kept_ids or relationship.target_id not in kept_ids:
+                continue
+
+            weight = relationship.weight if relationship.weight is not None else 1.0
+            if weight < 0.0:
+                clamped_count += 1
+                weight = 0.0
+
+            edges.append(
+                GraphEdgeSignal(
+                    source_id=relationship.source_id,
+                    target_id=relationship.target_id,
+                    weight=weight,
+                )
             )
-            for relationship in relationships
-            if relationship.source_id in kept_ids and relationship.target_id in kept_ids
-        ]
+
+        if clamped_count > 0:
+            logger.warning(
+                "GNN snapshot clamped %d negative edge weights to 0.0 for kb=%s.",
+                clamped_count,
+                knowledge_base_id,
+            )
+
         return GraphSnapshot(knowledge_base_id=knowledge_base_id, nodes=nodes, edges=edges)
 
     def load_clusters(self, *, knowledge_base_id: str) -> list[ClusterSummary]:

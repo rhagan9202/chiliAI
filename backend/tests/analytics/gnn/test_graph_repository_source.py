@@ -115,3 +115,54 @@ def test_load_clusters_delegates_to_store() -> None:
     store.put_clusters("kb-1", [ClusterSummary(cluster_id="c-1", entity_ids=["e-1"], anomaly_score=0.4)])
     source = GraphRepositorySnapshotSource(repository, store)
     assert [c.cluster_id for c in source.load_clusters(knowledge_base_id="kb-1")] == ["c-1"]
+
+
+def test_load_snapshot_clamps_negative_weights_and_warns(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="e-1", type="claim", properties={}),
+            Entity(id="e-2", type="claim", properties={}),
+        ],
+    )
+    repository.upsert_relationships(
+        "kb-1",
+        [
+            Relationship(id="r-1", type="rel", source_id="e-1", target_id="e-2", weight=-2.0),
+        ],
+    )
+
+    with caplog.at_level(logging.WARNING):
+        snapshot = _source(repository).load_snapshot(knowledge_base_id="kb-1")
+
+    # Snapshot should build despite negative weight
+    assert len(snapshot.nodes) == 2
+    assert len(snapshot.edges) == 1
+    # Negative weight clamped to 0.0
+    edge = snapshot.edges[0]
+    assert edge.weight == 0.0
+    # Warning logged with KB and count
+    assert any("kb-1" in record.message and "1" in record.message for record in caplog.records
+               if "clamp" in record.message.lower())
+
+
+def test_non_finite_float_strings_excluded_from_features() -> None:
+    repository = InMemoryGraphRepository()
+    repository.upsert_entities(
+        "kb-1",
+        [
+            Entity(id="e-1", type="claim", properties={"a": "nan", "b": 2.5}),
+            Entity(id="e-2", type="claim", properties={}),
+        ],
+    )
+    repository.upsert_relationships(
+        "kb-1",
+        [Relationship(id="r-1", type="rel", source_id="e-1", target_id="e-2")],
+    )
+    snapshot = _source(repository).load_snapshot(knowledge_base_id="kb-1")
+    node = next(n for n in snapshot.nodes if n.entity_id == "e-1")
+    # Degree (1.0) + numeric properties; "nan" string parsed but excluded, 2.5 included
+    assert node.feature_values == [1.0, 2.5]
