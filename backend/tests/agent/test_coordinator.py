@@ -4631,6 +4631,95 @@ def test_analytics_handler_skips_missing_gnn_snapshot_without_failing_flow_a() -
     assert failures == []
 
 
+def test_analytics_handler_skips_single_entity_kb_without_failing_flow_a(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A KB whose graph snapshot has exactly one node is a controlled GNN skip,
+    not a failure.
+
+    Regression test: a fresh KB's first ingest upserts a single entity, so the
+    graph snapshot has only one node. GnnService.analyze() raises
+    GnnInsufficientGraphError for snapshots with fewer than two nodes, which
+    used to fall through to the generic GnnError handler and publish a
+    misleading analysis.failed(stage="gnn") event on every single-entity KB
+    until a second entity arrived.
+    """
+    from typing import cast
+
+    from agent.coordinator import handle_graph_updated_for_analytics
+    from analytics.explainability.service import ExplainabilityService
+    from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
+    from analytics.gnn.models import GraphNodeSignal, GraphSnapshot
+    from analytics.gnn.service import create_gnn_service
+    from analytics.risk.service import RiskService
+    from graph.service import GraphService
+
+    class _Boom:
+        def __getattr__(self, name: str) -> object:
+            raise AssertionError(f"service used despite GNN insufficient-graph skip: {name}")
+
+    event_bus = InMemoryEventBus()
+    object_store = InMemoryObjectStore()
+    object_store.put_bytes(
+        "gk-single",
+        GraphUpsertResult(
+            knowledge_base_id="kb-1",
+            source_document_id="doc-A",
+            parsed_document_id="parsed-A",
+            extraction_result_id="extract-A",
+            validation_report_id="validate-A",
+            upserted_entity_ids=["provider-1"],
+        ).model_dump_json().encode("utf-8"),
+        media_type="application/json",
+    )
+    gnn_service = create_gnn_service(
+        InMemoryGraphSnapshotSource(
+            [
+                GraphSnapshot(
+                    knowledge_base_id="kb-1",
+                    nodes=[
+                        GraphNodeSignal(entity_id="provider-1", feature_values=[1.0]),
+                    ],
+                )
+            ]
+        ),
+        event_bus=event_bus,
+    )
+
+    with caplog.at_level(logging.INFO, logger="chili.worker"):
+        alerts = handle_graph_updated_for_analytics(
+            GraphUpdatedEvent(
+                correlation_id="corr-single-entity",
+                documents=[
+                    GraphUpdatedDocumentReference(
+                        knowledge_base_id="kb-1",
+                        source_document_id="doc-A",
+                        parsed_document_id="parsed-A",
+                        extraction_result_id="extract-A",
+                        validation_report_id="validate-A",
+                        upserted_entity_count=1,
+                        upserted_relationship_count=0,
+                        validation_storage_key="vk-single",
+                        graph_update_storage_key="gk-single",
+                    )
+                ],
+            ),
+            gnn_service=gnn_service,
+            risk_service=cast(RiskService, _Boom()),
+            explainability_service=cast(ExplainabilityService, _Boom()),
+            graph_service=cast(GraphService, _Boom()),
+            event_bus=event_bus,
+            object_store=object_store,
+        )
+
+    assert alerts == 0
+    failures = [
+        e for e in event_bus.published_events if isinstance(e, AnalysisFailedEvent)
+    ]
+    assert failures == []
+    assert "insufficient" in caplog.text.lower()
+
+
 def test_handle_event_emits_analysis_failed_when_analytics_fanout_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

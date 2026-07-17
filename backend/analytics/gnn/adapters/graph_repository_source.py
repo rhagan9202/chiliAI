@@ -85,6 +85,12 @@ class GraphRepositorySnapshotSource:
         feature_maps = {entity.id: _numeric_feature_map(entity) for entity in entities}
         feature_names = sorted({name for feature_map in feature_maps.values() for name in feature_map})
 
+        # `degree` was computed above from the *untruncated* relationship set, so kept
+        # nodes whose neighbors were dropped by the top-degree truncation still carry
+        # their full pre-truncation degree as a feature. This is deliberate: degree here
+        # is a node-importance ranking signal (why this node was worth keeping), not a
+        # description of the truncated subgraph actually handed to the GNN, so the
+        # untruncated/global value is the truer feature.
         nodes = [
             GraphNodeSignal(
                 entity_id=entity.id,

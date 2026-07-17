@@ -40,6 +40,7 @@ def test_in_memory_store_delete_by_kb() -> None:
 
 def test_object_store_round_trips_across_instances() -> None:
     object_store = InMemoryObjectStore()
+    assert ObjectStoreClusterSummaryStore(object_store).load_clusters(knowledge_base_id="kb-1") == []
     ObjectStoreClusterSummaryStore(object_store).put_clusters("kb-1", [_summary("c-1", score=0.9)])
     reloaded = ObjectStoreClusterSummaryStore(object_store).load_clusters(knowledge_base_id="kb-1")
     assert len(reloaded) == 1

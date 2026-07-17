@@ -88,7 +88,12 @@ from analytics.gnn.adapters.protocols import (
     ClusterSummaryStoreProtocol,
     GraphSnapshotSourceProtocol,
 )
-from analytics.gnn.exceptions import GnnDisabledError, GnnError, GnnSnapshotUnavailableError
+from analytics.gnn.exceptions import (
+    GnnDisabledError,
+    GnnError,
+    GnnInsufficientGraphError,
+    GnnSnapshotUnavailableError,
+)
 from analytics.gnn.models import ClusterSummary
 from analytics.gnn.service import GnnService, create_gnn_service
 from analytics.gnn.service_models import GnnAnalysisRequest, GnnAnalysisResponse
@@ -2126,6 +2131,14 @@ def _run_gnn_stage(
     except GnnSnapshotUnavailableError as exc:
         logger.info(
             "Skipping GNN analytics because no graph snapshot is available yet. "
+            "kb=%s error=%s",
+            knowledge_base_id,
+            exc,
+        )
+        return None
+    except GnnInsufficientGraphError as exc:
+        logger.info(
+            "Skipping GNN analytics because the graph snapshot has insufficient nodes. "
             "kb=%s error=%s",
             knowledge_base_id,
             exc,
