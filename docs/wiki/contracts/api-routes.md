@@ -325,7 +325,7 @@ class WorkflowRunListResponse(BaseModel):
 | `GET` | `/analytics/risk-scores/{entity_id}` | `?kb_id=` | `RiskScoreResponse` | viewer |
 | `GET` | `/analytics/timeseries/{entity_id}` | `?kb_id=` | `EntityTimeseriesResponse` | viewer |
 
-**Wiring status:** `/analytics/risk-scores`, `/analytics/timeseries`, and `/analytics/gnn/clusters` are served by analytics services from `api/dependencies.py` using empty in-memory sources by default. `/analytics/overview` is computed from durable alert, case, and KB stores. `/analytics/risk-scores/{entity_id}` and `/analytics/timeseries/{entity_id}` still use the remaining `ApiState` analytics composition, which returns unavailable/empty responses when no generated analytics exists.
+**Wiring status:** `/analytics/risk-scores`, `/analytics/timeseries`, and `/analytics/gnn/clusters` are served by analytics services from `api/dependencies.py` using empty in-memory sources by default. `/analytics/overview` is computed from durable alert, case, and KB stores. `/analytics/timeseries/{entity_id}` is persistence-backed (record-aggregate series + persisted anomalies via DI, B2); only `/analytics/risk-scores/{entity_id}` still uses the remaining `ApiState` analytics composition, which returns unavailable/empty responses when no generated analytics exists.
 
 ### Static payload shapes (api/contracts.py)
 
