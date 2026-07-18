@@ -452,6 +452,23 @@ records:
           score_max: 100
           rationale: "Resident satisfaction from tenant experience export."
 
+timeseries:
+  metrics:
+    - name: monthly_affordability_trend
+      record_type: bah_rate
+      entity_type: allowance_market_snapshot
+      entity_id_field: market_id
+      value_column: affordability_index
+      aggregation: mean
+      interval: month
+      time_column: snapshot_date
+      detection_strategy: z_score
+      baseline_window: 3
+      min_history: 5
+      z_threshold: 2.0
+      z_cap: 4.0
+      signal_weight: 0.8
+
 # Scorecard templates regenerated from the research dossier
 # docs/research/housing-scorecard-mandates.md (§ 4.1 UH, § 4.2 MFH).
 # Every metric carries a provenance comment: [statutory: cite] where the

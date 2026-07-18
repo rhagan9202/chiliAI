@@ -140,6 +140,7 @@ capabilities:
   rag_chat: true
   explainability: true
   structured_ingestion: true
+  peer_stats: true
 
 ingestion:
   chunking:
@@ -476,6 +477,64 @@ records:
             practice_postal_code: "Provider Business Practice Location Address Postal Code"
             enumeration_date: "Provider Enumeration Date"
             deactivation_date: "NPI Deactivation Date"
+
+peer_stats:
+  metrics:
+    - name: weekly_carrier_billing
+      record_type: carrier_claim_record
+      entity_type: provider
+      entity_id_field: PRF_PHYSN_NPI_1
+      value_column: LINE_NCH_PMT_AMT_1
+      aggregation: sum
+      interval: week
+      time_column: CLM_FROM_DT
+      direction: high
+      z_cap: 4.0
+      weight: 1.5
+      min_peers: 5
+    - name: monthly_inpatient_billing
+      record_type: inpatient_claim_record
+      entity_type: provider
+      entity_id_field: AT_PHYSN_NPI
+      value_column: CLM_PMT_AMT
+      aggregation: sum
+      interval: month
+      time_column: CLM_FROM_DT
+      direction: high
+      z_cap: 4.0
+      weight: 1.5
+      min_peers: 5
+
+timeseries:
+  metrics:
+    - name: weekly_carrier_billing_self
+      record_type: carrier_claim_record
+      entity_type: provider
+      entity_id_field: PRF_PHYSN_NPI_1
+      value_column: LINE_NCH_PMT_AMT_1
+      aggregation: sum
+      interval: week
+      time_column: CLM_FROM_DT
+      detection_strategy: z_score
+      baseline_window: 4
+      min_history: 6
+      z_threshold: 2.5
+      z_cap: 4.0
+      signal_weight: 1.0
+    - name: monthly_inpatient_billing_self
+      record_type: inpatient_claim_record
+      entity_type: provider
+      entity_id_field: AT_PHYSN_NPI
+      value_column: CLM_PMT_AMT
+      aggregation: sum
+      interval: month
+      time_column: CLM_FROM_DT
+      detection_strategy: z_score
+      baseline_window: 3
+      min_history: 5
+      z_threshold: 2.5
+      z_cap: 4.0
+      signal_weight: 1.0
 
 # ---------------------------------------------------------------------------
 # Policy Intelligence rule packs (BL-011).

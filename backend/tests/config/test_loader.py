@@ -21,6 +21,11 @@ MEDICARE_YAML = DEFAULTS_DIR / "medicare_fraud.yaml"
 FOOD_YAML = DEFAULTS_DIR / "food_supply_chain.yaml"
 
 
+def _load_default(name: str) -> DomainConfig:
+    """Load a named pack from config/defaults/<name>.yaml."""
+    return load_config(DEFAULTS_DIR / f"{name}.yaml")
+
+
 # ---------------------------------------------------------------------------
 # Round-trip test: every YAML in config/defaults/ must load without error.
 # This guards against schema drift whenever a new config block is added.
@@ -286,3 +291,24 @@ def test_load_config_overlay_paths_comma_separated(
     monkeypatch.setenv("CHILI_CONFIG_OVERLAY_PATH", f" {a} , {b} ")
     config = load_config(base_path)
     assert config.capabilities.gnn is True
+
+
+# ---------------------------------------------------------------------------
+# Domain pack timeseries/peer_stats declarations (B2, sprint 2026-28 Task 7)
+# ---------------------------------------------------------------------------
+
+
+def test_cms_pack_declares_peerstats_and_timeseries() -> None:
+    config = _load_default("medicare_fraud_cms_desynpuf")
+    assert config.capabilities.peer_stats is True
+    assert config.peer_stats is not None and len(config.peer_stats.metrics) == 2
+    assert config.timeseries is not None
+    names = [spec.name for spec in config.timeseries.metrics]
+    assert names == ["weekly_carrier_billing_self", "monthly_inpatient_billing_self"]
+
+
+def test_housing_pack_declares_timeseries() -> None:
+    config = _load_default("department_air_force_housing")
+    assert config.capabilities.timeseries is True
+    assert config.timeseries is not None
+    assert config.timeseries.metrics[0].name == "monthly_affordability_trend"
