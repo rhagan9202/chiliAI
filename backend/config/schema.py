@@ -809,11 +809,11 @@ class DomainConfig(BaseModel):
     analytics: AnalyticsConfig | None = None
     gnn: GnnConfig | None = None
     peer_stats: PeerStatsConfig | None = None
+    timeseries: TimeseriesAnalyticsConfig | None = None
     scorecards: ScorecardsConfig = Field(default_factory=ScorecardsConfig)
     policy_rules: list[PolicyRulePack] = Field(
         default_factory=lambda: cast(list[PolicyRulePack], [])
     )
-    timeseries: TimeseriesAnalyticsConfig | None = None
     alerts: AlertsConfig
     ui: UiConfig | None = None
     default_reference_kb_id: str | None = Field(
@@ -1017,9 +1017,8 @@ class DomainConfig(BaseModel):
 
         # --- timeseries metric references ---
         if self.timeseries is not None and self.timeseries.metrics:
-            feeds = list(self.records.feeds)
             feeds_by_record_type: dict[str, list[RecordFeedConfig]] = {}
-            for feed in feeds:
+            for feed in records_config.feeds:
                 feeds_by_record_type.setdefault(feed.record_type, []).append(feed)
             for spec in self.timeseries.metrics:
                 matching = feeds_by_record_type.get(spec.record_type, [])
