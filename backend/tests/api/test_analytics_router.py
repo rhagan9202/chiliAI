@@ -12,6 +12,7 @@ from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
 from analytics.gnn.models import ClusterSummary
 from analytics.gnn.protocols import GnnServiceProtocol
 from analytics.gnn.service import create_gnn_service
+from analytics.peerstats.exceptions import PeerStatsSourceError
 from analytics.peerstats.models import PeerAggregate
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
 from analytics.risk.models import RankedRiskEntry
@@ -430,6 +431,36 @@ def test_entity_timeseries_unavailable_when_no_spec_has_data() -> None:
     assert payload["availability_status"] == "unavailable"
     assert payload["points"] == []
     assert payload["unavailable_reason"] is not None
+
+
+def test_entity_timeseries_infra_error_propagates_instead_of_unavailable() -> None:
+    """Infra errors from the column source propagate; only a no-data ValueError
+    from ``load_series`` falls through to the next spec. A broken backing store
+    must not be swallowed into a 200 ``unavailable`` response."""
+    spec = _timeseries_metric_spec()
+
+    class _BrokenColumnSource:
+        def load_interval_aggregates(
+            self,
+            *,
+            knowledge_base_id: str,
+            spec: object,
+            interval_starts: list[datetime],
+        ) -> list[PeerAggregate]:
+            del knowledge_base_id, spec, interval_starts
+            raise PeerStatsSourceError("record aggregation backend unavailable")
+
+    source = RecordAggregateTimeSeriesSource(_BrokenColumnSource(), specs=[spec])
+    anomaly_store = InMemoryTimeseriesAnomalyStore()
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_entity_series_source] = lambda: source
+    app.dependency_overrides[get_timeseries_anomaly_store] = lambda: anomaly_store
+    test_client = TestClient(app)
+
+    with pytest.raises(PeerStatsSourceError, match="record aggregation backend unavailable"):
+        test_client.get("/analytics/timeseries/provider:1", params={"kb_id": "kb-1"})
 
 
 def test_list_gnn_clusters_returns_clusters_when_enabled(client: TestClient) -> None:

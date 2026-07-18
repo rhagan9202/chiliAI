@@ -486,6 +486,7 @@ def test_get_timeseries_returns_unavailable_without_configured_data() -> None:
     assert payload["entity_id"] == "provider-204"
     assert payload["points"] == []
     assert payload["availability_status"] == "unavailable"
+    assert payload["metric_name"] == "timeseries"
 
 
 def test_workspace_event_stream_returns_snapshot() -> None:
