@@ -138,7 +138,7 @@ The API maintains lightweight read projections for read-heavy surfaces. Persiste
 | `rag` | `RagServiceProtocol`, `ApiState` |
 | `records` | `RecordsServiceProtocol` |
 | `workflows` | `AgentServiceProtocol` |
-| `analytics` | `RiskServiceProtocol`, `TimeseriesServiceProtocol`, `GnnServiceProtocol`, durable overview aggregation, plus remaining `ApiState` entity risk/timeseries composition |
+| `analytics` | `RiskServiceProtocol`, `TimeseriesServiceProtocol`, `GnnServiceProtocol`, durable overview aggregation, `RecordAggregateTimeSeriesSource` + `TimeseriesAnomalyStoreProtocol` for the entity timeseries route, plus remaining `ApiState` entity risk-score composition |
 | `config` | `DomainConfig` (loaded once, LRU cached) |
 | `graph` | `GraphServiceProtocol` via dependency |
 | `auth` | `SessionStoreProtocol`, OIDC client, `DomainConfig.auth` |

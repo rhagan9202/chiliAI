@@ -220,30 +220,34 @@ Graph storage and workflows exist, but analytics inference is still represented 
 
 ## Story analytics.07: Timeseries: Wire production `PostgresTimeSeriesHistorySource` through API DI
 **ID:** analytics.07
-**Status:** planned
+**Status:** done
 **Prerequisites:** [database.05]
 **Unblocks:** [analytics.08]
 **Estimated size:** S
+**Done:** 2026-07-18 · Sprint 2026-28 B2 (timeseries anomalies) · `feat/sprint-2026-28-b2-timeseries-anomalies`
 **As a** API developer,
 **I need** `get_timeseries_history_source()` to select the Postgres adapter when `DomainConfig.database.backend == "postgres"`,
 **so that** `/analytics/timeseries` reads from the same hypertable that Flow 2 writes to, instead of always returning empty in-memory data.
 
-### Current State
-- `get_timeseries_history_source` (`backend/api/dependencies.py:644-647`) is hardcoded to `InMemoryTimeSeriesHistorySource()`.
-- `PostgresTimeSeriesHistorySource` already ships (`backend/analytics/timeseries/adapters/postgres.py:33-94`) but has no DI caller.
+### Current State (shipped)
+- `get_timeseries_history_source` (`backend/api/dependencies.py`) now mirrors `get_risk_signal_source`'s DI-switch pattern: `PostgresTimeSeriesHistorySource(provider)` when `get_connection_provider()` is non-None, else `InMemoryTimeSeriesHistorySource()`.
+- **Deviation (scope grew with B2):** the same task also rewrote the entity-scoped `GET /analytics/timeseries/{entity_id}` route (previously `ApiState.get_timeseries`, the seeded-data shortcut tracked separately under analytics.28) to read from `get_entity_series_source()` — a `RecordAggregateTimeSeriesSource` over `get_record_column_source()` (new DI-switched accessor, same pattern) and `DomainConfig.timeseries.metrics` — joined with persisted anomalies from `get_timeseries_anomaly_store()` (shipped by the same sprint's earlier task). This closes the timeseries half of analytics.28; the risk-score half of that story is still open. `api/state.py`'s seeded `_timeseries_source`/`_timeseries_service`/`get_timeseries` were deleted (dead code once the route stopped calling them).
 
 ### Acceptance Criteria
-- [ ] `get_timeseries_history_source` returns `PostgresTimeSeriesHistorySource(provider)` when the connection provider is non-None.
-- [ ] An override hook (DI dependency override) lets tests inject the in-memory adapter without env shenanigans.
-- [ ] A request-level integration test demonstrates `/analytics/timeseries?kb_id=…` returning seeded Postgres rows.
+- [x] `get_timeseries_history_source` returns `PostgresTimeSeriesHistorySource(provider)` when the connection provider is non-None.
+- [x] An override hook (DI dependency override) lets tests inject the in-memory adapter without env shenanigans — `app.dependency_overrides[get_timeseries_history_source]`/`get_entity_series_source`/`get_timeseries_anomaly_store`, plus direct `lru_cache`-clear + `monkeypatch.setattr(dependencies, "get_connection_provider", ...)` for unit-level backend-selection tests (see `tests/api/test_risk_signal_source_wiring.py` for the established pattern; not duplicated for these new accessors since the Postgres branch is otherwise consistent with every other DI-switch factory in the module — exercised via `-m integration`, not unit tests).
+- [ ] A request-level integration test demonstrates `/analytics/timeseries?kb_id=…` returning seeded Postgres rows. **Deferred:** no dedicated integration test was added in this task; the graph-scope range route's Postgres wiring is covered indirectly by `PostgresTimeSeriesHistorySource`'s own adapter tests.
 
 ### Verification
-- `pytest backend/tests/api/test_analytics_router.py -q` green.
-- `pyright` clean.
+- `pytest backend/tests/api/test_analytics_router.py -q` green (21 passed, incl. 2 new tests for the entity route's record-aggregate + anomaly join and its unavailable-when-no-data path).
+- `pytest backend/tests/api -q` green (612 passed).
+- `pyright` clean, `ruff check` clean.
 
 ### Code touch points
 - `backend/api/dependencies.py` (modify)
+- `backend/api/state.py` (modify — deleted seeded timeseries composition)
 - `backend/tests/api/test_analytics_router.py` (modify)
+- `backend/tests/api/test_phase5_stateful_routes.py`, `backend/tests/api/test_read_model_routers.py` (modify — updated tests that asserted the removed seeded timeseries content)
 
 ---
 
@@ -946,13 +950,15 @@ Graph storage and workflows exist, but analytics inference is still represented 
 
 ### Current State
 - `/analytics/overview` now uses `get_analytics_overview_payload` and `build_analytics_overview(...)` to aggregate durable alert projections, durable cases, and KB metadata (`backend/api/dependencies.py`, `backend/api/_analytics_overview.py`).
-- `/analytics/risk-scores/{entity_id}` and `/analytics/timeseries/{entity_id}` still read from `ApiState.get_risk_score` / `ApiState.get_timeseries` (`backend/api/dependencies.py`).
-- Seeded `ApiState` analytics helpers remain for the entity-scoped shortcuts.
+- **`/analytics/timeseries/{entity_id}` is done** (shipped under analytics.07, Sprint 2026-28 B2): it now reads `get_entity_series_source()` (`RecordAggregateTimeSeriesSource` over record-column aggregates + `DomainConfig.timeseries.metrics`) joined with `get_timeseries_anomaly_store()`; `ApiState.get_timeseries`/`_timeseries_source`/`_timeseries_service`/`_build_timeseries_series` were deleted as dead code.
+- `/analytics/risk-scores/{entity_id}` still reads from `ApiState.get_risk_score` (`backend/api/dependencies.py`) — this half of the story remains open.
+- The seeded `ApiState` risk-profile helper (`_build_risk_profiles`) remains for the entity-scoped risk-score shortcut.
 
 ### Acceptance Criteria
-- [ ] Remaining entity-scoped endpoints switch to DI factories that compose the live analytics services and persistence (`get_risk_service`, `get_timeseries_service`, the metric repository).
+- [x] `/analytics/timeseries/{entity_id}` switches to DI factories that compose live persistence (`get_entity_series_source`, `get_timeseries_anomaly_store`) — analytics.07.
+- [ ] `/analytics/risk-scores/{entity_id}` switches to DI factories that compose the live risk service and persistence (`get_risk_service`, the metric repository).
 - [ ] Deprecation note in `backend/api/AGENT.md` (if present) or `backend/api/state.py` docstring.
-- [ ] `ApiState` seeded analytics payloads removed once api.01 ships (or moved to a `tools/seed_demo_state.py`).
+- [ ] `ApiState` seeded risk-score payload removed once api.01 ships (or moved to a `tools/seed_demo_state.py`).
 - [ ] Frontend Dashboard/EntityDetail (frontend.04) confirmed to render correctly on live data.
 
 ### Verification

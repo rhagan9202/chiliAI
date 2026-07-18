@@ -371,9 +371,9 @@ class EntityTimeseriesResponse(BaseModel):
 **Dependency chain for dashboard/entity-scoped routes:**
 - `GET /analytics/overview` -> `get_analytics_overview_payload(alert_repository, case_service, kb_repository)` -> durable store aggregation.
 - `GET /analytics/risk-scores/{entity_id}?kb_id=...` -> `get_risk_score_payload(entity_id, kb_id, state)` -> `state.get_risk_score(entity_id, knowledge_base_id=kb_id)` -> returns `RiskScoreResponse`.
-- `GET /analytics/timeseries/{entity_id}?kb_id=...` -> `get_timeseries_payload(entity_id, kb_id, state)` -> `state.get_timeseries(entity_id, knowledge_base_id=kb_id)` -> returns `EntityTimeseriesResponse`.
+- `GET /analytics/timeseries/{entity_id}?kb_id=...` -> `get_timeseries_payload(entity_id, kb_id, source, anomaly_store)` -> iterates `source.metric_names()` (`get_entity_series_source()`, a `RecordAggregateTimeSeriesSource` over `get_record_column_source()` and `DomainConfig.timeseries.metrics`), calling `source.load_series(...)` per spec until one has data, then joins persisted anomalies from `get_timeseries_anomaly_store()` -> returns `EntityTimeseriesResponse` (B2, analytics.07; no longer reads `ApiState`).
 
-Only the two entity-scoped routes read from `ApiState`; overview no longer does.
+Only the risk-scores entity route still reads from `ApiState`; overview and the entity timeseries route no longer do.
 
 ---
 

@@ -2,14 +2,16 @@
 
 BL-012 de-seeded this object: alerts, cases, conversations, workflows, evidence
 packs, and the investigation graph are now served from durable stores (see
-``api/dependencies.py`` and the per-domain repositories). What remains here is
-the risk/timeseries analytics composition plus the RAG service handle used by
-the chat streaming path — none of which read ``_seed_*`` data.
+``api/dependencies.py`` and the per-domain repositories). B2 (analytics.07)
+moved the entity timeseries route off this object too — it is now served
+directly from ``get_entity_series_source`` / ``get_timeseries_anomaly_store``
+in ``api/dependencies.py``. What remains here is the seeded risk-score
+composition plus the RAG service handle used by the chat streaming path —
+none of which read ``_seed_*`` data.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from typing import Literal, cast
 
 from analytics.risk.exceptions import RiskConfigurationError, RiskInsufficientSignalsError
@@ -17,16 +19,9 @@ from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
 from analytics.risk.models import RiskProfile, RiskSignal
 from analytics.risk.service import create_risk_service
 from analytics.risk.service_models import RiskAssessmentRequest
-from analytics.timeseries.adapters.in_memory import InMemoryTimeSeriesHistorySource
-from analytics.timeseries.exceptions import TimeseriesConfigurationError, TimeseriesInsufficientHistoryError
-from analytics.timeseries.models import TimeSeriesObservation, TimeSeriesSeries
-from analytics.timeseries.service import create_timeseries_service
-from analytics.timeseries.service_models import TimeseriesAnalysisRequest
 from config.loader import load_config
 from config.schema import DomainConfig
 from api.contracts import (
-    EntityTimeseriesPointResponse,
-    EntityTimeseriesResponse,
     RiskFactorResponse,
     RiskScoreResponse,
 )
@@ -45,7 +40,7 @@ __all__ = ["ApiState", "create_api_state"]
 
 
 class ApiState:
-    """Own the risk/timeseries analytics services and the RAG service handle."""
+    """Own the seeded risk-score service and the RAG service handle."""
 
     def __init__(
         self,
@@ -64,12 +59,6 @@ class ApiState:
 
         self._risk_service = create_risk_service(
             InMemoryRiskSignalSource(profiles=self._build_risk_profiles()),
-            event_bus=self._event_bus,
-        )
-
-        self._timeseries_source = InMemoryTimeSeriesHistorySource(series=self._build_timeseries_series())
-        self._timeseries_service = create_timeseries_service(
-            self._timeseries_source,
             event_bus=self._event_bus,
         )
 
@@ -125,53 +114,6 @@ class ApiState:
             unavailable_reason=None,
         )
 
-    def get_timeseries(self, entity_id: str, *, knowledge_base_id: str | None = None) -> EntityTimeseriesResponse:
-        kb_id = knowledge_base_id or self._knowledge_base_id
-        try:
-            series = self._timeseries_source.load_series(
-                knowledge_base_id=kb_id,
-                entity_id=entity_id,
-                metric_name="normalized_alert_pressure",
-            )
-            analysis = self._timeseries_service.analyze(
-                TimeseriesAnalysisRequest(
-                    knowledge_base_id=kb_id,
-                    entity_id=entity_id,
-                    metric_name=series.metric_name,
-                    baseline_window=3,
-                    min_history=5,
-                    z_threshold=2.0,
-                )
-            )
-        except (
-            TimeseriesConfigurationError,
-            TimeseriesInsufficientHistoryError,
-            ValueError,
-        ):
-            return EntityTimeseriesResponse(
-                entity_id=entity_id,
-                metric_name="normalized_alert_pressure",
-                points=[],
-                availability_status="unavailable",
-                unavailable_reason="No time series has been generated for this entity.",
-            )
-        anomaly_timestamps = {anomaly.observed_at for anomaly in analysis.anomalies}
-        return EntityTimeseriesResponse(
-            entity_id=entity_id,
-            metric_name=series.metric_name,
-            points=[
-                EntityTimeseriesPointResponse(
-                    timestamp=observation.observed_at,
-                    value=observation.value,
-                    label=observation.observed_at.strftime("%b %d"),
-                    is_anomaly=observation.observed_at in anomaly_timestamps,
-                )
-                for observation in series.observations
-            ],
-            availability_status="available",
-            unavailable_reason=None,
-        )
-
     def _build_risk_profiles(self) -> list[RiskProfile]:
         return [
             RiskProfile(
@@ -209,29 +151,6 @@ class ApiState:
             ),
         ]
 
-    def _build_timeseries_series(self) -> list[TimeSeriesSeries]:
-        start = self._now() - timedelta(days=35)
-        return [
-            TimeSeriesSeries(
-                knowledge_base_id=self._knowledge_base_id,
-                entity_id=self._primary_entity_id,
-                metric_name="normalized_alert_pressure",
-                observations=[
-                    TimeSeriesObservation(observed_at=start + timedelta(days=index * 7), value=value)
-                    for index, value in enumerate([0.41, 0.49, 0.55, 0.64, 0.78, 0.91])
-                ],
-            ),
-            TimeSeriesSeries(
-                knowledge_base_id=self._knowledge_base_id,
-                entity_id=self._secondary_entity_id,
-                metric_name="normalized_alert_pressure",
-                observations=[
-                    TimeSeriesObservation(observed_at=start + timedelta(days=index * 7), value=value)
-                    for index, value in enumerate([0.38, 0.42, 0.48, 0.51, 0.61, 0.68])
-                ],
-            ),
-        ]
-
     def _build_context_records(self) -> list[ContextRecord]:
         return [
             ContextRecord(
@@ -249,10 +168,6 @@ class ApiState:
                 metadata={"entity_id": self._secondary_entity_id, "category": "network"},
             ),
         ]
-
-    @staticmethod
-    def _now() -> datetime:
-        return datetime.now(timezone.utc)
 
 
 def create_api_state(

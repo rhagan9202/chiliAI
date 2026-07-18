@@ -26,6 +26,7 @@ from api.contracts import (
     ChatConversationCreateRequest,
     ChatConversationResponse,
     ChatMessageCreateRequest,
+    EntityTimeseriesPointResponse,
     EntityTimeseriesResponse,
     EvidencePackResponse,
     GraphEntityDetailResponse,
@@ -115,11 +116,15 @@ from analytics.timeseries.adapters.in_memory import (
     InMemoryTimeSeriesHistorySource,
     InMemoryTimeseriesAnomalyStore,
 )
-from analytics.timeseries.adapters.postgres import PostgresTimeseriesAnomalyStore
+from analytics.timeseries.adapters.postgres import (
+    PostgresTimeSeriesHistorySource,
+    PostgresTimeseriesAnomalyStore,
+)
 from analytics.timeseries.adapters.protocols import (
     TimeSeriesHistorySourceProtocol,
     TimeseriesAnomalyStoreProtocol,
 )
+from analytics.timeseries.adapters.record_aggregates import RecordAggregateTimeSeriesSource
 from analytics.timeseries.protocols import TimeseriesServiceProtocol
 from analytics.timeseries.service import create_timeseries_service
 from embeddings.adapters.cache_in_memory import (
@@ -170,9 +175,18 @@ from monitoring.protocols import MonitoringServiceProtocol
 from monitoring.service import create_monitoring_service
 from database.protocols import ConnectionProvider
 from database.runtime import create_connection_provider
-from analytics.peerstats.adapters.in_memory import InMemoryDerivedRiskSignalWriter
-from analytics.peerstats.adapters.postgres import PostgresDerivedRiskSignalWriter
-from analytics.peerstats.adapters.protocols import DerivedRiskSignalWriterProtocol
+from analytics.peerstats.adapters.in_memory import (
+    InMemoryDerivedRiskSignalWriter,
+    InMemoryRecordColumnSource,
+)
+from analytics.peerstats.adapters.postgres import (
+    PostgresDerivedRiskSignalWriter,
+    PostgresRecordColumnSource,
+)
+from analytics.peerstats.adapters.protocols import (
+    DerivedRiskSignalWriterProtocol,
+    RecordColumnSourceProtocol,
+)
 from records.adapters.in_memory import InMemoryRawRecordStore
 from records.adapters.postgres import PostgresRawRecordStore
 from records.adapters.protocols import RawRecordStore
@@ -902,13 +916,10 @@ def get_risk_score_payload(
     return state.get_risk_score(entity_id, knowledge_base_id=kb_id)
 
 
-def get_timeseries_payload(
-    entity_id: str = Path(..., description="Entity identifier."),
-    kb_id: str = Query(..., min_length=1, description="Knowledge base identifier."),
-    state: ApiState = Depends(get_api_state),
-) -> EntityTimeseriesResponse:
-    """Return a KB-scoped timeseries payload."""
-    return state.get_timeseries(entity_id, knowledge_base_id=kb_id)
+# get_timeseries_payload is defined further below (after get_entity_series_source
+# and get_timeseries_anomaly_store) since it depends on those factories as
+# FastAPI ``Depends(...)`` default arguments, which are resolved at module
+# import time and so require the factories to already exist.
 
 
 
@@ -1273,8 +1284,11 @@ def get_risk_service() -> RiskServiceProtocol:
 
 @lru_cache(maxsize=1)
 def get_timeseries_history_source() -> TimeSeriesHistorySourceProtocol:
-    """Return the timeseries history source. In-memory by default."""
-    return InMemoryTimeSeriesHistorySource()
+    """Return the graph-scope timeseries source: Postgres when a DB is configured."""
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemoryTimeSeriesHistorySource()
+    return PostgresTimeSeriesHistorySource(provider)
 
 
 @lru_cache(maxsize=1)
@@ -1293,6 +1307,66 @@ def get_timeseries_anomaly_store() -> TimeseriesAnomalyStoreProtocol:
     if provider is None:
         return InMemoryTimeseriesAnomalyStore()
     return PostgresTimeseriesAnomalyStore(provider)
+
+
+@lru_cache(maxsize=1)
+def get_record_column_source() -> RecordColumnSourceProtocol:
+    """Return the record-aggregate column source selected by the database backend."""
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemoryRecordColumnSource()
+    return PostgresRecordColumnSource(provider)
+
+
+@lru_cache(maxsize=1)
+def get_entity_series_source() -> RecordAggregateTimeSeriesSource:
+    """Return the per-entity record-aggregate series source."""
+    config = get_domain_config()
+    specs = list(config.timeseries.metrics) if config.timeseries is not None else []
+    return RecordAggregateTimeSeriesSource(get_record_column_source(), specs=specs)
+
+
+def get_timeseries_payload(
+    entity_id: str = Path(..., description="Entity identifier."),
+    kb_id: str = Query(..., min_length=1, description="Knowledge base identifier."),
+    source: RecordAggregateTimeSeriesSource = Depends(get_entity_series_source),
+    anomaly_store: TimeseriesAnomalyStoreProtocol = Depends(get_timeseries_anomaly_store),
+) -> EntityTimeseriesResponse:
+    """Return a KB-scoped entity timeseries built from record aggregates."""
+    metric_names = source.metric_names()
+    for metric_name in metric_names:
+        try:
+            series = source.load_series(
+                knowledge_base_id=kb_id, entity_id=entity_id, metric_name=metric_name
+            )
+        except ValueError:
+            continue  # this spec has no data for the entity; try the next
+        anomalies = anomaly_store.load_anomalies(
+            knowledge_base_id=kb_id, entity_id=entity_id, metric_name=metric_name
+        )
+        anomaly_timestamps = {record.observed_at for record in anomalies}
+        return EntityTimeseriesResponse(
+            entity_id=entity_id,
+            metric_name=metric_name,
+            points=[
+                EntityTimeseriesPointResponse(
+                    timestamp=observation.observed_at,
+                    value=observation.value,
+                    label=observation.observed_at.strftime("%b %d"),
+                    is_anomaly=observation.observed_at in anomaly_timestamps,
+                )
+                for observation in series.observations
+            ],
+            availability_status="available",
+            unavailable_reason=None,
+        )
+    return EntityTimeseriesResponse(
+        entity_id=entity_id,
+        metric_name=metric_names[0] if metric_names else "timeseries",
+        points=[],
+        availability_status="unavailable",
+        unavailable_reason="No time series is configured or populated for this entity.",
+    )
 
 
 @lru_cache(maxsize=1)
@@ -1749,6 +1823,8 @@ CONFIG_CACHE_REGISTRY: dict[str, _ClearableCache] = {
     "get_timeseries_history_source": get_timeseries_history_source,
     "get_timeseries_service": get_timeseries_service,
     "get_timeseries_anomaly_store": get_timeseries_anomaly_store,
+    "get_record_column_source": get_record_column_source,
+    "get_entity_series_source": get_entity_series_source,
     "get_graph_snapshot_source": get_graph_snapshot_source,
     "get_gnn_service": get_gnn_service,
     "get_ingestion_recovery_store": get_ingestion_recovery_store,

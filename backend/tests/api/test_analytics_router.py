@@ -12,26 +12,34 @@ from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
 from analytics.gnn.models import ClusterSummary
 from analytics.gnn.protocols import GnnServiceProtocol
 from analytics.gnn.service import create_gnn_service
+from analytics.peerstats.models import PeerAggregate
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
 from analytics.risk.models import RankedRiskEntry
 from analytics.risk.protocols import RiskServiceProtocol
 from analytics.risk.service import create_risk_service
-from analytics.timeseries.adapters.in_memory import InMemoryTimeSeriesHistorySource
-from analytics.timeseries.models import TimeSeriesObservation
+from analytics.timeseries.adapters.in_memory import (
+    InMemoryTimeSeriesHistorySource,
+    InMemoryTimeseriesAnomalyStore,
+)
+from analytics.timeseries.adapters.record_aggregates import RecordAggregateTimeSeriesSource
+from analytics.timeseries.models import TimeSeriesObservation, TimeseriesAnomalyRecord
 from analytics.timeseries.protocols import TimeseriesServiceProtocol
 from analytics.timeseries.service import create_timeseries_service
 from api.contracts import AnalyticsOverviewResponse, EntityTimeseriesResponse, RiskScoreResponse
 from api.dependencies import (
     get_analytics_overview_payload,
     get_api_state,
+    get_entity_series_source,
     get_gnn_service,
     get_risk_score_payload,
     get_risk_service,
+    get_timeseries_anomaly_store,
     get_timeseries_payload,
     get_timeseries_service,
 )
 from api.routers.analytics import router
 from api.state import ApiState
+from config.schema import TimeseriesMetricSpec
 from events.adapters.in_memory import InMemoryEventBus
 
 
@@ -191,7 +199,7 @@ def test_detail_risk_score_is_kb_scoped() -> None:
     assert payload["availability_status"] == "unavailable"
 
 
-def test_detail_payload_dependencies_pass_kb_scope_to_api_state() -> None:
+def test_detail_risk_payload_dependency_passes_kb_scope_to_api_state() -> None:
     app = FastAPI()
     app.include_router(router)
 
@@ -206,15 +214,6 @@ def test_detail_payload_dependencies_pass_kb_scope_to_api_state() -> None:
                 factors=[],
             )
 
-        def get_timeseries(self, entity_id: str, *, knowledge_base_id: str | None = None) -> EntityTimeseriesResponse:
-            assert entity_id == "provider-1"
-            assert knowledge_base_id == "kb-live"
-            return EntityTimeseriesResponse(
-                entity_id=entity_id,
-                metric_name="normalized_alert_pressure",
-                points=[],
-            )
-
     app.dependency_overrides[get_api_state] = AnalyticsStateStub
     test_client = TestClient(app)
 
@@ -222,15 +221,9 @@ def test_detail_payload_dependencies_pass_kb_scope_to_api_state() -> None:
         "/analytics/risk-scores/provider-1",
         params={"kb_id": "kb-live"},
     )
-    timeseries_response = test_client.get(
-        "/analytics/timeseries/provider-1",
-        params={"kb_id": "kb-live"},
-    )
 
     assert risk_response.status_code == 200
     assert risk_response.json()["overall_score"] == 0.37
-    assert timeseries_response.status_code == 200
-    assert timeseries_response.json()["metric_name"] == "normalized_alert_pressure"
 
 
 def test_unexpected_risk_errors_are_not_converted_to_unavailable() -> None:
@@ -323,18 +316,120 @@ def test_detail_timeseries_is_kb_scoped() -> None:
     assert payload["availability_status"] == "unavailable"
 
 
-def test_unexpected_timeseries_errors_are_not_converted_to_unavailable() -> None:
-    state = ApiState()
+def _timeseries_metric_spec() -> TimeseriesMetricSpec:
+    return TimeseriesMetricSpec(
+        name="weekly_billing_self",
+        record_type="claim_record",
+        entity_type="provider",
+        entity_id_field="npi",
+        value_column="amount",
+        aggregation="sum",
+        interval="week",
+        time_column="service_date",
+    )
 
-    class BrokenTimeseriesSource:
-        def load_series(self, **kwargs: object) -> EntityTimeseriesResponse:
-            del kwargs
-            raise RuntimeError("timeseries backend unavailable")
 
-    setattr(state, "_timeseries_source", BrokenTimeseriesSource())
+class _FakeColumnSource:
+    """Protocol double returning canned aggregates (Task 3's test double shape)."""
 
-    with pytest.raises(RuntimeError, match="timeseries backend unavailable"):
-        state.get_timeseries("provider-1", knowledge_base_id="kb-live")
+    def __init__(self, aggregates: list[PeerAggregate]) -> None:
+        self._aggregates = aggregates
+
+    def load_interval_aggregates(
+        self,
+        *,
+        knowledge_base_id: str,
+        spec: object,
+        interval_starts: list[datetime],
+    ) -> list[PeerAggregate]:
+        del knowledge_base_id, spec, interval_starts
+        return self._aggregates
+
+
+def test_entity_timeseries_serves_series_with_persisted_anomalies() -> None:
+    spec = _timeseries_metric_spec()
+    bucket_1 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    bucket_2 = datetime(2026, 1, 8, tzinfo=timezone.utc)
+    bucket_3 = datetime(2026, 1, 15, tzinfo=timezone.utc)
+    column_source = _FakeColumnSource(
+        [
+            PeerAggregate(
+                entity_id="provider:1",
+                entity_type="provider",
+                peer_group_key="provider",
+                interval_start=bucket_1,
+                aggregate_value=100.0,
+            ),
+            PeerAggregate(
+                entity_id="provider:1",
+                entity_type="provider",
+                peer_group_key="provider",
+                interval_start=bucket_2,
+                aggregate_value=150.0,
+            ),
+            PeerAggregate(
+                entity_id="provider:1",
+                entity_type="provider",
+                peer_group_key="provider",
+                interval_start=bucket_3,
+                aggregate_value=400.0,
+            ),
+        ]
+    )
+    source = RecordAggregateTimeSeriesSource(column_source, specs=[spec])
+
+    anomaly_store = InMemoryTimeseriesAnomalyStore()
+    anomaly_store.write_anomalies(
+        [
+            TimeseriesAnomalyRecord(
+                knowledge_base_id="kb-1",
+                entity_id="provider:1",
+                metric_name=spec.name,
+                observed_at=bucket_3,
+                observed_value=400.0,
+                expected_value=125.0,
+                z_score=3.1,
+                severity=0.9,
+                detection_strategy="z_score",
+                correlation_id="corr-1",
+            )
+        ]
+    )
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_entity_series_source] = lambda: source
+    app.dependency_overrides[get_timeseries_anomaly_store] = lambda: anomaly_store
+    test_client = TestClient(app)
+
+    response = test_client.get("/analytics/timeseries/provider:1", params={"kb_id": "kb-1"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["metric_name"] == spec.name
+    assert len(payload["points"]) == 3
+    assert [point["is_anomaly"] for point in payload["points"]] == [False, False, True]
+    assert payload["availability_status"] == "available"
+
+
+def test_entity_timeseries_unavailable_when_no_spec_has_data() -> None:
+    spec = _timeseries_metric_spec()
+    source = RecordAggregateTimeSeriesSource(_FakeColumnSource([]), specs=[spec])
+    anomaly_store = InMemoryTimeseriesAnomalyStore()
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_entity_series_source] = lambda: source
+    app.dependency_overrides[get_timeseries_anomaly_store] = lambda: anomaly_store
+    test_client = TestClient(app)
+
+    response = test_client.get("/analytics/timeseries/provider:1", params={"kb_id": "kb-1"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["availability_status"] == "unavailable"
+    assert payload["points"] == []
+    assert payload["unavailable_reason"] is not None
 
 
 def test_list_gnn_clusters_returns_clusters_when_enabled(client: TestClient) -> None:

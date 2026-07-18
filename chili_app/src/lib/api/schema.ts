@@ -2154,6 +2154,8 @@ export interface components {
             /** @default null */
             storage: components["schemas"]["ObjectStoreConfig"] | null;
             /** @default null */
+            timeseries: components["schemas"]["TimeseriesAnalyticsConfig"] | null;
+            /** @default null */
             ui: components["schemas"]["UiConfig"] | null;
             /** @default null */
             validation: components["schemas"]["ValidationConfig"] | null;
@@ -4103,6 +4105,81 @@ export interface components {
              * @description Pack name or path within the allowed config directories.
              */
             pack: string;
+        };
+        /**
+         * TimeseriesAnalyticsConfig
+         * @description Collection of self-history anomaly series specs for a domain.
+         */
+        TimeseriesAnalyticsConfig: {
+            /** Metrics */
+            metrics?: components["schemas"]["TimeseriesMetricSpec"][];
+        };
+        /**
+         * TimeseriesMetricSpec
+         * @description One self-history anomaly-detection series derived from a record column.
+         *
+         *     The aggregate identity (record_type … time_column) mirrors
+         *     ``PeerMetricSpec`` so the peerstats record-column SQL can serve both:
+         *     peerstats compares an entity to its peers cross-sectionally; a
+         *     timeseries spec compares an entity to its own interval history.
+         */
+        TimeseriesMetricSpec: {
+            /**
+             * Aggregation
+             * @enum {string}
+             */
+            aggregation: "sum" | "mean" | "count" | "max" | "min";
+            /**
+             * Baseline Window
+             * @default 5
+             */
+            baseline_window: number;
+            /**
+             * Detection Strategy
+             * @default z_score
+             * @enum {string}
+             */
+            detection_strategy: "z_score" | "stl_decomposition" | "isolation_forest";
+            /** Entity Id Field */
+            entity_id_field: string;
+            /** Entity Type */
+            entity_type: string;
+            /**
+             * Interval
+             * @enum {string}
+             */
+            interval: "day" | "week" | "month";
+            /**
+             * Min History
+             * @default 6
+             */
+            min_history: number;
+            /** Name */
+            name: string;
+            /** Record Type */
+            record_type: string;
+            /**
+             * Signal Weight
+             * @default 1
+             */
+            signal_weight: number;
+            /**
+             * Time Column
+             * @default null
+             */
+            time_column: string | null;
+            /** Value Column */
+            value_column: string;
+            /**
+             * Z Cap
+             * @default 4
+             */
+            z_cap: number;
+            /**
+             * Z Threshold
+             * @default 2
+             */
+            z_threshold: number;
         };
         /**
          * TimeseriesPoint
