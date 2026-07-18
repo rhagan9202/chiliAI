@@ -58,6 +58,66 @@ and cascade-delete behavior, and
 `backend/tests/analytics/gnn/test_gnn_live_integration.py` for the live-Neo4j
 round trip that proves the whole path (`@pytest.mark.integration`).
 
+## Timeseries series-source contract
+
+`analytics/timeseries` is wired end to end for self-history anomaly
+detection (Sprint 2026-28 B2, BL-047). The series source splits by scope,
+and picking the wrong one silently returns empty data instead of erroring —
+worth stating explicitly:
+
+- **Per-entity series** (used by `GET /analytics/timeseries/{entity_id}` and
+  the worker's `run_timeseries_stage`) come from `raw_records` interval
+  aggregates, not `observations`. `RecordAggregateTimeSeriesSource`
+  (`analytics/timeseries/adapters/record_aggregates.py`) implements
+  `TimeSeriesHistorySourceProtocol.load_series` by reusing
+  `analytics/peerstats`'s `RecordColumnSourceProtocol.load_interval_aggregates`
+  SQL — `to_peer_spec()` converts a `TimeseriesMetricSpec` into the peerstats
+  `PeerMetricSpec` shape the aggregate query expects, so both submodules
+  share one JSONB-aggregation implementation (peerstats reads it
+  cross-sectionally per interval; timeseries reads it longitudinally per
+  entity). `load_entity_series_map()` is the worker's batch form — one
+  aggregate query per configured `TimeseriesMetricSpec`, not one per entity.
+  `RecordAggregateTimeSeriesSource.load_metric_range` intentionally returns
+  `[]`: it is a per-entity source, and graph-scope range reads are not its
+  job.
+- **Graph-scope series** (the `GET /analytics/timeseries?metric=...`
+  metric-range route) stay on `PostgresTimeSeriesHistorySource` /
+  `InMemoryTimeSeriesHistorySource` over `entity_metric_history`, which Flow
+  2 writes only with `entity_id="__graph__"`. This path is unchanged by the
+  B2 work.
+- **`observations` is monitoring-only.** analytics.06 originally planned an
+  `observations`-backed per-entity series path; that acceptance criterion is
+  **superseded** — see `docs/backlog/analytics.md` story analytics.06 for
+  the full rationale (`MonitoringObservation.score` is hard-bounded `[0,1]`
+  with no headroom for raw payment amounts, `observed_at` collapses to
+  `ingested_at` on a bulk demo ingest, and the `(kb, entity, metric,
+  observed_at)` primary key silently drops same-day duplicate claims via
+  `ON CONFLICT DO NOTHING`). `observations` remains the write target for
+  `monitoring/adapters/postgres.py::PostgresObservationStore` and
+  monitoring's own threshold evaluation only; the timeseries module never
+  reads it.
+- **Anomaly persistence.** Detected `AnomalyPoint`s are upserted to the
+  `timeseries_anomalies` table (migration
+  `backend/database/migrations/versions/0011_timeseries_anomalies.py`, PK
+  `(knowledge_base_id, entity_id, metric_name, observed_at)`) via
+  `TimeseriesAnomalyStoreProtocol` (`adapters/protocols.py`, with
+  `adapters/in_memory.py` and `adapters/postgres.py` implementations). The
+  same detection pass also upserts a `DerivedRiskSignal`
+  (`metric_name = "timeseries_anomaly:<spec name>"`) to
+  `entity_derived_signals`, so `PostgresRiskSignalSource` (in
+  `analytics/risk`) picks up anomaly severities the same way it already
+  reads peerstats z-scores.
+- **KB-delete cascade membership.** `TimeseriesAnomalyStoreProtocol` also
+  satisfies the structural `TimeseriesAnomalyPurger` protocol
+  (`delete_by_kb`); `knowledgebases.cleanup.kb_deletion_steps` runs the
+  `timeseries_anomalies` step directly after `derived_signals`, and the
+  field is required on both the API's and the worker's `KbDeletionStores`
+  bundles.
+
+See `backend/README.md` § Analytics Runtime Notes for the full worker/API
+wiring (`run_timeseries_stage`, its controlled-skip semantics, and the
+`DomainConfig.timeseries` config surface).
+
 ## Where script code belongs
 
 Use this mapping when converting a script or notebook into the codebase:
@@ -364,6 +424,11 @@ Use existing tables before adding new schema:
   current snapshots.
 - `risk_score_history` for risk assessment history.
 - `alert_history` for alert history.
+- `entity_derived_signals` for peerstats- and timeseries-derived risk
+  signals (upserted by `analytics/peerstats` and `analytics/timeseries`,
+  read by `PostgresRiskSignalSource` in `analytics/risk`).
+- `timeseries_anomalies` for persisted self-history anomaly points (see
+  "Timeseries series-source contract" above).
 
 When a new table is required:
 

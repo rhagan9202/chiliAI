@@ -35,7 +35,7 @@
 | BL-027 | Resource-level per-KB ACL | REQ-AUTH-006 (ext) | P2 | todo | 8 SP |
 | BL-028 | Multi-KB scope in RAG | REQ-RAG-002 | P2 | todo | 5 SP |
 | BL-046 | GNN live: repository-backed snapshot source + cluster persistence (analytics.03/.05, partial .04/.24) | REQ-ANALYTICS (GNN) | P1 (sprint 2026-28) | committed — Sprint 2026-28 B1 | 5 SP |
-| BL-047 | Timeseries anomaly detection into the ingest pipeline (analytics.06/07) | REQ-ANALYTICS (timeseries) | P1 (sprint 2026-28) | committed — Sprint 2026-28 B2 | 3 SP |
+| BL-047 | Timeseries anomaly detection into the ingest pipeline (analytics.06/07) | REQ-ANALYTICS (timeseries) | P1 (sprint 2026-28) | done — Sprint 2026-28 B2 (backend implementation; gates green on `feat/sprint-2026-28-b2-timeseries-anomalies`; full-stack live demo verification owed to D1) | 0 SP |
 | BL-048 | Explainability engine: LLM narratives + production SHAP (analytics.13/.14) | REQ-ANALYTICS (explainability) | P1 (sprint 2026-28) | committed — Sprint 2026-28 B3 | 5 SP |
 | BL-049 | Workbench reshape design pass (IntegrityAI-inspired, design-only) | REQ-UI | P1 (sprint 2026-28) | committed — Sprint 2026-28 U1 | 2 SP |
 | BL-050 | Workbench reshape + analytics surfacing implementation | REQ-UI | P1 (sprint 2026-28) | committed — Sprint 2026-28 U2 | 8 SP |

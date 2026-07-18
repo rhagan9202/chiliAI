@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi import FastAPI
@@ -12,6 +13,8 @@ from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
 from analytics.gnn.models import ClusterSummary
 from analytics.gnn.protocols import GnnServiceProtocol
 from analytics.gnn.service import create_gnn_service
+from analytics.metrics.adapters.postgres import PostgresEntityMetricRepository
+from analytics.metrics.models import EntityMetricSample
 from analytics.peerstats.exceptions import PeerStatsSourceError
 from analytics.peerstats.models import PeerAggregate
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
@@ -22,6 +25,7 @@ from analytics.timeseries.adapters.in_memory import (
     InMemoryTimeSeriesHistorySource,
     InMemoryTimeseriesAnomalyStore,
 )
+from analytics.timeseries.adapters.postgres import PostgresTimeSeriesHistorySource
 from analytics.timeseries.adapters.record_aggregates import RecordAggregateTimeSeriesSource
 from analytics.timeseries.models import TimeSeriesObservation, TimeseriesAnomalyRecord
 from analytics.timeseries.protocols import TimeseriesServiceProtocol
@@ -40,7 +44,8 @@ from api.dependencies import (
 )
 from api.routers.analytics import router
 from api.state import ApiState
-from config.schema import TimeseriesMetricSpec
+from config.schema import DatabaseConfig, TimeseriesMetricSpec
+from database.runtime import create_connection_provider
 from events.adapters.in_memory import InMemoryEventBus
 
 
@@ -280,6 +285,82 @@ def test_query_timeseries_rejects_inverted_range(client: TestClient) -> None:
     )
 
     assert response.status_code == 422
+
+
+@pytest.mark.integration
+def test_query_timeseries_returns_seeded_postgres_rows() -> None:
+    """Request-level proof that GET /analytics/timeseries reads real rows
+    through PostgresTimeSeriesHistorySource, not just the in-memory adapter
+    (analytics.07 AC — the graph-scope range route's Postgres wiring)."""
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        pytest.skip("DATABASE_URL is not set; skipping Postgres timeseries route test.")
+
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    repo = PostgresEntityMetricRepository(provider)
+    kb_id = "kb-ts-router-integration"
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM entity_metric_history WHERE knowledge_base_id = %s",
+                (kb_id,),
+            )
+            conn.execute(
+                "DELETE FROM entity_metrics_current WHERE knowledge_base_id = %s",
+                (kb_id,),
+            )
+            conn.commit()
+
+        repo.record_metrics(
+            [
+                EntityMetricSample(
+                    knowledge_base_id=kb_id,
+                    entity_id="__graph__",
+                    metric_name="entity_count",
+                    value=float(index) * 5.0,
+                    observed_at=base + timedelta(minutes=index),
+                    correlation_id=f"corr-{index}",
+                )
+                for index in range(3)
+            ]
+        )
+
+        source = PostgresTimeSeriesHistorySource(provider)
+        service = create_timeseries_service(source, event_bus=InMemoryEventBus())
+
+        app = FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_timeseries_service] = lambda: service
+        test_client = TestClient(app)
+
+        response = test_client.get(
+            "/analytics/timeseries",
+            params={
+                "kb_id": kb_id,
+                "metric": "entity_count",
+                "start": base.isoformat(),
+                "end": (base + timedelta(minutes=2)).isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["metric_name"] == "entity_count"
+        assert [point["value"] for point in payload["points"]] == [0.0, 5.0, 10.0]
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM entity_metric_history WHERE knowledge_base_id = %s",
+                (kb_id,),
+            )
+            conn.execute(
+                "DELETE FROM entity_metrics_current WHERE knowledge_base_id = %s",
+                (kb_id,),
+            )
+            conn.commit()
+        provider.close()
 
 
 def test_detail_timeseries_requires_kb_id(client: TestClient) -> None:

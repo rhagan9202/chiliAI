@@ -310,10 +310,11 @@ backend/
 │       └── fallback.py         # FallbackLlmClient — wraps primary + ordered fallback list
 ├── analytics/                  # ML / AI capability modules
 │   ├── __init__.py
-│   ├── timeseries/             # Time-series anomaly detection (standard module shape)
+│   ├── timeseries/             # Self-history anomaly detection (standard module shape)
 │   │   └── adapters/
-│   │       ├── in_memory.py
-│   │       └── postgres.py     # PostgresObservationStore / PostgresObservationSource
+│   │       ├── in_memory.py         # InMemoryTimeSeriesHistorySource, InMemoryTimeseriesAnomalyStore
+│   │       ├── postgres.py          # PostgresTimeSeriesHistorySource (entity_metric_history), PostgresTimeseriesAnomalyStore (timeseries_anomalies)
+│   │       └── record_aggregates.py # RecordAggregateTimeSeriesSource — per-entity series over raw_records aggregates (reuses peerstats RecordColumnSourceProtocol)
 │   ├── gnn/                    # Graph neural network analysis (standard module shape)
 │   │   └── adapters/
 │   │       ├── in_memory.py

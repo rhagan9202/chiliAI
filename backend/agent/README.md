@@ -115,8 +115,16 @@ objects and upserts them into the graph via `GraphService.upsert_records_graph`.
 Also embeds and indexes records-derived entities into the vector store so they
 are retrievable by RAG queries alongside document-derived content. When wired,
 the handler then runs best-effort policy-rule evaluation over stored entities
-and throttled graph metrics, and a best-effort peerstats stage that can persist
-derived risk signals and reassess affected entities.
+and throttled graph metrics, then two independent best-effort analytics
+stages — peerstats (`run_peerstats_stage`, cross-sectional peer-group
+z-scores) and, immediately after, timeseries (`run_timeseries_stage`,
+self-history anomaly detection, B2/BL-047) — each of which can persist
+derived risk signals to `entity_derived_signals`; `RiskService.assess` then
+runs once per entity across the union of both stages' affected ids. A
+failure in either analytics stage no longer skips the other or risk
+assessment for entities the other stage did affect (see `backend/README.md`
+§ Analytics Runtime Notes for the per-stage controlled-skip semantics and
+the `timeseries_anomaly:<spec name>` derived-signal naming).
 
 ### handle_knowledge_base_deleted (retry handler)
 

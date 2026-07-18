@@ -33,7 +33,11 @@ scorecard persistence). Migration 0009 adds
 `source_document_status` (durable per-document ingestion status projection,
 BL-041). Migration 0010 adds `event_dlq` (durable, replayable event
 dead-letter records, BL-023 — see `backend/events/README.md` and
-`docs/runbooks/event-replay.md`). Head is `0010` — 14 tables total.
+`docs/runbooks/event-replay.md`). Migration 0011 adds `timeseries_anomalies`
+(persisted self-history anomaly points, PK `(knowledge_base_id, entity_id,
+metric_name, observed_at)`, BL-047 — see
+`backend/analytics/README.md` § Timeseries series-source contract). Head is
+`0011` — 15 tables total.
 
 ## Commands
 
@@ -79,7 +83,7 @@ it); renumbering revision files does not invalidate it.
 
 **Status:** the script, Makefile targets, CI job, and committed
 `snapshots/head.sql` are all live as of migration `0009` (BL-042, Sprint
-2026-26) and re-verified through `0010` (BL-023, Sprint 2026-27) — every
+2026-26) and re-verified through `0011` (BL-047, Sprint 2026-28 B2) — every
 migration added since has run `make migrate-snapshot` and committed the
 refreshed snapshot in the same commit as the migration, and `make
 migrate-check` reports clean replay against the live schema.

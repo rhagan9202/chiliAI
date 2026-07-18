@@ -184,9 +184,41 @@ Graph storage and workflows exist, but analytics inference is still represented 
 
 ---
 
+> **Delivered pipeline slice (Sprint 2026-28 B2, BL-047, 2026-07-18,
+> `feat/sprint-2026-28-b2-timeseries-anomalies`):** ingest-triggered
+> self-history timeseries anomaly detection shipped end to end, superseding
+> analytics.06's original approach (below) and closing analytics.07. The
+> slice spans: `TimeseriesMetricSpec` + `TimeseriesAnalyticsConfig` on
+> `DomainConfig.timeseries` with cross-reference validation against records
+> feeds (`backend/config/schema.py`); the anomaly store
+> (`TimeseriesAnomalyRecord` + `TimeseriesAnomalyStoreProtocol`, in-memory +
+> Postgres adapters, migration `0011_timeseries_anomalies.py`); the
+> record-aggregate per-entity series source
+> (`backend/analytics/timeseries/adapters/record_aggregates.py`,
+> `RecordAggregateTimeSeriesSource`); the worker stage `run_timeseries_stage`
+> (`backend/agent/coordinator.py`), gated on `capabilities.timeseries`,
+> running best-effort immediately after — but independently of — the
+> peerstats stage on every `RecordsIngestedEvent`, with controlled skips for
+> per-entity insufficient history (`TimeseriesInsufficientHistoryError`) and
+> per-spec configuration errors (`TimeseriesConfigurationError`, e.g. a
+> missing detection-strategy extra), z-score clamping at `1.0e6`, and
+> `timeseries_anomaly:<spec.name>`-prefixed `DerivedRiskSignal` writes with
+> peer group key `__self_history__`; the KB-delete cascade step
+> `timeseries_anomalies` (structural `TimeseriesAnomalyPurger` protocol,
+> positioned directly after `derived_signals`, required in both the API and
+> worker `KbDeletionStores` bundles); the API route rewrite covered by
+> analytics.07 below; and config-only pack additions (`peer_stats` +
+> `timeseries` blocks on `medicare_fraud_cms_desynpuf.yaml`, a `timeseries`
+> block on `department_air_force_housing.yaml`). Full design rationale:
+> `docs/superpowers/specs/2026-07-17-sprint28-b2-timeseries-anomalies-design.md`.
+> Full task-by-task implementation record:
+> `docs/superpowers/plans/2026-07-17-sprint28-b2-timeseries-anomalies.md`.
+> Gates at closeout: 2612 backend tests passed (5 skipped, 97% coverage),
+> `pyright` 0 errors, `ruff check` clean.
+
 ## Story analytics.06: Timeseries: Add Postgres `load_series` for per-entity metrics
 **ID:** analytics.06
-**Status:** planned
+**Status:** dropped
 **Prerequisites:** [monitoring.02, records.07]
 **Unblocks:** []
 **Estimated size:** M
@@ -195,14 +227,39 @@ Graph storage and workflows exist, but analytics inference is still represented 
 **so that** per-entity anomaly detection runs against real observation streams.
 
 ### Current State
+**Superseded 2026-07-18 (Sprint 2026-28 B2, BL-047) — dropped, not implemented
+as specced.** Per-entity anomaly detection did ship (B2), but on a different
+series source than this story's AC assumed. Plan-time evidence (design
+amendment, `docs/superpowers/specs/2026-07-17-sprint28-b2-timeseries-anomalies-design.md`
+§2) rejected the `observations`-backed path this story specified:
+`MonitoringObservation.score` is hard-bounded `[0,1]` with load-time
+provability (raw payment fields have no `max_value` to bound against),
+`observed_at` is pinned to `ingested_at` (a bulk demo ingest collapses the
+time axis to one point per feed run), and the `(kb, entity, metric,
+observed_at)` primary key + `ON CONFLICT DO NOTHING` silently drops
+same-day duplicate claims. Instead, `RecordAggregateTimeSeriesSource`
+(`backend/analytics/timeseries/adapters/record_aggregates.py`) reads
+per-entity, per-interval aggregates directly from `raw_records` via the
+existing peerstats `RecordColumnSourceProtocol.load_interval_aggregates`
+SQL — a real claim-date axis, unbounded values, no lossy collisions.
+`observations` remains monitoring-only (`monitoring/adapters/postgres.py::PostgresObservationStore`
++ monitoring's own threshold evaluation); the timeseries module never reads
+it. The cross-edge contract (per-entity ← `raw_records` aggregates,
+graph-scope ← `entity_metric_history`, `observations` ← monitoring-only) is
+documented in `backend/analytics/README.md` § Timeseries series-source
+contract. See analytics.07 for the API-facing half of the delivered slice
+and `docs/backlog/README.md`'s regenerated rollup for this story's `dropped`
+accounting.
+
+Pre-supersession state (accurate as of 2026-07-17, retained for history):
 - `PostgresTimeSeriesHistorySource._SERIES_SQL` selects from `entity_metric_history` (`backend/analytics/timeseries/adapters/postgres.py:17-30`).
 - `entity_metric_history` is only written by Flow 2 with `entity_id="__graph__"` (`backend/analytics/metrics/models.py:11-16`, `backend/agent/coordinator.py:1096-1300`).
 - Per-entity observations land in `observations` via `monitoring/adapters/postgres.py::PostgresObservationStore`, but the timeseries adapter does not read them.
 
 ### Acceptance Criteria
-- [ ] `PostgresTimeSeriesHistorySource` gains an `observations`-backed path (separate adapter or branch) keyed on `(knowledge_base_id, entity_id, metric_name)` and selected via `DomainConfig.analytics.timeseries_source: Literal["entity_metric_history","observations"]`.
-- [ ] Cross-edge contract is documented in `backend/analytics/README.md` (per-entity timeseries reads `observations`, graph-scope reads `entity_metric_history`).
-- [ ] Coverage ≥ 85% on the new branch; integration test runs against a Postgres fixture with seeded observation rows.
+- [ ] `PostgresTimeSeriesHistorySource` gains an `observations`-backed path (separate adapter or branch) keyed on `(knowledge_base_id, entity_id, metric_name)` and selected via `DomainConfig.analytics.timeseries_source: Literal["entity_metric_history","observations"]`. **Superseded** — see Current State; no `timeseries_source` literal was added, and `PostgresTimeSeriesHistorySource` still reads only `entity_metric_history` (graph-scope). Per-entity reads go through `RecordAggregateTimeSeriesSource` instead.
+- [ ] Cross-edge contract is documented in `backend/analytics/README.md` (per-entity timeseries reads `observations`, graph-scope reads `entity_metric_history`). **Delivered with a different contract:** per-entity timeseries reads `raw_records` aggregates, not `observations`; `backend/analytics/README.md` § Timeseries series-source contract documents the shipped contract.
+- [ ] Coverage ≥ 85% on the new branch; integration test runs against a Postgres fixture with seeded observation rows. **N/A** — no `observations`-backed branch was built; coverage for the shipped `record_aggregates.py` path is tracked under analytics.07 instead.
 
 ### Verification
 - `pytest -m integration backend/tests/analytics/timeseries/test_postgres_source.py -q` green.
@@ -236,11 +293,11 @@ Graph storage and workflows exist, but analytics inference is still represented 
 ### Acceptance Criteria
 - [x] `get_timeseries_history_source` returns `PostgresTimeSeriesHistorySource(provider)` when the connection provider is non-None.
 - [x] An override hook (DI dependency override) lets tests inject the in-memory adapter without env shenanigans — `app.dependency_overrides[get_timeseries_history_source]`/`get_entity_series_source`/`get_timeseries_anomaly_store`, plus direct `lru_cache`-clear + `monkeypatch.setattr(dependencies, "get_connection_provider", ...)` for unit-level backend-selection tests (see `tests/api/test_risk_signal_source_wiring.py` for the established pattern; not duplicated for these new accessors since the Postgres branch is otherwise consistent with every other DI-switch factory in the module — exercised via `-m integration`, not unit tests).
-- [ ] A request-level integration test demonstrates `/analytics/timeseries?kb_id=…` returning seeded Postgres rows. **Deferred:** no dedicated integration test was added in this task; the graph-scope range route's Postgres wiring is covered indirectly by `PostgresTimeSeriesHistorySource`'s own adapter tests.
+- [x] A request-level integration test demonstrates `/analytics/timeseries?kb_id=…` returning seeded Postgres rows. **Closed at Task 8 closeout (2026-07-18):** `test_query_timeseries_returns_seeded_postgres_rows` (`backend/tests/api/test_analytics_router.py`, `@pytest.mark.integration`) seeds `entity_metric_history` via `PostgresEntityMetricRepository`, builds a real `PostgresTimeSeriesHistorySource` + `TimeseriesService` over it, and asserts `GET /analytics/timeseries?kb_id=…&metric=…` returns the seeded rows through a `TestClient` request — the AC's original gap (adapter-level coverage only, no request-level proof) is closed.
 
 ### Verification
-- `pytest backend/tests/api/test_analytics_router.py -q` green (21 passed, incl. 2 new tests for the entity route's record-aggregate + anomaly join and its unavailable-when-no-data path).
-- `pytest backend/tests/api -q` green (612 passed).
+- `pytest backend/tests/api/test_analytics_router.py -q` green (23 passed — the original 21, plus the entity route's record-aggregate + anomaly join, its unavailable-when-no-data path, and the Task 8 closeout's request-level Postgres integration test).
+- `pytest backend/tests/api -q` green (612 passed at Task 6/7; re-verified green in the full `make test` run at Task 8 closeout — 2612 passed, 5 skipped, 97% coverage).
 - `pyright` clean, `ruff check` clean.
 
 ### Code touch points
