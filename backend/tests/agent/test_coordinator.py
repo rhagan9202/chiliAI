@@ -2588,9 +2588,11 @@ def test_graceful_shutdown_finishes_in_flight_event(
         build_kb_deletion_stores,
         build_kb_repository,
         build_peerstats_service,
+        build_record_column_source,
+        build_timeseries_anomaly_store,
         run_worker,
     )
-    from config.schema import PeerStatsConfig
+    from config.schema import PeerStatsConfig, TimeseriesAnalyticsConfig
     from agent.adapters.in_memory import InMemoryWorkflowRunStore
     from agent.workflow_tracking import WorkflowEventTracker
     from shared.utils import utc_now
@@ -2690,6 +2692,10 @@ def test_graceful_shutdown_finishes_in_flight_event(
         peerstats_service=build_peerstats_service(None),
         peer_stats_config=PeerStatsConfig(),
         peer_stats_enabled=False,
+        record_column_source=build_record_column_source(None),
+        timeseries_anomaly_store=build_timeseries_anomaly_store(None),
+        timeseries_config=TimeseriesAnalyticsConfig(),
+        timeseries_enabled=False,
         kb_deletion_stores=kb_deletion_stores,
         kb_repository=kb_repository,
         explainability_service=create_explainability_service(

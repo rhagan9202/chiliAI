@@ -511,6 +511,7 @@ conversations/                  # Durable RAG chat conversations (BL-012)
 | `analytics/*` | ML/AI analysis (timeseries, GNN, risk, explainability) | `shared.types`, `graph` (protocol for reads) | `api`, `ingestion`, other analytics sub-modules |
 | `analytics/metrics` | Entity-metric persistence: append history, upsert current snapshot | `database.ConnectionProvider` (Postgres adapter), `config` (backend selection) | domain logic, events, service modules |
 | `analytics/peerstats` | Cross-sectional peer-group z-scores → `entity_derived_signals` upsert; gated on `capabilities.peer_stats` | `database.ConnectionProvider`, `config` (PeerMetricSpec, capability flag), `records` raw_records (via SQL, not module import) | `api`, `ingestion`, other analytics sub-modules, direct `records` imports |
+| `analytics/timeseries` | Self-history anomaly detection (z-score/STL/isolation forest) → `timeseries_anomalies` upsert + `entity_derived_signals`; gated on `capabilities.timeseries` | `database.ConnectionProvider`, `config` (TimeseriesMetricSpec, capability flag), `analytics/peerstats` (`RecordColumnSourceProtocol`, reused aggregate SQL) | `api`, `ingestion`, other analytics sub-modules |
 | `agent` | Pipeline coordination, state machine | `events` (protocol), `shared.types` | Direct imports of service internals |
 | `monitoring` | Stream consumption, alert generation | `shared.types`, `events` (protocol) | `api`, `ingestion` internals |
 | `knowledgebases` | KB/document metadata persistence, repository adapters, projection snapshots | `shared.types`, `storage` (protocol) | `api`, `ingestion`, `graph`, `vectorstore` internals |
@@ -767,24 +768,32 @@ handle_records_ingested()
   │                   # no GraphUpdatedEvent published
   ├── map_observations() → PostgresObservationStore.write_observations()
   │                           # observations table (idempotent upsert)
-  └── run_peerstats_stage()   # best-effort, gated on capabilities.peer_stats
-        │
-        └── PeerStatsService.compute()
-              • PostgresRecordColumnSource aggregates raw_records JSONB per entity/interval
-              • population z-score per entity vs peer cohort (same entity_type + interval)
-              • map z → [0,1] signal value (direction, z_cap)
-              • PostgresDerivedRiskSignalWriter.upsert() → entity_derived_signals
-              │
-              └── for each affected entity_type:
-                    RiskService.assess()
-                      # PostgresRiskSignalSource assembles signal profile
-                      # (latest signal per metric from entity_derived_signals)
-                      # → risk_score_history + graph entity snapshot
+  ├── run_peerstats_stage()   # best-effort, gated on capabilities.peer_stats
+  │     │
+  │     └── PeerStatsService.compute()
+  │           • PostgresRecordColumnSource aggregates raw_records JSONB per entity/interval
+  │           • population z-score per entity vs peer cohort (same entity_type + interval)
+  │           • map z → [0,1] signal value (direction, z_cap)
+  │           • PostgresDerivedRiskSignalWriter.upsert() → entity_derived_signals
+  ├── run_timeseries_stage()  # best-effort, gated on capabilities.timeseries; independent of peerstats
+  │     │
+  │     └── for each TimeseriesMetricSpec matching this feed's record_type:
+  │           • load_entity_series_map() (RecordAggregateTimeSeriesSource) — one aggregate
+  │             query per spec, reusing the peerstats RecordColumnSourceProtocol SQL
+  │           • TimeseriesService.analyze() per entity (self-history z-score / STL / isolation forest)
+  │           • PostgresTimeseriesAnomalyStore.write_anomalies() → timeseries_anomalies
+  │           • latest anomaly per entity → DerivedRiskSignal (metric_name
+  │             `timeseries_anomaly:<spec name>`) → entity_derived_signals
+  └── for each entity affected by either stage (deduped):
+        RiskService.assess()
+          # PostgresRiskSignalSource assembles signal profile
+          # (latest signal per metric from entity_derived_signals)
+          # → risk_score_history + graph entity snapshot
 ```
 
-Every write is an idempotent upsert keyed on `(knowledge_base_id, record_type, record_id)` for `raw_records`, on `(entity_id, metric_name, observed_at)` for `observations`, and on `(knowledge_base_id, entity_id, metric_name, interval_start)` for `entity_derived_signals`, so the worker's retry/DLQ wrapper can re-run the handler safely without duplicating data.
+Every write is an idempotent upsert keyed on `(knowledge_base_id, record_type, record_id)` for `raw_records`, on `(entity_id, metric_name, observed_at)` for `observations`, on `(knowledge_base_id, entity_id, metric_name, interval_start)` for `entity_derived_signals`, and on `(knowledge_base_id, entity_id, metric_name, observed_at)` for `timeseries_anomalies`, so the worker's retry/DLQ wrapper can re-run the handler safely without duplicating data.
 
-`GraphService.upsert_records_graph` is the records-specific graph entry point. Unlike the document pipeline's `upsert_graph`, it accepts no document artifacts and does not publish a `GraphUpdatedEvent`. The `observations` table has a write-side adapter at `monitoring/adapters/postgres.py` (`PostgresObservationStore`). The `entity_derived_signals` table is written by `PostgresDerivedRiskSignalWriter` (`analytics/peerstats/adapters/postgres.py`) and read by `PostgresRiskSignalSource` (`analytics/risk/adapters/postgres.py`) when assembling entity risk profiles.
+`GraphService.upsert_records_graph` is the records-specific graph entry point. Unlike the document pipeline's `upsert_graph`, it accepts no document artifacts and does not publish a `GraphUpdatedEvent`. The `observations` table has a write-side adapter at `monitoring/adapters/postgres.py` (`PostgresObservationStore`). The `entity_derived_signals` table is written by `PostgresDerivedRiskSignalWriter` (`analytics/peerstats/adapters/postgres.py`) and read by `PostgresRiskSignalSource` (`analytics/risk/adapters/postgres.py`) when assembling entity risk profiles. The peerstats and timeseries stages each run independently and best-effort — a failure in one no longer skips the other or risk assessment for entities the other stage did affect; risk assessment runs once per entity across the union of both stages' affected ids. Extreme flat-baseline z-scores (`z=inf`) are clamped to `1e6` before being persisted so stored floats stay JSON-safe.
 
 ### 6.4 Plan C Persistence Flows (worker-side write-back)
 
