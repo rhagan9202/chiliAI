@@ -165,6 +165,19 @@ CREATE TABLE public.source_document_status (
     first_event_at timestamp with time zone NOT NULL,
     updated_at timestamp with time zone NOT NULL
 );
+CREATE TABLE public.timeseries_anomalies (
+    knowledge_base_id text NOT NULL,
+    entity_id text NOT NULL,
+    metric_name text NOT NULL,
+    observed_at timestamp with time zone NOT NULL,
+    observed_value double precision NOT NULL,
+    expected_value double precision NOT NULL,
+    z_score double precision NOT NULL,
+    severity double precision NOT NULL,
+    detection_strategy text NOT NULL,
+    correlation_id text NOT NULL,
+    detected_at timestamp with time zone DEFAULT now() NOT NULL
+);
 ALTER TABLE ONLY public.alert_history
     ADD CONSTRAINT alert_history_pkey PRIMARY KEY (knowledge_base_id, alert_id);
 ALTER TABLE ONLY public.cases
@@ -195,6 +208,8 @@ ALTER TABLE ONLY public.scorecard_runs
     ADD CONSTRAINT scorecard_runs_pkey PRIMARY KEY (knowledge_base_id, run_id);
 ALTER TABLE ONLY public.source_document_status
     ADD CONSTRAINT source_document_status_pkey PRIMARY KEY (knowledge_base_id, source_document_id);
+ALTER TABLE ONLY public.timeseries_anomalies
+    ADD CONSTRAINT timeseries_anomalies_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name, observed_at);
 CREATE INDEX entity_metric_history_observed_at_idx ON public.entity_metric_history USING btree (observed_at DESC);
 CREATE INDEX ix_alert_history_entity ON public.alert_history USING btree (knowledge_base_id, entity_id, created_at DESC);
 CREATE INDEX ix_cases_status ON public.cases USING btree (knowledge_base_id, status, updated_at DESC);
