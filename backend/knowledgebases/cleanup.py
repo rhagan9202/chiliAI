@@ -55,6 +55,17 @@ class GnnClusterPurger(Protocol):
     def delete_by_kb(self, knowledge_base_id: str) -> None: ...
 
 
+class TimeseriesAnomalyPurger(Protocol):
+    """The slice of the timeseries anomaly store the cascade needs.
+
+    Structural (like ``GnnClusterPurger``) so this module keeps its
+    no-cross-module-imports rule; ``PostgresTimeseriesAnomalyStore`` and
+    ``InMemoryTimeseriesAnomalyStore`` satisfy it without registration.
+    """
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int: ...
+
+
 @dataclass(frozen=True, slots=True)
 class KbDeletionStores:
     """Every durable store purged by the KB-delete cascade."""
@@ -78,6 +89,9 @@ class KbDeletionStores:
     # both the API's bundle and the worker's retry bundle build their own
     # ObjectStoreClusterSummaryStore, so this field is always required.
     gnn_cluster_store: GnnClusterPurger
+    # Analytics-owned (not API-owned), same rationale as gnn_cluster_store: both
+    # the API's bundle and the worker's retry bundle always carry one.
+    timeseries_anomaly_store: TimeseriesAnomalyPurger
     # The API gateway owns the alert read projection, so only the API's bundle
     # carries it; the worker's retry bundle leaves it None and the step is
     # skipped (never reported as a phantom success). The projection is a
@@ -119,6 +133,7 @@ def kb_deletion_steps(
         ("vector", lambda: stores.vector_service.delete_knowledge_base(kb)),
         ("raw_records", lambda: stores.raw_record_store.delete_by_kb(kb)),
         ("derived_signals", lambda: stores.derived_signal_store.delete_by_kb(kb)),
+        ("timeseries_anomalies", lambda: stores.timeseries_anomaly_store.delete_by_kb(kb)),
         ("risk_history", lambda: stores.risk_history_writer.delete_by_kb(kb)),
         ("observations", lambda: stores.observation_writer.delete_by_kb(kb)),
         ("alert_history", lambda: stores.alert_history_writer.delete_by_kb(kb)),
@@ -140,6 +155,7 @@ __all__ = [
     "AlertProjectionPurger",
     "GnnClusterPurger",
     "KbDeletionStores",
+    "TimeseriesAnomalyPurger",
     "delete_object_store_prefix",
     "kb_deletion_steps",
 ]

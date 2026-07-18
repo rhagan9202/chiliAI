@@ -29,6 +29,7 @@ _STORE_FIELDS = [
     "document_status_store",
     "object_store",
     "gnn_cluster_store",
+    "timeseries_anomaly_store",
 ]
 
 # Stores whose deletion goes through `delete_by_kb`.
@@ -46,6 +47,7 @@ _DELETE_BY_KB_FIELDS = [
     "scorecard_run_repository",
     "document_status_store",
     "gnn_cluster_store",
+    "timeseries_anomaly_store",
 ]
 
 

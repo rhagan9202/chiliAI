@@ -111,8 +111,15 @@ from analytics.risk.adapters.postgres import (
 from analytics.risk.adapters.protocols import RiskHistoryWriter, RiskSignalSourceProtocol
 from analytics.risk.protocols import RiskServiceProtocol
 from analytics.risk.service import create_risk_service
-from analytics.timeseries.adapters.in_memory import InMemoryTimeSeriesHistorySource
-from analytics.timeseries.adapters.protocols import TimeSeriesHistorySourceProtocol
+from analytics.timeseries.adapters.in_memory import (
+    InMemoryTimeSeriesHistorySource,
+    InMemoryTimeseriesAnomalyStore,
+)
+from analytics.timeseries.adapters.postgres import PostgresTimeseriesAnomalyStore
+from analytics.timeseries.adapters.protocols import (
+    TimeSeriesHistorySourceProtocol,
+    TimeseriesAnomalyStoreProtocol,
+)
 from analytics.timeseries.protocols import TimeseriesServiceProtocol
 from analytics.timeseries.service import create_timeseries_service
 from embeddings.adapters.cache_in_memory import (
@@ -1280,6 +1287,15 @@ def get_timeseries_service() -> TimeseriesServiceProtocol:
 
 
 @lru_cache(maxsize=1)
+def get_timeseries_anomaly_store() -> TimeseriesAnomalyStoreProtocol:
+    """Return the timeseries anomaly store selected by the database backend."""
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemoryTimeseriesAnomalyStore()
+    return PostgresTimeseriesAnomalyStore(provider)
+
+
+@lru_cache(maxsize=1)
 def get_graph_snapshot_source() -> GraphSnapshotSourceProtocol:
     """Return the GNN graph snapshot source, repository-backed (B1).
 
@@ -1732,6 +1748,7 @@ CONFIG_CACHE_REGISTRY: dict[str, _ClearableCache] = {
     "get_risk_service": get_risk_service,
     "get_timeseries_history_source": get_timeseries_history_source,
     "get_timeseries_service": get_timeseries_service,
+    "get_timeseries_anomaly_store": get_timeseries_anomaly_store,
     "get_graph_snapshot_source": get_graph_snapshot_source,
     "get_gnn_service": get_gnn_service,
     "get_ingestion_recovery_store": get_ingestion_recovery_store,

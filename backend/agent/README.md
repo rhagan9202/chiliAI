@@ -122,9 +122,10 @@ derived risk signals and reassess affected entities.
 
 Triggered by `kb.delete`. Executes the full KB-delete cascade with retry
 semantics. The step list is centralized in `knowledgebases.cleanup` and purges
-graph, vector, raw records, derived signals, risk history, observations, alert
-history, metrics, conversations, cases, policy items, evidence, and object-store
-payloads before deleting KB metadata.
+graph, vector, raw records, derived signals, timeseries anomalies, risk
+history, observations, alert history, GNN cluster summaries, metrics,
+conversations, cases, policy items, evidence, scorecard runs, document
+status, and object-store payloads before deleting KB metadata.
 
 Each step is idempotent so the handler is safe to retry on transient failures.
 If a workflow run is active for the KB at delete time, the API returns a 409 and

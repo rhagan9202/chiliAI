@@ -204,7 +204,11 @@ from knowledgebases import (
     KnowledgeBaseRepository,
     ObjectStoreKnowledgeBaseRepository,
 )
-from knowledgebases.cleanup import KbDeletionStores, kb_deletion_steps
+from knowledgebases.cleanup import (
+    KbDeletionStores,
+    TimeseriesAnomalyPurger,
+    kb_deletion_steps,
+)
 from cases.adapters.in_memory import InMemoryCaseRepository
 from cases.adapters.postgres import PostgresCaseRepository
 from conversations.adapters.in_memory import InMemoryConversationRepository
@@ -808,6 +812,7 @@ def build_kb_deletion_stores(
     risk_history_writer: RiskHistoryWriter,
     alert_history_writer: AlertHistoryWriter,
     entity_metric_repository: EntityMetricRepository,
+    timeseries_anomaly_store: TimeseriesAnomalyPurger,
 ) -> KbDeletionStores:
     """Assemble the shared KB-delete cascade bundle for the worker.
 
@@ -852,6 +857,7 @@ def build_kb_deletion_stores(
         document_status_store=build_document_status_store(provider),
         object_store=object_store,
         gnn_cluster_store=ObjectStoreClusterSummaryStore(object_store),
+        timeseries_anomaly_store=timeseries_anomaly_store,
     )
 
 
@@ -1142,6 +1148,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         risk_history_writer=risk_history_writer,
         alert_history_writer=alert_history_writer,
         entity_metric_repository=entity_metric_repository,
+        timeseries_anomaly_store=timeseries_anomaly_store,
     )
 
     return WorkerDependencies(
