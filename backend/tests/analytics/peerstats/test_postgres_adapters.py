@@ -57,6 +57,46 @@ def test_agg_sql_placeholder_count_matches_params_with_group_and_time() -> None:
     assert "service_date" in params
 
 
+def test_agg_sql_guards_missing_time_column_when_time_column_set() -> None:
+    """A row lacking the time_column key must be excluded from aggregation,
+    mirroring the existing value-column jsonb_exists guard, so it never
+    reaches the ::timestamptz cast and produces a NULL interval_start."""
+
+    from analytics.peerstats.adapters.postgres import (
+        build_agg_params,
+        build_agg_sql,
+    )
+
+    spec = _spec(time_column="service_date")
+    sql = build_agg_sql(spec)
+    params = build_agg_params(spec, knowledge_base_id="kb1")
+    assert sql.count("%s") == len(params)
+    # Base guards (value + entity_id existence) are 2 jsonb_exists calls;
+    # a time_column spec adds a third, existence-checking the time column,
+    # same style as the value column guard immediately below it.
+    where_clause = sql.split("WHERE", 1)[1]
+    assert where_clause.count("jsonb_exists(payload, %s)") == 3
+    assert "(payload->>%s) <> ''" in where_clause
+    # service_date must appear as a param for each of: the SELECT time_expr,
+    # the jsonb_exists guard, and the non-empty guard.
+    assert params.count("service_date") == 3
+
+
+def test_agg_sql_unchanged_without_time_column() -> None:
+    from analytics.peerstats.adapters.postgres import (
+        build_agg_params,
+        build_agg_sql,
+    )
+
+    spec = _spec()
+    sql = build_agg_sql(spec)
+    params = build_agg_params(spec, knowledge_base_id="kb1")
+    assert sql.count("%s") == len(params)
+    where_clause = sql.split("WHERE", 1)[1]
+    assert where_clause.count("jsonb_exists(payload, %s)") == 2
+    assert "<> ''" not in where_clause
+
+
 def test_upsert_placeholder_count_matches_signal_params() -> None:
     from datetime import datetime, timezone
 

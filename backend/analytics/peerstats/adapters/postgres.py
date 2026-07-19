@@ -13,6 +13,9 @@ Notes:
   regex guard in the subquery (implements the design's "non-numeric value →
   record skipped" rule), so one bad value never aborts the whole batch. For the
   ``count`` aggregation this means counting records with a numeric value column.
+- When ``time_column`` is set, rows missing that key (or carrying an empty
+  string) are likewise excluded, so a dateless record is skipped instead of
+  producing a NULL ``interval_start`` that aborts the whole batch.
 
 The helper functions and ``UPSERT_SQL`` are public so the no-DB consistency
 tests can assert placeholder/param alignment without importing private names.
@@ -71,6 +74,13 @@ def build_agg_sql(spec: PeerMetricSpec) -> str:
         if spec.time_column is None
         else "(payload->>%s)::timestamptz"
     )
+    time_guard = (
+        ""
+        if spec.time_column is None
+        else """
+              AND jsonb_exists(payload, %s)
+              AND (payload->>%s) <> ''"""
+    )
     return f"""
         SELECT
             %s || ':' || (payload->>%s) AS entity_id,
@@ -84,7 +94,7 @@ def build_agg_sql(spec: PeerMetricSpec) -> str:
             WHERE knowledge_base_id = %s
               AND record_type = %s
               AND jsonb_exists(payload, %s)
-              AND jsonb_exists(payload, %s)
+              AND jsonb_exists(payload, %s){time_guard}
               AND (payload->>%s) ~ '^-?[0-9]+([.][0-9]+)?$'
         ) AS rows
         GROUP BY entity_id, entity_type, peer_group_key, interval_start
@@ -110,7 +120,9 @@ def build_agg_params(
       11 value_column       — numeric-castability regex guard
 
     Each group_by item inserts one %s between position 4 and 5.
-    time_column (when not None) inserts one %s between interval and value_column.
+    time_column (when not None) inserts one %s between interval and
+    value_column, plus two WHERE guards (jsonb_exists + non-empty) between
+    the entity_id_field existence check and the numeric regex guard.
     """
 
     params: list[object] = [
@@ -128,6 +140,9 @@ def build_agg_params(
     params.append(spec.record_type)      # next: WHERE record_type
     params.append(spec.value_column)     # next: jsonb_exists value_column
     params.append(spec.entity_id_field)  # next: jsonb_exists entity_id_field
+    if spec.time_column is not None:
+        params.append(spec.time_column)  # next: jsonb_exists time_column
+        params.append(spec.time_column)  # next: time_column non-empty guard
     params.append(spec.value_column)     # next: numeric-castability regex guard
     return tuple(params)
 

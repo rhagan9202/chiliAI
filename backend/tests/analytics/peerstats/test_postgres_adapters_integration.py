@@ -50,20 +50,25 @@ def _insert_record(
     npi: str,
     amount: str,
     ingested_at: datetime,
+    service_date: str | None = None,
+    knowledge_base_id: str = _KB,
 ) -> None:
-    payload = json.dumps({"provider_npi": npi, "billed_amount": amount})
+    fields: dict[str, str] = {"provider_npi": npi, "billed_amount": amount}
+    if service_date is not None:
+        fields["service_date"] = service_date
+    payload = json.dumps(fields)
     conn.execute(
         "INSERT INTO raw_records (knowledge_base_id, record_type, record_id, "
         "payload, source_type, correlation_id, content_hash, ingested_at) "
         "VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s)",
         (
-            _KB,
+            knowledge_base_id,
             "claim_record",
             record_id,
             payload,
             "file_upload",
             "corr-1",
-            f"hash-{record_id}",
+            f"hash-{knowledge_base_id}-{record_id}",
             ingested_at,
         ),
     )
@@ -142,6 +147,74 @@ def test_aggregate_and_write_round_trip(database_url: str) -> None:
             conn.execute(
                 "DELETE FROM entity_derived_signals WHERE knowledge_base_id = %s",
                 (_KB,),
+            )
+            conn.commit()
+        provider.close()
+
+
+_KB_TIME_COLUMN = "kb-peerstats-time-column-test"
+
+
+def test_aggregate_skips_rows_missing_time_column(database_url: str) -> None:
+    """Regression test for the live B2 failure: a record whose optional
+    time_column key is entirely absent from the JSONB payload must be
+    excluded from aggregation, not blow up ``load_interval_aggregates``
+    with a NULL ``interval_start`` (Pydantic validation failure on
+    ``PeerAggregate``)."""
+
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    source = PostgresRecordColumnSource(provider)
+    monday = datetime(2026, 1, 5, tzinfo=timezone.utc)
+    spec = PeerMetricSpec(
+        name="weekly_billing_dated",
+        record_type="claim_record",
+        entity_type="provider",
+        entity_id_field="provider_npi",
+        value_column="billed_amount",
+        aggregation="sum",
+        interval="week",
+        time_column="service_date",
+    )
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM raw_records WHERE knowledge_base_id = %s",
+                (_KB_TIME_COLUMN,),
+            )
+            conn.commit()
+        with provider.connection() as conn:
+            # Dated rows: aggregated normally.
+            _insert_record(
+                conn, record_id="t1", npi="1", amount="10", ingested_at=monday,
+                service_date="2026-01-05T00:00:00Z",
+                knowledge_base_id=_KB_TIME_COLUMN,
+            )
+            _insert_record(
+                conn, record_id="t2", npi="2", amount="7", ingested_at=monday,
+                service_date="2026-01-06T00:00:00Z",
+                knowledge_base_id=_KB_TIME_COLUMN,
+            )
+            # Dateless row: key entirely absent (the live TN DE-SynPUF case).
+            # Must be skipped rather than aborting the whole batch.
+            _insert_record(
+                conn, record_id="t3", npi="3", amount="99", ingested_at=monday,
+                service_date=None,
+                knowledge_base_id=_KB_TIME_COLUMN,
+            )
+            conn.commit()
+
+        aggregates = source.load_interval_aggregates(
+            knowledge_base_id=_KB_TIME_COLUMN, spec=spec, interval_starts=[]
+        )
+        by_entity = {a.entity_id: a.aggregate_value for a in aggregates}
+        assert by_entity == {"provider:1": 10.0, "provider:2": 7.0}
+        assert "provider:3" not in by_entity
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM raw_records WHERE knowledge_base_id = %s",
+                (_KB_TIME_COLUMN,),
             )
             conn.commit()
         provider.close()
