@@ -12,7 +12,11 @@ import pytest
 
 from config.schema import VectorStoreConfig
 import vectorstore.adapters.qdrant_adapter as qdrant_adapter
-from vectorstore.adapters.qdrant_adapter import QdrantClientProtocol, QdrantVectorStore
+from vectorstore.adapters.qdrant_adapter import (
+    UPSERT_MAX_POINTS_PER_REQUEST,
+    QdrantClientProtocol,
+    QdrantVectorStore,
+)
 from vectorstore.exceptions import VectorDimensionMismatchError, VectorStoreError
 from vectorstore.models import VectorRecord
 
@@ -231,6 +235,40 @@ def test_qdrant_vector_store_accepts_composite_record_ids() -> None:
     assert point.id != record.id
     assert point.payload is not None
     assert point.payload["record_id"] == "kb-1:entity-1"
+
+
+def test_qdrant_vector_store_chunks_oversized_upsert_batches() -> None:
+    client = _FakeQdrantClient()
+    store = QdrantVectorStore(
+        VectorStoreConfig(backend="qdrant", uri="http://qdrant:6333", dimensions=2),
+        client=cast(QdrantClientProtocol, client),
+    )
+    total = UPSERT_MAX_POINTS_PER_REQUEST * 2 + 1
+    records = [
+        VectorRecord(
+            id=f"kb-1:entity-{index}",
+            knowledge_base_id="kb-1",
+            content_id=f"entity-{index}",
+            embedding=[1.0, 0.0],
+        )
+        for index in range(total)
+    ]
+
+    stored_records = store.upsert_records("kb-1", records)
+
+    assert stored_records == records
+    assert [len(points) for _, points in client.upserts] == [
+        UPSERT_MAX_POINTS_PER_REQUEST,
+        UPSERT_MAX_POINTS_PER_REQUEST,
+        1,
+    ]
+    upserted_record_ids = [
+        point.payload["record_id"]
+        for _, points in client.upserts
+        for point in points
+        if point.payload is not None
+    ]
+    assert upserted_record_ids == [record.id for record in records]
 
 
 def test_qdrant_vector_store_creates_collection_with_batch_dimension() -> None:
