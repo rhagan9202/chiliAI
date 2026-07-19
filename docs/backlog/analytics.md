@@ -1015,7 +1015,7 @@ Pre-supersession state (accurate as of 2026-07-17, retained for history):
 
 ### Acceptance Criteria
 - [x] `/analytics/timeseries/{entity_id}` switches to DI factories that compose live persistence (`get_entity_series_source`, `get_timeseries_anomaly_store`) — analytics.07.
-- [x] `/analytics/risk-scores/{entity_id}` switches to DI factories that compose the live risk service and persistence (`get_risk_service`, the metric repository) — Task 9 defect #5 fix, commit `42ef186`.
+- [x] `/analytics/risk-scores/{entity_id}` switches to DI factories that compose the live risk service and persistence (`get_risk_service` over `PostgresRiskSignalSource`) — Task 9 defect #5 fix, commit `42ef186`.
 - [x] Deprecation note in `backend/api/AGENT.md` (if present) or `backend/api/state.py` docstring — no `AGENT.md` exists under `backend/api/`; `state.py`'s module docstring documents the risk-detail migration alongside the earlier timeseries one.
 - [x] `ApiState` seeded risk-score payload removed once api.01 ships (or moved to a `tools/seed_demo_state.py`) — api.01 is done; `42ef186` deleted the seeded risk stack outright (no `tools/seed_demo_state.py` needed).
 - [x] Frontend Dashboard/EntityDetail (frontend.04) confirmed to render correctly on live data — Task 9 live pass confirmed the workbench entity-detail view renders both risk-factor families on real Postgres-derived signals.
@@ -1260,5 +1260,5 @@ so that downstream features can consume scored entities consistently.
 - `backend/analytics/timeseries/adapters/in_memory.py` (modify)
 - `backend/analytics/timeseries/adapters/postgres.py` (modify — replace the upsert-only write with a delete-then-write per `(kb, metric)`, inside one transaction)
 - `backend/agent/coordinator.py` (modify — `run_timeseries_stage` write call)
-- `backend/tests/analytics/timeseries/test_anomaly_store_in_memory.py`, `backend/tests/analytics/timeseries/test_anomaly_store_postgres.py` (modify/new)
+- `backend/tests/analytics/timeseries/test_anomaly_store.py`, `backend/tests/analytics/timeseries/test_anomaly_store_postgres.py` (modify/new)
 - `backend/tests/agent/test_coordinator.py` (modify — retraction regression test)
