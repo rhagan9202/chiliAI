@@ -94,6 +94,8 @@ class VectorSearchResponse(BaseModel):
 | In-memory | `adapters/in_memory.py` | `VectorStoreConfig.backend = "in_memory"` |
 | Qdrant | `adapters/qdrant_adapter.py` | `backend = "qdrant"`, `uri` |
 
+**Qdrant upsert chunking (B2):** `QdrantVectorStore.upsert_records()` splits the point batch into requests of at most `UPSERT_MAX_POINTS_PER_REQUEST = 1000` points each (public module constant in `qdrant_adapter.py`), issuing one `self._client.upsert(...)` call per chunk in order, all under one `wait=True`. This exists because Qdrant's REST API rejects request bodies over 32MB (actix payload limit) — large record feeds (e.g. 47k CMS carrier claims → ~100k entity vectors) exceeded that limit in a single request and DLQ'd the `records.ingested` workflow. Point order is preserved across chunks; all callers of `upsert_records` (both `ingestion/` and `records/` pipelines via `vectorstore/service.py`) benefit automatically — no caller-side change needed.
+
 Inner adapter protocol: `adapters/protocols.py`.
 
 ---
