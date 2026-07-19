@@ -459,7 +459,12 @@ def test_get_analytics_overview_returns_dashboard_metrics() -> None:
     assert payload["high_risk_entities"] >= 1
 
 
-def test_get_risk_score_returns_factor_breakdown() -> None:
+def test_get_risk_score_returns_unavailable_without_registered_signals() -> None:
+    """B2 moved the risk detail route off ApiState's seeded profiles onto the
+    DI risk service. No derived signals are registered for a fresh app, so the
+    route must report availability_status == "unavailable" rather than serving
+    stale seed data.
+    """
     client = TestClient(create_app())
 
     response = client.get("/analytics/risk-scores/provider-204", params={"kb_id": "kb-1"})
@@ -467,7 +472,8 @@ def test_get_risk_score_returns_factor_breakdown() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["entity_id"] == "provider-204"
-    assert payload["factors"][0]["factor_name"] == "peer_group_deviation"
+    assert payload["availability_status"] == "unavailable"
+    assert payload["factors"] == []
 
 
 def test_get_timeseries_returns_unavailable_without_configured_data() -> None:

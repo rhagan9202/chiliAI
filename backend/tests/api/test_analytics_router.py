@@ -18,7 +18,7 @@ from analytics.metrics.models import EntityMetricSample
 from analytics.peerstats.exceptions import PeerStatsSourceError
 from analytics.peerstats.models import PeerAggregate
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
-from analytics.risk.models import RankedRiskEntry
+from analytics.risk.models import RankedRiskEntry, RiskProfile, RiskSignal
 from analytics.risk.protocols import RiskServiceProtocol
 from analytics.risk.service import create_risk_service
 from analytics.timeseries.adapters.in_memory import (
@@ -33,7 +33,6 @@ from analytics.timeseries.service import create_timeseries_service
 from api.contracts import AnalyticsOverviewResponse, EntityTimeseriesResponse, RiskScoreResponse
 from api.dependencies import (
     get_analytics_overview_payload,
-    get_api_state,
     get_entity_series_source,
     get_gnn_service,
     get_risk_score_payload,
@@ -43,7 +42,6 @@ from api.dependencies import (
     get_timeseries_service,
 )
 from api.routers.analytics import router
-from api.state import ApiState
 from config.schema import DatabaseConfig, TimeseriesMetricSpec
 from database.runtime import create_connection_provider
 from events.adapters.in_memory import InMemoryEventBus
@@ -205,22 +203,38 @@ def test_detail_risk_score_is_kb_scoped() -> None:
     assert payload["availability_status"] == "unavailable"
 
 
-def test_detail_risk_payload_dependency_passes_kb_scope_to_api_state() -> None:
+def test_detail_risk_score_served_from_di_risk_service() -> None:
+    """B2 moved the risk detail route off ApiState's seeded profiles onto the
+    DI risk service, so live derived signals (peerstats + timeseries anomaly
+    families) reach the factor breakdown for real knowledge bases.
+    """
     app = FastAPI()
     app.include_router(router)
 
-    class AnalyticsStateStub:
-        def get_risk_score(self, entity_id: str, *, knowledge_base_id: str | None = None) -> RiskScoreResponse:
-            assert entity_id == "provider-1"
-            assert knowledge_base_id == "kb-live"
-            return RiskScoreResponse(
-                entity_id=entity_id,
-                overall_score=0.37,
-                risk_level="medium",
-                factors=[],
-            )
-
-    app.dependency_overrides[get_api_state] = AnalyticsStateStub
+    service = create_risk_service(
+        InMemoryRiskSignalSource(
+            profiles=[
+                RiskProfile(
+                    knowledge_base_id="kb-live",
+                    entity_id="provider-1",
+                    signals=[
+                        RiskSignal(
+                            signal_name="peer_group_deviation",
+                            value=0.8,
+                            weight=1.0,
+                        ),
+                        RiskSignal(
+                            signal_name="timeseries_anomaly:weekly_carrier_billing_self",
+                            value=0.6,
+                            weight=1.0,
+                        ),
+                    ],
+                )
+            ]
+        ),
+        event_bus=InMemoryEventBus(),
+    )
+    app.dependency_overrides[get_risk_service] = lambda: service
     test_client = TestClient(app)
 
     risk_response = test_client.get(
@@ -229,21 +243,54 @@ def test_detail_risk_payload_dependency_passes_kb_scope_to_api_state() -> None:
     )
 
     assert risk_response.status_code == 200
-    assert risk_response.json()["overall_score"] == 0.37
+    payload = risk_response.json()
+    assert payload["entity_id"] == "provider-1"
+    assert payload["availability_status"] == "available"
+    assert payload["overall_score"] > 0.0
+    factor_names = {factor["factor_name"] for factor in payload["factors"]}
+    assert factor_names == {
+        "peer_group_deviation",
+        "timeseries_anomaly:weekly_carrier_billing_self",
+    }
+
+
+def test_detail_risk_score_unavailable_without_registered_signals() -> None:
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_risk_service] = lambda: create_risk_service(
+        InMemoryRiskSignalSource(),
+        event_bus=InMemoryEventBus(),
+    )
+    test_client = TestClient(app)
+
+    risk_response = test_client.get(
+        "/analytics/risk-scores/provider-1",
+        params={"kb_id": "kb-live"},
+    )
+
+    assert risk_response.status_code == 200
+    payload = risk_response.json()
+    assert payload["availability_status"] == "unavailable"
+    assert payload["factors"] == []
 
 
 def test_unexpected_risk_errors_are_not_converted_to_unavailable() -> None:
-    state = ApiState()
+    app = FastAPI()
+    app.include_router(router)
 
     class BrokenRiskService:
         def assess(self, request: object) -> RiskScoreResponse:
             del request
             raise RuntimeError("risk backend unavailable")
 
-    setattr(state, "_risk_service", BrokenRiskService())
+    app.dependency_overrides[get_risk_service] = BrokenRiskService
+    test_client = TestClient(app)
 
     with pytest.raises(RuntimeError, match="risk backend unavailable"):
-        state.get_risk_score("provider-1", knowledge_base_id="kb-live")
+        test_client.get(
+            "/analytics/risk-scores/provider-1",
+            params={"kb_id": "kb-live"},
+        )
 
 
 def test_query_timeseries_returns_points_in_range(client: TestClient) -> None:

@@ -7,7 +7,7 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from functools import lru_cache
-from typing import NoReturn, Protocol, TypeVar, cast
+from typing import Literal, NoReturn, Protocol, TypeVar, cast
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
 
@@ -37,6 +37,7 @@ from api.contracts import (
     PolicyItemListResponse,
     PolicyItemSummaryResponse,
     PolicyTriageRequest,
+    RiskFactorResponse,
     RiskScoreResponse,
 )
 from api._analytics_overview import build_analytics_overview
@@ -110,8 +111,10 @@ from analytics.risk.adapters.postgres import (
     PostgresRiskSignalSource,
 )
 from analytics.risk.adapters.protocols import RiskHistoryWriter, RiskSignalSourceProtocol
+from analytics.risk.exceptions import RiskConfigurationError, RiskInsufficientSignalsError
 from analytics.risk.protocols import RiskServiceProtocol
 from analytics.risk.service import create_risk_service
+from analytics.risk.service_models import RiskAssessmentRequest
 from analytics.timeseries.adapters.in_memory import (
     InMemoryTimeSeriesHistorySource,
     InMemoryTimeseriesAnomalyStore,
@@ -907,13 +910,9 @@ def get_policy_item_detail_payload(
     return _policy_item_to_detail(item)
 
 
-def get_risk_score_payload(
-    entity_id: str = Path(..., description="Entity identifier."),
-    kb_id: str = Query(..., min_length=1, description="Knowledge base identifier."),
-    state: ApiState = Depends(get_api_state),
-) -> RiskScoreResponse:
-    """Return a KB-scoped risk-score payload."""
-    return state.get_risk_score(entity_id, knowledge_base_id=kb_id)
+# get_risk_score_payload is defined further below (after get_risk_service)
+# since it takes the DI risk service as a FastAPI ``Depends(...)`` default
+# argument, which is resolved at module import time.
 
 
 # get_timeseries_payload is defined further below (after get_entity_series_source
@@ -1279,6 +1278,57 @@ def get_risk_service() -> RiskServiceProtocol:
         event_bus=get_event_bus(),
         default_medium_risk_threshold=analytics_config.medium_risk_threshold,
         default_high_risk_threshold=analytics_config.high_risk_threshold,
+    )
+
+
+def _normalize_risk_level(
+    risk_level: str, overall_score: float
+) -> Literal["low", "medium", "high", "critical"]:
+    if overall_score >= 0.9:
+        return "critical"
+    if risk_level in {"high", "medium", "low", "critical"}:
+        return cast(Literal["low", "medium", "high", "critical"], risk_level)
+    return "medium"
+
+
+def get_risk_score_payload(
+    entity_id: str = Path(..., description="Entity identifier."),
+    kb_id: str = Query(..., min_length=1, description="Knowledge base identifier."),
+    risk_service: RiskServiceProtocol = Depends(get_risk_service),
+) -> RiskScoreResponse:
+    """Return a KB-scoped risk-score payload from the DI risk service (B2).
+
+    Configuration and insufficient-signal conditions surface as an
+    "unavailable" payload; infrastructure failures propagate so they are not
+    misreported as an entity without a risk profile.
+    """
+    try:
+        response = risk_service.assess(
+            RiskAssessmentRequest(knowledge_base_id=kb_id, entity_id=entity_id)
+        )
+    except (RiskConfigurationError, RiskInsufficientSignalsError, ValueError):
+        return RiskScoreResponse(
+            entity_id=entity_id,
+            overall_score=0.0,
+            risk_level="low",
+            factors=[],
+            availability_status="unavailable",
+            unavailable_reason="No risk profile has been generated for this entity.",
+        )
+    return RiskScoreResponse(
+        entity_id=response.entity_id,
+        overall_score=response.overall_score,
+        risk_level=_normalize_risk_level(response.risk_level, response.overall_score),
+        factors=[
+            RiskFactorResponse(
+                factor_name=factor.factor_name,
+                contribution=factor.contribution,
+                rationale=factor.rationale,
+            )
+            for factor in response.factors
+        ],
+        availability_status="available",
+        unavailable_reason=None,
     )
 
 

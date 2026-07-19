@@ -9,6 +9,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from analytics.peerstats.models import PeerAggregate
+from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
+from analytics.risk.models import RiskProfile, RiskSignal
+from analytics.risk.service import create_risk_service
 from analytics.timeseries.adapters.in_memory import InMemoryTimeseriesAnomalyStore
 from analytics.timeseries.adapters.protocols import TimeseriesAnomalyStoreProtocol
 from analytics.timeseries.adapters.record_aggregates import RecordAggregateTimeSeriesSource
@@ -20,6 +23,7 @@ from api.dependencies import (
     get_entity_series_source,
     get_graph_service,
     get_knowledge_base_repository,
+    get_risk_service,
     get_timeseries_anomaly_store,
 )
 from config.schema import TimeseriesMetricSpec
@@ -340,6 +344,26 @@ def test_graph_and_analytics_routes_are_service_backed() -> None:
     app.dependency_overrides[get_knowledge_base_repository] = lambda: kb_repository
     app.dependency_overrides[get_entity_series_source] = lambda: entity_series_source
     app.dependency_overrides[get_timeseries_anomaly_store] = lambda: anomaly_store
+    risk_service = create_risk_service(
+        InMemoryRiskSignalSource(
+            profiles=[
+                RiskProfile(
+                    knowledge_base_id="kb-1",
+                    entity_id="provider-204",
+                    signals=[
+                        RiskSignal(signal_name="peer_group_deviation", value=0.9, weight=1.5),
+                        RiskSignal(
+                            signal_name="timeseries_anomaly:monthly_inpatient_billing_self",
+                            value=0.7,
+                            weight=1.0,
+                        ),
+                    ],
+                )
+            ]
+        ),
+        event_bus=InMemoryEventBus(),
+    )
+    app.dependency_overrides[get_risk_service] = lambda: risk_service
     client = TestClient(app)
 
     alerts = client.get("/alerts").json()["items"]
