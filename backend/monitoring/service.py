@@ -219,6 +219,15 @@ class MonitoringService:
                             title=alert.title,
                             reasoning=alert.reasoning,
                             metric_name=candidate.metric_name,
+                            # entity_label: neither AlertCandidate nor the source
+                            # MonitoringObservation carries a display name, so it
+                            # stays at its "" default. confidence mirrors the
+                            # candidate's threshold-ratio score (already 0..1, the
+                            # same value the alert's severity was derived from).
+                            # tags is the metric_name as a kebab slug, matching
+                            # the coordinator's factor-name slug convention.
+                            confidence=candidate.score,
+                            tags=[candidate.metric_name.replace("_", "-")],
                         )
                         for candidate, alert in zip(deduped, alerts, strict=True)
                     ]

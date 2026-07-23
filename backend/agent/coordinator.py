@@ -2384,6 +2384,15 @@ def _run_explainability_stage(
         status="open",
         title=f"{risk_response.risk_level.title()} risk: {entity_id}",
         reasoning=response.evidence_pack.reasoning,
+        # entity_label: no display value is cheaply in scope here. The only
+        # entity read happens inside build_explanation_context (a private
+        # local `focal_entity`, not surfaced on ExplanationContext/Alert), so
+        # threading a real label through would require either widening the
+        # ExplanationContext/Alert public contract or a second graph read —
+        # both out of scope for this task. Falls back to entity_id.
+        entity_label=entity_id,
+        confidence=risk_response.overall_score,
+        tags=[factor.factor_name.replace("_", "-") for factor in risk_response.factors[:3]],
     )
 
 
@@ -2720,6 +2729,9 @@ def handle_alerts_created_for_graph(
                 evidence_pack_id=alert.evidence_pack_id,
                 created_at=created_at,
                 updated_at=created_at,
+                entity_label=alert.entity_label,
+                confidence=alert.confidence,
+                tags=alert.tags,
             )
         )
         severity_by_entity[(alert.knowledge_base_id, alert.entity_id)] = alert.severity

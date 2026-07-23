@@ -816,7 +816,7 @@ Triggered by `RiskScoredEvent`. Writes the full risk assessment to `risk_score_h
 
 **Flow 4 — Alert persistence** (`handle_alerts_created_for_graph`)
 
-Triggered by `AlertsCreatedEvent`. Writes each alert to `alert_history` for durable audit. Also snapshots `active_alert_count`, `last_alert_at`, and `last_alert_severity` onto the affected graph entities.
+Triggered by `AlertsCreatedEvent`. Writes each alert to `alert_history` for durable audit. Also snapshots `active_alert_count`, `last_alert_at`, and `last_alert_severity` onto the affected graph entities. The row's read-model columns (`entity_label`/`confidence`/`tags`, alerts.36) are populated by whichever producer built the `AlertCreatedReference`: the analytics pipeline's `_run_explainability_stage` sets `confidence` from the risk assessment's `overall_score` and `tags` from the top-3 risk-factor names (kebab-cased), falling back `entity_label` to `entity_id` (no cheap display value is in scope without an extra graph read); `MonitoringService.evaluate()` sets `confidence` from the alert candidate's threshold-ratio score and `tags` from a kebab-slugged `metric_name`, leaving `entity_label` at its `""` default (monitoring observations carry no display name). All three fields default (`""`/`0.0`/`[]`) so a legacy serialized `AlertCreatedReference` predating alerts.36 still decodes.
 
 **Flow 5 — Document status projection** (BL-041)
 

@@ -35,6 +35,9 @@ def _reference(alert_id: str) -> AlertCreatedReference:
         title="Anomalous claim",
         reasoning="score exceeded threshold",
         metric_name="claim_anomaly",
+        entity_label="Claim C1",
+        confidence=0.82,
+        tags=["upcoding", "velocity"],
     )
 
 
@@ -62,6 +65,21 @@ def test_flow4_persists_history_and_snapshots_graph() -> None:
     assert entity.properties["active_alert_count"] == 2
     assert entity.properties["last_alert_severity"] == "high"
     assert "last_alert_at" in entity.properties
+
+
+def test_flow4_maps_entity_label_confidence_and_tags_onto_history_record() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    service = _graph_service_with_entity()
+
+    handle_alerts_created_for_graph(
+        _event(), alert_history_writer=writer, graph_service=service
+    )
+
+    record = writer.get_alert("a-1")
+    assert record is not None
+    assert record.entity_label == "Claim C1"
+    assert record.confidence == 0.82
+    assert record.tags == ["upcoding", "velocity"]
 
 
 def test_flow4_is_idempotent_on_replay() -> None:
