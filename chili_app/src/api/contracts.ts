@@ -236,5 +236,6 @@ export type RiskScoreListResponse = Schemas['RiskScoreListResponse']
 export type TimeseriesPointResponse = Schemas['EntityTimeseriesPointResponse']
 export type TimeseriesResponse = RequireFields<Schemas['EntityTimeseriesResponse'], 'points'>
 export type MetricTimeseriesResponse = Schemas['MetricTimeseriesResponse']
+export type ClusterResult = Schemas['ClusterResult']
 export type GnnClusterResponse = Schemas['GnnClusterResponse']
 export type AnalyticsOverviewResponse = Schemas['AnalyticsOverviewResponse']
