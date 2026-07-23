@@ -1,10 +1,10 @@
+import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useAlerts } from '../api/alerts'
-import { useRiskScore, useTimeseries } from '../api/analytics'
-import { useDomainConfig } from '../api/config'
-import type { RuntimeEntity, RuntimeRelationship } from '../api/contracts'
+import { useGnnClusters, useRiskScore, useTimeseries } from '../api/analytics'
+import { useDomainConfig, useDomainFeatures } from '../api/config'
 import { useEvidencePack } from '../api/evidence'
 import {
   useInvestigationEntity,
@@ -12,34 +12,53 @@ import {
   useInvestigationNeighborhood,
 } from '../api/investigation'
 import { useKnowledgeBases } from '../api/knowledgebases'
-import { TrendBars } from '../components/charts/TrendBars'
+import { AnomalyTrendPanel } from '../components/investigation/AnomalyTrendPanel'
+import { ClusterMembershipPanel } from '../components/investigation/ClusterMembershipPanel'
+import { EntityDossierHeader } from '../components/investigation/EntityDossierHeader'
+import { EntityPolicyPanel } from '../components/investigation/EntityPolicyPanel'
 import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { GraphCanvas } from '../components/investigation/GraphCanvas'
-import type { Entity as ApiEntity, Relationship as ApiRelationship, SubgraphResult } from '../types/api'
+import { SignalBand } from '../components/investigation/SignalBand'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
 import { ConfidenceBar } from '../components/ui/ConfidenceBar'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
 import { LoadingState } from '../components/ui/LoadingState'
-import { RiskBadge } from '../components/ui/RiskBadge'
+import { Tabs } from '../components/ui/Tabs'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
 import {
-  getEntityChips,
   getEntitySubtitle,
   getEntityTitle,
   getEntityTypeLabel,
 } from '../utils/domainDisplay'
+import { toSubgraphResult } from '../utils/subgraph'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import './pages.css'
+
+function WorkbenchTabPanel({ children, tabId }: { children: ReactNode; tabId: string }) {
+  return (
+    <div
+      aria-labelledby={`workbench-tab-${tabId}`}
+      className="fade-up"
+      id={`workbench-tabpanel-${tabId}`}
+      role="tabpanel"
+    >
+      {children}
+    </div>
+  )
+}
 
 export function InvestigationWorkbenchPage() {
   const { entityId } = useParams()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const domainConfigQuery = useDomainConfig()
+  const featuresQuery = useDomainFeatures()
   const knowledgeBasesQuery = useKnowledgeBases()
   const [searchTerm, setSearchTerm] = useState('')
+  const [activeTabId, setActiveTabId] = useState('signals')
+  const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null)
   const selectedEntityId = entityId ?? null
   const selectedKnowledgeBaseId = searchParams.get('kb')
   const depth = depthFromSearchParams(searchParams)
@@ -55,6 +74,7 @@ export function InvestigationWorkbenchPage() {
   const neighborhoodQuery = useInvestigationNeighborhood(activeKnowledgeBaseId, selectedEntityId, depth)
   const riskQuery = useRiskScore(activeKnowledgeBaseId, selectedEntityId)
   const timeseriesQuery = useTimeseries(activeKnowledgeBaseId, selectedEntityId)
+  const gnnClustersQuery = useGnnClusters(activeKnowledgeBaseId)
 
   const selectedAlert = useMemo(
     () => alertsQuery.data?.items.find((alert) => alert.entity_id === selectedEntityId) ?? null,
@@ -109,9 +129,28 @@ export function InvestigationWorkbenchPage() {
   const riskAvailability = analyticsAvailability(riskScore)
   const timeseriesAvailability = analyticsAvailability(timeseries)
   const entityTitle = entity ? getEntityTitle(entity, domainConfigQuery.data) : 'Investigation Workbench'
-  const entitySubtitle = entity ? getEntitySubtitle(entity, domainConfigQuery.data) : null
-  const selectedTypeLabel = entity ? getEntityTypeLabel(entity.type, domainConfigQuery.data) : null
-  const entityChips = entity ? getEntityChips(entity, domainConfigQuery.data) : []
+  const capabilities = featuresQuery.data?.capabilities
+  const clusters = gnnClustersQuery.data?.clusters ?? []
+  const selectedCluster = clusters.find((cluster) => cluster.cluster_id === selectedClusterId) ?? null
+  const clusterMode = Boolean(capabilities?.gnn) && clusters.length > 0
+
+  const tabs = [
+    ...(capabilities?.risk_scoring || capabilities?.timeseries ? [{ id: 'signals', label: 'Signals' }] : []),
+    { id: 'network', label: 'Network' },
+    ...(capabilities?.explainability ? [{ id: 'policy', label: 'Policy' }, { id: 'evidence', label: 'Evidence' }] : []),
+  ]
+  const resolvedActiveTabId = tabs.some((tab) => tab.id === activeTabId) ? activeTabId : tabs[0].id
+
+  const navigateToEntity = (nextId: string) => {
+    const nextSearch = new URLSearchParams(searchParams)
+    if (activeKnowledgeBaseId) {
+      nextSearch.set('kb', activeKnowledgeBaseId)
+    }
+    navigate(
+      { pathname: `/investigation/${nextId}`, search: nextSearch.toString() },
+      { preventScrollReset: true },
+    )
+  }
 
   return (
     <section className="page-grid">
@@ -122,234 +161,242 @@ export function InvestigationWorkbenchPage() {
         title={entityTitle}
       />
 
-      <Card>
-        <div className="metric-stack">
-          <div className="metric-row">
-            <label className="metric-row__label" htmlFor="investigation-kb-select">
-              Knowledge base
-            </label>
-            <select
-              className="page-input"
-              id="investigation-kb-select"
-              onChange={(event) => {
-                const nextSearch = new URLSearchParams(searchParams)
-                nextSearch.set('kb', event.target.value)
-                navigate({ pathname: '/investigation', search: nextSearch.toString() })
-              }}
-              value={activeKnowledgeBaseId ?? ''}
-            >
-              {knowledgeBases.map((knowledgeBase) => (
-                <option key={knowledgeBase.id} value={knowledgeBase.id}>
-                  {knowledgeBase.name} · {knowledgeBase.status}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="metric-row">
-            <label className="metric-row__label" htmlFor="investigation-search">
-              Entity search
-            </label>
-            <input
-              className="page-input"
-              id="investigation-search"
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder={`Search ${domainConfigQuery.data.domain.display_name} entities`}
-              type="search"
-              value={searchTerm}
-            />
-          </div>
-          {searchQuery.isError ? (
-            <ErrorState description="Entity search failed for the selected knowledge base." />
-          ) : null}
-          {searchQuery.data ? (
-            <div className="knowledge-base-documents">
-              {searchQuery.data.items.length > 0 ? searchQuery.data.items.map((result) => (
-                <button
-                  className={selectedEntityId === result.id ? 'page-list-item page-list-item--active' : 'page-list-item'}
-                  key={result.id}
-                  onClick={() => {
+      <div className="workbench-layout">
+        <div className="workbench-rail">
+          <Card>
+            <div className="metric-stack">
+              <div className="metric-row">
+                <label className="metric-row__label" htmlFor="investigation-kb-select">
+                  Knowledge base
+                </label>
+                <select
+                  className="page-input"
+                  id="investigation-kb-select"
+                  onChange={(event) => {
                     const nextSearch = new URLSearchParams(searchParams)
-                    if (activeKnowledgeBaseId) {
-                      nextSearch.set('kb', activeKnowledgeBaseId)
-                    }
-                    navigate(
-                      { pathname: `/investigation/${result.id}`, search: nextSearch.toString() },
-                      { preventScrollReset: true },
-                    )
+                    nextSearch.set('kb', event.target.value)
+                    navigate({ pathname: '/investigation', search: nextSearch.toString() })
                   }}
-                  type="button"
+                  value={activeKnowledgeBaseId ?? ''}
                 >
-                  <strong>{getEntityTitle(result, domainConfigQuery.data)}</strong>
-                  <span className="metric-row__label">
-                    {getEntityTypeLabel(result.type, domainConfigQuery.data)} · {getEntitySubtitle(result, domainConfigQuery.data) ?? result.id}
-                  </span>
-                </button>
-              )) : (
-                <EmptyState description="Try another property value or upload more documents to this knowledge base." title="No matching entities" />
+                  {knowledgeBases.map((knowledgeBase) => (
+                    <option key={knowledgeBase.id} value={knowledgeBase.id}>
+                      {knowledgeBase.name} · {knowledgeBase.status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="metric-row">
+                <label className="metric-row__label" htmlFor="investigation-search">
+                  Entity search
+                </label>
+                <input
+                  className="page-input"
+                  id="investigation-search"
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder={`Search ${domainConfigQuery.data.domain.display_name} entities`}
+                  type="search"
+                  value={searchTerm}
+                />
+              </div>
+              {searchQuery.isError ? (
+                <ErrorState description="Entity search failed for the selected knowledge base." />
+              ) : null}
+              {searchQuery.data ? (
+                <div className="knowledge-base-documents">
+                  {searchQuery.data.items.length > 0 ? searchQuery.data.items.map((result) => (
+                    <button
+                      className={selectedEntityId === result.id ? 'page-list-item page-list-item--active' : 'page-list-item'}
+                      key={result.id}
+                      onClick={() => navigateToEntity(result.id)}
+                      type="button"
+                    >
+                      <strong>{getEntityTitle(result, domainConfigQuery.data)}</strong>
+                      <span className="metric-row__label">
+                        {getEntityTypeLabel(result.type, domainConfigQuery.data)} · {getEntitySubtitle(result, domainConfigQuery.data) ?? result.id}
+                      </span>
+                    </button>
+                  )) : (
+                    <EmptyState description="Try another property value or upload more documents to this knowledge base." title="No matching entities" />
+                  )}
+                </div>
+              ) : (
+                <EmptyState description="Search by an entity property value, then select a result to load its graph neighborhood." title="Search live graph entities" />
               )}
             </div>
-          ) : (
-            <EmptyState description="Search by an entity property value, then select a result to load its graph neighborhood." title="Search live graph entities" />
-          )}
+          </Card>
         </div>
-      </Card>
 
-      {entityQuery.isLoading || neighborhoodQuery.isLoading ? <LoadingState label="Loading selected entity graph" /> : null}
-      {entityQuery.isError || neighborhoodQuery.isError ? (
-        <ErrorState description="The selected entity could not be loaded from the active knowledge base." />
-      ) : null}
-
-      {entity ? (
-        <>
-          <div className="investigation-layout">
-            <Card>
-              <div className="metric-stack">
-                <div className="metric-row">
-                  <span className="metric-row__label">Entity type</span>
-                  <Chip label={selectedTypeLabel ?? entity.type} tone="network" />
-                </div>
-                {riskScore && !riskAvailability.unavailable ? (
-                  <>
-                    <div className="metric-row">
-                      <span className="metric-row__label">Composite risk</span>
-                      <RiskBadge score={Math.round(riskScore.overall_score * 100)} />
-                    </div>
-                    <ConfidenceBar value={Math.round(riskScore.overall_score * 100)} />
-                  </>
-                ) : null}
-                <div className="alert-row-card__meta">
-                  {entityChips.map((chip) => (
-                    <Chip key={chip} label={chip} tone="default" />
-                  ))}
-                </div>
-                <button
-                  className="page-button page-button--secondary"
-                  onClick={() =>
-                    navigate(buildRagChatUrl({
-                      knowledgeBaseId: activeKnowledgeBaseId,
-                      source: 'entity',
-                      entityId: selectedEntityId,
-                      alertId: selectedAlert?.id,
-                      evidencePackId: selectedAlert?.evidence_pack_id,
-                      question: DEFAULT_RISK_QUESTION,
-                    }))
-                  }
-                  type="button"
-                >
-                  Ask AI
-                </button>
-                <p className="page-copy-block">{entitySubtitle ?? entity.id}</p>
-              </div>
-            </Card>
-
-            <Card>
-              <div className="metric-stack">
-                <strong>Risk factors</strong>
-                {riskScore && !riskAvailability.unavailable ? riskScore.factors.map((factor) => (
-                  <div className="metric-row metric-row--stacked" key={factor.factor_name}>
-                    <strong>{factor.factor_name.replace(/_/g, ' ')}</strong>
-                    <span className="metric-row__label">{factor.rationale ?? 'No rationale provided.'}</span>
-                    <ConfidenceBar value={Math.round(factor.contribution * 100)} />
-                  </div>
-                )) : (
-                  <EmptyState
-                    description={riskAvailability.reason ?? 'Risk scoring is unavailable until an entity is selected and analytics respond.'}
-                    title="No risk score"
-                  />
-                )}
-              </div>
-            </Card>
-          </div>
-
-          <div className="dashboard-panels">
-            {timeseries ? (
-              timeseriesAvailability.unavailable ? (
-                <Card>
-                  <EmptyState
-                    description={timeseriesAvailability.reason ?? 'Time series analytics are unavailable until an entity is selected and analytics respond.'}
-                    title="No time series"
-                  />
-                </Card>
-              ) : (
-                <ChartFrameInvestigation timeseries={timeseries.points} />
-              )
-            ) : null}
-
-            <Card>
-              <div className="metric-stack">
-                <div className="metric-row">
-                  <strong>Graph neighborhood</strong>
-                  <label className="metric-row__label" htmlFor="investigation-depth">
-                    Depth
-                  </label>
-                  <select
-                    className="page-input"
-                    id="investigation-depth"
-                    onChange={(event) => {
-                      const nextSearch = new URLSearchParams(searchParams)
-                      nextSearch.set('depth', event.target.value)
-                      setSearchParams(nextSearch)
-                    }}
-                    value={depth}
-                  >
-                    {[1, 2, 3, 4, 5].map((value) => (
-                      <option key={value} value={value}>{value}</option>
-                    ))}
-                  </select>
-                </div>
-                {neighborhood ? (
-                  <>
-                    <div className="investigation-graph-canvas">
-                      <GraphCanvas
-                        subgraph={toSubgraphResult(neighborhood.entities, neighborhood.relationships)}
-                        selectedEntityId={entity.id}
-                        centerEntityId={entity.id}
-                        entityTypes={domainConfigQuery.data.entities.map((e) => e.name)}
-                        onSelectNode={(nextId) => {
-                          const nextSearch = new URLSearchParams(searchParams)
-                          if (activeKnowledgeBaseId) {
-                            nextSearch.set('kb', activeKnowledgeBaseId)
-                          }
-                          navigate(
-                            { pathname: `/investigation/${nextId}`, search: nextSearch.toString() },
-                            { preventScrollReset: true },
-                          )
-                        }}
-                        testId="investigation-graph-canvas"
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <EmptyState description="Select an entity to load its graph neighborhood." title="No neighborhood loaded" />
-                )}
-              </div>
-            </Card>
-          </div>
-
-          {evidenceQuery.data ? (
-            <EvidencePackViewer
-              pack={evidenceQuery.data}
-              subgraph={
-                neighborhood
-                  ? toSubgraphResult(neighborhood.entities, neighborhood.relationships)
-                  : { nodes: [], edges: [] }
-              }
-              entityTypes={domainConfigQuery.data.entities.map((e) => e.name)}
-              selectedEntityId={selectedEntityId}
-              onSelectNode={(nextId) => {
-                const nextSearch = new URLSearchParams(searchParams)
-                if (activeKnowledgeBaseId) {
-                  nextSearch.set('kb', activeKnowledgeBaseId)
-                }
-                navigate(
-                  { pathname: `/investigation/${nextId}`, search: nextSearch.toString() },
-                  { preventScrollReset: true },
-                )
-              }}
-            />
+        <div className="metric-stack">
+          {entityQuery.isLoading || neighborhoodQuery.isLoading ? <LoadingState label="Loading selected entity graph" /> : null}
+          {entityQuery.isError || neighborhoodQuery.isError ? (
+            <ErrorState description="The selected entity could not be loaded from the active knowledge base." />
           ) : null}
-        </>
-      ) : null}
+
+          {entity ? (
+            <>
+              <EntityDossierHeader
+                config={domainConfigQuery.data}
+                entity={entity}
+                key={entity.id}
+                onAskAi={() =>
+                  navigate(buildRagChatUrl({
+                    knowledgeBaseId: activeKnowledgeBaseId,
+                    source: 'entity',
+                    entityId: selectedEntityId,
+                    alertId: selectedAlert?.id,
+                    evidencePackId: selectedAlert?.evidence_pack_id,
+                    question: DEFAULT_RISK_QUESTION,
+                  }))
+                }
+                riskScore={riskAvailability.unavailable ? null : riskScore}
+                riskUnavailableReason={riskAvailability.reason}
+              />
+
+              <SignalBand factors={riskAvailability.unavailable ? [] : riskScore?.factors ?? []} />
+
+              {tabs.length > 1 ? (
+                <div className="page-toolbar">
+                  <Tabs
+                    activeTabId={resolvedActiveTabId}
+                    ariaControlsPrefix="workbench-tabpanel"
+                    idPrefix="workbench-tab"
+                    onChange={setActiveTabId}
+                    tabs={tabs}
+                  />
+                </div>
+              ) : null}
+
+              {resolvedActiveTabId === 'signals' ? (
+                <WorkbenchTabPanel key="signals" tabId="signals">
+                  <div className="dashboard-panels">
+                    {capabilities?.timeseries ? (
+                      <AnomalyTrendPanel
+                        timeseries={timeseriesAvailability.unavailable ? null : timeseries}
+                        unavailableReason={timeseriesAvailability.reason}
+                      />
+                    ) : null}
+
+                    <Card>
+                      <div className="metric-stack">
+                        <strong>Risk factors</strong>
+                        {riskScore && !riskAvailability.unavailable ? riskScore.factors.map((factor) => (
+                          <div className="metric-row metric-row--stacked" key={factor.factor_name}>
+                            <strong>{factor.factor_name.replace(/_/g, ' ')}</strong>
+                            <span className="metric-row__label">{factor.rationale ?? 'No rationale provided.'}</span>
+                            <ConfidenceBar value={Math.round(factor.contribution * 100)} />
+                          </div>
+                        )) : (
+                          <EmptyState
+                            description={riskAvailability.reason ?? 'Risk scoring is unavailable until an entity is selected and analytics respond.'}
+                            title="No risk score"
+                          />
+                        )}
+                      </div>
+                    </Card>
+                  </div>
+                </WorkbenchTabPanel>
+              ) : null}
+
+              {resolvedActiveTabId === 'network' ? (
+                <WorkbenchTabPanel key="network" tabId="network">
+                  <Card>
+                    <div className="metric-stack">
+                      <div className="metric-row">
+                        <strong>Graph neighborhood</strong>
+                        <label className="metric-row__label" htmlFor="investigation-depth">
+                          Depth
+                        </label>
+                        <select
+                          className="page-input"
+                          id="investigation-depth"
+                          onChange={(event) => {
+                            const nextSearch = new URLSearchParams(searchParams)
+                            nextSearch.set('depth', event.target.value)
+                            setSearchParams(nextSearch)
+                          }}
+                          value={depth}
+                        >
+                          {[1, 2, 3, 4, 5].map((value) => (
+                            <option key={value} value={value}>{value}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {neighborhood ? (
+                        <>
+                          <div className="investigation-graph-canvas">
+                            <GraphCanvas
+                              centerEntityId={entity.id}
+                              clusterMode={clusterMode}
+                              entityTypes={domainConfigQuery.data.entities.map((e) => e.name)}
+                              highlightedEntityIds={selectedCluster?.entity_ids}
+                              onSelectNode={navigateToEntity}
+                              selectedEntityId={entity.id}
+                              subgraph={toSubgraphResult(neighborhood.entities, neighborhood.relationships)}
+                              testId="investigation-graph-canvas"
+                            />
+                          </div>
+                          {capabilities?.gnn && clusters.length > 0 ? (
+                            <ClusterMembershipPanel
+                              clusters={clusters}
+                              onSelectCluster={setSelectedClusterId}
+                              selectedClusterId={selectedClusterId}
+                            />
+                          ) : null}
+                        </>
+                      ) : (
+                        <EmptyState description="Select an entity to load its graph neighborhood." title="No neighborhood loaded" />
+                      )}
+                    </div>
+                  </Card>
+                </WorkbenchTabPanel>
+              ) : null}
+
+              {resolvedActiveTabId === 'policy' ? (
+                <WorkbenchTabPanel key="policy" tabId="policy">
+                  <Card>
+                    <EntityPolicyPanel
+                      knowledgeBaseId={activeKnowledgeBaseId}
+                      targetKind="entity"
+                      targetRef={selectedEntityId}
+                    />
+                  </Card>
+                </WorkbenchTabPanel>
+              ) : null}
+
+              {resolvedActiveTabId === 'evidence' ? (
+                <WorkbenchTabPanel key="evidence" tabId="evidence">
+                  {evidenceQuery.data ? (
+                    <EvidencePackViewer
+                      entityTypes={domainConfigQuery.data.entities.map((e) => e.name)}
+                      onSelectNode={navigateToEntity}
+                      pack={evidenceQuery.data}
+                      selectedEntityId={selectedEntityId}
+                      subgraph={
+                        neighborhood
+                          ? toSubgraphResult(neighborhood.entities, neighborhood.relationships)
+                          : { nodes: [], edges: [] }
+                      }
+                    />
+                  ) : (
+                    <Card>
+                      <EmptyState
+                        action={
+                          <Link className="page-button" to="/alerts">
+                            Open Alert Feed
+                          </Link>
+                        }
+                        description="No evidence pack is linked to this entity yet. Review the alert feed for open investigations."
+                        title="No evidence available"
+                      />
+                    </Card>
+                  )}
+                </WorkbenchTabPanel>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      </div>
     </section>
   )
 }
@@ -382,63 +429,4 @@ function analyticsAvailability(payload: unknown): AnalyticsAvailabilityState {
     unavailable,
     reason: unavailable ? availability.unavailable_reason ?? null : null,
   }
-}
-
-// Adapter: collapse RuntimeEntity/RuntimeRelationship (from the investigation
-// API contract) into the GraphCanvas SubgraphResult shape. The two surface
-// types are structurally compatible (same id/type/properties/metadata/version
-// fields), but TypeScript still requires an explicit conversion across the
-// nominal interface boundary.
-function toSubgraphResult(
-  entities: RuntimeEntity[],
-  relationships: RuntimeRelationship[],
-): SubgraphResult {
-  return {
-    nodes: entities.map((e): ApiEntity => ({
-      id: e.id,
-      type: e.type,
-      properties: e.properties,
-      metadata: e.metadata,
-      created_at: e.created_at,
-      updated_at: e.updated_at,
-      version: e.version,
-    })),
-    edges: relationships.map((r): ApiRelationship => ({
-      id: r.id,
-      type: r.type,
-      source_id: r.source_id,
-      target_id: r.target_id,
-      properties: r.properties,
-      metadata: r.metadata,
-      created_at: r.created_at,
-      updated_at: r.updated_at,
-      version: r.version,
-      weight: r.weight,
-    })),
-  }
-}
-
-function ChartFrameInvestigation({
-  timeseries,
-}: {
-  timeseries: { label: string; value: number; is_anomaly: boolean }[]
-}) {
-  return (
-    <Card>
-      <div className="metric-stack">
-        <strong>Risk pressure trend</strong>
-        <div className="chart-shell">
-          <TrendBars
-            color="#00d4ff"
-            data={timeseries.map((point) => ({ label: point.label, value: Number(point.value.toFixed(2)) }))}
-          />
-        </div>
-        <div className="alert-row-card__meta">
-          {timeseries.filter((point) => point.is_anomaly).map((point) => (
-            <Chip key={point.label} label={`${point.label} anomaly`} tone="danger" />
-          ))}
-        </div>
-      </div>
-    </Card>
-  )
 }

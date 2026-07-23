@@ -67,6 +67,7 @@ export type InvestigationEntitySearchResponse = Omit<Schemas['EntitySearchRespon
 }
 
 export type EvidenceItemResponse = Schemas['EvidenceItemResponse']
+export type FeatureAttributionResponse = Schemas['FeatureAttributionResponse']
 export type EvidencePackResponse = RequireFields<
   Schemas['EvidencePackResponse'],
   'items' | 'policy_citations' | 'scores' | 'subgraph_edge_ids' | 'subgraph_node_ids'
@@ -235,5 +236,6 @@ export type RiskScoreListResponse = Schemas['RiskScoreListResponse']
 export type TimeseriesPointResponse = Schemas['EntityTimeseriesPointResponse']
 export type TimeseriesResponse = RequireFields<Schemas['EntityTimeseriesResponse'], 'points'>
 export type MetricTimeseriesResponse = Schemas['MetricTimeseriesResponse']
+export type ClusterResult = Schemas['ClusterResult']
 export type GnnClusterResponse = Schemas['GnnClusterResponse']
 export type AnalyticsOverviewResponse = Schemas['AnalyticsOverviewResponse']

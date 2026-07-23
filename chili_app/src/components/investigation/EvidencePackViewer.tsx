@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 
 import type { EvidencePackResponse } from '../../api/contracts'
 import type { SubgraphResult } from '../../types/api'
+import { AttributionBars } from '../charts/AttributionBars'
 import { Card } from '../ui/Card'
 import { Chip } from '../ui/Chip'
 import { EmptyState } from '../ui/EmptyState'
@@ -49,12 +50,28 @@ export function EvidencePackViewer({
   const scoreEntries = Object.entries(pack.scores ?? {})
   const items = pack.items ?? []
   const policyCitations = pack.policy_citations ?? []
+  const narrativeSections = pack.narrative_sections ?? []
+  const attribution = pack.attribution ?? []
 
   return (
     <Card>
       <div className="metric-stack" data-testid={testId}>
         <strong>Evidence pack</strong>
-        <p className="page-copy-block">{pack.reasoning}</p>
+
+        <div className="callout--ai" data-testid="evidence-narrative">
+          <span className="flag-label" style={{ color: 'var(--c-cyan)' }}>
+            ◆ AI NARRATIVE
+          </span>
+          <p className="page-copy-block" style={{ fontSize: '14px' }}>
+            {pack.reasoning}
+          </p>
+          {narrativeSections.map((section) => (
+            <div className="metric-row metric-row--stacked" key={section.heading + section.body}>
+              <strong>{section.heading}</strong>
+              <span className="metric-row__label">{section.body}</span>
+            </div>
+          ))}
+        </div>
 
         <div className="alert-row-card__meta">
           <Chip label={`confidence ${(pack.confidence * 100).toFixed(0)}%`} tone="info" />
@@ -62,6 +79,8 @@ export function EvidencePackViewer({
             <Chip key={name} label={`${name} ${(value * 100).toFixed(0)}%`} tone="default" />
           ))}
         </div>
+
+        {attribution.length > 0 ? <AttributionBars attribution={attribution} /> : null}
 
         {packSubgraph.nodes.length > 0 ? (
           <div className="investigation-graph-canvas">

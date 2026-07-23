@@ -1,10 +1,25 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { DomainConfig, RuntimeEntity } from '../../api/contracts'
+import type {
+  ClusterResult,
+  DomainCapabilities,
+  DomainConfig,
+  RiskFactorResponse,
+  RuntimeEntity,
+} from '../../api/contracts'
 import { InvestigationWorkbenchPage } from '../InvestigationWorkbenchPage'
+
+const FULL_CAPABILITIES: DomainCapabilities = {
+  timeseries: true,
+  gnn: true,
+  risk_scoring: true,
+  rag_chat: true,
+  explainability: true,
+  peer_stats: false,
+}
 
 const mocks = vi.hoisted(() => ({
   knowledgeBases: [] as Array<{
@@ -30,6 +45,22 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   routeEntityId: null as string | null,
   riskUnavailableReason: 'No risk profile has been generated for this entity.' as string | null,
+  riskAvailable: false,
+  riskOverallScore: 0,
+  riskLevel: 'low' as 'low' | 'medium' | 'high' | 'critical',
+  riskFactors: [] as RiskFactorResponse[],
+  clusters: [] as ClusterResult[],
+  capabilities: { timeseries: true, gnn: true, risk_scoring: true, rag_chat: true, explainability: true, peer_stats: false } as DomainCapabilities,
+  policyItems: [] as Array<{
+    id: string
+    knowledge_base_id: string
+    rule_id: string
+    target_kind: 'entity' | 'alert' | 'metric'
+    target_ref: string
+    severity: 'critical' | 'high' | 'medium'
+    status: 'open' | 'accepted' | 'rejected' | 'deferred' | 'escalated'
+    title: string
+  }>,
 }))
 
 const analyticsCalls = vi.hoisted(() => ({
@@ -93,7 +124,16 @@ vi.mock('react-router-dom', async () => {
 })
 
 vi.mock('../../api/config', () => ({
-  useDomainConfig: () => ({ isLoading: false, isError: false, data: domainConfig }),
+  useDomainConfig: () => ({
+    isLoading: false,
+    isError: false,
+    data: { ...domainConfig, capabilities: mocks.capabilities },
+  }),
+  useDomainFeatures: () => ({
+    isLoading: false,
+    isError: false,
+    data: { capabilities: mocks.capabilities, enabled_pages: [], roles: {} },
+  }),
 }))
 
 vi.mock('../../api/knowledgebases', () => ({
@@ -140,11 +180,11 @@ vi.mock('../../api/analytics', () => ({
       isError: false,
       data: {
         entity_id: entityId ?? '',
-        overall_score: 0,
-        risk_level: 'low',
-        factors: [],
-        availability_status: 'unavailable',
-        unavailable_reason: mocks.riskUnavailableReason,
+        overall_score: mocks.riskOverallScore,
+        risk_level: mocks.riskLevel,
+        factors: mocks.riskFactors,
+        availability_status: mocks.riskAvailable ? 'available' : 'unavailable',
+        unavailable_reason: mocks.riskAvailable ? null : mocks.riskUnavailableReason,
       },
     }
   },
@@ -162,10 +202,23 @@ vi.mock('../../api/analytics', () => ({
       },
     }
   },
+  useGnnClusters: (knowledgeBaseId: string | null) => ({
+    isLoading: false,
+    isError: false,
+    data: { knowledge_base_id: knowledgeBaseId ?? '', clusters: mocks.clusters },
+  }),
 }))
 
 vi.mock('../../api/evidence', () => ({
   useEvidencePack: () => ({ isLoading: false, isError: false, data: undefined }),
+}))
+
+vi.mock('../../api/policy', () => ({
+  usePolicyItems: () => ({
+    isLoading: false,
+    isError: false,
+    data: { items: mocks.policyItems, total: mocks.policyItems.length },
+  }),
 }))
 
 function renderInvestigationWorkbench(initialEntry = '/investigation') {
@@ -174,6 +227,38 @@ function renderInvestigationWorkbench(initialEntry = '/investigation') {
       <InvestigationWorkbenchPage />
     </MemoryRouter>,
   )
+}
+
+/** Select a live KB with a single loaded provider entity — the fixture shared by tests that need an entity in the dossier. */
+function selectLiveProvider(): RuntimeEntity {
+  const provider: RuntimeEntity = {
+    id: 'provider-204',
+    type: 'provider',
+    properties: {
+      npi: '1234567890',
+      specialty: 'Pain Management',
+      state: 'WA',
+    },
+    metadata: {},
+    created_at: '2026-05-10T00:00:00Z',
+    updated_at: null,
+    version: 1,
+  }
+  mocks.knowledgeBases = [
+    {
+      id: 'kb-live',
+      name: 'Live Fraud KB',
+      description: 'Live KB',
+      status: 'ready',
+      document_count: 1,
+      entity_count: 1,
+      relationship_count: 0,
+      created_at: '2026-05-10T00:00:00Z',
+    },
+  ]
+  mocks.selectedEntity = provider
+  mocks.routeEntityId = 'provider-204'
+  return provider
 }
 
 describe('InvestigationWorkbenchPage', () => {
@@ -196,6 +281,13 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.navigate.mockReset()
     mocks.routeEntityId = null
     mocks.riskUnavailableReason = 'No risk profile has been generated for this entity.'
+    mocks.riskAvailable = false
+    mocks.riskOverallScore = 0
+    mocks.riskLevel = 'low'
+    mocks.riskFactors = []
+    mocks.clusters = []
+    mocks.capabilities = { ...FULL_CAPABILITIES }
+    mocks.policyItems = []
     analyticsCalls.risk = []
     analyticsCalls.timeseries = []
   })
@@ -221,34 +313,8 @@ describe('InvestigationWorkbenchPage', () => {
   })
 
   it('searches a selected KB and renders config-derived entity details', async () => {
-    const provider: RuntimeEntity = {
-      id: 'provider-204',
-      type: 'provider',
-      properties: {
-        npi: '1234567890',
-        specialty: 'Pain Management',
-        state: 'WA',
-      },
-      metadata: {},
-      created_at: '2026-05-10T00:00:00Z',
-      updated_at: null,
-      version: 1,
-    }
-    mocks.knowledgeBases = [
-      {
-        id: 'kb-live',
-        name: 'Live Fraud KB',
-        description: 'Live KB',
-        status: 'ready',
-        document_count: 1,
-        entity_count: 1,
-        relationship_count: 0,
-        created_at: '2026-05-10T00:00:00Z',
-      },
-    ]
+    const provider = selectLiveProvider()
     mocks.searchItems = [provider]
-    mocks.selectedEntity = provider
-    mocks.routeEntityId = 'provider-204'
 
     renderInvestigationWorkbench()
 
@@ -262,75 +328,50 @@ describe('InvestigationWorkbenchPage', () => {
       },
       { preventScrollReset: true },
     )
-    expect(screen.getByRole('heading', { name: '1234567890' })).toBeInTheDocument()
-    expect(screen.getByText('Provider')).toBeInTheDocument()
+    // The entity title and type/subtitle line now render inside the
+    // EntityDossierHeader (data-testid="entity-dossier-header") rather than
+    // a standalone Card — the plain page-wide `getByRole('heading', ...)`
+    // query from before the restructure would now match twice (SectionHeader
+    // also shows the entity title per design §4.1), so this scopes to the
+    // dossier header specifically.
+    const dossierHeader = screen.getByTestId('entity-dossier-header')
+    expect(within(dossierHeader).getByRole('heading', { name: '1234567890' })).toBeInTheDocument()
+    // Old: separate `getByText('Provider')` + `getByText('Pain Management')`
+    // assertions matched two standalone elements (a Chip and a <p>). The
+    // dossier header now renders type label + subtitle joined in one
+    // flag-label line, so this asserts the combined text instead.
+    expect(within(dossierHeader).getByText('Provider · Pain Management')).toBeInTheDocument()
     expect(screen.getByText('state: WA')).toBeInTheDocument()
-    expect(screen.getByText('Pain Management')).toBeInTheDocument()
   })
 
   it('passes active knowledge base scope into analytics queries', () => {
-    const provider: RuntimeEntity = {
-      id: 'provider-204',
-      type: 'provider',
-      properties: { npi: '1234567890' },
-      metadata: {},
-      created_at: '2026-05-10T00:00:00Z',
-      updated_at: null,
-      version: 1,
-    }
-    mocks.knowledgeBases = [
-      {
-        id: 'kb-live',
-        name: 'Live Fraud KB',
-        description: 'Live KB',
-        status: 'ready',
-        document_count: 1,
-        entity_count: 1,
-        relationship_count: 0,
-        created_at: '2026-05-10T00:00:00Z',
-      },
-    ]
-    mocks.selectedEntity = provider
-    mocks.routeEntityId = 'provider-204'
+    selectLiveProvider()
 
     renderInvestigationWorkbench()
 
     expect(analyticsCalls.risk.at(-1)).toEqual(['kb-live', 'provider-204'])
     expect(analyticsCalls.timeseries.at(-1)).toEqual(['kb-live', 'provider-204'])
-    expect(screen.getByText(/No risk profile has been generated/i)).toBeInTheDocument()
+    // The unavailable reason now surfaces in two places by design: the
+    // dossier header's sub-line (EntityDossierHeader) and the SIGNALS tab's
+    // factor-detail EmptyState — `getByText` (singular) would throw on the
+    // duplicate, so this asserts presence via `getAllByText`.
+    expect(screen.getAllByText(/No risk profile has been generated/i).length).toBeGreaterThan(0)
     expect(screen.getByText(/No time series has been generated/i)).toBeInTheDocument()
     expect(screen.queryByText('Risk pressure trend')).not.toBeInTheDocument()
   })
 
   it('renders unavailable risk analytics without a reason as the fallback empty state', () => {
-    const provider: RuntimeEntity = {
-      id: 'provider-204',
-      type: 'provider',
-      properties: { npi: '1234567890' },
-      metadata: {},
-      created_at: '2026-05-10T00:00:00Z',
-      updated_at: null,
-      version: 1,
-    }
-    mocks.knowledgeBases = [
-      {
-        id: 'kb-live',
-        name: 'Live Fraud KB',
-        description: 'Live KB',
-        status: 'ready',
-        document_count: 1,
-        entity_count: 1,
-        relationship_count: 0,
-        created_at: '2026-05-10T00:00:00Z',
-      },
-    ]
-    mocks.selectedEntity = provider
-    mocks.routeEntityId = 'provider-204'
+    selectLiveProvider()
     mocks.riskUnavailableReason = null
 
     renderInvestigationWorkbench()
 
     expect(screen.getByText(/Risk scoring is unavailable until an entity is selected and analytics respond/i)).toBeInTheDocument()
+    // "Composite risk" was the old metric-row label for the RiskBadge in the
+    // pre-restructure entity Card; it no longer exists anywhere on the page
+    // (the dossier header shows a risk numeral instead) so this assertion is
+    // now unconditionally true, not just true-when-unavailable. Kept as a
+    // regression guard against the label being reintroduced.
     expect(screen.queryByText('Composite risk')).not.toBeInTheDocument()
   })
 
@@ -364,27 +405,7 @@ describe('InvestigationWorkbenchPage', () => {
   })
 
   it('launches Ask AI with the selected entity context', async () => {
-    const provider: RuntimeEntity = {
-      id: 'provider-204',
-      type: 'provider',
-      properties: { npi: '1234567890' },
-      metadata: {},
-      created_at: '2026-05-10T00:00:00Z',
-      updated_at: null,
-      version: 1,
-    }
-    mocks.knowledgeBases = [
-      {
-        id: 'kb-live',
-        name: 'Live Fraud KB',
-        description: 'Live KB',
-        status: 'ready',
-        document_count: 1,
-        entity_count: 1,
-        relationship_count: 0,
-        created_at: '2026-05-10T00:00:00Z',
-      },
-    ]
+    selectLiveProvider()
     mocks.alerts = [
       {
         id: 'alert-1',
@@ -394,8 +415,6 @@ describe('InvestigationWorkbenchPage', () => {
         evidence_pack_id: 'evidence-1',
       },
     ]
-    mocks.selectedEntity = provider
-    mocks.routeEntityId = 'provider-204'
 
     renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
 
@@ -407,27 +426,7 @@ describe('InvestigationWorkbenchPage', () => {
   })
 
   it('loads alerts in the active knowledge base scope for entity Ask AI context', () => {
-    const provider: RuntimeEntity = {
-      id: 'provider-204',
-      type: 'provider',
-      properties: { npi: '1234567890' },
-      metadata: {},
-      created_at: '2026-05-10T00:00:00Z',
-      updated_at: null,
-      version: 1,
-    }
-    mocks.knowledgeBases = [
-      {
-        id: 'kb-live',
-        name: 'Live Fraud KB',
-        description: 'Live KB',
-        status: 'ready',
-        document_count: 1,
-        entity_count: 1,
-        relationship_count: 0,
-        created_at: '2026-05-10T00:00:00Z',
-      },
-    ]
+    selectLiveProvider()
     mocks.alerts = [
       {
         id: 'alert-other-kb',
@@ -444,11 +443,126 @@ describe('InvestigationWorkbenchPage', () => {
         evidence_pack_id: 'evidence-live',
       },
     ]
-    mocks.selectedEntity = provider
-    mocks.routeEntityId = 'provider-204'
 
     renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
 
     expect(mocks.useAlerts).toHaveBeenCalledWith({ knowledgeBaseId: 'kb-live' })
+  })
+
+  it('renders Signals, Network, Policy, and Evidence tabs when all capabilities are enabled', () => {
+    selectLiveProvider()
+
+    renderInvestigationWorkbench()
+
+    const tabLabels = screen.getAllByRole('tab').map((tab) => tab.textContent)
+    expect(tabLabels).toEqual(['Signals', 'Network', 'Policy', 'Evidence'])
+  })
+
+  it('collapses the tab strip to Signals and Network when explainability is disabled', () => {
+    selectLiveProvider()
+    mocks.capabilities = { ...mocks.capabilities, explainability: false }
+
+    renderInvestigationWorkbench()
+
+    const tabLabels = screen.getAllByRole('tab').map((tab) => tab.textContent)
+    expect(tabLabels).toEqual(['Signals', 'Network'])
+    expect(screen.queryByRole('tab', { name: 'Policy' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Evidence' })).not.toBeInTheDocument()
+  })
+
+  it('renders no tab strip and shows the Network panel directly when signals, policy, and evidence are all gated off', () => {
+    selectLiveProvider()
+    mocks.capabilities = {
+      ...mocks.capabilities,
+      risk_scoring: false,
+      timeseries: false,
+      explainability: false,
+    }
+
+    renderInvestigationWorkbench()
+
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+    expect(screen.queryAllByRole('tab')).toHaveLength(0)
+    expect(screen.getByTestId('investigation-graph-canvas')).toBeInTheDocument()
+    expect(screen.getByLabelText('Depth')).toBeInTheDocument()
+  })
+
+  it('renders the AI signal band listing factor names when risk is available', () => {
+    selectLiveProvider()
+    mocks.riskAvailable = true
+    mocks.riskOverallScore = 0.82
+    mocks.riskLevel = 'high'
+    mocks.riskFactors = [
+      {
+        factor_name: 'weekly_carrier_billing_self',
+        contribution: 0.42,
+        rationale: 'self-history anomaly z=4.5',
+      },
+    ]
+
+    renderInvestigationWorkbench()
+
+    const band = screen.getByTestId('signal-band')
+    expect(within(band).getByText(/AI ANALYSIS · 1 RISK SIGNAL\b/)).toBeInTheDocument()
+    expect(within(band).getByText('weekly carrier billing self')).toBeInTheDocument()
+  })
+
+  it('hides the signal band when risk is unavailable, even with factors on the raw payload', () => {
+    // Distinct from the empty-factors case: this pins that the band is
+    // hidden specifically because availability_status is 'unavailable',
+    // not merely because the factor list happens to be empty.
+    selectLiveProvider()
+    mocks.riskAvailable = false
+    mocks.riskUnavailableReason = 'Risk scoring has been retracted for this entity.'
+    mocks.riskFactors = [
+      {
+        factor_name: 'weekly_carrier_billing_self',
+        contribution: 0.42,
+        rationale: 'self-history anomaly z=4.5',
+      },
+    ]
+
+    renderInvestigationWorkbench()
+
+    expect(screen.queryByTestId('signal-band')).not.toBeInTheDocument()
+  })
+
+  it('omits the anomaly trend panel entirely when the timeseries capability is disabled', () => {
+    selectLiveProvider()
+    mocks.capabilities = { ...mocks.capabilities, timeseries: false }
+
+    renderInvestigationWorkbench()
+
+    expect(screen.queryByText('No time series')).not.toBeInTheDocument()
+    expect(screen.queryByText(/No time series has been generated/i)).not.toBeInTheDocument()
+  })
+
+  it('reveals the graph neighborhood canvas under the Network tab', async () => {
+    selectLiveProvider()
+
+    renderInvestigationWorkbench()
+    await userEvent.click(screen.getByRole('tab', { name: 'Network' }))
+
+    expect(screen.getByTestId('investigation-graph-canvas')).toBeInTheDocument()
+    expect(screen.getByLabelText('Depth')).toBeInTheDocument()
+  })
+
+  it('shows an evidence empty state linking to the Alert Feed when no pack is linked', async () => {
+    selectLiveProvider()
+
+    renderInvestigationWorkbench()
+    await userEvent.click(screen.getByRole('tab', { name: 'Evidence' }))
+
+    expect(screen.getByText('No evidence available')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open Alert Feed' })).toHaveAttribute('href', '/alerts')
+  })
+
+  it('shows the policy panel empty state under the Policy tab when no items reference the entity', async () => {
+    selectLiveProvider()
+
+    renderInvestigationWorkbench()
+    await userEvent.click(screen.getByRole('tab', { name: 'Policy' }))
+
+    expect(screen.getByText('No policy signals')).toBeInTheDocument()
   })
 })

@@ -6,18 +6,21 @@ import type {
   AlertListResponse,
   AnalyticsOverviewResponse,
   DomainConfig,
+  DomainFeatures,
   GnnClusterResponse,
   KnowledgeBaseListResponse,
   MetricTimeseriesResponse,
   RiskScoreListResponse,
   WorkflowRunListResponse,
 } from '../../api/contracts'
+import { clusterColorFor } from '../../utils/graphStyles'
 import { DashboardPage } from '../DashboardPage'
 
 const mocks = vi.hoisted(() => ({
   useAlerts: vi.fn(),
   useAnalyticsOverview: vi.fn(),
   useDomainConfig: vi.fn(),
+  useDomainFeatures: vi.fn(),
   useGnnClusters: vi.fn(),
   useKnowledgeBases: vi.fn(),
   useMetricTimeseries: vi.fn(),
@@ -27,7 +30,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../api/alerts', () => ({ useAlerts: mocks.useAlerts }))
 
-vi.mock('../../api/config', () => ({ useDomainConfig: mocks.useDomainConfig }))
+vi.mock('../../api/config', () => ({
+  useDomainConfig: mocks.useDomainConfig,
+  useDomainFeatures: mocks.useDomainFeatures,
+}))
 
 vi.mock('../../api/analytics', () => ({
   useAnalyticsOverview: mocks.useAnalyticsOverview,
@@ -203,6 +209,19 @@ const domainConfig: DomainConfig = {
   alerts: { thresholds: {} },
 }
 
+const domainFeatures: DomainFeatures = {
+  capabilities: {
+    timeseries: true,
+    gnn: true,
+    risk_scoring: true,
+    rag_chat: true,
+    explainability: true,
+    peer_stats: false,
+  },
+  enabled_pages: [],
+  roles: {},
+}
+
 const metricTimeseries: MetricTimeseriesResponse = {
   knowledge_base_id: 'kb-ready',
   metric_name: 'claim_volume',
@@ -232,6 +251,7 @@ function setupDefaultMocks() {
   mocks.useWorkflows.mockReturnValue(querySuccess(workflows))
   mocks.useKnowledgeBases.mockReturnValue(querySuccess(knowledgeBases))
   mocks.useDomainConfig.mockReturnValue(querySuccess(domainConfig))
+  mocks.useDomainFeatures.mockReturnValue(querySuccess(domainFeatures))
   mocks.useRiskScores.mockReturnValue(querySuccess(riskScores))
   mocks.useGnnClusters.mockReturnValue(querySuccess(clusters))
   mocks.useMetricTimeseries.mockReturnValue(querySuccess(metricTimeseries))
@@ -511,5 +531,62 @@ describe('DashboardPage', () => {
 
     expect(screen.getByRole('tabpanel', { name: /policy signals/i })).toBeInTheDocument()
     expect(screen.getByText(/loading policy signal analytics/i)).toBeInTheDocument()
+  })
+
+  it('shows the domain display-name chip and drops the stale phase copy', () => {
+    renderDashboard()
+
+    expect(screen.queryByText(/phase 5 data live/i)).not.toBeInTheDocument()
+    expect(screen.getByText('Medicare Fraud Detection')).toBeInTheDocument()
+    expect(
+      screen.getByText('Live operational overview for the active knowledge base.'),
+    ).toBeInTheDocument()
+  })
+
+  it('renders the lead alert with a triage numeral and flag label above the reasoning', () => {
+    renderDashboard()
+
+    const triageNumeral = screen.getByTestId('triage-numeral')
+    expect(triageNumeral).toHaveTextContent('85')
+
+    const flagLabel = screen.getByText('PROVIDER · RISK-SPIKE')
+    expect(flagLabel).toHaveClass('flag-label')
+
+    const leadCard = flagLabel.closest('.triage-row')
+    expect(leadCard).not.toBeNull()
+    expect(
+      within(leadCard as HTMLElement).getByText(/aggregate risk score breached configured threshold/i),
+    ).toBeInTheDocument()
+
+    const investigateLink = within(leadCard as HTMLElement).getByRole('link', { name: /investigate/i })
+    expect(investigateLink).toHaveAttribute('href', '/investigation/provider-204?kb=kb-ready')
+  })
+
+  it('renders cluster swatches from clusterColorFor and workbench links to the first member', async () => {
+    renderDashboard()
+
+    clickTab(/policy signals/i)
+
+    const swatch = screen.getByTestId('cluster-swatch')
+    expect(swatch).toHaveStyle({ background: clusterColorFor('cluster-1') })
+
+    const workbenchLink = screen.getByRole('link', { name: /open in workbench/i })
+    expect(workbenchLink).toHaveAttribute('href', '/investigation/provider-204?kb=kb-ready')
+  })
+
+  it('omits the graph clusters panel entirely (not an empty state) when the gnn capability is off', async () => {
+    mocks.useDomainFeatures.mockReturnValue(querySuccess({
+      ...domainFeatures,
+      capabilities: { ...domainFeatures.capabilities, gnn: false },
+    } satisfies DomainFeatures))
+
+    renderDashboard()
+
+    clickTab(/policy signals/i)
+
+    expect(screen.getByText(/top risk entities/i)).toBeInTheDocument()
+    expect(screen.queryByText(/graph clusters/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('cluster-swatch')).not.toBeInTheDocument()
+    expect(screen.queryByText(/no graph clusters/i)).not.toBeInTheDocument()
   })
 })

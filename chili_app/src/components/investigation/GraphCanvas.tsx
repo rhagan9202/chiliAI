@@ -16,16 +16,25 @@ import type {
 import type { Entity, Relationship, SubgraphResult } from '../../types/api'
 import {
   ENTITY_COLOR_PALETTE,
+  PREDICTED_LINK_COLOR,
+  PREDICTED_LINK_DASH,
+  clusterColorFor,
   colorForEntityType,
+  communityIdFor,
+  isPredictedRelationship,
+  predictedConfidenceFor,
   riskScoreFor,
   sizeForRiskScore,
 } from '../../utils/graphStyles'
 import styles from './GraphCanvas.module.css'
 
+const HIGHLIGHT_COLOR = '#fbbf24'
+
 export interface GraphNode extends NodeObject {
   id: string
   entity: Entity
   color: string
+  communityColor: string | null
   size: number
 }
 
@@ -34,6 +43,8 @@ export interface GraphLink extends LinkObject {
   source: string
   target: string
   relationship: Relationship
+  predicted: boolean
+  confidence: number | null
 }
 
 export interface GraphCanvasProps {
@@ -43,6 +54,8 @@ export interface GraphCanvasProps {
   onSelectNode: (entityId: string) => void
   entityTypes: string[]
   testId?: string
+  clusterMode?: boolean
+  highlightedEntityIds?: readonly string[]
 }
 
 export function GraphCanvas({
@@ -51,6 +64,8 @@ export function GraphCanvas({
   onSelectNode,
   entityTypes,
   testId,
+  clusterMode = false,
+  highlightedEntityIds,
 }: GraphCanvasProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const graphRef =
@@ -95,12 +110,16 @@ export function GraphCanvas({
   }, [])
 
   const graphData = useMemo(() => {
-    const nodes: GraphNode[] = subgraph.nodes.map((entity) => ({
-      id: entity.id,
-      entity,
-      color: colorForEntityType(entity.type, entityTypes),
-      size: sizeForRiskScore(riskScoreFor(entity)),
-    }))
+    const nodes: GraphNode[] = subgraph.nodes.map((entity) => {
+      const communityId = communityIdFor(entity)
+      return {
+        id: entity.id,
+        entity,
+        color: colorForEntityType(entity.type, entityTypes),
+        communityColor: communityId ? clusterColorFor(communityId) : null,
+        size: sizeForRiskScore(riskScoreFor(entity)),
+      }
+    })
     const validIds = new Set(nodes.map((node) => node.id))
     const links: GraphLink[] = subgraph.edges
       .filter(
@@ -112,9 +131,16 @@ export function GraphCanvas({
         source: edge.source_id,
         target: edge.target_id,
         relationship: edge,
+        predicted: isPredictedRelationship(edge),
+        confidence: predictedConfidenceFor(edge),
       }))
     return { nodes, links }
   }, [subgraph, entityTypes])
+
+  const highlightedIds = useMemo(
+    () => new Set(highlightedEntityIds ?? []),
+    [highlightedEntityIds],
+  )
 
   useEffect(() => {
     // Keep the ref in sync with the latest graphData so handleEngineStop
@@ -208,6 +234,20 @@ export function GraphCanvas({
       }))
   }, [graphData, entityTypes])
 
+  const clusterLegend = useMemo(() => {
+    const seen = new Map<string, string>()
+    graphData.nodes.forEach((node) => {
+      const communityId = communityIdFor(node.entity)
+      if (communityId && !seen.has(communityId)) {
+        seen.set(communityId, clusterColorFor(communityId))
+      }
+    })
+    return Array.from(seen.entries()).map(([communityId, color]) => ({
+      communityId,
+      color,
+    }))
+  }, [graphData])
+
   return (
     <div
       ref={containerRef}
@@ -220,17 +260,28 @@ export function GraphCanvas({
           No graph data — select an entity to load its neighborhood.
         </div>
       )}
-      {hasData && legend.length > 0 && (
+      {hasData &&
+        (clusterMode ? clusterLegend.length > 0 : legend.length > 0) && (
         <div className={styles.legend} aria-hidden="true">
-          {legend.map((item) => (
-            <div key={item.type} className={styles.legendRow}>
-              <span
-                className={styles.legendSwatch}
-                style={{ background: item.color }}
-              />
-              <span>{item.type}</span>
-            </div>
-          ))}
+          {clusterMode
+            ? clusterLegend.map((item) => (
+                <div key={item.communityId} className={styles.legendRow}>
+                  <span
+                    className={styles.legendSwatch}
+                    style={{ background: item.color }}
+                  />
+                  <span>{item.communityId}</span>
+                </div>
+              ))
+            : legend.map((item) => (
+                <div key={item.type} className={styles.legendRow}>
+                  <span
+                    className={styles.legendSwatch}
+                    style={{ background: item.color }}
+                  />
+                  <span>{item.type}</span>
+                </div>
+              ))}
           {selectedEntityId !== null &&
             graphData.nodes.some((n) => n.id === selectedEntityId) && (
               <div className={`${styles.legendRow} ${styles.legendRowSelected}`}>
@@ -254,14 +305,25 @@ export function GraphCanvas({
           nodeRelSize={14}
           nodeVal={(node) => node.size}
           nodeLabel={(node) => `${node.entity.type}: ${node.id}`}
-          nodeColor={(node) =>
-            node.id === selectedEntityId
-              ? '#fbbf24'
-              : node.color
+          nodeColor={(node) => {
+            if (node.id === selectedEntityId || highlightedIds.has(node.id)) {
+              return HIGHLIGHT_COLOR
+            }
+            if (clusterMode && node.communityColor) {
+              return node.communityColor
+            }
+            return node.color
+          }}
+          linkColor={(link) =>
+            link.predicted ? PREDICTED_LINK_COLOR : 'rgba(120, 170, 255, 0.35)'
           }
-          linkColor={() => 'rgba(120, 170, 255, 0.35)'}
+          linkLineDash={(link) => (link.predicted ? [...PREDICTED_LINK_DASH] : null)}
           linkWidth={1.5}
-          linkLabel={(link) => link.relationship.type}
+          linkLabel={(link) =>
+            link.predicted && link.confidence !== null
+              ? `predicted · ${link.confidence}`
+              : link.relationship.type
+          }
           onNodeClick={(node) => {
             if (typeof node.id === 'string') {
               onSelectNode(node.id)

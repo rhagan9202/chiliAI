@@ -34,13 +34,17 @@ React 19 SPA serving as the analyst workbench. Renders navigation and feature ga
 
 ## Pages (`src/pages/`)
 
-Last verified: 2026-05-28.
+Last verified: 2026-05-28, except the three rows below (Dashboard, Alert
+Feed, Investigation Workbench) — **re-verified 2026-07-23** after Sprint
+2026-28 U2's workbench reshape (`docs/backlog/frontend.md` story
+frontend.27); the rest of this table is unchanged and carries the older
+verification date.
 
 | File | Route | Primary API calls | Stores used |
 |------|-------|-------------------|-------------|
-| `DashboardPage.tsx` | `/dashboard` | `useAnalyticsOverview`, `useAlerts`, `useRecentActivity`, `useRealtimeWorkspaceStream` | `uiStore`, `appStore` |
-| `AlertFeedPage.tsx` | `/alerts` | `useAlerts`, `useAlert`, `useAcknowledgeAlert` | `uiStore` |
-| `InvestigationWorkbenchPage.tsx` | `/investigation`, `/investigation/:entityId` | `useInvestigationEntitySearch`, `useInvestigationEntity`, `useInvestigationNeighborhood`, `useRiskScore`, `useTimeseries` | `appStore` (selectedEntityId, activeKnowledgeBaseId), `uiStore` |
+| `DashboardPage.tsx` | `/dashboard` | `useAnalyticsOverview`, `useAlerts`, `useGnnClusters`, `useMetricTimeseries`, `useRiskScores`, `useKnowledgeBases`, `useWorkflows` | none (local `useState` for the active tab only) |
+| `AlertFeedPage.tsx` | `/alerts` | `useAlerts`, `useAcknowledgeAlert`, `useCases`, `usePromoteAlertToCase`, `useEvidencePack`, `useInvestigationNeighborhood` (real depth-1 subgraph for the evidence expansion, since U2), `usePolicyItems` (policy chips, since U2) | none |
+| `InvestigationWorkbenchPage.tsx` | `/investigation`, `/investigation/:entityId` | `useInvestigationEntitySearch`, `useInvestigationEntity`, `useInvestigationNeighborhood`, `useRiskScore`, `useTimeseries`, `useGnnClusters` (cluster overlay/membership), `usePolicyItems` (via `EntityPolicyPanel`, POLICY tab) | none — KB id and entity id are URL-driven (`?kb=`, `:entityId`), not store-backed, despite the "Drift note" below predating this |
 | `CaseManagementPage.tsx` | `/cases` | `useCases`, `useCase`, `useCreateCase`, `useUpdateCase`, `useCaseFeedback` | `uiStore` |
 | `KnowledgeBaseManagerPage.tsx` | `/knowledge-bases` | `useKnowledgeBases`, `useKnowledgeBaseDocuments`, `uploadDocuments`, `useIngestionStudioStore` | `ingestionStudioStore` |
 | `PolicyIntelligencePage.tsx` | `/policy` | `usePolicyGaps`, `usePolicyGap`, `usePolicyGapCases`, `useCreatePolicyBrief` | — |
@@ -48,6 +52,20 @@ Last verified: 2026-05-28.
 | `ConfigurationPage.tsx` | `/configuration` | `useDomainConfig`, `getDomainConfigSchema` | — |
 | `Login.tsx` | `/login` | `/auth/login` redirect | — |
 | `PagePlaceholder.tsx` | `*` (authenticated) | None | — |
+
+Since U2 (Sprint 2026-28), the Investigation Workbench renders a
+capability-gated `Tabs` strip (Signals / Network / Policy / Evidence):
+Signals is present only when `risk_scoring` or `timeseries` is on, Network
+is always present, and Policy + Evidence are present only when
+`explainability` is on — instead of a flat vertical card stack. When only
+one tab survives the gating, the strip is dropped entirely and that tab's
+panel renders directly (final-review fix, 2026-07-23; regression-covered by
+a unit test asserting no `tablist`/`tab` renders and the Network panel
+content renders on its own). The three previously-orphaned components
+`EntityDetailPanel.tsx`, `EvidencePanel.tsx`, and `TimelinePanel.tsx` were
+deleted outright (`af14736`) rather than wired up — there is no Timeline
+tab (needs a detection-events API; tracked as `docs/backlog/frontend.md`
+story frontend.28).
 
 ---
 
@@ -189,6 +207,24 @@ Toast state: `components/common/toastStore.ts` (internal Zustand store, not expo
 | `ConfidenceBar` | `ui/ConfidenceBar.tsx` | Horizontal progress bar for confidence scores |
 | `FilterBar` | `ui/FilterBar.tsx` | Generic filter row component |
 
+### Investigation dossier components (added/changed Sprint 2026-28 U2, `investigation/`)
+This list is not exhaustive of the whole `components/investigation/` and
+`components/charts/` directories (e.g. the pre-existing `GraphCanvas.tsx`
+and `EvidencePackViewer.tsx` are not re-listed here) — it covers what U2
+added or removed, since that is what this reconciliation pass verified.
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| `EntityDossierHeader` | `investigation/EntityDossierHeader.tsx` | Entity identity (via `domainDisplay.ts`) + Oxanium risk numeral + confidence bar; availability-aware |
+| `SignalBand` | `investigation/SignalBand.tsx` | "AI ANALYSIS · N RISK SIGNALS" callout listing risk factors with signed contribution bars |
+| `AnomalyTrendPanel` | `investigation/AnomalyTrendPanel.tsx` | Timeseries chart + red anomaly markers (extracted from the page's former inline `ChartFrameInvestigation`) |
+| `EntityPolicyPanel` | `investigation/EntityPolicyPanel.tsx` | Policy items filtered by `target_kind`/`target_ref`, critical-item callout |
+| `ClusterMembershipPanel` | `investigation/ClusterMembershipPanel.tsx` | GNN cluster list beside `GraphCanvas`; select/highlight interplay |
+| `AttributionBars` | `charts/AttributionBars.tsx` | Signed horizontal SHAP-style feature-attribution bars; consumed only by `EvidencePackViewer` (the dossier's risk-factor band is `SignalBand`, not `AttributionBars`) |
+| ~~`EntityDetailPanel`~~ | ~~`investigation/EntityDetailPanel.tsx`~~ | **Deleted** (`af14736`) — was an orphan, never routed; superseded by `EntityDossierHeader` |
+| ~~`EvidencePanel`~~ | ~~`investigation/EvidencePanel.tsx`~~ | **Deleted** (`af14736`) — was an orphan, never routed; superseded by the live `EvidencePackViewer` |
+| ~~`TimelinePanel`~~ | ~~`investigation/TimelinePanel.tsx`~~ | **Deleted** (`af14736`) — was an orphan, never routed; no replacement yet (needs a detection-events API, `docs/backlog/frontend.md` frontend.28) |
+
 ---
 
 ## TypeScript Types (`src/types/`)
@@ -218,7 +254,7 @@ Redirects to `/login` if `useSession()` reports `unauthenticated`; shows a loadi
 ## Test Locations
 
 - Unit tests: `src/**/__tests__/` (Vitest)
-- E2e tests: `chili_app/e2e/` (Playwright, 17 tests)
+- E2e tests: `chili_app/e2e/` (Playwright, 22 spec files as of 2026-07-23)
 
 Commands:
 ```bash
