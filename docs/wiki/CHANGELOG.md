@@ -2,6 +2,24 @@
 
 ---
 
+## 2026-07-23 — B3 explainability: LLM narratives + SHAP attribution seams (BL-048, Task 8 reconciliation)
+
+### Changes
+
+**Code files read:** `backend/analytics/explainability/service.py`, `protocols.py`, `models.py`, `adapters/deterministic.py`, `adapters/llm_narrative.py`, `adapters/shap_attribution.py`, `adapters/shap_adapter.py`, `backend/shared/types.py`, `backend/api/contracts.py`, `backend/api/dependencies.py` (`_evidence_pack_to_response`) — commits `4366b1c`..`5194342` on `feat/sprint-2026-28-b3-explainability` (config fields, `EvidencePack`/`EvidencePackResponse` enrichment, narrative + attribution seams, worker wiring).
+
+**Wiki pages updated:**
+
+| Page | Gap closed |
+|------|-----------|
+| `modules/analytics.md` | Rewrote the `explainability/` section: added `NarrativeGeneratorProtocol`/`FeatureAttributorProtocol` to the protocol block, documented `ExplainabilityService`'s new `narrative_generator`/`feature_attributor` constructor keywords and composition, split the adapters table into context-source / narrative-generator / feature-attributor tables (deterministic + LLM generators, noop + SHAP attributors), and noted `adapters/shap_attribution.py::ShapRiskAttributor` is a distinct seam from the pre-existing, still-DI-unwired `adapters/shap_adapter.py::ShapExplainabilityContextSource`. Updated the module summary table row. Bumped section-level verified date to 2026-07-23. |
+| `contracts/shared-types.md` | Added `FeatureAttribution` and `EvidenceNarrativeSection` type blocks; added their `attribution`/`narrative_sections` fields (both default `[]`) to `EvidencePack`. Bumped file-level verified date to 2026-07-23. |
+| `contracts/api-routes.md` | Added `attribution`/`narrative_sections` fields plus `FeatureAttributionResponse`/`NarrativeSectionResponse` to the `EvidencePackResponse` block; noted the 1:1 mapper passthrough and legacy-pack `[]` default. Bumped file-level verified date to 2026-07-23. |
+
+**Drift log:** No new architectural violations observed. `EvidencePack`/`EvidencePackResponse` enrichment is additive-with-default, so pre-B3 persisted object-store packs deserialize unchanged (confirmed by `tests/shared/test_types.py::TestEvidencePackEnrichment::test_defaults_empty_for_legacy_payloads`). Frontend contract regen (`chili_app/src/lib/api/schema.ts`) already carries both new response models — no additional frontend doc drift; U2 (not yet built) is the first consumer.
+
+---
+
 ## 2026-07-19 — Risk detail route de-seeded from ApiState; Qdrant upsert chunking (Dev-Wiki-Curator)
 
 ### Changes

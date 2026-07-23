@@ -1,6 +1,6 @@
 # API Routes Reference
 
-**Verified against codebase:** 2026-07-19
+**Verified against codebase:** 2026-07-23
 **Source:** live `api.app:create_app()` route dump with `CHILI_ENV=local`, plus `backend/api/routers/`, `backend/api/app.py`, `backend/api/contracts.py`
 
 All routes are registered in `api/app.py::create_app()`. RBAC roles follow the hierarchy: `viewer(1) < analyst(2) = service(2) < admin(3)`. When `AuthConfig.enabled=False` (local/dev), all routes are open.
@@ -208,7 +208,17 @@ class EvidencePackResponse(BaseModel):
     subgraph_node_ids: list[str]; subgraph_edge_ids: list[str]
     items: list[EvidenceItemResponse]
     policy_citations: list[PolicyCitation]
+    attribution: list[FeatureAttributionResponse] = []          # B3 (BL-048)
+    narrative_sections: list[NarrativeSectionResponse] = []     # B3 (BL-048)
+
+class FeatureAttributionResponse(BaseModel):
+    feature_name: str; contribution: float; rationale: str = ""
+
+class NarrativeSectionResponse(BaseModel):
+    heading: str; body: str; evidence_refs: list[str] = []
 ```
+
+`_evidence_pack_to_response` (`api/dependencies.py`) maps both new list fields through 1:1 from the persisted `EvidencePack`; a legacy pack with neither field set serves `[]` for both (frontend consumption is U2, not yet built — the fields are present but unused pre-U2).
 
 ---
 

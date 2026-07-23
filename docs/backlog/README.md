@@ -23,7 +23,7 @@
 | _plugins.md | 16 | 0 | 0 | 16 | 0% |
 | _security.md | 11 | 0 | 1 | 12 | 8% |
 | agent.md | 19 | 0 | 1 | 20 | 5% |
-| analytics.md | 30 | 0 | 4 | 35 | 11% |
+| analytics.md | 29 | 0 | 5 | 35 | 14% |
 | api.md | 27 | 0 | 1 | 29 | 3% |
 | config.md | 14 | 0 | 1 | 15 | 6% |
 | database.md | 12 | 0 | 1 | 13 | 7% |
@@ -41,7 +41,7 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 410 | 7 | 27 | 447 | 6% |
+| **Total** | 409 | 7 | 28 | 447 | 6% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
