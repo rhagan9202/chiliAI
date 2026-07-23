@@ -1,4 +1,4 @@
-import type { Entity } from '../types/api'
+import type { Entity, Relationship } from '../types/api'
 
 export const ENTITY_COLOR_PALETTE: readonly string[] = [
   '#4f46e5',
@@ -68,4 +68,36 @@ function clamp01(value: number): number {
   if (value < 0) return 0
   if (value > 1) return 1
   return value
+}
+
+/** Distinct from ENTITY_COLOR_PALETTE so the two color systems never collide. */
+export const CLUSTER_COLOR_PALETTE: readonly string[] = [
+  '#00d4ff',
+  '#a855f7',
+  '#f59e0b',
+  '#10b981',
+  '#f43f5e',
+  '#818cf8',
+  '#f97316',
+  '#2dd4bf',
+]
+
+export function clusterColorFor(clusterId: string): string {
+  return CLUSTER_COLOR_PALETTE[fnv1aHash(clusterId) % CLUSTER_COLOR_PALETTE.length]
+}
+
+/** Dormant until the backend writes predicted-link metadata (see plan Global Constraints). */
+export const PREDICTED_LINK_COLOR = 'rgba(168, 85, 247, 0.75)'
+export const PREDICTED_LINK_DASH: readonly [number, number] = [4, 3]
+
+export function isPredictedRelationship(relationship: Relationship): boolean {
+  return relationship.metadata?.predicted === true
+}
+
+export function predictedConfidenceFor(relationship: Relationship): number | null {
+  const raw = relationship.metadata?.confidence
+  if (typeof raw !== 'number' || Number.isNaN(raw)) {
+    return null
+  }
+  return clamp01(raw)
 }
