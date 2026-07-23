@@ -1,8 +1,9 @@
 """Durable analytics-overview aggregation (BL-012).
 
 Computes the dashboard overview entirely from durable stores — the alert
-projection repository, the durable case repository, and the knowledge base
-metadata repository — replacing the previously seeded counts on ``ApiState``.
+feed store (``alert_history``), the durable case repository, and the
+knowledge base metadata repository — replacing the previously seeded counts
+on ``ApiState``.
 
 The overview is global (not KB-scoped), so case + entity counts aggregate
 across every knowledge base the KB repository knows about.
@@ -10,11 +11,11 @@ across every knowledge base the KB repository knows about.
 
 from __future__ import annotations
 
-from api._alert_store import ACTIVE_ALERT_STATUSES, AlertProjectionRepository
 from api.contracts import AnalyticsOverviewResponse
 from cases.service import CaseService
 from knowledgebases.protocols import KnowledgeBaseRepository
-from shared.alerts import normalize_severity
+from monitoring.adapters.protocols import AlertFeedStoreProtocol
+from shared.alerts import ACTIVE_ALERT_STATUSES, normalize_severity
 
 __all__ = ["HIGH_RISK_ALERT_SEVERITIES", "build_analytics_overview"]
 
@@ -32,7 +33,7 @@ _ALERT_PAGE_SIZE = 500
 
 def build_analytics_overview(
     *,
-    alert_repository: AlertProjectionRepository,
+    alert_store: AlertFeedStoreProtocol,
     case_service: CaseService,
     kb_repository: KnowledgeBaseRepository,
 ) -> AnalyticsOverviewResponse:
@@ -40,7 +41,7 @@ def build_analytics_overview(
     knowledge_bases = _list_all_knowledge_base_ids(kb_repository)
     entities_monitored = _sum_entity_counts(kb_repository, knowledge_bases)
     open_cases = _count_open_cases(case_service, knowledge_bases)
-    active_alerts, high_risk_entities = _count_alert_metrics(alert_repository)
+    active_alerts, high_risk_entities = _count_alert_metrics(alert_store)
     return AnalyticsOverviewResponse(
         active_alerts=active_alerts,
         open_cases=open_cases,
@@ -50,23 +51,23 @@ def build_analytics_overview(
 
 
 def _count_alert_metrics(
-    alert_repository: AlertProjectionRepository,
+    alert_store: AlertFeedStoreProtocol,
 ) -> tuple[int, int]:
     """Return (active alert count, active high-risk alert count).
 
-    A single pass over the durable alert projections so the status- and
+    A single pass over the durable alert history so the status- and
     severity-derived tiles stay consistent.
     """
     active = 0
     high_risk = 0
     offset = 0
     while True:
-        records, total = alert_repository.list(limit=_ALERT_PAGE_SIZE, offset=offset)
+        records, total = alert_store.list_alerts(limit=_ALERT_PAGE_SIZE, offset=offset)
         for record in records:
-            if record.alert.status not in ACTIVE_ALERT_STATUSES:
+            if record.status not in ACTIVE_ALERT_STATUSES:
                 continue
             active += 1
-            severity = normalize_severity(record.alert.severity, record.confidence)
+            severity = normalize_severity(record.severity, record.confidence)
             if severity in HIGH_RISK_ALERT_SEVERITIES:
                 high_risk += 1
         offset += len(records)

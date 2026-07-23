@@ -32,17 +32,6 @@ from storage.protocols import ObjectStore
 from vectorstore.protocols import VectorServiceProtocol
 
 
-class AlertProjectionPurger(Protocol):
-    """The slice of the API's alert read-model store the cascade needs.
-
-    Defined structurally here (rather than importing the API-owned
-    ``AlertProjectionRepository``) so this module keeps its no-``api``-imports
-    rule; ``api._alert_store`` repositories satisfy it without registration.
-    """
-
-    def remove_by_knowledge_base(self, knowledge_base_id: str) -> int: ...
-
-
 class GnnClusterPurger(Protocol):
     """The slice of the GNN cluster-summary store the cascade needs.
 
@@ -85,20 +74,13 @@ class KbDeletionStores:
     scorecard_run_repository: ScorecardRunRepository
     document_status_store: SourceDocumentStatusStore
     object_store: ObjectStore
-    # Analytics-owned (not API-owned): unlike alert_projection_store below,
-    # both the API's bundle and the worker's retry bundle build their own
-    # ObjectStoreClusterSummaryStore, so this field is always required.
+    # Analytics-owned (not API-owned): both the API's bundle and the worker's
+    # retry bundle build their own ObjectStoreClusterSummaryStore, so this
+    # field is always required.
     gnn_cluster_store: GnnClusterPurger
     # Analytics-owned (not API-owned), same rationale as gnn_cluster_store: both
     # the API's bundle and the worker's retry bundle always carry one.
     timeseries_anomaly_store: TimeseriesAnomalyPurger
-    # The API gateway owns the alert read projection, so only the API's bundle
-    # carries it; the worker's retry bundle leaves it None and the step is
-    # skipped (never reported as a phantom success). The projection is a
-    # non-authoritative read model, so an orphan surviving that rare path
-    # (API-side step failed AND only the worker retried) costs a stale feed
-    # row, not data integrity.
-    alert_projection_store: AlertProjectionPurger | None = None
 
 
 def delete_object_store_prefix(
@@ -122,13 +104,7 @@ def kb_deletion_steps(
     """
 
     kb = knowledge_base_id
-    alert_projection_store = stores.alert_projection_store
-    maybe_alert_projection: tuple[str, Callable[[], object]] | None = (
-        ("alert_projection", lambda: alert_projection_store.remove_by_knowledge_base(kb))
-        if alert_projection_store is not None
-        else None
-    )
-    steps: list[tuple[str, Callable[[], object]] | None] = [
+    steps: list[tuple[str, Callable[[], object]]] = [
         ("graph", lambda: stores.graph_service.delete_knowledge_base(kb)),
         ("vector", lambda: stores.vector_service.delete_knowledge_base(kb)),
         ("raw_records", lambda: stores.raw_record_store.delete_by_kb(kb)),
@@ -137,7 +113,6 @@ def kb_deletion_steps(
         ("risk_history", lambda: stores.risk_history_writer.delete_by_kb(kb)),
         ("observations", lambda: stores.observation_writer.delete_by_kb(kb)),
         ("alert_history", lambda: stores.alert_history_writer.delete_by_kb(kb)),
-        maybe_alert_projection,
         ("gnn_clusters", lambda: stores.gnn_cluster_store.delete_by_kb(kb)),
         ("metrics", lambda: stores.entity_metric_repository.delete_by_kb(kb)),
         ("conversations", lambda: stores.conversation_repository.delete_by_kb(kb)),
@@ -148,11 +123,10 @@ def kb_deletion_steps(
         ("document_status", lambda: stores.document_status_store.delete_by_kb(kb)),
         ("object_store", lambda: delete_object_store_prefix(stores.object_store, kb)),
     ]
-    return [step for step in steps if step is not None]
+    return steps
 
 
 __all__ = [
-    "AlertProjectionPurger",
     "GnnClusterPurger",
     "KbDeletionStores",
     "TimeseriesAnomalyPurger",

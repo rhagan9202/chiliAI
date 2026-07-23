@@ -14,12 +14,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from agent.protocols import AgentServiceProtocol
-from api._alert_store import AlertProjectionRepository, count_active_alerts
 from api._workflow_projection import count_running_workflows
 from api.contracts import RealtimeSnapshotResponse
 from api.dependencies import (
     get_agent_service,
-    get_alert_repository,
+    get_alert_feed_store,
     get_dlq_record_store,
     get_event_bus,
     get_knowledge_base_repository,
@@ -30,6 +29,8 @@ from events.codec import decode_event
 from events.dlq_models import DlqRecord, DlqRecordListResponse, DlqRecordStatus
 from events.protocols import DlqRecordStore, EventBus
 from knowledgebases.protocols import KnowledgeBaseRepository
+from monitoring.adapters.protocols import AlertFeedStoreProtocol
+from shared.alerts import ACTIVE_ALERT_STATUSES
 from shared.utils import utc_now
 
 __all__ = ["router"]
@@ -40,7 +41,7 @@ _SNAPSHOT_PAGE_SIZE = 500
 
 async def _stream_workspace_updates(
     request: Request,
-    alert_repository: AlertProjectionRepository,
+    alert_store: AlertFeedStoreProtocol,
     agent_service: AgentServiceProtocol,
     repository: KnowledgeBaseRepository,
     user: User,
@@ -55,7 +56,7 @@ async def _stream_workspace_updates(
 
         snapshot = _build_realtime_snapshot(
             sequence,
-            alert_repository,
+            alert_store,
             agent_service,
             repository,
             user,
@@ -69,7 +70,7 @@ async def _stream_workspace_updates(
 async def stream_workspace_updates(
     request: Request,
     max_events: int | None = Query(default=None, ge=1),
-    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
+    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
     agent_service: AgentServiceProtocol = Depends(get_agent_service),
     repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
     user: User = Depends(require_role("viewer")),
@@ -83,7 +84,7 @@ async def stream_workspace_updates(
     return StreamingResponse(
         _stream_workspace_updates(
             request,
-            alert_repository,
+            alert_store,
             agent_service,
             repository,
             user,
@@ -97,9 +98,14 @@ async def stream_workspace_updates(
     )
 
 
+def _count_active_alerts(alert_store: AlertFeedStoreProtocol) -> int:
+    """Return the number of active alerts for realtime workspace snapshots."""
+    return alert_store.count_by_statuses(ACTIVE_ALERT_STATUSES)
+
+
 def _build_realtime_snapshot(
     sequence: int,
-    alert_repository: AlertProjectionRepository,
+    alert_store: AlertFeedStoreProtocol,
     agent_service: AgentServiceProtocol,
     repository: KnowledgeBaseRepository,
     user: User,
@@ -109,7 +115,7 @@ def _build_realtime_snapshot(
     return RealtimeSnapshotResponse(
         sequence=sequence,
         emitted_at=utc_now(),
-        active_alerts=count_active_alerts(alert_repository),
+        active_alerts=_count_active_alerts(alert_store),
         running_workflows=running_workflows,
         knowledge_base_statuses=cached_statuses,
     )

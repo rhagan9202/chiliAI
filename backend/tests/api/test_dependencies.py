@@ -31,8 +31,8 @@ from events.adapters.redis_streams import RedisStreamsEventBus
 from graph.service import GraphService
 from ingestion.recovery import ObjectStoreIngestionRecoveryStore
 from llm.service import LlmService
-from monitoring.adapters.in_memory import InMemoryObservationSource
-from monitoring.adapters.postgres import PostgresObservationSource
+from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter, InMemoryObservationSource
+from monitoring.adapters.postgres import PostgresAlertHistoryStore, PostgresObservationSource
 from monitoring.models import MonitoringBatch, MonitoringObservation
 from monitoring.service import MonitoringService
 from monitoring.service_models import MonitoringEvaluationRequest
@@ -72,6 +72,7 @@ def clear_dependency_caches() -> None:
         dependencies.get_connection_provider,
         dependencies.get_raw_record_store,
         dependencies.get_document_status_store,
+        dependencies.get_alert_feed_store,
         dependencies.get_knowledge_base_repository,
         dependencies.get_parser_registry,
         dependencies.get_remote_fetcher,
@@ -1096,55 +1097,33 @@ def test_get_knowledge_base_repository_unsupported_backend_raises(
 
 
 # ---------------------------------------------------------------------------
-# _create_alert_repository: object_store branch and unsupported backend
+# get_alert_feed_store: Postgres vs. in-memory backend selection (alerts.36)
 # ---------------------------------------------------------------------------
 
 
-def _call_create_alert_repository() -> object:
-    """Call the private _create_alert_repository via getattr to satisfy pyright."""
-    factory = getattr(dependencies, "_create_alert_repository")
-    return factory()
-
-
-def test_create_alert_repository_object_store_backend(
+def test_get_alert_feed_store_returns_postgres_store_when_provider_non_null(
     monkeypatch: pytest.MonkeyPatch,
     base_config: DomainConfig,
 ) -> None:
-    from api._alert_store import ObjectStoreAlertProjectionRepository
-
-    monkeypatch.setenv("CHILI_ALERT_REPOSITORY_BACKEND", "object_store")
+    fake_provider = MagicMock()
     _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: fake_provider)
 
-    repo = _call_create_alert_repository()
+    store = dependencies.get_alert_feed_store()
 
-    assert isinstance(repo, ObjectStoreAlertProjectionRepository)
-
-
-@pytest.mark.parametrize("alias", ["object_store", "object-store", "objectstore"])
-def test_create_alert_repository_accepts_all_object_store_aliases(
-    monkeypatch: pytest.MonkeyPatch,
-    base_config: DomainConfig,
-    alias: str,
-) -> None:
-    from api._alert_store import ObjectStoreAlertProjectionRepository
-
-    monkeypatch.setenv("CHILI_ALERT_REPOSITORY_BACKEND", alias)
-    _install_config(monkeypatch, base_config)
-
-    repo = _call_create_alert_repository()
-
-    assert isinstance(repo, ObjectStoreAlertProjectionRepository)
+    assert isinstance(store, PostgresAlertHistoryStore)
 
 
-def test_create_alert_repository_unsupported_backend_raises(
+def test_get_alert_feed_store_returns_in_memory_when_provider_is_none(
     monkeypatch: pytest.MonkeyPatch,
     base_config: DomainConfig,
 ) -> None:
-    monkeypatch.setenv("CHILI_ALERT_REPOSITORY_BACKEND", "dynamodb")
     _install_config(monkeypatch, base_config)
+    monkeypatch.setattr(dependencies, "get_connection_provider", lambda: None)
 
-    with pytest.raises(ConfigurationError, match="dynamodb"):
-        _call_create_alert_repository()
+    store = dependencies.get_alert_feed_store()
+
+    assert isinstance(store, InMemoryAlertHistoryWriter)
 
 
 def test_get_embeddings_service_uses_config_driven_cache(

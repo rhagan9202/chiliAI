@@ -1,19 +1,20 @@
-"""Alerts API router — list, detail, and acknowledge alert projections."""
+"""Alerts API router — list, detail, and acknowledge from the durable store.
+
+Serves every route from the durable ``alert_history`` table via
+``AlertFeedStoreProtocol`` (alerts.36); response shaping lives in
+``api.dependencies`` alongside the rest of the payload-builder factories.
+"""
 
 from __future__ import annotations
 
-from typing import Annotated
+from fastapi import APIRouter, Depends, status
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
-
-from api._alert_store import (
-    AlertProjectionRepository,
-    acknowledge_alert_projection,
-    project_alert_detail,
-    project_alert_feed,
-)
 from api.contracts import AlertDetailResponse, AlertListResponse, ApiEnvelope
-from api.dependencies import get_alert_repository
+from api.dependencies import (
+    get_alert_acknowledge_payload,
+    get_alert_detail_payload,
+    get_alert_list_payload,
+)
 from api.middleware.rbac import require_role
 
 __all__ = ["router"]
@@ -27,20 +28,10 @@ router = APIRouter(prefix="/alerts", tags=["alerts"])
     dependencies=[Depends(require_role("viewer"))],
 )
 async def list_alerts(
-    knowledge_base_id: Annotated[str | None, Query(alias="kb")] = None,
-    status_filter: Annotated[str | None, Query(alias="status")] = None,
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
-    offset: Annotated[int, Query(ge=0)] = 0,
-    repository: AlertProjectionRepository = Depends(get_alert_repository),
+    alerts: AlertListResponse = Depends(get_alert_list_payload),
 ) -> AlertListResponse:
     """Return the alert feed in the api.contracts shape (items + page)."""
-    return project_alert_feed(
-        repository,
-        limit=limit,
-        offset=offset,
-        status=status_filter,
-        knowledge_base_id=knowledge_base_id,
-    )
+    return alerts
 
 
 @router.get(
@@ -49,17 +40,10 @@ async def list_alerts(
     dependencies=[Depends(require_role("viewer"))],
 )
 async def get_alert(
-    alert_id: str = Path(..., description="Alert identifier."),
-    repository: AlertProjectionRepository = Depends(get_alert_repository),
+    alert: AlertDetailResponse = Depends(get_alert_detail_payload),
 ) -> AlertDetailResponse:
     """Return one alert detail with related entities and policy citations."""
-    record = repository.get(alert_id)
-    if record is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Alert '{alert_id}' was not found.",
-        )
-    return project_alert_detail(record)
+    return alert
 
 
 @router.post(
@@ -69,17 +53,7 @@ async def get_alert(
     dependencies=[Depends(require_role("analyst"))],
 )
 async def acknowledge_alert(
-    alert_id: str = Path(..., description="Alert identifier."),
-    repository: AlertProjectionRepository = Depends(get_alert_repository),
+    receipt: ApiEnvelope = Depends(get_alert_acknowledge_payload),
 ) -> ApiEnvelope:
     """Acknowledge an alert; returns an ApiEnvelope status receipt."""
-    updated = acknowledge_alert_projection(repository, alert_id)
-    if updated is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Alert '{alert_id}' was not found.",
-        )
-    return ApiEnvelope(
-        status="accepted",
-        message=f"Alert '{updated.alert.id}' is now {updated.alert.status}.",
-    )
+    return receipt

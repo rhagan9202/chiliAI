@@ -54,12 +54,7 @@ _DELETE_BY_KB_FIELDS = [
 def _mock_stores() -> tuple[KbDeletionStores, dict[str, MagicMock]]:
     mocks = {field: MagicMock() for field in _STORE_FIELDS}
     mocks["object_store"].list_keys.return_value = []
-    # The worker bundle carries no API-owned alert projection store; the
-    # cascade skips that step (see knowledgebases.cleanup.KbDeletionStores).
-    return (
-        cast(KbDeletionStores, SimpleNamespace(**mocks, alert_projection_store=None)),
-        mocks,
-    )
+    return (cast(KbDeletionStores, SimpleNamespace(**mocks)), mocks)
 
 
 def test_handler_does_nothing_when_cleanup_not_pending() -> None:

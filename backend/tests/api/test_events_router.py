@@ -16,17 +16,19 @@ from agent.adapters.in_memory import InMemoryWorkflowRunStore
 from agent.models import WorkflowRun, WorkflowRunStatus, WorkflowStepState
 from agent.protocols import AgentServiceProtocol
 from agent.service import create_agent_service
-from api._alert_store import AlertProjectionRecord, InMemoryAlertProjectionRepository
 from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from knowledgebases.models import DocumentRecord
 from api.dependencies import (
     get_agent_service,
-    get_alert_repository,
+    get_alert_feed_store,
     get_knowledge_base_repository,
 )
 from api.middleware.auth import get_current_user
 from events.adapters.in_memory import InMemoryEventBus
-from shared.types import Alert, KnowledgeBase
+from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter
+from monitoring.adapters.protocols import AlertFeedStoreProtocol
+from monitoring.models import AlertHistoryRecord
+from shared.types import KnowledgeBase
 from shared.utils import utc_now
 
 DEFAULTS_DIR = Path(__file__).resolve().parent.parent.parent / "config" / "defaults"
@@ -37,41 +39,43 @@ def _skip_policy_audit(app: FastAPI) -> None:
     del app
 
 
-def _seed_alert_repository() -> InMemoryAlertProjectionRepository:
-    """Return active and inactive alert projections for SSE tests."""
-    repository = InMemoryAlertProjectionRepository()
-    repository.upsert(
-        AlertProjectionRecord(
-            knowledge_base_id="kb-1",
-            alert=Alert(
-                id="alert-active",
-                entity_type="provider",
+def _seed_alert_store() -> AlertFeedStoreProtocol:
+    """Return active and inactive alert history rows for SSE tests."""
+    store = InMemoryAlertHistoryWriter()
+    now = utc_now()
+    store.write_alerts(
+        [
+            AlertHistoryRecord(
+                knowledge_base_id="kb-1",
+                alert_id="alert-active",
                 entity_id="provider-204",
+                entity_type="provider",
                 severity="high",
+                status="open",
                 title="Active alert",
                 reasoning="This alert should count as active.",
-                created_at=utc_now(),
+                metric_name="claims_per_week",
+                created_at=now,
+                updated_at=now,
+                confidence=0.82,
             ),
-            confidence=0.82,
-        )
-    )
-    repository.upsert(
-        AlertProjectionRecord(
-            knowledge_base_id="kb-1",
-            alert=Alert(
-                id="alert-resolved",
-                entity_type="provider",
+            AlertHistoryRecord(
+                knowledge_base_id="kb-1",
+                alert_id="alert-resolved",
                 entity_id="provider-118",
+                entity_type="provider",
                 severity="medium",
+                status="resolved",
                 title="Resolved alert",
                 reasoning="This alert should not count as active.",
-                created_at=utc_now(),
-                status="resolved",
+                metric_name="claims_per_week",
+                created_at=now,
+                updated_at=now,
+                confidence=0.62,
             ),
-            confidence=0.62,
-        )
+        ]
     )
-    return repository
+    return store
 
 
 def _seed_agent_service() -> AgentServiceProtocol:
@@ -143,9 +147,9 @@ def test_events_stream_returns_cached_knowledge_base_statuses_without_graph_read
             status="registered",
         )
     )
-    alert_repository = _seed_alert_repository()
+    alert_store = _seed_alert_store()
     agent_service = _seed_agent_service()
-    app.dependency_overrides[get_alert_repository] = lambda: alert_repository
+    app.dependency_overrides[get_alert_feed_store] = lambda: alert_store
     app.dependency_overrides[get_agent_service] = lambda: agent_service
     app.dependency_overrides[get_knowledge_base_repository] = lambda: repository
 

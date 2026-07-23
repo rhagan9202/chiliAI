@@ -6,6 +6,10 @@ from typing import Literal, cast
 
 AlertSeverity = Literal["low", "medium", "high", "critical"]
 
+# Alert statuses treated as durably "active" across the alert feed, the SSE
+# workspace snapshot, and the analytics-overview dashboard tile.
+ACTIVE_ALERT_STATUSES = frozenset({"open", "acknowledged", "investigating"})
+
 
 def normalize_severity(raw_severity: str, confidence: float) -> AlertSeverity:
     """Return a normalized analyst-facing alert severity."""
@@ -22,4 +26,4 @@ def normalize_severity(raw_severity: str, confidence: float) -> AlertSeverity:
     return "low"
 
 
-__all__ = ["AlertSeverity", "normalize_severity"]
+__all__ = ["ACTIVE_ALERT_STATUSES", "AlertSeverity", "normalize_severity"]

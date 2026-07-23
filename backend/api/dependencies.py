@@ -14,7 +14,10 @@ from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
 from api.contracts import (
     AnalystFeedbackResponse,
     AnalyticsOverviewResponse,
+    AlertDetailResponse,
     AlertListItem,
+    AlertListResponse,
+    ApiEnvelope,
     CaseCreateRequest,
     CaseDetailResponse,
     CaseFeedbackCreateRequest,
@@ -43,12 +46,6 @@ from api.contracts import (
     RiskScoreResponse,
 )
 from api._analytics_overview import build_analytics_overview
-from api._alert_store import (
-    AlertProjectionRecord,
-    AlertProjectionRepository,
-    InMemoryAlertProjectionRepository,
-    ObjectStoreAlertProjectionRepository,
-)
 from api._graph_entity_payload import build_graph_entity_detail
 from api._conversation_payloads import (
     build_assistant_message,
@@ -172,10 +169,12 @@ from monitoring.adapters.postgres import (
     PostgresObservationStore,
 )
 from monitoring.adapters.protocols import (
+    AlertFeedStoreProtocol,
     AlertHistoryWriter,
     ObservationSourceProtocol,
     ObservationWriter,
 )
+from monitoring.models import AlertHistoryRecord
 from monitoring.protocols import MonitoringServiceProtocol
 from monitoring.service import create_monitoring_service
 from database.protocols import ConnectionProvider
@@ -208,7 +207,7 @@ from records.protocols import RecordsServiceProtocol
 from records.service import create_records_service
 from shared.exceptions import ConfigurationError
 from shared.logging import get_logger
-from shared.types import EvidencePack
+from shared.types import Alert, EvidencePack
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.adapters.local_fs_adapter import LocalFsObjectStore
 from storage.protocols import ObjectStore
@@ -234,7 +233,10 @@ __all__ = [
     "load_chili_environment",
     "reset_domain_config_caches",
     "get_api_state",
-    "get_alert_repository",
+    "get_alert_acknowledge_payload",
+    "get_alert_detail_payload",
+    "get_alert_feed_store",
+    "get_alert_list_payload",
     "get_agent_service",
     "get_analytics_overview_payload",
     "get_case_create_payload",
@@ -487,28 +489,18 @@ def get_case_service(
     return create_case_service(repository)
 
 
-def get_alert_repository(request: Request) -> AlertProjectionRepository:
-    """Return the per-app alert projection repository used by alert routes."""
-    return _memoize_config_derived(
-        request.app,
-        "alert_repository",
-        _create_alert_repository,
-        guard=lambda value: isinstance(value, AlertProjectionRepository),
-    )
+@lru_cache(maxsize=1)
+def get_alert_feed_store() -> AlertFeedStoreProtocol:
+    """Return the durable alert feed store (Postgres when a DB is configured).
 
-
-def _create_alert_repository() -> AlertProjectionRepository:
-    """Create the alert projection repository selected by environment."""
-    backend = os.environ.get("CHILI_ALERT_REPOSITORY_BACKEND", "in_memory").strip().lower()
-    if backend in {"in_memory", "memory"}:
-        return InMemoryAlertProjectionRepository()
-    if backend in {"object_store", "object-store", "objectstore"}:
-        return ObjectStoreAlertProjectionRepository(get_object_store())
-    _raise_unsupported_backend(
-        "alert repository",
-        backend,
-        ("in_memory", "object_store"),
-    )
+    Serves the alert list/detail/acknowledge routes and the SSE active-alert
+    count directly from the ``alert_history`` table (alerts.36) — the API no
+    longer keeps a separate, non-authoritative projection blob.
+    """
+    provider = get_connection_provider()
+    if provider is None:
+        return InMemoryAlertHistoryWriter()
+    return PostgresAlertHistoryStore(provider)
 
 
 def _case_to_summary(case: Case) -> CaseSummaryResponse:
@@ -526,21 +518,29 @@ def _case_to_summary(case: Case) -> CaseSummaryResponse:
     )
 
 
-def _alert_record_to_list_item(record: AlertProjectionRecord) -> AlertListItem:
-    alert = record.alert
+_ALERT_STATUS_LITERALS = frozenset(
+    {"open", "acknowledged", "investigating", "resolved", "dismissed"}
+)
+
+
+def _alert_record_to_list_item(record: AlertHistoryRecord) -> AlertListItem:
+    status = record.status if record.status in _ALERT_STATUS_LITERALS else "open"
     return AlertListItem(
-        id=alert.id,
+        id=record.alert_id,
         knowledge_base_id=record.knowledge_base_id,
-        entity_id=alert.entity_id,
-        entity_type=alert.entity_type,
-        entity_label=record.entity_label or alert.entity_id,
-        severity=normalize_severity(alert.severity, record.confidence),
-        status=alert.status,
-        title=alert.title,
-        reasoning=alert.reasoning,
+        entity_id=record.entity_id,
+        entity_type=record.entity_type,
+        entity_label=record.entity_label or record.entity_id,
+        severity=normalize_severity(record.severity, record.confidence),
+        status=cast(
+            Literal["open", "acknowledged", "investigating", "resolved", "dismissed"],
+            status,
+        ),
+        title=record.title,
+        reasoning=record.reasoning,
         confidence=record.confidence,
-        evidence_pack_id=alert.evidence_pack_id,
-        created_at=alert.created_at,
+        evidence_pack_id=record.evidence_pack_id,
+        created_at=record.created_at,
         tags=list(record.tags),
     )
 
@@ -548,11 +548,11 @@ def _alert_record_to_list_item(record: AlertProjectionRecord) -> AlertListItem:
 def _linked_case_alerts(
     case: Case,
     *,
-    alert_repository: AlertProjectionRepository,
+    alert_store: AlertFeedStoreProtocol,
 ) -> list[AlertListItem]:
     linked_alerts: list[AlertListItem] = []
     for alert_id in case.alert_ids:
-        record = alert_repository.get(alert_id)
+        record = alert_store.get_alert(alert_id)
         if record is None or record.knowledge_base_id != case.knowledge_base_id:
             continue
         linked_alerts.append(_alert_record_to_list_item(record))
@@ -577,7 +577,7 @@ def _assemble_case_detail(
     case: Case,
     *,
     evidence_repository: EvidencePackRepository,
-    alert_repository: AlertProjectionRepository,
+    alert_store: AlertFeedStoreProtocol,
 ) -> CaseDetailResponse:
     evidence_pack: EvidencePackResponse | None = None
     if case.evidence_pack_id:
@@ -586,7 +586,7 @@ def _assemble_case_detail(
             evidence_pack = _evidence_pack_to_response(pack)
     return CaseDetailResponse(
         case=_case_to_summary(case),
-        alerts=_linked_case_alerts(case, alert_repository=alert_repository),
+        alerts=_linked_case_alerts(case, alert_store=alert_store),
         evidence_pack=evidence_pack,
         entity_timeline=[
             CaseTimelineEventResponse(
@@ -623,14 +623,14 @@ def get_case_detail_payload(
     knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
     service: CaseService = Depends(get_case_service),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
-    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
+    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
 ) -> CaseDetailResponse:
     """Return one KB-scoped case detail read model."""
     case = service.get(knowledge_base_id=knowledge_base_id, case_id=case_id)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found.")
     return _assemble_case_detail(
-        case, evidence_repository=evidence_repository, alert_repository=alert_repository
+        case, evidence_repository=evidence_repository, alert_store=alert_store
     )
 
 
@@ -639,7 +639,7 @@ def get_case_create_payload(
     knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
     service: CaseService = Depends(get_case_service),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
-    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
+    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
 ) -> CaseDetailResponse:
     """Create and return a durable, KB-scoped case."""
     case = service.create(
@@ -650,7 +650,7 @@ def get_case_create_payload(
         alert_ids=list(payload.alert_ids),
     )
     return _assemble_case_detail(
-        case, evidence_repository=evidence_repository, alert_repository=alert_repository
+        case, evidence_repository=evidence_repository, alert_store=alert_store
     )
 
 
@@ -660,7 +660,7 @@ def get_case_update_payload(
     knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
     service: CaseService = Depends(get_case_service),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
-    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
+    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
 ) -> CaseDetailResponse:
     """Patch and return a durable, KB-scoped case."""
     try:
@@ -675,7 +675,7 @@ def get_case_update_payload(
     except CaseNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Case not found.") from exc
     return _assemble_case_detail(
-        case, evidence_repository=evidence_repository, alert_repository=alert_repository
+        case, evidence_repository=evidence_repository, alert_store=alert_store
     )
 
 
@@ -685,7 +685,7 @@ def get_case_feedback_payload(
     knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
     service: CaseService = Depends(get_case_service),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
-    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
+    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
 ) -> CaseDetailResponse:
     """Append analyst feedback to a case and return the updated detail."""
     try:
@@ -700,7 +700,7 @@ def get_case_feedback_payload(
     except CaseNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Case not found.") from exc
     return _assemble_case_detail(
-        case, evidence_repository=evidence_repository, alert_repository=alert_repository
+        case, evidence_repository=evidence_repository, alert_store=alert_store
     )
 
 
@@ -1730,7 +1730,7 @@ def get_knowledge_base_repository() -> KnowledgeBaseRepository:
 
 def get_graph_entity_detail_payload(
     entity_id: str = Path(..., description="Entity identifier."),
-    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
+    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
     graph_service: GraphServiceProtocol = Depends(get_graph_service),
     risk_service: RiskServiceProtocol = Depends(get_risk_service),
     kb_repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
@@ -1741,7 +1741,7 @@ def get_graph_entity_detail_payload(
         entity_id,
         graph_service=graph_service,
         risk_service=risk_service,
-        alert_repository=alert_repository,
+        alert_store=alert_store,
         kb_repository=kb_repository,
         domain_config=domain_config,
     )
@@ -1751,13 +1751,13 @@ def get_graph_entity_detail_payload(
 
 
 def get_analytics_overview_payload(
-    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
+    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
     case_service: CaseService = Depends(get_case_service),
     kb_repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
 ) -> AnalyticsOverviewResponse:
     """Return the analytics overview computed from durable stores (BL-012)."""
     return build_analytics_overview(
-        alert_repository=alert_repository,
+        alert_store=alert_store,
         case_service=case_service,
         kb_repository=kb_repository,
     )
@@ -1767,14 +1767,29 @@ def get_case_promote_payload(
     payload: CasePromoteRequest,
     knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
     service: CaseService = Depends(get_case_service),
-    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
+    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
 ) -> CaseDetailResponse:
     """Promote an alert into a durable, KB-scoped case capturing its evidence."""
-    record = alert_repository.get(payload.alert_id)
+    record = alert_store.get_alert(payload.alert_id)
     if record is None or record.knowledge_base_id != knowledge_base_id:
         raise HTTPException(status_code=404, detail="Alert not found.")
-    alert = record.alert
+    alert = Alert(
+        id=record.alert_id,
+        entity_type=record.entity_type,
+        entity_id=record.entity_id,
+        severity=record.severity,
+        title=record.title,
+        reasoning=record.reasoning,
+        evidence_pack_id=record.evidence_pack_id,
+        created_at=record.created_at,
+        status=cast(
+            Literal["open", "acknowledged", "investigating", "resolved", "dismissed"],
+            record.status if record.status in _ALERT_STATUS_LITERALS else "open",
+        ),
+        updated_at=record.updated_at,
+        acknowledged=record.status == "acknowledged",
+    )
     timeline = [
         CaseTimelineEvent(
             occurred_at=alert.created_at,
@@ -1789,7 +1804,76 @@ def get_case_promote_payload(
         notes=payload.notes,
     )
     return _assemble_case_detail(
-        case, evidence_repository=evidence_repository, alert_repository=alert_repository
+        case, evidence_repository=evidence_repository, alert_store=alert_store
+    )
+
+
+def get_alert_list_payload(
+    knowledge_base_id: str | None = Query(default=None, alias="kb"),
+    status_filter: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
+) -> AlertListResponse:
+    """Return the paginated alert feed from the durable ``alert_history`` store."""
+    statuses = [status_filter] if status_filter is not None else None
+    if knowledge_base_id is None:
+        records, total = store.list_alerts(statuses=statuses, limit=limit, offset=offset)
+    else:
+        first_page, total_records = store.list_alerts(statuses=statuses, limit=1, offset=0)
+        all_records = first_page
+        if total_records > 1:
+            all_records, _ = store.list_alerts(
+                statuses=statuses, limit=total_records, offset=0
+            )
+        filtered_records = [
+            record for record in all_records if record.knowledge_base_id == knowledge_base_id
+        ]
+        total = len(filtered_records)
+        records = filtered_records[offset : offset + limit]
+
+    page = (offset // limit) + 1 if limit else 1
+    return AlertListResponse(
+        items=[_alert_record_to_list_item(record) for record in records],
+        page=PageInfo(page=page, page_size=max(limit, 1), total_items=total),
+    )
+
+
+def get_alert_detail_payload(
+    alert_id: str = Path(..., description="Alert identifier."),
+    store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
+) -> AlertDetailResponse:
+    """Return one alert detail with related entities and policy citations.
+
+    ``alert_history`` does not carry related-entity or policy-citation columns
+    (BL-005/BL-012 keep those on the evidence pack / policy item read models),
+    so this defaults to the alert's own entity and an empty citation list.
+    """
+    record = store.get_alert(alert_id)
+    if record is None:
+        raise HTTPException(
+            status_code=404, detail=f"Alert '{alert_id}' was not found."
+        )
+    return AlertDetailResponse(
+        alert=_alert_record_to_list_item(record),
+        related_entity_ids=[record.entity_id],
+        policy_citations=[],
+    )
+
+
+def get_alert_acknowledge_payload(
+    alert_id: str = Path(..., description="Alert identifier."),
+    store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
+) -> ApiEnvelope:
+    """Acknowledge an alert in the durable store; returns a status receipt."""
+    updated = store.acknowledge(alert_id)
+    if updated is None:
+        raise HTTPException(
+            status_code=404, detail=f"Alert '{alert_id}' was not found."
+        )
+    return ApiEnvelope(
+        status="accepted",
+        message=f"Alert '{updated.alert_id}' is now {updated.status}.",
     )
 
 
@@ -1905,6 +1989,7 @@ CONFIG_CACHE_REGISTRY: dict[str, _ClearableCache] = {
     "get_risk_history_writer": get_risk_history_writer,
     "get_observation_writer": get_observation_writer,
     "get_alert_history_writer": get_alert_history_writer,
+    "get_alert_feed_store": get_alert_feed_store,
     "get_entity_metric_repository": get_entity_metric_repository,
     "get_knowledge_base_repository": get_knowledge_base_repository,
     "get_rag_service": get_rag_service,
@@ -1919,7 +2004,6 @@ _CONFIG_DERIVED_APP_STATE_ATTRS: tuple[str, ...] = (
     "api_state",
     "evidence_pack_repository",
     "case_repository",
-    "alert_repository",
     "conversation_repository",
     "policy_repository",
     "scorecard_run_repository",

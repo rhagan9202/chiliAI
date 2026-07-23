@@ -3,7 +3,7 @@
 Serves ``/graph/entities/{id}`` from the durable graph service (the same store
 the worker and the dev-seed endpoint write to) instead of the seeded
 ``ApiState`` graph repository. Risk scores come from the durable risk service
-and related alerts from the durable alert projection repository.
+and related alerts from the durable alert feed store (``alert_history``).
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ from analytics.risk.exceptions import (
 )
 from analytics.risk.protocols import RiskServiceProtocol
 from analytics.risk.service_models import RiskAssessmentRequest
-from api._alert_store import AlertProjectionRepository
 from api.contracts import (
     GraphEdgeResponse,
     GraphEntityDetailResponse,
@@ -23,6 +22,7 @@ from api.contracts import (
 from config.schema import DomainConfig
 from graph.protocols import GraphServiceProtocol
 from knowledgebases.protocols import KnowledgeBaseRepository
+from monitoring.adapters.protocols import AlertFeedStoreProtocol
 from shared.types import Entity, EntityDefinition, Relationship
 
 __all__ = ["build_graph_entity_detail"]
@@ -35,7 +35,7 @@ def build_graph_entity_detail(
     *,
     graph_service: GraphServiceProtocol,
     risk_service: RiskServiceProtocol,
-    alert_repository: AlertProjectionRepository,
+    alert_store: AlertFeedStoreProtocol,
     kb_repository: KnowledgeBaseRepository,
     domain_config: DomainConfig,
 ) -> GraphEntityDetailResponse | None:
@@ -70,7 +70,7 @@ def build_graph_entity_detail(
             for neighbor in neighbors
         ],
         relationships=[_to_edge(relationship) for relationship in relationships],
-        related_alert_ids=_related_alert_ids(alert_repository, entity_id),
+        related_alert_ids=_related_alert_ids(alert_store, entity_id),
     )
 
 
@@ -115,15 +115,15 @@ def _safe_risk_score(
 
 
 def _related_alert_ids(
-    alert_repository: AlertProjectionRepository,
+    alert_store: AlertFeedStoreProtocol,
     entity_id: str,
 ) -> list[str]:
     related: list[str] = []
     offset = 0
     while True:
-        records, total = alert_repository.list(limit=500, offset=offset)
+        records, total = alert_store.list_alerts(limit=500, offset=offset)
         related.extend(
-            record.alert.id for record in records if record.alert.entity_id == entity_id
+            record.alert_id for record in records if record.entity_id == entity_id
         )
         offset += len(records)
         if not records or offset >= total:

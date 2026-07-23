@@ -872,11 +872,10 @@ def build_kb_deletion_stores(
     not need to be the same instance as ``WorkerDependencies.gnn_cluster_store``
     — object-store-backed state is shared by construction).
 
-    ``alert_projection_store`` is deliberately left ``None``: the alert read
-    projection is API-owned (``api._alert_store``) and this module must not
-    import from ``api``. The cascade skips that step here; the API's DELETE
-    route always runs it. ``gnn_cluster_store`` is analytics-owned (not
-    API-owned), so unlike the alert projection it is always required.
+    The alert feed is now served directly from ``alert_history`` (alerts.36),
+    so ``alert_history_writer.delete_by_kb`` alone purges the durable alert
+    read model too; there is no separate API-owned projection step to skip
+    here anymore.
     """
 
     return KbDeletionStores(
