@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom'
 
 import { useAlerts } from '../api/alerts'
 import { useAnalyticsOverview, useGnnClusters, useMetricTimeseries, useRiskScores } from '../api/analytics'
-import { useDomainConfig } from '../api/config'
+import { useDomainConfig, useDomainFeatures } from '../api/config'
 import { useKnowledgeBases } from '../api/knowledgebases'
 import { useWorkflows } from '../api/workflows'
 import { TrendBars } from '../components/charts/TrendBars'
@@ -21,6 +21,8 @@ import { LoadingState } from '../components/ui/LoadingState'
 import { RiskBadge } from '../components/ui/RiskBadge'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { Tabs } from '../components/ui/Tabs'
+import { flagLabelFor } from '../utils/flagLabel'
+import { clusterColorFor } from '../utils/graphStyles'
 import './pages.css'
 
 const dashboardTabs = [
@@ -39,6 +41,16 @@ function formatEntityType(entityType: string) {
 
 function formatRiskEntityLabel(entityType: string, entityId: string) {
   return `${formatEntityType(entityType) || 'Entity'} ${entityId}`
+}
+
+function triageNumeralColor(severity: string): string {
+  if (severity === 'critical' || severity === 'high') {
+    return 'var(--c-red)'
+  }
+  if (severity === 'medium') {
+    return 'var(--c-amber)'
+  }
+  return 'var(--c-green)'
 }
 
 function DashboardTabPanel({
@@ -78,6 +90,8 @@ export function DashboardPage() {
   const workflowsQuery = useWorkflows()
   const knowledgeBasesQuery = useKnowledgeBases()
   const domainConfigQuery = useDomainConfig()
+  const domainFeaturesQuery = useDomainFeatures()
+  const capabilities = domainFeaturesQuery.data?.capabilities
   const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
   const activeDomainName = domainConfigQuery.data?.domain.name ?? null
   // Scope to the active domain pack before picking the ready KB: a leftover KB
@@ -145,9 +159,9 @@ export function DashboardPage() {
   return (
     <section className="page-grid">
       <SectionHeader
-        actions={<Chip label="Phase 5 data live" tone="info" />}
+        actions={<Chip label={domainConfigQuery.data?.domain.display_name ?? 'Live'} tone="info" />}
         eyebrow="Operational overview"
-        subtitle="The dashboard now reads live backend overview, alert, and workflow summaries instead of implementation fixtures."
+        subtitle="Live operational overview for the active knowledge base."
         title="Dashboard"
       />
 
@@ -201,15 +215,34 @@ export function DashboardPage() {
 
           {leadAlert ? (
             <Card>
-              <div className="metric-stack">
-                <div className="metric-row metric-row--stacked">
-                  <strong>{leadAlert.entity_label}</strong>
-                  <span className="metric-row__label">{leadAlert.reasoning}</span>
+              <div className="triage-row">
+                <div
+                  className="triage-row__numeral"
+                  data-testid="triage-numeral"
+                  style={{ color: triageNumeralColor(leadAlert.severity) }}
+                >
+                  {Math.round(leadAlert.confidence * 100)}
                 </div>
-                <div className="alert-row-card__meta">
-                  {leadAlert.tags.map((tag) => (
-                    <Chip key={tag} label={tag.replace(/-/g, ' ')} tone="info" />
-                  ))}
+                <div className="metric-stack">
+                  <div className="metric-row metric-row--stacked">
+                    <strong>{leadAlert.entity_label}</strong>
+                    <span className="flag-label">
+                      {flagLabelFor({ tags: leadAlert.tags ?? [], severity: leadAlert.severity })}
+                    </span>
+                    <span className="metric-row__label">{leadAlert.reasoning}</span>
+                  </div>
+                  <div className="alert-row-card__meta">
+                    {leadAlert.tags.map((tag) => (
+                      <Chip key={tag} label={tag.replace(/-/g, ' ')} tone="info" />
+                    ))}
+                  </div>
+                  <Link
+                    aria-label={`Investigate ${leadAlert.entity_label}`}
+                    className="page-button page-button--sm page-button--secondary"
+                    to={`/investigation/${encodeURIComponent(leadAlert.entity_id)}?kb=${encodeURIComponent(leadAlert.knowledge_base_id)}`}
+                  >
+                    Investigate
+                  </Link>
                 </div>
               </div>
             </Card>
@@ -300,24 +333,43 @@ export function DashboardPage() {
               </div>
             </Card>
 
-            <Card>
-              <div className="metric-stack">
-                <div className="metric-row metric-row--stacked">
-                  <strong>Graph clusters</strong>
-                  <span className="metric-row__label">GNN cluster summary</span>
-                </div>
-                {clusters.map((cluster) => (
-                  <div className="dashboard-summary-row" key={cluster.cluster_id}>
-                    <span>
-                      <strong>{cluster.label ?? cluster.cluster_id}</strong>
-                      <span className="metric-row__label">{cluster.entity_ids?.length ?? 0} entities</span>
-                    </span>
-                    <Chip label={`${Math.round(cluster.anomaly_score * 100)} anomaly`} tone="warning" />
+            {capabilities?.gnn ? (
+              <Card>
+                <div className="metric-stack">
+                  <div className="metric-row metric-row--stacked">
+                    <strong>Graph clusters</strong>
+                    <span className="metric-row__label">GNN cluster summary</span>
                   </div>
-                ))}
-                {clusters.length === 0 ? <EmptyState description="No graph clusters are available for this knowledge base." title="No graph clusters" /> : null}
-              </div>
-            </Card>
+                  {clusters.map((cluster) => {
+                    const firstMember = cluster.entity_ids?.[0]
+                    return (
+                      <div className="dashboard-summary-row" key={cluster.cluster_id}>
+                        <span
+                          className="cluster-swatch"
+                          data-testid="cluster-swatch"
+                          style={{ background: clusterColorFor(cluster.cluster_id) }}
+                        />
+                        <span>
+                          <strong>{cluster.label ?? cluster.cluster_id}</strong>
+                          <span className="metric-row__label">{cluster.entity_ids?.length ?? 0} entities</span>
+                        </span>
+                        <span>
+                          <Chip label={`${Math.round(cluster.anomaly_score * 100)} anomaly`} tone="warning" />
+                          {firstMember ? (
+                            <Link
+                              to={`/investigation/${encodeURIComponent(firstMember)}?kb=${encodeURIComponent(activeKnowledgeBase.id)}`}
+                            >
+                              Open in workbench
+                            </Link>
+                          ) : null}
+                        </span>
+                      </div>
+                    )
+                  })}
+                  {clusters.length === 0 ? <EmptyState description="No graph clusters are available for this knowledge base." title="No graph clusters" /> : null}
+                </div>
+              </Card>
+            ) : null}
             {metricTrend.length > 0 ? (
               <ChartFrame
                 eyebrow="Policy analytics"
