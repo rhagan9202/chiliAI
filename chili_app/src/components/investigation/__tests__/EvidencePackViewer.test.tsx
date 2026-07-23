@@ -33,7 +33,7 @@ const subgraph: SubgraphResult = {
   edges: [_relationship('rel-1', 'claim-1', 'provider-1'), _relationship('rel-2', 'claim-1', 'beneficiary-1')],
 }
 
-const pack: EvidencePackResponse = {
+const basePack: EvidencePackResponse = {
   id: 'ev-1',
   alert_id: 'alert-1',
   reasoning: 'Provider billing is materially above peers.',
@@ -49,9 +49,19 @@ const pack: EvidencePackResponse = {
   ],
 }
 
+function renderViewer(pack: EvidencePackResponse, options?: { entityTypes?: string[] }) {
+  return render(
+    <EvidencePackViewer
+      pack={pack}
+      subgraph={subgraph}
+      entityTypes={options?.entityTypes ?? ['provider', 'claim', 'beneficiary']}
+    />,
+  )
+}
+
 describe('EvidencePackViewer', () => {
   it('renders reasoning, metrics, items, citations, and the pack subgraph', () => {
-    render(<EvidencePackViewer pack={pack} subgraph={subgraph} entityTypes={['provider', 'claim', 'beneficiary']} />)
+    renderViewer(basePack)
 
     expect(screen.getByText('Provider billing is materially above peers.')).toBeInTheDocument()
     expect(screen.getByText('confidence 82%')).toBeInTheDocument()
@@ -64,12 +74,38 @@ describe('EvidencePackViewer', () => {
   })
 
   it('falls back to the full neighborhood when no pack node overlaps', () => {
-    const detached: EvidencePackResponse = { ...pack, subgraph_node_ids: ['orphan'] }
+    const detached: EvidencePackResponse = { ...basePack, subgraph_node_ids: ['orphan'] }
 
-    render(
-      <EvidencePackViewer pack={detached} subgraph={subgraph} entityTypes={['provider']} />,
-    )
+    renderViewer(detached, { entityTypes: ['provider'] })
 
     expect(screen.getByTestId('evidence-pack-subgraph')).toHaveTextContent('3 nodes')
+  })
+
+  it('leads with the AI narrative band and renders narrative sections', () => {
+    renderViewer({
+      ...basePack,
+      reasoning: 'The provider shows synchronized anomalies.',
+      narrative_sections: [
+        { heading: 'Risk Factor', body: 'Self-history anomaly z=4.5.', evidence_refs: ['e-1'] },
+      ],
+    })
+    const narrative = screen.getByTestId('evidence-narrative')
+    expect(narrative).toHaveTextContent('AI NARRATIVE')
+    expect(narrative).toHaveTextContent('The provider shows synchronized anomalies.')
+    expect(screen.getByText('Risk Factor')).toBeInTheDocument()
+    expect(screen.getByText('Self-history anomaly z=4.5.')).toBeInTheDocument()
+  })
+
+  it('renders attribution bars when the pack carries attribution', () => {
+    renderViewer({
+      ...basePack,
+      attribution: [{ feature_name: 'anomaly_signal', contribution: 0.33, rationale: '' }],
+    })
+    expect(screen.getByTestId('attribution-bars')).toBeInTheDocument()
+  })
+
+  it('omits the attribution section for packs without the field', () => {
+    renderViewer(basePack)
+    expect(screen.queryByTestId('attribution-bars')).not.toBeInTheDocument()
   })
 })
