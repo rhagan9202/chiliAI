@@ -131,6 +131,22 @@ class Alert(BaseModel):
     resolution_notes: str | None = None
 
 
+class FeatureAttribution(BaseModel):
+    """A single feature's signed contribution to a risk score or alert."""
+
+    feature_name: str
+    contribution: float
+    rationale: str = ""
+
+
+class EvidenceNarrativeSection(BaseModel):
+    """A titled prose section of a generated evidence narrative."""
+
+    heading: str
+    body: str
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
 class EvidencePack(BaseModel):
     """Supporting evidence bundle attached to an alert."""
 
@@ -143,6 +159,8 @@ class EvidencePack(BaseModel):
     created_at: datetime = Field(default_factory=utc_now)
     scores: dict[str, float] = Field(default_factory=dict)
     source_documents: list[str] = Field(default_factory=list)
+    attribution: list[FeatureAttribution] = Field(default_factory=list)
+    narrative_sections: list[EvidenceNarrativeSection] = Field(default_factory=list)
     # TODO(production): Enrich EvidencePack with structured fields:
     # - timeline_events: list[TimelineEntry] for temporal evidence ordering
     # - visual_layout: dict for pre-computed graph visualization coordinates
@@ -379,7 +397,9 @@ __all__ = [
     "Alert",
     "Entity",
     "EntityDefinition",
+    "EvidenceNarrativeSection",
     "EvidencePack",
+    "FeatureAttribution",
     "KnowledgeBase",
     "MonitoringObservation",
     "PropertyDefinition",

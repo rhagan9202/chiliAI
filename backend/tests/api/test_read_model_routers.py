@@ -303,7 +303,7 @@ def test_get_evidence_pack_returns_persisted_pack() -> None:
     from analytics.explainability.adapters.evidence_in_memory import (
         InMemoryEvidencePackRepository,
     )
-    from shared.types import EvidencePack
+    from shared.types import EvidenceNarrativeSection, EvidencePack, FeatureAttribution
 
     app = create_app()
     repository = InMemoryEvidencePackRepository()
@@ -317,6 +317,27 @@ def test_get_evidence_pack_returns_persisted_pack() -> None:
             subgraph_edges=["rel-1"],
             confidence=0.8,
             scores={"overall": 0.8, "peer_deviation": 0.94},
+            attribution=[
+                FeatureAttribution(
+                    feature_name="claim_volume_z", contribution=-0.12, rationale="below peer median"
+                )
+            ],
+            narrative_sections=[
+                EvidenceNarrativeSection(
+                    heading="Risk Factor", body="Claim volume trails peers.", evidence_refs=["claim-1"]
+                )
+            ],
+        ),
+    )
+    repository.put(
+        "kb-1",
+        EvidencePack(
+            id="ev-legacy",
+            alert_id="al-2",
+            reasoning="Legacy pack without enrichment fields.",
+            subgraph_nodes=["provider-2"],
+            subgraph_edges=[],
+            confidence=0.6,
         ),
     )
     app.state.evidence_pack_repository = repository
@@ -329,6 +350,21 @@ def test_get_evidence_pack_returns_persisted_pack() -> None:
     assert payload["id"] == "ev-1"
     assert payload["subgraph_node_ids"] == ["provider-1", "claim-1"]
     assert payload["scores"]["peer_deviation"] == 0.94
+    assert payload["attribution"] == [
+        {"feature_name": "claim_volume_z", "contribution": -0.12, "rationale": "below peer median"}
+    ]
+    assert payload["narrative_sections"] == [
+        {"heading": "Risk Factor", "body": "Claim volume trails peers.", "evidence_refs": ["claim-1"]}
+    ]
+
+    legacy_response = client.get(
+        "/evidence-packs/ev-legacy", params={"knowledge_base_id": "kb-1"}
+    )
+
+    assert legacy_response.status_code == 200
+    legacy_payload = legacy_response.json()
+    assert legacy_payload["attribution"] == []
+    assert legacy_payload["narrative_sections"] == []
 
 
 def test_get_evidence_pack_returns_404_when_not_persisted() -> None:

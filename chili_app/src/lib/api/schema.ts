@@ -1346,6 +1346,12 @@ export interface components {
          */
         AnalyticsConfig: {
             /**
+             * Attribution Backend
+             * @default none
+             * @enum {string}
+             */
+            attribution_backend: "none" | "shap";
+            /**
              * High Risk Threshold
              * @default 0.8
              */
@@ -1360,6 +1366,12 @@ export interface components {
              * @default 300
              */
             metrics_recompute_min_interval_seconds: number;
+            /**
+             * Narrative Backend
+             * @default deterministic
+             * @enum {string}
+             */
+            narrative_backend: "deterministic" | "llm";
         };
         /**
          * AnalyticsOverviewResponse
@@ -2398,12 +2410,16 @@ export interface components {
         EvidencePackResponse: {
             /** Alert Id */
             alert_id: string;
+            /** Attribution */
+            attribution?: components["schemas"]["FeatureAttributionResponse"][];
             /** Confidence */
             confidence: number;
             /** Id */
             id: string;
             /** Items */
             items?: components["schemas"]["EvidenceItemResponse"][];
+            /** Narrative Sections */
+            narrative_sections?: components["schemas"]["NarrativeSectionResponse"][];
             /** Policy Citations */
             policy_citations?: components["schemas"]["PolicyCitation"][];
             /** Reasoning */
@@ -2416,6 +2432,21 @@ export interface components {
             subgraph_edge_ids?: string[];
             /** Subgraph Node Ids */
             subgraph_node_ids?: string[];
+        };
+        /**
+         * FeatureAttributionResponse
+         * @description A single feature's signed contribution to a risk score or alert.
+         */
+        FeatureAttributionResponse: {
+            /** Contribution */
+            contribution: number;
+            /** Feature Name */
+            feature_name: string;
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
         };
         /**
          * GnnClusterResponse
@@ -2929,6 +2960,18 @@ export interface components {
              * @default 0.6
              */
             medium_threshold: number;
+        };
+        /**
+         * NarrativeSectionResponse
+         * @description A titled prose section of a generated evidence narrative.
+         */
+        NarrativeSectionResponse: {
+            /** Body */
+            body: string;
+            /** Evidence Refs */
+            evidence_refs?: string[];
+            /** Heading */
+            heading: string;
         };
         /**
          * NeighborhoodResponse

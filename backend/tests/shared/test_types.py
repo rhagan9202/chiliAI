@@ -12,7 +12,9 @@ from shared.types import (
     Alert,
     Entity,
     EntityDefinition,
+    EvidenceNarrativeSection,
     EvidencePack,
+    FeatureAttribution,
     KnowledgeBase,
     PropertyDefinition,
     PropertyType,
@@ -296,6 +298,28 @@ class TestEvidencePack:
 
         assert ep.created_at == now
         assert ep.source_documents == ["doc-1", "doc-2"]
+
+
+class TestEvidencePackEnrichment:
+    def test_defaults_empty_for_legacy_payloads(self) -> None:
+        pack = EvidencePack(
+            id="ep-1", alert_id="a-1", reasoning="r", subgraph_nodes=["n1"],
+            subgraph_edges=[], confidence=0.5,
+        )
+        assert pack.attribution == []
+        assert pack.narrative_sections == []
+
+    def test_round_trips_attribution_and_sections(self) -> None:
+        pack = EvidencePack(
+            id="ep-1", alert_id="a-1", reasoning="r", subgraph_nodes=["n1"],
+            subgraph_edges=[], confidence=0.5,
+            attribution=[FeatureAttribution(feature_name="claim_volume_z", contribution=-0.12)],
+            narrative_sections=[EvidenceNarrativeSection(heading="Risk Factor", body="b", evidence_refs=["e1"])],
+        )
+        restored = EvidencePack.model_validate(pack.model_dump())
+        assert restored.attribution[0].feature_name == "claim_volume_z"
+        assert restored.attribution[0].contribution == -0.12
+        assert restored.narrative_sections[0].heading == "Risk Factor"
 
 
 class TestKnowledgeBase:
