@@ -1,5 +1,4 @@
 import type { components } from '../lib/api/schema'
-import type { Entity, Relationship } from '../types/api'
 
 type Schemas = components['schemas']
 type RequireFields<T, K extends keyof T> = T & {
@@ -9,8 +8,6 @@ type OptionalFields<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
 
 export type ApiEnvelope = Schemas['ApiEnvelope']
 export type PageInfo = Schemas['PageInfo']
-
-export type { Entity, Relationship }
 
 export type AlertSeverity = Schemas['AlertListItem']['severity']
 export type AlertStatus = Schemas['AlertListItem']['status']

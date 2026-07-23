@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Relationship } from '../../api/contracts'
+import type { Relationship } from '../../types/api'
 import {
   CLUSTER_COLOR_PALETTE,
   clusterColorFor,
