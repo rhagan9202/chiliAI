@@ -106,7 +106,19 @@ class LlmNarrativeGenerator:
             )
             return self._fallback.summarize(context=context, items=items)
 
-        return _parse_narrative(completion, items)
+        narrative = _parse_narrative(completion, items)
+        if not narrative.sections:
+            # A completion without any mandated "## " heading is malformed
+            # under the prompt contract; a section-less narrative would leave
+            # persisted packs with empty narrative_sections.
+            logger.warning(
+                "LlmNarrativeGenerator: completion has no '## ' sections for "
+                "kb=%s alert=%s; degrading to fallback narrative.",
+                context.knowledge_base_id,
+                context.alert.id,
+            )
+            return self._fallback.summarize(context=context, items=items)
+        return narrative
 
 
 def _build_user_prompt(context: ExplanationContext, items: Sequence[ExplanationItem]) -> str:

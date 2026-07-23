@@ -111,14 +111,29 @@ class TestLlmNarrativeGeneratorHappyPath:
 
         assert narrative.sections[0].body == "Line one. Line two about src-one."
 
-    def test_heading_less_completion_is_summary_only(self) -> None:
+    def test_heading_less_completion_degrades_to_fallback(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A completion ignoring the mandated ``## `` heading format is
+        malformed under the prompt contract: per the plan's global error
+        constraint it degrades to the deterministic fallback (which always
+        produces sections) instead of yielding a section-less narrative.
+        Adjudicated during the Task 9 live pass — the dev echo provider never
+        emits headings, so summary-only output left every persisted pack with
+        empty ``narrative_sections``.
+        """
         items = [_item("src-one", "one")]
         completion = "Just a plain paragraph with no markdown headings at all."
         service = _StubLlmService(completion=completion)
-        narrative = _generator(service).summarize(context=_context(items), items=items)
+        with caplog.at_level(logging.WARNING):
+            narrative = _generator(service).summarize(context=_context(items), items=items)
 
-        assert narrative.summary == completion
-        assert narrative.sections == []
+        expected = DeterministicNarrativeGenerator().summarize(
+            context=_context(items), items=items
+        )
+        assert narrative == expected
+        assert narrative.sections != []
+        assert any("degrading to fallback" in record.message for record in caplog.records)
 
     def test_sends_constructed_model_parameters(self) -> None:
         items = [_item("src-one", "one")]
