@@ -12,7 +12,7 @@ import {
   useInvestigationNeighborhood,
 } from '../api/investigation'
 import { useKnowledgeBases } from '../api/knowledgebases'
-import { TrendBars } from '../components/charts/TrendBars'
+import { AnomalyTrendPanel } from '../components/investigation/AnomalyTrendPanel'
 import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { GraphCanvas } from '../components/investigation/GraphCanvas'
 import type { Entity as ApiEntity, Relationship as ApiRelationship, SubgraphResult } from '../types/api'
@@ -263,16 +263,10 @@ export function InvestigationWorkbenchPage() {
 
           <div className="dashboard-panels">
             {timeseries ? (
-              timeseriesAvailability.unavailable ? (
-                <Card>
-                  <EmptyState
-                    description={timeseriesAvailability.reason ?? 'Time series analytics are unavailable until an entity is selected and analytics respond.'}
-                    title="No time series"
-                  />
-                </Card>
-              ) : (
-                <ChartFrameInvestigation timeseries={timeseries.points} />
-              )
+              <AnomalyTrendPanel
+                timeseries={timeseriesAvailability.unavailable ? null : timeseries}
+                unavailableReason={timeseriesAvailability.reason}
+              />
             ) : null}
 
             <Card>
@@ -416,29 +410,4 @@ function toSubgraphResult(
       weight: r.weight,
     })),
   }
-}
-
-function ChartFrameInvestigation({
-  timeseries,
-}: {
-  timeseries: { label: string; value: number; is_anomaly: boolean }[]
-}) {
-  return (
-    <Card>
-      <div className="metric-stack">
-        <strong>Risk pressure trend</strong>
-        <div className="chart-shell">
-          <TrendBars
-            color="#00d4ff"
-            data={timeseries.map((point) => ({ label: point.label, value: Number(point.value.toFixed(2)) }))}
-          />
-        </div>
-        <div className="alert-row-card__meta">
-          {timeseries.filter((point) => point.is_anomaly).map((point) => (
-            <Chip key={point.label} label={`${point.label} anomaly`} tone="danger" />
-          ))}
-        </div>
-      </div>
-    </Card>
-  )
 }
