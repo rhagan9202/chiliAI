@@ -3,14 +3,56 @@ import { act } from 'react'
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { AlertFeedPage } from '../AlertFeedPage'
+import type { DomainCapabilities, DomainConfig } from '../../api/contracts'
+import { AlertFeedPage, flagLabelFor } from '../AlertFeedPage'
 
 const mocks = vi.hoisted(() => ({
   acknowledge: vi.fn(),
   promoteAlertToCase: vi.fn(),
   useAlerts: vi.fn(),
   useCases: vi.fn(),
+  capabilities: {
+    timeseries: true,
+    gnn: true,
+    risk_scoring: true,
+    rag_chat: true,
+    explainability: true,
+    peer_stats: false,
+  } as DomainCapabilities,
+  policyItems: [] as Array<{
+    id: string
+    knowledge_base_id: string
+    rule_id: string
+    target_kind: 'entity' | 'alert' | 'metric'
+    target_ref: string
+    severity: 'critical' | 'high' | 'medium'
+    status: 'open' | 'accepted' | 'rejected' | 'deferred' | 'escalated'
+    title: string
+  }>,
 }))
+
+const domainConfig: DomainConfig = {
+  domain: {
+    name: 'medicare_fraud',
+    display_name: 'Medicare Fraud Detection',
+    description: 'Fraud investigation domain',
+  },
+  entities: [
+    { name: 'provider', display_label: 'Provider', properties: {} },
+  ],
+  relationships: [],
+  capabilities: {
+    timeseries: true,
+    gnn: true,
+    risk_scoring: true,
+    rag_chat: true,
+    explainability: true,
+    peer_stats: false,
+  },
+  ingestion: {},
+  alerts: { thresholds: {} },
+  ui: {},
+}
 
 vi.mock('../../api/alerts', () => ({
   useAcknowledgeAlert: () => ({ isPending: false, mutate: mocks.acknowledge }),
@@ -20,6 +62,35 @@ vi.mock('../../api/alerts', () => ({
 vi.mock('../../api/cases', () => ({
   useCases: mocks.useCases,
   usePromoteAlertToCase: () => ({ isPending: false, mutate: mocks.promoteAlertToCase }),
+}))
+
+vi.mock('../../api/config', () => ({
+  useDomainConfig: () => ({
+    isLoading: false,
+    isError: false,
+    data: domainConfig,
+  }),
+  useDomainFeatures: () => ({
+    isLoading: false,
+    isError: false,
+    data: { capabilities: mocks.capabilities, enabled_pages: [], roles: {} },
+  }),
+}))
+
+vi.mock('../../api/investigation', () => ({
+  useInvestigationNeighborhood: () => ({
+    isLoading: false,
+    isError: false,
+    data: undefined,
+  }),
+}))
+
+vi.mock('../../api/policy', () => ({
+  usePolicyItems: () => ({
+    isLoading: false,
+    isError: false,
+    data: { items: mocks.policyItems, total: mocks.policyItems.length },
+  }),
 }))
 
 vi.mock('../../api/evidence', () => ({
@@ -114,6 +185,15 @@ describe('AlertFeedPage', () => {
       isError: false,
       data: { items: [], page: { page: 1, page_size: 0, total_items: 0 } },
     })
+    mocks.capabilities = {
+      timeseries: true,
+      gnn: true,
+      risk_scoring: true,
+      rag_chat: true,
+      explainability: true,
+      peer_stats: false,
+    }
+    mocks.policyItems = []
   })
 
   function renderAlertFeed(initialEntry = '/alerts') {
@@ -290,5 +370,82 @@ describe('AlertFeedPage', () => {
     expect(screen.queryByText('Redwood DME Group')).not.toBeInTheDocument()
     expect(screen.queryByText('Evidence for Redwood DME Group.')).not.toBeInTheDocument()
     expect(screen.getByText('North Harbor Imaging')).toBeInTheDocument()
+  })
+
+  it('renders a risk-ranked triage numeral and flag label on each row', () => {
+    renderAlertFeed()
+
+    const numerals = screen.getAllByTestId('triage-numeral')
+    expect(numerals[0]).toHaveTextContent('96')
+    expect(numerals[1]).toHaveTextContent('84')
+
+    expect(screen.getByText('BILLING · PEER-DEVIATION')).toBeInTheDocument()
+    expect(screen.getByText('NETWORK')).toBeInTheDocument()
+  })
+
+  it('falls back to the severity word for the flag label when an alert has no tags', () => {
+    mocks.useAlerts.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        items: [{ ...alertResponse.items[0], tags: [] }],
+        page: { page: 1, page_size: 1, total_items: 1 },
+      },
+    })
+
+    renderAlertFeed()
+
+    expect(screen.getByText('CRITICAL')).toBeInTheDocument()
+  })
+
+  it('shows a policy chip when policy items reference the alert or its entity', () => {
+    mocks.policyItems = [
+      {
+        id: 'policy-1',
+        knowledge_base_id: 'kb-redwood',
+        rule_id: 'rule-1',
+        target_kind: 'alert',
+        target_ref: 'alert-1',
+        severity: 'high',
+        status: 'open',
+        title: 'Outlier billing concentration under review',
+      },
+    ]
+
+    renderAlertFeed()
+
+    expect(screen.getByText('policy')).toBeInTheDocument()
+  })
+
+  it('hides the policy chip and the evidence action when explainability is disabled', () => {
+    mocks.capabilities = { ...mocks.capabilities, explainability: false }
+    mocks.policyItems = [
+      {
+        id: 'policy-1',
+        knowledge_base_id: 'kb-redwood',
+        rule_id: 'rule-1',
+        target_kind: 'alert',
+        target_ref: 'alert-1',
+        severity: 'high',
+        status: 'open',
+        title: 'Outlier billing concentration under review',
+      },
+    ]
+
+    renderAlertFeed()
+
+    expect(screen.queryByText('policy')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'View evidence' })).not.toBeInTheDocument()
+  })
+})
+
+describe('flagLabelFor', () => {
+  it('joins tags uppercase with middle dots', () => {
+    expect(flagLabelFor({ tags: ['upcoding', 'hcpcs-consolidation'], severity: 'high' })).toBe(
+      'UPCODING · HCPCS-CONSOLIDATION',
+    )
+  })
+  it('falls back to the severity word when no tags', () => {
+    expect(flagLabelFor({ tags: [], severity: 'critical' })).toBe('CRITICAL')
   })
 })

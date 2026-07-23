@@ -490,6 +490,26 @@ describe('InvestigationWorkbenchPage', () => {
     expect(within(band).getByText('weekly carrier billing self')).toBeInTheDocument()
   })
 
+  it('hides the signal band when risk is unavailable, even with factors on the raw payload', () => {
+    // Distinct from the empty-factors case: this pins that the band is
+    // hidden specifically because availability_status is 'unavailable',
+    // not merely because the factor list happens to be empty.
+    selectLiveProvider()
+    mocks.riskAvailable = false
+    mocks.riskUnavailableReason = 'Risk scoring has been retracted for this entity.'
+    mocks.riskFactors = [
+      {
+        factor_name: 'weekly_carrier_billing_self',
+        contribution: 0.42,
+        rationale: 'self-history anomaly z=4.5',
+      },
+    ]
+
+    renderInvestigationWorkbench()
+
+    expect(screen.queryByTestId('signal-band')).not.toBeInTheDocument()
+  })
+
   it('omits the anomaly trend panel entirely when the timeseries capability is disabled', () => {
     selectLiveProvider()
     mocks.capabilities = { ...mocks.capabilities, timeseries: false }

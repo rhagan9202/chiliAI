@@ -20,4 +20,17 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // flagLabelFor is a small pure helper that must live alongside the page
+    // component (Task 9 imports it from this module for the dashboard lead
+    // card) rather than in its own file. Scoped override so fast-refresh
+    // stays strict everywhere else.
+    files: ['src/pages/AlertFeedPage.tsx'],
+    rules: {
+      'react-refresh/only-export-components': [
+        'error',
+        { allowConstantExport: true, allowExportNames: ['flagLabelFor'] },
+      ],
+    },
+  },
 ])
