@@ -25,4 +25,20 @@ describe('SignalBand', () => {
     const { container } = render(<SignalBand factors={[]} />)
     expect(container).toBeEmptyDOMElement()
   })
+
+  it('renders signed bar fill matching |contribution| and colors by sign', () => {
+    const signedFactors: RiskFactorResponse[] = [
+      { factor_name: 'risk_raising_factor', contribution: 0.4, rationale: 'raises risk' },
+      { factor_name: 'risk_lowering_factor', contribution: -0.25, rationale: 'lowers risk' },
+    ]
+    const { container } = render(<SignalBand factors={signedFactors} />)
+    const rows = container.querySelectorAll('.signal-band__row')
+    expect(rows).toHaveLength(2)
+
+    const positiveFill = rows[0].querySelector('.signal-band__bar > div')
+    expect(positiveFill).toHaveStyle({ width: '40%', background: 'var(--c-red)' })
+
+    const negativeFill = rows[1].querySelector('.signal-band__bar > div')
+    expect(negativeFill).toHaveStyle({ width: '25%', background: 'var(--c-green)' })
+  })
 })
