@@ -19,6 +19,7 @@ import { Card } from '../components/ui/Card'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
+import { flagLabelFor } from '../utils/flagLabel'
 import { toSubgraphResult } from '../utils/subgraph'
 import './pages.css'
 
@@ -28,20 +29,6 @@ const filters = [
   { id: 'high', label: 'High' },
   { id: 'acknowledged', label: 'Acknowledged' },
 ]
-
-/**
- * Uppercased, dot-joined triage flag label for an alert row — e.g.
- * "BILLING · PEER-DEVIATION". Falls back to the severity word when the
- * alert carries no tags. Never invents a domain-specific string: the label
- * is built only from data already on the alert. Exported for reuse by the
- * dashboard lead card.
- */
-export function flagLabelFor(alert: { tags: string[]; severity: string }): string {
-  if (alert.tags.length > 0) {
-    return alert.tags.map((tag) => tag.toUpperCase()).join(' · ')
-  }
-  return alert.severity.toUpperCase()
-}
 
 function triageNumeralColor(severity: string): string {
   if (severity === 'critical' || severity === 'high') {

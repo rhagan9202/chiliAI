@@ -4,7 +4,7 @@ import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DomainCapabilities, DomainConfig } from '../../api/contracts'
-import { AlertFeedPage, flagLabelFor } from '../AlertFeedPage'
+import { AlertFeedPage } from '../AlertFeedPage'
 
 const mocks = vi.hoisted(() => ({
   acknowledge: vi.fn(),
@@ -436,16 +436,5 @@ describe('AlertFeedPage', () => {
 
     expect(screen.queryByText('policy')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'View evidence' })).not.toBeInTheDocument()
-  })
-})
-
-describe('flagLabelFor', () => {
-  it('joins tags uppercase with middle dots', () => {
-    expect(flagLabelFor({ tags: ['upcoding', 'hcpcs-consolidation'], severity: 'high' })).toBe(
-      'UPCODING · HCPCS-CONSOLIDATION',
-    )
-  })
-  it('falls back to the severity word when no tags', () => {
-    expect(flagLabelFor({ tags: [], severity: 'critical' })).toBe('CRITICAL')
   })
 })
