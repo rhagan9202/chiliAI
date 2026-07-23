@@ -43,6 +43,7 @@ from agent.policy import StagePolicy, StagePolicyRegistry
 from agent.workflow_tracking import WorkflowEventTracker
 from config.loader import load_config
 from config.schema import (
+    AnalyticsConfig,
     DomainConfig,
     EmbeddingsConfig,
     EventBusConfig,
@@ -5607,6 +5608,59 @@ def test_build_document_extractor_uses_llm_extractor_for_real_provider() -> None
         _config_with_llm_provider("ollama"), InMemoryLlmClient()
     )
     assert isinstance(extractor, LlmDocumentExtractor)
+
+
+def _config_with_analytics(analytics_config: AnalyticsConfig) -> DomainConfig:
+    return _base_config().model_copy(update={"analytics": analytics_config})
+
+
+def test_build_narrative_generator_returns_deterministic_by_default() -> None:
+    from agent.coordinator import build_narrative_generator
+    from analytics.explainability.adapters.deterministic import (
+        DeterministicNarrativeGenerator,
+    )
+    from llm.adapters.in_memory import InMemoryLlmClient
+
+    generator = build_narrative_generator(
+        _base_config(), InMemoryLlmClient(), event_bus=InMemoryEventBus()
+    )
+
+    assert isinstance(generator, DeterministicNarrativeGenerator)
+
+
+def test_build_narrative_generator_returns_llm_backend_when_configured() -> None:
+    from agent.coordinator import build_narrative_generator
+    from analytics.explainability.adapters.llm_narrative import LlmNarrativeGenerator
+    from llm.adapters.in_memory import InMemoryLlmClient
+
+    config = _config_with_analytics(AnalyticsConfig(narrative_backend="llm"))
+
+    generator = build_narrative_generator(
+        config, InMemoryLlmClient(), event_bus=InMemoryEventBus()
+    )
+
+    assert isinstance(generator, LlmNarrativeGenerator)
+    assert generator._model_name == "local-default"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_build_feature_attributor_returns_noop_by_default() -> None:
+    from agent.coordinator import build_feature_attributor
+    from analytics.explainability.adapters.shap_attribution import NoopFeatureAttributor
+
+    attributor = build_feature_attributor(_base_config())
+
+    assert isinstance(attributor, NoopFeatureAttributor)
+
+
+def test_build_feature_attributor_returns_shap_when_configured() -> None:
+    from agent.coordinator import build_feature_attributor
+    from analytics.explainability.adapters.shap_attribution import ShapRiskAttributor
+
+    config = _config_with_analytics(AnalyticsConfig(attribution_backend="shap"))
+
+    attributor = build_feature_attributor(config)
+
+    assert isinstance(attributor, ShapRiskAttributor)
 
 
 def test_handle_entities_extracted_surfaces_extraction_stage_warnings() -> None:

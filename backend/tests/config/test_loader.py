@@ -312,3 +312,22 @@ def test_housing_pack_declares_timeseries() -> None:
     assert config.capabilities.timeseries is True
     assert config.timeseries is not None
     assert config.timeseries.metrics[0].name == "monthly_affordability_trend"
+
+
+# ---------------------------------------------------------------------------
+# Domain pack explainability backend declarations (B3, sprint 2026-28 Task 7)
+# ---------------------------------------------------------------------------
+
+
+def test_cms_pack_enables_llm_narrative_and_shap_attribution() -> None:
+    config = _load_default("medicare_fraud_cms_desynpuf")
+    assert config.analytics is not None
+    assert config.analytics.narrative_backend == "llm"
+    assert config.analytics.attribution_backend == "shap"
+
+
+def test_housing_pack_enables_llm_narrative_and_shap_attribution() -> None:
+    config = _load_default("department_air_force_housing")
+    assert config.analytics is not None
+    assert config.analytics.narrative_backend == "llm"
+    assert config.analytics.attribution_backend == "shap"

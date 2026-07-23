@@ -57,14 +57,22 @@ from config.schema import (
 )
 from database.protocols import ConnectionProvider
 from database.runtime import create_connection_provider
+from analytics.explainability.adapters.deterministic import (
+    DeterministicNarrativeGenerator,
+)
 from analytics.explainability.adapters.evidence_object_store import (
     ObjectStoreEvidencePackRepository,
 )
 from analytics.explainability.adapters.in_memory import (
     InMemoryExplainabilityContextSource,
 )
+from analytics.explainability.adapters.llm_narrative import LlmNarrativeGenerator
 from analytics.explainability.adapters.protocols import (
     ExplainabilityContextSourceProtocol,
+)
+from analytics.explainability.adapters.shap_attribution import (
+    NoopFeatureAttributor,
+    ShapRiskAttributor,
 )
 from analytics.explainability.exceptions import ExplainabilityError
 from graph.exceptions import (
@@ -77,6 +85,10 @@ from analytics.explainability.models import (
     ExplanationContext,
     ExplanationItem,
     ExplanationSubgraph,
+)
+from analytics.explainability.protocols import (
+    FeatureAttributorProtocol,
+    NarrativeGeneratorProtocol,
 )
 from analytics.explainability.repository import EvidencePackRepository
 from analytics.explainability.service import (
@@ -236,6 +248,7 @@ from ingestion.service import IngestionService
 from ingestion.validator import ExtractionResultValidator, create_extraction_validator
 from llm.adapters.protocols import LlmClientProtocol
 from llm.factory import create_llm_client as _create_llm_client
+from llm.service import create_llm_service
 from monitoring.adapters.in_memory import (
     InMemoryAlertHistoryWriter,
     InMemoryObservationSource,
@@ -307,10 +320,12 @@ __all__ = [
     "build_entity_metric_repository",
     "build_explainability_context_source",
     "build_explanation_context",
+    "build_feature_attributor",
     "build_graph_repository",
     "build_graph_snapshot_source",
     "build_llm_client",
     "build_monitoring_observation_source",
+    "build_narrative_generator",
     "build_object_store",
     "build_observation_writer",
     "build_peerstats_service",
@@ -666,6 +681,40 @@ def build_explainability_context_source(
     """Return the configured explainability context source adapter."""
 
     return InMemoryExplainabilityContextSource()
+
+
+def build_narrative_generator(
+    config: DomainConfig, llm_client: LlmClientProtocol, *, event_bus: EventBus
+) -> NarrativeGeneratorProtocol:
+    """Select the narrative generator adapter from ``AnalyticsConfig.narrative_backend``.
+
+    ``"llm"`` wraps the already-constructed worker ``llm_client`` in an
+    ``LlmService`` (the same composition used for RAG) and degrades to
+    ``DeterministicNarrativeGenerator`` per ``LlmNarrativeGenerator``'s own
+    never-raise contract; any other value (including the default) uses the
+    deterministic generator directly.
+    """
+
+    analytics_config = config.analytics or AnalyticsConfig()
+    if analytics_config.narrative_backend == "llm":
+        llm_config = config.llm or LlmConfig()
+        return LlmNarrativeGenerator(
+            create_llm_service(llm_client, event_bus=event_bus),
+            fallback=DeterministicNarrativeGenerator(),
+            model_name=llm_config.model,
+            temperature=llm_config.temperature,
+            max_tokens=llm_config.max_tokens,
+        )
+    return DeterministicNarrativeGenerator()
+
+
+def build_feature_attributor(config: DomainConfig) -> FeatureAttributorProtocol:
+    """Select the feature attributor adapter from ``AnalyticsConfig.attribution_backend``."""
+
+    analytics_config = config.analytics or AnalyticsConfig()
+    if analytics_config.attribution_backend == "shap":
+        return ShapRiskAttributor()
+    return NoopFeatureAttributor()
 
 
 def build_monitoring_observation_source(
@@ -1091,6 +1140,10 @@ def build_worker_dependencies() -> WorkerDependencies:
     explainability_service = create_explainability_service(
         build_explainability_context_source(config),
         event_bus=event_bus,
+        narrative_generator=build_narrative_generator(
+            config, llm_client, event_bus=event_bus
+        ),
+        feature_attributor=build_feature_attributor(config),
     )
     monitoring_config = config.monitoring
     monitoring_service = create_monitoring_service(
