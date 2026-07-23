@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 
 import pytest
 
@@ -61,6 +62,192 @@ def test_write_and_count_round_trip(database_url: str) -> None:
         with provider.connection() as conn:
             conn.execute(
                 "DELETE FROM alert_history WHERE knowledge_base_id = 'kb-alert-test'"
+            )
+            conn.commit()
+        provider.close()
+
+
+def test_list_alerts_ordering_status_filter_and_pagination(database_url: str) -> None:
+    kb_id = "kb-alert-list-test"
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresAlertHistoryStore(provider)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+
+        same_time = datetime(2026, 5, 16, tzinfo=timezone.utc)
+        store.write_alerts(
+            [
+                AlertHistoryRecord(
+                    knowledge_base_id=kb_id,
+                    alert_id="a-1",
+                    entity_id="claim:c1",
+                    entity_type="claim",
+                    severity="high",
+                    status="open",
+                    title="Anomalous claim",
+                    reasoning="score exceeded threshold",
+                    metric_name="claim_anomaly",
+                    created_at=datetime(2026, 5, 15, tzinfo=timezone.utc),
+                ),
+                AlertHistoryRecord(
+                    knowledge_base_id=kb_id,
+                    alert_id="a-3",
+                    entity_id="claim:c1",
+                    entity_type="claim",
+                    severity="high",
+                    status="closed",
+                    title="Anomalous claim",
+                    reasoning="score exceeded threshold",
+                    metric_name="claim_anomaly",
+                    created_at=same_time,
+                ),
+                AlertHistoryRecord(
+                    knowledge_base_id=kb_id,
+                    alert_id="a-2",
+                    entity_id="claim:c1",
+                    entity_type="claim",
+                    severity="high",
+                    status="open",
+                    title="Anomalous claim",
+                    reasoning="score exceeded threshold",
+                    metric_name="claim_anomaly",
+                    created_at=same_time,
+                ),
+            ]
+        )
+
+        records, total = store.list_alerts(limit=10, offset=0)
+        our_records = [r for r in records if r.knowledge_base_id == kb_id]
+        assert total >= 3
+        assert [r.alert_id for r in our_records] == ["a-3", "a-2", "a-1"]
+
+        filtered, filtered_total = store.list_alerts(
+            statuses=["open"], limit=10, offset=0
+        )
+        our_filtered = [r for r in filtered if r.knowledge_base_id == kb_id]
+        assert {r.alert_id for r in our_filtered} == {"a-1", "a-2"}
+        assert filtered_total >= 2
+
+        page, page_total = store.list_alerts(
+            statuses=["open"], limit=1, offset=0
+        )
+        assert page_total == filtered_total
+        assert len(page) == 1
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+        provider.close()
+
+
+def test_get_and_acknowledge_alert(database_url: str) -> None:
+    kb_id = "kb-alert-ack-test"
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresAlertHistoryStore(provider)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+
+        record = AlertHistoryRecord(
+            knowledge_base_id=kb_id,
+            alert_id="a-ack-1",
+            entity_id="claim:c1",
+            entity_type="claim",
+            severity="high",
+            status="open",
+            title="Anomalous claim",
+            reasoning="score exceeded threshold",
+            metric_name="claim_anomaly",
+            entity_label="Dr. Jane Doe",
+            confidence=0.87,
+            tags=["peer-deviation", "billing-spike"],
+        )
+        store.write_alerts([record])
+
+        fetched = store.get_alert("a-ack-1")
+        assert fetched is not None
+        assert fetched.entity_label == "Dr. Jane Doe"
+        assert fetched.confidence == 0.87
+        assert fetched.tags == ["peer-deviation", "billing-spike"]
+
+        assert store.get_alert("missing-alert-id") is None
+
+        updated = store.acknowledge("a-ack-1")
+        assert updated is not None
+        assert updated.status == "acknowledged"
+
+        refetched = store.get_alert("a-ack-1")
+        assert refetched is not None
+        assert refetched.status == "acknowledged"
+
+        assert store.acknowledge("missing-alert-id") is None
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+        provider.close()
+
+
+def test_count_by_statuses(database_url: str) -> None:
+    kb_id = "kb-alert-count-test"
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresAlertHistoryStore(provider)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+
+        before_open = store.count_by_statuses({"open"})
+
+        store.write_alerts(
+            [
+                AlertHistoryRecord(
+                    knowledge_base_id=kb_id,
+                    alert_id="a-count-1",
+                    entity_id="claim:c1",
+                    entity_type="claim",
+                    severity="high",
+                    status="open",
+                    title="Anomalous claim",
+                    reasoning="score exceeded threshold",
+                    metric_name="claim_anomaly",
+                ),
+                AlertHistoryRecord(
+                    knowledge_base_id=kb_id,
+                    alert_id="a-count-2",
+                    entity_id="claim:c1",
+                    entity_type="claim",
+                    severity="high",
+                    status="closed",
+                    title="Anomalous claim",
+                    reasoning="score exceeded threshold",
+                    metric_name="claim_anomaly",
+                ),
+            ]
+        )
+
+        assert store.count_by_statuses({"open"}) == before_open + 1
+        assert store.count_by_statuses({"closed"}) >= 1
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
             )
             conn.commit()
         provider.close()

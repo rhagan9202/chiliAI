@@ -104,6 +104,9 @@ class AlertHistoryRecord(BaseModel):
     evidence_pack_id: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+    entity_label: str = ""
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    tags: list[str] = Field(default_factory=lambda: list[str]())
 
 
 __all__ = [

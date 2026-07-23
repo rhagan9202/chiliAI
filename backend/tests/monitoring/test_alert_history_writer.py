@@ -92,3 +92,147 @@ def test_delete_by_kb_is_idempotent_for_alert_history() -> None:
     writer.delete_by_kb("kb-delete")
 
     assert writer.delete_by_kb("kb-delete") == 0
+
+
+def test_list_alerts_orders_by_created_at_desc_with_alert_id_tiebreak() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    same_time = datetime(2026, 5, 16, tzinfo=timezone.utc)
+    writer.write_alerts(
+        [
+            AlertHistoryRecord(
+                knowledge_base_id="kb-1",
+                alert_id="a-1",
+                entity_id="claim:c1",
+                entity_type="claim",
+                severity="high",
+                status="open",
+                title="Anomalous claim",
+                reasoning="score exceeded threshold",
+                metric_name="claim_anomaly",
+                created_at=datetime(2026, 5, 15, tzinfo=timezone.utc),
+            ),
+            AlertHistoryRecord(
+                knowledge_base_id="kb-1",
+                alert_id="a-3",
+                entity_id="claim:c1",
+                entity_type="claim",
+                severity="high",
+                status="open",
+                title="Anomalous claim",
+                reasoning="score exceeded threshold",
+                metric_name="claim_anomaly",
+                created_at=same_time,
+            ),
+            AlertHistoryRecord(
+                knowledge_base_id="kb-1",
+                alert_id="a-2",
+                entity_id="claim:c1",
+                entity_type="claim",
+                severity="high",
+                status="open",
+                title="Anomalous claim",
+                reasoning="score exceeded threshold",
+                metric_name="claim_anomaly",
+                created_at=same_time,
+            ),
+        ]
+    )
+
+    records, total = writer.list_alerts(limit=10, offset=0)
+
+    assert total == 3
+    assert [r.alert_id for r in records] == ["a-3", "a-2", "a-1"]
+
+
+def test_list_alerts_paginates() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    writer.write_alerts([_record("a-1"), _record("a-2"), _record("a-3")])
+
+    records, total = writer.list_alerts(limit=1, offset=1)
+
+    assert total == 3
+    assert len(records) == 1
+
+
+def test_list_alerts_filters_by_status() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    writer.write_alerts(
+        [
+            _record("a-1", status="open"),
+            _record("a-2", status="closed"),
+            _record("a-3", status="acknowledged"),
+        ]
+    )
+
+    records, total = writer.list_alerts(statuses=["open", "acknowledged"], limit=10, offset=0)
+
+    assert total == 2
+    assert {r.alert_id for r in records} == {"a-1", "a-3"}
+
+
+def test_get_alert_returns_record_or_none() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    writer.write_alerts([_record("a-1")])
+
+    assert writer.get_alert("a-1") is not None
+    assert writer.get_alert("missing") is None
+
+
+def test_acknowledge_persists_and_returns_updated_record() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    writer.write_alerts([_record("a-1", status="open")])
+
+    updated = writer.acknowledge("a-1")
+
+    assert updated is not None
+    assert updated.status == "acknowledged"
+    assert writer.get_alert("a-1") is not None
+    assert writer.get_alert("a-1").status == "acknowledged"  # type: ignore[union-attr]
+
+
+def test_acknowledge_unknown_alert_returns_none() -> None:
+    writer = InMemoryAlertHistoryWriter()
+
+    assert writer.acknowledge("missing") is None
+
+
+def test_count_by_statuses() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    writer.write_alerts(
+        [
+            _record("a-1", status="open"),
+            _record("a-2", status="closed"),
+            _record("a-3", status="acknowledged"),
+        ]
+    )
+
+    assert writer.count_by_statuses({"open", "acknowledged"}) == 2
+    assert writer.count_by_statuses({"closed"}) == 1
+    assert writer.count_by_statuses({"investigating"}) == 0
+
+
+def test_new_fields_round_trip_including_tags_list() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    record = AlertHistoryRecord(
+        knowledge_base_id="kb-1",
+        alert_id="a-1",
+        entity_id="claim:c1",
+        entity_type="claim",
+        severity="high",
+        status="open",
+        title="Anomalous claim",
+        reasoning="score exceeded threshold",
+        metric_name="claim_anomaly",
+        created_at=datetime(2026, 5, 16, tzinfo=timezone.utc),
+        entity_label="Dr. Jane Doe",
+        confidence=0.87,
+        tags=["peer-deviation", "billing-spike"],
+    )
+    writer.write_alerts([record])
+
+    fetched = writer.get_alert("a-1")
+
+    assert fetched is not None
+    assert fetched.entity_label == "Dr. Jane Doe"
+    assert fetched.confidence == 0.87
+    assert fetched.tags == ["peer-deviation", "billing-spike"]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from monitoring.models import AlertHistoryRecord, MonitoringBatch
 from shared.types import Alert
+from shared.utils import utc_now
 
 __all__ = ["InMemoryAlertHistoryWriter", "InMemoryAlertRepository", "InMemoryObservationSource", "InMemoryObservationWriter"]
 
@@ -105,3 +106,45 @@ class InMemoryAlertHistoryWriter:
         for key in keys_to_delete:
             del self._records[key]
         return len(keys_to_delete)
+
+    def list_alerts(
+        self,
+        *,
+        statuses: list[str] | None = None,
+        limit: int,
+        offset: int,
+    ) -> tuple[list[AlertHistoryRecord], int]:
+        status_set = set(statuses) if statuses is not None else None
+        filtered = [
+            record
+            for record in self._records.values()
+            if status_set is None or record.status in status_set
+        ]
+        ordered = sorted(
+            filtered,
+            key=lambda record: (record.created_at, record.alert_id),
+            reverse=True,
+        )
+        total = len(ordered)
+        return ordered[offset : offset + limit], total
+
+    def get_alert(self, alert_id: str) -> AlertHistoryRecord | None:
+        for record in self._records.values():
+            if record.alert_id == alert_id:
+                return record
+        return None
+
+    def acknowledge(self, alert_id: str) -> AlertHistoryRecord | None:
+        for key, record in self._records.items():
+            if record.alert_id == alert_id:
+                updated = record.model_copy(
+                    update={"status": "acknowledged", "updated_at": utc_now()}
+                )
+                self._records[key] = updated
+                return updated
+        return None
+
+    def count_by_statuses(self, statuses: set[str]) -> int:
+        return sum(
+            1 for record in self._records.values() if record.status in statuses
+        )
