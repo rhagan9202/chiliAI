@@ -34,7 +34,7 @@
 | BL-024 | Load testing & SLO baselines | REQ-NFR-SCALE-PROD | P2 | todo | 8 SP |
 | BL-027 | Resource-level per-KB ACL | REQ-AUTH-006 (ext) | P2 | todo | 8 SP |
 | BL-028 | Multi-KB scope in RAG | REQ-RAG-002 | P2 | todo | 5 SP |
-| BL-046 | GNN live: repository-backed snapshot source + cluster persistence (analytics.03/.05, partial .04/.24) | REQ-ANALYTICS (GNN) | P1 (sprint 2026-28) | committed — Sprint 2026-28 B1 | 5 SP |
+| BL-046 | GNN live: repository-backed snapshot source + cluster persistence (analytics.03/.05, partial .04/.24) | REQ-ANALYTICS (GNN) | P1 (sprint 2026-28) | done — Sprint 2026-28 B1 (merged to prod 2026-07-17 via `feat/sprint-2026-28-b1-gnn-live`, GNN live end-to-end) | 0 SP |
 | BL-047 | Timeseries anomaly detection into the ingest pipeline (analytics.06/07) | REQ-ANALYTICS (timeseries) | P1 (sprint 2026-28) | done — Sprint 2026-28 B2 (live-verified 2026-07-19 on `feat/sprint-2026-28-b2-timeseries-anomalies` Task 9: worker stage, persisted anomalies + signals, risk profile, workbench chart/chip all confirmed on TN CMS feeds; D1's scripted, mechanically-validated demo walkthrough still owed) | 0 SP |
 | BL-048 | Explainability engine: LLM narratives + production SHAP (analytics.13/.14) | REQ-ANALYTICS (explainability) | P1 (sprint 2026-28) | committed — Sprint 2026-28 B3 | 5 SP |
 | BL-049 | Workbench reshape design pass (IntegrityAI-inspired, design-only) | REQ-UI | P1 (sprint 2026-28) | committed — Sprint 2026-28 U1 | 2 SP |
