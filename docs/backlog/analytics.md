@@ -482,29 +482,32 @@ Pre-supersession state (accurate as of 2026-07-17, retained for history):
 
 ## Story analytics.13: Explainability: Generate LLM narrative reasoning beyond join-of-rationales
 **ID:** analytics.13
-**Status:** planned
+**Status:** done
 **Prerequisites:** [llm.06, analytics.16]
 **Unblocks:** []
 **Estimated size:** M
+**Done:** 2026-07-23 · Sprint 2026-28 B3 (explainability engine, BL-048) · `feat/sprint-2026-28-b3-explainability`
 **As a** investigator,
 **I need** evidence-pack narratives composed by an LLM (with structured headings, claims, and citations to evidence items), not a space-joined string of rationales,
 **so that** packs read as analyst-ready prose rather than a debug dump.
 
-### Current State
-- `_build_reasoning` joins string rationales with spaces (`backend/analytics/explainability/service.py:115-123`).
-- `_build_narrative` groups by `source_type` only (`backend/analytics/explainability/service.py:126-148`).
-- Module-level `TODO(production)` on `ExplainabilityService` (`backend/analytics/explainability/service.py:30-33`) explicitly calls for LLM-generated narrative explanations.
+### Current State (shipped)
+- `NarrativeGeneratorProtocol.summarize(*, context, items) -> ExplanationNarrative` (`backend/analytics/explainability/protocols.py`) is the new seam. `DeterministicNarrativeGenerator` (`adapters/deterministic.py`) is a behavior-preserving extraction of the old `_build_narrative`/`_build_reasoning`/`_format_heading` (group by `source_type` in first-seen order, space-joined bodies) — the pre-existing `test_service.py` suite passes unmodified against it, proving no output changed for the deterministic path.
+- `LlmNarrativeGenerator` (`adapters/llm_narrative.py`) wraps `llm.protocols.LlmServiceProtocol`: builds a `GenerateRequest`/`PromptTemplate` from the selected `ExplanationItem`s (source id, quote, rationale, score) plus the alert title and score snapshot, instructs markdown `## `-headed sections grounded in the listed evidence, and parses the completion into `NarrativeSection`s (`evidence_refs` = item ids whose text appears in the section, else all selected ids). Degrades to an injected `DeterministicNarrativeGenerator` fallback — logging WARNING, never raising — on any `LlmError`, unexpected exception, or empty/blank completion.
+- `ExplainabilityService.__init__`/`create_explainability_service` gain a keyword-only `narrative_generator: NarrativeGeneratorProtocol | None = None` (defaults to `DeterministicNarrativeGenerator()`); `generate_from_context` dispatches through it and sets `EvidencePack.reasoning = narrative.summary` plus the new `EvidencePack.narrative_sections`.
+- `DomainConfig.analytics.narrative_backend: Literal["deterministic","llm"]` (default `"deterministic"`) selects the backend; `agent.coordinator.build_narrative_generator` constructs it from `DomainConfig.llm` at the worker's Flow B assembly site. CMS medicare and Air Force housing default packs set `narrative_backend: llm`.
+- **Deviation:** delivered without its originally-listed `analytics.16` (composite graph+RAG+risk context assembler) prerequisite — the worker's Flow B context (`graph.get_subgraph()` + risk factors → `ExplanationContext`, `agent/coordinator.py`) was already real cross-module context by the time this story shipped, so the composite-assembler prerequisite was never load-bearing for this slice. `analytics.16` remains `planned` on its own merits (a reusable assembler for the API-driven `analytics.15` path, not built this sprint).
 
 ### Acceptance Criteria
-- [ ] `NarrativeGeneratorProtocol` introduced under `backend/analytics/explainability/protocols.py` with a `summarize(items, context) -> ExplanationNarrative` method.
-- [ ] `LlmNarrativeGenerator` adapter consumes an `LlmServiceProtocol` (cross-edge to llm.md) and emits multi-section prose grounded in `ExplanationItem.source_id` references.
-- [ ] `DeterministicNarrativeGenerator` retains the legacy join-of-rationales behaviour for tests and offline mode.
-- [ ] `ExplainabilityService.generate` dispatches via the protocol; `DomainConfig.analytics.narrative_backend` selects.
+- [x] `NarrativeGeneratorProtocol` introduced under `backend/analytics/explainability/protocols.py` with a `summarize(items, context) -> ExplanationNarrative` method. **Deviation:** keyword-only `summarize(*, context, items)`.
+- [x] `LlmNarrativeGenerator` adapter consumes an `LlmServiceProtocol` (cross-edge to llm.md) and emits multi-section prose grounded in `ExplanationItem.source_id` references.
+- [x] `DeterministicNarrativeGenerator` retains the legacy join-of-rationales behaviour for tests and offline mode.
+- [x] `ExplainabilityService.generate` dispatches via the protocol; `DomainConfig.analytics.narrative_backend` selects. **Deviation:** dispatch lives in `generate_from_context` (the shared path both `generate` and the worker call), not duplicated in `generate` itself.
 
 ### Verification
-- `pytest backend/tests/analytics/explainability -q` green.
-- Integration test stubs an LLM client and asserts the narrative contains structured sections matching the input items.
-- `pyright` clean.
+- `pytest backend/tests/analytics/explainability -q` green (includes `test_deterministic_generator.py`, `test_llm_narrative_generator.py`; `test_service.py` unmodified and passing — behavior-preservation gate).
+- `pytest --cov` (full suite): 2650 passed, 5 skipped, 97% coverage; `pyright` 0 errors; `ruff check --no-cache .` clean (Sprint 2026-28 B3 Task 8 closeout gates, 2026-07-23).
+- Live verification (worker logs show the LLM narrative path or clean WARNING degrade; `GET /evidence-packs/{id}` returns non-empty `narrative_sections`) is Task 9, reserved for the controller — **not yet run**, do not treat this story as live-verified.
 
 ### Code touch points
 - `backend/analytics/explainability/protocols.py` (modify)
@@ -512,7 +515,7 @@ Pre-supersession state (accurate as of 2026-07-17, retained for history):
 - `backend/analytics/explainability/adapters/llm_narrative.py` (new)
 - `backend/analytics/explainability/adapters/deterministic.py` (new)
 - `backend/config/schema.py` (modify)
-- `backend/api/dependencies.py` (modify)
+- `backend/agent/coordinator.py` (modify — `build_narrative_generator`, not `api/dependencies.py`; this seam is worker-only this sprint)
 - `backend/tests/analytics/explainability/` (modify)
 
 ---
@@ -527,28 +530,61 @@ Pre-supersession state (accurate as of 2026-07-17, retained for history):
 **I need** `ExplainabilityContextSourceProtocol` to be selectable between in-memory, SHAP, and LIME/permutation-importance adapters via DI and `DomainConfig`,
 **so that** investigators see model-agnostic feature attributions instead of fixture data.
 
+**PM status note (2026-07-23):** the implementation is **substantially shipped
+in a different shape than this story's AC assumed** — see the delivered-slice
+note below. Kept `planned` (not `in-progress`) because the backlog-consistency
+validator requires prerequisites `done` for `in-progress` and `config.01` is
+still `planned`; this mirrors the precedent set by analytics.11 above.
+
 ### Current State
-- `ShapExplainabilityContextSource` exists (`backend/analytics/explainability/adapters/shap_adapter.py:97-158`) but is never registered in DI.
-- API only exposes `InMemoryExplainabilityContextSource` (no `get_explainability_*` helper in `backend/api/dependencies.py`).
-- No LIME or permutation-importance adapter exists.
+**Delivered slice (Sprint 2026-28 B3, BL-048, 2026-07-23, `feat/sprint-2026-28-b3-explainability`):** a
+*different, narrower* SHAP seam than this story's original AC shipped — a **pipeline feature-attributor**,
+not the context-source DI literal this story specified. `FeatureAttributorProtocol.attribute(*, context) ->
+list[FeatureAttribution]` (`backend/analytics/explainability/protocols.py`) is the new seam;
+`ShapRiskAttributor` (`adapters/shap_attribution.py`) attributes `analytics.risk`'s `LinearScoringStrategy`
+composite (`predict(X) = min(1.0, Σx_i)`) over the per-feature contributions already snapshotted in
+`context.scores`, via `shap.Explainer` against a zero-baseline background — real SHAP end-to-end over a
+linear model today, the same seam attributing a trained model later unchanged. `NoopFeatureAttributor`
+(same file) is the `"none"` default. `DomainConfig.analytics.attribution_backend: Literal["none","shap"]`
+selects; `agent.coordinator.build_feature_attributor` constructs it at the worker's Flow B assembly site;
+`ExplainabilityService` composes the result into `EvidencePack.attribution`. Missing `shap`/no risk-factor
+features/any explainer exception degrades to `[]` + WARNING, never raises. CMS medicare and Air Force
+housing default packs set `attribution_backend: shap`.
+
+**Still open (this story's original scope, unaddressed by the B3 slice):**
+- The `get_explainability_context_source` DI factory and `DomainConfig.analytics.explainability_backend:
+  Literal["in_memory","shap","lime"]` context-source literal were **not** built — `ShapExplainabilityContextSource`
+  (`adapters/shap_adapter.py`) remains unregistered in DI, exactly as before B3.
+- No LIME/permutation-importance adapter exists — no dependency, no sprint AC for it.
+- **Corrected stale claim:** the "(new) test_shap_adapter.py" acceptance criterion below is stale —
+  `backend/tests/analytics/explainability/test_shap_adapter.py` already existed pre-B3 with 12 passing tests
+  covering `ShapExplainabilityContextSource`; it was not new when this story was last touched and B3 did not
+  modify it. The B3 slice's own tests live in the separate, newly-created
+  `backend/tests/analytics/explainability/test_shap_attribution.py` (8 tests, covering `ShapRiskAttributor` +
+  `NoopFeatureAttributor`, unit + `@pytest.mark.integration`).
+- `ShapRiskAttributor` and `ShapExplainabilityContextSource` are two distinct adapters solving two different
+  problems (pipeline attribution vs. context-source loading) that happen to share the `shap` dependency — see
+  `backend/analytics/README.md` § Explainability narrative + attribution seams for the disambiguation.
 
 ### Acceptance Criteria
-- [ ] `get_explainability_context_source` factory added to `backend/api/dependencies.py` keyed by `DomainConfig.analytics.explainability_backend: Literal["in_memory","shap","lime"]`.
-- [ ] `LimeExplainabilityContextSource` (or `PermutationImportanceContextSource`) added under `backend/analytics/explainability/adapters/` with lazy import.
-- [ ] Coverage ≥ 85% on each new adapter (integration test marked `@pytest.mark.integration` for the SHAP and LIME paths).
-- [ ] SHAP unit/integration test exists where there was none.
+- [ ] `get_explainability_context_source` factory added to `backend/api/dependencies.py` keyed by `DomainConfig.analytics.explainability_backend: Literal["in_memory","shap","lime"]`. **Not delivered by B3** — out of scope per the B3 design's ruling (`docs/superpowers/specs/2026-07-23-sprint28-b3-explainability-design.md` §2.4/§5); remains open.
+- [ ] `LimeExplainabilityContextSource` (or `PermutationImportanceContextSource`) added under `backend/analytics/explainability/adapters/` with lazy import. **Not delivered** — no dependency, no sprint AC.
+- [x] Coverage ≥ 85% on each new adapter (integration test marked `@pytest.mark.integration` for the SHAP and LIME paths). **Delivered for the B3 pipeline-attributor slice only:** `ShapRiskAttributor`/`NoopFeatureAttributor` unit-covered with a monkeypatched loader hook plus a real `@pytest.mark.integration`/`pytest.importorskip("shap")` test asserting SHAP values sum to `predict(x) - predict(0)` within `1e-3`. No LIME adapter exists to cover.
+- [x] SHAP unit/integration test exists where there was none. **Corrected:** true for the new `test_shap_attribution.py` file; `test_shap_adapter.py` already had SHAP tests pre-B3 (see stale-claim note above).
 
 ### Verification
-- `pytest -m integration backend/tests/analytics/explainability/test_shap_adapter.py -q` green.
-- `pyright` clean.
+- `pytest -m integration backend/tests/analytics/explainability/test_shap_attribution.py -q` green (new, B3). `test_shap_adapter.py`'s pre-existing SHAP coverage is unaffected — this story left it unmodified.
+- `pytest --cov` (full suite): 2650 passed, 5 skipped, 97% coverage; `pyright` 0 errors; `ruff check --no-cache .` clean (Sprint 2026-28 B3 Task 8 closeout gates, 2026-07-23).
+- Live verification (worker logs show SHAP attribution rows on new packs; `GET /evidence-packs/{id}` returns non-empty `attribution`) is Task 9, reserved for the controller — **not yet run**.
 
 ### Code touch points
-- `backend/api/dependencies.py` (modify)
-- `backend/analytics/explainability/adapters/lime_adapter.py` (new)
-- `backend/analytics/explainability/adapters/shap_adapter.py` (modify)
-- `backend/config/schema.py` (modify)
-- `backend/tests/analytics/explainability/test_shap_adapter.py` (new)
-- `backend/tests/analytics/explainability/test_lime_adapter.py` (new)
+- `backend/analytics/explainability/protocols.py` (modify — `FeatureAttributorProtocol`, B3)
+- `backend/analytics/explainability/adapters/shap_attribution.py` (new, B3 — `NoopFeatureAttributor` + `ShapRiskAttributor`)
+- `backend/analytics/explainability/service.py` (modify, B3 — composition)
+- `backend/config/schema.py` (modify, B3 — `attribution_backend`)
+- `backend/agent/coordinator.py` (modify, B3 — `build_feature_attributor`)
+- `backend/tests/analytics/explainability/test_shap_attribution.py` (new, B3)
+- Still open (original scope): `backend/api/dependencies.py` (`get_explainability_context_source`), `backend/analytics/explainability/adapters/lime_adapter.py` (new), `backend/analytics/explainability/adapters/shap_adapter.py` (modify to register in DI), `backend/tests/analytics/explainability/test_lime_adapter.py` (new)
 
 ---
 
@@ -628,6 +664,7 @@ Pre-supersession state (accurate as of 2026-07-17, retained for history):
 ### Current State
 - `ExplainabilityService.generate` (`backend/analytics/explainability/service.py:56-98`) builds an `EvidencePack` and publishes `ExplainabilityGeneratedEvent` but nothing writes the pack to a store.
 - No `evidence_pack_history` table; no `PostgresEvidencePackRepository`.
+- **Stale example noted at Sprint 2026-28 B3 closeout (2026-07-23):** the `0002_evidence_pack_history.py` filename in the Code touch points below is stale against the current migration sequence — the Alembic head is `0011` (`timeseries_anomalies`, Sprint 2026-28 B2) and `0002` is already taken by `cases`. B3 added no migration (attribution + narrative sections embed in the existing object-store-persisted pack). Any future implementer of this story should name the new migration `0012_evidence_pack_history.py` (or whatever the head is at implementation time), not `0002`.
 
 ### Acceptance Criteria
 - [ ] New Alembic migration creates `evidence_pack_history` table (`evidence_pack_id`, `alert_id`, `knowledge_base_id`, `reasoning`, `subgraph_nodes`, `subgraph_edges`, `confidence`, `scores`, `created_at`).

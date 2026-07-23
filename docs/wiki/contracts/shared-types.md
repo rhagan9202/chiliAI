@@ -1,6 +1,6 @@
 # Shared Types Contract
 
-**Verified against codebase:** 2026-05-28
+**Verified against codebase:** 2026-07-23
 **Source:** `backend/shared/types.py`, `backend/shared/protocols.py`
 
 These are the generic platform types. No domain-specific types (`Provider`, `Claim`, etc.) live here — those are configured via `DomainConfig` and flow at runtime as generic `Entity` instances.
@@ -112,6 +112,24 @@ class Alert(BaseModel):
     resolution_notes: str | None = None
 ```
 
+### `FeatureAttribution`
+
+```python
+class FeatureAttribution(BaseModel):
+    feature_name: str
+    contribution: float                    # signed, model-space
+    rationale: str = ""
+```
+
+### `EvidenceNarrativeSection`
+
+```python
+class EvidenceNarrativeSection(BaseModel):
+    heading: str
+    body: str
+    evidence_refs: list[str] = []
+```
+
 ### `EvidencePack`
 
 ```python
@@ -125,7 +143,11 @@ class EvidencePack(BaseModel):
     created_at: datetime                   # default: utc_now()
     scores: dict[str, float] = {}
     source_documents: list[str] = []
+    attribution: list[FeatureAttribution] = []          # B3 (BL-048): SHAP or noop, per-feature signed contributions
+    narrative_sections: list[EvidenceNarrativeSection] = []  # B3 (BL-048): LLM or deterministic narrative, grouped by heading
 ```
+
+Both new fields default to `[]` so pre-B3 persisted object-store packs deserialize unchanged (`EvidencePack.model_validate` on a legacy payload with neither key present).
 
 ### `KnowledgeBase`
 

@@ -196,6 +196,22 @@ class EvidenceItemResponse(BaseModel):
     score: float = Field(ge=0.0, le=1.0)
 
 
+class FeatureAttributionResponse(BaseModel):
+    """A single feature's signed contribution to a risk score or alert."""
+
+    feature_name: str
+    contribution: float
+    rationale: str = ""
+
+
+class NarrativeSectionResponse(BaseModel):
+    """A titled prose section of a generated evidence narrative."""
+
+    heading: str
+    body: str
+    evidence_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
 class EvidencePackResponse(BaseModel):
     """Frontend-oriented evidence pack detail payload."""
 
@@ -208,6 +224,12 @@ class EvidencePackResponse(BaseModel):
     subgraph_edge_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
     items: list[EvidenceItemResponse] = Field(default_factory=lambda: cast(list[EvidenceItemResponse], []))
     policy_citations: list[PolicyCitation] = Field(default_factory=lambda: cast(list[PolicyCitation], []))
+    attribution: list[FeatureAttributionResponse] = Field(
+        default_factory=lambda: cast(list[FeatureAttributionResponse], [])
+    )
+    narrative_sections: list[NarrativeSectionResponse] = Field(
+        default_factory=lambda: cast(list[NarrativeSectionResponse], [])
+    )
 
 
 class CaseSummaryResponse(BaseModel):

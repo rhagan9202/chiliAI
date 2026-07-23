@@ -12,7 +12,7 @@ ML/AI capability modules. Six sub-modules, most following the standard module sh
 | `timeseries/` | Time-series anomaly detection on entity metric observations |
 | `gnn/` | Graph neural network link prediction and community detection |
 | `risk/` | Risk scoring engine — linear combination of weighted signals |
-| `explainability/` | Evidence pack generation (SHAP-based or in-memory stub) |
+| `explainability/` | Evidence pack generation — pluggable narrative (deterministic/LLM) and feature-attribution (noop/SHAP) seams over an in-memory or SHAP-based context source |
 | `metrics/` | Entity-metric persistence; no events, no service entrypoint |
 | `peerstats/` | Record-column peer z-score analytics that persist derived risk signals |
 
@@ -262,12 +262,33 @@ Inner protocols: `adapters/protocols.py::RiskHistoryWriter`, `RiskSignalSourcePr
 
 ### Protocol
 
-Last verified: 2026-06-16
+Last verified: 2026-07-23 (Sprint 2026-28 B3, BL-048)
 
 ```python
 class ExplainabilityServiceProtocol(Protocol):
     def generate(self, request: ExplainabilityRequest) -> ExplainabilityResponse: ...
+    def generate_from_context(
+        self, context: ExplanationContext, *, max_evidence_items: int = 3
+    ) -> ExplainabilityResponse: ...
+
+class NarrativeGeneratorProtocol(Protocol):
+    """Never raises — degrades to a fallback narrative + WARNING log."""
+    def summarize(
+        self, *, context: ExplanationContext, items: Sequence[ExplanationItem]
+    ) -> ExplanationNarrative: ...
+
+class FeatureAttributorProtocol(Protocol):
+    """Never raises — degrades to [] + WARNING log."""
+    def attribute(self, *, context: ExplanationContext) -> list[FeatureAttribution]: ...
 ```
+
+`ExplainabilityService.__init__(context_source, *, event_bus, narrative_generator=None, feature_attributor=None)`
+(both keyword-only, default to `DeterministicNarrativeGenerator()` / `NoopFeatureAttributor()`).
+`generate_from_context` calls `narrative_generator.summarize(...)` and
+`feature_attributor.attribute(...)`, then composes the `EvidencePack`'s
+`reasoning` (= `narrative.summary`), `narrative_sections`, and `attribution`
+fields from the results (`shared.types.EvidenceNarrativeSection` /
+`FeatureAttribution`).
 
 ### Service Models (`analytics/explainability/service_models.py`)
 
@@ -284,18 +305,37 @@ class ExplainabilityEvidence(BaseModel):
 
 class ExplainabilityResponse(BaseModel):
     request_id: str; knowledge_base_id: str; alert_id: str
-    evidence_pack: EvidencePack           # from shared/types.py
+    evidence_pack: EvidencePack           # from shared/types.py — now carries attribution + narrative_sections
     evidence_items: list[ExplainabilityEvidence] = []
     narrative: ExplanationNarrative       # from analytics/explainability/models.py
 ```
 
-### Adapters
+### Context-source adapters
 | Backend | File |
 |---------|------|
 | In-memory | `adapters/in_memory.py::InMemoryExplainabilityContextSource` |
-| SHAP | `adapters/shap_adapter.py` |
+| SHAP (context-source, unwired from DI) | `adapters/shap_adapter.py::ShapExplainabilityContextSource` |
 
-Inner protocol: `adapters/protocols.py::ExplainabilityContextSourceProtocol`.
+Inner protocol: `adapters/protocols.py::ExplainabilityContextSourceProtocol`. `shap_adapter.py`
+predates B3 and is a different seam (analytics.14's original context-source
+literal, `in_memory|shap|lime`, is still not built — see `docs/backlog/analytics.md`
+analytics.14) — do not confuse it with `adapters/shap_attribution.py` below.
+
+### Narrative generators (B3, analytics.13 sprint slice)
+| Backend | File | Behavior |
+|---------|------|----------|
+| Deterministic (default) | `adapters/deterministic.py::DeterministicNarrativeGenerator` | Groups selected items by `source_type` in first-seen order; body = space-joined rationales per group; `summary` = space-joined rationales of all selected items. Extracted, behavior-preserving, from the pre-B3 `_build_narrative`/`_build_reasoning`. |
+| LLM | `adapters/llm_narrative.py::LlmNarrativeGenerator` | Wraps `llm.protocols.LlmServiceProtocol`; renders a markdown-instructed prompt (per-item `source_id`/`quote`/`rationale`/score, alert title, score snapshot); parses `## `-headed response sections into `NarrativeSection`s (`evidence_refs` = item ids whose text appears in the section body, else all selected ids). Degrades to an injected fallback generator (`DeterministicNarrativeGenerator`) on any `LlmError`, unexpected exception, or empty/blank completion — logs WARNING, never raises. |
+
+Selected via `AnalyticsConfig.narrative_backend: Literal["deterministic", "llm"]` (default `"deterministic"`), built by `agent.coordinator.build_narrative_generator`.
+
+### Feature attributors (B3, analytics.14 sprint slice — pipeline-attributor seam)
+| Backend | File | Behavior |
+|---------|------|----------|
+| Noop (default) | `adapters/shap_attribution.py::NoopFeatureAttributor` | Returns `[]` unconditionally. |
+| SHAP | `adapters/shap_attribution.py::ShapRiskAttributor` | Attributes `analytics.risk`'s `LinearScoringStrategy` composite (`predict(X) = min(1.0, Σx_i)`) over the per-feature contributions already snapshotted in `context.scores` (excluding `"overall"`), via `shap.Explainer` against a zero-baseline background. Lazy `shap`/`numpy` import; missing extra, no risk-factor features, or any explainer exception degrades to `[]` + WARNING, never raises. Sorted by `abs(contribution)` descending. |
+
+Selected via `AnalyticsConfig.attribution_backend: Literal["none", "shap"]` (default `"none"`), built by `agent.coordinator.build_feature_attributor`. This is a distinct seam from `shap_adapter.py`'s `ShapExplainabilityContextSource` (context-source protocol, still DI-unwired) — see analytics.14 in the backlog for the two adapters' relationship.
 
 ---
 

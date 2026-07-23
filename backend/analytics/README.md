@@ -118,6 +118,58 @@ See `backend/README.md` § Analytics Runtime Notes for the full worker/API
 wiring (`run_timeseries_stage`, its controlled-skip semantics, and the
 `DomainConfig.timeseries` config surface).
 
+## Explainability narrative + attribution seams
+
+`analytics/explainability` composes two independently-selectable, config-driven
+seams (Sprint 2026-28 B3, BL-048) inside `ExplainabilityService`. Both are
+injected via constructor keywords defaulting to a no-op implementation, and
+both adapters follow a hard **never-raise** contract — any internal failure
+degrades to the fallback output and logs a WARNING, so a misconfigured or
+unreachable backend never turns a pipeline stage into `analysis.failed`.
+
+- **Narrative generation** (`NarrativeGeneratorProtocol.summarize`) — selected
+  via `AnalyticsConfig.narrative_backend: Literal["deterministic","llm"]`
+  (default `"deterministic"`). `DeterministicNarrativeGenerator`
+  (`adapters/deterministic.py`) is the extracted, behavior-preserving form of
+  the original space-joined-by-`source_type` narrative. `LlmNarrativeGenerator`
+  (`adapters/llm_narrative.py`) wraps `llm.protocols.LlmServiceProtocol` with an
+  injected `DeterministicNarrativeGenerator` as its fallback: it renders a
+  markdown-instructed prompt from the selected `ExplanationItem`s (source id,
+  quote, rationale, score) plus the alert title and score snapshot, then parses
+  `## `-headed response sections into `NarrativeSection`s. Degrades to the
+  fallback on any `LlmError`, unexpected exception, or blank/empty completion.
+- **Feature attribution** (`FeatureAttributorProtocol.attribute`) — selected via
+  `AnalyticsConfig.attribution_backend: Literal["none","shap"]` (default
+  `"none"`). `NoopFeatureAttributor` (`adapters/shap_attribution.py`) returns
+  `[]` unconditionally. `ShapRiskAttributor` (same file) attributes
+  `analytics.risk`'s `LinearScoringStrategy` composite
+  (`predict(X) = min(1.0, Σx_i)`) over the per-feature contributions already
+  snapshotted in `context.scores` (every key except `"overall"`), running
+  `shap.Explainer` against a zero-baseline background — for this linear model
+  the SHAP values are exact per-feature marginal contributions, so the same
+  seam attributes a trained model later without changing its shape. Lazily
+  imports `shap`/`numpy`; a missing `[analytics]` extra, no risk-factor
+  features, or any explainer exception degrades to `[]`.
+- **Not the same seam as `adapters/shap_adapter.py`.** That module
+  (`ShapExplainabilityContextSource`) implements the older
+  `ExplainabilityContextSourceProtocol` — it explains a model callable and maps
+  attributions to `ExplanationItem`s for the *context-loading* step. It
+  predates B3, is still not selected anywhere in DI (the `in_memory|shap|lime`
+  context-source literal from `docs/backlog/analytics.md` story analytics.14
+  was never built), and is unrelated to `ShapRiskAttributor`'s pipeline
+  *attribution* seam above beyond sharing the `shap` dependency.
+- `agent.coordinator.build_narrative_generator`/`build_feature_attributor`
+  construct both from `DomainConfig` at the Flow B assembly site; both are
+  threaded into `create_explainability_service(...)` alongside the existing
+  context source. See `backend/README.md` § Analytics Runtime Notes for the
+  full worker wiring and default-pack enablement.
+- Persisted `EvidencePack`s (`shared/types.py`) carry the results as
+  `attribution: list[FeatureAttribution]` and
+  `narrative_sections: list[EvidenceNarrativeSection]`, both defaulting to
+  `[]` so pre-B3 persisted object-store packs deserialize unchanged.
+  `EvidencePackResponse` (`api/contracts.py`) mirrors both fields 1:1 via
+  `api/dependencies.py::_evidence_pack_to_response`.
+
 ## Where script code belongs
 
 Use this mapping when converting a script or notebook into the codebase:

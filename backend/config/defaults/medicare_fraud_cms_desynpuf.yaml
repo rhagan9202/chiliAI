@@ -637,6 +637,8 @@ database:
 
 analytics:
   metrics_recompute_min_interval_seconds: 300
+  narrative_backend: llm
+  attribution_backend: shap
 
 monitoring:
   evaluation_interval_seconds: 300

@@ -919,6 +919,24 @@ def test_domain_config_defaults_analytics_section() -> None:
     assert config.analytics.metrics_recompute_min_interval_seconds == 300
 
 
+class TestAnalyticsExplainabilityBackends:
+    def test_defaults_are_deterministic_and_none(self) -> None:
+        config = AnalyticsConfig()
+        assert config.narrative_backend == "deterministic"
+        assert config.attribution_backend == "none"
+
+    def test_accepts_llm_and_shap(self) -> None:
+        config = AnalyticsConfig(narrative_backend="llm", attribution_backend="shap")
+        assert config.narrative_backend == "llm"
+        assert config.attribution_backend == "shap"
+
+    def test_rejects_unknown_backends(self) -> None:
+        with pytest.raises(ValidationError):
+            AnalyticsConfig(narrative_backend="template")  # type: ignore[arg-type]
+        with pytest.raises(ValidationError):
+            AnalyticsConfig(attribution_backend="lime")  # type: ignore[arg-type]
+
+
 # ---------------------------------------------------------------------------
 # GnnConfig
 # ---------------------------------------------------------------------------

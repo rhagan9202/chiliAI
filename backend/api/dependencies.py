@@ -29,7 +29,9 @@ from api.contracts import (
     EntityTimeseriesPointResponse,
     EntityTimeseriesResponse,
     EvidencePackResponse,
+    FeatureAttributionResponse,
     GraphEntityDetailResponse,
+    NarrativeSectionResponse,
     PageInfo,
     PolicyCitationResponse,
     PolicyDispositionResponse,
@@ -439,6 +441,22 @@ def _evidence_pack_to_response(pack: EvidencePack) -> EvidencePackResponse:
         scores=dict(pack.scores),
         subgraph_node_ids=list(pack.subgraph_nodes),
         subgraph_edge_ids=list(pack.subgraph_edges),
+        attribution=[
+            FeatureAttributionResponse(
+                feature_name=attribution.feature_name,
+                contribution=attribution.contribution,
+                rationale=attribution.rationale,
+            )
+            for attribution in pack.attribution
+        ],
+        narrative_sections=[
+            NarrativeSectionResponse(
+                heading=section.heading,
+                body=section.body,
+                evidence_refs=list(section.evidence_refs),
+            )
+            for section in pack.narrative_sections
+        ],
     )
 
 

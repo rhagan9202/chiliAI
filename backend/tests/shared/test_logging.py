@@ -49,6 +49,16 @@ def reset_structlog() -> Iterator[None]:
     structlog.reset_defaults()
     clear_correlation_id()
     logging_module._configured = False  # pyright: ignore[reportPrivateUsage]
+    # Test isolation: structlog.reset_defaults() leaves the process on
+    # structlog's raw default config (PrintLoggerFactory, bypassing stdlib
+    # logging entirely). Any module-level logger elsewhere in the process
+    # that is used for the first time after this point (e.g.
+    # shared.metrics._stage_logger, cached on first use) would otherwise
+    # silently stop reaching stdlib handlers -- including pytest's caplog --
+    # for the rest of the test session. Restore the app's normal
+    # stdlib-integrated configuration so state doesn't leak into unrelated
+    # tests collected later in the run.
+    configure_logging()
 
 
 def _last_log_line(capsys: pytest.CaptureFixture[str]) -> str:

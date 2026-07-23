@@ -278,6 +278,15 @@
       "AnalyticsConfig": {
         "description": "Configuration for analytics persistence, recompute behavior, and risk tiers.",
         "properties": {
+          "attribution_backend": {
+            "default": "none",
+            "enum": [
+              "none",
+              "shap"
+            ],
+            "title": "Attribution Backend",
+            "type": "string"
+          },
           "high_risk_threshold": {
             "default": 0.8,
             "maximum": 1.0,
@@ -297,6 +306,15 @@
             "exclusiveMinimum": 0,
             "title": "Metrics Recompute Min Interval Seconds",
             "type": "integer"
+          },
+          "narrative_backend": {
+            "default": "deterministic",
+            "enum": [
+              "deterministic",
+              "llm"
+            ],
+            "title": "Narrative Backend",
+            "type": "string"
           }
         },
         "title": "AnalyticsConfig",
@@ -2525,6 +2543,13 @@
             "title": "Alert Id",
             "type": "string"
           },
+          "attribution": {
+            "items": {
+              "$ref": "#/components/schemas/FeatureAttributionResponse"
+            },
+            "title": "Attribution",
+            "type": "array"
+          },
           "confidence": {
             "maximum": 1.0,
             "minimum": 0.0,
@@ -2540,6 +2565,13 @@
               "$ref": "#/components/schemas/EvidenceItemResponse"
             },
             "title": "Items",
+            "type": "array"
+          },
+          "narrative_sections": {
+            "items": {
+              "$ref": "#/components/schemas/NarrativeSectionResponse"
+            },
+            "title": "Narrative Sections",
             "type": "array"
           },
           "policy_citations": {
@@ -2582,6 +2614,30 @@
           "confidence"
         ],
         "title": "EvidencePackResponse",
+        "type": "object"
+      },
+      "FeatureAttributionResponse": {
+        "description": "A single feature's signed contribution to a risk score or alert.",
+        "properties": {
+          "contribution": {
+            "title": "Contribution",
+            "type": "number"
+          },
+          "feature_name": {
+            "title": "Feature Name",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "feature_name",
+          "contribution"
+        ],
+        "title": "FeatureAttributionResponse",
         "type": "object"
       },
       "GnnClusterResponse": {
@@ -3606,6 +3662,32 @@
           }
         },
         "title": "MonitoringConfig",
+        "type": "object"
+      },
+      "NarrativeSectionResponse": {
+        "description": "A titled prose section of a generated evidence narrative.",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "heading": {
+            "title": "Heading",
+            "type": "string"
+          }
+        },
+        "required": [
+          "heading",
+          "body"
+        ],
+        "title": "NarrativeSectionResponse",
         "type": "object"
       },
       "NeighborhoodResponse": {

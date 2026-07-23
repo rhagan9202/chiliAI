@@ -203,6 +203,8 @@ class AnalyticsConfig(BaseModel):
     metrics_recompute_min_interval_seconds: int = Field(default=300, gt=0)
     medium_risk_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
     high_risk_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
+    narrative_backend: Literal["deterministic", "llm"] = "deterministic"
+    attribution_backend: Literal["none", "shap"] = "none"
 
     @model_validator(mode="after")
     def _validate_risk_thresholds(self) -> AnalyticsConfig:
