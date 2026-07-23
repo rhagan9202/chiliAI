@@ -67,6 +67,7 @@ export type InvestigationEntitySearchResponse = Omit<Schemas['EntitySearchRespon
 }
 
 export type EvidenceItemResponse = Schemas['EvidenceItemResponse']
+export type FeatureAttributionResponse = Schemas['FeatureAttributionResponse']
 export type EvidencePackResponse = RequireFields<
   Schemas['EvidencePackResponse'],
   'items' | 'policy_citations' | 'scores' | 'subgraph_edge_ids' | 'subgraph_node_ids'
