@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
-from analytics.explainability.models import ExplanationContext
+from analytics.explainability.models import ExplanationContext, ExplanationItem, ExplanationNarrative
 from analytics.explainability.service_models import ExplainabilityRequest, ExplainabilityResponse
 
 
@@ -22,6 +23,16 @@ class ExplainabilityServiceProtocol(Protocol):
     ) -> ExplainabilityResponse: ...
 
 
+@runtime_checkable
+class NarrativeGeneratorProtocol(Protocol):
+    """Produce a structured narrative from selected explanation items."""
+
+    def summarize(
+        self, *, context: ExplanationContext, items: Sequence[ExplanationItem]
+    ) -> ExplanationNarrative: ...
+
+
 __all__ = [
     "ExplainabilityServiceProtocol",
+    "NarrativeGeneratorProtocol",
 ]

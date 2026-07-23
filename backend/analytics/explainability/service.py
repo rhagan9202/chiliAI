@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
+from analytics.explainability.adapters.deterministic import DeterministicNarrativeGenerator
 from analytics.explainability.adapters.protocols import ExplainabilityContextSourceProtocol
 from analytics.explainability.exceptions import (
     ExplainabilityConfigurationError,
     ExplainabilityInsufficientEvidenceError,
     ExplainabilitySourceError,
 )
-from analytics.explainability.models import (
-    ExplanationContext,
-    ExplanationItem,
-    ExplanationNarrative,
-    NarrativeSection,
-)
+from analytics.explainability.models import ExplanationContext, ExplanationItem
+from analytics.explainability.protocols import NarrativeGeneratorProtocol
 from analytics.explainability.service_models import (
     ExplainabilityEvidence,
     ExplainabilityRequest,
@@ -29,13 +26,19 @@ class ExplainabilityService:
     """Coordinate context loading, evidence assembly, and event publication."""
 
     # TODO(production): Integrate SHAP/LIME for model-agnostic feature attribution.
-    # Add LLM-generated narrative explanations (natural language reasoning).
     # Add configurable evidence selection strategies (top-k by score, diversity
     # sampling, subgraph-aware selection).
 
-    def __init__(self, context_source: ExplainabilityContextSourceProtocol, *, event_bus: EventBus) -> None:
+    def __init__(
+        self,
+        context_source: ExplainabilityContextSourceProtocol,
+        *,
+        event_bus: EventBus,
+        narrative_generator: NarrativeGeneratorProtocol | None = None,
+    ) -> None:
         self._context_source = context_source
         self._event_bus = event_bus
+        self._narrative_generator = narrative_generator or DeterministicNarrativeGenerator()
 
     def generate(self, request: ExplainabilityRequest) -> ExplainabilityResponse:
         try:
@@ -70,7 +73,7 @@ class ExplainabilityService:
             )
 
         selected_items = _select_items(context.explanation_items, max_items=max_evidence_items)
-        narrative = _build_narrative(selected_items)
+        narrative = self._narrative_generator.summarize(context=context, items=selected_items)
         evidence_pack = EvidencePack(
             id=generate_id(),
             alert_id=context.alert.id,
@@ -119,55 +122,15 @@ def create_explainability_service(
     context_source: ExplainabilityContextSourceProtocol,
     *,
     event_bus: EventBus,
+    narrative_generator: NarrativeGeneratorProtocol | None = None,
 ) -> ExplainabilityService:
     """Create the default explainability service."""
 
-    return ExplainabilityService(context_source, event_bus=event_bus)
+    return ExplainabilityService(context_source, event_bus=event_bus, narrative_generator=narrative_generator)
 
 
 def _select_items(items: list[ExplanationItem], *, max_items: int) -> list[ExplanationItem]:
     return sorted(items, key=lambda item: item.score, reverse=True)[:max_items]
-
-
-def _build_reasoning(items: list[ExplanationItem]) -> str:
-    """Flatten explanation rationales into the legacy reasoning string.
-
-    Retained as a deterministic helper used by `_build_narrative` and tests
-    that still rely on the flattened form for the evidence-pack `reasoning`
-    field.
-    """
-
-    return " ".join(item.rationale for item in items)
-
-
-def _build_narrative(items: list[ExplanationItem]) -> ExplanationNarrative:
-    """Group explanation items by `source_type` into a structured narrative."""
-
-    grouped: dict[str, list[ExplanationItem]] = {}
-    order: list[str] = []
-    for item in items:
-        if item.source_type not in grouped:
-            grouped[item.source_type] = []
-            order.append(item.source_type)
-        grouped[item.source_type].append(item)
-
-    sections: list[NarrativeSection] = []
-    for source_type in order:
-        section_items = grouped[source_type]
-        sections.append(
-            NarrativeSection(
-                heading=_format_heading(source_type),
-                body=" ".join(item.rationale for item in section_items),
-                evidence_refs=[item.source_id for item in section_items],
-            )
-        )
-
-    return ExplanationNarrative(summary=_build_reasoning(items), sections=sections)
-
-
-def _format_heading(source_type: str) -> str:
-    cleaned = source_type.replace("_", " ").strip()
-    return cleaned.title() if cleaned else source_type
 
 
 __all__ = ["ExplainabilityService", "create_explainability_service"]

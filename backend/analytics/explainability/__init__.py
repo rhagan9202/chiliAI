@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from analytics.explainability.adapters.deterministic import DeterministicNarrativeGenerator
 from analytics.explainability.adapters.in_memory import InMemoryExplainabilityContextSource
 from analytics.explainability.adapters.protocols import ExplainabilityContextSourceProtocol
 from analytics.explainability.exceptions import (
@@ -17,7 +18,10 @@ from analytics.explainability.models import (
     ExplanationSubgraph,
     NarrativeSection,
 )
-from analytics.explainability.protocols import ExplainabilityServiceProtocol
+from analytics.explainability.protocols import (
+    ExplainabilityServiceProtocol,
+    NarrativeGeneratorProtocol,
+)
 from analytics.explainability.service import ExplainabilityService, create_explainability_service
 from analytics.explainability.service_models import (
     ExplainabilityEvidence,
@@ -26,6 +30,7 @@ from analytics.explainability.service_models import (
 )
 
 __all__ = [
+    "DeterministicNarrativeGenerator",
     "ExplainabilityConfigurationError",
     "ExplainabilityError",
     "ExplainabilityEvidence",
@@ -41,6 +46,7 @@ __all__ = [
     "ExplanationNarrative",
     "ExplanationSubgraph",
     "InMemoryExplainabilityContextSource",
+    "NarrativeGeneratorProtocol",
     "NarrativeSection",
     "create_explainability_service",
 ]
