@@ -156,6 +156,75 @@ def test_agent_service_rejects_unknown_requested_step_name() -> None:
     assert event_bus.published_events == []
 
 
+class _RaceWindowWorkflowRunStore(InMemoryWorkflowRunStore):
+    """Simulates a worker fallback-creating the run between find and save.
+
+    The first ``find_by_correlation_id`` reports no run (the pre-save window);
+    the store already holds the competitor, so ``save_run`` raises the
+    correlation-uniqueness ``ValueError`` and a re-find sees the competitor.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._find_calls = 0
+
+    def find_by_correlation_id(self, correlation_id: str) -> WorkflowRun | None:
+        self._find_calls += 1
+        if self._find_calls == 1:
+            return None
+        return super().find_by_correlation_id(correlation_id)
+
+
+def test_agent_service_adopts_run_created_between_find_and_save() -> None:
+    run_store = _RaceWindowWorkflowRunStore()
+    competitor = WorkflowRun(
+        workflow_id="workflow-worker-won",
+        knowledge_base_id="kb-1",
+        trigger_event_type="records.ingested",
+        status=WorkflowRunStatus.RUNNING,
+        steps=[WorkflowStepState(step_name="records_ingest")],
+        metadata={"correlation_id": "corr-race"},
+    )
+    run_store.save_run(competitor)
+    service = create_agent_service(run_store, event_bus=InMemoryEventBus())
+
+    response = service.start_workflow(
+        WorkflowSubmissionRequest(
+            knowledge_base_id="kb-1",
+            trigger_event_type="records.ingested",
+            requested_steps=["records_ingest"],
+            correlation_id="corr-race",
+        )
+    )
+
+    assert response.workflow_id == "workflow-worker-won"
+    assert len(run_store.list_runs().items) == 1
+
+
+def test_agent_service_race_adoption_still_rejects_mismatched_request() -> None:
+    run_store = _RaceWindowWorkflowRunStore()
+    competitor = WorkflowRun(
+        workflow_id="workflow-worker-won",
+        knowledge_base_id="kb-other",
+        trigger_event_type="records.ingested",
+        status=WorkflowRunStatus.RUNNING,
+        steps=[WorkflowStepState(step_name="records_ingest")],
+        metadata={"correlation_id": "corr-race"},
+    )
+    run_store.save_run(competitor)
+    service = create_agent_service(run_store, event_bus=InMemoryEventBus())
+
+    with pytest.raises(AgentConfigurationError, match="knowledge_base_id"):
+        service.start_workflow(
+            WorkflowSubmissionRequest(
+                knowledge_base_id="kb-1",
+                trigger_event_type="records.ingested",
+                requested_steps=["records_ingest"],
+                correlation_id="corr-race",
+            )
+        )
+
+
 def test_get_workflow_status_returns_persisted_run() -> None:
     seeded = _run()
     service, _, _ = _service(runs=[seeded])

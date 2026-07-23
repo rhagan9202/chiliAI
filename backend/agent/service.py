@@ -78,6 +78,14 @@ class AgentService:
                 )
             )
         except ValueError as exc:
+            # The find-then-save window is not atomic: a worker consuming the
+            # pipeline event may fallback-create the run between our find and
+            # save. On the store's uniqueness rejection, re-find and adopt the
+            # winner instead of surfacing a spurious configuration error.
+            existing = self._run_store.find_by_correlation_id(correlation_id)
+            if existing is not None:
+                self._verify_correlation_match(existing, request, correlation_id)
+                return self._response_from_run(existing)
             raise AgentConfigurationError(str(exc)) from exc
         except Exception as exc:
             raise AgentStateStoreError("Failed to persist workflow run.") from exc
