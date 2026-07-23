@@ -22,7 +22,7 @@
 | _observability.md | 11 | 1 | 0 | 13 | 0% |
 | _plugins.md | 16 | 0 | 0 | 16 | 0% |
 | _security.md | 11 | 0 | 1 | 12 | 8% |
-| agent.md | 19 | 0 | 1 | 20 | 5% |
+| agent.md | 20 | 0 | 1 | 21 | 4% |
 | analytics.md | 29 | 0 | 5 | 35 | 14% |
 | api.md | 27 | 0 | 1 | 29 | 3% |
 | config.md | 14 | 0 | 1 | 15 | 6% |
@@ -41,13 +41,14 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 409 | 7 | 28 | 447 | 6% |
+| **Total** | 410 | 7 | 28 | 448 | 6% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
 > **Priority flag (ingestion):** the graph-corrupting relationship defects are fixed — `ingestion.30` (use the model's relationship output instead of fabricating Cartesian edges), `ingestion.31` (resolve endpoints onto cross-chunk-deduplicated survivors), `ingestion.32` (failure-event escape paths, plus the 2026-07-13 coordinator-residue closure), and `ingestion.33` (full-digest document identity) are all done. `ingestion.34` (record-derived entities now stamped `source_kind="record"`) is done. `ingestion.18` (durable per-document `SourceDocumentStatusStore` projection + `GET /knowledgebases/{kb_id}/documents` status/drop-count/status-filter surface; frontend Ingestion Studio wiring split to a follow-on FE story) and `ingestion.35` (documents with zero valid entities now surface `EXTRACTED_EMPTY` via the projection; only its Prometheus counters split out to `ingestion.17`/BL-043) both landed 2026-07-13 as BL-041 (Sprint 2026-26). Full-stack manual + `-m integration` verification for BL-041 is pending — the dev-stack Docker environment was unavailable in the implementing session. See [ingestion.md](ingestion.md) stories 18 and 35.
 <!-- BEGIN: ready-set -->
 - [_cicd.01] _cicd — size S — prereqs done
+- [agent.21] agent — size S — prereqs done
 - [analytics.35] analytics — size S — prereqs done
 - [api.26] api — size S — prereqs done
 - [ingestion.08] ingestion — size S — prereqs done
@@ -76,8 +77,7 @@
 - [database.07] database — size M — prereqs done
 - [embeddings.01] embeddings — size M — prereqs done
 - [embeddings.06] embeddings — size M — prereqs done
-- [frontend.06] frontend — size M — prereqs done
-- …35 more
+- …36 more
 <!-- END: ready-set -->
 
 ## Critical path

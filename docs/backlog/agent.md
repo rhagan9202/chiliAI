@@ -770,3 +770,38 @@
 - `backend/tests/agent/conftest.py` (modify)
 - `backend/agent/README.md` (modify)
 - `.github/workflows/ci.yaml` (modify)
+
+---
+
+## Story agent.21: Close the remaining idempotency-key check-then-act window in `start_workflow`
+
+**ID:** agent.21
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** []
+**Estimated size:** S
+
+**As a** platform engineer,
+**I need** `AgentService.start_workflow`'s idempotency-key path to adopt a racing winner the same way its correlation-id path already does,
+**so that** two concurrent submissions sharing an idempotency key cannot turn the store's uniqueness rejection into a spurious `AgentConfigurationError` instead of returning the same run.
+
+### Current State
+- Found during the Sprint 2026-28 B3 (BL-048) Task 9 live pass (2026-07-23), alongside — and left open by — the correlation-id race fixed the same day (`8326488`, this story's precedent fix).
+- `AgentService.start_workflow` (`backend/agent/service.py`) checks `find_by_idempotency_key(...)` up front (lines ~45-52), then later calls `save_run(...)` (lines ~68-79). The window between those two calls is not atomic: two concurrent callers with the same `(knowledge_base_id, idempotency_key)` but *different* `correlation_id`s can both pass the initial `find_by_idempotency_key` check (both see `None`), then both attempt `save_run`.
+- `InMemoryWorkflowRunStore.save_run` (`backend/agent/adapters/in_memory.py`) raises `ValueError("Workflow idempotency key already exists for this knowledge base.")` on the loser's write — the same store method that raises the correlation-id collision `ValueError` `8326488` already handles.
+- `start_workflow`'s `except ValueError` handler (`backend/agent/service.py`, the block `8326488` added) only re-finds by `correlation_id` before giving up and raising `AgentConfigurationError`. Because the two racing requests have different `correlation_id`s, that re-find returns `None`, and the loser incorrectly surfaces a configuration error instead of being handed the winner's run — the exact race class `8326488` closed for `correlation_id`, left open for `idempotency_key`.
+- Low urgency at current scale (idempotency-key collisions require a genuinely concurrent duplicate submission within the find-save window), but it is a real, reachable gap, not a hypothetical one — same shape as the bug `8326488` fixed.
+
+### Acceptance Criteria
+- [ ] On a `ValueError` from `save_run`, `start_workflow` re-finds by `idempotency_key` (in addition to the existing `correlation_id` re-find) when `request.idempotency_key is not None`, and adopts the winner's run via `_verify_idempotency_match` if found.
+- [ ] Only after both re-finds miss does the handler raise `AgentConfigurationError`.
+- [ ] New test: two concurrent `start_workflow` calls with the same `idempotency_key` and different `correlation_id`s both return the same run, with only one row persisted.
+- [ ] Coverage ≥ 85% on `agent/` maintained.
+
+### Verification
+- `pytest backend/tests/agent/test_service.py -k idempotency` green (new + existing).
+- `pyright` clean; `ruff check --no-cache .` clean.
+
+### Code touch points
+- `backend/agent/service.py` (modify — `start_workflow`'s `except ValueError` handler)
+- `backend/tests/agent/test_service.py` (modify)

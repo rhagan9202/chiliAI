@@ -2,6 +2,22 @@
 
 ---
 
+## 2026-07-23 — B3 review follow-ups: blank-summary/section-less degrade + live-pass reconciliation
+
+### Changes
+
+**Code files read:** `backend/analytics/explainability/adapters/llm_narrative.py`, `backend/agent/service.py` — commits `8326488` (agent: adopt a workflow run created between find and save), `9e68277` (analytics: degrade section-less LLM narratives to the deterministic fallback) on `feat/sprint-2026-28-b3-explainability`, and `e8f1b30` (analytics: degrade blank-summary LLM narratives; guard request construction) on `fix/b3-review-followups`.
+
+**Wiki pages updated:**
+
+| Page | Gap closed |
+|------|-----------|
+| `modules/analytics.md` | Corrected the `LlmNarrativeGenerator` row: the 2026-07-23 Task 8 entry (below) staled once `9e68277`/`e8f1b30` landed — heading-less completions no longer parse as a summary-only narrative, and a completion opening directly with a heading (empty summary) now also degrades. Both malformed shapes degrade to `DeterministicNarrativeGenerator`, alongside `LlmError`, any unexpected exception (including `GenerateRequest` construction, now inside the never-raise guard), and an empty completion. |
+
+**Drift log:** No new architectural violations observed. This entry corrects staleness introduced by the prior Task 8 pass below, which predated two late fix commits; `docs/backlog/analytics.md`, `docs/project/planning/backlog.md`, and `docs/project/planning/sprints/2026-28.md` were reconciled in the same pass (Task 9 live-pass + final-review status), and `docs/superpowers/specs/2026-07-23-sprint28-b3-explainability-design.md` §3.2/§4 gained dated amendment notes rather than silently rewriting the original design text.
+
+---
+
 ## 2026-07-23 — B3 explainability: LLM narratives + SHAP attribution seams (BL-048, Task 8 reconciliation)
 
 ### Changes

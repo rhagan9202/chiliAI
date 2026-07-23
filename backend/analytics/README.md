@@ -137,7 +137,14 @@ unreachable backend never turns a pipeline stage into `analysis.failed`.
   markdown-instructed prompt from the selected `ExplanationItem`s (source id,
   quote, rationale, score) plus the alert title and score snapshot, then parses
   `## `-headed response sections into `NarrativeSection`s. Degrades to the
-  fallback on any `LlmError`, unexpected exception, or blank/empty completion.
+  fallback on any `LlmError`; any unexpected exception, including
+  `GenerateRequest` construction itself (it sits inside the guard, so an
+  out-of-range sampling param can't break the never-raise contract); an
+  empty completion; or a malformed completion — no `## ` sections at all, or
+  an empty opening summary (a completion that opens directly with a
+  heading). Heading-less output is **not** accepted as a summary-only
+  narrative: both shapes leave persisted packs with an empty
+  `narrative_sections` list or an empty reasoning lead, so both degrade.
 - **Feature attribution** (`FeatureAttributorProtocol.attribute`) — selected via
   `AnalyticsConfig.attribution_backend: Literal["none","shap"]` (default
   `"none"`). `NoopFeatureAttributor` (`adapters/shap_attribution.py`) returns

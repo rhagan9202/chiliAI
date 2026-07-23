@@ -1302,6 +1302,8 @@ analytics:
     backend: in_memory           # in_memory | postgres (writer-only history)
   metrics:
     backend: in_memory           # in_memory | postgres
+  narrative_backend: deterministic  # deterministic | llm (degrades to deterministic, never raises)
+  attribution_backend: none         # none | shap (degrades to [], never raises)
 
 gnn:
   snapshot_max_nodes: 5000       # cap on entities loaded per KB snapshot (top-degree kept)

@@ -94,6 +94,21 @@ class NarrativeGeneratorProtocol(Protocol):
 - `ExplainabilityService.__init__` gains `narrative_generator: NarrativeGeneratorProtocol | None = None`
   (None → deterministic); `generate_from_context` dispatches through it.
 
+**Amendment (2026-07-23, Task 9 adjudication + final review):** the paragraph above's "whole completion
+when headings are absent → summary" clause — i.e. heading-less output accepted as a summary-only
+narrative — is **not** what shipped. The Task 9 live pass found the dev echo provider never emits `## `
+headings, so accepting heading-less completions as summary-only persisted every LLM-backed pack with an
+empty `narrative_sections` list; adjudicated that Task 9's live checklist and the global never-empty-pack
+degrade intent outrank this section's summary-only example, and `9e68277` changed the parser/caller to
+degrade instead whenever the completion has no `## ` sections at all. Final review then found the same
+rule's mirror case — a completion opening directly with `## Heading` (no leading prose) — parsed to an
+empty `summary`, violating this design's own U2 reasoning-lead invariant; `e8f1b30` added that as a second
+degrade condition (empty opening summary) and, as a same-function cleanup, moved `GenerateRequest`
+construction inside the never-raise `try`. Shipped rule: `LlmNarrativeGenerator` degrades to the fallback
+on `LlmError`, any unexpected exception (including request construction), an empty completion, **or** a
+parsed completion with no `## ` sections **or** an empty opening summary. See
+`backend/analytics/explainability/adapters/llm_narrative.py` for the authoritative behavior.
+
 ### 3.3 Attribution seam (analytics.14 slice)
 
 New protocol in `analytics/explainability/protocols.py`:
@@ -170,10 +185,20 @@ Attribution + narrative sections embed in the object-store-persisted pack; no ne
 
 | Failure | Behavior |
 |---|---|
-| LLM misconfigured / provider error / empty or blank completion | WARNING log; deterministic narrative (pack still ships) |
+| LLM misconfigured / provider error / empty completion | WARNING log; deterministic narrative (pack still ships) |
 | `shap` extra missing / no risk-factor items / attributor exception | WARNING log; `attribution=[]` (factor-only pack) |
 | Both degrade | Pack identical to today's output plus empty new fields |
 | Old persisted packs | Deserialize with default empty `attribution`/`narrative_sections` |
+
+**Amendment (2026-07-23, Task 9 adjudication + final review):** the "empty or blank completion" row
+undersold the shipped degrade surface. Shipped behavior additionally degrades to the deterministic
+narrative on: any unexpected exception raised while constructing the `GenerateRequest` (validation now
+runs inside the never-raise guard, `e8f1b30`); a parsed completion with **no `## ` sections at all**
+(heading-less output is no longer accepted as a summary-only narrative — `9e68277`); and a parsed
+completion with an **empty opening summary**, i.e. one that opens directly with `## Heading` and has no
+leading prose (`e8f1b30`). Task 9's live checklist (no pack may persist with empty `narrative_sections`)
+and this design's own U2 reasoning-lead invariant (no pack may persist with an empty `summary`) outrank
+the earlier "whole completion when headings are absent → summary" example in §3.2.
 
 ## 5. Out of scope
 
@@ -187,9 +212,11 @@ Attribution + narrative sections embed in the object-store-persisted pack; no ne
 
 - Unit: config fields; deterministic generator behavior-preservation (existing service tests keep passing
   unmodified); LLM generator (stub `LlmServiceProtocol`: structured completion → sections; error/empty →
-  fallback; heading-less → single-summary narrative); SHAP attributor with monkeypatched loader (missing-shap
-  degrade, exception degrade, sorted signed output); Noop attributor; service composition (pack carries
-  sections + attribution; reasoning = summary); mapper passthrough; worker builders keyed by config.
+  fallback; **superseded by the §3.2/§4 amendments** — heading-less and blank-opening-summary completions
+  degrade to the fallback rather than parsing as a single-summary narrative); SHAP attributor with
+  monkeypatched loader (missing-shap degrade, exception degrade, sorted signed output); Noop attributor;
+  service composition (pack carries sections + attribution; reasoning = summary); mapper passthrough;
+  worker builders keyed by config.
 - Integration (`-m integration`, `[analytics]` extra): real-SHAP attribution of a linear scorer — exact
   marginal contributions within tolerance.
 - Gates: bare `pyright` 0 errors, `ruff check --no-cache .` clean, `pytest --cov` ≥85%, OpenAPI export +
