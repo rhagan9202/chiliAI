@@ -81,7 +81,12 @@ class AlertFeedStoreProtocol(Protocol):
         limit: int,
         offset: int,
     ) -> tuple[list[AlertHistoryRecord], int]:
-        """Return a page of alerts (created_at DESC, alert_id DESC) and the filtered total."""
+        """Return a page of alerts (created_at DESC, alert_id DESC) and the filtered total.
+
+        ``statuses=None`` and ``statuses=[]`` are equivalent: both mean "no
+        status filter requested" and return all alerts. Use a non-empty list
+        to restrict the result to those statuses.
+        """
         ...
 
     def get_alert(self, alert_id: str) -> AlertHistoryRecord | None:

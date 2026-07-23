@@ -67,6 +67,61 @@ def test_write_and_count_round_trip(database_url: str) -> None:
         provider.close()
 
 
+def test_write_alerts_keeps_first_row_on_conflicting_rewrite(database_url: str) -> None:
+    kb_id = "kb-alert-conflict-test"
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresAlertHistoryStore(provider)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+
+        original = AlertHistoryRecord(
+            knowledge_base_id=kb_id,
+            alert_id="a-conflict-1",
+            entity_id="claim:c1",
+            entity_type="claim",
+            severity="high",
+            status="open",
+            title="Original title",
+            reasoning="score exceeded threshold",
+            metric_name="claim_anomaly",
+            entity_label="Dr. Original",
+            confidence=0.42,
+            tags=["original-tag"],
+        )
+        rewritten = original.model_copy(
+            update={
+                "title": "Rewritten title",
+                "status": "closed",
+                "entity_label": "Dr. Rewritten",
+                "confidence": 0.99,
+                "tags": ["rewritten-tag"],
+            }
+        )
+
+        assert store.write_alerts([original]) == 1
+        assert store.write_alerts([rewritten]) == 0
+
+        fetched = store.get_alert("a-conflict-1")
+        assert fetched is not None
+        assert fetched.title == "Original title"
+        assert fetched.status == "open"
+        assert fetched.entity_label == "Dr. Original"
+        assert fetched.confidence == 0.42
+        assert fetched.tags == ["original-tag"]
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+        provider.close()
+
+
 def test_list_alerts_ordering_status_filter_and_pagination(database_url: str) -> None:
     kb_id = "kb-alert-list-test"
     provider = create_connection_provider(DatabaseConfig(backend="postgres"))
@@ -138,6 +193,18 @@ def test_list_alerts_ordering_status_filter_and_pagination(database_url: str) ->
         )
         assert page_total == filtered_total
         assert len(page) == 1
+
+        # Empty statuses list is parity with statuses=None: unfiltered.
+        unfiltered_none, total_none = store.list_alerts(
+            statuses=None, limit=10, offset=0
+        )
+        unfiltered_empty, total_empty = store.list_alerts(
+            statuses=[], limit=10, offset=0
+        )
+        assert total_empty == total_none
+        our_none = {r.alert_id for r in unfiltered_none if r.knowledge_base_id == kb_id}
+        our_empty = {r.alert_id for r in unfiltered_empty if r.knowledge_base_id == kb_id}
+        assert our_empty == our_none == {"a-1", "a-2", "a-3"}
     finally:
         with provider.connection() as conn:
             conn.execute(

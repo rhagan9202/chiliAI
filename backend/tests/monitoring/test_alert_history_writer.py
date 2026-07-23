@@ -37,6 +37,45 @@ def test_write_alerts_is_idempotent_per_alert_id() -> None:
     assert writer.write_alerts([_record("a-1")]) == 0
 
 
+def test_write_alerts_keeps_first_row_on_conflicting_rewrite() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    original = AlertHistoryRecord(
+        knowledge_base_id="kb-1",
+        alert_id="a-1",
+        entity_id="claim:c1",
+        entity_type="claim",
+        severity="high",
+        status="open",
+        title="Original title",
+        reasoning="score exceeded threshold",
+        metric_name="claim_anomaly",
+        created_at=datetime(2026, 5, 16, tzinfo=timezone.utc),
+        entity_label="Dr. Original",
+        confidence=0.42,
+        tags=["original-tag"],
+    )
+    rewritten = original.model_copy(
+        update={
+            "title": "Rewritten title",
+            "status": "closed",
+            "entity_label": "Dr. Rewritten",
+            "confidence": 0.99,
+            "tags": ["rewritten-tag"],
+        }
+    )
+
+    assert writer.write_alerts([original]) == 1
+    assert writer.write_alerts([rewritten]) == 0
+
+    fetched = writer.get_alert("a-1")
+    assert fetched is not None
+    assert fetched.title == "Original title"
+    assert fetched.status == "open"
+    assert fetched.entity_label == "Dr. Original"
+    assert fetched.confidence == 0.42
+    assert fetched.tags == ["original-tag"]
+
+
 def test_count_open_alerts_filters_by_entity_and_status() -> None:
     writer = InMemoryAlertHistoryWriter()
     writer.write_alerts([
@@ -168,6 +207,23 @@ def test_list_alerts_filters_by_status() -> None:
 
     assert total == 2
     assert {r.alert_id for r in records} == {"a-1", "a-3"}
+
+
+def test_list_alerts_empty_statuses_list_means_unfiltered() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    writer.write_alerts(
+        [
+            _record("a-1", status="open"),
+            _record("a-2", status="closed"),
+            _record("a-3", status="acknowledged"),
+        ]
+    )
+
+    unfiltered_none, total_none = writer.list_alerts(statuses=None, limit=10, offset=0)
+    unfiltered_empty, total_empty = writer.list_alerts(statuses=[], limit=10, offset=0)
+
+    assert total_empty == total_none == 3
+    assert {r.alert_id for r in unfiltered_empty} == {r.alert_id for r in unfiltered_none}
 
 
 def test_get_alert_returns_record_or_none() -> None:

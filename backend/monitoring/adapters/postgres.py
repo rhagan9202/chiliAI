@@ -51,6 +51,12 @@ _ALERT_COLUMNS = (
     "entity_label, confidence, tags"
 )
 
+
+# Both queries below match on alert_id alone even though the table's PK is
+# the composite (knowledge_base_id, alert_id): alert_id is a UUID minted
+# upstream and globally unique in practice, so an alert_id-only lookup never
+# ambiguously spans knowledge bases. The composite PK exists solely for the
+# writer's per-kb idempotency (ON CONFLICT DO NOTHING), not for uniqueness.
 _ALERT_GET_SQL = f"""
     SELECT {_ALERT_COLUMNS} FROM alert_history WHERE alert_id = %s
 """

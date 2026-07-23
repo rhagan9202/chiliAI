@@ -114,7 +114,7 @@ class InMemoryAlertHistoryWriter:
         limit: int,
         offset: int,
     ) -> tuple[list[AlertHistoryRecord], int]:
-        status_set = set(statuses) if statuses is not None else None
+        status_set = set(statuses) if statuses else None
         filtered = [
             record
             for record in self._records.values()
