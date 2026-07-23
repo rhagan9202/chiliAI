@@ -63,19 +63,21 @@ class LlmNarrativeGenerator:
     def summarize(
         self, *, context: ExplanationContext, items: Sequence[ExplanationItem]
     ) -> ExplanationNarrative:
-        request = GenerateRequest(
-            knowledge_base_id=context.knowledge_base_id,
-            model_name=self._model_name,
-            temperature=self._temperature,
-            max_tokens=self._max_tokens,
-            messages=[],
-            prompt_template=PromptTemplate(
-                system_prompt=_SYSTEM_PROMPT,
-                user_prompt=_build_user_prompt(context, items),
-            ),
-        )
-
         try:
+            # Request construction sits inside the guard so a validation
+            # rejection (e.g. out-of-range sampling params) degrades instead
+            # of breaking the never-raise contract.
+            request = GenerateRequest(
+                knowledge_base_id=context.knowledge_base_id,
+                model_name=self._model_name,
+                temperature=self._temperature,
+                max_tokens=self._max_tokens,
+                messages=[],
+                prompt_template=PromptTemplate(
+                    system_prompt=_SYSTEM_PROMPT,
+                    user_prompt=_build_user_prompt(context, items),
+                ),
+            )
             response = self._llm_service.generate(request)
         except LlmError:
             logger.warning(
@@ -107,13 +109,15 @@ class LlmNarrativeGenerator:
             return self._fallback.summarize(context=context, items=items)
 
         narrative = _parse_narrative(completion, items)
-        if not narrative.sections:
-            # A completion without any mandated "## " heading is malformed
-            # under the prompt contract; a section-less narrative would leave
-            # persisted packs with empty narrative_sections.
+        if not narrative.sections or narrative.summary == "":
+            # A completion missing the mandated "## " headings, or opening
+            # directly with a heading (no summary paragraph), is malformed
+            # under the prompt contract; accepting it would persist packs
+            # with empty narrative_sections or an empty reasoning lead.
             logger.warning(
-                "LlmNarrativeGenerator: completion has no '## ' sections for "
-                "kb=%s alert=%s; degrading to fallback narrative.",
+                "LlmNarrativeGenerator: completion missing '## ' sections or "
+                "opening summary for kb=%s alert=%s; degrading to fallback "
+                "narrative.",
                 context.knowledge_base_id,
                 context.alert.id,
             )
@@ -147,9 +151,8 @@ def _parse_narrative(
     parts = _HEADING_SPLIT.split(completion)
     summary = parts[0].strip()
     blocks = parts[1:]
-
-    if not blocks:
-        return ExplanationNarrative(summary=completion, sections=[])
+    # No-heading and heading-only shapes yield empty sections or an empty
+    # summary here; the caller treats both as malformed and degrades.
 
     all_ids = [item.source_id for item in items]
     sections: list[NarrativeSection] = []

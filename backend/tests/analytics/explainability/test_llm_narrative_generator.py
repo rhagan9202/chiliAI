@@ -135,6 +135,29 @@ class TestLlmNarrativeGeneratorHappyPath:
         assert narrative.sections != []
         assert any("degrading to fallback" in record.message for record in caplog.records)
 
+    def test_blank_summary_completion_degrades_to_fallback(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A completion opening directly with ``## Heading`` (no summary
+        paragraph before the first heading) is malformed the same way a
+        heading-less one is: the mandated opening summary is missing, and
+        accepting it would persist packs with ``reasoning == ""`` — the
+        evidence viewer's lead element. Final-review Important #1 (design
+        §3.2's blank-summary degrade rule, dropped by the Task 4 brief).
+        """
+        items = [_item("src-one", "one")]
+        completion = "## Heading Only\nBody text referencing src-one."
+        service = _StubLlmService(completion=completion)
+        with caplog.at_level(logging.WARNING):
+            narrative = _generator(service).summarize(context=_context(items), items=items)
+
+        expected = DeterministicNarrativeGenerator().summarize(
+            context=_context(items), items=items
+        )
+        assert narrative == expected
+        assert narrative.summary != ""
+        assert any("degrading to fallback" in record.message for record in caplog.records)
+
     def test_sends_constructed_model_parameters(self) -> None:
         items = [_item("src-one", "one")]
         service = _StubLlmService(completion="Summary.\n\n## H\nBody.")
