@@ -21,6 +21,7 @@ import { SectionHeader } from '../components/ui/SectionHeader'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
 import { flagLabelFor } from '../utils/flagLabel'
 import { toSubgraphResult } from '../utils/subgraph'
+import { triageNumeralColor } from '../utils/triage'
 import './pages.css'
 
 const filters = [
@@ -29,16 +30,6 @@ const filters = [
   { id: 'high', label: 'High' },
   { id: 'acknowledged', label: 'Acknowledged' },
 ]
-
-function triageNumeralColor(severity: string): string {
-  if (severity === 'critical' || severity === 'high') {
-    return 'var(--c-red)'
-  }
-  if (severity === 'medium') {
-    return 'var(--c-amber)'
-  }
-  return 'var(--c-green)'
-}
 
 export function AlertFeedPage() {
   const navigate = useNavigate()

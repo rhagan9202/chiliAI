@@ -23,6 +23,7 @@ import { SectionHeader } from '../components/ui/SectionHeader'
 import { Tabs } from '../components/ui/Tabs'
 import { flagLabelFor } from '../utils/flagLabel'
 import { clusterColorFor } from '../utils/graphStyles'
+import { triageNumeralColor } from '../utils/triage'
 import './pages.css'
 
 const dashboardTabs = [
@@ -41,16 +42,6 @@ function formatEntityType(entityType: string) {
 
 function formatRiskEntityLabel(entityType: string, entityId: string) {
   return `${formatEntityType(entityType) || 'Entity'} ${entityId}`
-}
-
-function triageNumeralColor(severity: string): string {
-  if (severity === 'critical' || severity === 'high') {
-    return 'var(--c-red)'
-  }
-  if (severity === 'medium') {
-    return 'var(--c-amber)'
-  }
-  return 'var(--c-green)'
 }
 
 function DashboardTabPanel({
@@ -227,7 +218,7 @@ export function DashboardPage() {
                   <div className="metric-row metric-row--stacked">
                     <strong>{leadAlert.entity_label}</strong>
                     <span className="flag-label">
-                      {flagLabelFor({ tags: leadAlert.tags ?? [], severity: leadAlert.severity })}
+                      {flagLabelFor({ tags: leadAlert.tags, severity: leadAlert.severity })}
                     </span>
                     <span className="metric-row__label">{leadAlert.reasoning}</span>
                   </div>

@@ -194,7 +194,6 @@
   height: 240px;
 }
 
-.investigation-layout,
 .case-layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1144,7 +1143,6 @@ a.housing-run-link:hover {
   .housing-kpis,
   .dashboard-panels,
   .housing-operating-picture,
-  .investigation-layout,
   .case-layout,
   .knowledge-base-layout,
   .ingestion-studio-layout,
@@ -1173,7 +1171,6 @@ a.housing-run-link:hover {
   .housing-status-strip,
   .metric-stack,
   .chart-shell,
-  .investigation-layout,
   .case-layout,
   .knowledge-base-layout,
   .knowledge-base-main,
@@ -1195,7 +1192,6 @@ a.housing-run-link:hover {
   .dashboard-panels,
   .housing-operating-picture,
   .housing-status-strip,
-  .investigation-layout,
   .case-layout,
   .knowledge-base-layout,
   .ingestion-studio-layout,
