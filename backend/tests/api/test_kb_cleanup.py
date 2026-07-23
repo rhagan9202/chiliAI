@@ -6,7 +6,10 @@ from types import SimpleNamespace
 from typing import cast
 from unittest.mock import MagicMock
 
+from analytics.timeseries.adapters.in_memory import InMemoryTimeseriesAnomalyStore
+from analytics.timeseries.models import TimeseriesAnomalyRecord
 from api._kb_cleanup import KbDeletionStores, kb_deletion_steps
+from shared.utils import utc_now
 
 _STORE_FIELDS = [
     "graph_service",
@@ -26,6 +29,7 @@ _STORE_FIELDS = [
     "object_store",
     "alert_projection_store",
     "gnn_cluster_store",
+    "timeseries_anomaly_store",
 ]
 
 _EXPECTED_STEP_NAMES = [
@@ -33,6 +37,7 @@ _EXPECTED_STEP_NAMES = [
     "vector",
     "raw_records",
     "derived_signals",
+    "timeseries_anomalies",
     "risk_history",
     "observations",
     "alert_history",
@@ -81,6 +86,7 @@ def test_kb_deletion_steps_purges_every_durable_store() -> None:
         "scorecard_run_repository",
         "document_status_store",
         "gnn_cluster_store",
+        "timeseries_anomaly_store",
     ):
         mocks[field].delete_by_kb.assert_called_once_with("kb-1")
     mocks["alert_projection_store"].remove_by_knowledge_base.assert_called_once_with(
@@ -101,3 +107,45 @@ def test_kb_deletion_steps_omit_alert_projection_when_store_absent() -> None:
     assert [name for name, _ in steps] == [
         name for name in _EXPECTED_STEP_NAMES if name != "alert_projection"
     ]
+
+
+def test_kb_delete_purges_timeseries_anomalies() -> None:
+    """The timeseries anomaly store is purged by the cascade like every other
+    per-KB durable store (Task 5, B2)."""
+    mocks = {field: MagicMock() for field in _STORE_FIELDS if field != "timeseries_anomaly_store"}
+    mocks["object_store"].list_keys.return_value = []
+    timeseries_anomaly_store = InMemoryTimeseriesAnomalyStore()
+    timeseries_anomaly_store.write_anomalies(
+        [
+            TimeseriesAnomalyRecord(
+                knowledge_base_id="kb-1",
+                entity_id="provider:1",
+                metric_name="claims_per_week",
+                observed_at=utc_now(),
+                observed_value=42.0,
+                expected_value=10.0,
+                z_score=3.2,
+                severity=0.8,
+                detection_strategy="zscore",
+                correlation_id="corr-1",
+            )
+        ]
+    )
+    stores = cast(
+        KbDeletionStores,
+        SimpleNamespace(
+            **mocks, timeseries_anomaly_store=timeseries_anomaly_store
+        ),
+    )
+
+    for _name, deletion in kb_deletion_steps(stores, "kb-1"):
+        deletion()
+
+    assert (
+        timeseries_anomaly_store.load_anomalies(
+            knowledge_base_id="kb-1",
+            entity_id="provider:1",
+            metric_name="claims_per_week",
+        )
+        == []
+    )

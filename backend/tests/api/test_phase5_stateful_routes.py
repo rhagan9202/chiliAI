@@ -2,18 +2,31 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import cast
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from analytics.peerstats.models import PeerAggregate
+from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
+from analytics.risk.models import RiskProfile, RiskSignal
+from analytics.risk.service import create_risk_service
+from analytics.timeseries.adapters.in_memory import InMemoryTimeseriesAnomalyStore
+from analytics.timeseries.adapters.protocols import TimeseriesAnomalyStoreProtocol
+from analytics.timeseries.adapters.record_aggregates import RecordAggregateTimeSeriesSource
+from analytics.timeseries.models import TimeseriesAnomalyRecord
 from api._alert_store import AlertProjectionRecord, InMemoryAlertProjectionRepository
 from api.app import create_app
 from api.dependencies import (
     get_alert_repository,
+    get_entity_series_source,
     get_graph_service,
     get_knowledge_base_repository,
+    get_risk_service,
+    get_timeseries_anomaly_store,
 )
+from config.schema import TimeseriesMetricSpec
 from events.adapters.in_memory import InMemoryEventBus
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.service import create_graph_service
@@ -226,6 +239,82 @@ def _seeded_kb_repository() -> KnowledgeBaseRepository:
     return repository
 
 
+class _SeededColumnSource:
+    """Protocol double returning canned aggregates for one entity (Task 3's shape)."""
+
+    def __init__(self, aggregates: list[PeerAggregate]) -> None:
+        self._aggregates = aggregates
+
+    def load_interval_aggregates(
+        self,
+        *,
+        knowledge_base_id: str,
+        spec: object,
+        interval_starts: list[datetime],
+    ) -> list[PeerAggregate]:
+        del knowledge_base_id, spec, interval_starts
+        return self._aggregates
+
+
+def _seeded_entity_series_source(
+    entity_id: str,
+) -> tuple[RecordAggregateTimeSeriesSource, TimeseriesAnomalyStoreProtocol]:
+    """Build a record-aggregate series (with a persisted anomaly) for one entity."""
+    spec = TimeseriesMetricSpec(
+        name="weekly_billing_self",
+        record_type="claim_record",
+        entity_type="provider",
+        entity_id_field="npi",
+        value_column="amount",
+        aggregation="sum",
+        interval="week",
+        time_column="service_date",
+    )
+    anomaly_bucket = datetime(2026, 1, 15, tzinfo=timezone.utc)
+    aggregates = [
+        PeerAggregate(
+            entity_id=entity_id,
+            entity_type="provider",
+            peer_group_key="provider",
+            interval_start=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            aggregate_value=100.0,
+        ),
+        PeerAggregate(
+            entity_id=entity_id,
+            entity_type="provider",
+            peer_group_key="provider",
+            interval_start=datetime(2026, 1, 8, tzinfo=timezone.utc),
+            aggregate_value=120.0,
+        ),
+        PeerAggregate(
+            entity_id=entity_id,
+            entity_type="provider",
+            peer_group_key="provider",
+            interval_start=anomaly_bucket,
+            aggregate_value=400.0,
+        ),
+    ]
+    source = RecordAggregateTimeSeriesSource(_SeededColumnSource(aggregates), specs=[spec])
+    anomaly_store = InMemoryTimeseriesAnomalyStore()
+    anomaly_store.write_anomalies(
+        [
+            TimeseriesAnomalyRecord(
+                knowledge_base_id="kb-1",
+                entity_id=entity_id,
+                metric_name=spec.name,
+                observed_at=anomaly_bucket,
+                observed_value=400.0,
+                expected_value=110.0,
+                z_score=3.4,
+                severity=0.9,
+                detection_strategy="z_score",
+                correlation_id="corr-service-backed",
+            )
+        ]
+    )
+    return source, anomaly_store
+
+
 def test_graph_and_analytics_routes_are_service_backed() -> None:
     app = create_app()
     repository = InMemoryAlertProjectionRepository()
@@ -250,8 +339,31 @@ def test_graph_and_analytics_routes_are_service_backed() -> None:
     app.dependency_overrides[get_alert_repository] = lambda: repository
     graph_service = _seeded_graph_service("provider-204")
     kb_repository = _seeded_kb_repository()
+    entity_series_source, anomaly_store = _seeded_entity_series_source("provider-204")
     app.dependency_overrides[get_graph_service] = lambda: graph_service
     app.dependency_overrides[get_knowledge_base_repository] = lambda: kb_repository
+    app.dependency_overrides[get_entity_series_source] = lambda: entity_series_source
+    app.dependency_overrides[get_timeseries_anomaly_store] = lambda: anomaly_store
+    risk_service = create_risk_service(
+        InMemoryRiskSignalSource(
+            profiles=[
+                RiskProfile(
+                    knowledge_base_id="kb-1",
+                    entity_id="provider-204",
+                    signals=[
+                        RiskSignal(signal_name="peer_group_deviation", value=0.9, weight=1.5),
+                        RiskSignal(
+                            signal_name="timeseries_anomaly:monthly_inpatient_billing_self",
+                            value=0.7,
+                            weight=1.0,
+                        ),
+                    ],
+                )
+            ]
+        ),
+        event_bus=InMemoryEventBus(),
+    )
+    app.dependency_overrides[get_risk_service] = lambda: risk_service
     client = TestClient(app)
 
     alerts = client.get("/alerts").json()["items"]

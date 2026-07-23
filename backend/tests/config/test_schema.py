@@ -19,6 +19,7 @@ from config.schema import (
     GraphDbConfig,
     IngestionConfig,
     IngestionSourceConfig,
+    TimeseriesMetricSpec,
     UiConfig,
     UiDisplayFieldsConfig,
     UiNavigationConfig,
@@ -967,3 +968,297 @@ class TestDefaultReferenceKbId:
     def test_domain_config_default_reference_kb_id_accepts_string(self) -> None:
         cfg = _make_config(default_reference_kb_id="kb-policy-v1")
         assert cfg.default_reference_kb_id == "kb-policy-v1"
+
+
+# ---------------------------------------------------------------------------
+# TimeseriesMetricSpec and TimeseriesAnalyticsConfig
+# ---------------------------------------------------------------------------
+
+
+def test_timeseries_metric_spec_rejects_min_history_at_or_below_baseline() -> None:
+    with pytest.raises(ValidationError):
+        TimeseriesMetricSpec(
+            name="m",
+            record_type="claim_record",
+            entity_type="provider",
+            entity_id_field="npi",
+            value_column="amount",
+            aggregation="sum",
+            interval="week",
+            baseline_window=5,
+            min_history=5,
+        )
+
+
+def test_domain_config_rejects_timeseries_spec_with_unknown_record_type() -> None:
+    config = _make_config()
+    payload = config.model_dump()
+    payload["timeseries"] = {
+        "metrics": [
+            {
+                "name": "m",
+                "record_type": "no_such_type",
+                "entity_type": "provider",
+                "entity_id_field": "npi",
+                "value_column": "amount",
+                "aggregation": "sum",
+                "interval": "week",
+            }
+        ]
+    }
+    with pytest.raises(ValidationError, match="no_such_type"):
+        DomainConfig.model_validate(payload)
+
+
+def test_domain_config_rejects_timeseries_value_column_missing_from_schema() -> None:
+    config = _make_config()
+    payload = config.model_dump()
+    payload["records"] = {
+        "feeds": [
+            {
+                "name": "claim_feed",
+                "record_type": "claim_record",
+                "source": "file_upload",
+                "id_field": "claim_id",
+                "record_schema": {
+                    "claim_id": {
+                        "type": "string",
+                        "display": "Claim ID",
+                        "required": True,
+                    },
+                    "npi": {"type": "string", "display": "NPI"},
+                },
+            }
+        ]
+    }
+    payload["timeseries"] = {
+        "metrics": [
+            {
+                "name": "amount_metric",
+                "record_type": "claim_record",
+                "entity_type": "alpha",
+                "entity_id_field": "npi",
+                "value_column": "not_a_column",
+                "aggregation": "sum",
+                "interval": "week",
+            }
+        ]
+    }
+    with pytest.raises(ValidationError, match="not_a_column"):
+        DomainConfig.model_validate(payload)
+
+
+# Regression tests: Task 1 review flagged these four cross-reference
+# validator branches (entity_id_field missing, value_column non-numeric,
+# time_column missing, time_column non-date) as untested. The validator
+# logic they exercise already existed and required no change here — these
+# tests only close the coverage gap.
+
+
+def test_domain_config_rejects_timeseries_entity_id_field_missing_from_schema() -> None:
+    config = _make_config()
+    payload = config.model_dump()
+    payload["records"] = {
+        "feeds": [
+            {
+                "name": "claim_feed",
+                "record_type": "claim_record",
+                "source": "file_upload",
+                "id_field": "claim_id",
+                "record_schema": {
+                    "claim_id": {
+                        "type": "string",
+                        "display": "Claim ID",
+                        "required": True,
+                    },
+                    "amount": {"type": "decimal", "display": "Amount"},
+                },
+            }
+        ]
+    }
+    payload["timeseries"] = {
+        "metrics": [
+            {
+                "name": "amount_metric",
+                "record_type": "claim_record",
+                "entity_type": "alpha",
+                "entity_id_field": "not_a_field",
+                "value_column": "amount",
+                "aggregation": "sum",
+                "interval": "week",
+            }
+        ]
+    }
+    with pytest.raises(
+        ValidationError, match="entity_id_field 'not_a_field' is not in record_schema"
+    ):
+        DomainConfig.model_validate(payload)
+
+
+def test_domain_config_rejects_timeseries_value_column_non_numeric() -> None:
+    config = _make_config()
+    payload = config.model_dump()
+    payload["records"] = {
+        "feeds": [
+            {
+                "name": "claim_feed",
+                "record_type": "claim_record",
+                "source": "file_upload",
+                "id_field": "claim_id",
+                "record_schema": {
+                    "claim_id": {
+                        "type": "string",
+                        "display": "Claim ID",
+                        "required": True,
+                    },
+                    "npi": {"type": "string", "display": "NPI"},
+                },
+            }
+        ]
+    }
+    payload["timeseries"] = {
+        "metrics": [
+            {
+                "name": "amount_metric",
+                "record_type": "claim_record",
+                "entity_type": "alpha",
+                "entity_id_field": "npi",
+                "value_column": "npi",
+                "aggregation": "sum",
+                "interval": "week",
+            }
+        ]
+    }
+    with pytest.raises(
+        ValidationError,
+        match=r"value_column 'npi' must be numeric \(integer or decimal\), got 'string'",
+    ):
+        DomainConfig.model_validate(payload)
+
+
+def test_domain_config_rejects_timeseries_time_column_missing_from_schema() -> None:
+    config = _make_config()
+    payload = config.model_dump()
+    payload["records"] = {
+        "feeds": [
+            {
+                "name": "claim_feed",
+                "record_type": "claim_record",
+                "source": "file_upload",
+                "id_field": "claim_id",
+                "record_schema": {
+                    "claim_id": {
+                        "type": "string",
+                        "display": "Claim ID",
+                        "required": True,
+                    },
+                    "npi": {"type": "string", "display": "NPI"},
+                    "amount": {"type": "decimal", "display": "Amount"},
+                },
+            }
+        ]
+    }
+    payload["timeseries"] = {
+        "metrics": [
+            {
+                "name": "amount_metric",
+                "record_type": "claim_record",
+                "entity_type": "alpha",
+                "entity_id_field": "npi",
+                "value_column": "amount",
+                "time_column": "not_a_column",
+                "aggregation": "sum",
+                "interval": "week",
+            }
+        ]
+    }
+    with pytest.raises(
+        ValidationError, match="time_column 'not_a_column' is not in record_schema"
+    ):
+        DomainConfig.model_validate(payload)
+
+
+def test_domain_config_rejects_timeseries_time_column_not_date_typed() -> None:
+    config = _make_config()
+    payload = config.model_dump()
+    payload["records"] = {
+        "feeds": [
+            {
+                "name": "claim_feed",
+                "record_type": "claim_record",
+                "source": "file_upload",
+                "id_field": "claim_id",
+                "record_schema": {
+                    "claim_id": {
+                        "type": "string",
+                        "display": "Claim ID",
+                        "required": True,
+                    },
+                    "npi": {"type": "string", "display": "NPI"},
+                    "amount": {"type": "decimal", "display": "Amount"},
+                },
+            }
+        ]
+    }
+    payload["timeseries"] = {
+        "metrics": [
+            {
+                "name": "amount_metric",
+                "record_type": "claim_record",
+                "entity_type": "alpha",
+                "entity_id_field": "npi",
+                "value_column": "amount",
+                "time_column": "npi",
+                "aggregation": "sum",
+                "interval": "week",
+            }
+        ]
+    }
+    with pytest.raises(
+        ValidationError,
+        match="time_column 'npi' must be a date or datetime field, got 'string'",
+    ):
+        DomainConfig.model_validate(payload)
+
+
+def test_domain_config_accepts_valid_timeseries_spec() -> None:
+    config = _make_config()
+    payload = config.model_dump()
+    payload["records"] = {
+        "feeds": [
+            {
+                "name": "claim_feed",
+                "record_type": "claim_record",
+                "source": "file_upload",
+                "id_field": "claim_id",
+                "record_schema": {
+                    "claim_id": {
+                        "type": "string",
+                        "display": "Claim ID",
+                        "required": True,
+                    },
+                    "npi": {"type": "string", "display": "NPI"},
+                    "amount": {"type": "decimal", "display": "Amount"},
+                    "service_date": {"type": "date", "display": "Service Date"},
+                },
+            }
+        ]
+    }
+    payload["timeseries"] = {
+        "metrics": [
+            {
+                "name": "amount_metric",
+                "record_type": "claim_record",
+                "entity_type": "alpha",
+                "entity_id_field": "npi",
+                "value_column": "amount",
+                "time_column": "service_date",
+                "aggregation": "sum",
+                "interval": "week",
+            }
+        ]
+    }
+    cfg = DomainConfig.model_validate(payload)
+    assert cfg.timeseries is not None
+    assert len(cfg.timeseries.metrics) == 1
+    assert cfg.timeseries.metrics[0].detection_strategy == "z_score"

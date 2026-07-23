@@ -9,6 +9,44 @@ KB_RESPONSE=$(curl -s -X POST "$API/knowledgebases" \
 KB_ID=$(echo "$KB_RESPONSE" | python3 -c "import json, sys; print(json.load(sys.stdin)['id'])")
 echo "Created KB $KB_ID"
 
+HARD_FAILURES=0
+
+# Each accepted upload enqueues a workflow, and the API rejects further
+# uploads with 409 while one is in progress. KB status oscillates
+# ready -> processing -> ready as cascade stages run, so polling "ready"
+# races; retrying the POST until it is accepted is the reliable primitive.
+post_with_retry() {
+  local label="$1"
+  shift
+  local code
+  for _ in $(seq 1 90); do
+    code=$(curl -s -o /tmp/chili_demo_resp.json -w "%{http_code}" "$@")
+    case "$code" in
+      2??)
+        python3 -m json.tool < /tmp/chili_demo_resp.json
+        return 0
+        ;;
+      409)
+        sleep 10
+        ;;
+      413)
+        echo "WARN: $label rejected as too large (HTTP 413); the pack's" \
+          "ingestion max_file_size_mb gates this upload. Continuing." >&2
+        return 0
+        ;;
+      *)
+        echo "ERROR: $label failed with HTTP $code:" >&2
+        head -c 400 /tmp/chili_demo_resp.json >&2 || true
+        echo >&2
+        HARD_FAILURES=$((HARD_FAILURES + 1))
+        return 0
+        ;;
+    esac
+  done
+  echo "ERROR: $label still rejected with 409 after 15 minutes; giving up." >&2
+  HARD_FAILURES=$((HARD_FAILURES + 1))
+}
+
 upload() {
   local feed="$1"
   local path="$2"
@@ -17,10 +55,9 @@ upload() {
     return 0
   fi
   echo "Uploading $feed from $path..."
-  curl -s -X POST "$API/records/$KB_ID/files" \
+  post_with_retry "feed $feed" -X POST "$API/records/$KB_ID/files" \
     -F "file=@$path" \
-    -F "feed=$feed" \
-    | python3 -m json.tool
+    -F "feed=$feed"
 }
 
 upload "nppes_providers"  sample_data/CMS/tn_subset/nppes_providers_tn.csv
@@ -54,9 +91,9 @@ upload_document() {
     *.docx) ctype="application/vnd.openxmlformats-officedocument.wordprocessingml.document" ;;
     *.txt|*.md) ctype="text/plain" ;;
   esac
-  curl -s -X POST "$API/knowledgebases/$KB_ID/documents" \
-    -F "files=@$path;type=$ctype" \
-    | python3 -m json.tool || true
+  post_with_retry "policy document $(basename "$path")" \
+    -X POST "$API/knowledgebases/$KB_ID/documents" \
+    -F "files=@$path;type=$ctype"
 }
 
 if [ "${DEMO_SKIP_POLICIES:-0}" != "1" ] && [ -d "$POLICIES_DIR" ]; then
@@ -70,4 +107,8 @@ else
   echo "Skipping policy corpus (DEMO_SKIP_POLICIES set or $POLICIES_DIR missing)." >&2
 fi
 
+if [ "$HARD_FAILURES" -gt 0 ]; then
+  echo "Done with $HARD_FAILURES failed upload(s). KB ID: $KB_ID" >&2
+  exit 1
+fi
 echo "Done. KB ID: $KB_ID"

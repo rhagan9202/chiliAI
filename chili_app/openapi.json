@@ -2031,6 +2031,17 @@
             ],
             "default": null
           },
+          "timeseries": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimeseriesAnalyticsConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "ui": {
             "anyOf": [
               {
@@ -5987,6 +5998,128 @@
           "pack"
         ],
         "title": "SwitchPackRequest",
+        "type": "object"
+      },
+      "TimeseriesAnalyticsConfig": {
+        "description": "Collection of self-history anomaly series specs for a domain.",
+        "properties": {
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/TimeseriesMetricSpec"
+            },
+            "title": "Metrics",
+            "type": "array"
+          }
+        },
+        "title": "TimeseriesAnalyticsConfig",
+        "type": "object"
+      },
+      "TimeseriesMetricSpec": {
+        "description": "One self-history anomaly-detection series derived from a record column.\n\nThe aggregate identity (record_type \u2026 time_column) mirrors\n``PeerMetricSpec`` so the peerstats record-column SQL can serve both:\npeerstats compares an entity to its peers cross-sectionally; a\ntimeseries spec compares an entity to its own interval history.",
+        "properties": {
+          "aggregation": {
+            "enum": [
+              "sum",
+              "mean",
+              "count",
+              "max",
+              "min"
+            ],
+            "title": "Aggregation",
+            "type": "string"
+          },
+          "baseline_window": {
+            "default": 5,
+            "exclusiveMinimum": 1,
+            "title": "Baseline Window",
+            "type": "integer"
+          },
+          "detection_strategy": {
+            "default": "z_score",
+            "enum": [
+              "z_score",
+              "stl_decomposition",
+              "isolation_forest"
+            ],
+            "title": "Detection Strategy",
+            "type": "string"
+          },
+          "entity_id_field": {
+            "title": "Entity Id Field",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "interval": {
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ],
+            "title": "Interval",
+            "type": "string"
+          },
+          "min_history": {
+            "default": 6,
+            "exclusiveMinimum": 2,
+            "title": "Min History",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "record_type": {
+            "title": "Record Type",
+            "type": "string"
+          },
+          "signal_weight": {
+            "default": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Signal Weight",
+            "type": "number"
+          },
+          "time_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Time Column"
+          },
+          "value_column": {
+            "title": "Value Column",
+            "type": "string"
+          },
+          "z_cap": {
+            "default": 4.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Z Cap",
+            "type": "number"
+          },
+          "z_threshold": {
+            "default": 2.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Z Threshold",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "record_type",
+          "entity_type",
+          "entity_id_field",
+          "value_column",
+          "aggregation",
+          "interval"
+        ],
+        "title": "TimeseriesMetricSpec",
         "type": "object"
       },
       "TimeseriesPoint": {

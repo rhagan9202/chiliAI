@@ -31,6 +31,13 @@ if TYPE_CHECKING:
     )
 
 
+# Qdrant's REST API rejects request bodies over 32MB (actix payload limit).
+# Large record feeds (e.g. 47k CMS carrier claims -> ~100k entity vectors)
+# far exceed that in a single upsert, so batches are split into requests
+# that stay comfortably under the limit at 384-dim embeddings with payloads.
+UPSERT_MAX_POINTS_PER_REQUEST = 1000
+
+
 class QdrantClientProtocol(Protocol):
     def collection_exists(self, collection_name: str, **kwargs: object) -> bool: ...
 
@@ -149,11 +156,13 @@ class QdrantVectorStore:
 
         try:
             self._ensure_collection(collection_name, dimension)
-            self._client.upsert(
-                collection_name=collection_name,
-                points=[self._point_for(record) for record in records],
-                wait=True,
-            )
+            points = [self._point_for(record) for record in records]
+            for start in range(0, len(points), UPSERT_MAX_POINTS_PER_REQUEST):
+                self._client.upsert(
+                    collection_name=collection_name,
+                    points=points[start : start + UPSERT_MAX_POINTS_PER_REQUEST],
+                    wait=True,
+                )
         except VectorDimensionMismatchError:
             raise
         except Exception as exc:

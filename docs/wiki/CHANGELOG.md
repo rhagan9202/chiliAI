@@ -2,6 +2,25 @@
 
 ---
 
+## 2026-07-19 — Risk detail route de-seeded from ApiState; Qdrant upsert chunking (Dev-Wiki-Curator)
+
+### Changes
+
+**Code files read:** `backend/api/dependencies.py`, `backend/api/state.py`, `backend/vectorstore/adapters/qdrant_adapter.py` (commits `42ef186` "fix(api): serve risk detail route from the DI risk service, not seeded ApiState (B2)" and `00f7fa8` "fix(vectorstore): chunk Qdrant upserts under the 32MB request limit (B2)")
+
+**Wiki pages updated:**
+
+| Page | Gap closed |
+|------|-----------|
+| `modules/analytics.md` | `GET /analytics/risk-scores/{entity_id}` no longer reads `ApiState`: documented `get_risk_score_payload(entity_id, kb_id, risk_service)` assessing via the DI `get_risk_service()` (same factory as the list route), the `RiskConfigurationError`/`RiskInsufficientSignalsError`/`ValueError` → `availability_status="unavailable"` mapping, infra-error propagation, and `_normalize_risk_level`'s move into `api/dependencies.py`. Replaced the "remaining static read-model gap" language — no analytics route reads `ApiState` anymore. Bumped verified date to 2026-07-19. |
+| `modules/api.md` | Route → Service Dispatch table: `analytics` row no longer lists "remaining `ApiState` entity risk-score composition"; both risk-score routes now attributed to `RiskServiceProtocol` via DI. |
+| `contracts/api-routes.md` | Updated analytics wiring-status paragraph, the `RiskScoreResponse` static-shape code block (added the `availability_status`/`unavailable_reason` fields that were already on the real Pydantic model but missing from the wiki), and the dependency-chain bullet for `/analytics/risk-scores/{entity_id}` to reflect DI `risk_service` instead of `state.get_risk_score(...)`. Bumped file-level verified date to 2026-07-19. |
+| `modules/vectorstore.md` | Documented `QdrantVectorStore.upsert_records()` splitting point batches into `UPSERT_MAX_POINTS_PER_REQUEST = 1000`-point requests (order preserved) to stay under Qdrant's 32MB actix payload limit — large record feeds (47k CMS carrier claims → ~100k entity vectors) previously exceeded it in one request and DLQ'd `records.ingested` workflows. |
+
+**Drift log:** No new architectural violations observed. `ApiState` now demonstrably owns only the RAG service handle, matching its updated module docstring in `backend/api/state.py`.
+
+---
+
 ## 2026-05-28 — Pass 6: Docs/Wiki Cleanup Validation
 
 ### Changes

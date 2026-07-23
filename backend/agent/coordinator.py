@@ -52,6 +52,7 @@ from config.schema import (
     PolicyRulePack,
     RecordFeedConfig,
     RecordsConfig,
+    TimeseriesAnalyticsConfig,
     VectorStoreConfig,
 )
 from database.protocols import ConnectionProvider
@@ -120,6 +121,8 @@ from analytics.peerstats.adapters.protocols import (
     DerivedRiskSignalWriterProtocol,
     RecordColumnSourceProtocol,
 )
+from analytics.peerstats.aggregation import z_to_signal
+from analytics.peerstats.models import DerivedRiskSignal
 from analytics.peerstats.service import PeerStatsService, create_peerstats_service
 from analytics.peerstats.service_models import PeerStatsComputeRequest
 from analytics.risk.adapters.in_memory import InMemoryRiskHistoryWriter, InMemoryRiskSignalSource
@@ -136,6 +139,20 @@ from analytics.risk.service_models import (
     RiskAssessmentRequest,
     RiskAssessmentResponse,
 )
+from analytics.timeseries.adapters.in_memory import (
+    InMemoryTimeSeriesHistorySource,
+    InMemoryTimeseriesAnomalyStore,
+)
+from analytics.timeseries.adapters.postgres import PostgresTimeseriesAnomalyStore
+from analytics.timeseries.adapters.protocols import TimeseriesAnomalyStoreProtocol
+from analytics.timeseries.adapters.record_aggregates import load_entity_series_map
+from analytics.timeseries.exceptions import (
+    TimeseriesConfigurationError,
+    TimeseriesInsufficientHistoryError,
+)
+from analytics.timeseries.models import TimeseriesAnomalyRecord
+from analytics.timeseries.service import create_timeseries_service
+from analytics.timeseries.service_models import TimeseriesAnalysisRequest
 from embeddings.adapters.cache_in_memory import (
     create_embedding_cache,
     embedding_cache_namespace,
@@ -187,7 +204,11 @@ from knowledgebases import (
     KnowledgeBaseRepository,
     ObjectStoreKnowledgeBaseRepository,
 )
-from knowledgebases.cleanup import KbDeletionStores, kb_deletion_steps
+from knowledgebases.cleanup import (
+    KbDeletionStores,
+    TimeseriesAnomalyPurger,
+    kb_deletion_steps,
+)
 from cases.adapters.in_memory import InMemoryCaseRepository
 from cases.adapters.postgres import PostgresCaseRepository
 from conversations.adapters.in_memory import InMemoryConversationRepository
@@ -299,6 +320,7 @@ __all__ = [
     "build_risk_history_writer",
     "build_risk_signal_source",
     "build_scorecard_run_repository",
+    "build_timeseries_anomaly_store",
     "build_vector_store",
     "build_worker_dependencies",
     "drain_ingestion_events",
@@ -319,6 +341,7 @@ __all__ = [
     "main",
     "run_handler_with_retry",
     "run_peerstats_stage",
+    "run_timeseries_stage",
     "run_worker",
 ]
 
@@ -381,6 +404,10 @@ class WorkerDependencies:
     peerstats_service: PeerStatsService
     peer_stats_config: PeerStatsConfig
     peer_stats_enabled: bool
+    record_column_source: RecordColumnSourceProtocol
+    timeseries_anomaly_store: TimeseriesAnomalyStoreProtocol
+    timeseries_config: TimeseriesAnalyticsConfig
+    timeseries_enabled: bool
     kb_deletion_stores: KbDeletionStores
     kb_repository: KnowledgeBaseRepository
     explainability_service: ExplainabilityService
@@ -697,6 +724,16 @@ def build_observation_writer(
     return PostgresObservationStore(provider)
 
 
+def build_timeseries_anomaly_store(
+    provider: ConnectionProvider | None,
+) -> TimeseriesAnomalyStoreProtocol:
+    """Select the timeseries anomaly store: Postgres when a provider exists."""
+
+    if provider is None:
+        return InMemoryTimeseriesAnomalyStore()
+    return PostgresTimeseriesAnomalyStore(provider)
+
+
 def build_policy_item_repository(
     provider: ConnectionProvider | None,
 ) -> PolicyItemRepository:
@@ -775,6 +812,7 @@ def build_kb_deletion_stores(
     risk_history_writer: RiskHistoryWriter,
     alert_history_writer: AlertHistoryWriter,
     entity_metric_repository: EntityMetricRepository,
+    timeseries_anomaly_store: TimeseriesAnomalyPurger,
 ) -> KbDeletionStores:
     """Assemble the shared KB-delete cascade bundle for the worker.
 
@@ -819,6 +857,7 @@ def build_kb_deletion_stores(
         document_status_store=build_document_status_store(provider),
         object_store=object_store,
         gnn_cluster_store=ObjectStoreClusterSummaryStore(object_store),
+        timeseries_anomaly_store=timeseries_anomaly_store,
     )
 
 
@@ -1093,6 +1132,9 @@ def build_worker_dependencies() -> WorkerDependencies:
     records_config = config.records or RecordsConfig()
     peer_stats_config = config.peer_stats or PeerStatsConfig()
     peerstats_service = build_peerstats_service(connection_provider)
+    timeseries_config = config.timeseries or TimeseriesAnalyticsConfig()
+    record_column_source = build_record_column_source(connection_provider)
+    timeseries_anomaly_store = build_timeseries_anomaly_store(connection_provider)
     kb_repository = build_kb_repository(object_store)
     kb_deletion_stores = build_kb_deletion_stores(
         connection_provider,
@@ -1106,6 +1148,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         risk_history_writer=risk_history_writer,
         alert_history_writer=alert_history_writer,
         entity_metric_repository=entity_metric_repository,
+        timeseries_anomaly_store=timeseries_anomaly_store,
     )
 
     return WorkerDependencies(
@@ -1126,6 +1169,10 @@ def build_worker_dependencies() -> WorkerDependencies:
         peerstats_service=peerstats_service,
         peer_stats_config=peer_stats_config,
         peer_stats_enabled=config.capabilities.peer_stats,
+        record_column_source=record_column_source,
+        timeseries_anomaly_store=timeseries_anomaly_store,
+        timeseries_config=timeseries_config,
+        timeseries_enabled=config.capabilities.timeseries,
         kb_deletion_stores=kb_deletion_stores,
         kb_repository=kb_repository,
         explainability_service=explainability_service,
@@ -2682,6 +2729,123 @@ def run_peerstats_stage(
     return sorted(affected)
 
 
+_TIMESERIES_Z_CLAMP = 1.0e6  # flat-baseline jumps yield z=inf; keep stored floats JSON-safe
+
+
+def run_timeseries_stage(
+    *,
+    column_source: RecordColumnSourceProtocol,
+    anomaly_store: TimeseriesAnomalyStoreProtocol,
+    signal_writer: DerivedRiskSignalWriterProtocol,
+    event_bus: EventBus,
+    timeseries_config: TimeseriesAnalyticsConfig,
+    knowledge_base_id: str,
+    record_type: str,
+    correlation_id: str,
+) -> list[str]:
+    """Detect self-history anomalies for every spec matching this feed.
+
+    One aggregate query per spec (not per entity); detection runs over a
+    batch-local in-memory source. Insufficient history and missing optional
+    detection dependencies are controlled skips. Returns the sorted entity
+    ids that received an anomaly-derived risk signal so the caller assesses
+    each once alongside peerstats-affected ids.
+    """
+
+    affected: set[str] = set()
+    for spec in timeseries_config.metrics:
+        if spec.record_type != record_type:
+            continue
+        series_map = load_entity_series_map(
+            column_source, knowledge_base_id=knowledge_base_id, spec=spec
+        )
+        if not series_map:
+            logger.info(
+                "Timeseries stage found no series for metric=%s kb=%s",
+                spec.name,
+                knowledge_base_id,
+            )
+            continue
+        service = create_timeseries_service(
+            InMemoryTimeSeriesHistorySource(series=list(series_map.values())),
+            event_bus=event_bus,
+        )
+        anomaly_records: list[TimeseriesAnomalyRecord] = []
+        signals: list[DerivedRiskSignal] = []
+        for entity_id in sorted(series_map):
+            try:
+                response = service.analyze(
+                    TimeseriesAnalysisRequest(
+                        knowledge_base_id=knowledge_base_id,
+                        entity_id=entity_id,
+                        metric_name=spec.name,
+                        baseline_window=spec.baseline_window,
+                        min_history=spec.min_history,
+                        z_threshold=spec.z_threshold,
+                        detection_strategy=spec.detection_strategy,
+                    )
+                )
+            except TimeseriesInsufficientHistoryError:
+                continue  # controlled skip: this entity lacks buckets, others may not
+            except TimeseriesConfigurationError as exc:
+                logger.info(
+                    "Timeseries stage skipped metric=%s: %s", spec.name, exc
+                )
+                break  # configuration problems (e.g. missing extra) repeat per entity
+            if not response.anomalies:
+                continue
+            for anomaly in response.anomalies:
+                bounded_z = min(anomaly.z_score, _TIMESERIES_Z_CLAMP)
+                anomaly_records.append(
+                    TimeseriesAnomalyRecord(
+                        knowledge_base_id=knowledge_base_id,
+                        entity_id=entity_id,
+                        metric_name=spec.name,
+                        observed_at=anomaly.observed_at,
+                        observed_value=anomaly.observed_value,
+                        expected_value=anomaly.expected_value,
+                        z_score=bounded_z,
+                        severity=z_to_signal(
+                            bounded_z, direction="high", z_cap=spec.z_cap
+                        ),
+                        detection_strategy=spec.detection_strategy,
+                        correlation_id=correlation_id,
+                    )
+                )
+            latest = max(response.anomalies, key=lambda anomaly: anomaly.observed_at)
+            latest_z = min(latest.z_score, _TIMESERIES_Z_CLAMP)
+            signals.append(
+                DerivedRiskSignal(
+                    knowledge_base_id=knowledge_base_id,
+                    entity_id=entity_id,
+                    entity_type=spec.entity_type,
+                    metric_name=f"timeseries_anomaly:{spec.name}",
+                    interval_start=latest.observed_at,
+                    peer_group_key="__self_history__",
+                    aggregate_value=latest.observed_value,
+                    peer_mean=latest.expected_value,
+                    peer_std=(latest.deviation / latest_z if latest_z > 0.0 else 0.0),
+                    z_score=latest_z,
+                    signal_value=z_to_signal(
+                        latest_z, direction="high", z_cap=spec.z_cap
+                    ),
+                    weight=spec.signal_weight,
+                    rationale=(
+                        f"{spec.name}: self-history anomaly z={latest_z:.2f} "
+                        f"({spec.detection_strategy}, {len(response.anomalies)} "
+                        f"anomalous {spec.interval} buckets)"
+                    ),
+                    correlation_id=correlation_id,
+                )
+            )
+            affected.add(entity_id)
+        if anomaly_records:
+            anomaly_store.write_anomalies(anomaly_records)
+        if signals:
+            signal_writer.write_signals(signals)
+    return sorted(affected)
+
+
 def assess_entities(
     *,
     risk_service: RiskService,
@@ -2739,6 +2903,12 @@ def handle_records_ingested(
     peer_stats_config: PeerStatsConfig | None = None,
     risk_service: RiskService | None = None,
     peer_stats_enabled: bool = False,
+    record_column_source: RecordColumnSourceProtocol | None = None,
+    timeseries_anomaly_store: TimeseriesAnomalyStoreProtocol | None = None,
+    timeseries_config: TimeseriesAnalyticsConfig | None = None,
+    timeseries_enabled: bool = False,
+    derived_signal_store: DerivedRiskSignalWriterProtocol | None = None,
+    event_bus: EventBus | None = None,
     is_cancelled: Callable[[], bool] | None = None,
 ) -> int:
     """Flow 1 — fan a structured-records batch out to the graph and observations.
@@ -2842,6 +3012,7 @@ def handle_records_ingested(
         )
         return len(records)
 
+    affected: set[str] = set()
     if (
         peer_stats_enabled
         and peerstats_service is not None
@@ -2849,23 +3020,60 @@ def handle_records_ingested(
         and peer_stats_config.metrics
     ):
         try:
-            affected = run_peerstats_stage(
-                peerstats_service=peerstats_service,
-                peer_stats_config=peer_stats_config,
-                knowledge_base_id=event.knowledge_base_id,
-                record_type=feed.record_type,
-                correlation_id=event.correlation_id,
-            )
-            if risk_service is not None and affected:
-                assess_entities(
-                    risk_service=risk_service,
+            affected.update(
+                run_peerstats_stage(
+                    peerstats_service=peerstats_service,
+                    peer_stats_config=peer_stats_config,
                     knowledge_base_id=event.knowledge_base_id,
-                    entity_ids=affected,
+                    record_type=feed.record_type,
                     correlation_id=event.correlation_id,
                 )
+            )
         except Exception:  # noqa: BLE001 - best-effort: never break ingest
             logger.exception(
                 "Peerstats stage failed for kb=%s correlation=%s",
+                event.knowledge_base_id,
+                event.correlation_id,
+            )
+    if (
+        timeseries_enabled
+        and timeseries_config is not None
+        and timeseries_config.metrics
+        and record_column_source is not None
+        and timeseries_anomaly_store is not None
+        and derived_signal_store is not None
+        and event_bus is not None
+    ):
+        try:
+            affected.update(
+                run_timeseries_stage(
+                    column_source=record_column_source,
+                    anomaly_store=timeseries_anomaly_store,
+                    signal_writer=derived_signal_store,
+                    event_bus=event_bus,
+                    timeseries_config=timeseries_config,
+                    knowledge_base_id=event.knowledge_base_id,
+                    record_type=feed.record_type,
+                    correlation_id=event.correlation_id,
+                )
+            )
+        except Exception:  # noqa: BLE001 - best-effort: never break ingest
+            logger.exception(
+                "Timeseries stage failed for kb=%s correlation=%s",
+                event.knowledge_base_id,
+                event.correlation_id,
+            )
+    if risk_service is not None and affected:
+        try:
+            assess_entities(
+                risk_service=risk_service,
+                knowledge_base_id=event.knowledge_base_id,
+                entity_ids=sorted(affected),
+                correlation_id=event.correlation_id,
+            )
+        except Exception:  # noqa: BLE001 - best-effort: never break ingest
+            logger.exception(
+                "Risk assess stage failed for kb=%s correlation=%s",
                 event.knowledge_base_id,
                 event.correlation_id,
             )
@@ -3396,6 +3604,11 @@ def handle_event(
     peerstats_service: PeerStatsService | None = None,
     peer_stats_config: PeerStatsConfig | None = None,
     peer_stats_enabled: bool = False,
+    record_column_source: RecordColumnSourceProtocol | None = None,
+    timeseries_anomaly_store: TimeseriesAnomalyStoreProtocol | None = None,
+    timeseries_config: TimeseriesAnalyticsConfig | None = None,
+    timeseries_enabled: bool = False,
+    derived_signal_store: DerivedRiskSignalWriterProtocol | None = None,
     kb_repository: KnowledgeBaseRepository | None = None,
     kb_deletion_stores: KbDeletionStores | None = None,
     document_status_store: SourceDocumentStatusStore | None = None,
@@ -3454,6 +3667,11 @@ def handle_event(
             peerstats_service=peerstats_service,
             peer_stats_config=peer_stats_config,
             peer_stats_enabled=peer_stats_enabled,
+            record_column_source=record_column_source,
+            timeseries_anomaly_store=timeseries_anomaly_store,
+            timeseries_config=timeseries_config,
+            timeseries_enabled=timeseries_enabled,
+            derived_signal_store=derived_signal_store,
             kb_repository=kb_repository,
             kb_deletion_stores=kb_deletion_stores,
             document_status_store=document_status_store,
@@ -3497,6 +3715,11 @@ def _dispatch_event(
     peerstats_service: PeerStatsService | None = None,
     peer_stats_config: PeerStatsConfig | None = None,
     peer_stats_enabled: bool = False,
+    record_column_source: RecordColumnSourceProtocol | None = None,
+    timeseries_anomaly_store: TimeseriesAnomalyStoreProtocol | None = None,
+    timeseries_config: TimeseriesAnalyticsConfig | None = None,
+    timeseries_enabled: bool = False,
+    derived_signal_store: DerivedRiskSignalWriterProtocol | None = None,
     kb_repository: KnowledgeBaseRepository | None = None,
     kb_deletion_stores: KbDeletionStores | None = None,
     document_status_store: SourceDocumentStatusStore | None = None,
@@ -3661,6 +3884,12 @@ def _dispatch_event(
             peer_stats_config=peer_stats_config,
             risk_service=risk_service,
             peer_stats_enabled=peer_stats_enabled,
+            record_column_source=record_column_source,
+            timeseries_anomaly_store=timeseries_anomaly_store,
+            timeseries_config=timeseries_config,
+            timeseries_enabled=timeseries_enabled,
+            derived_signal_store=derived_signal_store,
+            event_bus=event_bus,
             is_cancelled=is_cancelled,
         )
     if isinstance(event, KnowledgeBaseDeletedEvent):
@@ -3840,6 +4069,11 @@ async def drain_ingestion_events(
     peerstats_service: PeerStatsService | None = None,
     peer_stats_config: PeerStatsConfig | None = None,
     peer_stats_enabled: bool = False,
+    record_column_source: RecordColumnSourceProtocol | None = None,
+    timeseries_anomaly_store: TimeseriesAnomalyStoreProtocol | None = None,
+    timeseries_config: TimeseriesAnalyticsConfig | None = None,
+    timeseries_enabled: bool = False,
+    derived_signal_store: DerivedRiskSignalWriterProtocol | None = None,
     consumer_group: str,
     consumer_name: str,
     limit: int = 10,
@@ -3921,6 +4155,11 @@ async def drain_ingestion_events(
                 peerstats_service=peerstats_service,
                 peer_stats_config=peer_stats_config,
                 peer_stats_enabled=peer_stats_enabled,
+                record_column_source=record_column_source,
+                timeseries_anomaly_store=timeseries_anomaly_store,
+                timeseries_config=timeseries_config,
+                timeseries_enabled=timeseries_enabled,
+                derived_signal_store=derived_signal_store,
                 kb_repository=kb_repository,
                 kb_deletion_stores=kb_deletion_stores,
                 document_status_store=document_status_store,
@@ -4046,6 +4285,11 @@ async def _drain_once(
         peerstats_service=deps.peerstats_service,
         peer_stats_config=deps.peer_stats_config,
         peer_stats_enabled=deps.peer_stats_enabled,
+        record_column_source=deps.record_column_source,
+        timeseries_anomaly_store=deps.timeseries_anomaly_store,
+        timeseries_config=deps.timeseries_config,
+        timeseries_enabled=deps.timeseries_enabled,
+        derived_signal_store=deps.derived_signal_store,
         consumer_group=deps.event_settings.consumer_group,
         consumer_name=deps.event_settings.consumer_name(),
         limit=deps.event_settings.batch_size,

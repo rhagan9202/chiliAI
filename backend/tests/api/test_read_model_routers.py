@@ -459,7 +459,12 @@ def test_get_analytics_overview_returns_dashboard_metrics() -> None:
     assert payload["high_risk_entities"] >= 1
 
 
-def test_get_risk_score_returns_factor_breakdown() -> None:
+def test_get_risk_score_returns_unavailable_without_registered_signals() -> None:
+    """B2 moved the risk detail route off ApiState's seeded profiles onto the
+    DI risk service. No derived signals are registered for a fresh app, so the
+    route must report availability_status == "unavailable" rather than serving
+    stale seed data.
+    """
     client = TestClient(create_app())
 
     response = client.get("/analytics/risk-scores/provider-204", params={"kb_id": "kb-1"})
@@ -467,10 +472,17 @@ def test_get_risk_score_returns_factor_breakdown() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["entity_id"] == "provider-204"
-    assert payload["factors"][0]["factor_name"] == "peer_group_deviation"
+    assert payload["availability_status"] == "unavailable"
+    assert payload["factors"] == []
 
 
-def test_get_timeseries_returns_chart_points() -> None:
+def test_get_timeseries_returns_unavailable_without_configured_data() -> None:
+    """B2 (analytics.07) moved the entity timeseries route off ApiState's
+    seeded chart points onto record-aggregate series + persisted anomalies.
+    The default domain pack configures no timeseries metric specs and no
+    record data has been ingested, so the route must report
+    availability_status == "unavailable" rather than serving stale seed data.
+    """
     client = TestClient(create_app())
 
     response = client.get("/analytics/timeseries/provider-204", params={"kb_id": "kb-1"})
@@ -478,8 +490,9 @@ def test_get_timeseries_returns_chart_points() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["entity_id"] == "provider-204"
-    assert len(payload["points"]) >= 5
-    assert any(point["is_anomaly"] for point in payload["points"])
+    assert payload["points"] == []
+    assert payload["availability_status"] == "unavailable"
+    assert payload["metric_name"] == "timeseries"
 
 
 def test_workspace_event_stream_returns_snapshot() -> None:

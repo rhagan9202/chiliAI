@@ -184,9 +184,41 @@ Graph storage and workflows exist, but analytics inference is still represented 
 
 ---
 
+> **Delivered pipeline slice (Sprint 2026-28 B2, BL-047, 2026-07-18,
+> `feat/sprint-2026-28-b2-timeseries-anomalies`):** ingest-triggered
+> self-history timeseries anomaly detection shipped end to end, superseding
+> analytics.06's original approach (below) and closing analytics.07. The
+> slice spans: `TimeseriesMetricSpec` + `TimeseriesAnalyticsConfig` on
+> `DomainConfig.timeseries` with cross-reference validation against records
+> feeds (`backend/config/schema.py`); the anomaly store
+> (`TimeseriesAnomalyRecord` + `TimeseriesAnomalyStoreProtocol`, in-memory +
+> Postgres adapters, migration `0011_timeseries_anomalies.py`); the
+> record-aggregate per-entity series source
+> (`backend/analytics/timeseries/adapters/record_aggregates.py`,
+> `RecordAggregateTimeSeriesSource`); the worker stage `run_timeseries_stage`
+> (`backend/agent/coordinator.py`), gated on `capabilities.timeseries`,
+> running best-effort immediately after — but independently of — the
+> peerstats stage on every `RecordsIngestedEvent`, with controlled skips for
+> per-entity insufficient history (`TimeseriesInsufficientHistoryError`) and
+> per-spec configuration errors (`TimeseriesConfigurationError`, e.g. a
+> missing detection-strategy extra), z-score clamping at `1.0e6`, and
+> `timeseries_anomaly:<spec.name>`-prefixed `DerivedRiskSignal` writes with
+> peer group key `__self_history__`; the KB-delete cascade step
+> `timeseries_anomalies` (structural `TimeseriesAnomalyPurger` protocol,
+> positioned directly after `derived_signals`, required in both the API and
+> worker `KbDeletionStores` bundles); the API route rewrite covered by
+> analytics.07 below; and config-only pack additions (`peer_stats` +
+> `timeseries` blocks on `medicare_fraud_cms_desynpuf.yaml`, a `timeseries`
+> block on `department_air_force_housing.yaml`). Full design rationale:
+> `docs/superpowers/specs/2026-07-17-sprint28-b2-timeseries-anomalies-design.md`.
+> Full task-by-task implementation record:
+> `docs/superpowers/plans/2026-07-17-sprint28-b2-timeseries-anomalies.md`.
+> Gates at closeout: 2612 backend tests passed (5 skipped, 97% coverage),
+> `pyright` 0 errors, `ruff check` clean.
+
 ## Story analytics.06: Timeseries: Add Postgres `load_series` for per-entity metrics
 **ID:** analytics.06
-**Status:** planned
+**Status:** dropped
 **Prerequisites:** [monitoring.02, records.07]
 **Unblocks:** []
 **Estimated size:** M
@@ -195,14 +227,39 @@ Graph storage and workflows exist, but analytics inference is still represented 
 **so that** per-entity anomaly detection runs against real observation streams.
 
 ### Current State
+**Superseded 2026-07-18 (Sprint 2026-28 B2, BL-047) — dropped, not implemented
+as specced.** Per-entity anomaly detection did ship (B2), but on a different
+series source than this story's AC assumed. Plan-time evidence (design
+amendment, `docs/superpowers/specs/2026-07-17-sprint28-b2-timeseries-anomalies-design.md`
+§2) rejected the `observations`-backed path this story specified:
+`MonitoringObservation.score` is hard-bounded `[0,1]` with load-time
+provability (raw payment fields have no `max_value` to bound against),
+`observed_at` is pinned to `ingested_at` (a bulk demo ingest collapses the
+time axis to one point per feed run), and the `(kb, entity, metric,
+observed_at)` primary key + `ON CONFLICT DO NOTHING` silently drops
+same-day duplicate claims. Instead, `RecordAggregateTimeSeriesSource`
+(`backend/analytics/timeseries/adapters/record_aggregates.py`) reads
+per-entity, per-interval aggregates directly from `raw_records` via the
+existing peerstats `RecordColumnSourceProtocol.load_interval_aggregates`
+SQL — a real claim-date axis, unbounded values, no lossy collisions.
+`observations` remains monitoring-only (`monitoring/adapters/postgres.py::PostgresObservationStore`
++ monitoring's own threshold evaluation); the timeseries module never reads
+it. The cross-edge contract (per-entity ← `raw_records` aggregates,
+graph-scope ← `entity_metric_history`, `observations` ← monitoring-only) is
+documented in `backend/analytics/README.md` § Timeseries series-source
+contract. See analytics.07 for the API-facing half of the delivered slice
+and `docs/backlog/README.md`'s regenerated rollup for this story's `dropped`
+accounting.
+
+Pre-supersession state (accurate as of 2026-07-17, retained for history):
 - `PostgresTimeSeriesHistorySource._SERIES_SQL` selects from `entity_metric_history` (`backend/analytics/timeseries/adapters/postgres.py:17-30`).
 - `entity_metric_history` is only written by Flow 2 with `entity_id="__graph__"` (`backend/analytics/metrics/models.py:11-16`, `backend/agent/coordinator.py:1096-1300`).
 - Per-entity observations land in `observations` via `monitoring/adapters/postgres.py::PostgresObservationStore`, but the timeseries adapter does not read them.
 
 ### Acceptance Criteria
-- [ ] `PostgresTimeSeriesHistorySource` gains an `observations`-backed path (separate adapter or branch) keyed on `(knowledge_base_id, entity_id, metric_name)` and selected via `DomainConfig.analytics.timeseries_source: Literal["entity_metric_history","observations"]`.
-- [ ] Cross-edge contract is documented in `backend/analytics/README.md` (per-entity timeseries reads `observations`, graph-scope reads `entity_metric_history`).
-- [ ] Coverage ≥ 85% on the new branch; integration test runs against a Postgres fixture with seeded observation rows.
+- [ ] `PostgresTimeSeriesHistorySource` gains an `observations`-backed path (separate adapter or branch) keyed on `(knowledge_base_id, entity_id, metric_name)` and selected via `DomainConfig.analytics.timeseries_source: Literal["entity_metric_history","observations"]`. **Superseded** — see Current State; no `timeseries_source` literal was added, and `PostgresTimeSeriesHistorySource` still reads only `entity_metric_history` (graph-scope). Per-entity reads go through `RecordAggregateTimeSeriesSource` instead.
+- [ ] Cross-edge contract is documented in `backend/analytics/README.md` (per-entity timeseries reads `observations`, graph-scope reads `entity_metric_history`). **Delivered with a different contract:** per-entity timeseries reads `raw_records` aggregates, not `observations`; `backend/analytics/README.md` § Timeseries series-source contract documents the shipped contract.
+- [ ] Coverage ≥ 85% on the new branch; integration test runs against a Postgres fixture with seeded observation rows. **N/A** — no `observations`-backed branch was built; coverage for the shipped `record_aggregates.py` path is tracked under analytics.07 instead.
 
 ### Verification
 - `pytest -m integration backend/tests/analytics/timeseries/test_postgres_source.py -q` green.
@@ -220,30 +277,34 @@ Graph storage and workflows exist, but analytics inference is still represented 
 
 ## Story analytics.07: Timeseries: Wire production `PostgresTimeSeriesHistorySource` through API DI
 **ID:** analytics.07
-**Status:** planned
+**Status:** done
 **Prerequisites:** [database.05]
-**Unblocks:** [analytics.08]
+**Unblocks:** [analytics.08, analytics.35]
 **Estimated size:** S
+**Done:** 2026-07-18 · Sprint 2026-28 B2 (timeseries anomalies) · `feat/sprint-2026-28-b2-timeseries-anomalies`
 **As a** API developer,
 **I need** `get_timeseries_history_source()` to select the Postgres adapter when `DomainConfig.database.backend == "postgres"`,
 **so that** `/analytics/timeseries` reads from the same hypertable that Flow 2 writes to, instead of always returning empty in-memory data.
 
-### Current State
-- `get_timeseries_history_source` (`backend/api/dependencies.py:644-647`) is hardcoded to `InMemoryTimeSeriesHistorySource()`.
-- `PostgresTimeSeriesHistorySource` already ships (`backend/analytics/timeseries/adapters/postgres.py:33-94`) but has no DI caller.
+### Current State (shipped)
+- `get_timeseries_history_source` (`backend/api/dependencies.py`) now mirrors `get_risk_signal_source`'s DI-switch pattern: `PostgresTimeSeriesHistorySource(provider)` when `get_connection_provider()` is non-None, else `InMemoryTimeSeriesHistorySource()`.
+- **Deviation (scope grew with B2):** the same task also rewrote the entity-scoped `GET /analytics/timeseries/{entity_id}` route (previously `ApiState.get_timeseries`, the seeded-data shortcut tracked separately under analytics.28) to read from `get_entity_series_source()` — a `RecordAggregateTimeSeriesSource` over `get_record_column_source()` (new DI-switched accessor, same pattern) and `DomainConfig.timeseries.metrics` — joined with persisted anomalies from `get_timeseries_anomaly_store()` (shipped by the same sprint's earlier task). This closed the timeseries half of analytics.28; the risk-score half closed later in the same sprint (Task 9 defect #5 fix, commit `42ef186`) — analytics.28 is now done. `api/state.py`'s seeded `_timeseries_source`/`_timeseries_service`/`get_timeseries` were deleted (dead code once the route stopped calling them).
 
 ### Acceptance Criteria
-- [ ] `get_timeseries_history_source` returns `PostgresTimeSeriesHistorySource(provider)` when the connection provider is non-None.
-- [ ] An override hook (DI dependency override) lets tests inject the in-memory adapter without env shenanigans.
-- [ ] A request-level integration test demonstrates `/analytics/timeseries?kb_id=…` returning seeded Postgres rows.
+- [x] `get_timeseries_history_source` returns `PostgresTimeSeriesHistorySource(provider)` when the connection provider is non-None.
+- [x] An override hook (DI dependency override) lets tests inject the in-memory adapter without env shenanigans — `app.dependency_overrides[get_timeseries_history_source]`/`get_entity_series_source`/`get_timeseries_anomaly_store`, plus direct `lru_cache`-clear + `monkeypatch.setattr(dependencies, "get_connection_provider", ...)` for unit-level backend-selection tests (see `tests/api/test_risk_signal_source_wiring.py` for the established pattern; not duplicated for these new accessors since the Postgres branch is otherwise consistent with every other DI-switch factory in the module — exercised via `-m integration`, not unit tests).
+- [x] A request-level integration test demonstrates `/analytics/timeseries?kb_id=…` returning seeded Postgres rows. **Closed at Task 8 closeout (2026-07-18):** `test_query_timeseries_returns_seeded_postgres_rows` (`backend/tests/api/test_analytics_router.py`, `@pytest.mark.integration`) seeds `entity_metric_history` via `PostgresEntityMetricRepository`, builds a real `PostgresTimeSeriesHistorySource` + `TimeseriesService` over it, and asserts `GET /analytics/timeseries?kb_id=…&metric=…` returns the seeded rows through a `TestClient` request — the AC's original gap (adapter-level coverage only, no request-level proof) is closed.
 
 ### Verification
-- `pytest backend/tests/api/test_analytics_router.py -q` green.
-- `pyright` clean.
+- `pytest backend/tests/api/test_analytics_router.py -q` green (23 passed — the original 21, plus the entity route's record-aggregate + anomaly join, its unavailable-when-no-data path, and the Task 8 closeout's request-level Postgres integration test).
+- `pytest backend/tests/api -q` green (612 passed at Task 6/7; re-verified green in the full `make test` run at Task 8 closeout — 2612 passed, 5 skipped, 97% coverage).
+- `pyright` clean, `ruff check` clean.
 
 ### Code touch points
 - `backend/api/dependencies.py` (modify)
+- `backend/api/state.py` (modify — deleted seeded timeseries composition)
 - `backend/tests/api/test_analytics_router.py` (modify)
+- `backend/tests/api/test_phase5_stateful_routes.py`, `backend/tests/api/test_read_model_routers.py` (modify — updated tests that asserted the removed seeded timeseries content)
 
 ---
 
@@ -936,35 +997,41 @@ Graph storage and workflows exist, but analytics inference is still represented 
 
 ## Story analytics.28: Analytics API: Remove remaining deterministic-payload shortcut endpoints
 **ID:** analytics.28
-**Status:** planned
+**Status:** done
 **Prerequisites:** [api.29, frontend.04]
 **Unblocks:** []
 **Estimated size:** M
+**Done:** 2026-07-19 · Sprint 2026-28 B2, Task 9 live-pass defect #5 fix (`42ef186`) · `feat/sprint-2026-28-b2-timeseries-anomalies`
 **As a** API maintainer,
 **I need** `/analytics/risk-scores/{entity_id}` and `/analytics/timeseries/{entity_id}` to read from the live service + persistence layer rather than the seeded in-memory payloads in `ApiState`,
 **so that** the dashboard and entity-detail views reflect real data and the seeded fallback can be removed.
 
-### Current State
+### Current State (shipped)
 - `/analytics/overview` now uses `get_analytics_overview_payload` and `build_analytics_overview(...)` to aggregate durable alert projections, durable cases, and KB metadata (`backend/api/dependencies.py`, `backend/api/_analytics_overview.py`).
-- `/analytics/risk-scores/{entity_id}` and `/analytics/timeseries/{entity_id}` still read from `ApiState.get_risk_score` / `ApiState.get_timeseries` (`backend/api/dependencies.py`).
-- Seeded `ApiState` analytics helpers remain for the entity-scoped shortcuts.
+- **`/analytics/timeseries/{entity_id}` is done** (shipped under analytics.07, Sprint 2026-28 B2): it now reads `get_entity_series_source()` (`RecordAggregateTimeSeriesSource` over record-column aggregates + `DomainConfig.timeseries.metrics`) joined with `get_timeseries_anomaly_store()`; `ApiState.get_timeseries`/`_timeseries_source`/`_timeseries_service`/`_build_timeseries_series` were deleted as dead code.
+- **`/analytics/risk-scores/{entity_id}` is done too** (Task 9 live-pass defect #5, commit `42ef186`): `get_risk_score_payload` (`backend/api/dependencies.py`) now assesses via `get_risk_service()` (`PostgresRiskSignalSource` when a DB is configured), mapping `RiskConfigurationError`/`RiskInsufficientSignalsError`/`ValueError` to an `unavailable` payload while letting infra errors propagate; `ApiState`'s entire seeded risk stack — `get_risk_score`, `_risk_service`, `_build_risk_profiles`, `_normalize_risk_level` — was deleted (`_normalize_risk_level` moved to `dependencies.py` next to `get_risk_score_payload`).
+- `backend/api/state.py`'s module docstring now documents both migrations (timeseries under analytics.07, then risk detail); the only thing `ApiState` still owns is the RAG service handle for chat streaming.
+- Live-verified 2026-07-19 (Task 9 checklist items 5–6, TN 1% demo KB `82db11c3`): `provider:1003195173`'s risk profile carries both signal families (`timeseries_anomaly:weekly_carrier_billing_self` + peerstats `weekly_carrier_billing`) via the API, and the workbench entity-detail view renders both risk-factor families with zero console errors (screenshot `b2-task9-workbench-anomaly-chip.png`) — closing the frontend.04 render-confirmation this story's AC called for.
 
 ### Acceptance Criteria
-- [ ] Remaining entity-scoped endpoints switch to DI factories that compose the live analytics services and persistence (`get_risk_service`, `get_timeseries_service`, the metric repository).
-- [ ] Deprecation note in `backend/api/AGENT.md` (if present) or `backend/api/state.py` docstring.
-- [ ] `ApiState` seeded analytics payloads removed once api.01 ships (or moved to a `tools/seed_demo_state.py`).
-- [ ] Frontend Dashboard/EntityDetail (frontend.04) confirmed to render correctly on live data.
+- [x] `/analytics/timeseries/{entity_id}` switches to DI factories that compose live persistence (`get_entity_series_source`, `get_timeseries_anomaly_store`) — analytics.07.
+- [x] `/analytics/risk-scores/{entity_id}` switches to DI factories that compose the live risk service and persistence (`get_risk_service` over `PostgresRiskSignalSource`) — Task 9 defect #5 fix, commit `42ef186`.
+- [x] Deprecation note in `backend/api/AGENT.md` (if present) or `backend/api/state.py` docstring — no `AGENT.md` exists under `backend/api/`; `state.py`'s module docstring documents the risk-detail migration alongside the earlier timeseries one.
+- [x] `ApiState` seeded risk-score payload removed once api.01 ships (or moved to a `tools/seed_demo_state.py`) — api.01 is done; `42ef186` deleted the seeded risk stack outright (no `tools/seed_demo_state.py` needed).
+- [x] Frontend Dashboard/EntityDetail (frontend.04) confirmed to render correctly on live data — Task 9 live pass confirmed the workbench entity-detail view renders both risk-factor families on real Postgres-derived signals.
 
 ### Verification
 - `pytest backend/tests/api/test_analytics_router.py -q` green.
 - Manual e2e: load Dashboard against a freshly-ingested KB, observe live metrics.
 - `pyright` clean.
+- Live pass 2026-07-19 (Task 9, TN 1% demo KB `82db11c3`): `/analytics/risk-scores/{entity_id}` serves live Postgres-derived signals for `provider:1003195173`; workbench entity-detail renders both timeseries-anomaly and peerstats risk factors with zero console errors.
 
 ### Code touch points
 - `backend/api/routers/analytics.py` (modify)
 - `backend/api/dependencies.py` (modify)
 - `backend/api/state.py` (modify)
 - `backend/tests/api/test_analytics_router.py` (modify)
+- `backend/tests/api/test_phase5_stateful_routes.py`, `backend/tests/api/test_read_model_routers.py` (modify — Task 9 defect #5 test migration)
 
 ---
 
@@ -1154,3 +1221,44 @@ so that downstream features can consume scored entities consistently.
 - `backend/config/schema.py` (modify, if a throttle/toggle field is added)
 - `backend/records/README.md`, `backend/analytics/README.md` (modify)
 - `backend/tests/agent/test_handle_records_ingested.py` (modify/new)
+
+---
+
+## Story analytics.35: Timeseries anomaly store never retracts stale rows
+**ID:** analytics.35
+**Status:** planned
+**Prerequisites:** [analytics.07]
+**Unblocks:** []
+**Estimated size:** S
+
+**As a** fraud analyst reviewing an entity's timeseries chart,
+**I need** `timeseries_anomalies` rows that stop being anomalous under the latest detection pass to be removed rather than left in place,
+**so that** `GET /analytics/timeseries/{entity_id}` never keeps flagging a bucket as an anomaly after a backfill or a config change means the current detection logic would no longer flag it.
+
+### Current State
+- `run_timeseries_stage` (`backend/agent/coordinator.py:2735`) recomputes detection over the full per-spec, per-KB series on every `RecordsIngestedEvent`, then calls `anomaly_store.write_anomalies(anomaly_records)` for whatever anomalies that pass found.
+- `PostgresTimeseriesAnomalyStore.write_anomalies` (`backend/analytics/timeseries/adapters/postgres.py`, `_ANOMALY_UPSERT_SQL`) is `INSERT ... ON CONFLICT (knowledge_base_id, entity_id, metric_name, observed_at) DO UPDATE` — it upserts each detected anomaly but never deletes a `timeseries_anomalies` row for a bucket the current pass did *not* flag. `InMemoryTimeseriesAnomalyStore.write_anomalies` has the identical upsert-only shape (`backend/analytics/timeseries/adapters/in_memory.py:91-100`).
+- `TimeseriesAnomalyStoreProtocol` (`backend/analytics/timeseries/adapters/protocols.py`) exposes only `write_anomalies` (upsert), `load_anomalies` (read), and `delete_by_kb` (whole-KB deletion, used only by the KB-delete cascade) — there is no per-metric or per-run replacement primitive.
+- `get_timeseries_payload` (`backend/api/dependencies.py`) joins the record-aggregate series to `anomaly_store.load_anomalies(...)` purely by `observed_at` timestamp — it has no way to know a persisted anomaly row is stale, so an orphaned row renders as `is_anomaly=true` indefinitely.
+- Consequence: a late-arriving backfill that changes an old bucket's aggregate value (so it's no longer `z_threshold` standard deviations from the baseline), or a config change that raises a metric's `z_threshold`, leaves the previously-written row in place — the API keeps reporting a bucket as anomalous that the current detection logic would no longer flag.
+- Found during the Sprint 2026-28 B2 final whole-branch review (2026-07-19) as a durable-store honesty gap; low urgency at current (demo) scale since `raw_records` ingestion is append-mostly and historical-bucket backfills are rare in practice — not an active production incident.
+
+### Acceptance Criteria
+- [ ] `run_timeseries_stage`'s detection pass is treated as authoritative per `(knowledge_base_id, metric_name)`: each run's write replaces that metric's full anomaly row set rather than only upserting the anomalies found, so buckets that stop being anomalous are removed.
+- [ ] `TimeseriesAnomalyStoreProtocol` gains a replacement primitive (e.g. `delete_by_kb_metric(knowledge_base_id, metric_name)` called immediately before `write_anomalies`, or an equivalent delete-then-write transaction) implemented on both `InMemoryTimeseriesAnomalyStore` and `PostgresTimeseriesAnomalyStore`, mirroring how `ObjectStoreClusterSummaryStore.put_clusters` (`backend/analytics/gnn/adapters/cluster_store.py`) already overwrites a KB's full cluster list on every GNN run instead of merging into stale results.
+- [ ] The Postgres replacement happens inside the store's own write transaction (single connection, delete then inserts before commit) so a mid-run failure cannot leave a metric's anomaly rows partially cleared.
+- [ ] A regression test demonstrates the retraction: seed an anomaly for a bucket, rerun detection with inputs that no longer flag it (via a raised `z_threshold` or a corrected aggregate), and assert the stale row is gone from both `load_anomalies` and the `GET /analytics/timeseries/{entity_id}` response.
+- [ ] Coverage ≥ 85% on the modified store/stage paths.
+
+### Verification
+- `pytest backend/tests/analytics/timeseries -q` green, including the new retraction regression test.
+- `pytest backend/tests/agent -q -k timeseries` green.
+- `pyright` clean.
+
+### Code touch points
+- `backend/analytics/timeseries/adapters/protocols.py` (modify — new replacement method on `TimeseriesAnomalyStoreProtocol`)
+- `backend/analytics/timeseries/adapters/in_memory.py` (modify)
+- `backend/analytics/timeseries/adapters/postgres.py` (modify — replace the upsert-only write with a delete-then-write per `(kb, metric)`, inside one transaction)
+- `backend/agent/coordinator.py` (modify — `run_timeseries_stage` write call)
+- `backend/tests/analytics/timeseries/test_anomaly_store.py`, `backend/tests/analytics/timeseries/test_anomaly_store_postgres.py` (modify/new)
+- `backend/tests/agent/test_coordinator.py` (modify — retraction regression test)

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi import FastAPI
@@ -12,26 +13,37 @@ from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
 from analytics.gnn.models import ClusterSummary
 from analytics.gnn.protocols import GnnServiceProtocol
 from analytics.gnn.service import create_gnn_service
+from analytics.metrics.adapters.postgres import PostgresEntityMetricRepository
+from analytics.metrics.models import EntityMetricSample
+from analytics.peerstats.exceptions import PeerStatsSourceError
+from analytics.peerstats.models import PeerAggregate
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
-from analytics.risk.models import RankedRiskEntry
+from analytics.risk.models import RankedRiskEntry, RiskProfile, RiskSignal
 from analytics.risk.protocols import RiskServiceProtocol
 from analytics.risk.service import create_risk_service
-from analytics.timeseries.adapters.in_memory import InMemoryTimeSeriesHistorySource
-from analytics.timeseries.models import TimeSeriesObservation
+from analytics.timeseries.adapters.in_memory import (
+    InMemoryTimeSeriesHistorySource,
+    InMemoryTimeseriesAnomalyStore,
+)
+from analytics.timeseries.adapters.postgres import PostgresTimeSeriesHistorySource
+from analytics.timeseries.adapters.record_aggregates import RecordAggregateTimeSeriesSource
+from analytics.timeseries.models import TimeSeriesObservation, TimeseriesAnomalyRecord
 from analytics.timeseries.protocols import TimeseriesServiceProtocol
 from analytics.timeseries.service import create_timeseries_service
 from api.contracts import AnalyticsOverviewResponse, EntityTimeseriesResponse, RiskScoreResponse
 from api.dependencies import (
     get_analytics_overview_payload,
-    get_api_state,
+    get_entity_series_source,
     get_gnn_service,
     get_risk_score_payload,
     get_risk_service,
+    get_timeseries_anomaly_store,
     get_timeseries_payload,
     get_timeseries_service,
 )
 from api.routers.analytics import router
-from api.state import ApiState
+from config.schema import DatabaseConfig, TimeseriesMetricSpec
+from database.runtime import create_connection_provider
 from events.adapters.in_memory import InMemoryEventBus
 
 
@@ -191,60 +203,94 @@ def test_detail_risk_score_is_kb_scoped() -> None:
     assert payload["availability_status"] == "unavailable"
 
 
-def test_detail_payload_dependencies_pass_kb_scope_to_api_state() -> None:
+def test_detail_risk_score_served_from_di_risk_service() -> None:
+    """B2 moved the risk detail route off ApiState's seeded profiles onto the
+    DI risk service, so live derived signals (peerstats + timeseries anomaly
+    families) reach the factor breakdown for real knowledge bases.
+    """
     app = FastAPI()
     app.include_router(router)
 
-    class AnalyticsStateStub:
-        def get_risk_score(self, entity_id: str, *, knowledge_base_id: str | None = None) -> RiskScoreResponse:
-            assert entity_id == "provider-1"
-            assert knowledge_base_id == "kb-live"
-            return RiskScoreResponse(
-                entity_id=entity_id,
-                overall_score=0.37,
-                risk_level="medium",
-                factors=[],
-            )
-
-        def get_timeseries(self, entity_id: str, *, knowledge_base_id: str | None = None) -> EntityTimeseriesResponse:
-            assert entity_id == "provider-1"
-            assert knowledge_base_id == "kb-live"
-            return EntityTimeseriesResponse(
-                entity_id=entity_id,
-                metric_name="normalized_alert_pressure",
-                points=[],
-            )
-
-    app.dependency_overrides[get_api_state] = AnalyticsStateStub
+    service = create_risk_service(
+        InMemoryRiskSignalSource(
+            profiles=[
+                RiskProfile(
+                    knowledge_base_id="kb-live",
+                    entity_id="provider-1",
+                    signals=[
+                        RiskSignal(
+                            signal_name="peer_group_deviation",
+                            value=0.8,
+                            weight=1.0,
+                        ),
+                        RiskSignal(
+                            signal_name="timeseries_anomaly:weekly_carrier_billing_self",
+                            value=0.6,
+                            weight=1.0,
+                        ),
+                    ],
+                )
+            ]
+        ),
+        event_bus=InMemoryEventBus(),
+    )
+    app.dependency_overrides[get_risk_service] = lambda: service
     test_client = TestClient(app)
 
     risk_response = test_client.get(
         "/analytics/risk-scores/provider-1",
         params={"kb_id": "kb-live"},
     )
-    timeseries_response = test_client.get(
-        "/analytics/timeseries/provider-1",
+
+    assert risk_response.status_code == 200
+    payload = risk_response.json()
+    assert payload["entity_id"] == "provider-1"
+    assert payload["availability_status"] == "available"
+    assert payload["overall_score"] > 0.0
+    factor_names = {factor["factor_name"] for factor in payload["factors"]}
+    assert factor_names == {
+        "peer_group_deviation",
+        "timeseries_anomaly:weekly_carrier_billing_self",
+    }
+
+
+def test_detail_risk_score_unavailable_without_registered_signals() -> None:
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_risk_service] = lambda: create_risk_service(
+        InMemoryRiskSignalSource(),
+        event_bus=InMemoryEventBus(),
+    )
+    test_client = TestClient(app)
+
+    risk_response = test_client.get(
+        "/analytics/risk-scores/provider-1",
         params={"kb_id": "kb-live"},
     )
 
     assert risk_response.status_code == 200
-    assert risk_response.json()["overall_score"] == 0.37
-    assert timeseries_response.status_code == 200
-    assert timeseries_response.json()["metric_name"] == "normalized_alert_pressure"
+    payload = risk_response.json()
+    assert payload["availability_status"] == "unavailable"
+    assert payload["factors"] == []
 
 
 def test_unexpected_risk_errors_are_not_converted_to_unavailable() -> None:
-    state = ApiState()
+    app = FastAPI()
+    app.include_router(router)
 
     class BrokenRiskService:
         def assess(self, request: object) -> RiskScoreResponse:
             del request
             raise RuntimeError("risk backend unavailable")
 
-    setattr(state, "_risk_service", BrokenRiskService())
+    app.dependency_overrides[get_risk_service] = BrokenRiskService
+    test_client = TestClient(app)
 
     with pytest.raises(RuntimeError, match="risk backend unavailable"):
-        state.get_risk_score("provider-1", knowledge_base_id="kb-live")
+        test_client.get(
+            "/analytics/risk-scores/provider-1",
+            params={"kb_id": "kb-live"},
+        )
 
 
 def test_query_timeseries_returns_points_in_range(client: TestClient) -> None:
@@ -288,6 +334,82 @@ def test_query_timeseries_rejects_inverted_range(client: TestClient) -> None:
     assert response.status_code == 422
 
 
+@pytest.mark.integration
+def test_query_timeseries_returns_seeded_postgres_rows() -> None:
+    """Request-level proof that GET /analytics/timeseries reads real rows
+    through PostgresTimeSeriesHistorySource, not just the in-memory adapter
+    (analytics.07 AC — the graph-scope range route's Postgres wiring)."""
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        pytest.skip("DATABASE_URL is not set; skipping Postgres timeseries route test.")
+
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    repo = PostgresEntityMetricRepository(provider)
+    kb_id = "kb-ts-router-integration"
+    base = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM entity_metric_history WHERE knowledge_base_id = %s",
+                (kb_id,),
+            )
+            conn.execute(
+                "DELETE FROM entity_metrics_current WHERE knowledge_base_id = %s",
+                (kb_id,),
+            )
+            conn.commit()
+
+        repo.record_metrics(
+            [
+                EntityMetricSample(
+                    knowledge_base_id=kb_id,
+                    entity_id="__graph__",
+                    metric_name="entity_count",
+                    value=float(index) * 5.0,
+                    observed_at=base + timedelta(minutes=index),
+                    correlation_id=f"corr-{index}",
+                )
+                for index in range(3)
+            ]
+        )
+
+        source = PostgresTimeSeriesHistorySource(provider)
+        service = create_timeseries_service(source, event_bus=InMemoryEventBus())
+
+        app = FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_timeseries_service] = lambda: service
+        test_client = TestClient(app)
+
+        response = test_client.get(
+            "/analytics/timeseries",
+            params={
+                "kb_id": kb_id,
+                "metric": "entity_count",
+                "start": base.isoformat(),
+                "end": (base + timedelta(minutes=2)).isoformat(),
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["metric_name"] == "entity_count"
+        assert [point["value"] for point in payload["points"]] == [0.0, 5.0, 10.0]
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM entity_metric_history WHERE knowledge_base_id = %s",
+                (kb_id,),
+            )
+            conn.execute(
+                "DELETE FROM entity_metrics_current WHERE knowledge_base_id = %s",
+                (kb_id,),
+            )
+            conn.commit()
+        provider.close()
+
+
 def test_detail_timeseries_requires_kb_id(client: TestClient) -> None:
     response = client.get("/analytics/timeseries/provider-1")
 
@@ -323,18 +445,150 @@ def test_detail_timeseries_is_kb_scoped() -> None:
     assert payload["availability_status"] == "unavailable"
 
 
-def test_unexpected_timeseries_errors_are_not_converted_to_unavailable() -> None:
-    state = ApiState()
+def _timeseries_metric_spec() -> TimeseriesMetricSpec:
+    return TimeseriesMetricSpec(
+        name="weekly_billing_self",
+        record_type="claim_record",
+        entity_type="provider",
+        entity_id_field="npi",
+        value_column="amount",
+        aggregation="sum",
+        interval="week",
+        time_column="service_date",
+    )
 
-    class BrokenTimeseriesSource:
-        def load_series(self, **kwargs: object) -> EntityTimeseriesResponse:
-            del kwargs
-            raise RuntimeError("timeseries backend unavailable")
 
-    setattr(state, "_timeseries_source", BrokenTimeseriesSource())
+class _FakeColumnSource:
+    """Protocol double returning canned aggregates (Task 3's test double shape)."""
 
-    with pytest.raises(RuntimeError, match="timeseries backend unavailable"):
-        state.get_timeseries("provider-1", knowledge_base_id="kb-live")
+    def __init__(self, aggregates: list[PeerAggregate]) -> None:
+        self._aggregates = aggregates
+
+    def load_interval_aggregates(
+        self,
+        *,
+        knowledge_base_id: str,
+        spec: object,
+        interval_starts: list[datetime],
+    ) -> list[PeerAggregate]:
+        del knowledge_base_id, spec, interval_starts
+        return self._aggregates
+
+
+def test_entity_timeseries_serves_series_with_persisted_anomalies() -> None:
+    spec = _timeseries_metric_spec()
+    bucket_1 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    bucket_2 = datetime(2026, 1, 8, tzinfo=timezone.utc)
+    bucket_3 = datetime(2026, 1, 15, tzinfo=timezone.utc)
+    column_source = _FakeColumnSource(
+        [
+            PeerAggregate(
+                entity_id="provider:1",
+                entity_type="provider",
+                peer_group_key="provider",
+                interval_start=bucket_1,
+                aggregate_value=100.0,
+            ),
+            PeerAggregate(
+                entity_id="provider:1",
+                entity_type="provider",
+                peer_group_key="provider",
+                interval_start=bucket_2,
+                aggregate_value=150.0,
+            ),
+            PeerAggregate(
+                entity_id="provider:1",
+                entity_type="provider",
+                peer_group_key="provider",
+                interval_start=bucket_3,
+                aggregate_value=400.0,
+            ),
+        ]
+    )
+    source = RecordAggregateTimeSeriesSource(column_source, specs=[spec])
+
+    anomaly_store = InMemoryTimeseriesAnomalyStore()
+    anomaly_store.write_anomalies(
+        [
+            TimeseriesAnomalyRecord(
+                knowledge_base_id="kb-1",
+                entity_id="provider:1",
+                metric_name=spec.name,
+                observed_at=bucket_3,
+                observed_value=400.0,
+                expected_value=125.0,
+                z_score=3.1,
+                severity=0.9,
+                detection_strategy="z_score",
+                correlation_id="corr-1",
+            )
+        ]
+    )
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_entity_series_source] = lambda: source
+    app.dependency_overrides[get_timeseries_anomaly_store] = lambda: anomaly_store
+    test_client = TestClient(app)
+
+    response = test_client.get("/analytics/timeseries/provider:1", params={"kb_id": "kb-1"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["metric_name"] == spec.name
+    assert len(payload["points"]) == 3
+    assert [point["is_anomaly"] for point in payload["points"]] == [False, False, True]
+    assert payload["availability_status"] == "available"
+
+
+def test_entity_timeseries_unavailable_when_no_spec_has_data() -> None:
+    spec = _timeseries_metric_spec()
+    source = RecordAggregateTimeSeriesSource(_FakeColumnSource([]), specs=[spec])
+    anomaly_store = InMemoryTimeseriesAnomalyStore()
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_entity_series_source] = lambda: source
+    app.dependency_overrides[get_timeseries_anomaly_store] = lambda: anomaly_store
+    test_client = TestClient(app)
+
+    response = test_client.get("/analytics/timeseries/provider:1", params={"kb_id": "kb-1"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["availability_status"] == "unavailable"
+    assert payload["points"] == []
+    assert payload["unavailable_reason"] is not None
+
+
+def test_entity_timeseries_infra_error_propagates_instead_of_unavailable() -> None:
+    """Infra errors from the column source propagate; only a no-data ValueError
+    from ``load_series`` falls through to the next spec. A broken backing store
+    must not be swallowed into a 200 ``unavailable`` response."""
+    spec = _timeseries_metric_spec()
+
+    class _BrokenColumnSource:
+        def load_interval_aggregates(
+            self,
+            *,
+            knowledge_base_id: str,
+            spec: object,
+            interval_starts: list[datetime],
+        ) -> list[PeerAggregate]:
+            del knowledge_base_id, spec, interval_starts
+            raise PeerStatsSourceError("record aggregation backend unavailable")
+
+    source = RecordAggregateTimeSeriesSource(_BrokenColumnSource(), specs=[spec])
+    anomaly_store = InMemoryTimeseriesAnomalyStore()
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_entity_series_source] = lambda: source
+    app.dependency_overrides[get_timeseries_anomaly_store] = lambda: anomaly_store
+    test_client = TestClient(app)
+
+    with pytest.raises(PeerStatsSourceError, match="record aggregation backend unavailable"):
+        test_client.get("/analytics/timeseries/provider:1", params={"kb_id": "kb-1"})
 
 
 def test_list_gnn_clusters_returns_clusters_when_enabled(client: TestClient) -> None:

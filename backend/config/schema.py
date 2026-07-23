@@ -735,6 +735,47 @@ class PeerStatsConfig(BaseModel):
     metrics: list[PeerMetricSpec] = Field(default_factory=lambda: [])
 
 
+class TimeseriesMetricSpec(BaseModel):
+    """One self-history anomaly-detection series derived from a record column.
+
+    The aggregate identity (record_type … time_column) mirrors
+    ``PeerMetricSpec`` so the peerstats record-column SQL can serve both:
+    peerstats compares an entity to its peers cross-sectionally; a
+    timeseries spec compares an entity to its own interval history.
+    """
+
+    name: str
+    record_type: str
+    entity_type: str
+    entity_id_field: str
+    value_column: str
+    aggregation: Literal["sum", "mean", "count", "max", "min"]
+    interval: Literal["day", "week", "month"]
+    time_column: str | None = None
+    detection_strategy: Literal[
+        "z_score", "stl_decomposition", "isolation_forest"
+    ] = "z_score"
+    baseline_window: int = Field(default=5, gt=1)
+    min_history: int = Field(default=6, gt=2)
+    z_threshold: float = Field(default=2.0, gt=0.0)
+    z_cap: float = Field(default=4.0, gt=0.0)
+    signal_weight: float = Field(default=1.0, gt=0.0)
+
+    @model_validator(mode="after")
+    def _validate_history_requirements(self) -> TimeseriesMetricSpec:
+        if self.min_history <= self.baseline_window:
+            raise ValueError(
+                "TimeseriesMetricSpec min_history must exceed baseline_window."
+            )
+        return self
+
+
+class TimeseriesAnalyticsConfig(BaseModel):
+    """Collection of self-history anomaly series specs for a domain."""
+
+    metrics: list[TimeseriesMetricSpec] = Field(default_factory=lambda: [])
+
+
 # ---------------------------------------------------------------------------
 # Top-level config
 # ---------------------------------------------------------------------------
@@ -768,6 +809,7 @@ class DomainConfig(BaseModel):
     analytics: AnalyticsConfig | None = None
     gnn: GnnConfig | None = None
     peer_stats: PeerStatsConfig | None = None
+    timeseries: TimeseriesAnalyticsConfig | None = None
     scorecards: ScorecardsConfig = Field(default_factory=ScorecardsConfig)
     policy_rules: list[PolicyRulePack] = Field(
         default_factory=lambda: cast(list[PolicyRulePack], [])
@@ -973,6 +1015,56 @@ class DomainConfig(BaseModel):
                                 f"normalized scores could exceed 1."
                             )
 
+        # --- timeseries metric references ---
+        if self.timeseries is not None and self.timeseries.metrics:
+            feeds_by_record_type: dict[str, list[RecordFeedConfig]] = {}
+            for feed in records_config.feeds:
+                feeds_by_record_type.setdefault(feed.record_type, []).append(feed)
+            for spec in self.timeseries.metrics:
+                matching = feeds_by_record_type.get(spec.record_type, [])
+                if not matching:
+                    errors.append(
+                        f"Timeseries metric '{spec.name}' references record_type "
+                        f"'{spec.record_type}' not declared by any records feed."
+                    )
+                    continue
+                for feed in matching:
+                    schema_fields = feed.record_schema
+                    label = (
+                        f"Timeseries metric '{spec.name}' on records feed "
+                        f"'{feed.name}'"
+                    )
+                    if spec.entity_id_field not in schema_fields:
+                        errors.append(
+                            f"{label}: entity_id_field '{spec.entity_id_field}' "
+                            f"is not in record_schema."
+                        )
+                    value_def = schema_fields.get(spec.value_column)
+                    if value_def is None:
+                        errors.append(
+                            f"{label}: value_column '{spec.value_column}' is not "
+                            f"in record_schema."
+                        )
+                    elif value_def.type.value not in ("integer", "decimal"):
+                        errors.append(
+                            f"{label}: value_column '{spec.value_column}' must be "
+                            f"numeric (integer or decimal), got "
+                            f"'{value_def.type.value}'."
+                        )
+                    if spec.time_column is not None:
+                        time_def = schema_fields.get(spec.time_column)
+                        if time_def is None:
+                            errors.append(
+                                f"{label}: time_column '{spec.time_column}' is "
+                                f"not in record_schema."
+                            )
+                        elif time_def.type.value not in ("date", "datetime"):
+                            errors.append(
+                                f"{label}: time_column '{spec.time_column}' must "
+                                f"be a date or datetime field, got "
+                                f"'{time_def.type.value}'."
+                            )
+
         # --- scorecard template references ---
         feed_schemas = {
             feed.name: set(feed.record_schema.keys())
@@ -1086,6 +1178,8 @@ __all__ = [
     "RecordObservationMapping",
     "RecordRelationshipMapping",
     "RecordsConfig",
+    "TimeseriesAnalyticsConfig",
+    "TimeseriesMetricSpec",
     "ValidationConfig",
     "VectorStoreConfig",
     "ScorecardFormulaConfig",

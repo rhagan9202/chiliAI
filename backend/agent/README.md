@@ -115,16 +115,25 @@ objects and upserts them into the graph via `GraphService.upsert_records_graph`.
 Also embeds and indexes records-derived entities into the vector store so they
 are retrievable by RAG queries alongside document-derived content. When wired,
 the handler then runs best-effort policy-rule evaluation over stored entities
-and throttled graph metrics, and a best-effort peerstats stage that can persist
-derived risk signals and reassess affected entities.
+and throttled graph metrics, then two independent best-effort analytics
+stages — peerstats (`run_peerstats_stage`, cross-sectional peer-group
+z-scores) and, immediately after, timeseries (`run_timeseries_stage`,
+self-history anomaly detection, B2/BL-047) — each of which can persist
+derived risk signals to `entity_derived_signals`; `RiskService.assess` then
+runs once per entity across the union of both stages' affected ids. A
+failure in either analytics stage no longer skips the other or risk
+assessment for entities the other stage did affect (see `backend/README.md`
+§ Analytics Runtime Notes for the per-stage controlled-skip semantics and
+the `timeseries_anomaly:<spec name>` derived-signal naming).
 
 ### handle_knowledge_base_deleted (retry handler)
 
 Triggered by `kb.delete`. Executes the full KB-delete cascade with retry
 semantics. The step list is centralized in `knowledgebases.cleanup` and purges
-graph, vector, raw records, derived signals, risk history, observations, alert
-history, metrics, conversations, cases, policy items, evidence, and object-store
-payloads before deleting KB metadata.
+graph, vector, raw records, derived signals, timeseries anomalies, risk
+history, observations, alert history, GNN cluster summaries, metrics,
+conversations, cases, policy items, evidence, scorecard runs, document
+status, and object-store payloads before deleting KB metadata.
 
 Each step is idempotent so the handler is safe to retry on transient failures.
 If a workflow run is active for the KB at delete time, the API returns a 409 and

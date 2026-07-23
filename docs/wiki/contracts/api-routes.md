@@ -1,6 +1,6 @@
 # API Routes Reference
 
-**Verified against codebase:** 2026-06-16
+**Verified against codebase:** 2026-07-19
 **Source:** live `api.app:create_app()` route dump with `CHILI_ENV=local`, plus `backend/api/routers/`, `backend/api/app.py`, `backend/api/contracts.py`
 
 All routes are registered in `api/app.py::create_app()`. RBAC roles follow the hierarchy: `viewer(1) < analyst(2) = service(2) < admin(3)`. When `AuthConfig.enabled=False` (local/dev), all routes are open.
@@ -325,7 +325,7 @@ class WorkflowRunListResponse(BaseModel):
 | `GET` | `/analytics/risk-scores/{entity_id}` | `?kb_id=` | `RiskScoreResponse` | viewer |
 | `GET` | `/analytics/timeseries/{entity_id}` | `?kb_id=` | `EntityTimeseriesResponse` | viewer |
 
-**Wiring status:** `/analytics/risk-scores`, `/analytics/timeseries`, and `/analytics/gnn/clusters` are served by analytics services from `api/dependencies.py` using empty in-memory sources by default. `/analytics/overview` is computed from durable alert, case, and KB stores. `/analytics/risk-scores/{entity_id}` and `/analytics/timeseries/{entity_id}` still use the remaining `ApiState` analytics composition, which returns unavailable/empty responses when no generated analytics exists.
+**Wiring status:** `/analytics/risk-scores`, `/analytics/timeseries`, and `/analytics/gnn/clusters` are served by analytics services from `api/dependencies.py`: the risk and timeseries list routes DI-switch to Postgres-backed sources when a DB is configured (in-memory otherwise), and the GNN clusters route reads a repository-backed snapshot source with object-store cluster summaries (B1). `/analytics/overview` is computed from durable alert, case, and KB stores. `/analytics/timeseries/{entity_id}` is persistence-backed (record-aggregate series + persisted anomalies via DI, B2). `/analytics/risk-scores/{entity_id}` (B2, fix 42ef186) is also DI-backed — it assesses via the same `get_risk_service()` used by the list route — and no longer reads `ApiState`; it returns an `availability_status: "unavailable"` payload when the risk service raises a configuration or insufficient-signal error, or empty results when no generated analytics exists for the entity.
 
 ### Static payload shapes (api/contracts.py)
 
@@ -351,6 +351,8 @@ class RiskScoreResponse(BaseModel):
     overall_score: float = Field(ge=0.0, le=1.0)
     risk_level: Literal["low", "medium", "high", "critical"]
     factors: list[RiskFactorResponse] = Field(default_factory=list)
+    availability_status: Literal["available", "unavailable"] = "available"
+    unavailable_reason: str | None = None
 
 class EntityTimeseriesPointResponse(BaseModel):
     """One point in an entity timeseries chart."""
@@ -370,10 +372,10 @@ class EntityTimeseriesResponse(BaseModel):
 
 **Dependency chain for dashboard/entity-scoped routes:**
 - `GET /analytics/overview` -> `get_analytics_overview_payload(alert_repository, case_service, kb_repository)` -> durable store aggregation.
-- `GET /analytics/risk-scores/{entity_id}?kb_id=...` -> `get_risk_score_payload(entity_id, kb_id, state)` -> `state.get_risk_score(entity_id, knowledge_base_id=kb_id)` -> returns `RiskScoreResponse`.
-- `GET /analytics/timeseries/{entity_id}?kb_id=...` -> `get_timeseries_payload(entity_id, kb_id, state)` -> `state.get_timeseries(entity_id, knowledge_base_id=kb_id)` -> returns `EntityTimeseriesResponse`.
+- `GET /analytics/risk-scores/{entity_id}?kb_id=...` -> `get_risk_score_payload(entity_id, kb_id, risk_service)` (`risk_service: RiskServiceProtocol = Depends(get_risk_service)`) -> `risk_service.assess(RiskAssessmentRequest(knowledge_base_id=kb_id, entity_id=entity_id))` -> returns `RiskScoreResponse` (B2, fix 42ef186; no longer reads `ApiState`). `RiskConfigurationError` / `RiskInsufficientSignalsError` / `ValueError` map to `availability_status="unavailable"`; other exceptions propagate. `_normalize_risk_level` (promotes `overall_score >= 0.9` to `"critical"`) lives in `api/dependencies.py` next to `get_risk_score_payload`, defined after `get_risk_service` per FastAPI `Depends` default resolution order.
+- `GET /analytics/timeseries/{entity_id}?kb_id=...` -> `get_timeseries_payload(entity_id, kb_id, source, anomaly_store)` -> iterates `source.metric_names()` (`get_entity_series_source()`, a `RecordAggregateTimeSeriesSource` over `get_record_column_source()` and `DomainConfig.timeseries.metrics`), calling `source.load_series(...)` per spec until one has data, then joins persisted anomalies from `get_timeseries_anomaly_store()` -> returns `EntityTimeseriesResponse` (B2, analytics.07; no longer reads `ApiState`).
 
-Only the two entity-scoped routes read from `ApiState`; overview no longer does.
+No analytics route reads from `ApiState` anymore — overview, both risk-scores routes, and both timeseries routes are all DI/durable-store backed. `ApiState` (`api/state.py`) now owns only the RAG service handle.
 
 ---
 

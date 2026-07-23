@@ -373,17 +373,24 @@ See [contracts/api-routes.md](../contracts/api-routes.md) for full route table.
 
 **Source:** `backend/api/dependencies.py` — analytics dependency factories
 
-Last verified: 2026-06-16
+Last verified: 2026-07-19
 
 The analytics API router now depends on service factories from `api/dependencies.py`:
 
 - `get_risk_service()` builds `RiskService` from `DomainConfig.analytics` thresholds and `get_risk_signal_source()`.
-- `get_timeseries_service()` builds `TimeseriesService` from `get_timeseries_history_source()`.
+- `get_timeseries_service()` builds `TimeseriesService` from `get_timeseries_history_source()` (graph-scope metric-range queries).
+- `get_entity_series_source()` builds the per-entity `RecordAggregateTimeSeriesSource` used directly by `get_timeseries_payload` (entity-scoped chart route), independent of `TimeseriesService`.
 - `get_gnn_service()` builds `GnnService` and honors the active `capabilities.gnn` flag.
 
-`get_risk_signal_source()` selects `PostgresRiskSignalSource` when a DB connection provider exists; otherwise it falls back to `InMemoryRiskSignalSource`. The default timeseries and GNN sources are still empty in-memory implementations (`InMemoryTimeSeriesHistorySource`, `InMemoryGraphSnapshotSource`) unless tests override them. `/analytics/overview` is now computed from durable alert projections, durable cases, and KB metadata. The remaining static read-model gap is limited to the entity-scoped routes backed by `ApiState`: `/analytics/risk-scores/{entity_id}` and `/analytics/timeseries/{entity_id}`. Response shapes for these routes are documented in [contracts/api-routes.md - Static payload shapes](../contracts/api-routes.md#static-payload-shapes-apicontractspy).
+`get_risk_signal_source()` selects `PostgresRiskSignalSource` when a DB connection provider exists; otherwise it falls back to `InMemoryRiskSignalSource`. `get_timeseries_history_source()` (the graph-scope `/analytics/timeseries?metric=...` range query) follows the same DI-switch pattern: `PostgresTimeSeriesHistorySource` over `entity_metric_history` when a DB is configured, else `InMemoryTimeSeriesHistorySource`. `get_graph_snapshot_source()` is repository-backed since B1: `GraphRepositorySnapshotSource` over `get_graph_repository()` with cluster summaries from an `ObjectStoreClusterSummaryStore` over the configured object store (`InMemoryGraphSnapshotSource` remains the test override). `/analytics/overview` is now computed from durable alert projections, durable cases, and KB metadata.
 
-**Implication for callers:** List-style risk routes can read persisted risk history when Postgres is configured; list-style timeseries and GNN routes still return empty data until backed by live stores. The entity-scoped risk/timeseries read-model routes still reflect seeded `ApiState` data until migrated to the same persistence-backed query path.
+The entity-scoped `/analytics/timeseries/{entity_id}` route (B2, analytics.07) no longer reads `ApiState`: it is built from `get_entity_series_source()` — a `RecordAggregateTimeSeriesSource` over `get_record_column_source()` (`InMemoryRecordColumnSource`/`PostgresRecordColumnSource`, DI-switched the same way) and the metric specs in `DomainConfig.timeseries.metrics` — joined with persisted anomalies from `get_timeseries_anomaly_store()` (`InMemoryTimeseriesAnomalyStore`/`PostgresTimeseriesAnomalyStore`). It reports `availability_status: "unavailable"` when no configured spec has data for the entity.
+
+The entity-scoped `/analytics/risk-scores/{entity_id}` route (B2, fix 42ef186) no longer reads `ApiState` either: `get_risk_score_payload(entity_id, kb_id, risk_service)` calls `risk_service.assess(RiskAssessmentRequest(knowledge_base_id=kb_id, entity_id=entity_id))` against the same DI `get_risk_service()` used by the list route (`PostgresRiskSignalSource` when a DB connection provider exists, else `InMemoryRiskSignalSource`). `RiskConfigurationError`, `RiskInsufficientSignalsError`, and `ValueError` from `assess()` are caught and mapped to an `availability_status: "unavailable"` payload (`unavailable_reason="No risk profile has been generated for this entity."`); any other (infrastructure) exception propagates rather than being reported as a missing profile. `_normalize_risk_level` (promotes to `"critical"` at `overall_score >= 0.9`, otherwise passes through a known level or defaults to `"medium"`) now lives in `api/dependencies.py` alongside `get_risk_score_payload`.
+
+**No static read-model gap remains on the analytics router: every analytics route (`/overview`, `/risk-scores`, `/risk-scores/{entity_id}`, `/timeseries`, `/timeseries/{entity_id}`, `/gnn/clusters`) reads from a DI-provided service or durable store, never from `ApiState`.** `ApiState` (`api/state.py`) now owns only the RAG service handle used by chat streaming — its seeded risk-profile composition (`get_risk_score`, `_risk_service`, `_build_risk_profiles`, `_normalize_risk_level`) was deleted. Response shapes for these routes are documented in [contracts/api-routes.md - Static payload shapes](../contracts/api-routes.md#static-payload-shapes-apicontractspy).
+
+**Implication for callers:** List-style risk and timeseries-range routes, and both entity-scoped routes, can read persisted history when Postgres is configured; the list-style GNN route still returns empty data until backed by a live store.
 
 ---
 

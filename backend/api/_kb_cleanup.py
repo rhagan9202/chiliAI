@@ -32,13 +32,18 @@ from api.dependencies import (
     get_raw_record_store,
     get_risk_history_writer,
     get_scorecard_run_repository,
+    get_timeseries_anomaly_store,
     get_vector_service,
 )
 from cases.adapters.protocols import CaseRepository
 from conversations.adapters.protocols import ConversationRepository
 from graph.protocols import GraphServiceProtocol
 from ingestion.adapters.protocols import SourceDocumentStatusStore
-from knowledgebases.cleanup import KbDeletionStores, kb_deletion_steps
+from knowledgebases.cleanup import (
+    KbDeletionStores,
+    TimeseriesAnomalyPurger,
+    kb_deletion_steps,
+)
 from monitoring.adapters.protocols import AlertHistoryWriter, ObservationWriter
 from policy.adapters.protocols import PolicyItemRepository
 from records.adapters.protocols import RawRecordStore
@@ -76,6 +81,9 @@ def get_kb_deletion_stores(
     ),
     object_store: ObjectStore = Depends(get_object_store),
     alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
+    timeseries_anomaly_store: TimeseriesAnomalyPurger = Depends(
+        get_timeseries_anomaly_store
+    ),
 ) -> KbDeletionStores:
     """Assemble the KB-delete cascade store bundle from DI."""
 
@@ -96,6 +104,7 @@ def get_kb_deletion_stores(
         document_status_store=document_status_store,
         object_store=object_store,
         gnn_cluster_store=ObjectStoreClusterSummaryStore(object_store),
+        timeseries_anomaly_store=timeseries_anomaly_store,
         alert_projection_store=alert_repository,
     )
 
