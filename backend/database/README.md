@@ -36,8 +36,13 @@ dead-letter records, BL-023 — see `backend/events/README.md` and
 `docs/runbooks/event-replay.md`). Migration 0011 adds `timeseries_anomalies`
 (persisted self-history anomaly points, PK `(knowledge_base_id, entity_id,
 metric_name, observed_at)`, BL-047 — see
-`backend/analytics/README.md` § Timeseries series-source contract). Head is
-`0011` — 15 tables total.
+`backend/analytics/README.md` § Timeseries series-source contract). Migration
+0012 adds `alert_history` read-model columns `entity_label text NOT NULL
+DEFAULT ''`, `confidence double precision NOT NULL DEFAULT 0`, and `tags
+jsonb NOT NULL DEFAULT '[]'::jsonb` (alerts.36 — feeds the in-progress
+alerts-durable-read-model effort so `GET /alerts` can be served from
+`alert_history` instead of seeded `ApiState`). Head is `0012` — 15 tables
+total (column-only addition, no new table).
 
 ## Commands
 
@@ -87,6 +92,15 @@ it); renumbering revision files does not invalidate it.
 migration added since has run `make migrate-snapshot` and committed the
 refreshed snapshot in the same commit as the migration, and `make
 migrate-check` reports clean replay against the live schema.
+
+**SNAPSHOT PENDING for `0012`:** `scripts/ci_migration_check.sh` requires a
+live `docker compose` postgres service (it recreates a scratch database via
+`docker compose exec`), which was unavailable in the sandbox that added
+migration `0012`. The migration was verified directly against `chili_test`
+(`alembic upgrade head` + `tests/database` green) but `snapshots/head.sql`
+has **not** been regenerated for `0012` yet — the next environment with
+Docker access must run `make migrate-snapshot` and commit the refreshed
+snapshot before this gap is closed, or CI's drift check will fail.
 
 ## Configuration
 

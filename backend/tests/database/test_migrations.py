@@ -27,6 +27,11 @@ _EXPECTED_TABLES = {
     "entity_derived_signals",
 }
 _EXPECTED_HYPERTABLES = {"observations", "entity_metric_history"}
+_EXPECTED_ALERT_HISTORY_READ_MODEL_DEFAULTS = {
+    "entity_label": "''::text",
+    "confidence": "0",
+    "tags": "'[]'::jsonb",
+}
 _BASELINE_MIGRATION = "database.migrations.versions.0001_persistence_baseline"
 
 
@@ -73,6 +78,14 @@ def test_baseline_migration_creates_all_tables(database_url: str) -> None:
             ).fetchall()
             hypertables = {str(row[0]) for row in hyper}
             assert _EXPECTED_HYPERTABLES.issubset(hypertables)
+
+            alert_columns = conn.execute(
+                "SELECT column_name, column_default FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = 'alert_history'"
+            ).fetchall()
+            alert_defaults = {str(row[0]): str(row[1]) for row in alert_columns}
+            for column, default in _EXPECTED_ALERT_HISTORY_READ_MODEL_DEFAULTS.items():
+                assert alert_defaults[column] == default
     finally:
         provider.close()
 
