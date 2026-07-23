@@ -2,6 +2,22 @@
 
 ---
 
+## 2026-07-23 — U2 whole-branch final review closeout: signals-tab gating fix + live-pass reconciliation (BL-050, Task 11)
+
+### Changes
+
+**Code files read:** `chili_app/src/pages/InvestigationWorkbenchPage.tsx`, `chili_app/src/pages/__tests__/InvestigationWorkbenchPage.test.tsx`, `chili_app/src/pages/AlertFeedPage.tsx`, `docs/backlog/frontend.md`, `docs/project/planning/backlog.md`, `docs/project/planning/sprints/2026-28.md`, `docs/wiki/modules/frontend.md` — code commit `dec68ef` on `feat/sprint-2026-28-u2-workbench-reshape` fixing the whole-branch final review's three Important findings plus three sanctioned minors, followed by this docs commit.
+
+**Wiki pages updated:**
+
+| Page | Gap closed |
+|------|-----------|
+| `modules/frontend.md` | Moved the "Since U2 (Sprint 2026-28)…" paragraph out of the middle of the Pages table — it previously sat between the `InvestigationWorkbenchPage` row and the remaining five rows, breaking the table into two disconnected fragments; it now sits directly below the complete table. Updated the paragraph itself to record the Signals-tab capability gate fix (present only when `risk_scoring` or `timeseries` is on, not unconditional) and the collapsed-strip-renders-the-surviving-panel-directly behavior, now regression-covered by a unit test. Corrected the `AttributionBars` consumer claim in the "Investigation dossier components" table — it is consumed only by `EvidencePackViewer`, not the dossier (the dossier's risk-factor band is `SignalBand`). |
+
+**Drift log:** No new architectural violations observed. This closes out BL-050/frontend.27: Task 11 (controller live pass, ran 2026-07-23) verified the full stack — Playwright 31 passed/2 skipped incl. new tab-aware workbench + triage/narrative-band evidence assertions, browser pass on the TN KB (dossier/clusters/dashboard swatches), housing pack untouched with zero CMS strings, zero console errors — and surfaced one real implementation gap (the Signals tab was rendering unconditionally instead of gating per the plan's Global Constraints), fixed in the code commit alongside the two sanctioned minors (dossier-header remount `key`, dead `alert.tags ?? []` fallbacks). `docs/backlog/frontend.md` story frontend.27 flipped to `Status: done` with a `Done:` provenance line; `docs/project/planning/backlog.md` BL-050 row and `docs/project/planning/sprints/2026-28.md`'s U2 progress section both updated to reflect live-verified status and the final review verdict (READY to merge). Recorded a live-pass config discovery, not a defect: the `medicare_fraud_cms_desynpuf` pack's analyst role deliberately excludes the Dashboard page (`enabled_pages`) — the supervisor role owns it.
+
+---
+
 ## 2026-07-23 — U2 workbench reshape: orphan-panel deletion + dossier component inventory (BL-050, Task 10 closeout)
 
 ### Changes

@@ -981,28 +981,30 @@ so that configuration changes can be completed without leaving the app.
 ## Story frontend.27: BL-050 (U2) — IntegrityAI-hierarchy workbench reshape implementation
 
 **ID:** frontend.27
-**Status:** in-progress
+**Status:** done
 **Prerequisites:** []
 **Unblocks:** []
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-07-23-sprint28-u1-workbench-reshape-design.md
+**Done:** 2026-07-23 · Task 11 controller live pass · full Playwright 31 passed/2 skipped + browser verification on the TN KB
 
 **As a** fraud analyst,
 **I need** the Investigation Workbench, Alert Feed, and Dashboard restyled around the IntegrityAI-inspired hierarchy (risk numerals, an AI-voice signal band, capability-gated tabs, cluster overlays, narrative-lead evidence) instead of flat card stacks,
 **so that** the highest-signal facts (how bad, why, and what to do) are legible at a glance rather than buried in equally-weighted cards.
 
-### Current State (Sprint 2026-28 U2, `feat/sprint-2026-28-u2-workbench-reshape`, 2026-07-23 — implementation complete, live/e2e verification pending)
+### Current State (Sprint 2026-28 U2, `feat/sprint-2026-28-u2-workbench-reshape`, 2026-07-23 — live-verified)
 All nine implementation tasks of the U2 plan (`docs/superpowers/plans/2026-07-23-sprint28-u2-workbench-reshape.md`) have landed on the feature branch, frontend-only (no backend/contract changes — B1–B3's already-shipped fields are consumed as-is):
 - `chili_app/src/pages/pages.css` + `chili_app/src/utils/graphStyles.ts` gained the reshape's CSS classes (`.workbench-*`, `.dossier-*`, `.triage-*`, `.signal-band*`, `.callout--*`, `.fade-up`) and `clusterColorFor`/`isPredictedRelationship`/`predictedConfidenceFor`/`PREDICTED_LINK_COLOR`/`PREDICTED_LINK_DASH`.
-- `chili_app/src/components/investigation/EntityDossierHeader.tsx` + `SignalBand.tsx` (new) render the entity identity, Oxanium risk numeral, and an "AI ANALYSIS · N RISK SIGNALS" callout band.
+- `chili_app/src/components/investigation/EntityDossierHeader.tsx` + `SignalBand.tsx` (new) render the entity identity, Oxanium risk numeral, and an "AI ANALYSIS · N RISK SIGNALS" callout band; the header now carries `key={entity.id}` so the fade-up motion replays on entity change (final-review fix).
 - `chili_app/src/components/investigation/AnomalyTrendPanel.tsx` (new, extracted) carries the timeseries chart + red anomaly markers.
 - `chili_app/src/components/investigation/EntityPolicyPanel.tsx` + `chili_app/src/components/charts/AttributionBars.tsx` (new) surface policy items on entity/alert views and signed SHAP-style attribution bars.
 - `chili_app/src/components/investigation/EvidencePackViewer.tsx` reshaped: narrative-lead band (`data-testid="evidence-narrative"`), `AttributionBars` section gated on `pack.attribution` presence.
 - `chili_app/src/components/investigation/GraphCanvas.tsx` + `ClusterMembershipPanel.tsx` (new): community-colored nodes in cluster mode, membership panel with select/highlight, dormant dashed predicted-link rendering (styles only — see frontend.29, no live data exists yet).
-- `chili_app/src/pages/InvestigationWorkbenchPage.tsx` restructured into a search-rail + dossier layout with a capability-gated `Tabs` strip (Signals / Network / Policy⁺Evidence when `explainability` is on); the three orphan panels (`EntityDetailPanel`, `EvidencePanel`, `TimelinePanel`) were deleted (`af14736`).
+- `chili_app/src/pages/InvestigationWorkbenchPage.tsx` restructured into a search-rail + dossier layout with a capability-gated `Tabs` strip: Signals renders only when `risk_scoring` or `timeseries` is on, Network is unconditional, Policy+Evidence render when `explainability` is on (final-review fix — the initial cut rendered Signals unconditionally, missing the plan's §Global-Constraints gate; when only one tab survives, the strip is dropped entirely and that tab's panel renders directly, per plan); the three orphan panels (`EntityDetailPanel`, `EvidencePanel`, `TimelinePanel`) were deleted (`af14736`).
 - `chili_app/src/pages/AlertFeedPage.tsx` gained risk-ranked triage rows (numeral + `flagLabelFor` mono flag) and the evidence expansion now fetches a real depth-1 neighborhood + real `entityTypes` instead of an empty subgraph.
 - `chili_app/src/pages/DashboardPage.tsx` gained the triage-row lead-card treatment, live `Graph clusters` panel with `clusterColorFor` swatches + workbench deep-links, and updated header copy (no more "Phase 5 data live").
-- Task 10 (this closeout) added `chili_app/src/utils/triage.ts` (shared `triageNumeralColor`, deduplicated out of the two pages) and removed the orphaned `.investigation-layout` CSS selector.
+- Task 10 added `chili_app/src/utils/triage.ts` (shared `triageNumeralColor`, deduplicated out of the two pages) and removed the orphaned `.investigation-layout` CSS selector. The final-review pass also removed two dead `?? []` fallbacks on `alert.tags` in `AlertFeedPage.tsx` (`tags` is contract-required — `RequireFields<Schemas['AlertListItem'], 'tags'>`).
+- Task 11 (controller live pass, 2026-07-23) ran the full-stack verification and closed out the story — see Verification.
 
 ### Acceptance Criteria
 - [x] Entity dossier: risk numeral + confidence, AI signal band, capability-gated Signals/Network/Policy/Evidence tabs (§4.1 of the design).
@@ -1011,15 +1013,16 @@ All nine implementation tasks of the U2 plan (`docs/superpowers/plans/2026-07-23
 - [x] Policy items surfaced on entity (workbench POLICY tab) and alert (Alert Feed chips) views via client-side `target_kind`/`target_ref` filtering (design D7).
 - [x] Alert Feed: risk-ranked triage rows with real flag labels; evidence expansion renders a real subgraph, not an empty one (design D6).
 - [x] Dashboard: lead-card triage treatment, live clusters panel, updated copy (§4.2).
-- [x] Housing-pack (`gnn:false`, `peer_stats:false`) capability degradation is structural (tabs/panels absent, not broken) per the code paths written for §5 — **not yet exercised against a running housing-pack stack** (see Verification).
+- [x] Housing-pack (`gnn:false`, `peer_stats:false`) capability degradation is structural (tabs/panels absent, not broken) per the code paths written for §5 — exercised live against the running housing-pack stack (see Verification).
 - [x] Dormant predicted-link rendering ships (styles + helpers) without fabricating data — see frontend.29 for the backend dependency that will light it up.
-- [ ] Full-stack browser/e2e verification (Task 11): Playwright specs updated/extended and run against `make dev` with real CMS DE-SynPUF data; housing-pack capability-degradation walkthrough; zero console errors. **Not yet performed — do not treat this story as live-verified until Task 11 runs.**
+- [x] Full-stack browser/e2e verification (Task 11): Playwright specs updated/extended and run against `make dev` with real CMS DE-SynPUF data; housing-pack capability-degradation walkthrough; zero console errors. **Live-verified 2026-07-23** — see Verification.
 
 ### Verification
-- `cd chili_app && npm run test:run` — 476 tests / 69 files passed (2026-07-23, post-Task-10 cleanup commit).
+- `cd chili_app && npm run test:run` — 477 tests / 69 files passed (2026-07-23, post-final-review-fix commit; includes the new tab-strip-collapse-to-Network unit test).
 - `cd chili_app && npm run build` — `tsc -b && vite build` clean (one pre-existing >500kB chunk-size advisory, not an error; tracked by frontend.14).
 - `cd chili_app && npm run lint` — clean.
-- **Not yet run:** `npm run test:e2e` against the full stack, and the manual housing-pack/capability-degradation walkthrough — both reserved for Task 11 (`docs/superpowers/plans/2026-07-23-sprint28-u2-workbench-reshape.md` §Task 11). Do not claim live-verified until that pass runs and this entry is updated with its results.
+- **Task 11 controller live pass (2026-07-23), against the full running stack (`make dev`):** full Playwright suite 31 passed / 2 skipped, including new tab-aware workbench assertions and triage/narrative-band evidence assertions run against the live stack (not mocked). Browser pass on the TN demo KB: dossier header, Network tab cluster overlay/membership panel, Dashboard clusters panel — all 4 `clusterColorFor` swatches match between workbench and dashboard. Housing pack verified untouched (its four routed pages render unaffected by the reshape; zero CMS strings anywhere). Zero browser console errors across all three pages.
+- **Config discovery (not a defect):** on the `medicare_fraud_cms_desynpuf` pack, the analyst role deliberately excludes the Dashboard page (`enabled_pages` — supervisor role owns it); this is existing role-gating behavior, not a workbench-reshape regression.
 
 ### Code touch points
 - `chili_app/src/pages/InvestigationWorkbenchPage.tsx`, `AlertFeedPage.tsx`, `DashboardPage.tsx`, `pages.css` (modify)
