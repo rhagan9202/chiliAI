@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
 import pytest
 
 from analytics.explainability.adapters.in_memory import InMemoryExplainabilityContextSource
 from analytics.explainability.exceptions import ExplainabilityConfigurationError
-from analytics.explainability.models import ExplanationContext, ExplanationItem, ExplanationSubgraph
+from analytics.explainability.models import (
+    ExplanationContext,
+    ExplanationItem,
+    ExplanationNarrative,
+    ExplanationSubgraph,
+    NarrativeSection,
+)
 from analytics.explainability.service import create_explainability_service
 from analytics.explainability.service_models import ExplainabilityRequest
 from events.adapters.in_memory import InMemoryEventBus
 from events.types import ExplainabilityGeneratedEvent
-from shared.types import Alert
+from shared.types import Alert, EvidenceNarrativeSection, FeatureAttribution
 
 
 def _alert() -> Alert:
@@ -181,3 +188,80 @@ def test_explainability_service_narrative_summary_matches_evidence_reasoning() -
     assert len(response.narrative.sections) == 1
     assert response.narrative.sections[0].heading == "Document"
     assert response.narrative.sections[0].evidence_refs == ["doc-1"]
+
+
+class _StubNarrativeGenerator:
+    """Fixed two-section narrative, independent of the items passed in."""
+
+    def summarize(
+        self, *, context: ExplanationContext, items: Sequence[ExplanationItem]
+    ) -> ExplanationNarrative:
+        return ExplanationNarrative(
+            summary="stub composite summary",
+            sections=[
+                NarrativeSection(heading="First", body="first body", evidence_refs=["doc-1"]),
+                NarrativeSection(heading="Second", body="second body", evidence_refs=["doc-2"]),
+            ],
+        )
+
+
+class _StubFeatureAttributor:
+    """Fixed single-feature attribution, independent of the context passed in."""
+
+    def attribute(self, *, context: ExplanationContext) -> list[FeatureAttribution]:
+        return [FeatureAttribution(feature_name="risk", contribution=0.42, rationale="stub")]
+
+
+def _single_item_context() -> ExplanationContext:
+    return ExplanationContext(
+        knowledge_base_id="kb-1",
+        alert=_alert(),
+        explanation_items=[
+            ExplanationItem(
+                source_id="doc-1",
+                source_type="document",
+                quote="Q",
+                rationale="alpha",
+                score=0.5,
+            ),
+        ],
+        subgraph=ExplanationSubgraph(node_ids=["provider-7"], edge_ids=[]),
+        confidence=0.5,
+    )
+
+
+def test_explainability_service_composes_injected_narrative_and_attribution() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_explainability_service(
+        InMemoryExplainabilityContextSource(contexts=[_single_item_context()]),
+        event_bus=event_bus,
+        narrative_generator=_StubNarrativeGenerator(),
+        feature_attributor=_StubFeatureAttributor(),
+    )
+
+    response = service.generate(ExplainabilityRequest(knowledge_base_id="kb-1", alert_id="alert-1"))
+    pack = response.evidence_pack
+
+    assert pack.reasoning == "stub composite summary"
+    assert pack.narrative_sections == [
+        EvidenceNarrativeSection(heading="First", body="first body", evidence_refs=["doc-1"]),
+        EvidenceNarrativeSection(heading="Second", body="second body", evidence_refs=["doc-2"]),
+    ]
+    assert pack.attribution == [FeatureAttribution(feature_name="risk", contribution=0.42, rationale="stub")]
+
+
+def test_explainability_service_default_construction_has_empty_attribution() -> None:
+    event_bus = InMemoryEventBus()
+    service = create_explainability_service(
+        InMemoryExplainabilityContextSource(contexts=[_single_item_context()]),
+        event_bus=event_bus,
+    )
+
+    response = service.generate(ExplainabilityRequest(knowledge_base_id="kb-1", alert_id="alert-1"))
+    pack = response.evidence_pack
+
+    assert pack.attribution == []
+    assert pack.reasoning == "alpha"
+    assert pack.narrative_sections == [
+        EvidenceNarrativeSection(heading="Document", body="alpha", evidence_refs=["doc-1"]),
+    ]

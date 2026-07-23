@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from analytics.explainability.adapters.deterministic import DeterministicNarrativeGenerator
 from analytics.explainability.adapters.protocols import ExplainabilityContextSourceProtocol
+from analytics.explainability.adapters.shap_attribution import NoopFeatureAttributor
 from analytics.explainability.exceptions import (
     ExplainabilityConfigurationError,
     ExplainabilityInsufficientEvidenceError,
     ExplainabilitySourceError,
 )
 from analytics.explainability.models import ExplanationContext, ExplanationItem
-from analytics.explainability.protocols import NarrativeGeneratorProtocol
+from analytics.explainability.protocols import FeatureAttributorProtocol, NarrativeGeneratorProtocol
 from analytics.explainability.service_models import (
     ExplainabilityEvidence,
     ExplainabilityRequest,
@@ -18,7 +19,7 @@ from analytics.explainability.service_models import (
 )
 from events.protocols import EventBus
 from events.types import ExplainabilityGeneratedEvent, ExplainabilityGeneratedReference
-from shared.types import EvidencePack
+from shared.types import EvidenceNarrativeSection, EvidencePack
 from shared.utils import generate_id
 
 
@@ -35,10 +36,12 @@ class ExplainabilityService:
         *,
         event_bus: EventBus,
         narrative_generator: NarrativeGeneratorProtocol | None = None,
+        feature_attributor: FeatureAttributorProtocol | None = None,
     ) -> None:
         self._context_source = context_source
         self._event_bus = event_bus
         self._narrative_generator = narrative_generator or DeterministicNarrativeGenerator()
+        self._feature_attributor = feature_attributor or NoopFeatureAttributor()
 
     def generate(self, request: ExplainabilityRequest) -> ExplainabilityResponse:
         try:
@@ -74,6 +77,7 @@ class ExplainabilityService:
 
         selected_items = _select_items(context.explanation_items, max_items=max_evidence_items)
         narrative = self._narrative_generator.summarize(context=context, items=selected_items)
+        attribution = self._feature_attributor.attribute(context=context)
         evidence_pack = EvidencePack(
             id=generate_id(),
             alert_id=context.alert.id,
@@ -82,6 +86,15 @@ class ExplainabilityService:
             subgraph_edges=context.subgraph.edge_ids,
             confidence=context.confidence,
             scores=context.scores,
+            attribution=attribution,
+            narrative_sections=[
+                EvidenceNarrativeSection(
+                    heading=section.heading,
+                    body=section.body,
+                    evidence_refs=list(section.evidence_refs),
+                )
+                for section in narrative.sections
+            ],
         )
         response = ExplainabilityResponse(
             request_id=generate_id(),
@@ -123,10 +136,16 @@ def create_explainability_service(
     *,
     event_bus: EventBus,
     narrative_generator: NarrativeGeneratorProtocol | None = None,
+    feature_attributor: FeatureAttributorProtocol | None = None,
 ) -> ExplainabilityService:
     """Create the default explainability service."""
 
-    return ExplainabilityService(context_source, event_bus=event_bus, narrative_generator=narrative_generator)
+    return ExplainabilityService(
+        context_source,
+        event_bus=event_bus,
+        narrative_generator=narrative_generator,
+        feature_attributor=feature_attributor,
+    )
 
 
 def _select_items(items: list[ExplanationItem], *, max_items: int) -> list[ExplanationItem]:
