@@ -7,6 +7,7 @@ from typing import Protocol, runtime_checkable
 
 from analytics.explainability.models import ExplanationContext, ExplanationItem, ExplanationNarrative
 from analytics.explainability.service_models import ExplainabilityRequest, ExplainabilityResponse
+from shared.types import FeatureAttribution
 
 
 @runtime_checkable
@@ -37,7 +38,21 @@ class NarrativeGeneratorProtocol(Protocol):
     ) -> ExplanationNarrative: ...
 
 
+@runtime_checkable
+class FeatureAttributorProtocol(Protocol):
+    """Produce per-feature attributions for an explanation context's scores.
+
+    Implementations must never raise: on any internal failure (e.g. a missing
+    optional dependency or a misbehaving explainer backend) they degrade to an
+    empty attribution list and log a WARNING rather than propagating the
+    error.
+    """
+
+    def attribute(self, *, context: ExplanationContext) -> list[FeatureAttribution]: ...
+
+
 __all__ = [
     "ExplainabilityServiceProtocol",
+    "FeatureAttributorProtocol",
     "NarrativeGeneratorProtocol",
 ]

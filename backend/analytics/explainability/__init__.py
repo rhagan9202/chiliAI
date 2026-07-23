@@ -20,6 +20,7 @@ from analytics.explainability.models import (
 )
 from analytics.explainability.protocols import (
     ExplainabilityServiceProtocol,
+    FeatureAttributorProtocol,
     NarrativeGeneratorProtocol,
 )
 from analytics.explainability.service import ExplainabilityService, create_explainability_service
@@ -45,6 +46,7 @@ __all__ = [
     "ExplanationItem",
     "ExplanationNarrative",
     "ExplanationSubgraph",
+    "FeatureAttributorProtocol",
     "InMemoryExplainabilityContextSource",
     "NarrativeGeneratorProtocol",
     "NarrativeSection",
