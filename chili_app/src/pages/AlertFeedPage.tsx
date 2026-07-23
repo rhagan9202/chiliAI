@@ -139,7 +139,7 @@ export function AlertFeedPage() {
                     <div className="alert-row-card__header-info">
                       <div className="alert-row-card__title">{alert.entity_label}</div>
                       <span className="flag-label">
-                        {flagLabelFor({ tags: alert.tags ?? [], severity: alert.severity })}
+                        {flagLabelFor({ tags: alert.tags, severity: alert.severity })}
                       </span>
                       <div className="alert-row-card__meta">
                         <Chip label={alert.severity} tone={alert.severity === 'critical' ? 'danger' : 'warning'} />
@@ -147,7 +147,7 @@ export function AlertFeedPage() {
                         {capabilities?.explainability && hasPolicySignal ? (
                           <Chip label="policy" tone="warning" />
                         ) : null}
-                        {(alert.tags ?? []).map((tag) => (
+                        {alert.tags.map((tag) => (
                           <Chip key={tag} label={tag.replace(/-/g, ' ')} tone="default" />
                         ))}
                       </div>

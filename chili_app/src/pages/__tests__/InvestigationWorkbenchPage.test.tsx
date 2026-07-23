@@ -470,6 +470,23 @@ describe('InvestigationWorkbenchPage', () => {
     expect(screen.queryByRole('tab', { name: 'Evidence' })).not.toBeInTheDocument()
   })
 
+  it('renders no tab strip and shows the Network panel directly when signals, policy, and evidence are all gated off', () => {
+    selectLiveProvider()
+    mocks.capabilities = {
+      ...mocks.capabilities,
+      risk_scoring: false,
+      timeseries: false,
+      explainability: false,
+    }
+
+    renderInvestigationWorkbench()
+
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+    expect(screen.queryAllByRole('tab')).toHaveLength(0)
+    expect(screen.getByTestId('investigation-graph-canvas')).toBeInTheDocument()
+    expect(screen.getByLabelText('Depth')).toBeInTheDocument()
+  })
+
   it('renders the AI signal band listing factor names when risk is available', () => {
     selectLiveProvider()
     mocks.riskAvailable = true

@@ -135,7 +135,7 @@ export function InvestigationWorkbenchPage() {
   const clusterMode = Boolean(capabilities?.gnn) && clusters.length > 0
 
   const tabs = [
-    { id: 'signals', label: 'Signals' },
+    ...(capabilities?.risk_scoring || capabilities?.timeseries ? [{ id: 'signals', label: 'Signals' }] : []),
     { id: 'network', label: 'Network' },
     ...(capabilities?.explainability ? [{ id: 'policy', label: 'Policy' }, { id: 'evidence', label: 'Evidence' }] : []),
   ]
@@ -238,6 +238,7 @@ export function InvestigationWorkbenchPage() {
               <EntityDossierHeader
                 config={domainConfigQuery.data}
                 entity={entity}
+                key={entity.id}
                 onAskAi={() =>
                   navigate(buildRagChatUrl({
                     knowledgeBaseId: activeKnowledgeBaseId,
