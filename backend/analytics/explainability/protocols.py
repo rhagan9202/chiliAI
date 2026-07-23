@@ -25,7 +25,12 @@ class ExplainabilityServiceProtocol(Protocol):
 
 @runtime_checkable
 class NarrativeGeneratorProtocol(Protocol):
-    """Produce a structured narrative from selected explanation items."""
+    """Produce a structured narrative from selected explanation items.
+
+    Implementations must never raise: on any internal failure (e.g. an
+    unreachable or misbehaving backing service) they degrade to a fallback
+    narrative and log a WARNING rather than propagating the error.
+    """
 
     def summarize(
         self, *, context: ExplanationContext, items: Sequence[ExplanationItem]
