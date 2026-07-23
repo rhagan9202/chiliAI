@@ -12,7 +12,10 @@ CREATE TABLE public.alert_history (
     metric_name text NOT NULL,
     evidence_pack_id text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    entity_label text DEFAULT ''::text NOT NULL,
+    confidence double precision DEFAULT 0 NOT NULL,
+    tags jsonb DEFAULT '[]'::jsonb NOT NULL
 );
 CREATE TABLE public.cases (
     knowledge_base_id text NOT NULL,
