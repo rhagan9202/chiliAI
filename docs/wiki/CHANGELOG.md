@@ -2,6 +2,22 @@
 
 ---
 
+## 2026-07-23 — U2 workbench reshape: orphan-panel deletion + dossier component inventory (BL-050, Task 10 closeout)
+
+### Changes
+
+**Code files read:** `chili_app/src/pages/InvestigationWorkbenchPage.tsx`, `AlertFeedPage.tsx`, `DashboardPage.tsx`, `chili_app/src/components/investigation/*` (including the deleted `EntityDetailPanel.tsx`/`EvidencePanel.tsx`/`TimelinePanel.tsx`), `chili_app/src/components/charts/AttributionBars.tsx` — commits `500ebe0`..`f6f893d` on `feat/sprint-2026-28-u2-workbench-reshape` (Tasks 1–9), plus this pass's cleanup commit (`triageNumeralColor` extraction, orphaned `.investigation-layout` selector removal).
+
+**Wiki pages updated:**
+
+| Page | Gap closed |
+|------|-----------|
+| `modules/frontend.md` | Grepped for `EntityDetailPanel`/`EvidencePanel`/`TimelinePanel` (zero hits — this page never catalogued them, so no dangling reference existed to fix). Re-verified the Dashboard/Alert Feed/Investigation Workbench rows of the Pages table against the reshaped code: none of the three uses `appStore`/`uiStore` any more (KB id and entity id are URL-driven); added the new API calls the reshape introduced (`useGnnClusters`, `usePolicyItems`, `useInvestigationNeighborhood` on the Alert Feed evidence expansion). Added a new "Investigation dossier components" table listing the six components U2 added (`EntityDossierHeader`, `SignalBand`, `AnomalyTrendPanel`, `EntityPolicyPanel`, `ClusterMembershipPanel`, `AttributionBars`) and the three it deleted, with a note that the rest of the page's inventory (dated 2026-05-28) was not re-verified in this pass. Corrected the e2e spec-file count (17 → 22). |
+
+**Drift log:** No new architectural violations observed. The reshape is frontend-only (no backend/contract changes); `EvidencePackResponse.attribution`/`narrative_sections` (added by B3, already documented in `contracts/api-routes.md`) are consumed as-is by the reshaped `EvidencePackViewer`, closing the "U2 (not yet built) is the first consumer" note left by the 2026-07-23 B3 entry below. `docs/backlog/frontend.md` gained the U2 implementation record (frontend.27, `in-progress` — browser/e2e verification pending Task 11, not claimed live-verified) plus three phase-2/dependency records (frontend.28: Timeline tab, peer-comparison bars, cluster-centrality ordering; frontend.29: dormant predicted-link rendering waiting on `analytics.24`'s write-back) and two stale-claim corrections (frontend.01's "GraphCanvas has zero imports" claim; frontend.02's AC referencing the now-deleted `EvidencePanel.tsx`, redirected to the live `EvidencePackViewer.tsx`).
+
+---
+
 ## 2026-07-23 — B3 review follow-ups: blank-summary/section-less degrade + live-pass reconciliation
 
 ### Changes

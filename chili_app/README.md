@@ -48,7 +48,7 @@ indicator, and a bounded list of rejected-row reasons.
 | **Dashboard** | System overview, recent alerts, knowledge base summaries |
 | **Knowledge Base Manager** | List, create, delete KBs; document inventory, add/remove docs, and show a selected-KB-scoped ingestion workflow timeline |
 | **Alert Feed** | Streaming alert list, severity filtering, acknowledgment workflow |
-| **Investigation Workbench** | Core analyst view — active KB selection, live entity search/detail/neighborhood, evidence packs, timeline |
+| **Investigation Workbench** | Core analyst view — active KB selection, live entity search/detail/neighborhood, capability-gated dossier tabs (Signals, Network, Policy, Evidence) |
 | **Case Management** | Queue, inspect, and update investigation cases; promote alerts to cases |
 | **Policy Intelligence** | Review policy items and triage accepted/rejected/deferred/escalated outcomes |
 | **RAG Chat** | Conversational interface for querying knowledge bases through the backend RAG service and durable conversation routes |

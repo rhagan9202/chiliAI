@@ -13,37 +13,38 @@
 **Unblocks:** [_multitenancy.14, frontend.15]
 **Estimated size:** L
 **Spec:** docs/superpowers/specs/2026-05-21-kb-contextual-entry-points-design.md
+**Status note (2026-07-23, U2 closeout sweep):** left `planned` rather than flipped to `done` — the AC below is substantively satisfied but by a change whose originating commit predates this sweep and isn't cleanly attributable (no `**Done:**` provenance can be written honestly); the one still-open gap (no dedicated `toSubgraphResult` unit test) is real. A future pass that adds that test and records real provenance can flip this to `done`.
 
 **As a** fraud analyst,
 **I need** the Investigation Workbench to render the entity neighborhood as an interactive force-directed graph instead of a flat list,
 **so that** I can visually pivot through connected providers/beneficiaries/claims and spot ring structures at a glance.
 
 ### Current State
-- `chili_app/src/pages/InvestigationWorkbenchPage.tsx:262-273` renders the neighborhood through the local `NeighborhoodList` helper (`InvestigationWorkbenchPage.tsx:305-340`) — a flat `<div>` of `metric-row` entries.
-- `chili_app/src/components/investigation/GraphCanvas.tsx:53-227` ships a complete `react-force-graph-2d`-backed canvas with legend, zoom, hover, and node-click → entity navigation, but a repo-wide grep shows zero imports outside its own `__tests__` file.
-- Backend neighborhood payload (`useInvestigationNeighborhood`) returns `{ entities, relationships }` whereas `GraphCanvas` consumes `SubgraphResult` `{ nodes, edges }` — a contract adapter is required.
+**Stale as of Sprint 2026-28 U2 (2026-07-23) — superseded by a different-shaped delivery, swept at U2 closeout (Task 10):** the flat `NeighborhoodList` fallback described below no longer exists. `chili_app/src/pages/InvestigationWorkbenchPage.tsx` imports and renders `GraphCanvas` directly (`GraphCanvas` import + JSX render in the NETWORK tab, U2's dossier restructure); the typed adapter this story called for is `chili_app/src/utils/subgraph.ts`'s `toSubgraphResult(entities, relationships): SubgraphResult`, shared by both the workbench and `AlertFeedPage`'s evidence expansion. Node click still navigates via `navigate(...)` to `/investigation/:entityId?kb=...&depth=...`. `chili_app/e2e/investigation-workbench.spec.ts` asserts `getByTestId('investigation-graph-canvas')` is visible against the real stack — this satisfies the story's e2e intent under a different spec/testid name than originally specified (no separate `investigation-graph-canvas.spec.ts` file, no `data-testid="graph-canvas"`).
+- **Original (pre-U2) description, kept for history:** `chili_app/src/pages/InvestigationWorkbenchPage.tsx:262-273` rendered the neighborhood through a local `NeighborhoodList` helper — a flat `<div>` of `metric-row` entries. `chili_app/src/components/investigation/GraphCanvas.tsx:53-227` shipped a complete `react-force-graph-2d`-backed canvas with legend, zoom, hover, and node-click → entity navigation, but a repo-wide grep showed zero imports outside its own `__tests__` file.
+- **Still open:** no dedicated unit test file exists for `toSubgraphResult` (`chili_app/src/utils/__tests__/subgraph.test.ts` is absent) — the adapter is only exercised indirectly through page-level tests. `GraphCanvas` itself has no `maxNodes`/decimation story yet (tracked separately as frontend.15).
 
 ### Acceptance Criteria
-- [ ] `InvestigationWorkbenchPage.tsx` imports `GraphCanvas` and renders it in the "Graph neighborhood" card.
-- [ ] A typed adapter maps the neighborhood payload (`RuntimeEntity[]`/`RuntimeRelationship[]`) into the `SubgraphResult` shape `GraphCanvas` expects, with unit tests in `chili_app/src/components/investigation/__tests__/`.
-- [ ] Clicking a node updates the URL (`/investigation/:entityId?kb=...&depth=...`) via `navigate(...)`.
-- [ ] The flat `NeighborhoodList` fallback is preserved behind a "List view" toggle or removed; choice documented in `chili_app/README.md`.
-- [ ] Existing Investigation Workbench tests under `chili_app/src/pages/__tests__/InvestigationWorkbenchPage.test.tsx` are updated to assert the canvas mounts when neighborhood data is present.
-- [ ] An e2e Playwright spec (`chili_app/e2e/investigation-graph-canvas.spec.ts`) loads an investigation with a seeded entity and asserts the `data-testid="graph-canvas"` element is in the DOM.
+- [x] `InvestigationWorkbenchPage.tsx` imports `GraphCanvas` and renders it (NETWORK tab, since the U2 reshape — no separate "Graph neighborhood" card).
+- [x] A typed adapter maps the neighborhood payload (`RuntimeEntity[]`/`RuntimeRelationship[]`) into the `SubgraphResult` shape `GraphCanvas` expects — delivered as the shared `toSubgraphResult` in `src/utils/subgraph.ts` rather than a per-component `NeighborhoodAdapter.ts`. **Gap:** no dedicated unit test file for it yet (see Current State).
+- [x] Clicking a node updates the URL (`/investigation/:entityId?kb=...&depth=...`) via `navigate(...)`.
+- [x] The flat `NeighborhoodList` fallback was removed outright (no "List view" toggle) — decision implicit in the U2 reshape, not separately documented in `chili_app/README.md` under this story's id.
+- [x] Investigation Workbench tests assert the canvas mounts when neighborhood data is present (`chili_app/src/pages/__tests__/InvestigationWorkbenchPage.test.tsx`).
+- [x] An e2e Playwright spec loads an investigation and asserts the canvas is in the DOM — delivered as `investigation-workbench.spec.ts`'s `investigation-graph-canvas` testid assertion, not a standalone `investigation-graph-canvas.spec.ts` file.
 
 ### Verification
 - `cd chili_app && npm run lint && npm run test:run && npm run build`
-- `cd chili_app && npm run test:e2e -- investigation-graph-canvas`
-- Manual: `make dev`, log in, navigate to `/investigation/:entityId?kb=...`, click a neighbor node and confirm URL + entity-detail panel update.
+- `cd chili_app && npm run test:e2e -- investigation-workbench` (the canvas assertion lives in this spec, not a dedicated `investigation-graph-canvas` spec)
+- Manual: `make dev`, log in, navigate to `/investigation/:entityId?kb=...`, click a neighbor node and confirm URL + dossier update.
 
 ### Code touch points
-- `chili_app/src/pages/InvestigationWorkbenchPage.tsx` (modify)
-- `chili_app/src/components/investigation/GraphCanvas.tsx` (modify — accept neighborhood props or wrap)
-- `chili_app/src/components/investigation/NeighborhoodAdapter.ts` (new)
-- `chili_app/src/components/investigation/__tests__/NeighborhoodAdapter.test.tsx` (new)
-- `chili_app/src/pages/__tests__/InvestigationWorkbenchPage.test.tsx` (modify)
-- `chili_app/e2e/investigation-graph-canvas.spec.ts` (new)
-- `chili_app/README.md` (modify — document graph view)
+- `chili_app/src/pages/InvestigationWorkbenchPage.tsx` (delivered)
+- `chili_app/src/components/investigation/GraphCanvas.tsx` (delivered)
+- `chili_app/src/utils/subgraph.ts` (delivered — the adapter, in place of a per-component `NeighborhoodAdapter.ts`)
+- `chili_app/src/utils/__tests__/subgraph.test.ts` (still open — no dedicated unit test exists)
+- `chili_app/src/pages/__tests__/InvestigationWorkbenchPage.test.tsx` (delivered)
+- `chili_app/e2e/investigation-workbench.spec.ts` (delivered — in place of a dedicated `investigation-graph-canvas.spec.ts`)
+- `chili_app/README.md` (delivered — Target Page Structure documents the graph-based workbench)
 
 ---
 
@@ -60,14 +61,14 @@
 **so that** I can review previously generated reasoning without depending on the in-memory `selectedAlert` join.
 
 ### Current State
-- `chili_app/src/pages/InvestigationWorkbenchPage.tsx:56-60,276-290` calls `useEvidencePack(selectedAlert?.evidence_pack_id ?? null)` — packs only render when the selected entity happens to have a matching alert row.
-- `chili_app/src/components/investigation/EvidencePanel.tsx:1-40` exists as a standalone component but is never imported by any page (grep confirms only test imports).
-- No list view, no load-by-id input, no `/evidence-packs` route, no link from alert rows.
+- `chili_app/src/pages/InvestigationWorkbenchPage.tsx:8,83` calls `useEvidencePack(selectedAlert?.evidence_pack_id ?? null, activeKnowledgeBaseId)` — packs only render when the selected entity happens to have a matching alert row (EVIDENCE tab, gated on `explainability`, since Sprint 2026-28 U2).
+- **Corrected 2026-07-23 (reviewer-verified stale, U2 closeout, Task 10):** the AC below originally called for reusing `chili_app/src/components/investigation/EvidencePanel.tsx` — that file was an orphan (never imported outside its own tests) predating U2, and it was **deleted outright** in Sprint 2026-28 U2 Task 7 (`af14736`, D1 orphan-panel retirement) rather than wired up. The live evidence surface today is `chili_app/src/components/investigation/EvidencePackViewer.tsx` (reshaped in the same sprint, U2 Task 5, with a narrative-lead band and SHAP attribution bars) — this story's "chosen surface" should render `EvidencePackViewer`, fed by a new list-backed query, not `EvidencePanel`.
+- No list view, no load-by-id input, no `/evidence-packs` route, no link from alert rows still holds — `AlertFeedPage.tsx`'s evidence expansion (U2 Task 8) still resolves the pack via the alert's own `evidence_pack_id`, not an independent lookup.
 
 ### Acceptance Criteria
 - [ ] `useEvidencePackList` (server-state hook) is added to `chili_app/src/api/evidence.ts` and consumed by a new list surface.
 - [ ] Either a `/evidence-packs` route or an Investigation-side "Evidence packs" tab renders persisted packs scoped to the active KB.
-- [ ] `EvidencePanel.tsx` is imported and rendered by the chosen surface (no longer dead code).
+- [ ] The list surface renders packs through `EvidencePackViewer.tsx` (the live, reshaped viewer — **not** `EvidencePanel.tsx`, which no longer exists).
 - [ ] Alert rows in `AlertFeedPage.tsx` expose an "Open evidence pack" action that deep-links to the loaded pack.
 - [ ] Vitest coverage exercises load, empty, error, and pack-not-found states.
 - [ ] Playwright spec covers: load list → open pack → reasoning + items render.
@@ -79,7 +80,7 @@
 
 ### Code touch points
 - `chili_app/src/api/evidence.ts` (modify)
-- `chili_app/src/components/investigation/EvidencePanel.tsx` (modify)
+- `chili_app/src/components/investigation/EvidencePackViewer.tsx` (modify — consumed by the new list surface; `EvidencePanel.tsx` no longer exists to touch)
 - `chili_app/src/pages/InvestigationWorkbenchPage.tsx` (modify) OR `chili_app/src/pages/EvidencePacksPage.tsx` (new)
 - `chili_app/src/pages/AlertFeedPage.tsx` (modify — row action)
 - `chili_app/src/app/router.tsx` (modify if new route)
@@ -974,5 +975,126 @@ so that configuration changes can be completed without leaving the app.
 - `frontend/src/**`
 - `frontend/tests/**`
 - `tests/e2e/**`
+
+---
+
+## Story frontend.27: BL-050 (U2) — IntegrityAI-hierarchy workbench reshape implementation
+
+**ID:** frontend.27
+**Status:** in-progress
+**Prerequisites:** []
+**Unblocks:** []
+**Estimated size:** L
+**Spec:** docs/superpowers/specs/2026-07-23-sprint28-u1-workbench-reshape-design.md
+
+**As a** fraud analyst,
+**I need** the Investigation Workbench, Alert Feed, and Dashboard restyled around the IntegrityAI-inspired hierarchy (risk numerals, an AI-voice signal band, capability-gated tabs, cluster overlays, narrative-lead evidence) instead of flat card stacks,
+**so that** the highest-signal facts (how bad, why, and what to do) are legible at a glance rather than buried in equally-weighted cards.
+
+### Current State (Sprint 2026-28 U2, `feat/sprint-2026-28-u2-workbench-reshape`, 2026-07-23 — implementation complete, live/e2e verification pending)
+All nine implementation tasks of the U2 plan (`docs/superpowers/plans/2026-07-23-sprint28-u2-workbench-reshape.md`) have landed on the feature branch, frontend-only (no backend/contract changes — B1–B3's already-shipped fields are consumed as-is):
+- `chili_app/src/pages/pages.css` + `chili_app/src/utils/graphStyles.ts` gained the reshape's CSS classes (`.workbench-*`, `.dossier-*`, `.triage-*`, `.signal-band*`, `.callout--*`, `.fade-up`) and `clusterColorFor`/`isPredictedRelationship`/`predictedConfidenceFor`/`PREDICTED_LINK_COLOR`/`PREDICTED_LINK_DASH`.
+- `chili_app/src/components/investigation/EntityDossierHeader.tsx` + `SignalBand.tsx` (new) render the entity identity, Oxanium risk numeral, and an "AI ANALYSIS · N RISK SIGNALS" callout band.
+- `chili_app/src/components/investigation/AnomalyTrendPanel.tsx` (new, extracted) carries the timeseries chart + red anomaly markers.
+- `chili_app/src/components/investigation/EntityPolicyPanel.tsx` + `chili_app/src/components/charts/AttributionBars.tsx` (new) surface policy items on entity/alert views and signed SHAP-style attribution bars.
+- `chili_app/src/components/investigation/EvidencePackViewer.tsx` reshaped: narrative-lead band (`data-testid="evidence-narrative"`), `AttributionBars` section gated on `pack.attribution` presence.
+- `chili_app/src/components/investigation/GraphCanvas.tsx` + `ClusterMembershipPanel.tsx` (new): community-colored nodes in cluster mode, membership panel with select/highlight, dormant dashed predicted-link rendering (styles only — see frontend.29, no live data exists yet).
+- `chili_app/src/pages/InvestigationWorkbenchPage.tsx` restructured into a search-rail + dossier layout with a capability-gated `Tabs` strip (Signals / Network / Policy⁺Evidence when `explainability` is on); the three orphan panels (`EntityDetailPanel`, `EvidencePanel`, `TimelinePanel`) were deleted (`af14736`).
+- `chili_app/src/pages/AlertFeedPage.tsx` gained risk-ranked triage rows (numeral + `flagLabelFor` mono flag) and the evidence expansion now fetches a real depth-1 neighborhood + real `entityTypes` instead of an empty subgraph.
+- `chili_app/src/pages/DashboardPage.tsx` gained the triage-row lead-card treatment, live `Graph clusters` panel with `clusterColorFor` swatches + workbench deep-links, and updated header copy (no more "Phase 5 data live").
+- Task 10 (this closeout) added `chili_app/src/utils/triage.ts` (shared `triageNumeralColor`, deduplicated out of the two pages) and removed the orphaned `.investigation-layout` CSS selector.
+
+### Acceptance Criteria
+- [x] Entity dossier: risk numeral + confidence, AI signal band, capability-gated Signals/Network/Policy/Evidence tabs (§4.1 of the design).
+- [x] Cluster overlay + membership panel on `GraphCanvas`, gated on `gnn` (§4.1 NETWORK tab, design D4).
+- [x] Evidence viewer: narrative-lead band + attribution bars, gated on field presence (design D5).
+- [x] Policy items surfaced on entity (workbench POLICY tab) and alert (Alert Feed chips) views via client-side `target_kind`/`target_ref` filtering (design D7).
+- [x] Alert Feed: risk-ranked triage rows with real flag labels; evidence expansion renders a real subgraph, not an empty one (design D6).
+- [x] Dashboard: lead-card triage treatment, live clusters panel, updated copy (§4.2).
+- [x] Housing-pack (`gnn:false`, `peer_stats:false`) capability degradation is structural (tabs/panels absent, not broken) per the code paths written for §5 — **not yet exercised against a running housing-pack stack** (see Verification).
+- [x] Dormant predicted-link rendering ships (styles + helpers) without fabricating data — see frontend.29 for the backend dependency that will light it up.
+- [ ] Full-stack browser/e2e verification (Task 11): Playwright specs updated/extended and run against `make dev` with real CMS DE-SynPUF data; housing-pack capability-degradation walkthrough; zero console errors. **Not yet performed — do not treat this story as live-verified until Task 11 runs.**
+
+### Verification
+- `cd chili_app && npm run test:run` — 476 tests / 69 files passed (2026-07-23, post-Task-10 cleanup commit).
+- `cd chili_app && npm run build` — `tsc -b && vite build` clean (one pre-existing >500kB chunk-size advisory, not an error; tracked by frontend.14).
+- `cd chili_app && npm run lint` — clean.
+- **Not yet run:** `npm run test:e2e` against the full stack, and the manual housing-pack/capability-degradation walkthrough — both reserved for Task 11 (`docs/superpowers/plans/2026-07-23-sprint28-u2-workbench-reshape.md` §Task 11). Do not claim live-verified until that pass runs and this entry is updated with its results.
+
+### Code touch points
+- `chili_app/src/pages/InvestigationWorkbenchPage.tsx`, `AlertFeedPage.tsx`, `DashboardPage.tsx`, `pages.css` (modify)
+- `chili_app/src/components/investigation/EntityDossierHeader.tsx`, `SignalBand.tsx`, `AnomalyTrendPanel.tsx`, `EntityPolicyPanel.tsx`, `ClusterMembershipPanel.tsx` (new)
+- `chili_app/src/components/investigation/GraphCanvas.tsx`, `EvidencePackViewer.tsx` (modify)
+- `chili_app/src/components/charts/AttributionBars.tsx` (new)
+- `chili_app/src/utils/graphStyles.ts`, `subgraph.ts` (modify), `triage.ts` (new)
+- `chili_app/src/components/investigation/EntityDetailPanel.tsx(+.module.css)`, `EvidencePanel.tsx(+.module.css)`, `TimelinePanel.tsx` (deleted, `af14736`)
+- Full test suites under `chili_app/src/**/__tests__/`
+
+---
+
+## Story frontend.28: Workbench dossier phase-2 surfaces — Timeline tab, peer-comparison bars, cluster centrality ordering
+
+**ID:** frontend.28
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** []
+**Estimated size:** L
+**Spec:** docs/superpowers/specs/2026-07-23-sprint28-u1-workbench-reshape-design.md (§6)
+
+**As a** fraud analyst using the entity dossier,
+**I need** a detection-events timeline, peer-comparison bars (entity vs. p50/p90), and centrality-ordered cluster membership,
+**so that** I get the mockup's remaining persuasive surfaces once their backing data exists, instead of the workbench silently lacking them forever.
+
+### Current State
+U1's design pass (§6, "Phase 2 / out of sprint") identified three dossier surfaces the IntegrityAI mockup carries that U2 (Sprint 2026-28, frontend.27) deliberately did not build, because none has a backing API today:
+- **Timeline tab** — the mockup's "smoking gun" ledger (trigger event → AI detection → analyst assignment) needs a unified detection-events feed. Today, alert history, policy-item status transitions, and anomaly `detected_at` timestamps live in three separate stores with no joining endpoint; `InvestigationWorkbenchPage.tsx`'s tab set (Signals/Network/Policy/Evidence) has no Timeline entry.
+- **Peer-comparison bars** (entity vs. p50/p90) — `backend/analytics/peerstats` persists per-entity z-scores as risk-factor signals (`weekly_carrier_billing`, etc.), not the underlying peer distribution (p50/p90) needed to render a comparison bar; no endpoint returns it.
+- **Cluster centrality ordering** — `chili_app/src/components/investigation/ClusterMembershipPanel.tsx` (Sprint 2026-28 U2) orders clusters by `anomaly_score` then member count only, because `ClusterResult` (`chili_app/src/api/contracts.ts:239`, backed by `backend/analytics/gnn/models.py`'s `ClusterSummary`) carries no per-member `centrality_score`. The value itself is not missing platform-wide — `agent.coordinator._write_analytics_properties_to_graph` already writes `centrality_score` onto individual graph entity properties (see `docs/backlog/analytics.md` story analytics.24) — but the clusters route the membership panel reads from does not expose it per-member, and resolving it via N per-entity property fetches for every visible member is not a UI-side fix.
+
+### Acceptance Criteria
+- [ ] A backend detection-events story is chartered (new analytics/monitoring module story, not yet created) defining a unified `GET .../detection-events` shape joining alert-lifecycle, policy-item transitions, and anomaly `detected_at`; a Timeline tab is added to `InvestigationWorkbenchPage.tsx`'s capability-gated tab set once it exists.
+- [ ] A backend peer-distribution story is chartered (new `analytics/peerstats` module story, not yet created) exposing p50/p90 (or full distribution) per metric per peer group; `AttributionBars`-style signed comparison bars render entity-vs-peer once the endpoint exists.
+- [ ] `ClusterResult` (or a members sub-resource) exposes `centrality_score` per member; `ClusterMembershipPanel.tsx`'s ordering gains a centrality-desc option once the field lands (cross-edge: `docs/backlog/analytics.md` analytics.24 or a follow-on story on the `/analytics/gnn/clusters` route).
+- [ ] None of the above is faked with client-side approximations in the interim — the dossier's Signals/Network/Policy/Evidence tabs stay exactly as Sprint 2026-28 U2 shipped them until real data exists.
+
+### Verification
+- N/A until a backend story lands; this entry exists to fence phase-2 scope so it isn't silently forgotten, per the U1 design's own §6 instruction to record it at U2 closeout.
+
+### Code touch points
+- `chili_app/src/pages/InvestigationWorkbenchPage.tsx` (modify — Timeline tab, once chartered)
+- `chili_app/src/components/investigation/ClusterMembershipPanel.tsx` (modify — centrality ordering, once chartered)
+- `chili_app/src/components/charts/AttributionBars.tsx` or a new peer-comparison component (modify/new, once chartered)
+- New backend stories under `docs/backlog/analytics.md` (or `monitoring.md`) for the detection-events feed and peer-distribution endpoint (not yet created)
+
+---
+
+## Story frontend.29: Dormant predicted-link rendering — waiting on the GNN write-back transport
+
+**ID:** frontend.29
+**Status:** planned
+**Prerequisites:** [analytics.24]
+**Unblocks:** []
+**Estimated size:** S
+**Spec:** docs/superpowers/specs/2026-07-23-sprint28-u1-workbench-reshape-design.md (§7)
+
+**As a** fraud analyst inspecting the entity network,
+**I need** GNN-predicted relationships to render as dashed, confidence-labeled links on the graph canvas,
+**so that** I can see the model's speculative connections distinct from confirmed ones — once the backend actually produces them.
+
+### Current State
+Sprint 2026-28 U2 (frontend.27) shipped the canvas-side support **dormant and unwired to any real data**, verified deliberately at U2's start (`docs/superpowers/plans/2026-07-23-sprint28-u2-workbench-reshape.md` Global Constraints): `chili_app/src/utils/graphStyles.ts` exports `isPredictedRelationship(rel)` (reads `metadata.predicted === true`), `predictedConfidenceFor(rel)` (reads `metadata.confidence`), `PREDICTED_LINK_COLOR`, and `PREDICTED_LINK_DASH`; `GraphCanvas.tsx` renders any relationship carrying `metadata.predicted === true` as a dashed purple link with confidence in the tooltip. **No relationship in any live payload ever carries that metadata** — `docs/backlog/analytics.md` story analytics.24 documents the exact gap: `agent.coordinator` computes `GnnAnalysisResponse.predicted_links` every pipeline run but never persists them anywhere (not onto relationship metadata, not onto a queryable route) — "`predicted_neighbor_ids` is never written back" is analytics.24's own words for this. Until analytics.24 (or an equivalent write-back story) ships, the dormant rendering path is exercised only by tests with synthetic metadata, never real data.
+
+### Acceptance Criteria
+- [ ] `docs/backlog/analytics.md` story analytics.24 (or a successor) ships the write-back: either `metadata.predicted`/`metadata.confidence` on persisted relationships (preferred — renders through the existing neighborhood fetch, no new endpoint) or an equivalent predicted-links shape on the `/analytics/gnn/clusters` route.
+- [ ] Once shipped, a live-data Playwright assertion (extending `chili_app/e2e/investigation-workbench.spec.ts`) confirms a real predicted link renders dashed with a confidence tooltip against the full stack — the existing unit tests already cover the rendering logic against synthetic fixtures, so this AC is about closing the "real data" gap, not writing new component code.
+- [ ] No change to `GraphCanvas.tsx`/`graphStyles.ts` is anticipated — this story is expected to be backend-only plus one e2e assertion.
+
+### Verification
+- Backend: whatever `analytics.24`'s own Verification section specifies for the write-back.
+- Frontend: `cd chili_app && npm run test:e2e -- investigation-workbench` shows a real dashed predicted link once seed/demo data includes one.
+
+### Code touch points
+- `backend/agent/coordinator.py` (analytics.24's scope — write predicted-link metadata back onto relationships)
+- `chili_app/e2e/investigation-workbench.spec.ts` (modify — add the live-data assertion once real predicted links exist)
 
 ---

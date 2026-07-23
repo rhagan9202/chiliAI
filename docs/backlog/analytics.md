@@ -902,7 +902,7 @@ housing default packs set `attribution_backend: shap`.
 **ID:** analytics.24
 **Status:** planned
 **Prerequisites:** [agent.12, events.04, graph.02]
-**Unblocks:** [analytics.05]
+**Unblocks:** [analytics.05, frontend.29]
 **Estimated size:** M
 **As a** fraud-analytics engineer,
 **I need** a worker handler that consumes `GnnAnalyzedEvent` and writes `cluster_id`, `predicted_neighbor_ids`, and `anomaly_score` back onto graph entities,
