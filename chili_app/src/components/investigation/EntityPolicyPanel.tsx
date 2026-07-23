@@ -60,9 +60,9 @@ export function EntityPolicyPanel({
       {matches.map((item) => {
         const critical = item.severity === 'critical'
         return (
-          <div className={critical ? 'callout--risk' : undefined} key={item.id}>
+          <div className={critical ? 'callout--warning' : undefined} key={item.id}>
             {critical ? (
-              <span className="flag-label" style={{ color: 'var(--c-red)' }}>
+              <span className="flag-label" style={{ color: 'var(--c-amber)' }}>
                 ⚑ POLICY SIGNAL
               </span>
             ) : null}

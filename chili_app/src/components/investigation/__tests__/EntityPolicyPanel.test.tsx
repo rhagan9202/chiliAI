@@ -56,4 +56,15 @@ describe('EntityPolicyPanel', () => {
     expect(screen.getByText(/POLICY SIGNAL/)).toBeInTheDocument()
     expect(screen.queryByText('Unrelated metric item')).not.toBeInTheDocument()
   })
+
+  it('renders the empty state when no policy items match the target', () => {
+    render(
+      <MemoryRouter>
+        <EntityPolicyPanel knowledgeBaseId="kb-1" targetKind="entity" targetRef="provider:99" />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('No policy signals')).toBeInTheDocument()
+    expect(screen.queryByText('Inpatient billing limit exceeded')).not.toBeInTheDocument()
+    expect(screen.queryByText('Unrelated metric item')).not.toBeInTheDocument()
+  })
 })
