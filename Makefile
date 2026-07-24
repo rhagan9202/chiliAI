@@ -102,6 +102,17 @@ tn-subset-full: ## Build the COMPLETE TN subset (no sampling, ~2.4 GB carrier) â
 data-setup: ## Stage local CMS/NPPES source data into sample_data/ (extracts downloaded zips)
 	scripts/setup_local_data.sh
 
+# DEMO_ANALYTICS_TRIGGER_CMD (D1 Task 5): a natural CMS records ingest
+# computes risk signals but never publishes graph.updated, so Flow B
+# (GNN -> risk -> explainability -> alerts) never runs â€” the chartered
+# analytics.34 gap. scripts/demo_cms.sh substitutes __KB__ with the ingested
+# KB id and runs this command (docker-free itself; the hook is the only
+# place a container gets invoked) between ingest and the readiness probes.
+# See backend/tools/demo_trigger_analytics.py and docs/demo/README.md.
+.PHONY: demo-cms
+demo-cms: ## Full CMS fraud demo bring-up: pack switch + TN 1% staging + ingest + analytics trigger + readiness probes (stack must be running: make dev)
+	DEMO_ANALYTICS_TRIGGER_CMD='$(COMPOSE_DEV) exec -T worker python -m tools.demo_trigger_analytics --kb __KB__ --top 3' scripts/demo_cms.sh
+
 # Requires the stack running with the Air Force housing pack, e.g.
 # `make dev-domain DOMAIN=department_air_force_housing`. Uploads the tracked
 # housing feed fixtures through the real records API. Extra args pass through:

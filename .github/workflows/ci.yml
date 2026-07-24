@@ -95,6 +95,17 @@ jobs:
         # modules. Passing "." would override that and check the whole tree.
         run: pyright
 
+      - name: Type-check tools/
+        # Repo-root tools/ (host-side demo/data-prep scripts) is typechecked
+        # via its own tools/pyrightconfig.json, as a separate invocation from
+        # the backend one above — it shares the bare package name "tools"
+        # with backend/tools/ (see tools/demo_trigger_analytics.py), and
+        # pyright cannot resolve that name two different ways within a
+        # single Program. See tools/__init__.py and backend/pyproject.toml's
+        # [tool.pyright] comment for the full explanation.
+        working-directory: ${{ github.workspace }}/tools
+        run: pyright
+
       - name: Run pytest with coverage gate
         run: pytest --cov --cov-report=xml --cov-report=term --cov-fail-under=85
 

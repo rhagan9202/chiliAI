@@ -1,0 +1,9 @@
+{
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "strict",
+  "venvPath": "../backend",
+  "venv": ".venv",
+  "extraPaths": [".."],
+  "include": ["."],
+  "exclude": ["**/__pycache__"]
+}

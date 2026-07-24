@@ -76,8 +76,11 @@ backend/
 ├── conversations/   # durable RAG chat conversations (in-memory, Postgres)
 ├── cases/           # durable, KB-scoped investigation cases (promote-from-alert)
 ├── policy/          # durable, KB-scoped policy intelligence (rule-pack items + triage)
-└── scorecards/      # config-driven scorecard evaluation + durable runs (in-memory, Postgres)
+├── scorecards/      # config-driven scorecard evaluation + durable runs (in-memory, Postgres)
+└── tools/           # worker-container CLI utilities (e.g. demo_trigger_analytics), run via `python -m tools.<name>`
 ```
+
+`backend/tools/` is distinct from the repo-root `tools/` package (host-side demo/data-prep scripts driven over HTTP, see `tools/__init__.py`) — both share the bare name `tools` but are typechecked by *separate* pyright invocations (`backend/pyproject.toml`'s `[tool.pyright]` vs. `tools/pyrightconfig.json`; see either file's comment for why one process can't resolve both).
 
 ## Cross-Module Interaction Rules
 
@@ -115,6 +118,9 @@ cd .. && PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --o
 # Demo: Tennessee Medicare subset (requires `make dev` stack running first)
 make demo-tn-subset                                         # build TN subset + create KB + upload
 python -m tools.sample_data.build_tennessee_subset --help  # subset builder options
+
+# Demo: full CMS fraud bring-up (BL-051) — pack switch + subset + ingest + readiness probes
+make demo-cms                                               # scripts/demo_cms.sh; requires `make dev` running first
 
 # Demo: Air Force housing dashboard (stack must run the housing pack)
 make dev-domain DOMAIN=department_air_force_housing        # start stack with the housing pack
@@ -156,7 +162,11 @@ make seed-housing SEED_ARGS="--scorecards"                 # ...and generate sco
 > `docker exec chiliai-postgres-1 psql -U chili -c "CREATE DATABASE chili_test"`
 > (migration 0001 installs the TimescaleDB extension itself). An explicitly
 > exported `DATABASE_URL` still wins — never export the dev `chili` DSN when
-> running the suite.
+> running the suite. A fresh (schema-less) `chili_test` self-provisions: a
+> session-scoped conftest fixture applies `alembic upgrade head` before any
+> test runs when the database is reachable but has no `alembic_version`
+> table (added 2026-07-24 after the first post-`make clean` run failed 17
+> Postgres-backed tests with `UndefinedTable`).
 
 ## Quality Requirements
 

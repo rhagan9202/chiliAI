@@ -30,6 +30,8 @@ The policy corpus upload is best-effort: set `DEMO_SKIP_POLICIES=1` to skip it, 
 
 See [`docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md`](docs/superpowers/specs/2026-05-22-ingestion-pipeline-e2e-demo-design.md) for the full specification.
 
+`make demo-cms` (`scripts/demo_cms.sh`) wraps this into one orchestrated bring-up for the CMS fraud walkthrough (BL-051): it requires the stack already running (`make dev`; it never composes up itself), switches the active pack to `medicare_fraud_cms_desynpuf` (never the generic `medicare_fraud` pack — no storage pins), stages/builds the TN subset if needed, runs the ingest above, then polls the alerts/GNN-clusters/evidence-pack/policy-items endpoints until the demo is analytics-ready, printing the KB id, probe counts, and the workbench URLs to walk through (`/alerts`, `/investigation/<entity>?kb=<kb>`, `/dashboard`, `/policy`, `/rag-chat`).
+
 ## Starting Exemplar: Medicare Fraud Detection
 
 ### Phase 1 — Build the policy knowledge base (batch)

@@ -45,12 +45,13 @@
 - Backend uses Python 3.12 as declared in `backend/.python-version` and `backend/pyproject.toml`:
   - API server: `uvicorn api.app:create_app --factory --reload --port 8000`
   - Worker: `python -m agent.coordinator`
-  - Tests: `pytest --cov` — DB-touching tests default to the `chili_test` scratch DB (conftest; created on fresh dev volumes by `infra/postgres/init-test-db.sql`). ⚠️ Never export the dev `chili` DSN as `DATABASE_URL` for a test run: the migration tests downgrade/upgrade against it and empty every app table (see `backend/README.md`).
+  - Tests: `pytest --cov` — DB-touching tests default to the `chili_test` scratch DB (conftest; created on fresh dev volumes by `infra/postgres/init-test-db.sql`, and self-provisioned to `alembic upgrade head` by a session-scoped conftest fixture when the schema is missing). ⚠️ Never export the dev `chili` DSN as `DATABASE_URL` for a test run: the migration tests downgrade/upgrade against it and empty every app table (see `backend/README.md`).
   - Type check/lint: `pyright`, `ruff check .`
 - CI runs backend lint/typecheck/tests and frontend lint/typecheck/tests/build. Keep touched areas green.
 - Tooling gotchas (mirrored from `CLAUDE.md` — keep in sync):
   - `ruff`'s cache dir may not be writable in sandboxed agent runs — use `ruff check --no-cache .`.
   - Bare `pyright` (no args) is the real gate — `tool.pyright.include` covers many `tests/**`, so test code must be strict-clean too; per-file `pyright <file>` can miss include-scoped test errors.
+  - The repo-root `tools/` package is typechecked by its own `tools/pyrightconfig.json` (a separate CI step, "Type-check tools/"), not folded into `backend/pyproject.toml`'s `[tool.pyright]` — it shares the bare name `tools` with `backend/tools/`, and pyright resolves a given module name to one location per Program, so one invocation can't see both. See either config file's comment.
   - Playwright `page.route` patterns must be `/api/`-anchored — unanchored patterns also intercept SPA page navigations and render JSON as the page body.
   - Regenerate frontend contracts after ANY frontend-consumed Pydantic change: `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json` (repo root), then `cd chili_app && npm run codegen:api`. CI fails on drift.
 

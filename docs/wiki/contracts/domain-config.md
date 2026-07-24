@@ -1,6 +1,6 @@
 # Domain Configuration Contract
 
-**Verified against codebase:** 2026-05-28
+**Verified against codebase:** 2026-07-24
 **Source:** `backend/config/schema.py`, `backend/config/loader.py`
 **Frontend mirror:** `chili_app/src/types/domainConfig.ts`
 
@@ -31,9 +31,19 @@ class DomainConfig(BaseModel):
     validation: ValidationConfig | None = None    # defaults applied
     records: RecordsConfig | None = None          # empty feeds list
     analytics: AnalyticsConfig | None = None      # defaults applied
+    policy_rules: list[PolicyRulePack] = []       # default: empty list
     alerts: AlertsConfig                          # required: no default
     ui: UiConfig | None = None
 ```
+
+**Not yet in this reference:** `schema.py` also defines `gnn: GnnConfig | None`,
+`peer_stats: PeerStatsConfig | None`, `timeseries: TimeseriesAnalyticsConfig
+| None`, `scorecards: ScorecardsConfig` (default-factory, not `| None`), and
+`default_reference_kb_id: str | None` on `DomainConfig` — pre-existing fields
+this page has never carried sub-model entries for (not introduced by D1;
+confirmed present in `schema.py` as of 2026-07-24). Flagged here rather than
+backfilled in this pass, which was scoped to the `policy_rules` field the D1
+demo pack changes touched.
 
 **Cross-validation** (enforced by `_validate_cross_references` model_validator):
 - `vectorstore.dimensions` must equal `embeddings.dimensions` when both are set.
@@ -257,6 +267,48 @@ class UiConfig(BaseModel):
     roles: dict[str, UiRoleConfig] = {}
 ```
 
+### `PolicyRulePack` / `PolicyRule` (updated 2026-07-24)
+
+Source: `backend/config/schema.py`. Consumed by `backend/policy/evaluation.py`'s
+`evaluate(policy_rules, state) -> list[PolicyMatch]` (see `docs/adding_rulesets.md`
+for the authoring guide and the worker-vs-dev-seed path split; that doc is the
+canonical "how to author a rule" reference — this entry is schema shape only).
+
+```python
+class PolicyRulePack(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    thresholds: dict[str, str | float | int | bool] = {}
+    rules: list[PolicyRule] = []
+    # model_validator: every rule.predicate.value.config_ref must be a declared threshold key
+
+class PolicyRule(BaseModel):
+    id: str
+    title_template: str
+    severity: Literal["medium", "high", "critical"]
+    target_kind: Literal["entity", "alert", "metric"]
+    target_selector: dict[str, str] = {}
+    predicate: PolicyPredicate
+    citations: list[PolicyCitationRef] = []
+
+class PolicyPredicate(BaseModel):
+    field: str  # "properties.<name>" | "risk_score" | "metric.<name>"
+    op: Literal["eq", "neq", "gt", "gte", "lt", "lte", "in", "not_in"]
+    value: PolicyPredicateValue
+
+class PolicyPredicateValue(BaseModel):
+    literal: str | float | int | bool | list[str] | None = None
+    config_ref: str | None = None
+    # model_validator: exactly one of literal / config_ref must be set
+
+class PolicyCitationRef(BaseModel):
+    citation_id: str
+    title: str
+    source_ref: str
+    excerpt: str | None = None
+```
+
 ---
 
 ## Environment Variables
@@ -335,6 +387,30 @@ llm:
     model: llama3
     base_url: http://ollama:11434
 ```
+
+### `medicare_fraud_cms_desynpuf.yaml` policy rule packs (added 2026-07-24, D1 demo)
+
+Four `PolicyRulePack` entries, one rule each, spanning all three `target_kind` values:
+
+| Pack id | Rule id | `target_kind` / selector | Predicate | Severity |
+|---------|---------|--------------------------|-----------|----------|
+| `elevated_payment_claims` (pre-existing) | `claim_elevated_payment` | `entity` / `entity_type: claim` | `properties.amount gt 500` (`min_elevated_amount`) | `high` |
+| `graph_scale_watch` (pre-existing) | `kb_entity_volume` | `metric` / `metric_name: entity_count` | `metric.entity_count gt 50` (`max_entities`) | `medium` |
+| `outlier_billing_concentration` (new) | `provider_outlier_billing` | `entity` / `entity_type: provider` | `risk_score gte 0.35` (`review_risk_score`) | `high` |
+| `referral_ring_exposure` (new) | `provider_repeat_flag_exposure` | `entity` / `entity_type: provider` | `properties.active_alert_count gte 2` (`repeat_flag_count`) | `critical` |
+
+The two new packs are demo-tuned, not production thresholds: the YAML's
+inline comments record that live TN-subset risk composites clustered
+~0.33–0.42 across the B2/B3 passes (so `0.35` fires for the top providers)
+and that `active_alert_count` reached 2–3 on re-analyzed providers after two
+Flow B runs (alerts.36 pass) — both should be raised for production
+screening. `active_alert_count` is written onto graph entities by
+`agent.coordinator`'s Flow 4 (`handle_alerts_created_for_graph`), so it
+accumulates only across repeated analytics-pipeline (Flow B) runs, not on
+first ingest — see the `backend/tools/demo_trigger_analytics.py` note in
+[`modules/agent.md`](../modules/agent.md) (Coordinator section) for why a
+fresh demo KB needs an explicit trigger before this pack can fire. Pinned by
+`backend/tests/config/test_policy_rules_demo.py`.
 
 ---
 

@@ -596,6 +596,70 @@ policy_rules:
           value:
             config_ref: max_entities
 
+  # Entity-target rule: flags providers whose composite risk score crosses the
+  # analyst-review line — the demo's UPCODING/billing-concentration pattern.
+  # Risk composites are produced by the peer-deviation + self-history anomaly
+  # signals and land on `risk_score`. DEMO-tuned: live TN data showed provider
+  # risk composites ~0.33-0.42 (B2/B3 passes), so 0.35 fires for the top
+  # providers; raise for production screening.
+  - id: outlier_billing_concentration
+    name: "Outlier billing concentration"
+    description: >-
+      Providers whose composite risk score crosses the analyst-review line —
+      the demo's UPCODING/billing-concentration pattern. Risk composites are
+      produced by the peer-deviation + self-history anomaly signals.
+    thresholds:
+      review_risk_score: 0.35
+    rules:
+      - id: provider_outlier_billing
+        title_template: "Provider {target_ref} shows outlier billing concentration"
+        severity: high
+        target_kind: entity
+        target_selector:
+          entity_type: provider
+        predicate:
+          field: risk_score
+          op: gte
+          value:
+            config_ref: review_risk_score
+        citations:
+          - citation_id: cms-pim-ch4-billing
+            title: "CMS Program Integrity Manual, Ch. 4 — provider billing review"
+            source_ref: "policy://cms/pim/chapter-4"
+            excerpt: "Providers with billing patterns materially above peer benchmarks are prioritized for prepayment review."
+
+  # Entity-target rule: flags providers repeatedly flagged by the analytics
+  # pipeline — the demo's referral-ring proxy. `properties.active_alert_count`
+  # is the count Flow 4 (handle_alerts_created_for_graph) snapshots onto graph
+  # entities from open alerts, so it accumulates across detection runs.
+  # DEMO-tuned: active_alert_count reached 2-3 on re-analyzed providers
+  # (alerts.36 pass), so 2 fires after two Flow B runs.
+  - id: referral_ring_exposure
+    name: "Referral-ring exposure"
+    description: >-
+      Providers repeatedly flagged by the analytics pipeline — the demo's
+      referral-ring proxy: graph write-back marks entities whose alert count
+      accumulates across detection runs.
+    thresholds:
+      repeat_flag_count: 2
+    rules:
+      - id: provider_repeat_flag_exposure
+        title_template: "Provider {target_ref} carries repeated analytic flags"
+        severity: critical
+        target_kind: entity
+        target_selector:
+          entity_type: provider
+        predicate:
+          field: properties.active_alert_count
+          op: gte
+          value:
+            config_ref: repeat_flag_count
+        citations:
+          - citation_id: cms-pim-ch2-network
+            title: "CMS Program Integrity Manual, Ch. 2 — coordinated scheme indicators"
+            source_ref: "policy://cms/pim/chapter-2"
+            excerpt: "Recurring anomalies concentrated on connected providers indicate potential coordinated schemes."
+
 graph:
   backend: neo4j
   uri: bolt://neo4j:7687

@@ -1,6 +1,6 @@
 # Module: agent
 
-**Verified against codebase:** 2026-06-16
+**Verified against codebase:** 2026-06-16, except the `handle_records_ingested` gap note and Tests section (both **2026-07-24**, D1 demo closeout)
 **Source:** `backend/agent/`
 
 ## Purpose
@@ -99,6 +99,8 @@ The `coordinator.py` is the worker entry point. It:
 ### Key handlers (updated 2026-06-16)
 
 **`handle_records_ingested`** - optionally embeds and indexes records-derived entities into the vector store. When `embeddings_service` and `vector_store` are both passed, stored entities are embedded using `_build_entity_embedding_text` (shared with the documents path), then indexed as `VectorRecord` objects with `source_kind=record` metadata. No `VectorsIndexedEvent` is published from this path (the event is documents-only). When wired, the handler also runs best-effort policy-rule evaluation over stored entities and throttled graph metrics, then a best-effort peerstats stage that can persist derived risk signals and reassess affected entities.
+
+**Gap this handler does not close (chartered as `analytics.34`, added 2026-07-24):** `handle_records_ingested` never publishes a `GraphUpdatedEvent` — it only computes derived risk *signals* (`entity_derived_signals`) via the peerstats stage. Flow B (`graph.updated` → GNN → risk → explainability → `alerts.created`, the same dispatch documents.uploaded eventually reaches) never runs off a natural records ingest, so a freshly-ingested KB has risk signals but no alerts/evidence packs. `backend/tools/demo_trigger_analytics.py` (`python -m tools.demo_trigger_analytics --kb <id> --top N`, run inside the worker container — see its module docstring) is the disclosed, explicit stand-in for the Sprint 2026-28 D1 demo: it reads the top-N ranked entities from `GET /analytics/risk-scores`, stages synthetic `GraphUpsertResult`/`ValidationReport` artifacts in the object store (validation is a superset of the upserted ids, satisfying the BL-017 integrity guard in `agent.coordinator._select_upserted_entities`), and publishes a real `graph.updated` event on the worker's own event bus so `handle_event` dispatches it exactly like a natural pipeline event. It is a developer/demo CLI, not a production fix; the production fix (auto-triggering Flow B from a records ingest) is the still-open `analytics.34` story.
 
 ```python
 def handle_records_ingested(
@@ -237,3 +239,16 @@ The coordinator is the only module permitted to import from all capability modul
 ## Tests
 
 Location: `backend/tests/agent/`
+
+`backend/tools/demo_trigger_analytics.py` (see the Coordinator section above)
+is tested separately at `backend/tests/tools/`, not `tests/agent/` — it is a
+standalone CLI publishing onto the coordinator's event bus, not coordinator
+code itself. Typechecked as part of the `backend/pyproject.toml` `[tool.pyright]`
+program (its `include` list gained `tools*`/`tests/tools`, and `tests/tools`
+needed its own `executionEnvironments` entry ahead of the broader `tests` one
+— see the comments in `backend/pyproject.toml` for why: it shares the bare
+top-level package name `tools` with the unrelated repo-root `tools/` package,
+which pyright resolves per-Program, not per-execution-environment). The
+repo-root `tools/` package is a separate pyright invocation entirely
+(`tools/pyrightconfig.json`, its own CI step) — the two `tools` packages are
+never type-checked in the same `pyright` run.
