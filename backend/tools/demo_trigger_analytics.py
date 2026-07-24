@@ -272,6 +272,41 @@ def build_object_store(config: DomainConfig) -> ObjectStore:
 
 
 def event_bus_settings(config: DomainConfig, *, redis_url: str) -> EventBusSettings:
+    """Build the settings needed to publish onto the worker's real event stream.
+
+    Deliberately NOT a full reimplementation of
+    ``agent.coordinator._resolve_worker_event_bus_settings`` — that function
+    also handles: falling back to pure env-derived settings when a pack
+    omits ``events:`` entirely or leaves it at ``EventBusConfig()`` defaults
+    (``"events" not in config.model_fields_set`` / equality check), per-field
+    env fallback for ``uri``/``stream_maxlen``/``reclaim_min_idle_ms``, and
+    choosing between the "redis" and "in-memory" backends. Reusing it directly
+    was considered and rejected: it is a leading-underscore (private) helper
+    inside ``agent/coordinator.py`` — importing it would be both a
+    `reportPrivateUsage` violation and a forbidden ad-hoc cross-module reach
+    into another module's internals — and importing ``agent.coordinator`` at
+    all drags in its full dependency graph (GNN/explainability adapters,
+    optional `analytics` extras, health server wiring) for a CLI that only
+    ever needs to *publish* one event, never consume.
+
+    This function only needs two things to be right for this tool's actual
+    use — ``backend`` (must be ``"redis"``: the worker runs as a separate
+    process, so an in-memory bus here would be invisible to it regardless of
+    what the pack declares) and ``stream_prefix`` (must match what the worker
+    resolved, so the event lands on the stream it's actually consuming) —
+    and is explicitly scoped to how the demo runs the CLI, not general-purpose:
+    the active pack is always ``medicare_fraud_cms_desynpuf``, which pins an
+    explicit ``events: {backend: redis, stream_prefix: chili, ...}`` section
+    (see ``config/defaults/medicare_fraud_cms_desynpuf.yaml``), so
+    ``config.events.stream_prefix`` (never actually ``None`` post-validation,
+    see ``build_object_store``'s docstring for the same DomainConfig
+    post-validator behavior) already equals what
+    ``_resolve_worker_event_bus_settings`` would compute. A pack that leaves
+    ``events:`` unset entirely (the bare, not-for-this-demo
+    ``medicare_fraud.yaml`` — see ``scripts/demo_cms.sh``'s own guard against
+    it) would silently diverge from the coordinator's env-fallback path;
+    this tool is not meant to run against such a pack.
+    """
     events_config = config.events
     stream_prefix = events_config.stream_prefix if events_config is not None else "chili"
     return EventBusSettings(backend="redis", redis_url=redis_url, stream_prefix=stream_prefix)

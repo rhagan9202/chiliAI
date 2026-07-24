@@ -19,12 +19,17 @@ import httpx
 import pytest
 
 from config.loader import load_config
-from config.schema import ObjectStoreConfig
+from config.schema import DomainConfig, ObjectStoreConfig
+from events.adapters.in_memory import InMemoryEventBus
+from events.protocols import EventBus
+from events.runtime import EventBusSettings
+from events.types import GraphUpdatedEvent
 from graph.models import GraphUpsertResult
 from ingestion.models import ValidationReport
 from storage.adapters.in_memory import InMemoryObjectStore
 from storage.adapters.local_fs_adapter import LocalFsObjectStore
 from storage.adapters.s3_adapter import S3ObjectStore
+from storage.protocols import ObjectStore
 from tools import demo_trigger_analytics as trigger
 
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "config" / "defaults"
@@ -299,3 +304,126 @@ class TestParseArgs:
         args = trigger.parse_args(["--kb", "kb-1", "--top", "5"])
         assert args.top == 5
         assert args.redis_url == "redis://redis:6379"
+
+
+class TestMain:
+    """``main()`` end-to-end with fakes — no redis, no docker, no real HTTP.
+
+    ``load_active_config``, ``build_object_store``, ``select_top_risk_entity_ids``,
+    and ``create_event_bus`` are monkeypatched on the ``trigger`` module (Python
+    resolves each by name from the module's globals at call time, so patching
+    the module attribute redirects every call ``main()`` makes). The object
+    store and event bus fakes are the *real* in-memory adapters
+    (``InMemoryObjectStore``, ``InMemoryEventBus``) rather than hand-rolled
+    mocks, so the assertions below round-trip through real ``put_bytes``/
+    ``get_bytes``/``publish`` behavior, not a stub's approximation of it.
+    """
+
+    def _fake_config(self) -> DomainConfig:
+        return load_config(CONFIG_DIR / "medicare_fraud_cms_desynpuf.yaml")
+
+    def test_happy_path_stages_artifacts_and_publishes_event(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        object_store = InMemoryObjectStore()
+        event_bus = InMemoryEventBus()
+        fake_config = self._fake_config()
+
+        def fake_load_active_config() -> DomainConfig:
+            return fake_config
+
+        def fake_build_object_store(config: DomainConfig) -> ObjectStore:
+            assert config is fake_config
+            return object_store
+
+        def fake_select_top_risk_entity_ids(
+            client: httpx.Client, *, kb_id: str, entity_type: str, top: int
+        ) -> list[str]:
+            assert kb_id == "kb-1"
+            assert entity_type == "provider"
+            assert top == 2
+            return ["provider:1", "provider:2"]
+
+        def fake_create_event_bus(settings: EventBusSettings) -> EventBus:
+            assert settings.redis_url == "redis://redis:6379"
+            return event_bus
+
+        monkeypatch.setattr(trigger, "load_active_config", fake_load_active_config)
+        monkeypatch.setattr(trigger, "build_object_store", fake_build_object_store)
+        monkeypatch.setattr(
+            trigger, "select_top_risk_entity_ids", fake_select_top_risk_entity_ids
+        )
+        monkeypatch.setattr(trigger, "create_event_bus", fake_create_event_bus)
+
+        exit_code = trigger.main(
+            ["--kb", "kb-1", "--top", "2", "--redis-url", "redis://redis:6379"]
+        )
+
+        assert exit_code == 0
+        assert len(event_bus.published_events) == 1
+        event = event_bus.published_events[0]
+        assert isinstance(event, GraphUpdatedEvent)
+        assert len(event.documents) == 1
+        document = event.documents[0]
+        assert document.knowledge_base_id == "kb-1"
+        assert document.upserted_entity_count == 2
+        assert document.upserted_relationship_count == 0
+        assert document.graph_update_storage_key is not None
+        assert document.validation_storage_key is not None
+        assert document.graph_update_storage_key == f"graph-updates/kb-1/{event.correlation_id}.json"
+        assert document.validation_storage_key == f"validations/kb-1/{event.correlation_id}.json"
+
+        graph_update = GraphUpsertResult.model_validate_json(
+            object_store.get_bytes(document.graph_update_storage_key).content
+        )
+        assert graph_update.upserted_entity_ids == ["provider:1", "provider:2"]
+        assert graph_update.knowledge_base_id == "kb-1"
+
+        validation_report = ValidationReport.model_validate_json(
+            object_store.get_bytes(document.validation_storage_key).content
+        )
+        assert {entity.id for entity in validation_report.valid_entities} == {
+            "provider:1",
+            "provider:2",
+        }
+
+        captured = capsys.readouterr()
+        assert "demo analytics trigger: kb=kb-1" in captured.out
+        assert "entity_ids=['provider:1', 'provider:2']" in captured.out
+        assert f"correlation_id={event.correlation_id}" in captured.out
+
+    def test_no_risk_scores_exits_1_without_publishing(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        object_store = InMemoryObjectStore()
+        fake_config = self._fake_config()
+
+        def fake_load_active_config() -> DomainConfig:
+            return fake_config
+
+        def fake_build_object_store(config: DomainConfig) -> ObjectStore:
+            return object_store
+
+        def fake_select_top_risk_entity_ids(
+            client: httpx.Client, *, kb_id: str, entity_type: str, top: int
+        ) -> list[str]:
+            return []
+
+        def unexpected_create_event_bus(settings: EventBusSettings) -> EventBus:
+            raise AssertionError(
+                "create_event_bus must not be called when there are no risk scores"
+            )
+
+        monkeypatch.setattr(trigger, "load_active_config", fake_load_active_config)
+        monkeypatch.setattr(trigger, "build_object_store", fake_build_object_store)
+        monkeypatch.setattr(
+            trigger, "select_top_risk_entity_ids", fake_select_top_risk_entity_ids
+        )
+        monkeypatch.setattr(trigger, "create_event_bus", unexpected_create_event_bus)
+
+        exit_code = trigger.main(["--kb", "kb-1"])
+
+        assert exit_code == 1
+        assert object_store.list_keys("") == []
+        captured = capsys.readouterr()
+        assert "No 'provider' risk scores found for KB kb-1; nothing to trigger." in captured.err

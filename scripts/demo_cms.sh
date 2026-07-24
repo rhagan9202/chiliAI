@@ -199,6 +199,13 @@ log "Ingest complete. KB ID: $KB_ID"
 #    already present from a prior trigger.
 # ---------------------------------------------------------------------------
 if [ -n "${DEMO_ANALYTICS_TRIGGER_CMD:-}" ]; then
+  # Safety invariant for this eval: KB_ID is never operator/attacker input —
+  # it's parsed from scripts/demo_ingest_tn_subset.sh's own stdout ("Done...
+  # KB ID: <id>"), which is itself the server-generated UUID POST
+  # /knowledgebases returned (see block 4 above). DEMO_ANALYTICS_TRIGGER_CMD
+  # itself carries operator/Makefile trust — same level as any other env var
+  # this script already reads unquoted into a command (DEMO_SAMPLE_RATE,
+  # CHILI_API_URL, ...); it is not attacker-controlled input.
   TRIGGER_CMD="${DEMO_ANALYTICS_TRIGGER_CMD//__KB__/$KB_ID}"
   log "Running analytics trigger: $TRIGGER_CMD"
   if ! eval "$TRIGGER_CMD"; then
