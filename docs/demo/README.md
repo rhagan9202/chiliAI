@@ -79,14 +79,32 @@ want to pause and resume later without losing demo data.
 
 ## A note on domain-pack switching
 
-The optional Act 3 scene switches the active pack live via
-`POST /config/switch` to `department_air_force_housing` and back. The
-switch-back target must be `medicare_fraud_cms_desynpuf` specifically —
-not the bare `medicare_fraud.yaml` pack, which depends on a separate
-dev-environment overlay file for its storage connections that a live
-hot-swap does not apply. `make dev`'s default `CHILI_CONFIG_PATH` is already
-`medicare_fraud_cms_desynpuf.yaml`, so switching back returns you to exactly
-where the stack started.
+The optional Act 3 scene switches the active pack live through the real
+in-app **Pack Switcher** on the Configuration page (`Activate` →
+`Confirm switch`, backed by `POST /config/switch`) — not a raw API call —
+to `department_air_force_housing` and back. The switch-back target must be
+`medicare_fraud_cms_desynpuf` specifically — not the bare `medicare_fraud.yaml`
+pack, which depends on a separate dev-environment overlay file for its
+storage connections that a live hot-swap does not apply. `make dev`'s
+default `CHILI_CONFIG_PATH` is already `medicare_fraud_cms_desynpuf.yaml`, so
+switching back returns you to exactly where the stack started.
+
+**The Pack Switcher requires the backend `admin` RBAC role.** This is a
+separate concept from the analyst/supervisor domain-config UI role used
+elsewhere in the script (that one only affects nav/landing pages). By
+default `make dev` runs with the anonymous user at `viewer`, and there is no
+in-app way to elevate that mid-session — it must be set before the stack
+starts:
+
+```bash
+CHILI_DEV_ANONYMOUS_ROLE=admin make dev
+```
+
+(the same mechanism `make test-e2e` uses with `=analyst`). Without it, the
+Configuration page's "Pack switcher" section — and the "Pack editor" section
+below it — simply do not render, and Act 3's live switch cannot be
+demonstrated. If you're skipping Act 3, this is not needed; the rest of the
+walkthrough works at the default `viewer`/`analyst` level.
 
 ## Keeping this demo honest
 

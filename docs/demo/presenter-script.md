@@ -17,7 +17,8 @@
 - [ ] Stack is up: `make dev` (or already running), then `make demo-cms` has completed — it prints a KB id and the exact walkthrough URLs at the end. Use those URLs; do not guess at routes.
 - [ ] Browser tabs open, in this order: `/alerts`, `/investigation/<top-alert-entity>?kb=<kb-id>` (from the `demo-cms` summary), `/dashboard`, `/policy`.
 - [ ] Browser zoom bumped to ~110%.
-- [ ] Know which role you're demoing as: the **analyst** role lands on Alert Feed (its page set is `dashboard, alerts, investigation, knowledge_bases, rag_chat`); the **supervisor** role lands on Dashboard (`dashboard, alerts, investigation, knowledge_bases, configuration`). Neither role's sidebar carries a "Policy" entry for this pack — see Scene 2.4 for why that's fine.
+- [ ] Know which role you're demoing as: the **analyst** role lands on Alert Feed (its page set is `dashboard, alerts, investigation, knowledge_bases, rag_chat`); the **supervisor** role lands on Dashboard (`dashboard, alerts, investigation, knowledge_bases, configuration`). Neither role's sidebar carries a "Policy" entry for this pack — see Scene 2.4 for why that's fine. This role picker is a **domain-config UI role** (nav/landing-page only) and is unrelated to the backend RBAC role below.
+- [ ] **Only if you're running the optional Act 3 live pack switch:** start the stack with the backend anonymous user elevated to `admin` — `CHILI_DEV_ANONYMOUS_ROLE=admin make dev` (same mechanism `make test-e2e` uses with `=analyst`). Without it, the default anonymous role is `viewer`, the Configuration page's Pack Switcher section is gated on the RBAC `admin` role and will not render, and there is no in-app way to elevate role mid-session — it has to be set before the stack starts. If you're not doing the live switch, skip this and demo as `viewer`/`analyst` normally.
 
 **One-sentence positioning to internalize:**
 > "chiliAI turns a flagged pattern into a defensible case — the anomaly, the network it sits in, the plain-language reasoning behind the score, and the policy citation that grounds it — on one screen, driven entirely by a configuration file, not a rewrite."
@@ -130,15 +131,19 @@
 
 ### Scene 3.2 — Live Pack Switch (optional) | ~75 seconds
 
-**[Click: hit `POST /config/switch` with `{"pack": "department_air_force_housing"}` — via a terminal or an admin action, not a sidebar toggle]**
+**[Click: Configuration → Pack Switcher → Activate (department_air_force_housing) → Confirm switch]**
 
 **Say this:**
 
-> "I just switched the active domain pack, live, with no restart — to the Department of the Air Force housing-visibility pack. Same backend, same frontend build. Watch the sidebar: the nav is now family-housing routes, not fraud-investigation routes, because this pack doesn't enable the graph-neural-network or peer-stats capabilities and its navigation config simply doesn't route Dashboard, Alerts, or the Workbench at all. **That's not a missing feature — it's a domain pack correctly declaring what it needs.**
+> "This is the real in-app pack switcher, not a terminal call — it lists every domain pack the backend can see, and it's a deliberate two-step: I click **Activate** next to the Air Force housing pack, it asks me to confirm — 'Switch the whole workspace to "department_air_force_housing"?' — and only then does clicking **Confirm switch** actually validate and hot-swap it, live, with no restart."
+
+**[Wait for the swap-result banner]**
+
+> "And there's the result banner confirming the swap. Same backend, same frontend build. Watch the sidebar: the nav is now family-housing routes, not fraud-investigation routes, because this pack doesn't enable the graph-neural-network or peer-stats capabilities and its navigation config simply doesn't route Dashboard, Alerts, or the Workbench at all. **That's not a missing feature — it's a domain pack correctly declaring what it needs.**
 >
 > One important caveat, and I'll say it out loud rather than let you discover it: switching back has to target `medicare_fraud_cms_desynpuf` specifically, not the bare `medicare_fraud.yaml` pack — that one needs a separate dev-environment overlay file for its storage connections that a live hot-swap doesn't apply. This stack's default pack already is the desynpuf one, so I'm switching back to exactly what we started on."
 
-**[Click: switch back to `medicare_fraud_cms_desynpuf`]**
+**[Click: Configuration → Pack Switcher → Activate (medicare_fraud_cms_desynpuf) → Confirm switch]**
 
 ---
 
