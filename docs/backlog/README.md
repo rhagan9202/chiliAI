@@ -23,7 +23,7 @@
 | _plugins.md | 16 | 0 | 0 | 16 | 0% |
 | _security.md | 11 | 0 | 1 | 12 | 8% |
 | agent.md | 20 | 0 | 1 | 21 | 4% |
-| analytics.md | 29 | 0 | 5 | 35 | 14% |
+| analytics.md | 30 | 0 | 5 | 36 | 13% |
 | api.md | 27 | 0 | 1 | 29 | 3% |
 | config.md | 14 | 0 | 1 | 15 | 6% |
 | database.md | 12 | 0 | 1 | 13 | 7% |
@@ -34,14 +34,14 @@
 | ingestion.md | 23 | 0 | 12 | 35 | 34% |
 | knowledgebases.md | 13 | 0 | 0 | 13 | 0% |
 | llm.md | 17 | 0 | 0 | 17 | 0% |
-| monitoring.md | 20 | 0 | 0 | 20 | 0% |
+| monitoring.md | 20 | 0 | 1 | 21 | 4% |
 | rag.md | 17 | 0 | 0 | 17 | 0% |
 | records.md | 10 | 2 | 1 | 13 | 7% |
 | scorecards.md | 3 | 0 | 0 | 3 | 0% |
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 412 | 7 | 29 | 451 | 6% |
+| **Total** | 413 | 7 | 30 | 453 | 6% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -50,6 +50,7 @@
 - [_cicd.01] _cicd — size S — prereqs done
 - [agent.21] agent — size S — prereqs done
 - [analytics.35] analytics — size S — prereqs done
+- [analytics.36] analytics — size S — prereqs done
 - [api.26] api — size S — prereqs done
 - [ingestion.08] ingestion — size S — prereqs done
 - [shared.01] shared — size S — prereqs done
@@ -76,8 +77,7 @@
 - [database.05] database — size M — prereqs done
 - [database.07] database — size M — prereqs done
 - [embeddings.01] embeddings — size M — prereqs done
-- [embeddings.06] embeddings — size M — prereqs done
-- …37 more
+- …39 more
 <!-- END: ready-set -->
 
 ## Critical path

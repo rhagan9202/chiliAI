@@ -615,7 +615,7 @@ ui:
   roles:
     analyst:
       landing_page: alerts
-      pages: [alerts, investigation, knowledge_bases, rag_chat]
+      pages: [dashboard, alerts, investigation, knowledge_bases, rag_chat]
       permissions: [alerts:read, feedback:write]
     supervisor:
       landing_page: dashboard

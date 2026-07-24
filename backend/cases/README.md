@@ -58,7 +58,8 @@ query param:
 - **Analyst feedback** is appended through `CaseService.add_feedback` and stored
   on the durable `Case.feedback_history` record.
 - **Linked `alerts[]`** on case detail is resolved from `Case.alert_ids` through
-  the alert projection repository and filtered to the same knowledge base.
+  the durable alert feed store (`monitoring.adapters.protocols.AlertFeedStoreProtocol`,
+  serving from the `alert_history` table) and filtered to the same knowledge base.
 - Analytics `open_cases` now aggregates from the durable case repository and the
   legacy `ApiState` `_seed_cases` store has been removed (**BL-012**, ApiState de-seed).
 

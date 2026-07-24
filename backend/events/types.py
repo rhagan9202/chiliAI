@@ -384,6 +384,9 @@ class AlertCreatedReference(BaseModel):
     title: str = ""
     reasoning: str = ""
     metric_name: str = ""
+    entity_label: str = ""
+    confidence: float = 0.0
+    tags: list[str] = Field(default_factory=list)
 
 
 class AlertsCreatedEvent(EventBase):

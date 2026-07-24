@@ -1,11 +1,11 @@
 # Module: api
 
-**Verified against codebase:** 2026-06-16
+**Verified against codebase:** 2026-07-23
 **Source:** `backend/api/`
 
 ## Purpose
 
-FastAPI gateway layer. Thin HTTP orchestration — no business logic in routers. Routes delegate to service modules via dependency injection. Owns: auth middleware, RBAC enforcement, SSE/WebSocket real-time push, and API-facing projections for alerts, knowledge bases, workflows, graph entities, chat, policy items, and analytics read models.
+FastAPI gateway layer. Thin HTTP orchestration — no business logic in routers. Routes delegate to service modules via dependency injection. Owns: auth middleware, RBAC enforcement, SSE/WebSocket real-time push, and API-facing projections for knowledge bases, workflows, graph entities, chat, policy items, and analytics read models. Alerts are not an API-owned projection — `/alerts` reads the durable `alert_history` table directly (see "In-process Read Models" below).
 
 Does **not** own: any business logic, data persistence, event processing.
 
@@ -19,7 +19,6 @@ api/
   state.py                # ApiState container assembled at startup
   dependencies.py         # DI wiring for all injected services
   contracts.py            # All API-facing request/response Pydantic models
-  _alert_store.py         # In-process alert projection + repository
   _kb_projection.py       # project_knowledge_base() hydration helper
   _rag_bridges.py         # RAG <-> KB document/entity bridge helpers
   _workflow_projection.py # project_workflow_runs() helper
@@ -122,9 +121,10 @@ The API maintains lightweight read projections for read-heavy surfaces. Persiste
 
 | File | What it stores | Populated by |
 |------|---------------|-------------|
-| `_alert_store.py` | `AlertProjectionRepository` — alert list for `/alerts` | `AlertsCreatedEvent` handlers |
 | `knowledgebases/` module | `KnowledgeBaseRepository` — KB list + document records | Direct mutations in KB router; in-memory or object-store-backed via `CHILI_KB_REPOSITORY_BACKEND` |
 | `_workflow_projection.py` | Project `WorkflowRun` list for `/workflows` | `AgentServiceProtocol.list_workflows()` |
+
+The alert feed is **not** an in-process read model: `/alerts` reads the durable `alert_history` table directly through `monitoring.adapters.protocols.AlertFeedStoreProtocol` (`get_alert_feed_store()`, Postgres- or in-memory-backed depending on whether a connection provider is configured — no separate projection file). See the dispatch table below.
 
 ---
 
@@ -133,7 +133,7 @@ The API maintains lightweight read projections for read-heavy surfaces. Persiste
 | Router | Dispatches to |
 |--------|--------------|
 | `knowledgebases` | `IngestionServiceProtocol`, `GraphServiceProtocol`, `KnowledgeBaseRepository`, `ObjectStore`, `EventBus` |
-| `alerts` | `AlertProjectionRepository` |
+| `alerts` | `AlertFeedStoreProtocol` (durable `alert_history`, alerts.36) |
 | `cases` | `CaseService`, `CaseRepository` (in-memory or Postgres) |
 | `rag` | `RagServiceProtocol`, `ApiState` |
 | `records` | `RecordsServiceProtocol` |
@@ -142,7 +142,7 @@ The API maintains lightweight read projections for read-heavy surfaces. Persiste
 | `config` | `DomainConfig` (loaded once, LRU cached) |
 | `graph` | `GraphServiceProtocol` via dependency |
 | `auth` | `SessionStoreProtocol`, OIDC client, `DomainConfig.auth` |
-| `events` | `AlertProjectionRepository`, `AgentServiceProtocol`, `KnowledgeBaseRepository` |
+| `events` | `AlertFeedStoreProtocol`, `AgentServiceProtocol`, `KnowledgeBaseRepository` |
 | `policy` | `PolicyService`, `PolicyItemRepository` (in-memory or Postgres) |
 | `dev_seed` | Writes deterministic non-production fixtures into the real repositories |
 
@@ -170,7 +170,7 @@ get_object_store() -> ObjectStore
 get_knowledge_base_repository() -> KnowledgeBaseRepository
 get_records_service(...) -> RecordsServiceProtocol
 get_agent_service(...) -> AgentServiceProtocol
-get_alert_repository(request) -> AlertProjectionRepository
+get_alert_feed_store() -> AlertFeedStoreProtocol
 get_case_service(...) -> CaseService
 get_conversation_service(...) -> ConversationService
 get_policy_service(...) -> PolicyService

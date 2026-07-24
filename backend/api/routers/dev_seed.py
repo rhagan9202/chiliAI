@@ -1,9 +1,10 @@
 """Dev/e2e-only seed endpoint.
 
 Writes a deterministic, fully-formed investigation scenario (knowledge base +
-graph subgraph + alert projection + evidence pack + case) directly into the
-*real* repositories so full-stack e2e tests can assert the UI against real data
-served by the real API.
+graph subgraph + alert (written to the durable ``alert_history`` store,
+alerts.36) + evidence pack + case) directly into the *real* repositories so
+full-stack e2e tests can assert the UI against real data served by the real
+API.
 
 The alert/evidence pipeline (Flow B) is LLM-dependent and cannot deterministically
 produce alerts in a dev stack, so this endpoint inserts the alert and evidence
@@ -49,9 +50,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from analytics.explainability.repository import EvidencePackRepository
-from api._alert_store import AlertProjectionRecord, AlertProjectionRepository
 from api.dependencies import (
-    get_alert_repository,
+    get_alert_feed_store,
     get_case_repository,
     get_conversation_repository,
     get_evidence_pack_repository,
@@ -61,6 +61,8 @@ from api.dependencies import (
 )
 from api.middleware.rbac import require_role
 from config.schema import DomainConfig, PolicyRule, PolicyRulePack
+from monitoring.adapters.protocols import AlertFeedStoreProtocol
+from monitoring.models import AlertHistoryRecord
 from policy.adapters.protocols import PolicyItemRepository
 from policy.models import PolicyCitation
 from policy.service import create_policy_service
@@ -71,7 +73,6 @@ from conversations.models import Conversation, ConversationMessage
 from graph.adapters.protocols import GraphRepository
 from knowledgebases.protocols import KnowledgeBaseRepository
 from shared.types import (
-    Alert,
     Entity,
     EntityDefinition,
     EvidencePack,
@@ -426,7 +427,7 @@ async def dev_seed(
     config: DomainConfig = Depends(get_domain_config),
     kb_repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
     graph_repository: GraphRepository = Depends(get_graph_repository),
-    alert_repository: AlertProjectionRepository = Depends(get_alert_repository),
+    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
     case_repository: CaseRepository = Depends(get_case_repository),
     policy_repository: PolicyItemRepository = Depends(get_policy_repository),
@@ -582,27 +583,27 @@ async def dev_seed(
         ),
     )
 
-    # --- alert projection ---------------------------------------------------
-    alert_repository.upsert(
-        AlertProjectionRecord(
-            knowledge_base_id=kb_id,
-            alert=Alert(
-                id=alert_id,
-                entity_type=anchor_entity.type,
+    # --- alert (written directly to the durable alert_history store) -------
+    alert_store.write_alerts(
+        [
+            AlertHistoryRecord(
+                knowledge_base_id=kb_id,
+                alert_id=alert_id,
                 entity_id=anchor_entity.id,
+                entity_type=anchor_entity.type,
                 severity="critical",
+                status="open",
                 title=alert_title,
                 reasoning=alert_reasoning,
+                metric_name="dev_seed",
                 evidence_pack_id=evidence_pack_id,
                 created_at=now,
-            ),
-            entity_label=entity_label,
-            confidence=0.96,
-            tags=alert_tags,
-            related_entity_ids=list(
-                dict.fromkeys([anchor_entity.id, hub_entity.id])
-            ),
-        )
+                updated_at=now,
+                entity_label=entity_label,
+                confidence=0.96,
+                tags=alert_tags,
+            )
+        ]
     )
 
     # --- case (independent of the alert so the alert stays promotable) ----

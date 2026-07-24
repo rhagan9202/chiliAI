@@ -550,6 +550,12 @@ def test_evaluate_publishes_enriched_alert_references() -> None:
     assert ref.reasoning != ""
     assert ref.entity_type != ""
     assert ref.status == response.alerts[0].status
+    # confidence mirrors the candidate's threshold-ratio score (already 0..1);
+    # tags is a one-element kebab slug of metric_name; entity_label has no
+    # cheap source in the monitoring stream so it stays at its "" default.
+    assert ref.confidence == 0.92
+    assert ref.tags == ["claim-volume"]
+    assert ref.entity_label == ""
 
 
 def test_create_monitoring_service_stores_default_thresholds() -> None:

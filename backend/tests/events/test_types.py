@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -127,3 +128,47 @@ def test_alert_created_reference_new_fields_default() -> None:
     assert reference.title == ""
     assert reference.reasoning == ""
     assert reference.metric_name == ""
+    assert reference.entity_label == ""
+    assert reference.confidence == 0.0
+    assert reference.tags == []
+
+
+def test_alert_created_reference_read_model_fields_round_trip() -> None:
+    from events.types import AlertCreatedReference
+
+    reference = AlertCreatedReference(
+        knowledge_base_id="kb-1",
+        alert_id="a-1",
+        entity_id="claim:c1",
+        severity="high",
+        entity_label="Claim C1",
+        confidence=0.82,
+        tags=["upcoding", "velocity"],
+    )
+    assert reference.entity_label == "Claim C1"
+    assert reference.confidence == 0.82
+    assert reference.tags == ["upcoding", "velocity"]
+
+
+def test_alert_created_reference_decodes_legacy_payload_without_read_model_fields() -> None:
+    """A legacy serialized event predating entity_label/confidence/tags must still decode."""
+    from events.types import AlertCreatedReference
+
+    legacy_payload = json.dumps(
+        {
+            "knowledge_base_id": "kb-1",
+            "alert_id": "a-1",
+            "entity_id": "claim:c1",
+            "severity": "high",
+            "evidence_pack_id": None,
+            "entity_type": "claim",
+            "status": "open",
+            "title": "High risk: claim:c1",
+            "reasoning": "score exceeded threshold",
+            "metric_name": "claim_anomaly",
+        }
+    )
+    reference = AlertCreatedReference.model_validate_json(legacy_payload)
+    assert reference.entity_label == ""
+    assert reference.confidence == 0.0
+    assert reference.tags == []

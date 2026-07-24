@@ -27,7 +27,6 @@ _STORE_FIELDS = [
     "scorecard_run_repository",
     "document_status_store",
     "object_store",
-    "alert_projection_store",
     "gnn_cluster_store",
     "timeseries_anomaly_store",
 ]
@@ -41,7 +40,6 @@ _EXPECTED_STEP_NAMES = [
     "risk_history",
     "observations",
     "alert_history",
-    "alert_projection",
     "gnn_clusters",
     "metrics",
     "conversations",
@@ -89,24 +87,6 @@ def test_kb_deletion_steps_purges_every_durable_store() -> None:
         "timeseries_anomaly_store",
     ):
         mocks[field].delete_by_kb.assert_called_once_with("kb-1")
-    mocks["alert_projection_store"].remove_by_knowledge_base.assert_called_once_with(
-        "kb-1"
-    )
-
-
-def test_kb_deletion_steps_omit_alert_projection_when_store_absent() -> None:
-    """The worker's retry bundle carries no API-owned alert projection store —
-    the cascade must skip the step rather than report a phantom success."""
-    mocks = {field: MagicMock() for field in _STORE_FIELDS}
-    mocks["object_store"].list_keys.return_value = []
-    mocks["alert_projection_store"] = None
-    stores = cast(KbDeletionStores, SimpleNamespace(**mocks))
-
-    steps = kb_deletion_steps(stores, "kb-1")
-
-    assert [name for name, _ in steps] == [
-        name for name in _EXPECTED_STEP_NAMES if name != "alert_projection"
-    ]
 
 
 def test_kb_delete_purges_timeseries_anomalies() -> None:

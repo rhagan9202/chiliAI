@@ -331,3 +331,26 @@ def test_housing_pack_enables_llm_narrative_and_shap_attribution() -> None:
     assert config.analytics is not None
     assert config.analytics.narrative_backend == "llm"
     assert config.analytics.attribution_backend == "shap"
+
+
+# ---------------------------------------------------------------------------
+# Analyst role dashboard access (alerts.36) — the CMS/food/legacy medicare
+# packs all route a `dashboard` nav page; the analyst role must be able to
+# reach it now that the alert feed's durable read model makes dashboard
+# metrics meaningful for analysts, not just supervisors. Housing has no
+# `dashboard` nav page and is intentionally excluded — roles are allowed to
+# differ across packs by design, this only pins the three edited packs.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "pack_name",
+    ["medicare_fraud", "medicare_fraud_cms_desynpuf", "food_supply_chain"],
+)
+def test_analyst_role_includes_dashboard(pack_name: str) -> None:
+    config = _load_default(pack_name)
+    assert config.ui is not None and config.ui.roles is not None
+    analyst = config.ui.roles["analyst"]
+    assert "dashboard" in analyst.pages, (
+        f"{pack_name}: analyst role must include 'dashboard' in pages"
+    )

@@ -36,8 +36,13 @@ dead-letter records, BL-023 — see `backend/events/README.md` and
 `docs/runbooks/event-replay.md`). Migration 0011 adds `timeseries_anomalies`
 (persisted self-history anomaly points, PK `(knowledge_base_id, entity_id,
 metric_name, observed_at)`, BL-047 — see
-`backend/analytics/README.md` § Timeseries series-source contract). Head is
-`0011` — 15 tables total.
+`backend/analytics/README.md` § Timeseries series-source contract). Migration
+0012 adds `alert_history` read-model columns `entity_label text NOT NULL
+DEFAULT ''`, `confidence double precision NOT NULL DEFAULT 0`, and `tags
+jsonb NOT NULL DEFAULT '[]'::jsonb` (alerts.36 — `GET /alerts` has been
+served from `alert_history` since this branch, replacing the retired
+projection blob `api/_alert_store.py`, not seeded `ApiState`). Head is
+`0012` — 15 tables total (column-only addition, no new table).
 
 ## Commands
 
@@ -83,9 +88,10 @@ it); renumbering revision files does not invalidate it.
 
 **Status:** the script, Makefile targets, CI job, and committed
 `snapshots/head.sql` are all live as of migration `0009` (BL-042, Sprint
-2026-26) and re-verified through `0011` (BL-047, Sprint 2026-28 B2) — every
-migration added since has run `make migrate-snapshot` and committed the
-refreshed snapshot in the same commit as the migration, and `make
+2026-26) and re-verified through `0012` (alerts.36) — every migration added
+since has run `make migrate-snapshot` and committed the refreshed snapshot
+(for `0012` in a follow-up commit, since the sandbox that authored the
+migration had no Docker access for the scratch-database replay), and `make
 migrate-check` reports clean replay against the live schema.
 
 ## Configuration

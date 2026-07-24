@@ -1,11 +1,13 @@
 # Module: monitoring
 
-**Verified against codebase:** 2026-05-28
+**Verified against codebase:** 2026-07-23
 **Source:** `backend/monitoring/`
 
 ## Purpose
 
 Active monitoring service. Loads entity metric observations, resolves medium/high thresholds from request overrides or `MonitoringConfig` defaults, generates `Alert` instances with suppression, deduplication, rate limiting, grouping, and alert-history persistence.
+
+Since **alerts.36** (durable alert read model), `alert_history` is not just an analytics-facing audit log — it is the sole backing store for `GET /alerts` and every other alert-reading surface (SSE `active_alerts`, `/analytics/overview`, `GET /graph/entities/{id}` related-alerts, and the KB-delete cascade). The API consumes it through `AlertFeedStoreProtocol` (below), injected via `api.dependencies.get_alert_feed_store()`. See `docs/wiki/modules/api.md`'s Route → Service Dispatch table.
 
 ---
 
@@ -84,7 +86,7 @@ class AlertGroup(BaseModel):
     correlation_reason: str
 
 class AlertHistoryRecord(BaseModel):
-    """A row destined for the analytics-facing alert_history log."""
+    """A row in the alert_history table — the sole backing store for /alerts (alerts.36)."""
     knowledge_base_id: str
     alert_id: str
     entity_id: str
@@ -97,6 +99,9 @@ class AlertHistoryRecord(BaseModel):
     evidence_pack_id: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+    entity_label: str = ""    # alerts.36 (migration 0012) — falls back to "" or entity_id upstream
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)   # alerts.36
+    tags: list[str] = Field(default_factory=list)            # alerts.36
 ```
 
 `AlertGroup` is referenced by `MonitoringEvaluationResponse.alert_groups`. `MonitoringObservation` and `MonitoringBatch` are the input shapes consumed by `MonitoringServiceProtocol.evaluate()`.
@@ -161,10 +166,29 @@ class AlertActionResponse(BaseModel):
 
 | Backend | File |
 |---------|------|
-| In-memory | `adapters/in_memory.py` |
+| In-memory | `adapters/in_memory.py::InMemoryAlertHistoryWriter` |
 | Postgres | `adapters/postgres.py::PostgresAlertHistoryStore` + observation adapters |
 
-Inner protocol: `adapters/protocols.py`.
+Both adapters implement `adapters/protocols.py::AlertFeedStoreProtocol` (superset of `AlertHistoryWriter`, alerts.36):
+
+```python
+class AlertHistoryWriter(Protocol):
+    def write_alerts(self, records: list[AlertHistoryRecord]) -> int: ...
+    def count_open_alerts(self, *, knowledge_base_id: str, entity_id: str) -> int: ...
+    def delete_by_kb(self, knowledge_base_id: str) -> int: ...
+
+class AlertFeedStoreProtocol(Protocol):   # supersets AlertHistoryWriter
+    def write_alerts(self, records: list[AlertHistoryRecord]) -> int: ...
+    def list_alerts(
+        self, *, statuses: list[str] | None = None, limit: int, offset: int,
+    ) -> tuple[list[AlertHistoryRecord], int]: ...
+    def get_alert(self, alert_id: str) -> AlertHistoryRecord | None: ...
+    def acknowledge(self, alert_id: str) -> AlertHistoryRecord | None: ...
+    def count_by_statuses(self, statuses: set[str]) -> int: ...
+    def delete_by_kb(self, knowledge_base_id: str) -> int: ...
+```
+
+`AlertHistoryWriter` remains importable on its own for the worker's write-only construction sites (`agent/coordinator.py`); `api.dependencies.get_alert_feed_store()` injects the same concrete adapter as an `AlertFeedStoreProtocol` for the API's read/mutate routes (Postgres when a connection provider resolves, in-memory otherwise — no dedicated env var, see `docs/wiki/contracts/domain-config.md`).
 
 ---
 
@@ -174,6 +198,7 @@ Inner protocol: `adapters/protocols.py`.
 - `events/` — consumes `RiskScoredEvent`, publishes `AlertsCreatedEvent`
 - `database/` — Postgres alert history store
 - `config/schema.py` — `MonitoringConfig`, `AlertsConfig`
+- `api/` — consumes `AlertFeedStoreProtocol` via DI (alerts.36); no cross-module business logic, DI-only per the cross-module interaction rule
 
 ---
 

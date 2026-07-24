@@ -8,8 +8,8 @@ import pytest
 
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
 from analytics.risk.service import create_risk_service
-from api._alert_store import InMemoryAlertProjectionRepository
 from api._graph_entity_payload import build_graph_entity_detail
+from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter
 from config.loader import load_config
 from config.schema import DomainConfig
 from events.adapters.in_memory import InMemoryEventBus
@@ -70,7 +70,7 @@ def test_graph_entity_detail_uses_domain_config_for_labels(
         "provider-204",
         graph_service=graph_service,
         risk_service=risk_service,
-        alert_repository=InMemoryAlertProjectionRepository(),
+        alert_store=InMemoryAlertHistoryWriter(),
         kb_repository=kb_repository,
         domain_config=config,
     )

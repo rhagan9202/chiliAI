@@ -335,7 +335,7 @@ class WorkflowRunListResponse(BaseModel):
 | `GET` | `/analytics/risk-scores/{entity_id}` | `?kb_id=` | `RiskScoreResponse` | viewer |
 | `GET` | `/analytics/timeseries/{entity_id}` | `?kb_id=` | `EntityTimeseriesResponse` | viewer |
 
-**Wiring status:** `/analytics/risk-scores`, `/analytics/timeseries`, and `/analytics/gnn/clusters` are served by analytics services from `api/dependencies.py`: the risk and timeseries list routes DI-switch to Postgres-backed sources when a DB is configured (in-memory otherwise), and the GNN clusters route reads a repository-backed snapshot source with object-store cluster summaries (B1). `/analytics/overview` is computed from durable alert, case, and KB stores. `/analytics/timeseries/{entity_id}` is persistence-backed (record-aggregate series + persisted anomalies via DI, B2). `/analytics/risk-scores/{entity_id}` (B2, fix 42ef186) is also DI-backed — it assesses via the same `get_risk_service()` used by the list route — and no longer reads `ApiState`; it returns an `availability_status: "unavailable"` payload when the risk service raises a configuration or insufficient-signal error, or empty results when no generated analytics exists for the entity.
+**Wiring status:** `/analytics/risk-scores`, `/analytics/timeseries`, and `/analytics/gnn/clusters` are served by analytics services from `api/dependencies.py`: the risk and timeseries list routes DI-switch to Postgres-backed sources when a DB is configured (in-memory otherwise), and the GNN clusters route reads a repository-backed snapshot source with object-store cluster summaries (B1). `/analytics/overview` is computed from the durable `alert_history`-backed `AlertFeedStoreProtocol` plus the case and KB repositories (alerts.36). `/analytics/timeseries/{entity_id}` is persistence-backed (record-aggregate series + persisted anomalies via DI, B2). `/analytics/risk-scores/{entity_id}` (B2, fix 42ef186) is also DI-backed — it assesses via the same `get_risk_service()` used by the list route — and no longer reads `ApiState`; it returns an `availability_status: "unavailable"` payload when the risk service raises a configuration or insufficient-signal error, or empty results when no generated analytics exists for the entity.
 
 ### Static payload shapes (api/contracts.py)
 
@@ -381,7 +381,7 @@ class EntityTimeseriesResponse(BaseModel):
 **Note:** `RiskFactorResponse` (from `api/contracts.py`) exposes only `factor_name`, `contribution`, `rationale` — a subset of the internal `RiskFactor` model (`analytics/risk/models.py`) which additionally carries `raw_value` and `weight`. These fields are dropped at the API boundary.
 
 **Dependency chain for dashboard/entity-scoped routes:**
-- `GET /analytics/overview` -> `get_analytics_overview_payload(alert_repository, case_service, kb_repository)` -> durable store aggregation.
+- `GET /analytics/overview` -> `build_analytics_overview(alert_store: AlertFeedStoreProtocol, case_service, kb_repository)` (`api/_analytics_overview.py`) -> durable store aggregation over the same `alert_history`-backed `AlertFeedStoreProtocol` the alert feed itself reads (alerts.36).
 - `GET /analytics/risk-scores/{entity_id}?kb_id=...` -> `get_risk_score_payload(entity_id, kb_id, risk_service)` (`risk_service: RiskServiceProtocol = Depends(get_risk_service)`) -> `risk_service.assess(RiskAssessmentRequest(knowledge_base_id=kb_id, entity_id=entity_id))` -> returns `RiskScoreResponse` (B2, fix 42ef186; no longer reads `ApiState`). `RiskConfigurationError` / `RiskInsufficientSignalsError` / `ValueError` map to `availability_status="unavailable"`; other exceptions propagate. `_normalize_risk_level` (promotes `overall_score >= 0.9` to `"critical"`) lives in `api/dependencies.py` next to `get_risk_score_payload`, defined after `get_risk_service` per FastAPI `Depends` default resolution order.
 - `GET /analytics/timeseries/{entity_id}?kb_id=...` -> `get_timeseries_payload(entity_id, kb_id, source, anomaly_store)` -> iterates `source.metric_names()` (`get_entity_series_source()`, a `RecordAggregateTimeSeriesSource` over `get_record_column_source()` and `DomainConfig.timeseries.metrics`), calling `source.load_series(...)` per spec until one has data, then joins persisted anomalies from `get_timeseries_anomaly_store()` -> returns `EntityTimeseriesResponse` (B2, analytics.07; no longer reads `ApiState`).
 
@@ -458,7 +458,7 @@ Registered only when `CHILI_ENV != "production"`.
 |--------|------|----------|------|
 | `POST` | `/admin/dev-seed` | `DevSeedResponse` | analyst |
 
-The endpoint writes a deterministic KB, graph subgraph, alert projection, evidence pack, case, policy item, and conversation into the real repositories for local/e2e testing.
+The endpoint writes a deterministic KB, graph subgraph, alert (directly into the durable `alert_history` store via `AlertFeedStoreProtocol`, alerts.36), evidence pack, case, policy item, and conversation into the real repositories for local/e2e testing.
 
 ---
 

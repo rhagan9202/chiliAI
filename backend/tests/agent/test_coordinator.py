@@ -3955,6 +3955,13 @@ def test_handle_event_dispatches_analytics_pipeline_for_graph_updated() -> None:
     # entity_type is propagated from the focal graph entity (not left blank) so
     # alert_history records a real type for analytics-pipeline alerts.
     assert alert_events[0].alerts[0].entity_type == "claim"
+    # confidence mirrors the risk assessment's overall_score (0.7*0.5 + 0.6*0.5
+    # normalized by total weight 1.0 == 0.65); tags are the top factor names as
+    # kebab slugs; entity_label falls back to entity_id (no cheap display value
+    # is in scope without a second graph read — see coordinator.py).
+    assert alert_events[0].alerts[0].confidence == pytest.approx(0.65)
+    assert alert_events[0].alerts[0].tags == ["anomaly", "velocity"]
+    assert alert_events[0].alerts[0].entity_label == "provider-1"
     # Risk + GNN properties were written back to the graph (E7-S11 self-loop).
     updated = graph_repository.get_entity(["kb-1"], "provider-1")
     assert updated is not None
@@ -5156,10 +5163,7 @@ def test_dispatch_runs_kb_cleanup_when_wired_and_guards_when_not() -> None:
     ]
     mocks = {field: MagicMock() for field in store_fields}
     mocks["object_store"].list_keys.return_value = []
-    # Worker bundle: no API-owned alert projection store (cascade skips it).
-    bundle = cast(
-        KbDeletionStores, SimpleNamespace(**mocks, alert_projection_store=None)
-    )
+    bundle = cast(KbDeletionStores, SimpleNamespace(**mocks))
     kb_repository = MagicMock()
 
     def _dispatch(stores: KbDeletionStores | None) -> int:

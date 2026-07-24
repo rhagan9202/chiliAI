@@ -16,10 +16,9 @@ from analytics.timeseries.adapters.in_memory import InMemoryTimeseriesAnomalySto
 from analytics.timeseries.adapters.protocols import TimeseriesAnomalyStoreProtocol
 from analytics.timeseries.adapters.record_aggregates import RecordAggregateTimeSeriesSource
 from analytics.timeseries.models import TimeseriesAnomalyRecord
-from api._alert_store import AlertProjectionRecord, InMemoryAlertProjectionRepository
 from api.app import create_app
 from api.dependencies import (
-    get_alert_repository,
+    get_alert_feed_store,
     get_entity_series_source,
     get_graph_service,
     get_knowledge_base_repository,
@@ -33,39 +32,45 @@ from graph.service import create_graph_service
 from graph.protocols import GraphServiceProtocol
 from knowledgebases.adapters.in_memory import InMemoryKnowledgeBaseRepository
 from knowledgebases.protocols import KnowledgeBaseRepository
-from shared.types import Alert, Entity, KnowledgeBase
+from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter
+from monitoring.models import AlertHistoryRecord
+from shared.types import Entity, KnowledgeBase
 from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore
 
 
-def _client_with_alert_projection() -> TestClient:
-    """Create a test client with deterministic alert projection records."""
+def _client_with_alert_history() -> TestClient:
+    """Create a test client with a deterministic durable alert row."""
     app = create_app()
-    repository = InMemoryAlertProjectionRepository()
-    repository.upsert(
-        AlertProjectionRecord(
-            knowledge_base_id="kb-1",
-            alert=Alert(
-                id="alert-001",
-                entity_type="provider",
+    store = InMemoryAlertHistoryWriter()
+    now = utc_now()
+    store.write_alerts(
+        [
+            AlertHistoryRecord(
+                knowledge_base_id="kb-1",
+                alert_id="alert-001",
                 entity_id="provider-204",
+                entity_type="provider",
                 severity="critical",
+                status="open",
                 title="Outlier billing concentration",
                 reasoning="Provider activity is materially above peers.",
+                metric_name="claims_per_week",
                 evidence_pack_id="evidence-001",
-                created_at=utc_now(),
-            ),
-            entity_label="Redwood DME Group",
-            confidence=0.96,
-            tags=["billing"],
-        )
+                created_at=now,
+                updated_at=now,
+                entity_label="Redwood DME Group",
+                confidence=0.96,
+                tags=["billing"],
+            )
+        ]
     )
-    app.dependency_overrides[get_alert_repository] = lambda: repository
+    app.dependency_overrides[get_alert_feed_store] = lambda: store
     return TestClient(app)
 
 
 def test_alert_acknowledgement_changes_status() -> None:
-    client = _client_with_alert_projection()
+    client = _client_with_alert_history()
 
     alerts = client.get("/alerts").json()["items"]
     alert_id = alerts[0]["id"]
@@ -78,7 +83,7 @@ def test_alert_acknowledgement_changes_status() -> None:
 
 
 def test_create_and_update_case_and_append_feedback() -> None:
-    client = _client_with_alert_projection()
+    client = _client_with_alert_history()
 
     alert_id = client.get("/alerts").json()["items"][0]["id"]
     kb = {"knowledge_base_id": "kb-1"}
@@ -129,7 +134,7 @@ def test_create_and_update_case_and_append_feedback() -> None:
 
 
 def test_promote_alert_to_case_captures_origin_and_evidence() -> None:
-    client = _client_with_alert_projection()
+    client = _client_with_alert_history()
 
     promoted = client.post(
         "/cases/promote",
@@ -161,7 +166,7 @@ def test_promote_alert_to_case_captures_origin_and_evidence() -> None:
 
 
 def test_promote_unknown_alert_returns_404() -> None:
-    client = _client_with_alert_projection()
+    client = _client_with_alert_history()
 
     response = client.post(
         "/cases/promote",
@@ -173,7 +178,7 @@ def test_promote_unknown_alert_returns_404() -> None:
 
 
 def test_promote_alert_from_different_knowledge_base_returns_404_without_case() -> None:
-    client = _client_with_alert_projection()
+    client = _client_with_alert_history()
 
     response = client.post(
         "/cases/promote",
@@ -317,26 +322,30 @@ def _seeded_entity_series_source(
 
 def test_graph_and_analytics_routes_are_service_backed() -> None:
     app = create_app()
-    repository = InMemoryAlertProjectionRepository()
-    repository.upsert(
-        AlertProjectionRecord(
-            knowledge_base_id="kb-1",
-            alert=Alert(
-                id="alert-001",
-                entity_type="provider",
+    store = InMemoryAlertHistoryWriter()
+    now = utc_now()
+    store.write_alerts(
+        [
+            AlertHistoryRecord(
+                knowledge_base_id="kb-1",
+                alert_id="alert-001",
                 entity_id="provider-204",
+                entity_type="provider",
                 severity="critical",
+                status="open",
                 title="Outlier billing concentration",
                 reasoning="Provider activity is materially above peers.",
+                metric_name="claims_per_week",
                 evidence_pack_id="evidence-001",
-                created_at=utc_now(),
-            ),
-            entity_label="Redwood DME Group",
-            confidence=0.96,
-            tags=["billing"],
-        )
+                created_at=now,
+                updated_at=now,
+                entity_label="Redwood DME Group",
+                confidence=0.96,
+                tags=["billing"],
+            )
+        ]
     )
-    app.dependency_overrides[get_alert_repository] = lambda: repository
+    app.dependency_overrides[get_alert_feed_store] = lambda: store
     graph_service = _seeded_graph_service("provider-204")
     kb_repository = _seeded_kb_repository()
     entity_series_source, anomaly_store = _seeded_entity_series_source("provider-204")
