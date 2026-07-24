@@ -194,12 +194,13 @@ cd backend
 ## Worked example (shipped in `medicare_fraud_cms_desynpuf.yaml`)
 
 The config the dev stack loads ships four demo-tuned packs so that a plain `make dev` + ingest of the
-TN DE-SynPUF subset produces live items. All three target-kinds are demonstrated (`entity` via
-claim/provider properties, `metric` via KB size), and the thresholds are deliberately low for the
-demo (raise them for real screening). The first two packs are shown in full below; two more
-provider-targeted packs (`outlier_billing_concentration`, `referral_ring_exposure`) follow the same
-shape and cover the demo's UPCODING and referral-ring patterns — see the YAML file for their full
-definitions.
+TN DE-SynPUF subset produces live items. Both of the target-kinds these packs use are demonstrated
+(`entity` via claim/provider properties, `metric` via KB size) — the schema also defines an `alert`
+target kind, but it is not evaluated in v1 (see `policy/evaluation.py`) and no shipped pack uses it.
+The thresholds are deliberately low for the demo (raise them for real screening). The first two packs
+are shown in full below; two more provider-targeted packs (`outlier_billing_concentration`,
+`referral_ring_exposure`) follow the same shape and cover the demo's UPCODING and referral-ring
+patterns — see the YAML file for their full definitions.
 
 ```yaml
 policy_rules:
