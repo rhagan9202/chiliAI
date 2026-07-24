@@ -2916,8 +2916,11 @@ def assess_entities(
     knowledge_base_id: str,
     entity_ids: list[str],
     correlation_id: str,
-) -> int:
+) -> list[RiskAssessmentResponse]:
     """Assess each entity once; tolerate entities with insufficient signals.
+
+    Returns the successful assessments (analytics.34 ranks the batch's
+    top-N by ``overall_score`` for the records→analytics fan-out).
 
     Each successful assess publishes one RiskScoredEvent (existing Flow 3),
     persisted to risk_score_history under a deterministic request id derived from
@@ -2931,10 +2934,10 @@ def assess_entities(
     swallowed at INFO.
     """
 
-    assessed = 0
+    assessed: list[RiskAssessmentResponse] = []
     for entity_id in entity_ids:
         try:
-            risk_service.assess(
+            response = risk_service.assess(
                 RiskAssessmentRequest(
                     knowledge_base_id=knowledge_base_id,
                     entity_id=entity_id,
@@ -2945,7 +2948,7 @@ def assess_entities(
                     ),
                 )
             )
-            assessed += 1
+            assessed.append(response)
         except (RiskInsufficientSignalsError, RiskConfigurationError) as exc:
             logger.info("Skipping risk assess for entity=%s: %s", entity_id, exc)
     return assessed
@@ -3127,9 +3130,10 @@ def handle_records_ingested(
                 event.knowledge_base_id,
                 event.correlation_id,
             )
+    scored: list[RiskAssessmentResponse] = []
     if risk_service is not None and affected:
         try:
-            assess_entities(
+            scored = assess_entities(
                 risk_service=risk_service,
                 knowledge_base_id=event.knowledge_base_id,
                 entity_ids=sorted(affected),
@@ -3141,6 +3145,7 @@ def handle_records_ingested(
                 event.knowledge_base_id,
                 event.correlation_id,
             )
+    _ = scored  # consumed by the analytics fan-out (analytics.34, Task 4)
     return len(records)
 
 
