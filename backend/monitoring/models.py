@@ -90,7 +90,7 @@ class AlertGroup(BaseModel):
 
 
 class AlertHistoryRecord(BaseModel):
-    """A row destined for the analytics-facing ``alert_history`` log."""
+    """A row in ``alert_history`` — the sole backing store for ``/alerts`` (alerts.36)."""
 
     knowledge_base_id: str
     alert_id: str

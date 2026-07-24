@@ -105,7 +105,7 @@
 ### Current State
 - Severity is computed as a flat `"high"`/`"medium"` from observation score against medium/high thresholds (`backend/monitoring/service.py:385-401`).
 - `shared.types.Alert.severity` is a bare `str` with a TODO to become a `SeverityLevel` enum (`backend/shared/types.py:117-119`).
-- `AlertProjectionRecord.confidence` exists (`backend/api/_alert_store.py:49`) but `MonitoringService` never emits a confidence value, so the projection always stores `0.0`.
+- **Updated 2026-07-23 (alerts.36 fix-round — this bullet was stale):** `alert_history.confidence` is a real, populated column now (migration `0012`; there is no more `AlertProjectionRecord`/`api/_alert_store.py`, deleted). `MonitoringService.evaluate` sets `AlertCreatedReference.confidence=candidate.score` (`backend/monitoring/service.py:229`) — the same threshold-ratio score `severity` was already derived from, not an independent signal. The gap this story still closes: `confidence` is a duplicate of `score`/`severity` rather than a distinct model-confidence measure, there is no composite `priority` field, and nothing sorts by anything beyond severity.
 - No asset-criticality concept exists on entities or in alert payloads; the alert table cannot sort by anything beyond severity.
 
 ### Acceptance Criteria
@@ -126,7 +126,7 @@
 - `backend/monitoring/models.py` (modify — AlertCandidate fields)
 - `backend/monitoring/service.py` (modify — `_to_alert_candidate`, sort)
 - `backend/monitoring/service_models.py` (modify — list request sort option)
-- `backend/api/_alert_store.py` (modify — surface priority/confidence in projection list)
+- `backend/monitoring/adapters/protocols.py`, `in_memory.py`, `postgres.py` (modify — surface `priority` sort on `AlertFeedStoreProtocol.list_alerts`; `api/_alert_store.py` no longer exists, alerts.36)
 - `backend/tests/monitoring/test_prioritization.py` (new)
 - `backend/monitoring/AGENT.md` (new or modify)
 
@@ -148,15 +148,15 @@
 - Lifecycle state machine supports `open → acknowledged → investigating → resolved/dismissed` plus a "reopen" edge (`backend/monitoring/service.py:49-55`).
 - `AlertsService` exposes only `acknowledge_alert` / `resolve_alert` (`backend/monitoring/service.py:327-366`).
 - API exposes only `POST /alerts/{id}/acknowledge` (`backend/api/routers/alerts.py:53-73`) — no resolve, dismiss, escalate, or reopen endpoints.
-- The projection's `acknowledge` does not route through the lifecycle state machine, allowing inconsistent transitions.
+- **Updated 2026-07-23 (alerts.36 fix-round):** `AlertFeedStoreProtocol.acknowledge` (`backend/monitoring/adapters/{in_memory,postgres}.py`) is a direct status write against `alert_history` — `status = "acknowledged"` — not routed through the lifecycle state machine (`ALERT_TRANSITIONS`), allowing inconsistent transitions. There is no `AlertProjectionRepository`/`api/_alert_store.py` anymore (deleted, alerts.36); the gap is the same one this story already described, just against the durable store instead of the retired projection.
 - No `disposition`, no `escalation_target`, and no audit trail beyond the per-row `updated_at`.
 
 ### Acceptance Criteria
-- [ ] New endpoints `POST /alerts/{id}/{resolve,dismiss,escalate,reopen}` route through `AlertsService` and the projection in lockstep.
+- [ ] New endpoints `POST /alerts/{id}/{resolve,dismiss,escalate,reopen}` route through `AlertsService` and `AlertFeedStoreProtocol` in lockstep.
 - [ ] `Alert` gains `disposition: Literal["true_positive", "false_positive", "benign", "unknown"]` (default `"unknown"`) and `escalation_target: str | None`.
 - [ ] `AlertsService` methods `dismiss_alert`, `escalate_alert`, `reopen_alert` implemented and enforce `ALERT_TRANSITIONS`; transitions emit a new `AlertLifecycleEvent` published to the event bus.
 - [ ] New `alert_activity_log` table (and `AlertActivityWriter`) records every transition with `(alert_id, actor, from_status, to_status, disposition, reason, occurred_at)` for audit.
-- [ ] `acknowledge_alert_projection` routes through the state machine instead of direct field updates.
+- [ ] `AlertFeedStoreProtocol.acknowledge` routes through the state machine instead of a direct status write.
 - [ ] OpenAPI schema regenerated; frontend contract types in `chili_app/src/api/contracts.ts` updated.
 - [ ] Integration tests cover every transition path including illegal transitions returning HTTP 409.
 
@@ -171,7 +171,7 @@
 - `backend/monitoring/models.py` (modify — activity record)
 - `backend/monitoring/adapters/postgres.py` (modify — AlertActivityWriter)
 - `backend/api/routers/alerts.py` (modify — new endpoints)
-- `backend/api/_alert_store.py` (modify — route through state machine)
+- `backend/monitoring/adapters/in_memory.py`, `postgres.py` (modify — route `acknowledge` through the state machine)
 - `backend/events/types.py` (modify — `AlertLifecycleEvent`)
 - `backend/database/migrations/*.py` (new — `alert_activity_log`)
 - `chili_app/src/api/contracts.ts` (modify)
@@ -360,7 +360,7 @@ Alert data exists, but notification routing and delivery channels are not centra
   - `chili_monitoring_eval_duration_seconds{kb_id}` (Histogram)
   - `chili_monitoring_mtta_seconds`, `chili_monitoring_mttr_seconds` (Histograms)
   - `chili_monitoring_false_positive_ratio` (Gauge, computed from `alert_activity_log`)
-- [ ] `active_alerts_total` actually updated on every projection upsert and every lifecycle transition.
+- [ ] `active_alerts_total` actually updated on every `alert_history` write (`write_alerts`) and every lifecycle transition.
 - [ ] Metrics emitted from `MonitoringService.evaluate` (counts + duration) and `AlertsService` lifecycle methods (MTTA/MTTR observations).
 - [ ] FP ratio computed by a periodic worker job (every 5 min) over the last 30 days; cardinality bounded per `_observability.03` guidance.
 - [ ] `/metrics` exporter regression test verifies the new metric names exist.
@@ -373,7 +373,7 @@ Alert data exists, but notification routing and delivery channels are not centra
 ### Code touch points
 - `backend/monitoring/metrics.py` (modify)
 - `backend/monitoring/service.py` (modify — emit counts + duration)
-- `backend/api/_alert_store.py` (modify — emit active gauge on upsert/acknowledge)
+- `backend/monitoring/adapters/in_memory.py`, `postgres.py` (modify — emit active gauge on `write_alerts`/`acknowledge`; `api/_alert_store.py` no longer exists, alerts.36)
 - `backend/monitoring/jobs.py` (new — FP ratio scheduler)
 - `backend/tests/monitoring/test_metrics.py` (new)
 
