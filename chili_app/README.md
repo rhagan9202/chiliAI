@@ -252,6 +252,7 @@ not on mutable status, so they are order-independent.
 | `ingestion-studio-domain-scoping.spec.ts` | Domain-adaptive Ingestion Studio scoping: default KB list shows only active-domain (+ legacy unstamped) KBs, show-all-domains toggle reveals the cross-domain list and scopes back down; expected sets computed from the real `/config/domain` + `/knowledgebases` |
 | `config-manager.spec.ts` | Pack switcher + YAML editor: dry-run validation errors, apply, and pack hot-swap round-trip (requires an admin session — skips loudly otherwise) |
 | `kb-domain-mismatch.spec.ts` | Real pack switch via `/config/switch` → the other-domain KB drops out of the studio's default scoped list, and the show-all-domains toggle reveals it with the warn-only mismatch badge (requires an admin session) |
+| `demo-walkthrough.spec.ts` | BL-051 demo-walkthrough mechanical validation, stack-adaptive: reference mode (dev-seed) walks alert row (`triage-numeral` + `.flag-label`) → "View evidence" narrative band → workbench dossier tabs → `/policy`; live mode (a "TN Demo" / `medicare_fraud` / `ready` KB, discovered via `/knowledgebases` or `E2E_DEMO_KB`) additionally asserts a factor-tagged alert, the workbench NETWORK tab's `cluster-membership-panel`, the EVIDENCE tab's `attribution-bars`, and a non-empty `/policy` queue — each live assertion `test.skip()`s with a clear reason when no TN KB exists |
 
 The two config specs are admin-gated: the pack-management routes require the
 admin role, so bring the stack up with `CHILI_DEV_ANONYMOUS_ROLE=admin`
