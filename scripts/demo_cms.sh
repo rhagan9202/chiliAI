@@ -35,7 +35,7 @@ log() {
 log "Checking API health at $API/health ..."
 stack_ready=0
 for _ in $(seq 1 10); do
-  if curl -fsS -o /dev/null "$API/health"; then
+  if curl -fsS --max-time 5 -o /dev/null "$API/health"; then
     stack_ready=1
     break
   fi
@@ -64,18 +64,31 @@ log "API healthy."
 #    which pack file is actually loaded, so this script never reads it.
 #    (Verified against backend/api/routers/config.py: list_packs/_summarize_pack.)
 # ---------------------------------------------------------------------------
-log "Checking active domain pack..."
-PACKS_JSON=$(curl -fsS "$API/config/packs")
-DESYNPUF_ACTIVE=$(printf '%s' "$PACKS_JSON" | python3 -c "
+# _pack_active <packs-json> -> prints 1/0/missing for $PACK_NAME. A helper
+# (not a bare pipe) so both call sites parse identically.
+_pack_active() {
+  printf '%s' "$1" | python3 -c "
 import json, sys
-data = json.load(sys.stdin)
-for pack in data['packs']:
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print('missing')
+    sys.exit(0)
+for pack in data.get('packs', []):
     if pack['name'] == '$PACK_NAME':
         print('1' if pack['active'] else '0')
         break
 else:
     print('missing')
-")
+"
+}
+
+log "Checking active domain pack..."
+if ! PACKS_JSON=$(curl -fsS --max-time 10 "$API/config/packs"); then
+  echo "ERROR: GET $API/config/packs failed (connection error or timeout)." >&2
+  exit 1
+fi
+DESYNPUF_ACTIVE=$(_pack_active "$PACKS_JSON")
 if [ "$DESYNPUF_ACTIVE" = "missing" ]; then
   echo "ERROR: pack '$PACK_NAME' not found under GET $API/config/packs." >&2
   echo "Expected backend/config/defaults/${PACK_NAME}.yaml to be discoverable." >&2
@@ -85,22 +98,25 @@ if [ "$DESYNPUF_ACTIVE" = "1" ]; then
   log "Pack '$PACK_NAME' already active."
 else
   log "Switching active pack to '$PACK_NAME'..."
-  SWITCH_RESPONSE=$(curl -fsS -X POST "$API/config/switch" \
+  if ! SWITCH_RESPONSE=$(curl -fsS --max-time 10 -X POST "$API/config/switch" \
     -H 'Content-Type: application/json' \
-    -d "{\"pack\":\"$PACK_NAME\"}")
-  SWITCHED_NAME=$(printf '%s' "$SWITCH_RESPONSE" | python3 -c "import json, sys; print(json.load(sys.stdin)['pack_name'])")
-  log "Switch accepted (domain.name=$SWITCHED_NAME); verifying via GET /config/packs..."
-  PACKS_JSON=$(curl -fsS "$API/config/packs")
-  DESYNPUF_ACTIVE=$(printf '%s' "$PACKS_JSON" | python3 -c "
+    -d "{\"pack\":\"$PACK_NAME\"}"); then
+    echo "ERROR: POST $API/config/switch (pack=$PACK_NAME) failed (connection error, timeout, or non-2xx)." >&2
+    exit 1
+  fi
+  SWITCHED_NAME=$(printf '%s' "$SWITCH_RESPONSE" | python3 -c "
 import json, sys
-data = json.load(sys.stdin)
-for pack in data['packs']:
-    if pack['name'] == '$PACK_NAME':
-        print('1' if pack['active'] else '0')
-        break
-else:
-    print('missing')
+try:
+    print(json.load(sys.stdin)['pack_name'])
+except Exception:
+    print('unknown')
 ")
+  log "Switch accepted (domain.name=$SWITCHED_NAME); verifying via GET /config/packs..."
+  if ! PACKS_JSON=$(curl -fsS --max-time 10 "$API/config/packs"); then
+    echo "ERROR: GET $API/config/packs failed (connection error or timeout) while verifying the switch." >&2
+    exit 1
+  fi
+  DESYNPUF_ACTIVE=$(_pack_active "$PACKS_JSON")
   if [ "$DESYNPUF_ACTIVE" != "1" ]; then
     echo "ERROR: switched to '$PACK_NAME' but GET /config/packs does not report it active." >&2
     exit 1
@@ -168,9 +184,14 @@ log "Ingest complete. KB ID: $KB_ID"
 # "ready"; backend/api/routers/knowledgebases.py GET /{knowledge_base_id}.
 probe_kb_ready() {
   log "Probe (a): KB $KB_ID status..."
-  local attempt kb_status
+  local attempt body kb_status
   for attempt in $(seq 1 "$PROBE_MAX_ATTEMPTS"); do
-    kb_status=$(curl -fsS --max-time 10 "$API/knowledgebases/$KB_ID" | python3 -c "
+    # `body=$(curl ...) || body=""` is -e-exempt (the `||` makes the whole
+    # statement's status 0 either way) — a transient connection failure or
+    # --max-time timeout on any attempt must fall through to WAIT, never
+    # abort the script. See task-2-report.md "Fix round" for the proof.
+    body=$(curl -fsS --max-time 10 "$API/knowledgebases/$KB_ID") || body=""
+    kb_status=$(printf '%s' "$body" | python3 -c "
 import json, sys
 try:
     print(json.load(sys.stdin).get('status', ''))
@@ -197,7 +218,7 @@ probe_alerts_live() {
   log "Probe (b): durable alert feed for KB $KB_ID..."
   local attempt body total
   for attempt in $(seq 1 "$PROBE_MAX_ATTEMPTS"); do
-    body=$(curl -fsS --max-time 10 "$API/alerts?kb=$KB_ID&limit=100")
+    body=$(curl -fsS --max-time 10 "$API/alerts?kb=$KB_ID&limit=100") || body=""
     total=$(printf '%s' "$body" | python3 -c "
 import json, sys
 try:
@@ -207,7 +228,13 @@ except Exception:
 ")
     if [ "$total" -ge 1 ]; then
       ALERT_TOTAL="$total"
-      FIRST_ALERT_ENTITY_ID=$(printf '%s' "$body" | python3 -c "import json, sys; print(json.load(sys.stdin)['items'][0]['entity_id'])")
+      FIRST_ALERT_ENTITY_ID=$(printf '%s' "$body" | python3 -c "
+import json, sys
+try:
+    print(json.load(sys.stdin)['items'][0]['entity_id'])
+except Exception:
+    print('')
+")
       echo "PASS (b) alerts total=$total"
       return 0
     fi
@@ -224,9 +251,10 @@ except Exception:
 # (backend/analytics/gnn/service_models.py GnnClusterResponse).
 probe_gnn_clusters() {
   log "Probe (c): GNN clusters for KB $KB_ID..."
-  local attempt count
+  local attempt body count
   for attempt in $(seq 1 "$PROBE_MAX_ATTEMPTS"); do
-    count=$(curl -fsS --max-time 10 "$API/analytics/gnn/clusters?kb_id=$KB_ID" | python3 -c "
+    body=$(curl -fsS --max-time 10 "$API/analytics/gnn/clusters?kb_id=$KB_ID") || body=""
+    count=$(printf '%s' "$body" | python3 -c "
 import json, sys
 try:
     print(len(json.load(sys.stdin).get('clusters', [])))
@@ -253,9 +281,9 @@ except Exception:
 # a bare path lookup. Response EvidencePackResponse.narrative_sections.
 probe_evidence_narrative() {
   log "Probe (d): evidence pack narrative for the first alert..."
-  local attempt body evidence_id narrative_count
+  local attempt body evidence_id evidence_body narrative_count
   for attempt in $(seq 1 "$PROBE_MAX_ATTEMPTS"); do
-    body=$(curl -fsS --max-time 10 "$API/alerts?kb=$KB_ID&limit=1")
+    body=$(curl -fsS --max-time 10 "$API/alerts?kb=$KB_ID&limit=1") || body=""
     evidence_id=$(printf '%s' "$body" | python3 -c "
 import json, sys
 try:
@@ -264,7 +292,11 @@ except Exception:
     print('')
 ")
     if [ -n "$evidence_id" ]; then
-      narrative_count=$(curl -fsS --max-time 10 "$API/evidence-packs/$evidence_id?knowledge_base_id=$KB_ID" | python3 -c "
+      # -fsS makes a 404 (evidence pack not yet persisted — expected on
+      # early attempts) a curl failure; guard it the same way so it's a
+      # WAIT, not a script abort.
+      evidence_body=$(curl -fsS --max-time 10 "$API/evidence-packs/$evidence_id?knowledge_base_id=$KB_ID") || evidence_body=""
+      narrative_count=$(printf '%s' "$evidence_body" | python3 -c "
 import json, sys
 try:
     print(len(json.load(sys.stdin).get('narrative_sections', [])))
@@ -296,9 +328,10 @@ except Exception:
 # prints a WARNING and the run continues (no exit 1).
 probe_policy_items() {
   log "Probe (e): policy items for KB $KB_ID (soft)..."
-  local attempt count
+  local attempt body count
   for attempt in $(seq 1 "$PROBE_MAX_ATTEMPTS"); do
-    count=$(curl -fsS --max-time 10 "$API/policy/items?knowledge_base_id=$KB_ID&limit=1" | python3 -c "
+    body=$(curl -fsS --max-time 10 "$API/policy/items?knowledge_base_id=$KB_ID&limit=1") || body=""
+    count=$(printf '%s' "$body" | python3 -c "
 import json, sys
 try:
     print(json.load(sys.stdin).get('total', 0))
