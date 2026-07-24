@@ -2,6 +2,37 @@
 
 ---
 
+## 2026-07-23 — Durable alert feed + analyst dashboard reconciliation (alerts.36, Task 5)
+
+### Changes
+
+**Code files read:** `backend/api/dependencies.py`, `backend/api/routers/alerts.py`, `backend/api/routers/events.py`, `backend/api/_analytics_overview.py`, `backend/api/_graph_entity_payload.py`, `backend/monitoring/adapters/protocols.py`, `backend/monitoring/adapters/postgres.py`, `backend/agent/coordinator.py`, `backend/knowledgebases/cleanup.py`, `backend/config/defaults/{medicare_fraud,medicare_fraud_cms_desynpuf,food_supply_chain}.yaml` — Tasks 1–4 of `feat/alerts-durable-read-model` (commits `0ce4ae2`..`53545af`): migration `0012` read-model columns, the promoted `AlertFeedStoreProtocol` (Postgres + in-memory), producers populating `entity_label`/`confidence`/`tags`, and the API serving `/alerts` (+ ack/SSE/cleanup/promote/overview/graph-detail) from `alert_history` with the projection blob (`api/_alert_store.py`, `AlertProjectionRepository`) retired. This pass (Task 5) closes the doc/backlog gap left open for the controller and adds the analyst-role dashboard config change.
+
+**Config:** `backend/config/defaults/medicare_fraud_cms_desynpuf.yaml`, `food_supply_chain.yaml`, and `medicare_fraud.yaml` — `roles.analyst.pages` gains `dashboard` (landing page stays `alerts`); the durable alert feed makes dashboard metrics meaningful for analysts, not just supervisors. Housing pack and supervisor roles untouched (housing has no `dashboard` nav page). New parametrized test `test_analyst_role_includes_dashboard` (`backend/tests/config/test_loader.py`) pins this for the three edited packs; the frozen-history overlay snapshot fixture (`backend/tests/config/fixtures/medicare_fraud_dev_full_snapshot.yaml`) updated in step per that test's documented equivalence-pinning contract.
+
+**Wiki pages updated:**
+
+| Page | Gap closed |
+|------|-----------|
+| `modules/api.md` | Removed the retired `api/_alert_store.py` from the directory tree and the "In-process Read Models" table; added a note that the alert feed is not an in-process projection but a direct `alert_history` read through `AlertFeedStoreProtocol`. Route → Service Dispatch table's `alerts`/`events` rows and the `get_alert_repository` dependency signature updated to `AlertFeedStoreProtocol`/`get_alert_feed_store`. Bumped "Verified against codebase" to 2026-07-23. |
+| `contracts/domain-config.md` | Removed the retired `CHILI_ALERT_REPOSITORY_BACKEND` env var row; added a note that alerts have no dedicated backend-selection env var — the store picks Postgres automatically from the connection provider, like `CaseRepository`. |
+
+**`docs/architecture.md`:** removed `_alert_store.py` from the `api/` package tree (file deleted); the KB-delete operations table and the "Deleting a KB executes a full cascade…" paragraph both still said "alert read projection (API bundle only)" — corrected to describe the single `alert_history` step now shared by both bundles (alerts.36 retired the API-owned projection step). The Flow 4 / alert-persistence paragraph (Task 4) was already accurate — re-verified, no changes needed.
+
+**`backend/README.md`:** removed the retired `CHILI_ALERT_REPOSITORY_BACKEND` env var row; replaced the stale "Alert Projection Notes" section with "Alert Feed Notes (alerts.36)" describing the durable `AlertFeedStoreProtocol` read model, the real `entity_label`/`confidence`/`tags` columns (with a pointer to the `analytics.36` follow-up for a true Flow B `entity_label`), durable acknowledge, and the shared KB-delete cascade step. Corrected the "Current State" paragraph and the `api/_alert_store.py` and `database/` bullets, which still described the projection as in-progress/API-owned.
+
+**`docs/backlog/monitoring.md`:** closed story monitoring.02 ("Wire AlertProjectionRepository upserts on AlertsCreatedEvent") — `Status: done`, `Done: 2026-07-23 · alerts.36 · feat/alerts-durable-read-model` — with a "Current State (shipped)" deviation note explaining the actual fix (retire the projection, serve `/alerts` from `alert_history` directly) differs from the story's original AC shape (a second worker handler upserting a parallel projection), and updated Acceptance Criteria/Verification/Code touch points to match. This was the "empty alert feed in a fresh deployment" gap referenced by the alerts.36 plan.
+
+**`docs/backlog/analytics.md`:** chartered new story analytics.36 ("True `entity_label` on Flow B (analytics-pipeline) alerts") — `Status: planned`, prerequisite `monitoring.02` — for widening `build_explanation_context`'s already-fetched focal entity into a real display label for `_run_explainability_stage`'s `AlertCreatedReference.entity_label` (currently falls back to `entity_id`), without an extra graph read. `MonitoringService.evaluate()`'s `entity_label=""` case is out of scope for this story (would need a new graph read).
+
+**`docs/backlog/frontend.md`:** two corrections. (1) Frontend.27's "Config discovery (not a defect)" note recorded the analyst role excluding Dashboard on the CMS pack — now factually superseded by this pass's config change, annotated as historical and not to be re-flagged. (2) frontend.02's Current State gained a "Superseded" note: the U2-era observation that the workbench EVIDENCE tab renders `EmptyState` for real entities because the alert feed's backing store was blind in a fresh deployment no longer applies now that `GET /alerts` reads `alert_history` directly — verified live in Task 6 of `feat/alerts-durable-read-model`. The story's remaining gap (no independent evidence-pack list/load-by-id entry point) is unchanged and still open.
+
+**Backlog rollup:** `scripts/backlog_consistency.py` (no `--check`) regenerated `docs/backlog/README.md`'s status-rollup and ready-set sections and auto-added `analytics.36` to monitoring.02's `Unblocks` list; `--check` exits 0.
+
+**Drift log:** No new architectural violations observed. This pass is documentation/config-only (plus the accompanying `test_analyst_role_includes_dashboard` test) — no production code touched beyond the three domain-pack YAMLs. Live full-stack verification of the durable alert feed (migration apply, Flow B alert visibility, Evidence-tab resolution, ack durability across an API restart, SSE count, KB-delete cascade, analyst Dashboard route) remains Task 6, reserved for the controller per the `alerts-durable-read-model` plan.
+
+---
+
 ## 2026-07-23 — U2 whole-branch final review closeout: signals-tab gating fix + live-pass reconciliation (BL-050, Task 11)
 
 ### Changes

@@ -50,39 +50,43 @@
 ## Story monitoring.02: Wire AlertProjectionRepository upserts on AlertsCreatedEvent
 
 **ID:** monitoring.02
-**Status:** planned
+**Status:** done
 **Prerequisites:** [events.02, api.06, graph.07]
-**Unblocks:** [analytics.06, monitoring.09]
+**Unblocks:** [analytics.06, analytics.36, monitoring.09]
 **Estimated size:** M
+**Done:** 2026-07-23 · alerts.36 (durable alert read model) · `feat/alerts-durable-read-model`
 
 **As a** fraud analyst,
 **I need** newly created alerts to appear in `GET /alerts` immediately after the monitoring service emits them,
 **so that** the alert feed in the workbench reflects real production state instead of remaining empty until something seeds the projection.
 
-### Current State
-- `AlertProjectionRepository.upsert` exists on both the in-memory and object-store implementations (`backend/api/_alert_store.py:69, 92, 161-169`).
-- No production handler calls `upsert`: the agent coordinator writes alert history to Postgres and snapshots `active_alert_count`/`last_alert_at`/`last_alert_severity` onto graph entities (`backend/agent/coordinator.py:1535-1594`) but never touches the API projection.
-- Consequence: in a fresh deployment, `GET /alerts` returns an empty feed even after alerts have fired, because the projection is only ever populated by test fixtures.
-- The projection also stores `entity_label`, `related_entity_ids`, `policy_citations`, and `confidence` (`backend/api/_alert_store.py:44-55`) that no handler currently fills.
+### Current State (shipped)
+- **Deviation (chosen fix differs from the original AC shape):** rather than adding a second worker handler that upserts a parallel `AlertProjectionRepository`, alerts.36 retired that projection entirely. The sole `alerts.created` consumer (`handle_alerts_created_for_graph`, `backend/agent/coordinator.py`) already idempotently writes `alert_history` for every real alert; alerts.36 extended that table with the three read-model columns the projection used to carry (`entity_label`, `confidence`, `tags` — migration `0012`), promoted the monitoring-owned store to a full read/mutate protocol (`monitoring.adapters.protocols.AlertFeedStoreProtocol`: list/get/acknowledge/count/`delete_by_kb`, in-memory + Postgres adapters), and DI-switched the API onto it (`api.dependencies.get_alert_feed_store` — Postgres when a connection provider resolves, in-memory otherwise; same pattern as `get_risk_signal_source`/`get_case_repository`).
+- `GET /alerts`, `GET /alerts/{id}`, `POST /alerts/{id}/acknowledge`, SSE `active_alerts`, `GET /analytics/overview`, and `GET /graph/entities/{id}`'s related-alerts now all read the same durable `alert_history` rows — no separate read model to fall out of sync, and nothing left to seed for a fresh deployment: the first real `AlertsCreatedEvent` is visible in `GET /alerts` with no test-fixture dependency. `api/_alert_store.py` (the object-store projection + `AlertProjectionRepository`) was deleted.
+- `entity_label`/`confidence`/`tags` are populated by the two producers directly on `AlertCreatedReference` before Flow 4 maps them onto the row: the analytics pipeline's `_run_explainability_stage` sets `confidence` from the risk assessment's `overall_score` and `tags` from the top-3 risk-factor names (kebab-cased); `MonitoringService.evaluate()` sets `confidence` from the alert candidate's threshold-ratio score and `tags` from a kebab-slugged `metric_name`. Both currently fall back `entity_label` to `entity_id` (no cheap display value in scope without an extra graph read — tracked as a follow-up, see `docs/backlog/analytics.md` "true entity_label on Flow B alerts").
+- KB deletion purges alerts as one step of the shared cascade (`alert_history` via `AlertHistoryWriter.delete_by_kb`, `knowledgebases.cleanup.kb_deletion_steps`) — both the API and worker retry bundles build their own writer, so there is no separate "API-owned projection" step left to skip.
 
 ### Acceptance Criteria
-- [ ] New worker handler `handle_alerts_created_for_projection` in `backend/agent/coordinator.py` (or sibling module) subscribes to `alerts.created` and calls `AlertProjectionRepository.upsert` once per alert.
-- [ ] Handler enriches each `AlertProjectionRecord` with `entity_label` resolved through `GraphService.get_entity` and `related_entity_ids` derived from the evidence pack (when present), with safe fallbacks when graph or pack lookups fail.
-- [ ] Idempotent on `alert.id`: re-delivery of the same `AlertsCreatedEvent` produces no duplicate rows and does not regress `confidence`/`tags`/`policy_citations` that other Plan C handlers may have set.
-- [ ] Wrapped in the same DLQ + retry envelope as `handle_alerts_created_for_graph` (uses `run_handler_with_retry` per the ACK contract pinned in commit a0a2a38).
-- [ ] Handler registered in the worker's event dispatch table; verified by an integration test that runs the in-process worker against an in-memory bus.
-- [ ] `GET /alerts` returns the upserted record after `MonitoringService.evaluate` fires, end-to-end.
+- [x] Alerts appear in `GET /alerts` without any handler-side upsert step: the durable writer Flow 4 already calls (`handle_alerts_created_for_graph` → `alert_history_writer.write_alerts`) is the same store the API reads, so there is nothing further to wire.
+- [x] `entity_label` (fallback to `entity_id`), `confidence`, and `tags` are populated on the row by the two producers (see above) instead of defaulting to `""`/`0.0`/`[]` on every alert.
+- [x] Idempotent on `alert_id`: `write_alerts` is first-row-wins per `(kb, alert_id)` (proved by `tests/monitoring/test_alert_history_writer.py`'s idempotency test), so re-delivery of the same `AlertsCreatedEvent` cannot regress a row's read-model fields.
+- [x] Alert writes stay wrapped in the existing DLQ + retry envelope on `handle_alerts_created_for_graph` — no new handler, no new envelope to add.
+- [x] `GET /alerts` returns the row after `MonitoringService.evaluate` (or the analytics pipeline) fires, end-to-end — proved by the API alert-router integration tests below, not a separate projection-specific test.
 
 ### Verification
-- `pytest backend/tests/agent/test_alerts_created_for_projection.py -v` — green; covers happy path, idempotency, missing-graph fallback, DLQ on repository failure.
-- `pytest --cov=backend/agent.coordinator --cov-report=term-missing` — ≥ 85% maintained on the touched coordinator slice.
-- Local smoke: `make dev`, seed a KB, trigger `POST /monitoring/evaluate`, then `curl http://localhost:8000/alerts` returns the new alert with populated `entity_label`.
+- `backend/.venv/bin/pytest tests/monitoring/test_alert_history_writer.py tests/monitoring/test_postgres_alert_history.py tests/monitoring/test_alerts_service.py tests/agent/test_alerts_created_graph_flow.py -q` — green (writer idempotency, Postgres adapter, list/ack/count service behavior, Flow 4 read-model population).
+- `backend/.venv/bin/pytest tests/api/test_read_model_routers.py tests/api/test_phase5_stateful_routes.py tests/api/test_events_router.py tests/api/test_dependencies.py -q` — green (`/alerts`, SSE `active_alerts`, and `get_alert_feed_store` DI-switch behavior over the durable store).
+- Full `make test` from repo root green at Task 5 closeout (see this file's provenance commits for the exact run).
+- `pyright` (bare) and `ruff check --no-cache .` clean.
 
 ### Code touch points
-- `backend/agent/coordinator.py` (modify — new handler + registration)
-- `backend/api/_alert_store.py` (modify — small helpers if enrichment shape changes)
-- `backend/tests/agent/test_alerts_created_for_projection.py` (new)
-- `backend/README.md` (modify — Flow 4 description)
+- `backend/database/migrations/versions/0012_alert_history_read_model.py` (new)
+- `backend/monitoring/adapters/protocols.py`, `backend/monitoring/adapters/in_memory.py`, `backend/monitoring/adapters/postgres.py` (modify — `AlertFeedStoreProtocol` + list/ack/count/`delete_by_kb`)
+- `backend/agent/coordinator.py` (modify — Flow 4 populates `entity_label`/`confidence`/`tags` on `AlertCreatedReference`)
+- `backend/api/dependencies.py` (modify — `get_alert_feed_store`, replacing `get_alert_repository`)
+- `backend/api/routers/alerts.py`, `backend/api/routers/events.py`, `backend/api/_analytics_overview.py`, `backend/api/_graph_entity_payload.py` (modify — read `AlertFeedStoreProtocol` instead of `AlertProjectionRepository`)
+- `backend/api/_alert_store.py` (deleted)
+- `backend/knowledgebases/cleanup.py` (modify — `alert_history` step replaces the API-owned `alert_projection` step)
 
 ---
 

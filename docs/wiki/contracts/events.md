@@ -222,7 +222,12 @@ class AlertCreatedReference(BaseModel):
     title: str = ""
     reasoning: str = ""
     metric_name: str = ""
+    entity_label: str = ""     # alerts.36 — real analytics-pipeline value or "", entity_id fallback
+    confidence: float = 0.0    # alerts.36
+    tags: list[str] = []       # alerts.36
 ```
+
+All three new fields default so a legacy serialized event predating alerts.36 still decodes. `handle_alerts_created_for_graph` (`agent/coordinator.py`) maps them onto the corresponding `alert_history` read-model columns (`docs/wiki/modules/monitoring.md`'s `AlertHistoryRecord`).
 
 ---
 

@@ -274,12 +274,19 @@ class UiConfig(BaseModel):
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins | Optional (defaults to localhost:5173) |
 | `CHILI_WORKFLOW_RUN_STORE_BACKEND` | `redis` or `in_memory` for workflow run state | Optional |
 | `CHILI_KB_REPOSITORY_BACKEND` | `in_memory` or `object_store` for KB/document metadata | Optional |
-| `CHILI_ALERT_REPOSITORY_BACKEND` | `in_memory` or `object_store` for alert projections | Optional |
 | `CHILI_EVENT_BUS_BACKEND` | Runtime event bus backend (`in-memory` or `redis`) when config does not explicitly set `events` | Optional |
 | `CHILI_EVENT_STREAM_PREFIX` | Redis stream prefix used by event bus runtime settings | Optional |
 | `CHILI_EVENT_RECLAIM_MIN_IDLE_MS` | Redis stream pending-message reclaim idle threshold | Optional |
 | `CHILI_WORKFLOW_STALE_MAX_AGE_SECONDS` | Enables stale workflow reconciliation when set to a positive integer | Optional |
 | `CHILI_WORKFLOW_RECONCILE_INTERVAL_SECONDS` | Worker stale workflow reconciliation interval | Optional |
+
+> **No `CHILI_ALERT_REPOSITORY_BACKEND`.** Alerts read/write directly against
+> the durable `alert_history` table (alerts.36) via `AlertFeedStoreProtocol` —
+> there is no separate alert projection to select a backend for. Like
+> `CaseRepository`, the store picks Postgres automatically when
+> `DATABASE_URL`/`database.backend=postgres` resolves a connection provider,
+> and falls back to an in-memory adapter otherwise; there is no dedicated env
+> var.
 
 ---
 

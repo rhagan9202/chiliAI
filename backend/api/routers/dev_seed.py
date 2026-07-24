@@ -1,9 +1,10 @@
 """Dev/e2e-only seed endpoint.
 
 Writes a deterministic, fully-formed investigation scenario (knowledge base +
-graph subgraph + alert projection + evidence pack + case) directly into the
-*real* repositories so full-stack e2e tests can assert the UI against real data
-served by the real API.
+graph subgraph + alert (written to the durable ``alert_history`` store,
+alerts.36) + evidence pack + case) directly into the *real* repositories so
+full-stack e2e tests can assert the UI against real data served by the real
+API.
 
 The alert/evidence pipeline (Flow B) is LLM-dependent and cannot deterministically
 produce alerts in a dev stack, so this endpoint inserts the alert and evidence
