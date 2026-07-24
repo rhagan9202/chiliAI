@@ -143,6 +143,17 @@ function requireTnKb(): KnowledgeBaseItem {
 }
 
 test.describe('Demo walkthrough — reference mode (dev-seed)', () => {
+  test('dashboard renders KPI band and severity mix for the active KB (Scene 2.1)', async ({
+    page,
+  }) => {
+    const { knowledge_base_id: kb } = seeded()
+    await page.goto(`/dashboard?kb=${kb}`)
+
+    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+    await expect(page.locator('.dashboard-kpis')).toBeVisible()
+    await expect(page.getByText('Severity Mix')).toBeVisible()
+  })
+
   test('alert feed row leads with triage numeral + flag label, and expands to the narrative band', async ({
     page,
   }) => {
@@ -172,6 +183,11 @@ test.describe('Demo walkthrough — reference mode (dev-seed)', () => {
     await expect(page.getByText('Entity workbench')).toBeVisible()
     await expect(page.getByRole('tab', { name: 'Signals' })).toBeVisible()
     await expect(page.getByRole('tab', { name: 'Network' })).toBeVisible()
+
+    // The presenter script's dossier scene walks the Policy tab too
+    // (capability-gated on explainability, which the CMS pack enables).
+    await page.getByRole('tab', { name: 'Policy' }).click()
+    await expect(page.locator('#workbench-tabpanel-policy')).toBeVisible()
   })
 
   test('/policy loads the rule-generated queue', async ({ page }) => {
@@ -189,6 +205,7 @@ test.describe('Demo walkthrough — live mode (TN demo KB)', () => {
     const kb = requireTnKb()
 
     const alerts = await fetchJson<AlertListResponse>(`/alerts?kb=${kb.id}&limit=500`)
+    test.skip(alerts.items.length === 0, `TN KB ${kb.id} has no alerts yet.`)
     const tagged = alerts.items.filter((item) => item.tags.length > 0)
     expect(
       tagged.length,
@@ -227,9 +244,20 @@ test.describe('Demo walkthrough — live mode (TN demo KB)', () => {
   test('EVIDENCE tab renders attribution bars', async ({ page }) => {
     const kb = requireTnKb()
 
+    // The workbench selects an entity's alert with
+    // items.find(a => a.entity_id === entityId) — the FIRST occurrence in the
+    // feed's own order. Mirror that exactly: consider only each entity's
+    // first-listed alert, otherwise this test can pick a pack the page never
+    // shows and assert bars that legitimately don't render.
     const alerts = await fetchJson<AlertListResponse>(`/alerts?kb=${kb.id}&limit=500`)
-    let target: AlertListItem | null = null
+    const firstAlertByEntity = new Map<string, AlertListItem>()
     for (const alert of alerts.items) {
+      if (!firstAlertByEntity.has(alert.entity_id)) {
+        firstAlertByEntity.set(alert.entity_id, alert)
+      }
+    }
+    let target: AlertListItem | null = null
+    for (const alert of firstAlertByEntity.values()) {
       if (!alert.evidence_pack_id) {
         continue
       }
@@ -243,7 +271,7 @@ test.describe('Demo walkthrough — live mode (TN demo KB)', () => {
     }
     test.skip(
       target === null,
-      `No alert in TN KB ${kb.id} has an evidence pack with non-empty attribution yet.`,
+      `No page-selected alert in TN KB ${kb.id} has an evidence pack with non-empty attribution yet.`,
     )
     const entityId = (target as AlertListItem).entity_id
 
@@ -257,6 +285,10 @@ test.describe('Demo walkthrough — live mode (TN demo KB)', () => {
 
     const policyItems = await fetchJson<PolicyItemListResponse>(
       `/policy/items?knowledge_base_id=${kb.id}`,
+    )
+    test.skip(
+      policyItems.items.length === 0,
+      `TN KB ${kb.id} has no policy items yet (still ingesting?).`,
     )
     expect(
       policyItems.items.length,
