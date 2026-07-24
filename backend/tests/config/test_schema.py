@@ -29,6 +29,8 @@ from config.schema import (
     MonitoringConfig,
     ObjectStoreConfig,
     RagConfig,
+    RecordsAnalyticsTriggerConfig,
+    RecordsConfig,
     VectorStoreConfig,
 )
 from shared.types import (
@@ -1280,3 +1282,19 @@ def test_domain_config_accepts_valid_timeseries_spec() -> None:
     assert cfg.timeseries is not None
     assert len(cfg.timeseries.metrics) == 1
     assert cfg.timeseries.metrics[0].detection_strategy == "z_score"
+
+
+class TestRecordsAnalyticsTriggerConfig:
+    def test_defaults_off(self) -> None:
+        config = RecordsConfig()
+        assert config.analytics_trigger.enabled is False
+        assert config.analytics_trigger.max_entities_per_batch == 25
+        assert config.analytics_trigger.min_interval_seconds == 600
+
+    def test_rejects_nonpositive_cap(self) -> None:
+        with pytest.raises(ValidationError):
+            RecordsAnalyticsTriggerConfig(max_entities_per_batch=0)
+
+    def test_rejects_nonpositive_interval(self) -> None:
+        with pytest.raises(ValidationError):
+            RecordsAnalyticsTriggerConfig(min_interval_seconds=0)

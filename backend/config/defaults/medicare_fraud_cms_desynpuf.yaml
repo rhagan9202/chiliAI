@@ -153,6 +153,15 @@ ingestion:
       formats: [csv]
 
 records:
+  # analytics.34: a records batch with risk-assessable entities runs Flow B
+  # (GNN → risk → explainability → alerts) natively — no external trigger.
+  # Top-3 preserves the established demo narrative (same selection the
+  # removed demo trigger used); one window per hour ≈ one fan-out per full
+  # TN-subset ingest.
+  analytics_trigger:
+    enabled: true
+    max_entities_per_batch: 3
+    min_interval_seconds: 3600
   feeds:
     # ------------------------------------------------------------------
     # Beneficiary Summary — one row per beneficiary per calendar year.

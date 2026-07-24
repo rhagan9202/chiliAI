@@ -379,10 +379,26 @@ class RecordFeedConfig(BaseModel):
     observations: list[RecordObservationMapping] = Field(default_factory=lambda: [])
 
 
+class RecordsAnalyticsTriggerConfig(BaseModel):
+    """Gate for the records→analytics fan-out (analytics.34).
+
+    When enabled, a structured-records batch that produced risk-assessable
+    entities runs Flow B (GNN → risk → explainability → alerts) in-process,
+    throttled per KB and capped to the batch's top-N entities by risk score.
+    """
+
+    enabled: bool = False
+    max_entities_per_batch: int = Field(default=25, ge=1, le=500)
+    min_interval_seconds: int = Field(default=600, ge=1)
+
+
 class RecordsConfig(BaseModel):
     """Structured-ingestion feed configuration for the domain."""
 
     feeds: list[RecordFeedConfig] = Field(default_factory=lambda: [])
+    analytics_trigger: RecordsAnalyticsTriggerConfig = Field(
+        default_factory=RecordsAnalyticsTriggerConfig
+    )
 
 
 # ---------------------------------------------------------------------------

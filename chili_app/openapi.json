@@ -4978,9 +4978,37 @@
         "title": "RecordRelationshipMapping",
         "type": "object"
       },
+      "RecordsAnalyticsTriggerConfig": {
+        "description": "Gate for the records\u2192analytics fan-out (analytics.34).\n\nWhen enabled, a structured-records batch that produced risk-assessable\nentities runs Flow B (GNN \u2192 risk \u2192 explainability \u2192 alerts) in-process,\nthrottled per KB and capped to the batch's top-N entities by risk score.",
+        "properties": {
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "max_entities_per_batch": {
+            "default": 25,
+            "maximum": 500,
+            "minimum": 1,
+            "title": "Max Entities Per Batch",
+            "type": "integer"
+          },
+          "min_interval_seconds": {
+            "default": 600,
+            "minimum": 1,
+            "title": "Min Interval Seconds",
+            "type": "integer"
+          }
+        },
+        "title": "RecordsAnalyticsTriggerConfig",
+        "type": "object"
+      },
       "RecordsConfig": {
         "description": "Structured-ingestion feed configuration for the domain.",
         "properties": {
+          "analytics_trigger": {
+            "$ref": "#/components/schemas/RecordsAnalyticsTriggerConfig"
+          },
           "feeds": {
             "items": {
               "$ref": "#/components/schemas/RecordFeedConfig"
