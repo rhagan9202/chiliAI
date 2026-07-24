@@ -172,3 +172,34 @@ def test_alert_created_reference_decodes_legacy_payload_without_read_model_field
     assert reference.entity_label == ""
     assert reference.confidence == 0.0
     assert reference.tags == []
+
+
+def test_graph_updated_document_reference_accepts_inline_entity_ids() -> None:
+    from events.types import GraphUpdatedDocumentReference
+
+    ref = GraphUpdatedDocumentReference(
+        knowledge_base_id="kb-1",
+        source_document_id="records:claims",
+        parsed_document_id="records:claims",
+        extraction_result_id="records:claims",
+        validation_report_id="records:claims",
+        upserted_entity_count=2,
+        upserted_relationship_count=0,
+        upserted_entity_ids=["provider:1", "provider:2"],
+    )
+    assert ref.upserted_entity_ids == ["provider:1", "provider:2"]
+
+
+def test_graph_updated_document_reference_entity_ids_default_none() -> None:
+    from events.types import GraphUpdatedDocumentReference
+
+    ref = GraphUpdatedDocumentReference(
+        knowledge_base_id="kb-1",
+        source_document_id="doc-1",
+        parsed_document_id="parsed-1",
+        extraction_result_id="ext-1",
+        validation_report_id="val-1",
+        upserted_entity_count=0,
+        upserted_relationship_count=0,
+    )
+    assert ref.upserted_entity_ids is None
