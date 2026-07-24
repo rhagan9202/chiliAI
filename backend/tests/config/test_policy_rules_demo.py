@@ -26,7 +26,48 @@ _CMS_DESYNPUF = (
 def test_cms_desynpuf_ships_rule_packs() -> None:
     cfg = load_config(_CMS_DESYNPUF)
     pack_ids = {pack.id for pack in cfg.policy_rules}
-    assert {"elevated_payment_claims", "graph_scale_watch"} <= pack_ids
+    assert {
+        "elevated_payment_claims",
+        "graph_scale_watch",
+        "outlier_billing_concentration",
+        "referral_ring_exposure",
+    } <= pack_ids
+    assert len(cfg.policy_rules) >= 3
+    for pack in cfg.policy_rules:
+        for rule in pack.rules:
+            assert rule.severity in ("medium", "high", "critical")
+
+
+def test_outlier_billing_concentration_rule_fires_on_high_risk_provider() -> None:
+    cfg = load_config(_CMS_DESYNPUF)
+    state = PolicyEvalState(
+        entities=[
+            Entity(id="PRV-9001", type="provider", properties={"risk_score": 0.4}),
+            Entity(id="PRV-9002", type="provider", properties={"risk_score": 0.1}),
+        ],
+        alerts=[],
+        metrics={},
+    )
+    matches = evaluate(cfg.policy_rules, state)
+    fired = {(m.rule_id, m.target_ref) for m in matches}
+    assert ("provider_outlier_billing", "PRV-9001") in fired
+    assert ("provider_outlier_billing", "PRV-9002") not in fired  # below threshold
+
+
+def test_referral_ring_exposure_rule_fires_on_repeat_flag_count() -> None:
+    cfg = load_config(_CMS_DESYNPUF)
+    state = PolicyEvalState(
+        entities=[
+            Entity(id="PRV-9101", type="provider", properties={"active_alert_count": 2}),
+            Entity(id="PRV-9102", type="provider", properties={"active_alert_count": 1}),
+        ],
+        alerts=[],
+        metrics={},
+    )
+    matches = evaluate(cfg.policy_rules, state)
+    fired = {(m.rule_id, m.target_ref) for m in matches}
+    assert ("provider_repeat_flag_exposure", "PRV-9101") in fired
+    assert ("provider_repeat_flag_exposure", "PRV-9102") not in fired  # below threshold
 
 
 def test_elevated_payment_rule_fires_on_a_high_value_claim() -> None:

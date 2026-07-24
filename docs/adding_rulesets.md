@@ -193,9 +193,13 @@ cd backend
 
 ## Worked example (shipped in `medicare_fraud_cms_desynpuf.yaml`)
 
-The config the dev stack loads ships two demo-tuned packs so that a plain `make dev` + ingest of the
-TN DE-SynPUF subset produces live items. Both target-kinds are demonstrated, and the thresholds are
-deliberately low for the demo (raise them for real screening):
+The config the dev stack loads ships four demo-tuned packs so that a plain `make dev` + ingest of the
+TN DE-SynPUF subset produces live items. All three target-kinds are demonstrated (`entity` via
+claim/provider properties, `metric` via KB size), and the thresholds are deliberately low for the
+demo (raise them for real screening). The first two packs are shown in full below; two more
+provider-targeted packs (`outlier_billing_concentration`, `referral_ring_exposure`) follow the same
+shape and cover the demo's UPCODING and referral-ring patterns — see the YAML file for their full
+definitions.
 
 ```yaml
 policy_rules:
@@ -243,12 +247,22 @@ policy_rules:
   (inpatient/outpatient/PDE claims routinely clear this; small carrier line items stay below).
 - `kb_entity_volume` fires once a KB accumulates more than **50** entities — which the TN subset
   ingest easily exceeds — surfacing one medium item per KB.
+- `provider_outlier_billing` (pack `outlier_billing_concentration`) fires for `provider` entities
+  whose `risk_score` (written by the peer-deviation/self-history anomaly signals) is **>= 0.35** —
+  live TN passes showed provider composites in the ~0.33-0.42 range, so this catches the top
+  providers; severity `high`.
+- `provider_repeat_flag_exposure` (pack `referral_ring_exposure`) fires for `provider` entities
+  whose `properties.active_alert_count` (snapshotted by Flow 4 from open alerts) is **>= 2** —
+  a proxy for the demo's referral-ring pattern; severity `critical`.
 
 **Try it**
 1. `make dev`
 2. Ingest the TN DE-SynPUF subset (carrier/inpatient/outpatient claims + NPPES providers).
-3. Open **Policy Intelligence** → see high-value-claim items (high) and a graph-volume item (medium),
-   each triageable; **Escalate** promotes one into a Case.
+3. Open **Policy Intelligence** → see high-value-claim items (high), a graph-volume item (medium),
+   outlier-billing-concentration items (high), and referral-ring-exposure items (critical after a
+   provider accumulates repeat alerts across detection runs) — each triageable; **Escalate** promotes
+   one into a Case.
 
 The regression test `backend/tests/config/test_policy_rules_demo.py` loads this config and asserts
-both rules fire on representative data, so a future config edit can't silently break the demo.
+all four packs' rules fire on representative data, so a future config edit can't silently break the
+demo.
