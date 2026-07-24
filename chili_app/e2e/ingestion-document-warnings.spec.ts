@@ -19,6 +19,10 @@ const RAGGED_CSV = [
 
 test.describe('Ingestion Studio document warnings', () => {
   test('shows a warning chip with reasons after ingesting a ragged CSV', async ({ page }) => {
+    // The default 30s test timeout is what actually failed under a saturated
+    // worker (see the pipeline-wait comment below) — the whole test needs
+    // headroom, not just the expect() waits.
+    test.setTimeout(300_000)
     await page.goto('/knowledge-bases')
     await expect(page.getByRole('heading', { name: 'Ingestion Studio' })).toBeVisible()
 
@@ -51,10 +55,13 @@ test.describe('Ingestion Studio document warnings', () => {
     await submit.dispatchEvent('click')
 
     // The worker parses the CSV and persists the ragged-row warning; the
-    // documents query refreshes via SSE/polling. Allow the pipeline time.
+    // documents query refreshes via SSE/polling. Budget for a saturated
+    // worker: on a stack that just ran `make demo-cms`, this parse event
+    // queues behind the demo KB's per-document Flow B passes (full-KB GNN
+    // snapshots, minutes each), so 30s flakes while 120s holds.
     const documentRow = page.getByRole('button', { name: /ragged-claims\.csv/ })
-    await expect(documentRow).toBeVisible({ timeout: 30_000 })
-    await expect(documentRow.getByText(/\d+ warnings?/)).toBeVisible({ timeout: 30_000 })
+    await expect(documentRow).toBeVisible({ timeout: 120_000 })
+    await expect(documentRow.getByText(/\d+ warnings?/)).toBeVisible({ timeout: 120_000 })
 
     // Selecting the document reveals the persisted reasons.
     await documentRow.click()
