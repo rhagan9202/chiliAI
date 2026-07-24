@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useDomainConfig } from '../api/config'
 import {
@@ -48,7 +48,13 @@ export function KnowledgeBaseManagerPage() {
   const studio = useIngestionStudioStore()
   const knowledgeBasesQuery = useKnowledgeBases()
   const domainConfigQuery = useDomainConfig()
-  const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<string | null>(null)
+  // Honor a ?kb= deep-link as the initial selection, matching the convention on
+  // AlertFeedPage / PolicyIntelligencePage / InvestigationWorkbenchPage. If the
+  // requested KB isn't in the visible list, the auto-select fallback below wins.
+  const [searchParams] = useSearchParams()
+  const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<string | null>(
+    () => searchParams.get('kb'),
+  )
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
   const [knowledgeBaseName, setKnowledgeBaseName] = useState('')
   const [knowledgeBaseDescription, setKnowledgeBaseDescription] = useState('')

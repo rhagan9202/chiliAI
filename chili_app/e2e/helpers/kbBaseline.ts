@@ -45,16 +45,25 @@ export async function deleteKbsNotInBaseline(
 
   let failed = 0
   for (const kb of created) {
-    const del = await fetch(`${api}/knowledgebases/${encodeURIComponent(kb.id)}`, {
-      method: 'DELETE',
-    })
-    if (del.ok) {
+    // A KB whose just-submitted ingestion cascade is still in flight rejects
+    // DELETE with 409 ("workflow in progress") — correct guard, transient
+    // state. Retry with backoff instead of leaking the KB.
+    let del: Response | null = null
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 5000))
+      del = await fetch(`${api}/knowledgebases/${encodeURIComponent(kb.id)}`, {
+        method: 'DELETE',
+      })
+      if (del.status !== 409) break
+      console.log(`${logPrefix} KB "${kb.name}" busy (409) — retrying delete (${attempt + 1}/12)`)
+    }
+    if (del?.ok) {
       console.log(`${logPrefix} deleted KB "${kb.name}" (${kb.id})`)
     } else {
       failed += 1
       console.error(
-        `${logPrefix} FAILED to delete KB "${kb.name}" (${kb.id}): ${del.status} ${await del
-          .text()
+        `${logPrefix} FAILED to delete KB "${kb.name}" (${kb.id}): ${del?.status} ${await del
+          ?.text()
           .catch(() => '')}`,
       )
     }

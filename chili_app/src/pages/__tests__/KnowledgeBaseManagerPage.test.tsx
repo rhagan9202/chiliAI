@@ -20,7 +20,7 @@ vi.mock('react-router-dom', async () => {
   }
 })
 
-function renderWithClient(node: React.ReactElement) {
+function renderWithClient(node: React.ReactElement, initialEntries?: string[]) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
@@ -28,7 +28,7 @@ function renderWithClient(node: React.ReactElement) {
   function Wrapper({ children }: { children: ReactNode }): React.ReactElement {
     return (
       <QueryClientProvider client={client}>
-        <MemoryRouter>{children}</MemoryRouter>
+        <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
       </QueryClientProvider>
     )
   }
@@ -122,6 +122,19 @@ const medicareKb: MockKnowledgeBase = {
   entity_count: 2,
   relationship_count: 1,
   created_at: '2026-05-10T00:00:00Z',
+  domain: 'medicare_fraud',
+}
+
+/** Second in-scope KB, listed first, so deep-link selection has to beat it. */
+const secondMedicareKb: MockKnowledgeBase = {
+  id: 'kb-3',
+  name: 'Demo KB',
+  description: 'Sorts ahead of Fraud KB in the list',
+  status: 'ready',
+  document_count: 3,
+  entity_count: 9,
+  relationship_count: 4,
+  created_at: '2026-05-14T00:00:00Z',
   domain: 'medicare_fraud',
 }
 
@@ -545,6 +558,32 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
       .mocked(globalThis.fetch)
       .mock.calls.map((call) => String(call[0]))
     expect(requestedUrls.some((requestedUrl) => requestedUrl.includes('kb-2'))).toBe(false)
+  })
+
+  it('honors a ?kb= deep-link when that knowledge base is not first in the list', async () => {
+    installFetchMock({ kbItems: [secondMedicareKb, medicareKb] })
+    renderWithClient(<KnowledgeBaseManagerPage />, ['/knowledge-bases?kb=kb-1'])
+
+    await screen.findByText('Ingestion Studio')
+
+    // List row + selected-KB summary both show the deep-linked KB, not the
+    // first-listed one.
+    expect(await screen.findAllByText('Fraud KB')).toHaveLength(2)
+    expect(screen.getAllByText('Demo KB')).toHaveLength(1)
+
+    // No detail/documents/workflows request ever targeted the first-listed KB.
+    const requestedUrls = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.map((call) => String(call[0]))
+    expect(requestedUrls.some((requestedUrl) => requestedUrl.includes('kb-3'))).toBe(false)
+  })
+
+  it('falls back to auto-select when the ?kb= deep-link is unknown', async () => {
+    installFetchMock()
+    renderWithClient(<KnowledgeBaseManagerPage />, ['/knowledge-bases?kb=does-not-exist'])
+
+    await screen.findByText('Ingestion Studio')
+    expect(await screen.findAllByText('Fraud KB')).toHaveLength(2)
   })
 
   it('returns the selection to an in-scope knowledge base when scoping hides it', async () => {

@@ -200,6 +200,9 @@ test.describe('Demo walkthrough — live mode (TN demo KB)', () => {
     // pattern rather than pinning to one row (multiple alerts can share an
     // entity_label, so there is no stable per-row selector to target).
     await page.goto(`/alerts?kb=${kb.id}`)
+    // allTextContents() does not auto-wait; anchor on the first flag label
+    // rendering (all rows populate from a single alerts fetch) before sampling.
+    await expect(page.locator('.flag-label').first()).toBeVisible()
     const renderedFlags = await page.locator('.flag-label').allTextContents()
     const expectedFlags = tagged.map((item) => flagLabelFor(item))
     expect(

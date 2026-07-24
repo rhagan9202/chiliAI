@@ -14,10 +14,15 @@ import { seeded } from './helpers/seeded'
 
 // Matches the `carrier_claims_a` feed schema: required DESYNPUF_ID + CLM_ID,
 // optional dates (ISO YYYY-MM-DD), performing-physician NPI, line payment.
+// CLM_IDs are unique per run: rows dedupe on (kb, record_type, record_id), and
+// an all-duplicate submission correctly starts no ingestion workflow — reusing
+// fixed ids would fail the run-timeline assertion on any second run against
+// the same stack (make test-e2e wipes volumes, a live dev stack does not).
+const CLM_ID_RUN_SUFFIX = String(Date.now() % 1_000_000).padStart(6, '0')
 const CARRIER_CLAIMS_CSV = [
   'DESYNPUF_ID,CLM_ID,CLM_FROM_DT,CLM_THRU_DT,PRF_PHYSN_NPI_1,LINE_NCH_PMT_AMT_1',
-  '00013D2EFD8E45D1,887234567890001,2009-01-12,2009-01-12,1234567893,125.50',
-  '00016F745862898F,887234567890002,2009-02-03,2009-02-04,1987654320,84.00',
+  `00013D2EFD8E45D1,887234001${CLM_ID_RUN_SUFFIX},2009-01-12,2009-01-12,1234567893,125.50`,
+  `00016F745862898F,887234002${CLM_ID_RUN_SUFFIX},2009-02-03,2009-02-04,1987654320,84.00`,
   '',
 ].join('\n')
 
@@ -29,6 +34,15 @@ test.describe('Ingestion Studio records flow', () => {
     await page.goto(`/knowledge-bases?kb=${kb}`)
 
     await expect(page.getByRole('heading', { name: 'Ingestion Studio' })).toBeVisible()
+
+    // The ?kb= deep-link must actually bind the selection: uploading into
+    // whatever KB happens to sort first would pollute real data (e.g. the TN
+    // demo KB) and hit its workflow-in-progress guard. Fail fast instead.
+    await expect(
+      page
+        .getByRole('region', { name: 'Knowledge bases' })
+        .getByRole('button', { name: /E2E Seed KB/, pressed: true }),
+    ).toBeVisible()
 
     // Choose the structured records source by clicking its option label (the
     // radio input is visually hidden inside the label; clicking the label
