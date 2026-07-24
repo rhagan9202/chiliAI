@@ -3,9 +3,21 @@ set -euo pipefail
 
 API="${CHILI_API_URL:-http://localhost:8000}"
 
-KB_RESPONSE=$(curl -s -X POST "$API/knowledgebases" \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"TN Demo","description":"Tennessee NPPES+DE-SynPUF subset"}')
+# Guarded against set -e: a transient network error must retry, not kill
+# the script before the "KB ID:" sentinel demo_cms.sh parses ever prints.
+KB_RESPONSE=""
+for _ in 1 2 3; do
+  KB_RESPONSE=$(curl -s -X POST "$API/knowledgebases" \
+    -H 'Content-Type: application/json' \
+    -d '{"name":"TN Demo","description":"Tennessee NPPES+DE-SynPUF subset"}') && break
+  KB_RESPONSE=""
+  echo "WARN: KB create attempt failed (network); retrying in 5s..." >&2
+  sleep 5
+done
+if [ -z "$KB_RESPONSE" ]; then
+  echo "ERROR: could not reach $API/knowledgebases after 3 attempts." >&2
+  exit 1
+fi
 KB_ID=$(echo "$KB_RESPONSE" | python3 -c "import json, sys; print(json.load(sys.stdin)['id'])")
 echo "Created KB $KB_ID"
 
@@ -20,7 +32,10 @@ post_with_retry() {
   shift
   local code
   for _ in $(seq 1 90); do
-    code=$(curl -s -o /tmp/chili_demo_resp.json -w "%{http_code}" "$@")
+    # `|| code=000`: without the guard, a transient curl failure (connection
+    # reset, DNS blip) aborts the whole ingest under set -e and demo_cms.sh
+    # mis-reports it as a KB-id parse failure. 000 feeds the retry loop.
+    code=$(curl -s -o /tmp/chili_demo_resp.json -w "%{http_code}" "$@") || code="000"
     case "$code" in
       2??)
         python3 -m json.tool < /tmp/chili_demo_resp.json
@@ -28,6 +43,10 @@ post_with_retry() {
         ;;
       409)
         sleep 10
+        ;;
+      000)
+        echo "WARN: $label transient network failure; retrying in 5s..." >&2
+        sleep 5
         ;;
       413)
         echo "WARN: $label rejected as too large (HTTP 413); the pack's" \
