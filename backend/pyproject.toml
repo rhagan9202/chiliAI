@@ -92,7 +92,7 @@ build-backend = "setuptools.build_meta"
 include = ["api*", "agent*", "shared*", "config*", "events*", "storage*",
            "ingestion*", "graph*", "vectorstore*", "embeddings*", "rag*",
            "llm*", "analytics*", "monitoring*", "database*", "records*",
-           "conversations*", "tools*"]
+           "conversations*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -111,16 +111,13 @@ venvPath = "."
 venv = ".venv"
 # Kept to "." only. The repo-root tools/ package (tools/pyrightconfig.json)
 # used to be reached from here via extraPaths ".." + an "../tools" include
-# entry, but backend/tools/ (see tools/demo_trigger_analytics.py) now also
-# exists and shares the bare top-level name "tools" — pyright resolves a
-# given dotted module name to a single filesystem location for the whole
-# Program, so with both "." and ".." reachable, *every* `import tools`
-# anywhere in this invocation — even from files that only ever meant
-# backend/tools/ — silently resolves to the repo-root package instead
-# (verified empirically against pyright 1.1.409; this is not fixable via a
-# per-execution-environment extraPaths override, since the resolution is
-# cached program-wide, not per environment). The repo-root tools/ package is
-# therefore typechecked by its own standalone tools/pyrightconfig.json (see
+# entry; a since-deleted backend/tools/ package that shared the bare
+# top-level name "tools" forced the split (pyright resolves a dotted module
+# name to a single filesystem location program-wide, so with both "." and
+# ".." reachable every `import tools` silently resolved to one of the two).
+# backend/tools/ is gone (analytics.34 removed the demo trigger), but the
+# split configuration is kept: the repo-root tools/ package is
+# typechecked by its own standalone tools/pyrightconfig.json (see
 # .github/workflows/ci.yml's separate "Type-check tools/" step) instead of
 # being pulled into this program.
 extraPaths = ["."]
@@ -187,28 +184,9 @@ include = [
     "tests/policy",
     "tests/records",
     "tests/shared/test_metrics.py",
-    "tests/tools",
     "tests/vectorstore",
-    "tools",
 ]
 exclude = ["**/__pycache__", "chili_backend.egg-info"]
-
-# tests/tools needs its own (default-settings) executionEnvironment, listed
-# before the broader "tests" one below: pyright matches execution
-# environments in array order and uses the first whose root prefixes the
-# file path, so without this, tests/tools/*.py would match "tests" instead —
-# and empirically (pyright 1.1.409), a file matching the broader "tests"
-# root fails to resolve `import tools` (the tools/ package, see
-# tools/demo_trigger_analytics.py) even though it resolves fine for every
-# other file in the program, including other files under tests/. Root-caused
-# to pyright's own import-resolution behavior for nested execution
-# environments, not to any extraPaths/include setting — reproduced with
-# extraPaths reduced to a single unambiguous entry and with the "tests"
-# environment's rule overrides stripped to nothing; only a *more specific*
-# matching environment (this one) restores resolution. No rule overrides
-# needed here since tests/tools doesn't use starlette's TestClient.
-[[tool.pyright.executionEnvironments]]
-root = "tests/tools"
 
 # starlette >= 1.3.x types TestClient request methods (.get/.post/...) as Unknown,
 # which cascades reportUnknown* errors through every test that calls the client.

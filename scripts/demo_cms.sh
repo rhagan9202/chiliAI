@@ -21,12 +21,13 @@ PACK_NAME="medicare_fraud_cms_desynpuf"
 # Probe budget: ~15s poll interval. (a) KB-ready and (e) policy items are
 # lightweight status reads and keep the original 4 min cap. (b) alerts,
 # (c) GNN clusters, and (d) evidence-pack narrative all depend on the
-# analytics trigger below (block 4.5) finishing its fan-out: one
-# graph.updated event triggers a full-KB GNN snapshot (community detection
-# over the *entire* TN-subset graph, not just the triggered entities) plus
-# risk/explainability for the triggered entities, and that GNN pass alone
-# can take several minutes against a real graph — so their budget is raised
-# well past the original cap. Both env-overridable for tuning.
+# native records->analytics fan-out (analytics.34; gated by the CMS pack's
+# records.analytics_trigger config) finishing inside the worker: it runs a
+# full-KB GNN snapshot (community detection over the *entire* TN-subset
+# graph, not just the top-N entities) plus risk/explainability for the
+# batch's top-N — and that GNN pass alone can take several minutes against
+# a real graph — so their budget is raised well past the original cap.
+# Both env-overridable for tuning.
 PROBE_INTERVAL_SECONDS=15
 PROBE_TIMEOUT_SECONDS="${PROBE_TIMEOUT_SECONDS:-240}"
 PROBE_TIMEOUT_SECONDS_ANALYTICS="${PROBE_TIMEOUT_SECONDS_ANALYTICS:-900}"
@@ -180,41 +181,6 @@ if [ "$INGEST_STATUS" -ne 0 ]; then
   exit 1
 fi
 log "Ingest complete. KB ID: $KB_ID"
-
-# ---------------------------------------------------------------------------
-# 4.5. Analytics trigger (D1 Task 5): a natural CMS records ingest computes
-#    derived risk *signals* but never publishes graph.updated, so Flow B
-#    (GNN -> risk -> explainability -> alerts.created) never runs on its
-#    own — the chartered analytics.34 gap (automatic triggering from a
-#    records ingest is that follow-up's job, not this script's). This is
-#    the demo's disclosed, explicit stand-in: see
-#    backend/tools/demo_trigger_analytics.py and docs/demo/README.md.
-#
-#    This script stays docker-free itself — DEMO_ANALYTICS_TRIGGER_CMD is
-#    supplied by `make demo-cms` (a `docker compose exec` into the running
-#    worker container; see the Makefile) with a literal `__KB__` placeholder,
-#    substituted here for the just-ingested KB id before running. An
-#    unset/blank command means "skip" (e.g. this script invoked directly,
-#    not via `make demo-cms`) — probes (b)-(d) below then depend on alerts
-#    already present from a prior trigger.
-# ---------------------------------------------------------------------------
-if [ -n "${DEMO_ANALYTICS_TRIGGER_CMD:-}" ]; then
-  # Safety invariant for this eval: KB_ID is never operator/attacker input —
-  # it's parsed from scripts/demo_ingest_tn_subset.sh's own stdout ("Done...
-  # KB ID: <id>"), which is itself the server-generated UUID POST
-  # /knowledgebases returned (see block 4 above). DEMO_ANALYTICS_TRIGGER_CMD
-  # itself carries operator/Makefile trust — same level as any other env var
-  # this script already reads unquoted into a command (DEMO_SAMPLE_RATE,
-  # CHILI_API_URL, ...); it is not attacker-controlled input.
-  TRIGGER_CMD="${DEMO_ANALYTICS_TRIGGER_CMD//__KB__/$KB_ID}"
-  log "Running analytics trigger: $TRIGGER_CMD"
-  if ! eval "$TRIGGER_CMD"; then
-    echo "ERROR: analytics trigger command failed: $TRIGGER_CMD" >&2
-    exit 1
-  fi
-else
-  log "DEMO_ANALYTICS_TRIGGER_CMD not set; skipping the explicit analytics trigger."
-fi
 
 # ---------------------------------------------------------------------------
 # 5. Readiness probes: poll with timeouts (~15s interval; (a)/(e) at 4 min,
