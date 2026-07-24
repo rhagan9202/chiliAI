@@ -65,6 +65,58 @@ def _setdefault_test_service_urls() -> None:
 _setdefault_test_service_urls()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_migrated_test_database() -> None:
+    """Bring a fresh ``chili_test`` to ``alembic upgrade head`` once per session.
+
+    ``infra/postgres/init-test-db.sql`` creates the test database *empty*; the
+    Postgres-backed integration tests assume the schema exists and historically
+    only passed because an earlier full run's ``test_migrations.py`` had left
+    ``upgrade head`` applied. On a genuinely fresh volume (first ``make test``
+    after ``make clean``) every table-touching test failed with
+    ``UndefinedTable`` before the migration test ran (suite order puts
+    ``tests/api``/``tests/cases``/``tests/conversations`` first). This fixture
+    removes that order/state dependency: if the database is reachable and has
+    no ``alembic_version`` table, apply migrations before any test runs.
+
+    Unreachable database → do nothing (unit-only runs without the dev stack
+    keep working; integration tests fail/skip exactly as they do today).
+    """
+
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        return
+    try:
+        import psycopg
+    except ImportError:
+        return
+    try:
+        with psycopg.connect(database_url, connect_timeout=3) as conn:
+            row = conn.execute("SELECT to_regclass('public.alembic_version')").fetchone()
+            already_migrated = row is not None and row[0] is not None
+    except psycopg.Error:
+        return
+    if already_migrated:
+        return
+    import subprocess
+    import sys
+
+    backend_dir = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=backend_dir,
+        env={**os.environ, "DATABASE_URL": database_url},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "alembic upgrade head against the test database failed:\n"
+            f"{result.stderr}"
+        )
+
+
 DEFAULT_CONFIG_PATH = (
     Path(__file__).resolve().parent.parent
     / "config"

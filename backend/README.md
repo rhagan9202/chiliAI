@@ -162,7 +162,11 @@ make seed-housing SEED_ARGS="--scorecards"                 # ...and generate sco
 > `docker exec chiliai-postgres-1 psql -U chili -c "CREATE DATABASE chili_test"`
 > (migration 0001 installs the TimescaleDB extension itself). An explicitly
 > exported `DATABASE_URL` still wins — never export the dev `chili` DSN when
-> running the suite.
+> running the suite. A fresh (schema-less) `chili_test` self-provisions: a
+> session-scoped conftest fixture applies `alembic upgrade head` before any
+> test runs when the database is reachable but has no `alembic_version`
+> table (added 2026-07-24 after the first post-`make clean` run failed 17
+> Postgres-backed tests with `UndefinedTable`).
 
 ## Quality Requirements
 
