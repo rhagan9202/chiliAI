@@ -15,6 +15,7 @@
 
 **Setup checklist (5 min before the room fills):**
 - [ ] Stack is up: `make dev` (or already running), then `make demo-cms` has completed — it prints a KB id and the exact walkthrough URLs at the end. Use those URLs; do not guess at routes.
+- [ ] Know this if asked: `make demo-cms` explicitly triggers the analytics-review pass (GNN/risk/explainability → alerts) for the KB's top-3 highest-risk providers (`backend/tools/demo_trigger_analytics.py`) — a records ingest alone computes risk *signals* but doesn't yet publish the event that runs that pass automatically (chartered as **analytics.34**). Everything the trigger produces — the alerts, evidence packs, GNN clusters — runs through the real pipeline; only *when* it runs is manual today.
 - [ ] Browser tabs open, in this order: `/alerts`, `/investigation/<top-alert-entity>?kb=<kb-id>` (from the `demo-cms` summary), `/dashboard`, `/policy`.
 - [ ] Browser zoom bumped to ~110%.
 - [ ] Know which role you're demoing as: the **analyst** role lands on Alert Feed (its page set is `dashboard, alerts, investigation, knowledge_bases, rag_chat`); the **supervisor** role lands on Dashboard (`dashboard, alerts, investigation, knowledge_bases, configuration`). Neither role's sidebar carries a "Policy" entry for this pack — see Scene 2.4 for why that's fine. This role picker is a **domain-config UI role** (nav/landing-page only) and is unrelated to the backend RBAC role below.

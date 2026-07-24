@@ -18,11 +18,20 @@ SAMPLE_RATE="${DEMO_SAMPLE_RATE:-0.01}"
 SUBSET_DIR="sample_data/CMS/tn_subset"
 PACK_NAME="medicare_fraud_cms_desynpuf"
 
-# Probe budget: ~15s poll interval, 4 min timeout per probe, 5 probes -> 20
-# min worst-case total (brief's "<=20 min total" cap).
+# Probe budget: ~15s poll interval. (a) KB-ready and (e) policy items are
+# lightweight status reads and keep the original 4 min cap. (b) alerts,
+# (c) GNN clusters, and (d) evidence-pack narrative all depend on the
+# analytics trigger below (block 4.5) finishing its fan-out: one
+# graph.updated event triggers a full-KB GNN snapshot (community detection
+# over the *entire* TN-subset graph, not just the triggered entities) plus
+# risk/explainability for the triggered entities, and that GNN pass alone
+# can take several minutes against a real graph — so their budget is raised
+# well past the original cap. Both env-overridable for tuning.
 PROBE_INTERVAL_SECONDS=15
-PROBE_TIMEOUT_SECONDS=240
+PROBE_TIMEOUT_SECONDS="${PROBE_TIMEOUT_SECONDS:-240}"
+PROBE_TIMEOUT_SECONDS_ANALYTICS="${PROBE_TIMEOUT_SECONDS_ANALYTICS:-900}"
 PROBE_MAX_ATTEMPTS=$((PROBE_TIMEOUT_SECONDS / PROBE_INTERVAL_SECONDS))
+PROBE_MAX_ATTEMPTS_ANALYTICS=$((PROBE_TIMEOUT_SECONDS_ANALYTICS / PROBE_INTERVAL_SECONDS))
 
 log() {
   echo "[demo-cms] $*"
@@ -173,10 +182,38 @@ fi
 log "Ingest complete. KB ID: $KB_ID"
 
 # ---------------------------------------------------------------------------
-# 5. Readiness probes: poll with timeouts (~15s interval, 4 min cap per
-#    probe, <=20 min total across all 5). Each prints PASS/WAIT lines and,
-#    on timeout, exits 1 naming the failing probe — except probe (e), which
-#    is intentionally soft (see its comment below).
+# 4.5. Analytics trigger (D1 Task 5): a natural CMS records ingest computes
+#    derived risk *signals* but never publishes graph.updated, so Flow B
+#    (GNN -> risk -> explainability -> alerts.created) never runs on its
+#    own — the chartered analytics.34 gap (automatic triggering from a
+#    records ingest is that follow-up's job, not this script's). This is
+#    the demo's disclosed, explicit stand-in: see
+#    backend/tools/demo_trigger_analytics.py and docs/demo/README.md.
+#
+#    This script stays docker-free itself — DEMO_ANALYTICS_TRIGGER_CMD is
+#    supplied by `make demo-cms` (a `docker compose exec` into the running
+#    worker container; see the Makefile) with a literal `__KB__` placeholder,
+#    substituted here for the just-ingested KB id before running. An
+#    unset/blank command means "skip" (e.g. this script invoked directly,
+#    not via `make demo-cms`) — probes (b)-(d) below then depend on alerts
+#    already present from a prior trigger.
+# ---------------------------------------------------------------------------
+if [ -n "${DEMO_ANALYTICS_TRIGGER_CMD:-}" ]; then
+  TRIGGER_CMD="${DEMO_ANALYTICS_TRIGGER_CMD//__KB__/$KB_ID}"
+  log "Running analytics trigger: $TRIGGER_CMD"
+  if ! eval "$TRIGGER_CMD"; then
+    echo "ERROR: analytics trigger command failed: $TRIGGER_CMD" >&2
+    exit 1
+  fi
+else
+  log "DEMO_ANALYTICS_TRIGGER_CMD not set; skipping the explicit analytics trigger."
+fi
+
+# ---------------------------------------------------------------------------
+# 5. Readiness probes: poll with timeouts (~15s interval; (a)/(e) at 4 min,
+#    (b)-(d) at the analytics budget above — see its comment). Each prints
+#    PASS/WAIT lines and, on timeout, exits 1 naming the failing probe —
+#    except probe (e), which is intentionally soft (see its comment below).
 # ---------------------------------------------------------------------------
 
 # (a) KB status ready.
@@ -217,7 +254,7 @@ except Exception:
 probe_alerts_live() {
   log "Probe (b): durable alert feed for KB $KB_ID..."
   local attempt body total
-  for attempt in $(seq 1 "$PROBE_MAX_ATTEMPTS"); do
+  for attempt in $(seq 1 "$PROBE_MAX_ATTEMPTS_ANALYTICS"); do
     body=$(curl -fsS --max-time 10 "$API/alerts?kb=$KB_ID&limit=100") || body=""
     total=$(printf '%s' "$body" | python3 -c "
 import json, sys
@@ -238,10 +275,10 @@ except Exception:
       echo "PASS (b) alerts total=$total"
       return 0
     fi
-    echo "WAIT (b) alerts total=$total (attempt $attempt/$PROBE_MAX_ATTEMPTS)"
+    echo "WAIT (b) alerts total=$total (attempt $attempt/$PROBE_MAX_ATTEMPTS_ANALYTICS)"
     sleep "$PROBE_INTERVAL_SECONDS"
   done
-  echo "ERROR: probe (b) alert feed timed out; 0 alerts for KB $KB_ID after ${PROBE_TIMEOUT_SECONDS}s." >&2
+  echo "ERROR: probe (b) alert feed timed out; 0 alerts for KB $KB_ID after ${PROBE_TIMEOUT_SECONDS_ANALYTICS}s." >&2
   exit 1
 }
 
@@ -252,7 +289,7 @@ except Exception:
 probe_gnn_clusters() {
   log "Probe (c): GNN clusters for KB $KB_ID..."
   local attempt body count
-  for attempt in $(seq 1 "$PROBE_MAX_ATTEMPTS"); do
+  for attempt in $(seq 1 "$PROBE_MAX_ATTEMPTS_ANALYTICS"); do
     body=$(curl -fsS --max-time 10 "$API/analytics/gnn/clusters?kb_id=$KB_ID") || body=""
     count=$(printf '%s' "$body" | python3 -c "
 import json, sys
@@ -266,10 +303,10 @@ except Exception:
       echo "PASS (c) gnn clusters=$count"
       return 0
     fi
-    echo "WAIT (c) gnn clusters=$count (attempt $attempt/$PROBE_MAX_ATTEMPTS)"
+    echo "WAIT (c) gnn clusters=$count (attempt $attempt/$PROBE_MAX_ATTEMPTS_ANALYTICS)"
     sleep "$PROBE_INTERVAL_SECONDS"
   done
-  echo "ERROR: probe (c) GNN clusters timed out; 0 clusters for KB $KB_ID after ${PROBE_TIMEOUT_SECONDS}s." >&2
+  echo "ERROR: probe (c) GNN clusters timed out; 0 clusters for KB $KB_ID after ${PROBE_TIMEOUT_SECONDS_ANALYTICS}s." >&2
   exit 1
 }
 
@@ -282,7 +319,7 @@ except Exception:
 probe_evidence_narrative() {
   log "Probe (d): evidence pack narrative for the first alert..."
   local attempt body evidence_id evidence_body narrative_count
-  for attempt in $(seq 1 "$PROBE_MAX_ATTEMPTS"); do
+  for attempt in $(seq 1 "$PROBE_MAX_ATTEMPTS_ANALYTICS"); do
     body=$(curl -fsS --max-time 10 "$API/alerts?kb=$KB_ID&limit=1") || body=""
     evidence_id=$(printf '%s' "$body" | python3 -c "
 import json, sys
@@ -309,13 +346,13 @@ except Exception:
         echo "PASS (d) evidence pack $evidence_id narrative_sections=$narrative_count"
         return 0
       fi
-      echo "WAIT (d) evidence pack $evidence_id found, narrative_sections=$narrative_count (attempt $attempt/$PROBE_MAX_ATTEMPTS)"
+      echo "WAIT (d) evidence pack $evidence_id found, narrative_sections=$narrative_count (attempt $attempt/$PROBE_MAX_ATTEMPTS_ANALYTICS)"
     else
-      echo "WAIT (d) first alert has no evidence_pack_id yet (attempt $attempt/$PROBE_MAX_ATTEMPTS)"
+      echo "WAIT (d) first alert has no evidence_pack_id yet (attempt $attempt/$PROBE_MAX_ATTEMPTS_ANALYTICS)"
     fi
     sleep "$PROBE_INTERVAL_SECONDS"
   done
-  echo "ERROR: probe (d) evidence pack narrative timed out after ${PROBE_TIMEOUT_SECONDS}s." >&2
+  echo "ERROR: probe (d) evidence pack narrative timed out after ${PROBE_TIMEOUT_SECONDS_ANALYTICS}s." >&2
   exit 1
 }
 

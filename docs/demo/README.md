@@ -39,12 +39,26 @@ data, and walk the exact same path a presenter would, live.
    `medicare_fraud_cms_desynpuf` pack if it isn't already active, builds the
    1% TN subset from `sample_data/CMS` if it hasn't been built yet (requires
    `make data-setup` to have staged the raw CMS/NPPES source data first — see
-   `docs/testing/DATA.md`), ingests it through the real records API, and
+   `docs/testing/DATA.md`), ingests it through the real records API,
+   **explicitly triggers the analytics-review pass** (GNN → risk →
+   explainability → alerts) for the KB's top-3 highest-risk providers, and
    polls a set of readiness probes (KB ready, alerts live, GNN clusters
    present, an evidence pack with a narrative, and Task 1's policy-rule
    packs firing) before printing a summary with the knowledge-base id and
    the exact URLs to open. **Use those printed URLs** — don't guess at
    routes, and don't reuse a stale entity id from a previous run.
+
+   **Disclosure — the analytics trigger is explicit, not automatic.** A
+   records ingest alone computes derived risk *signals* but does not, on its
+   own, publish the `graph.updated` event that runs GNN/risk/explainability
+   and produces alerts and evidence packs (the chartered **analytics.34**
+   follow-up: automatic triggering from a records ingest). `make demo-cms`
+   runs `backend/tools/demo_trigger_analytics.py` inside the worker
+   container to publish that event explicitly for the top-risk providers,
+   using the same real pipeline code path a naturally-ingested document
+   would — nothing about the alerts, evidence packs, or GNN clusters
+   themselves is faked or pre-seeded. When analytics.34 ships, this trigger
+   step becomes unnecessary and can be removed.
 
    `make demo-cms` requires the stack to already be running; it never runs
    `docker compose` itself, and it fails loudly with the exact next command

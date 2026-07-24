@@ -51,6 +51,7 @@
 - Tooling gotchas (mirrored from `CLAUDE.md` — keep in sync):
   - `ruff`'s cache dir may not be writable in sandboxed agent runs — use `ruff check --no-cache .`.
   - Bare `pyright` (no args) is the real gate — `tool.pyright.include` covers many `tests/**`, so test code must be strict-clean too; per-file `pyright <file>` can miss include-scoped test errors.
+  - The repo-root `tools/` package is typechecked by its own `tools/pyrightconfig.json` (a separate CI step, "Type-check tools/"), not folded into `backend/pyproject.toml`'s `[tool.pyright]` — it shares the bare name `tools` with `backend/tools/`, and pyright resolves a given module name to one location per Program, so one invocation can't see both. See either config file's comment.
   - Playwright `page.route` patterns must be `/api/`-anchored — unanchored patterns also intercept SPA page navigations and render JSON as the page body.
   - Regenerate frontend contracts after ANY frontend-consumed Pydantic change: `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json` (repo root), then `cd chili_app && npm run codegen:api`. CI fails on drift.
 
