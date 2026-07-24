@@ -52,7 +52,7 @@ make migrate      # alembic upgrade head inside the API container
 make test         # run backend pytest --cov via the host venv (against chili_test, never the dev DB)
 make test-e2e     # Playwright e2e against a fresh full dev stack
 make seed-housing # seed the Air Force housing demo KB via the running API (housing pack required)
-make demo-cms     # CMS fraud demo bring-up: TN 1% staging + ingest + analytics trigger + readiness probes (stack must be running; see docs/demo/)
+make demo-cms     # CMS fraud demo bring-up: TN 1% staging + ingest + readiness probes; analytics fire natively on ingest (stack must be running; see docs/demo/)
 make prod         # production stack (built images, nginx, no hot reload)
 ```
 Service URLs: frontend `:5173`, API `:8000`, worker health/metrics `:8001`, Neo4j `:7474`, Qdrant `:6333`, MinIO console `:9001`. `.env` is loaded from `.env.example` (gitignored).

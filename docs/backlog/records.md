@@ -494,10 +494,10 @@
 **so that** operators are not surprised when records-only KBs never trigger Flow 2 (graph metrics) or Flow 3 (risk recompute).
 
 ### Current State
-- `handle_records_ingested` (`backend/agent/coordinator.py:1597-1690`) calls `graph_service.upsert_records_graph` and intentionally does NOT publish `GraphUpdatedEvent` — the inline comment at `backend/agent/coordinator.py:1677-1678` says "we intentionally do not publish VectorsIndexedEvent here" but does not explain GraphUpdatedEvent omission.
-- Architecture §6.3 (`docs/architecture.md:~693`) describes Flow 1 as ending at graph upsert + observations write — Flows 2/3 are documents-only triggered.
-- `backend/records/README.md:38-51` describes Flow 1 but does not call out the no-`GraphUpdatedEvent` quirk.
-- No story or doc records this as an intentional design choice vs an oversight; this surprises operators reading the events module.
+- `handle_records_ingested` (`backend/agent/coordinator.py`, search `def handle_records_ingested` — line anchors drift; previously cited :1597-1690, now ~:2960+) calls `graph_service.upsert_records_graph` and intentionally does NOT publish `GraphUpdatedEvent`.
+- Architecture §6.3 describes Flow 1 as ending at graph upsert + observations write — Flows 2/3 are documents-only triggered.
+- `backend/records/README.md` describes Flow 1 but does not call out the no-`GraphUpdatedEvent` quirk.
+- **Re-scoped by analytics.34 (done 2026-07-24):** Flow B (GNN/risk/explainability/alerts) now fires natively off records ingest via a direct in-process call gated by `RecordsConfig.analytics_trigger` — WITHOUT publishing `GraphUpdatedEvent` (publishing would force Flow A's storage-key artifacts + redundant re-embedding; that decision is recorded in analytics.34's AC 1). What remains for THIS story is the Flow 2/3 question only (graph metrics recompute, risk recompute off a published event) and the operator-facing documentation of the no-publish design. If the `emit_graph_updated_event` toggle is still wanted, its event must carry storage-key artifacts or Flow A must learn to skip artifact-less documents.
 
 ### Acceptance Criteria
 - [ ] `backend/records/README.md` gets a new `## Flow 1: known quirks` section explicitly documenting that records-driven graph upserts do NOT publish `GraphUpdatedEvent`, with rationale (records are typically high-volume; per-batch metric/risk recompute would thrash) and a pointer to the opt-in toggle.

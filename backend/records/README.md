@@ -65,10 +65,20 @@ records source (CSV/JSONL/api-push)
   → worker handle_records_ingested:
        1. map rows → entities/relationships → GraphService.upsert_records_graph()
        2. derive observations → observations table (PostgresObservationStore)
+       3. peerstats/timeseries stages → entity_derived_signals; risk assess
+       4. records→analytics fan-out (analytics.34): GNN → risk →
+          explainability → alerts, in-process, for the batch's top-N
+          assessed entities — gated by DomainConfig.records.analytics_trigger
+          (default off), throttled per KB
 ```
 
 Every write is an idempotent upsert, so the worker's retry/DLQ wrapper can
-re-run the handler safely.
+re-run the handler safely (the analytics fan-out is best-effort and never
+re-runs the ingest on failure). Records-ingested KBs get GNN clusters,
+evidence packs, and alerts natively once `records.analytics_trigger.enabled`
+is set — no `GraphUpdatedEvent` is published for records (see
+`docs/architecture.md` §6.3 and story records.12 for the remaining Flow 2/3
+question).
 
 ## Idempotency, partial acceptance, and format gating (BL-015)
 

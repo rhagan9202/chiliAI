@@ -86,7 +86,12 @@ Note: several `docs/backlog/*.md` module stories describe pre-shipped states
   entities via the existing analytics write-back path.
 - No new pipeline wiring: `GraphUpdatedEvent → analyze()` already fires and
   stops no-oping the moment the source is real. Stage failure remains
-  non-fatal (existing catch/skip semantics).
+  non-fatal (existing catch/skip semantics). **Correction (2026-07-24):**
+  this held for *document* ingest only — a records ingest never published
+  `GraphUpdatedEvent`, so Flow B never fired for the CMS demo's
+  records-only KBs (the "plan-premise gap" D1's DoD run surfaced,
+  chartered as analytics.34 and closed 2026-07-24 by the gated in-process
+  records→analytics fan-out).
 
 **B2 — Timeseries into the pipeline** (analytics.06/07)
 
@@ -109,7 +114,10 @@ Note: several `docs/backlog/*.md` module stories describe pre-shipped states
   factor-only packs.
 
 End-to-end data flow after B1–B3 (two ingest-triggered branches that
-converge on risk): records ingest → graph upsert → `GraphUpdated` → GNN on a
+converge on risk) — **correction (2026-07-24):** the first branch as drawn
+was never true in code (records upsert publishes no `GraphUpdated`); it
+became real via analytics.34's gated in-process fan-out, not an event:
+records ingest → graph upsert → `GraphUpdated` → GNN on a
 real snapshot → clusters persisted + written back to entities; in parallel,
 records ingest → peerstats z-scores + timeseries anomalies →
 `entity_derived_signals` → risk scoring → explainability (SHAP attribution +

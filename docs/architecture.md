@@ -788,16 +788,25 @@ handle_records_ingested()
   │           • PostgresTimeseriesAnomalyStore.write_anomalies() → timeseries_anomalies
   │           • latest anomaly per entity → DerivedRiskSignal (metric_name
   │             `timeseries_anomaly:<spec name>`) → entity_derived_signals
-  └── for each entity affected by either stage (deduped):
-        RiskService.assess()
-          # PostgresRiskSignalSource assembles signal profile
-          # (latest signal per metric from entity_derived_signals)
-          # → risk_score_history + graph entity snapshot
+  ├── for each entity affected by either stage (deduped):
+  │     RiskService.assess()
+  │       # PostgresRiskSignalSource assembles signal profile
+  │       # (latest signal per metric from entity_derived_signals)
+  │       # → risk_score_history + graph entity snapshot
+  └── records→analytics fan-out (analytics.34; gated on
+        DomainConfig.records.analytics_trigger, per-KB throttle window,
+        top-N assessed entities by overall_score):
+        handle_graph_updated_for_analytics()   # DIRECT in-process call —
+          # an in-memory GraphUpdatedEvent with inline upserted_entity_ids;
+          # never published, so Flow A (embeddings) does not re-run and no
+          # storage-key artifacts are staged. Best-effort: a failure here
+          # publishes analysis.failed (stage=analytics_fanout) and never
+          # replays the ingest via retry/DLQ.
 ```
 
 Every write is an idempotent upsert keyed on `(knowledge_base_id, record_type, record_id)` for `raw_records`, on `(entity_id, metric_name, observed_at)` for `observations`, on `(knowledge_base_id, entity_id, metric_name, interval_start)` for `entity_derived_signals`, and on `(knowledge_base_id, entity_id, metric_name, observed_at)` for `timeseries_anomalies`, so the worker's retry/DLQ wrapper can re-run the handler safely without duplicating data.
 
-`GraphService.upsert_records_graph` is the records-specific graph entry point. Unlike the document pipeline's `upsert_graph`, it accepts no document artifacts and does not publish a `GraphUpdatedEvent`. The `observations` table has a write-side adapter at `monitoring/adapters/postgres.py` (`PostgresObservationStore`). The `entity_derived_signals` table is written by `PostgresDerivedRiskSignalWriter` (`analytics/peerstats/adapters/postgres.py`) and read by `PostgresRiskSignalSource` (`analytics/risk/adapters/postgres.py`) when assembling entity risk profiles. The peerstats and timeseries stages each run independently and best-effort — a failure in one no longer skips the other or risk assessment for entities the other stage did affect; risk assessment runs once per entity across the union of both stages' affected ids. Extreme flat-baseline z-scores (`z=inf`) are clamped to `1e6` before being persisted so stored floats stay JSON-safe.
+`GraphService.upsert_records_graph` is the records-specific graph entry point. Unlike the document pipeline's `upsert_graph`, it accepts no document artifacts and does not publish a `GraphUpdatedEvent` — Flow B analytics for records KBs instead run via the gated in-process fan-out at the end of `handle_records_ingested` (analytics.34), which needs no published event and no artifacts. The `observations` table has a write-side adapter at `monitoring/adapters/postgres.py` (`PostgresObservationStore`). The `entity_derived_signals` table is written by `PostgresDerivedRiskSignalWriter` (`analytics/peerstats/adapters/postgres.py`) and read by `PostgresRiskSignalSource` (`analytics/risk/adapters/postgres.py`) when assembling entity risk profiles. The peerstats and timeseries stages each run independently and best-effort — a failure in one no longer skips the other or risk assessment for entities the other stage did affect; risk assessment runs once per entity across the union of both stages' affected ids. Extreme flat-baseline z-scores (`z=inf`) are clamped to `1e6` before being persisted so stored floats stay JSON-safe.
 
 ### 6.4 Plan C Persistence Flows (worker-side write-back)
 

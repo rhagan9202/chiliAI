@@ -129,19 +129,21 @@ documents: list[ValidatedDocumentReference]
 ```python
 event_type: Literal["graph.updated"] = "graph.updated"
 documents: list[GraphUpdatedDocumentReference]
-# GraphUpdatedDocumentReference adds: upserted_entity_count, upserted_relationship_count, graph_update_storage_key
+# GraphUpdatedDocumentReference adds: upserted_entity_count, upserted_relationship_count,
+# graph_update_storage_key, and (analytics.34) optional upserted_entity_ids: list[str] | None
 ```
 
-**Second producer (dev-only, added 2026-07-24):** `backend/tools/demo_trigger_analytics.py`
-(`python -m tools.demo_trigger_analytics --kb <id> --top N`, run inside the
-worker container) publishes a real `GraphUpdatedEvent` from outside the
-normal pipeline — it stages synthetic `GraphUpsertResult`/`ValidationReport`
-artifacts naming a KB's top-N risk-ranked entities, then publishes. This is
-the disclosed, explicit workaround for the `analytics.34` gap (a natural
-`records.ingested` flow computes risk signals but never publishes
-`graph.updated`, so GNN/risk/explainability/alerts never run off it). See
-[`modules/agent.md`](../modules/agent.md) (Coordinator section) for the full
-explanation.
+**Inline entity ids (`upserted_entity_ids`, added 2026-07-24):** the
+records→analytics fan-out (`analytics.34`) constructs an **in-memory**
+`GraphUpdatedEvent` with this field set and calls
+`handle_graph_updated_for_analytics` directly — it is never published to the
+bus, so the ingestion pipeline's Flow A (embeddings) does not re-run and no
+storage-key artifacts are needed. `_resolve_upserted_entity_ids` prefers the
+inline field over `graph_update_storage_key` when both are present. Published
+`graph.updated` events (documents pipeline) continue to carry storage keys and
+leave this field `None`. The former dev-only second producer
+(`backend/tools/demo_trigger_analytics.py`) is deleted. See
+[`modules/agent.md`](../modules/agent.md) (Coordinator section).
 
 ### `EmbeddingsCompleteEvent`
 ```python
