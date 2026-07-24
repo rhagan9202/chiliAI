@@ -37,6 +37,7 @@ type KnowledgeBaseItem = {
   name: string
   domain: string | null
   status: string
+  created_at: string
 }
 
 type KbListResponse = { items: KnowledgeBaseItem[]; total: number }
@@ -76,27 +77,61 @@ function flagLabelFor(alert: { tags: string[]; severity: string }): string {
   return alert.severity.toUpperCase()
 }
 
-async function discoverTnKb(): Promise<KnowledgeBaseItem | null> {
+type DiscoveredTnKb = { kb: KnowledgeBaseItem; reason: string }
+
+/**
+ * Discover the TN demo KB. Reruns of `make demo-cms` create a NEW KB each
+ * time — the operator can legitimately have several KBs named "TN Demo" in
+ * the medicare_fraud domain with status ready, only the newest of which has
+ * been through a full analytics pass. First-match discovery would silently
+ * bind to a stale, alert-less KB, so this collects every matching candidate,
+ * orders newest-first (created_at desc), and prefers the newest one that
+ * already has >=1 alert; if none do (all are freshly ingesting), it falls
+ * back to the newest match and lets the per-test skip reasons explain what's
+ * still missing. E2E_DEMO_KB bypasses discovery and wins outright.
+ */
+async function discoverTnKb(): Promise<DiscoveredTnKb | null> {
   const override = process.env['E2E_DEMO_KB']
   if (override) {
-    return fetchJson<KnowledgeBaseItem>(`/knowledgebases/${override}`)
+    const kb = await fetchJson<KnowledgeBaseItem>(`/knowledgebases/${override}`)
+    return { kb, reason: 'E2E_DEMO_KB override' }
   }
+
   const payload = await fetchJson<KbListResponse>('/knowledgebases?limit=500')
-  return (
-    payload.items.find(
+  const candidates = payload.items
+    .filter(
       (kb) =>
         kb.name === TN_KB_NAME && kb.domain === TN_KB_DOMAIN && kb.status === TN_KB_STATUS,
-    ) ?? null
-  )
+    )
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+  if (candidates.length === 0) {
+    return null
+  }
+
+  for (const candidate of candidates) {
+    const alerts = await fetchJson<AlertListResponse>(`/alerts?kb=${candidate.id}&limit=1`)
+    if (alerts.items.length > 0) {
+      return {
+        kb: candidate,
+        reason: `newest of ${candidates.length} candidate(s) with >=1 alert`,
+      }
+    }
+  }
+  return {
+    kb: candidates[0],
+    reason: `newest of ${candidates.length} candidate(s); none have alerts yet`,
+  }
 }
 
 let tnKb: KnowledgeBaseItem | null = null
 
 test.beforeAll(async () => {
-  tnKb = await discoverTnKb()
+  const discovered = await discoverTnKb()
+  tnKb = discovered?.kb ?? null
   console.log(
-    tnKb
-      ? `[demo-walkthrough] live mode: TN KB ${tnKb.id} ("${tnKb.name}", status=${tnKb.status})`
+    tnKb && discovered
+      ? `[demo-walkthrough] live mode: TN KB ${tnKb.id} ("${tnKb.name}", status=${tnKb.status}) — ${discovered.reason}`
       : `[demo-walkthrough] reference mode only: ${NO_TN_KB_REASON}`,
   )
 })
