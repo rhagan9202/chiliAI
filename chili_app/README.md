@@ -105,6 +105,14 @@ npm run codegen:api    # Regenerate API types from checked-in openapi.json
 npm run render:architecture  # Render docs/architecture.md diagrams
 ```
 
+`package.json` carries an `overrides` entry forcing `js-yaml >= 4.3.0`
+(GHSA-52cp-r559-cp3m / GHSA-h67p-54hq-rp68, quadratic-CPU DoS): the fix is
+in-range for every consumer except `@redocly/openapi-core` (a transitive
+dev dependency of `openapi-typescript`), which pins the vulnerable `4.2.0`
+exactly and has no fixed release yet. Drop the override once a redocly
+release depends on `js-yaml >= 4.3.0`. CI's `npm audit --audit-level=high`
+gate enforces this.
+
 `npm run codegen:api` reads `chili_app/openapi.json`; it does not call a live backend. When backend HTTP contracts change, regenerate the snapshot from the repo root first:
 
 ```bash
