@@ -46,7 +46,7 @@ verification date.
 | `AlertFeedPage.tsx` | `/alerts` | `useAlerts`, `useAcknowledgeAlert`, `useCases`, `usePromoteAlertToCase`, `useEvidencePack`, `useInvestigationNeighborhood` (real depth-1 subgraph for the evidence expansion, since U2), `usePolicyItems` (policy chips, since U2) | none |
 | `InvestigationWorkbenchPage.tsx` | `/investigation`, `/investigation/:entityId` | `useInvestigationEntitySearch`, `useInvestigationEntity`, `useInvestigationNeighborhood`, `useRiskScore`, `useTimeseries`, `useGnnClusters` (cluster overlay/membership), `usePolicyItems` (via `EntityPolicyPanel`, POLICY tab) | none — KB id and entity id are URL-driven (`?kb=`, `:entityId`), not store-backed, despite the "Drift note" below predating this |
 | `CaseManagementPage.tsx` | `/cases` | `useCases`, `useCase`, `useCreateCase`, `useUpdateCase`, `useCaseFeedback` | `uiStore` |
-| `KnowledgeBaseManagerPage.tsx` | `/knowledge-bases` | `useKnowledgeBases`, `useKnowledgeBaseDocuments`, `uploadDocuments`, `useIngestionStudioStore` | `ingestionStudioStore` |
+| `KnowledgeBaseManagerPage.tsx` | `/knowledge-bases` | `useKnowledgeBases`, `useKnowledgeBaseDocuments`, `uploadDocuments`, `useIngestionStudioStore` | `ingestionStudioStore` — initial selection honors a `?kb=` deep-link (since 2026-07-24), matching `AlertFeedPage`/`PolicyIntelligencePage`/`InvestigationWorkbenchPage`'s convention; falls back to the existing in-scope auto-select if the id isn't in the visible KB list |
 | `PolicyIntelligencePage.tsx` | `/policy` | `usePolicyGaps`, `usePolicyGap`, `usePolicyGapCases`, `useCreatePolicyBrief` | — |
 | `RagChatPage.tsx` | `/rag-chat` | `createConversation`, `sendMessage`, `streamMessage` | `chatStore`, `appStore` |
 | `ConfigurationPage.tsx` | `/configuration` | `useDomainConfig`, `getDomainConfigSchema` | — |
@@ -254,7 +254,7 @@ Redirects to `/login` if `useSession()` reports `unauthenticated`; shows a loadi
 ## Test Locations
 
 - Unit tests: `src/**/__tests__/` (Vitest)
-- E2e tests: `chili_app/e2e/` (Playwright, 22 spec files as of 2026-07-23)
+- E2e tests: `chili_app/e2e/` (Playwright, 23 spec files as of 2026-07-24 — added `demo-walkthrough.spec.ts`, the D1 scripted-demo reference+live-mode walkthrough)
 
 Commands:
 ```bash

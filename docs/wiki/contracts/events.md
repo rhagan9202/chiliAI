@@ -1,6 +1,6 @@
 # Redis Streams Event Payloads
 
-**Verified against codebase:** 2026-06-16
+**Verified against codebase:** 2026-06-16, except the `GraphUpdatedEvent` second-producer note (**2026-07-24**, D1 demo closeout)
 **Source:** `backend/events/types.py`, `backend/events/protocols.py`, `backend/events/runtime.py`, `backend/events/adapters/redis_streams.py`
 
 All events extend `EventBase`. The `AnyEvent` union type covers all concrete event types. Events are serialized/deserialized via `events/codec.py`.
@@ -131,6 +131,17 @@ event_type: Literal["graph.updated"] = "graph.updated"
 documents: list[GraphUpdatedDocumentReference]
 # GraphUpdatedDocumentReference adds: upserted_entity_count, upserted_relationship_count, graph_update_storage_key
 ```
+
+**Second producer (dev-only, added 2026-07-24):** `backend/tools/demo_trigger_analytics.py`
+(`python -m tools.demo_trigger_analytics --kb <id> --top N`, run inside the
+worker container) publishes a real `GraphUpdatedEvent` from outside the
+normal pipeline — it stages synthetic `GraphUpsertResult`/`ValidationReport`
+artifacts naming a KB's top-N risk-ranked entities, then publishes. This is
+the disclosed, explicit workaround for the `analytics.34` gap (a natural
+`records.ingested` flow computes risk signals but never publishes
+`graph.updated`, so GNN/risk/explainability/alerts never run off it). See
+[`modules/agent.md`](../modules/agent.md) (Coordinator section) for the full
+explanation.
 
 ### `EmbeddingsCompleteEvent`
 ```python

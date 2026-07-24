@@ -175,9 +175,20 @@ The frontend has operational views, but no mounted wizard experience for configu
 **so that** the workspace doesn't ship dead UI that promises capability it doesn't deliver.
 
 ### Current State
-- `chili_app/src/components/layout/AiAssistantPanel.tsx:3-29` renders a static composer with a no-op send button.
-- `chili_app/src/components/layout/AppShell.tsx:65` mounts it on every authenticated route.
-- No hookup to `chili_app/src/api/rag.ts` exists; the input does nothing.
+- **(Corrected 2026-07-24, D1 closeout — prior text was stale.)** The panel is no
+  longer a no-op: `AiAssistantPanel.tsx` parses launch context from the current
+  route (`/alerts?alert=`, `/cases?case=`, entity pages, `/rag-chat` params) and
+  its send button navigates to `/rag-chat` via `buildRagChatUrl` with the typed
+  question, KB, and source context attached — the handoff lands in the real RAG
+  chat surface. Send stays disabled until both a context and a non-empty draft
+  exist.
+- `AppShell.tsx:91` mounts it only while `aiPanelOpen` is toggled on (TopBar
+  "AI Panel" button), not unconditionally.
+- What remains of the original decision: whether an *inline* conversation
+  (reply rendered in the panel via the RAG mutation, per the ACs below) is
+  wanted on top of the shipped navigate-to-RAG-chat handoff, or whether the
+  handoff is the recorded end state. The ACs below still describe the inline
+  variant and should be re-scoped when this story is picked up.
 - **PM prereq re-point (2026-06-23):** prereq `rag.07` (reranker stage) was mislabeled — wiring the assistant to the live conversational endpoint depends on **`rag.01`** (live RagService), not the optional reranker.
 
 ### Acceptance Criteria
@@ -1102,3 +1113,40 @@ Sprint 2026-28 U2 (frontend.27) shipped the canvas-side support **dormant and un
 - `chili_app/e2e/investigation-workbench.spec.ts` (modify — add the live-data assertion once real predicted links exist)
 
 ---
+
+## Story frontend.30: Give `/policy` a first-class nav placement (or record the direct-URL posture)
+
+**ID:** frontend.30
+**Status:** planned
+**Prerequisites:** []
+**Unblocks:** []
+**Estimated size:** S
+
+**As a** fraud analyst working the policy queue,
+**I need** the Policy Intelligence page to be reachable from the sidebar (or its direct-URL-only status to be a recorded product decision),
+**so that** a core demo surface isn't a page you can only reach by knowing its URL.
+
+### Current State
+Found during Sprint 2026-28 D1 (presenter-script verification, adjudicated
+non-blocking): on the `medicare_fraud_cms_desynpuf` pack, `/policy` is not in
+any role's `enabled_pages`, so `chili_app/src/lib/access.ts` treats it as an
+unmatched route — it renders fine when visited directly (the demo script and
+`make demo-cms` print the URL) but shows no sidebar nav entry and no role gates
+it. The page itself (`PolicyIntelligencePage.tsx`) is fully functional against
+live data (2046 items on the 1% TN subset). This is a pack-config decision, not
+a code defect: adding `policy` to `enabled_pages`/role `pages` in
+`backend/config/defaults/*.yaml` is all it takes to surface it.
+
+### Acceptance Criteria
+- [ ] Decision recorded: either `policy` is added to the appropriate packs' `enabled_pages` + role `pages` (analyst at minimum on the CMS pack), or this direct-URL posture is documented in `docs/demo/README.md` and the pack YAML comments as intentional.
+- [ ] If surfaced: sidebar shows the Policy entry under the granted roles across the CMS packs; `chili_app/e2e/demo-walkthrough.spec.ts` navigates via the sidebar instead of a raw `page.goto`.
+- [ ] Existing nav-less direct rendering keeps working either way (deep links from `make demo-cms` output must not break).
+
+### Verification
+- `make dev` + browser: sidebar shows/omits Policy per the decision; `/policy?kb=<id>` still renders standalone.
+- `cd chili_app && npm run test:e2e -- demo-walkthrough` green.
+
+### Code touch points
+- `backend/config/defaults/medicare_fraud_cms_desynpuf.yaml` (modify — `enabled_pages`/roles, if surfaced)
+- `chili_app/e2e/demo-walkthrough.spec.ts` (modify — sidebar navigation, if surfaced)
+- `docs/demo/README.md` (modify — posture note, if not surfaced)

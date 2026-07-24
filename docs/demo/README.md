@@ -18,8 +18,6 @@ data, and walk the exact same path a presenter would, live.
   — the Playwright spec that mechanically walks the same path (reference
   mode against seeded dev data by default; live mode against a real TN demo
   KB when one exists) so the script cannot silently drift from the product.
-  *(Lands in Sprint 2026-28 D1 Task 4; if this link 404s, that task hasn't
-  merged yet — the script above is still accurate on its own.)*
 
 ## Prerequisites
 
