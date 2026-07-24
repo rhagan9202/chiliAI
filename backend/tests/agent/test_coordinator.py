@@ -2715,6 +2715,7 @@ def test_graceful_shutdown_finishes_in_flight_event(
         entity_metric_repository=InMemoryEntityMetricRepository(),
         metrics_throttle=MetricsRecomputeThrottle(min_interval_seconds=300),
         policy_metrics_throttle=MetricsRecomputeThrottle(min_interval_seconds=300),
+        records_analytics_throttle=MetricsRecomputeThrottle(min_interval_seconds=300),
         risk_history_writer=InMemoryRiskHistoryWriter(),
         alert_history_writer=InMemoryAlertHistoryWriter(),
         event_settings=EventBusSettings(backend="in-memory"),
