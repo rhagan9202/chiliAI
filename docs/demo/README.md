@@ -120,6 +120,22 @@ below it — simply do not render, and Act 3's live switch cannot be
 demonstrated. If you're skipping Act 3, this is not needed; the rest of the
 walkthrough works at the default `viewer`/`analyst` level.
 
+> **WSL2 + Docker Desktop interop caveat:** if your `docker` CLI is the
+> Windows-side `docker.exe` (typical when the WSL distro has no native
+> docker binary), a plain bash env var does NOT cross the WSL→Windows
+> boundary — compose will silently interpolate the `viewer` default.
+> Propagate it explicitly:
+>
+> ```bash
+> WSLENV=CHILI_DEV_ANONYMOUS_ROLE CHILI_DEV_ANONYMOUS_ROLE=admin make dev
+> ```
+>
+> Verify with `docker exec chiliai-api-1 printenv CHILI_DEV_ANONYMOUS_ROLE`
+> before the room fills. The same caveat applies to `demo-cms`'s pack
+> switch: if the active pack ever needs switching (it normally doesn't on a
+> fresh stack, where `CHILI_CONFIG_PATH` already selects the CMS pack), the
+> `POST /config/switch` call is admin-gated and will fail under `viewer`.
+
 ## Keeping this demo honest
 
 If you change a page, a rule pack, or an analytics capability that this
