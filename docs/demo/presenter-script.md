@@ -135,7 +135,7 @@
 
 **Say this:**
 
-> "This is the real in-app pack switcher, not a terminal call — it lists every domain pack the backend can see, and it's a deliberate two-step: I click **Activate** next to the Air Force housing pack, it asks me to confirm — 'Switch the whole workspace to "department_air_force_housing"?' — and only then does clicking **Confirm switch** actually validate and hot-swap it, live, with no restart."
+> "This is the real in-app pack switcher, not a terminal call — it lists every domain pack the backend can see, and it's a deliberate two-step: I click **Activate** next to the Air Force housing pack, it asks me to confirm — 'Switch the whole workspace to "Department of the Air Force Housing"?' — and only then does clicking **Confirm switch** actually validate and hot-swap it, live, with no restart."
 
 **[Wait for the swap-result banner]**
 
