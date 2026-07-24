@@ -52,7 +52,7 @@
 **ID:** monitoring.02
 **Status:** done
 **Prerequisites:** [events.02, api.06, graph.07]
-**Unblocks:** [analytics.06, analytics.36, monitoring.09]
+**Unblocks:** [analytics.06, analytics.36, monitoring.09, monitoring.21]
 **Estimated size:** M
 **Done:** 2026-07-23 · alerts.36 (durable alert read model) · `feat/alerts-durable-read-model`
 
@@ -741,5 +741,59 @@ so that rule updates do not require a full service redeploy.
 - `backend/app/monitoring/**`
 - `backend/app/config/**`
 - `docs/wiki/modules/monitoring.md`
+
+---
+
+## Story monitoring.21: Alert feed listing filters in SQL, not client-side
+
+**ID:** monitoring.21
+**Status:** planned
+**Prerequisites:** [monitoring.02]
+**Unblocks:** []
+**Estimated size:** L
+
+**As a** platform engineer,
+**I need** `GET /alerts` (and the related-alert and metrics lookups that share the same store) to filter by knowledge base and entity in SQL rather than fetching the whole `alert_history` table and filtering in Python,
+**so that** the alert feed and its dependent read models stay fast and bounded as `alert_history` grows past dev-seed size.
+
+### Current State
+- `AlertFeedStoreProtocol.list_alerts` (`backend/monitoring/adapters/protocols.py`) has no `knowledge_base_id` or `entity_id` filter parameter — only `statuses`, `limit`, `offset`.
+- `get_alert_list_payload` (`backend/api/dependencies.py`) handles `GET /alerts?kb=` by fetching a first page to learn the total, then re-fetching with `limit=total_records, offset=0` — i.e. the **entire** `alert_history` table — and filtering by `knowledge_base_id` in Python before paginating the filtered list in memory.
+- `_related_alert_ids` (`backend/api/_graph_entity_payload.py`) and `_count_alert_metrics` (`backend/api/_analytics_overview.py`) both page-scan the full table (`list_alerts(limit=500/_ALERT_PAGE_SIZE, offset=...)` in a `while True` loop) to compute an entity's related alerts or the active/high-risk counts, rather than pushing `entity_id`/status predicates into SQL.
+- This pattern was inherited from the dev-seed-sized in-memory/API-owned projection blob it replaced (alerts.36); `alert_history` is now a durable, append-only, cross-KB table with no equivalent size ceiling, so the full-table-scan-per-request pattern degrades with total alert volume instead of with the KB's or entity's own alert count.
+- No index exists on `created_at` alone — `ORDER BY created_at DESC, alert_id DESC` (used by every `list_alerts` call, filtered or not) has no dedicated index to satisfy the global (no-KB, no-entity) sort; the existing `ix_alert_history_entity (knowledge_base_id, entity_id, created_at DESC)` index only helps entity-scoped scans.
+- The PK is the composite `(knowledge_base_id, alert_id)` — a KB-scoped `WHERE knowledge_base_id = %s` can already use it as a prefix, but nothing in `list_alerts` accepts that predicate today.
+- `monitoring/adapters/postgres.py:55-57` comments that `alert_id`-only lookups are safe because `alert_id` is "a UUID minted upstream and globally unique in practice" — this assumption is not enforced by a `UNIQUE` constraint.
+- `events/types.py::AlertCreatedReference.confidence` is a bare `float = 0.0` with no bounds — a producer bug or bad decode could write an out-of-range confidence into `alert_history` silently instead of failing fast into the Flow-4 DLQ.
+- Separately (demo-awareness fact, not part of this story's fix): `GET /alerts/{id}` no longer surfaces the seeded `policy_citations`/hub relations that the old projection returned for demo fixtures — the durable `alert_history` row has no such columns. The response shape is otherwise unchanged.
+
+### Acceptance Criteria
+- [ ] `AlertFeedStoreProtocol.list_alerts` gains optional `knowledge_base_id` and `entity_id` filter parameters, pushed into the SQL `WHERE` clause by the Postgres adapter (using the existing PK prefix for `knowledge_base_id`) and applied equivalently by the in-memory adapter.
+- [ ] `get_alert_list_payload` (`api/dependencies.py`) passes `kb` straight to `list_alerts(knowledge_base_id=...)` instead of fetching the full table and filtering in Python.
+- [ ] `_related_alert_ids` (`api/_graph_entity_payload.py`) passes `entity_id` to `list_alerts` instead of scanning every page and filtering client-side.
+- [ ] `_count_alert_metrics` (`api/_analytics_overview.py`) no longer requires pulling full alert rows across the whole table just to compute a count — page-scanning solely for a count is out of scope to keep as the steady state.
+- [ ] A new migration adds a `created_at` index sufficient to satisfy the global (unfiltered) `ORDER BY created_at DESC, alert_id DESC` sort used by `list_alerts` when no `knowledge_base_id`/`entity_id` predicate is given.
+- [ ] The same migration (or a companion one) adds a `UNIQUE` index on `alert_id`, converting the "globally unique in practice" comment in `monitoring/adapters/postgres.py` into an enforced constraint.
+- [ ] `events/types.py::AlertCreatedReference.confidence` is bounded with `Field(ge=0.0, le=1.0)` so an out-of-range value fails at decode time into the Flow-4 DLQ instead of being written to `alert_history` silently.
+- [ ] Regression note recorded (already true today, not newly introduced by this story): `GET /alerts/{id}` no longer surfaces seeded `policy_citations`/hub relations that the old projection carried for demo fixtures — response shape is unchanged, flagged here for demo awareness only.
+- [ ] Existing `GET /alerts`, `GET /graph/entities/{id}` related-alerts, and `GET /analytics/overview` behavior (response shapes, ordering, pagination semantics) is unchanged from the caller's perspective — this is a query-plan/performance fix, not a contract change.
+
+### Verification
+- [ ] Unit tests for `list_alerts` cover `knowledge_base_id`-only, `entity_id`-only, and combined filters against both the Postgres and in-memory adapters, asserting the SQL adapter issues a `WHERE`-filtered query rather than a full-table fetch.
+- [ ] A test seeds `alert_history` with alerts across multiple KBs/entities and asserts `get_alert_list_payload`, `_related_alert_ids`, and `_count_alert_metrics` each return correct results without the full-table `limit=total`/`limit=500 while True` pattern.
+- [ ] A migration replay test (`tests/database/test_migrations.py`) covers the new indexes' `upgrade`/`downgrade`.
+- [ ] A decode-time test proves an out-of-range `confidence` on `AlertCreatedReference` fails validation instead of reaching `alert_history`.
+- [ ] `backend/.venv/bin/pytest tests/monitoring tests/api/test_dependencies.py tests/api/test_read_model_routers.py tests/database -q` green.
+- [ ] `pyright` (bare) and `ruff check --no-cache .` clean.
+
+### Code touch points
+- `backend/monitoring/adapters/protocols.py` (modify — `AlertFeedStoreProtocol.list_alerts` filter params)
+- `backend/monitoring/adapters/postgres.py`, `backend/monitoring/adapters/in_memory.py` (modify — SQL `WHERE` filtering, `UNIQUE` index awareness)
+- `backend/api/dependencies.py` (modify — `get_alert_list_payload`)
+- `backend/api/_graph_entity_payload.py` (modify — `_related_alert_ids`)
+- `backend/api/_analytics_overview.py` (modify — `_count_alert_metrics`)
+- `backend/database/migrations/versions/0013_*.py` (new — `created_at` index, `UNIQUE` index on `alert_id`)
+- `backend/events/types.py` (modify — `AlertCreatedReference.confidence` bounds)
+- `backend/tests/monitoring/**`, `backend/tests/api/**`, `backend/tests/database/**` (modify/new)
 
 ---

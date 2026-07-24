@@ -5,7 +5,7 @@
 
 ## Purpose
 
-FastAPI gateway layer. Thin HTTP orchestration — no business logic in routers. Routes delegate to service modules via dependency injection. Owns: auth middleware, RBAC enforcement, SSE/WebSocket real-time push, and API-facing projections for alerts, knowledge bases, workflows, graph entities, chat, policy items, and analytics read models.
+FastAPI gateway layer. Thin HTTP orchestration — no business logic in routers. Routes delegate to service modules via dependency injection. Owns: auth middleware, RBAC enforcement, SSE/WebSocket real-time push, and API-facing projections for knowledge bases, workflows, graph entities, chat, policy items, and analytics read models. Alerts are not an API-owned projection — `/alerts` reads the durable `alert_history` table directly (see "In-process Read Models" below).
 
 Does **not** own: any business logic, data persistence, event processing.
 

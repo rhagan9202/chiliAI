@@ -39,10 +39,10 @@ metric_name, observed_at)`, BL-047 — see
 `backend/analytics/README.md` § Timeseries series-source contract). Migration
 0012 adds `alert_history` read-model columns `entity_label text NOT NULL
 DEFAULT ''`, `confidence double precision NOT NULL DEFAULT 0`, and `tags
-jsonb NOT NULL DEFAULT '[]'::jsonb` (alerts.36 — feeds the in-progress
-alerts-durable-read-model effort so `GET /alerts` can be served from
-`alert_history` instead of seeded `ApiState`). Head is `0012` — 15 tables
-total (column-only addition, no new table).
+jsonb NOT NULL DEFAULT '[]'::jsonb` (alerts.36 — `GET /alerts` has been
+served from `alert_history` since this branch, replacing the retired
+projection blob `api/_alert_store.py`, not seeded `ApiState`). Head is
+`0012` — 15 tables total (column-only addition, no new table).
 
 ## Commands
 

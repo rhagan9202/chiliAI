@@ -34,14 +34,14 @@
 | ingestion.md | 23 | 0 | 12 | 35 | 34% |
 | knowledgebases.md | 13 | 0 | 0 | 13 | 0% |
 | llm.md | 17 | 0 | 0 | 17 | 0% |
-| monitoring.md | 19 | 0 | 1 | 20 | 5% |
+| monitoring.md | 20 | 0 | 1 | 21 | 4% |
 | rag.md | 17 | 0 | 0 | 17 | 0% |
 | records.md | 10 | 2 | 1 | 13 | 7% |
 | scorecards.md | 3 | 0 | 0 | 3 | 0% |
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 412 | 7 | 30 | 452 | 6% |
+| **Total** | 413 | 7 | 30 | 453 | 6% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -77,7 +77,7 @@
 - [database.05] database — size M — prereqs done
 - [database.07] database — size M — prereqs done
 - [embeddings.01] embeddings — size M — prereqs done
-- …38 more
+- …39 more
 <!-- END: ready-set -->
 
 ## Critical path

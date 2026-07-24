@@ -1,8 +1,10 @@
 """Object-store-backed evidence-pack repository.
 
 Packs are serialized to JSON under ``knowledgebases/{kb}/evidence/{id}.json``
-so they are durable across the API and worker containers, co-located with the
-alert projection store family (``api/_alert_store.py``).
+so they are durable across the API and worker containers, alongside the
+other object-store-backed repositories in this codebase (e.g. the KB
+metadata store, ``knowledgebases/adapters/object_store.py``, and the GNN
+cluster store, ``analytics/gnn/adapters/cluster_store.py``).
 """
 
 from __future__ import annotations
