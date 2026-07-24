@@ -51,6 +51,9 @@ export function KnowledgeBaseManagerPage() {
   // Honor a ?kb= deep-link as the initial selection, matching the convention on
   // AlertFeedPage / PolicyIntelligencePage / InvestigationWorkbenchPage. If the
   // requested KB isn't in the visible list, the auto-select fallback below wins.
+  // Initializer-only: a client-side navigation that changes ?kb= without
+  // remounting this page will not rebind selection — no in-app link carries
+  // ?kb= here today; revisit if one is added.
   const [searchParams] = useSearchParams()
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<string | null>(
     () => searchParams.get('kb'),

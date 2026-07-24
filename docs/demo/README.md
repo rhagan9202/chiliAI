@@ -41,9 +41,10 @@ data, and walk the exact same path a presenter would, live.
    **explicitly triggers the analytics-review pass** (GNN → risk →
    explainability → alerts) for the KB's top-3 highest-risk providers, and
    polls a set of readiness probes (KB ready, alerts live, GNN clusters
-   present, an evidence pack with a narrative, and Task 1's policy-rule
-   packs firing) before printing a summary with the knowledge-base id and
-   the exact URLs to open. **Use those printed URLs** — don't guess at
+   present, an evidence pack with a narrative, and the demo policy-rule
+   packs firing — this last probe is soft: it warns and continues rather
+   than failing the run) before printing a summary with the knowledge-base
+   id and the exact URLs to open. **Use those printed URLs** — don't guess at
    routes, and don't reuse a stale entity id from a previous run.
 
    **Disclosure — the analytics trigger is explicit, not automatic.** A

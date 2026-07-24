@@ -233,7 +233,8 @@ probe_kb_ready() {
     # `body=$(curl ...) || body=""` is -e-exempt (the `||` makes the whole
     # statement's status 0 either way) — a transient connection failure or
     # --max-time timeout on any attempt must fall through to WAIT, never
-    # abort the script. See task-2-report.md "Fix round" for the proof.
+    # abort the script. A bare `body=$(curl ...)` assignment would abort
+    # under `set -e`; every probe curl in this script carries this guard.
     body=$(curl -fsS --max-time 10 "$API/knowledgebases/$KB_ID") || body=""
     kb_status=$(printf '%s' "$body" | python3 -c "
 import json, sys
