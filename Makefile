@@ -102,6 +102,10 @@ tn-subset-full: ## Build the COMPLETE TN subset (no sampling, ~2.4 GB carrier) â
 data-setup: ## Stage local CMS/NPPES source data into sample_data/ (extracts downloaded zips)
 	scripts/setup_local_data.sh
 
+.PHONY: demo-cms
+demo-cms: ## Full CMS fraud demo bring-up: pack switch + TN 1% staging + ingest + readiness probes (stack must be running: make dev)
+	scripts/demo_cms.sh
+
 # Requires the stack running with the Air Force housing pack, e.g.
 # `make dev-domain DOMAIN=department_air_force_housing`. Uploads the tracked
 # housing feed fixtures through the real records API. Extra args pass through:

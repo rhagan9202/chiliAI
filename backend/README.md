@@ -116,6 +116,9 @@ cd .. && PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --o
 make demo-tn-subset                                         # build TN subset + create KB + upload
 python -m tools.sample_data.build_tennessee_subset --help  # subset builder options
 
+# Demo: full CMS fraud bring-up (BL-051) — pack switch + subset + ingest + readiness probes
+make demo-cms                                               # scripts/demo_cms.sh; requires `make dev` running first
+
 # Demo: Air Force housing dashboard (stack must run the housing pack)
 make dev-domain DOMAIN=department_air_force_housing        # start stack with the housing pack
 make seed-housing                                          # create KB + upload 6 feed fixtures via real HTTP
