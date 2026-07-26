@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useAppStore } from '../../stores/appStore'
 import { CaseManagementPage } from '../CaseManagementPage'
 
 const mocks = vi.hoisted(() => ({
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   useCase: vi.fn(),
   useCases: vi.fn(),
   useKnowledgeBases: vi.fn(),
+  useDomainConfig: vi.fn(),
 }))
 
 vi.mock('../../api/alerts', () => ({
@@ -20,6 +22,10 @@ vi.mock('../../api/alerts', () => ({
 
 vi.mock('../../api/knowledgebases', () => ({
   useKnowledgeBases: mocks.useKnowledgeBases,
+}))
+
+vi.mock('../../api/config', () => ({
+  useDomainConfig: mocks.useDomainConfig,
 }))
 
 vi.mock('../../api/cases', () => ({
@@ -109,6 +115,16 @@ describe('CaseManagementPage', () => {
     mocks.addFeedback.mockReset()
     mocks.promote.mockReset()
     mocks.updateCase.mockReset()
+    // Query mocks keep their implementation but must forget prior calls, or a
+    // `toHaveBeenCalledWith` assertion can pass on another test's call.
+    mocks.useCases.mockClear()
+    mocks.useAlerts.mockClear()
+    mocks.useKnowledgeBases.mockClear()
+    window.localStorage.clear()
+    useAppStore.setState({ activeKnowledgeBaseId: null })
+    mocks.useDomainConfig.mockReturnValue({
+      data: { domain: { name: 'medicare_fraud' } },
+    })
     mocks.useKnowledgeBases.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -254,5 +270,52 @@ describe('CaseManagementPage', () => {
     expect(screen.getByText('Need more claims history.')).toBeInTheDocument()
     expect(screen.getByText('claims history')).toBeInTheDocument()
     expect(screen.getByText('prior auth')).toBeInTheDocument()
+  })
+
+  it('scopes to the shared active knowledge base, not the first one listed', () => {
+    // The list order puts the stale KB first; the workspace default is the most
+    // recently updated one, which is what the Dashboard also reports on.
+    mocks.useKnowledgeBases.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        items: [
+          { id: 'kb-stale', name: 'Stale', updated_at: '2026-01-01T00:00:00Z', domain: 'medicare_fraud' },
+          { id: 'kb-current', name: 'Current', updated_at: '2026-07-01T00:00:00Z', domain: 'medicare_fraud' },
+        ],
+      },
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/cases']}>
+        <CaseManagementPage />
+      </MemoryRouter>,
+    )
+
+    expect(mocks.useCases).toHaveBeenCalledWith('kb-current')
+  })
+
+  it('honors the remembered knowledge base across pages', () => {
+    // `kb-current` is both first in the list and the most recent, so only the
+    // remembered selection can produce `kb-stale` here.
+    useAppStore.setState({ activeKnowledgeBaseId: 'kb-stale' })
+    mocks.useKnowledgeBases.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        items: [
+          { id: 'kb-current', name: 'Current', updated_at: '2026-07-01T00:00:00Z', domain: 'medicare_fraud' },
+          { id: 'kb-stale', name: 'Stale', updated_at: '2026-01-01T00:00:00Z', domain: 'medicare_fraud' },
+        ],
+      },
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/cases']}>
+        <CaseManagementPage />
+      </MemoryRouter>,
+    )
+
+    expect(mocks.useCases).toHaveBeenCalledWith('kb-stale')
   })
 })

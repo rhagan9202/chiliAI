@@ -48,7 +48,9 @@ test.describe('Ingestion Studio document warnings', () => {
       buffer: Buffer.from(RAGGED_CSV, 'utf-8'),
     })
 
-    const submit = page.getByRole('button', { name: 'Submit documents' })
+    // KBM-002 unified both source paths behind a single "Run ingestion" CTA;
+    // there is no longer a per-source "Submit documents" button.
+    const submit = page.getByRole('button', { name: 'Run ingestion' })
     await expect(submit).toBeEnabled()
     // dispatchEvent: the adjacent submit panel overlaps this button at the
     // default e2e viewport, intercepting coordinate clicks.

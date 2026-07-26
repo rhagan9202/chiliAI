@@ -11,7 +11,6 @@ import {
   useInvestigationEntitySearch,
   useInvestigationNeighborhood,
 } from '../api/investigation'
-import { useKnowledgeBases } from '../api/knowledgebases'
 import { AnomalyTrendPanel } from '../components/investigation/AnomalyTrendPanel'
 import { ClusterMembershipPanel } from '../components/investigation/ClusterMembershipPanel'
 import { EntityDossierHeader } from '../components/investigation/EntityDossierHeader'
@@ -32,6 +31,7 @@ import {
   getEntityTitle,
   getEntityTypeLabel,
 } from '../utils/domainDisplay'
+import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import { toSubgraphResult } from '../utils/subgraph'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import './pages.css'
@@ -55,18 +55,17 @@ export function InvestigationWorkbenchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const domainConfigQuery = useDomainConfig()
   const featuresQuery = useDomainFeatures()
-  const knowledgeBasesQuery = useKnowledgeBases()
+  const {
+    activeKnowledgeBaseId,
+    knowledgeBases,
+    isLoading: knowledgeBasesLoading,
+    isError: knowledgeBasesError,
+  } = useActiveKnowledgeBase()
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTabId, setActiveTabId] = useState('signals')
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null)
   const selectedEntityId = entityId ?? null
-  const selectedKnowledgeBaseId = searchParams.get('kb')
   const depth = depthFromSearchParams(searchParams)
-
-  const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
-  const activeKnowledgeBaseId = knowledgeBases.some((item) => item.id === selectedKnowledgeBaseId)
-    ? selectedKnowledgeBaseId
-    : knowledgeBases[0]?.id ?? null
 
   const alertsQuery = useAlerts({ knowledgeBaseId: activeKnowledgeBaseId ?? undefined })
   const searchQuery = useInvestigationEntitySearch(activeKnowledgeBaseId, searchTerm)
@@ -82,15 +81,15 @@ export function InvestigationWorkbenchPage() {
   )
   const evidenceQuery = useEvidencePack(selectedAlert?.evidence_pack_id ?? null, activeKnowledgeBaseId)
 
-  if (domainConfigQuery.isLoading || knowledgeBasesQuery.isLoading || alertsQuery.isLoading) {
+  if (domainConfigQuery.isLoading || knowledgeBasesLoading || alertsQuery.isLoading) {
     return <LoadingState label="Loading investigation context" />
   }
 
-  if (domainConfigQuery.isError || knowledgeBasesQuery.isError || alertsQuery.isError) {
+  if (domainConfigQuery.isError || knowledgeBasesError || alertsQuery.isError) {
     return <ErrorState description="Investigation data could not be loaded from the backend." />
   }
 
-  if (!domainConfigQuery.data || !knowledgeBasesQuery.data || !alertsQuery.data) {
+  if (!domainConfigQuery.data || !alertsQuery.data) {
     return <LoadingState label="Waiting for investigation data" />
   }
 

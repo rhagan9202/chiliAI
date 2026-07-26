@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useAppStore } from '../../stores/appStore'
 import { PolicyIntelligencePage } from '../PolicyIntelligencePage'
 
 const mocks = vi.hoisted(() => ({
@@ -9,9 +10,11 @@ const mocks = vi.hoisted(() => ({
   usePolicyItems: vi.fn(),
   usePolicyItem: vi.fn(),
   useKnowledgeBases: vi.fn(),
+  useDomainConfig: vi.fn(),
 }))
 
 vi.mock('../../api/knowledgebases', () => ({ useKnowledgeBases: mocks.useKnowledgeBases }))
+vi.mock('../../api/config', () => ({ useDomainConfig: mocks.useDomainConfig }))
 vi.mock('../../api/policy', () => ({
   usePolicyItems: mocks.usePolicyItems,
   usePolicyItem: mocks.usePolicyItem,
@@ -19,6 +22,7 @@ vi.mock('../../api/policy', () => ({
 }))
 
 function setup() {
+  mocks.useDomainConfig.mockReturnValue({ data: { domain: { name: 'medicare_fraud' } } })
   mocks.useKnowledgeBases.mockReturnValue({ data: { items: [{ id: 'kb-1', name: 'KB 1' }] } })
   mocks.usePolicyItems.mockReturnValue({
     isLoading: false, isError: false,
@@ -31,6 +35,28 @@ function setup() {
 }
 
 describe('PolicyIntelligencePage', () => {
+  beforeEach(() => {
+    mocks.usePolicyItems.mockClear()
+    window.localStorage.clear()
+    useAppStore.setState({ activeKnowledgeBaseId: null })
+  })
+
+  it('scopes to the shared active knowledge base, not the first one listed', () => {
+    setup()
+    mocks.useKnowledgeBases.mockReturnValue({
+      data: {
+        items: [
+          { id: 'kb-stale', name: 'Stale', updated_at: '2026-01-01T00:00:00Z', domain: 'medicare_fraud' },
+          { id: 'kb-current', name: 'Current', updated_at: '2026-07-01T00:00:00Z', domain: 'medicare_fraud' },
+        ],
+      },
+    })
+
+    render(<MemoryRouter initialEntries={['/policy']}><PolicyIntelligencePage /></MemoryRouter>)
+
+    expect(mocks.usePolicyItems).toHaveBeenCalledWith('kb-current', undefined)
+  })
+
   it('lists items and triages the selected item', () => {
     setup()
     render(<MemoryRouter initialEntries={['/policy?kb=kb-1']}><PolicyIntelligencePage /></MemoryRouter>)

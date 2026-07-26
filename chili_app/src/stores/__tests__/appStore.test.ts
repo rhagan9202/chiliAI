@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { useAppStore } from '../appStore'
+import {
+  ACTIVE_KNOWLEDGE_BASE_STORAGE_KEY,
+  readStoredKnowledgeBaseId,
+  useAppStore,
+} from '../appStore'
 
 describe('useAppStore', () => {
   beforeEach(() => {
+    window.localStorage.clear()
     useAppStore.setState({
       sidebarOpen: true,
       selectedEntityId: null,
@@ -37,5 +42,28 @@ describe('useAppStore', () => {
     expect(useAppStore.getState().activeKnowledgeBaseId).toBe('kb-1')
     useAppStore.getState().setActiveKnowledgeBase(null)
     expect(useAppStore.getState().activeKnowledgeBaseId).toBeNull()
+  })
+
+  it('setActiveKnowledgeBase persists the selection so it survives a reload', () => {
+    useAppStore.getState().setActiveKnowledgeBase('kb-7')
+
+    expect(window.localStorage.getItem(ACTIVE_KNOWLEDGE_BASE_STORAGE_KEY)).toBe('kb-7')
+  })
+
+  it('setActiveKnowledgeBase(null) clears the persisted selection', () => {
+    useAppStore.getState().setActiveKnowledgeBase('kb-7')
+    useAppStore.getState().setActiveKnowledgeBase(null)
+
+    expect(window.localStorage.getItem(ACTIVE_KNOWLEDGE_BASE_STORAGE_KEY)).toBeNull()
+  })
+
+  it('readStoredKnowledgeBaseId returns the persisted selection', () => {
+    window.localStorage.setItem(ACTIVE_KNOWLEDGE_BASE_STORAGE_KEY, 'kb-from-last-session')
+
+    expect(readStoredKnowledgeBaseId()).toBe('kb-from-last-session')
+  })
+
+  it('readStoredKnowledgeBaseId returns null when nothing was persisted', () => {
+    expect(readStoredKnowledgeBaseId()).toBeNull()
   })
 })

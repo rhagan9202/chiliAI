@@ -6,7 +6,6 @@ import { Link } from 'react-router'
 import { useAlerts } from '../api/alerts'
 import { useAnalyticsOverview, useGnnClusters, useMetricTimeseries, useRiskScores } from '../api/analytics'
 import { useDomainConfig, useDomainFeatures } from '../api/config'
-import { useKnowledgeBases } from '../api/knowledgebases'
 import { useWorkflows } from '../api/workflows'
 import { TrendBars } from '../components/charts/TrendBars'
 import { ChartFrame } from '../components/charts/ChartFrame'
@@ -15,12 +14,12 @@ import { ConfidenceBar } from '../components/ui/ConfidenceBar'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
 import { Card } from '../components/ui/Card'
-import { isDomainMismatch } from '../components/knowledgebase/domainMismatch'
 import { KpiCard } from '../components/ui/KpiCard'
 import { LoadingState } from '../components/ui/LoadingState'
 import { RiskBadge } from '../components/ui/RiskBadge'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { Tabs } from '../components/ui/Tabs'
+import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import { flagLabelFor } from '../utils/flagLabel'
 import { clusterColorFor } from '../utils/graphStyles'
 import { triageNumeralColor } from '../utils/triage'
@@ -76,22 +75,28 @@ export function DashboardPage() {
     const start = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
     return { start, end }
   })
+  const {
+    activeKnowledgeBaseId,
+    knowledgeBases,
+    isLoading: knowledgeBasesLoading,
+    isError: knowledgeBasesError,
+  } = useActiveKnowledgeBase()
   const overviewQuery = useAnalyticsOverview()
-  const alertsQuery = useAlerts()
+  const alertsQuery = useAlerts({ knowledgeBaseId: activeKnowledgeBaseId ?? undefined })
   const workflowsQuery = useWorkflows()
-  const knowledgeBasesQuery = useKnowledgeBases()
   const domainConfigQuery = useDomainConfig()
   const domainFeaturesQuery = useDomainFeatures()
   const capabilities = domainFeaturesQuery.data?.capabilities
-  const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
-  const activeDomainName = domainConfigQuery.data?.domain.name ?? null
-  // Scope to the active domain pack before picking the ready KB: a leftover KB
-  // from a previously-active domain pack must not win over the active pack's
-  // own ready KB. Unstamped legacy KBs (no domain) are never a mismatch.
-  const scopedKnowledgeBases = knowledgeBases.filter(
-    (kb) => !isDomainMismatch(kb.domain ?? null, activeDomainName),
-  )
-  const activeKnowledgeBase = scopedKnowledgeBases.find((kb) => kb.status === 'ready') ?? null
+  // Domain scoping and the ready-KB preference now live in the shared workspace
+  // resolver, so every page agrees on which knowledge base is being read.
+  // The workspace may legitimately point at a knowledge base that is still
+  // building — you can still browse its cases and alerts. The analytics panels
+  // below cannot: risk scores, clusters and timeseries only exist once ingestion
+  // has finished, so they stay empty until the active KB is ready.
+  const workspaceKnowledgeBase =
+    knowledgeBases.find((kb) => kb.id === activeKnowledgeBaseId) ?? null
+  const activeKnowledgeBase =
+    workspaceKnowledgeBase?.status === 'ready' ? workspaceKnowledgeBase : null
   const riskScoresQuery = useRiskScores(
     activeKnowledgeBase ? { knowledgeBaseId: activeKnowledgeBase.id, limit: 5 } : null,
   )
@@ -107,11 +112,11 @@ export function DashboardPage() {
       : null,
   )
 
-  if (overviewQuery.isLoading || alertsQuery.isLoading || workflowsQuery.isLoading || knowledgeBasesQuery.isLoading) {
+  if (overviewQuery.isLoading || alertsQuery.isLoading || workflowsQuery.isLoading || knowledgeBasesLoading) {
     return <LoadingState label="Loading dashboard telemetry" />
   }
 
-  if (overviewQuery.isError || alertsQuery.isError || workflowsQuery.isError || knowledgeBasesQuery.isError) {
+  if (overviewQuery.isError || alertsQuery.isError || workflowsQuery.isError || knowledgeBasesError) {
     return <ErrorState description="Dashboard metrics could not be loaded from the API." />
   }
 

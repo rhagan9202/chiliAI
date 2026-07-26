@@ -318,6 +318,39 @@ Workbench keeps selected entity, knowledge base, and graph depth in the URL via
 The KB Manager run timeline renders `WorkflowRunResponse.last_error` for failed
 workflow runs when the backend exposes retry-exhaustion details.
 
+### Active knowledge base (workspace state)
+
+Every KB-scoped page reads one shared selection via
+`useActiveKnowledgeBase()` (`src/hooks/useActiveKnowledgeBase.ts`). Pages must
+not pick their own — divergent per-page resolution is what let the Dashboard
+and the Cases page report different counts for the same workspace (UXA-101).
+
+Resolution precedence, implemented as the pure
+`resolveActiveKnowledgeBaseId()` in `src/utils/activeKnowledgeBase.ts`:
+
+1. `?kb=<id>` in the URL — an explicit, shareable selection.
+2. The remembered selection, persisted in `localStorage` under
+   `chiliai.activeKnowledgeBaseId` so it survives reloads and new sessions.
+3. **Default:** the most recently updated (`updated_at`, falling back to
+   `created_at`) knowledge base **with status `ready`**; if none are ready, the
+   most recently updated one of any status. A still-building KB has no entities
+   or analytics yet, so it only wins when nothing better exists.
+
+Candidates from a different domain pack are excluded first (`isDomainMismatch`),
+and both `?kb=` and the remembered id are validated against that in-domain list —
+a deleted or cross-domain id falls through to the default rather than stranding
+the page on a KB the API will refuse.
+
+`setActiveKnowledgeBase(id)` writes both the store and `?kb=` (via `replace`, so
+switching does not stack history entries). Two deliberate exceptions:
+
+- **RAG Chat** refuses to fall back for a *contextual* launch (arriving from an
+  alert, case, or evidence pack) whose `kb` is unknown — answering against a
+  different corpus than the analyst came from is worse than refusing.
+- **Dashboard** analytics panels (risk scores, GNN clusters, timeseries) require
+  the active KB to be `ready`; the workspace selection itself may point at a
+  building KB.
+
 ## Domain-Driven Dynamic UI
 
 The frontend reads domain configuration from `GET /config/domain` at startup. This drives entity labels, icons, relationship labels, enabled analytics panels, and alert thresholds — allowing the same codebase to serve Medicare fraud, food supply chain, or any configured domain without code changes. Investigation display helpers in `src/utils/domainDisplay.ts` derive entity titles, subtitles, chips, and relationship labels from `DomainConfig.ui.display_fields`, `entities`, and `relationships`. See [`docs/architecture.md` §9](../docs/architecture.md#9-domain-configuration-model).

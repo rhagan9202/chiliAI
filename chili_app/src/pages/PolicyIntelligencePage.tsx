@@ -1,7 +1,5 @@
 import { useState } from 'react'
-import { useSearchParams } from 'react-router'
 
-import { useKnowledgeBases } from '../api/knowledgebases'
 import { usePolicyItem, usePolicyItems, useTriagePolicyItem } from '../api/policy'
 import type { PolicySeverity, PolicyItemStatus, PolicyTriageRequest } from '../api/contracts'
 import { showToast } from '../components/common/toastStore'
@@ -12,6 +10,7 @@ import { ErrorState } from '../components/ui/ErrorState'
 import { FilterBar } from '../components/ui/FilterBar'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import './pages.css'
 
 type StatusFilter = 'all' | 'open' | 'accepted' | 'rejected' | 'deferred' | 'escalated'
@@ -33,13 +32,11 @@ const TRIAGE_ACTIONS: { action: PolicyTriageRequest['action']; label: string; se
 ]
 
 export function PolicyIntelligencePage() {
-  const [searchParams] = useSearchParams()
-  const knowledgeBasesQuery = useKnowledgeBases()
-  const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
-  const requestedKbId = searchParams.get('kb')
-  const knowledgeBaseId = knowledgeBases.some((kb) => kb.id === requestedKbId)
-    ? requestedKbId
-    : knowledgeBases[0]?.id ?? null
+  const {
+    activeKnowledgeBaseId: knowledgeBaseId,
+    isLoading: knowledgeBasesLoading,
+    isError: knowledgeBasesError,
+  } = useActiveKnowledgeBase()
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const itemsQuery = usePolicyItems(knowledgeBaseId, statusFilter === 'all' ? undefined : statusFilter)
@@ -51,11 +48,11 @@ export function PolicyIntelligencePage() {
   const itemQuery = usePolicyItem(knowledgeBaseId, activeItemId)
   const triageMutation = useTriagePolicyItem(knowledgeBaseId)
 
-  if (knowledgeBasesQuery.isLoading) {
+  if (knowledgeBasesLoading) {
     return <LoadingState label="Loading knowledge bases" />
   }
 
-  if (knowledgeBasesQuery.isError) {
+  if (knowledgeBasesError) {
     return <ErrorState description="Knowledge base inventory could not be loaded from the backend." />
   }
 
