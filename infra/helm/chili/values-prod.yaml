@@ -56,7 +56,7 @@ ingress:
   host: "chili.example.com"
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"  # Body-size checking delegated to API's DomainConfig-driven gate
 
 tls:
   enabled: true
