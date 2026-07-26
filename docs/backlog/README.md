@@ -36,12 +36,12 @@
 | llm.md | 17 | 0 | 0 | 17 | 0% |
 | monitoring.md | 20 | 0 | 1 | 21 | 4% |
 | rag.md | 17 | 0 | 0 | 17 | 0% |
-| records.md | 10 | 2 | 1 | 13 | 7% |
+| records.md | 14 | 2 | 1 | 17 | 5% |
 | scorecards.md | 3 | 0 | 0 | 3 | 0% |
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 413 | 7 | 31 | 454 | 6% |
+| **Total** | 417 | 7 | 31 | 458 | 6% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -143,7 +143,7 @@
 - [llm.md](llm.md) — LLM client protocol + adapters
 - [monitoring.md](monitoring.md) — claim stream consumer, alert generation
 - [rag.md](rag.md) — query → embed → search → graph expand → LLM
-- [records.md](records.md) — structured/tabular ingestion (CSV/JSONL/api-push)
+- [records.md](records.md) — structured/tabular ingestion (CSV/JSONL/api-push + pull-based origins)
 - [scorecards.md](scorecards.md) — durable scorecard templates, evaluation, export
 - [shared.md](shared.md) — domain types, protocols, utilities
 - [storage.md](storage.md) — object storage protocol + adapters

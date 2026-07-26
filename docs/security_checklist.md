@@ -75,6 +75,16 @@ require a documented justification in this file.
   field-level constraints; query params use `fastapi.Query` with bounds
   (story **E10-S10**). File uploads are parsed by content-type-aware parsers
   (`ingestion/parsers/`) that never `eval`/`exec` input.
+- **Upload size limits.** File uploads are bounded by the
+  DomainConfig-driven `validation.max_file_size_mb` (default 512 MB,
+  pack-overridable), enforced incrementally with HTTP 413 by the
+  `read_upload_file_with_limit` readers in `api/routers/knowledgebases.py`
+  and `api/routers/records.py`. nginx body-size checking is deliberately
+  disabled (`client_max_body_size 0; Helm/k8s ingress proxy-body-size "0"`) so
+  the config gate is the single authority — a fixed nginx number silently
+  contradicted per-pack limits (it defaulted to 1 MB). Multi-GB uploads
+  become safe when records.04 (streaming parse) lands; pull-based origins
+  that bypass HTTP upload entirely are chartered as records.14–17.
 - **Graph queries.** Cypher is composed only via the parameterised driver API
   in `graph/adapters/neo4j_adapter.py`. No string concatenation builds a query
   body. The in-memory adapter mirrors the same protocol so tests catch

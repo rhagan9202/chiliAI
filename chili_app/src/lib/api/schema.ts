@@ -4439,7 +4439,7 @@ export interface components {
             allowed_content_types?: string[];
             /**
              * Max File Size Mb
-             * @default 50
+             * @default 512
              */
             max_file_size_mb: number;
             /**

@@ -228,7 +228,7 @@ class AuthConfig(BaseModel):
 ### `ValidationConfig`
 ```python
 class ValidationConfig(BaseModel):
-    max_file_size_mb: int = 50                    # > 0
+    max_file_size_mb: int = 512                   # > 0
     allowed_content_types: list[str] = [          # default list includes PDF, DOCX, XLSX, JSON, CSV, TXT
         "text/plain", "text/csv", "application/json",
         "application/pdf",

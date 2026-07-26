@@ -8,7 +8,9 @@ import type {
   UseQueryResult,
 } from '@tanstack/react-query'
 
+import type { ValidationConfig } from '../api/contracts'
 import { API_BASE_URL, ApiError, apiRequest } from '../lib/apiClient'
+import { FALLBACK_MAX_FILE_SIZE_MB } from '../lib/uploadLimits'
 import type { DocumentListResponse } from '../types/api'
 import { knowledgeBasesQueryKey } from './useKnowledgeBases'
 
@@ -29,8 +31,6 @@ export const ACCEPTED_DOCUMENT_MIME_TYPES = [
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ] as const
-
-export const MAX_DOCUMENT_SIZE_BYTES = 50 * 1024 * 1024
 
 export function knowledgeBaseDocumentsQueryKey(
   kbId: string,
@@ -180,11 +180,21 @@ export interface DocumentValidationResult {
   reason?: string
 }
 
-export function validateDocumentFile(file: File): DocumentValidationResult {
-  if (file.size > MAX_DOCUMENT_SIZE_BYTES) {
+export function validateDocumentFile(
+  file: File,
+  validationConfig?: ValidationConfig | null,
+): DocumentValidationResult {
+  const configuredMaxMb = validationConfig?.max_file_size_mb
+  const maxFileSizeMb =
+    typeof configuredMaxMb === 'number' && Number.isFinite(configuredMaxMb)
+      ? configuredMaxMb
+      : FALLBACK_MAX_FILE_SIZE_MB
+  const maxBytes = maxFileSizeMb * 1024 * 1024
+
+  if (file.size > maxBytes) {
     return {
       ok: false,
-      reason: `File exceeds the 50 MB limit (${(
+      reason: `File exceeds the ${maxFileSizeMb} MB limit (${(
         file.size /
         (1024 * 1024)
       ).toFixed(1)} MB).`,

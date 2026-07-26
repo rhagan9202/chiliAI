@@ -3,6 +3,7 @@ import type {
   RecordFeedConfig,
   ValidationConfig,
 } from '../../api/contracts'
+import { FALLBACK_MAX_FILE_SIZE_MB } from '../uploadLimits'
 import type { IngestionSourceType, ValidationIssue } from './types'
 
 function issue(id: string, message: string, rowIndex?: number, field?: string): ValidationIssue {
@@ -93,11 +94,11 @@ export function validateDocumentFiles(
       )
     }
 
-    if (maxBytes === null && file.size > 50 * 1024 * 1024) {
+    if (maxBytes === null && file.size > FALLBACK_MAX_FILE_SIZE_MB * 1024 * 1024) {
       issues.push(
         warning(
           `large-${file.name}`,
-          `${file.name} is larger than 50 MB; backend limits may reject it.`,
+          `${file.name} is larger than ${FALLBACK_MAX_FILE_SIZE_MB} MB; backend limits may reject it.`,
         ),
       )
     }

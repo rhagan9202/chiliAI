@@ -194,6 +194,7 @@ The Department of the Air Force housing pack is a supported product domain at ex
 - **REQ-INT-003** — The system shall provide in-memory adapters for all protocols to enable isolated, fast unit tests without external dependencies.
 - **REQ-INT-004** — The system shall support the following production-grade adapters at v1: Neo4j (graph), Qdrant (vector), OpenAI & Anthropic & Ollama (LLM), OpenAI & sentence-transformers (embeddings), S3/MinIO (object storage), Redis Streams (event bus), Postgres + TimescaleDB (relational/time-series).
 - **REQ-INT-005** — The system shall document how to add new adapters (e.g., Memgraph, pgvector, Weaviate) via the adapter pattern without modifying business logic.
+- **REQ-INT-006** — The system shall ingest structured records from pull-based origin sources — object store (local FS/S3/MinIO), HTTP API, and event stream — by reference, through the records source-adapter protocol, without HTTP upload size constraints (stories records.14–records.17).
 
 ## 6. Out of Scope (v1)
 

@@ -29,7 +29,7 @@ describe('ValidationPanel', () => {
         id: 'large-file',
         source: 'client',
         severity: 'warning',
-        message: 'claims.csv is larger than 50 MB.',
+        message: 'claims.csv is larger than 512 MB.',
       },
     ]
 
@@ -40,7 +40,7 @@ describe('ValidationPanel', () => {
 
     expect(within(clientGroup).getByText('2 issues')).toBeInTheDocument()
     expect(within(clientGroup).getByText('Select a knowledge base before submitting.')).toBeInTheDocument()
-    expect(within(clientGroup).getByText('claims.csv is larger than 50 MB.')).toBeInTheDocument()
+    expect(within(clientGroup).getByText('claims.csv is larger than 512 MB.')).toBeInTheDocument()
     expect(within(backendGroup).getByText('1 issue')).toBeInTheDocument()
     expect(within(backendGroup).getByText('The selected feed is disabled.')).toBeInTheDocument()
   })
