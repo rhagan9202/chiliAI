@@ -117,6 +117,12 @@ question).
 | `POST` | `/records/{knowledge_base_id}/files` | analyst | Ingest a CSV or JSONL file upload into the named feed (415 if the feed does not accept the format; 200 on duplicate submission, else 202) |
 | `POST` | `/records/{knowledge_base_id}/push` | analyst | Ingest a JSON array of record rows into the named feed (200 on duplicate submission, else 202) |
 
+Upload size is bounded by `validation.max_file_size_mb` (default 512 MB;
+enforced incrementally with 413). The buffered read path makes this the
+practical ceiling until records.04 (streaming) lands; pull-based origins
+(object store / HTTP / stream — records.14–17) ingest by reference and are
+not subject to HTTP upload limits.
+
 ## NPPES and DE-SynPUF Feeds (medicare_fraud domain)
 
 `config/defaults/medicare_fraud.yaml` (and the dev variant) declares two built-in feed definitions that exercise the records pipeline end-to-end:
