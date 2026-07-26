@@ -98,11 +98,10 @@ jobs:
       - name: Type-check tools/
         # Repo-root tools/ (host-side demo/data-prep scripts) is typechecked
         # via its own tools/pyrightconfig.json, as a separate invocation from
-        # the backend one above — it shares the bare package name "tools"
-        # with backend/tools/ (see tools/demo_trigger_analytics.py), and
-        # pyright cannot resolve that name two different ways within a
-        # single Program. See tools/__init__.py and backend/pyproject.toml's
-        # [tool.pyright] comment for the full explanation.
+        # the backend one above. The split originated when a since-deleted
+        # backend/tools/ package shared the bare name "tools" (pyright
+        # resolves a module name once per Program); kept for isolation — see
+        # backend/pyproject.toml's [tool.pyright] comment.
         working-directory: ${{ github.workspace }}/tools
         run: pyright
 
@@ -168,10 +167,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e "backend[dev,neo4j,qdrant,openai,anthropic,s3,sentence-transformers,analytics,auth,postgres,observability]"
 
-      - name: Set up Node 20
+      - name: Set up Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install frontend dependencies
         working-directory: chili_app
@@ -200,10 +199,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Node 20
+      - name: Set up Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Cache npm
         uses: actions/cache@v4

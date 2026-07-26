@@ -243,7 +243,20 @@ class ValidationConfig(BaseModel):
 ```python
 class RecordsConfig(BaseModel):
     feeds: list[RecordFeedConfig] = []
+    analytics_trigger: RecordsAnalyticsTriggerConfig = RecordsAnalyticsTriggerConfig()
 ```
+
+### `RecordsAnalyticsTriggerConfig` (added 2026-07-24, analytics.34)
+```python
+class RecordsAnalyticsTriggerConfig(BaseModel):
+    enabled: bool = False                      # off by default; CMS pack enables it
+    max_entities_per_batch: int = 25           # ge=1 le=500 — top-N by risk overall_score
+    min_interval_seconds: int = 600            # ge=1 — per-KB throttle window
+```
+Gates the records→Flow B analytics fan-out: when a records batch produces
+risk-assessable entities, `handle_records_ingested` runs GNN → risk →
+explainability → alerts in-process for the batch's top-N entities, at most
+once per KB per window. See [`modules/agent.md`](../modules/agent.md).
 
 ### `RecordFeedConfig`
 ```python
@@ -407,9 +420,11 @@ Flow B runs (alerts.36 pass) — both should be raised for production
 screening. `active_alert_count` is written onto graph entities by
 `agent.coordinator`'s Flow 4 (`handle_alerts_created_for_graph`), so it
 accumulates only across repeated analytics-pipeline (Flow B) runs, not on
-first ingest — see the `backend/tools/demo_trigger_analytics.py` note in
-[`modules/agent.md`](../modules/agent.md) (Coordinator section) for why a
-fresh demo KB needs an explicit trigger before this pack can fire. Pinned by
+first ingest. Since `analytics.34` closed (2026-07-24), Flow B fires
+natively on records ingest (gated by `records.analytics_trigger`, one
+throttle window per KB), so this pack can begin firing once a KB's top
+entities have been re-analyzed across successive windows/ingests — see
+[`modules/agent.md`](../modules/agent.md) (Coordinator section). Pinned by
 `backend/tests/config/test_policy_rules_demo.py`.
 
 ---

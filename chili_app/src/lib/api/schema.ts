@@ -3645,10 +3645,36 @@ export interface components {
             target_entity_type: string;
         };
         /**
+         * RecordsAnalyticsTriggerConfig
+         * @description Gate for the records→analytics fan-out (analytics.34).
+         *
+         *     When enabled, a structured-records batch that produced risk-assessable
+         *     entities runs Flow B (GNN → risk → explainability → alerts) in-process,
+         *     throttled per KB and capped to the batch's top-N entities by risk score.
+         */
+        RecordsAnalyticsTriggerConfig: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Max Entities Per Batch
+             * @default 25
+             */
+            max_entities_per_batch: number;
+            /**
+             * Min Interval Seconds
+             * @default 600
+             */
+            min_interval_seconds: number;
+        };
+        /**
          * RecordsConfig
          * @description Structured-ingestion feed configuration for the domain.
          */
         RecordsConfig: {
+            analytics_trigger?: components["schemas"]["RecordsAnalyticsTriggerConfig"];
             /** Feeds */
             feeds?: components["schemas"]["RecordFeedConfig"][];
         };

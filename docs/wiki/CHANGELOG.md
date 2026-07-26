@@ -2,6 +2,22 @@
 
 ---
 
+## 2026-07-24 — analytics.34 closed: records ingest triggers Flow B natively
+
+### Changes
+
+| Page | Change |
+| --- | --- |
+| `modules/agent.md` | Replaced the `handle_records_ingested` gap note with the shipped fan-out: a direct in-process call to `handle_graph_updated_for_analytics` with inline `upserted_entity_ids` (no publish, no artifacts, Flow A never re-runs), gated by `RecordsConfig.analytics_trigger`, per-KB throttled, top-N capped, best-effort-wrapped with stage `analytics_fanout`. Tests section now points at `tests/agent/test_records_analytics_fanout.py`; `backend/tools/` + `tests/tools/` deletion recorded. |
+| `contracts/events.md` | `GraphUpdatedDocumentReference` gains optional `upserted_entity_ids`; documented the in-memory (never-published) fan-out event and removed the deleted dev-only second producer note. |
+| `contracts/domain-config.md` | Added `RecordsAnalyticsTriggerConfig` (+ `RecordsConfig.analytics_trigger`); referral-ring note updated — a fresh KB no longer needs an explicit trigger. |
+
+**Code files read:** `backend/agent/coordinator.py` (fan-out block at the tail of `handle_records_ingested`, `_resolve_upserted_entity_ids`, `_publish_analytics_fanout_failed`), `backend/events/types.py`, `backend/config/schema.py`, `backend/config/defaults/medicare_fraud_cms_desynpuf.yaml`, `backend/tests/agent/test_records_analytics_fanout.py`, `Makefile`, `scripts/demo_cms.sh`.
+
+**Drift log:** the earlier D1 entry below describes the now-deleted `backend/tools/demo_trigger_analytics.py` as current; superseded by this entry (changelog is append-only history — the D1 text stands as a record of that date).
+
+---
+
 ## 2026-07-24 — Sprint 2026-28 D1 scripted demo closeout
 
 ### Changes

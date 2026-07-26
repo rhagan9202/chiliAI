@@ -473,6 +473,15 @@ Worker handlers in `agent/coordinator.py` are for pipeline composition:
 If a capability is expensive or batch-oriented, prefer event-driven worker
 wiring over synchronous API execution.
 
+**Records-ingested KBs run Flow B natively (analytics.34, 2026-07-24):**
+GNN → risk → explainability → alerts fire at the end of
+`handle_records_ingested` as a direct in-process call — gated by
+`DomainConfig.records.analytics_trigger` (default off; the CMS pack enables
+it), throttled per KB, capped to the batch's top-N entities by risk score.
+No `graph.updated` event is published for records; the fan-out passes
+inline `upserted_entity_ids`. See `docs/wiki/modules/agent.md` and
+`backend/records/README.md` § Flow 1.
+
 ## Postgres and migrations
 
 Use existing tables before adding new schema:

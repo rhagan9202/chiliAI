@@ -1,6 +1,6 @@
 import { ArrowUpRight } from 'lucide-react'
 import type { ComponentType } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 import { Card } from './Card'
 import './ui.css'

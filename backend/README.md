@@ -76,8 +76,7 @@ backend/
 ├── conversations/   # durable RAG chat conversations (in-memory, Postgres)
 ├── cases/           # durable, KB-scoped investigation cases (promote-from-alert)
 ├── policy/          # durable, KB-scoped policy intelligence (rule-pack items + triage)
-├── scorecards/      # config-driven scorecard evaluation + durable runs (in-memory, Postgres)
-└── tools/           # worker-container CLI utilities (e.g. demo_trigger_analytics), run via `python -m tools.<name>`
+└── scorecards/      # config-driven scorecard evaluation + durable runs (in-memory, Postgres)
 ```
 
 `backend/tools/` is distinct from the repo-root `tools/` package (host-side demo/data-prep scripts driven over HTTP, see `tools/__init__.py`) — both share the bare name `tools` but are typechecked by *separate* pyright invocations (`backend/pyproject.toml`'s `[tool.pyright]` vs. `tools/pyrightconfig.json`; see either file's comment for why one process can't resolve both).

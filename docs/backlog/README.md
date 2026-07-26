@@ -23,7 +23,7 @@
 | _plugins.md | 16 | 0 | 0 | 16 | 0% |
 | _security.md | 11 | 0 | 1 | 12 | 8% |
 | agent.md | 20 | 0 | 1 | 21 | 4% |
-| analytics.md | 30 | 0 | 5 | 36 | 13% |
+| analytics.md | 29 | 0 | 6 | 36 | 16% |
 | api.md | 27 | 0 | 1 | 29 | 3% |
 | config.md | 14 | 0 | 1 | 15 | 6% |
 | database.md | 12 | 0 | 1 | 13 | 7% |
@@ -41,7 +41,7 @@
 | shared.md | 17 | 1 | 0 | 18 | 0% |
 | storage.md | 14 | 0 | 0 | 14 | 0% |
 | vectorstore.md | 14 | 0 | 0 | 14 | 0% |
-| **Total** | 414 | 7 | 30 | 454 | 6% |
+| **Total** | 413 | 7 | 31 | 454 | 6% |
 <!-- END: status-rollup -->
 
 ## Ready set (work that can start today)
@@ -71,13 +71,13 @@
 - [agent.13] agent — size M — prereqs done
 - [agent.15] agent — size M — prereqs done
 - [analytics.33] analytics — size M — prereqs done
-- [analytics.34] analytics — size M — prereqs done
 - [config.02] config — size M — prereqs done
 - [config.03] config — size M — prereqs done
 - [database.03] database — size M — prereqs done
 - [database.05] database — size M — prereqs done
 - [database.07] database — size M — prereqs done
-- …40 more
+- [embeddings.01] embeddings — size M — prereqs done
+- …39 more
 <!-- END: ready-set -->
 
 ## Critical path

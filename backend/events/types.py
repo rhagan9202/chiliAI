@@ -151,6 +151,10 @@ class GraphUpdatedDocumentReference(BaseModel):
     upserted_relationship_count: int = Field(ge=0)
     validation_storage_key: str | None = None
     graph_update_storage_key: str | None = None
+    # analytics.34: records-driven fan-out passes upserted ids inline instead
+    # of via a stored GraphUpsertResult artifact; the analytics resolver
+    # prefers this field when present (see _resolve_upserted_entity_ids).
+    upserted_entity_ids: list[str] | None = None
 
 
 class GraphUpdatedEvent(EventBase):

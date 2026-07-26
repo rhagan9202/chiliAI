@@ -200,6 +200,7 @@ from events.types import (
     EntitiesValidatedEvent,
     ExtractedDocumentReference,
     ExtractionWarningReference,
+    GraphUpdatedDocumentReference,
     GraphUpdatedEvent,
     KnowledgeBaseDeletedEvent,
     KnowledgeBaseReadyEvent,
@@ -436,6 +437,7 @@ class WorkerDependencies:
     entity_metric_repository: EntityMetricRepository
     metrics_throttle: MetricsRecomputeThrottle
     policy_metrics_throttle: MetricsRecomputeThrottle
+    records_analytics_throttle: MetricsRecomputeThrottle
     risk_history_writer: RiskHistoryWriter
     alert_history_writer: AlertHistoryWriter
     event_settings: EventBusSettings
@@ -1182,6 +1184,9 @@ def build_worker_dependencies() -> WorkerDependencies:
         min_interval_seconds=analytics_config.metrics_recompute_min_interval_seconds
     )
     records_config = config.records or RecordsConfig()
+    records_analytics_throttle = MetricsRecomputeThrottle(
+        min_interval_seconds=records_config.analytics_trigger.min_interval_seconds
+    )
     peer_stats_config = config.peer_stats or PeerStatsConfig()
     peerstats_service = build_peerstats_service(connection_provider)
     timeseries_config = config.timeseries or TimeseriesAnalyticsConfig()
@@ -1238,6 +1243,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         entity_metric_repository=entity_metric_repository,
         metrics_throttle=metrics_throttle,
         policy_metrics_throttle=policy_metrics_throttle,
+        records_analytics_throttle=records_analytics_throttle,
         risk_history_writer=risk_history_writer,
         alert_history_writer=alert_history_writer,
         event_settings=event_settings,
@@ -2916,8 +2922,11 @@ def assess_entities(
     knowledge_base_id: str,
     entity_ids: list[str],
     correlation_id: str,
-) -> int:
+) -> list[RiskAssessmentResponse]:
     """Assess each entity once; tolerate entities with insufficient signals.
+
+    Returns the successful assessments (analytics.34 ranks the batch's
+    top-N by ``overall_score`` for the records→analytics fan-out).
 
     Each successful assess publishes one RiskScoredEvent (existing Flow 3),
     persisted to risk_score_history under a deterministic request id derived from
@@ -2931,10 +2940,10 @@ def assess_entities(
     swallowed at INFO.
     """
 
-    assessed = 0
+    assessed: list[RiskAssessmentResponse] = []
     for entity_id in entity_ids:
         try:
-            risk_service.assess(
+            response = risk_service.assess(
                 RiskAssessmentRequest(
                     knowledge_base_id=knowledge_base_id,
                     entity_id=entity_id,
@@ -2945,7 +2954,7 @@ def assess_entities(
                     ),
                 )
             )
-            assessed += 1
+            assessed.append(response)
         except (RiskInsufficientSignalsError, RiskConfigurationError) as exc:
             logger.info("Skipping risk assess for entity=%s: %s", entity_id, exc)
     return assessed
@@ -2973,6 +2982,13 @@ def handle_records_ingested(
     timeseries_enabled: bool = False,
     derived_signal_store: DerivedRiskSignalWriterProtocol | None = None,
     event_bus: EventBus | None = None,
+    gnn_service: GnnService | None = None,
+    explainability_service: ExplainabilityService | None = None,
+    entity_metric_repository: EntityMetricRepository | None = None,
+    gnn_cluster_store: ClusterSummaryStoreProtocol | None = None,
+    object_store: ObjectStore | None = None,
+    graph_metrics_throttle: MetricsRecomputeThrottle | None = None,
+    analytics_trigger_throttle: MetricsRecomputeThrottle | None = None,
     is_cancelled: Callable[[], bool] | None = None,
 ) -> int:
     """Flow 1 — fan a structured-records batch out to the graph and observations.
@@ -3127,9 +3143,10 @@ def handle_records_ingested(
                 event.knowledge_base_id,
                 event.correlation_id,
             )
+    scored: list[RiskAssessmentResponse] = []
     if risk_service is not None and affected:
         try:
-            assess_entities(
+            scored = assess_entities(
                 risk_service=risk_service,
                 knowledge_base_id=event.knowledge_base_id,
                 entity_ids=sorted(affected),
@@ -3140,6 +3157,72 @@ def handle_records_ingested(
                 "Risk assess stage failed for kb=%s correlation=%s",
                 event.knowledge_base_id,
                 event.correlation_id,
+            )
+    trigger = records_config.analytics_trigger
+    if (
+        trigger.enabled
+        and scored
+        and event_bus is not None
+        and gnn_service is not None
+        and risk_service is not None
+        and explainability_service is not None
+        and (
+            analytics_trigger_throttle is None
+            or analytics_trigger_throttle.should_recompute(
+                event.knowledge_base_id, now=datetime.now(tz=timezone.utc)
+            )
+        )
+    ):
+        ranked = sorted(scored, key=lambda r: r.overall_score, reverse=True)
+        top_ids = [
+            response.entity_id
+            for response in ranked[: trigger.max_entities_per_batch]
+        ]
+        marker = f"records:{event.feed_name}"
+        fanout_event = GraphUpdatedEvent(
+            correlation_id=event.correlation_id,
+            documents=[
+                GraphUpdatedDocumentReference(
+                    knowledge_base_id=event.knowledge_base_id,
+                    source_document_id=marker,
+                    parsed_document_id=marker,
+                    extraction_result_id=marker,
+                    validation_report_id=marker,
+                    upserted_entity_count=len(top_ids),
+                    upserted_relationship_count=0,
+                    upserted_entity_ids=top_ids,
+                )
+            ],
+        )
+        # analytics.34: in-process call, NOT a publish. Publishing graph.updated
+        # would run Flow A, which requires storage-key artifacts and would
+        # redundantly re-embed entities this handler already indexed.
+        # Best-effort like the document dispatch: an analytics failure must not
+        # make the retry/DLQ wrapper replay the whole records ingest.
+        try:
+            handle_graph_updated_for_analytics(
+                fanout_event,
+                gnn_service=gnn_service,
+                risk_service=risk_service,
+                explainability_service=explainability_service,
+                graph_service=graph_service,
+                event_bus=event_bus,
+                object_store=object_store,
+                entity_metric_repository=entity_metric_repository,
+                metrics_throttle=graph_metrics_throttle,
+                gnn_cluster_store=gnn_cluster_store,
+                is_cancelled=is_cancelled,
+            )
+        except Exception as exc:  # noqa: BLE001 - analytics must not re-run Flow 1
+            logger.warning(
+                "Records analytics fan-out raised; ingest already completed. error=%s",
+                exc,
+            )
+            _publish_analytics_fanout_failed(
+                event=fanout_event,
+                event_bus=event_bus,
+                object_store=object_store,
+                error_message=str(exc),
             )
     return len(records)
 
@@ -3263,13 +3346,16 @@ def _publish_analytics_fanout_failed(
     *,
     event: GraphUpdatedEvent,
     event_bus: EventBus,
-    object_store: ObjectStore,
+    object_store: ObjectStore | None,
     error_message: str,
 ) -> None:
     published = False
     for document in event.documents:
         entity_ids: list[str] = []
-        if document.graph_update_storage_key:
+        if document.upserted_entity_ids:
+            # Records-driven fan-out (analytics.34) carries its ids inline.
+            entity_ids = list(document.upserted_entity_ids)
+        elif document.graph_update_storage_key and object_store is not None:
             try:
                 graph_update = _load_graph_update(
                     object_store, document.graph_update_storage_key
@@ -3661,6 +3747,7 @@ def handle_event(
     entity_metric_repository: EntityMetricRepository | None = None,
     metrics_throttle: MetricsRecomputeThrottle | None = None,
     policy_metrics_throttle: MetricsRecomputeThrottle | None = None,
+    records_analytics_throttle: MetricsRecomputeThrottle | None = None,
     risk_history_writer: RiskHistoryWriter | None = None,
     alert_history_writer: AlertHistoryWriter | None = None,
     workflow_tracker: WorkflowEventTracker | None = None,
@@ -3725,6 +3812,7 @@ def handle_event(
             entity_metric_repository=entity_metric_repository,
             metrics_throttle=metrics_throttle,
             policy_metrics_throttle=policy_metrics_throttle,
+            records_analytics_throttle=records_analytics_throttle,
             risk_history_writer=risk_history_writer,
             alert_history_writer=alert_history_writer,
             graph_embeddings_enabled=graph_embeddings_enabled,
@@ -3773,6 +3861,7 @@ def _dispatch_event(
     entity_metric_repository: EntityMetricRepository | None,
     metrics_throttle: MetricsRecomputeThrottle | None,
     policy_metrics_throttle: MetricsRecomputeThrottle | None,
+    records_analytics_throttle: MetricsRecomputeThrottle | None,
     risk_history_writer: RiskHistoryWriter | None,
     alert_history_writer: AlertHistoryWriter | None,
     graph_embeddings_enabled: bool,
@@ -3944,6 +4033,13 @@ def _dispatch_event(
             policy_rules=policy_rules,
             policy_service=policy_service,
             metrics_throttle=policy_metrics_throttle,
+            gnn_service=gnn_service,
+            explainability_service=explainability_service,
+            entity_metric_repository=entity_metric_repository,
+            gnn_cluster_store=gnn_cluster_store,
+            object_store=object_store,
+            graph_metrics_throttle=metrics_throttle,
+            analytics_trigger_throttle=records_analytics_throttle,
             peerstats_service=peerstats_service,
             peer_stats_config=peer_stats_config,
             risk_service=risk_service,
@@ -4128,6 +4224,7 @@ async def drain_ingestion_events(
     entity_metric_repository: EntityMetricRepository | None = None,
     metrics_throttle: MetricsRecomputeThrottle | None = None,
     policy_metrics_throttle: MetricsRecomputeThrottle | None = None,
+    records_analytics_throttle: MetricsRecomputeThrottle | None = None,
     risk_history_writer: RiskHistoryWriter | None = None,
     alert_history_writer: AlertHistoryWriter | None = None,
     peerstats_service: PeerStatsService | None = None,
@@ -4212,6 +4309,7 @@ async def drain_ingestion_events(
                 entity_metric_repository=entity_metric_repository,
                 metrics_throttle=metrics_throttle,
                 policy_metrics_throttle=policy_metrics_throttle,
+                records_analytics_throttle=records_analytics_throttle,
                 risk_history_writer=risk_history_writer,
                 alert_history_writer=alert_history_writer,
                 workflow_tracker=workflow_tracker,
@@ -4344,6 +4442,7 @@ async def _drain_once(
         entity_metric_repository=deps.entity_metric_repository,
         metrics_throttle=deps.metrics_throttle,
         policy_metrics_throttle=deps.policy_metrics_throttle,
+        records_analytics_throttle=deps.records_analytics_throttle,
         risk_history_writer=deps.risk_history_writer,
         alert_history_writer=deps.alert_history_writer,
         peerstats_service=deps.peerstats_service,

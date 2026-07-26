@@ -100,7 +100,7 @@ The `coordinator.py` is the worker entry point. It:
 
 **`handle_records_ingested`** - optionally embeds and indexes records-derived entities into the vector store. When `embeddings_service` and `vector_store` are both passed, stored entities are embedded using `_build_entity_embedding_text` (shared with the documents path), then indexed as `VectorRecord` objects with `source_kind=record` metadata. No `VectorsIndexedEvent` is published from this path (the event is documents-only). When wired, the handler also runs best-effort policy-rule evaluation over stored entities and throttled graph metrics, then a best-effort peerstats stage that can persist derived risk signals and reassess affected entities.
 
-**Gap this handler does not close (chartered as `analytics.34`, added 2026-07-24):** `handle_records_ingested` never publishes a `GraphUpdatedEvent` — it only computes derived risk *signals* (`entity_derived_signals`) via the peerstats stage. Flow B (`graph.updated` → GNN → risk → explainability → `alerts.created`, the same dispatch documents.uploaded eventually reaches) never runs off a natural records ingest, so a freshly-ingested KB has risk signals but no alerts/evidence packs. `backend/tools/demo_trigger_analytics.py` (`python -m tools.demo_trigger_analytics --kb <id> --top N`, run inside the worker container — see its module docstring) is the disclosed, explicit stand-in for the Sprint 2026-28 D1 demo: it reads the top-N ranked entities from `GET /analytics/risk-scores`, stages synthetic `GraphUpsertResult`/`ValidationReport` artifacts in the object store (validation is a superset of the upserted ids, satisfying the BL-017 integrity guard in `agent.coordinator._select_upserted_entities`), and publishes a real `graph.updated` event on the worker's own event bus so `handle_event` dispatches it exactly like a natural pipeline event. It is a developer/demo CLI, not a production fix; the production fix (auto-triggering Flow B from a records ingest) is the still-open `analytics.34` story.
+**Records→analytics fan-out (`analytics.34`, closed 2026-07-24):** at the end of `handle_records_ingested`, when the batch produced risk-assessable entities (the peerstats/timeseries stages' `affected` set, scored by `assess_entities`), the handler runs Flow B **in-process** — a direct call to `handle_graph_updated_for_analytics` with an in-memory `GraphUpdatedEvent` whose single `GraphUpdatedDocumentReference` carries **inline `upserted_entity_ids`** (the `_resolve_upserted_entity_ids` resolver prefers that field over storage keys, so no `GraphUpsertResult`/`ValidationReport` artifacts are staged and no event is published — Flow A never re-runs). Gated by `RecordsConfig.analytics_trigger` (`enabled`, default off; the CMS pack enables it), throttled per KB by a dedicated `MetricsRecomputeThrottle` (`min_interval_seconds`), and capped to the batch's top-N entities by `overall_score` (`max_entities_per_batch`). Best-effort-wrapped exactly like the document dispatch (`_publish_analytics_fanout_failed`, stage `analytics_fanout`) so an analytics failure never makes the retry/DLQ wrapper replay the records ingest. Trade-off recorded in the story: the throttle is leading-edge, so within a window only the first assessable batch fires — entities landing in later batches wait for the next window/ingest. The former demo stand-in `backend/tools/demo_trigger_analytics.py` is deleted.
 
 ```python
 def handle_records_ingested(
@@ -240,15 +240,12 @@ The coordinator is the only module permitted to import from all capability modul
 
 Location: `backend/tests/agent/`
 
-`backend/tools/demo_trigger_analytics.py` (see the Coordinator section above)
-is tested separately at `backend/tests/tools/`, not `tests/agent/` — it is a
-standalone CLI publishing onto the coordinator's event bus, not coordinator
-code itself. Typechecked as part of the `backend/pyproject.toml` `[tool.pyright]`
-program (its `include` list gained `tools*`/`tests/tools`, and `tests/tools`
-needed its own `executionEnvironments` entry ahead of the broader `tests` one
-— see the comments in `backend/pyproject.toml` for why: it shares the bare
-top-level package name `tools` with the unrelated repo-root `tools/` package,
-which pyright resolves per-Program, not per-execution-environment). The
-repo-root `tools/` package is a separate pyright invocation entirely
-(`tools/pyrightconfig.json`, its own CI step) — the two `tools` packages are
-never type-checked in the same `pyright` run.
+The records→analytics fan-out (`analytics.34`) is covered by
+`backend/tests/agent/test_records_analytics_fanout.py`: a records-only KB
+produces GNN clusters and alerts with the trigger enabled, nothing when
+disabled, top-N capping, throttle suppression, and failure isolation
+(ingest completes and an `analysis.failed` visibility event with stage
+`analytics_fanout` is published when Flow B raises). The former
+`backend/tools/` demo-trigger package and its `tests/tools/` suite are
+deleted; the repo-root `tools/` package remains a separate pyright
+invocation (`tools/pyrightconfig.json`, its own CI step).

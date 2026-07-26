@@ -265,13 +265,14 @@ class _RecordingRiskService:
 
 def test_assess_entities_counts_successes_and_skips_risk_error() -> None:
     risk = _RecordingRiskService()
-    count = assess_entities(
+    assessed = assess_entities(
         risk_service=risk,  # type: ignore[arg-type]
         knowledge_base_id="kb1",
         entity_ids=["provider:good", "provider:bad"],
         correlation_id="corr-1",
     )
-    assert count == 1
+    assert len(assessed) == 1
+    assert assessed[0].entity_id == "provider:good"
     assert risk.assessed == ["provider:good", "provider:bad"]
     # Deterministic, correlation-scoped request id → idempotent on retry.
     assert risk.request_ids == [

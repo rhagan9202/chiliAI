@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router'
 
 import { useHousingInstallations } from '../api/housing'
 import { useKnowledgeBases } from '../api/knowledgebases'
