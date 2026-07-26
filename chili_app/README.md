@@ -393,6 +393,25 @@ Role gating happens at two levels:
   page in the UI means selecting the supervisor persona while holding an
   admin-capable session.
 
+### Active role (workspace state)
+
+The selected persona is persisted to `localStorage` under
+`chiliai.selectedRole` and hydrates `uiStore.selectedRole` on boot, using the
+same helpers as the active knowledge base (`stores/persistence.ts`). It has to
+survive a reload: before UXA-102 the role lived only in memory, so refreshing
+on a supervisor-only page silently demoted the user to the pack's
+`default_role` and bounced them to that role's landing page. A role remembered
+from a previous session outranks `default_role`; an unknown or removed role
+falls back to it.
+
+When the active role may not open the current route, `AppShell` renders
+`RouteNotAvailable` **in place** rather than redirecting. Redirecting discarded
+the URL the user asked for and left them unable to tell whether the page was
+missing, broken, or simply not theirs — and the `accessNotice` chip that was
+meant to explain it was set and cleared in the same navigation, so nothing was
+ever shown. That chip has been removed; the page now states which role is
+active and links to an allowed page.
+
 One switch-semantics consequence worth knowing while developing: once a pack
 has been applied/switched, the persisted pointer overrides
 `CHILI_CONFIG_PATH` on restart — see the gotcha in

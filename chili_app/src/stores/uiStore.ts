@@ -1,14 +1,25 @@
 import { create } from 'zustand'
 
+import { readPersisted, writePersisted } from './persistence'
+
+/**
+ * Where the analyst's active role is remembered between sessions. Without this
+ * a reload silently demotes the user to the pack's default role, which then
+ * bounces them off any page that role cannot open.
+ */
+export const SELECTED_ROLE_STORAGE_KEY = 'chiliai.selectedRole'
+
+export function readStoredRole(): string | null {
+  return readPersisted(SELECTED_ROLE_STORAGE_KEY)
+}
+
 type UiState = {
-  accessNotice: string | null
   aiPanelOpen: boolean
   lastRealtimeEventAt: string | null
   realtimeConnected: boolean
   selectedRole: string | null
   selectedEntityId: string | null
   sidebarCollapsed: boolean
-  setAccessNotice: (message: string | null) => void
   setLastRealtimeEventAt: (timestamp: string | null) => void
   setRealtimeConnected: (connected: boolean) => void
   setSelectedRole: (role: string | null) => void
@@ -18,17 +29,18 @@ type UiState = {
 }
 
 export const useUiStore = create<UiState>((set) => ({
-  accessNotice: null,
   aiPanelOpen: true,
   lastRealtimeEventAt: null,
   realtimeConnected: false,
-  selectedRole: null,
+  selectedRole: readStoredRole(),
   selectedEntityId: null,
   sidebarCollapsed: false,
-  setAccessNotice: (accessNotice) => set({ accessNotice }),
   setLastRealtimeEventAt: (lastRealtimeEventAt) => set({ lastRealtimeEventAt }),
   setRealtimeConnected: (realtimeConnected) => set({ realtimeConnected }),
-  setSelectedRole: (selectedRole) => set({ selectedRole }),
+  setSelectedRole: (selectedRole) => {
+    writePersisted(SELECTED_ROLE_STORAGE_KEY, selectedRole)
+    set({ selectedRole })
+  },
   toggleAiPanel: () => set((state) => ({ aiPanelOpen: !state.aiPanelOpen })),
   toggleSidebar: () =>
     set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),

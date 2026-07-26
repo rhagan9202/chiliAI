@@ -1,12 +1,13 @@
 import { useEffect } from 'react'
-import { Navigate, Outlet, useLocation } from 'react-router'
+import { Outlet, useLocation } from 'react-router'
 
 import { useDomainConfig } from '../../api/config'
 import { useDomainFeatures } from '../../api/config'
 import { useRealtimeWorkspaceStream } from '../../api/realtime'
 import { getDefaultRole, getLandingRoute, isRouteAllowed } from '../../app/access'
-import { useUiStore } from '../../stores/uiStore'
+import { readStoredRole, useUiStore } from '../../stores/uiStore'
 import { AiAssistantPanel } from './AiAssistantPanel'
+import { RouteNotAvailable } from './RouteNotAvailable'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 import './layout.css'
@@ -16,7 +17,6 @@ export function AppShell() {
   const domainFeaturesQuery = useDomainFeatures()
   const aiPanelOpen = useUiStore((state) => state.aiPanelOpen)
   const selectedRole = useUiStore((state) => state.selectedRole)
-  const setAccessNotice = useUiStore((state) => state.setAccessNotice)
   const setSelectedRole = useUiStore((state) => state.setSelectedRole)
   const location = useLocation()
 
@@ -27,20 +27,26 @@ export function AppShell() {
   // a one-render window where selectedRole is still null after queries resolve
   // but before the initialisation effect fires (which caused a spurious
   // "cannot access" banner on every hard reload).
+  // A role remembered from a previous session outranks the pack default:
+  // falling back to `default_role` on reload silently demotes the user and then
+  // bounces them off whatever page that role cannot open (UXA-102).
+  const storedRole = readStoredRole()
   const effectiveRole =
     selectedRole ??
-    (domainFeaturesQuery.data ? getDefaultRole(domainFeaturesQuery.data) : null)
+    (domainFeaturesQuery.data
+      ? (storedRole !== null && domainFeaturesQuery.data.roles[storedRole]
+          ? storedRole
+          : getDefaultRole(domainFeaturesQuery.data))
+      : null)
 
   useEffect(() => {
     if (!domainFeaturesQuery.data) {
       return
     }
-
-    const defaultRole = getDefaultRole(domainFeaturesQuery.data)
-    if (!selectedRole || (selectedRole && !domainFeaturesQuery.data.roles[selectedRole])) {
-      setSelectedRole(defaultRole)
+    if (!selectedRole || !domainFeaturesQuery.data.roles[selectedRole]) {
+      setSelectedRole(effectiveRole)
     }
-  }, [domainFeaturesQuery.data, selectedRole, setSelectedRole])
+  }, [domainFeaturesQuery.data, selectedRole, effectiveRole, setSelectedRole])
 
   const routeAllowed = isRouteAllowed(
     domainConfigQuery.data,
@@ -53,25 +59,14 @@ export function AppShell() {
     domainFeaturesQuery.data,
     effectiveRole,
   )
+  const landingLabel =
+    domainConfigQuery.data?.ui?.navigation?.pages.find((page) => page.route === landingRoute)
+      ?.label ?? 'the workspace'
   const domainQueriesDone = !domainConfigQuery.isLoading && !domainFeaturesQuery.isLoading
   const routeBlocked = domainQueriesDone && !routeAllowed
   const pageTitleOverride = location.pathname.startsWith('/housing')
     ? 'Department of the Air Force Housing'
     : undefined
-
-  useEffect(() => {
-    if (routeBlocked) {
-      setAccessNotice('Selected role cannot access that page.')
-    } else {
-      // Clear the notice once the block resolves so it doesn't persist across
-      // navigations or after the role is initialised.
-      setAccessNotice(null)
-    }
-  }, [routeBlocked, setAccessNotice])
-
-  if (routeBlocked) {
-    return <Navigate replace to={landingRoute} />
-  }
 
   return (
     <div className={aiPanelOpen ? 'app-shell' : 'app-shell app-shell--ai-closed'}>
@@ -85,7 +80,15 @@ export function AppShell() {
           unavailable={domainConfigQuery.isError}
         />
         <main className="app-shell__main" aria-label="chiliAI workspace">
-          <Outlet />
+          {routeBlocked ? (
+            <RouteNotAvailable
+              landingLabel={landingLabel}
+              landingRoute={landingRoute}
+              role={effectiveRole}
+            />
+          ) : (
+            <Outlet />
+          )}
         </main>
       </div>
       {aiPanelOpen ? <AiAssistantPanel /> : null}
