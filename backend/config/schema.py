@@ -301,7 +301,7 @@ class AuthConfig(BaseModel):
 class ValidationConfig(BaseModel):
     """Inbound payload limits applied across the API gateway (E10-S10)."""
 
-    max_file_size_mb: int = Field(default=50, gt=0)
+    max_file_size_mb: int = Field(default=512, gt=0)
     allowed_content_types: list[str] = Field(
         default_factory=lambda: [
             "text/plain",

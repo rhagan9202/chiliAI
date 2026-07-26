@@ -31,6 +31,7 @@ from config.schema import (
     RagConfig,
     RecordsAnalyticsTriggerConfig,
     RecordsConfig,
+    ValidationConfig,
     VectorStoreConfig,
 )
 from shared.types import (
@@ -1298,3 +1299,12 @@ class TestRecordsAnalyticsTriggerConfig:
     def test_rejects_nonpositive_interval(self) -> None:
         with pytest.raises(ValidationError):
             RecordsAnalyticsTriggerConfig(min_interval_seconds=0)
+
+
+def test_validation_config_default_file_size_is_512_mb() -> None:
+    """Spec 2026-07-26: buffered-path default raised 50 -> 512 MB.
+
+    records.04 later re-scopes this to a Content-Length bound at 5120.
+    """
+    config = ValidationConfig()
+    assert config.max_file_size_mb == 512
