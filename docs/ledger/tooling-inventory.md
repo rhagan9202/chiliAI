@@ -47,8 +47,10 @@
 
 **Usage:**
 ```bash
-./scripts/demo_ingest_tn_subset.sh [--kb-name <name>] [--api-url <url>]
+CHILI_API_URL=<url> ./scripts/demo_ingest_tn_subset.sh
 ```
+
+The script takes no CLI arguments: the API URL comes from `CHILI_API_URL` (default `http://localhost:8000`) and the KB name is fixed (`"TN Demo"`). It is driven by `make demo-cms` / the demo tooling.
 
 **Prerequisites:** API running on `:8000`, Tennessee subset already materialized or `make demo-tn-subset` run first.
 
@@ -70,4 +72,4 @@
 |--------|---------|---------|
 | `make demo-tn-subset` | Builds Tennessee subset via `tools/sample_data/build_tennessee_subset.py` | Materialize local demo data |
 | `make dev` | `docker compose -f docker-compose.dev.yaml up --build` | Start full dev stack |
-| `make test` | `pytest --cov` inside API container | Run backend test suite |
+| `make test` | host venv: `cd backend && DATABASE_URL=postgresql://chili:chili@localhost:5432/chili_test .venv/bin/pytest --cov` (against `chili_test`, never the dev DB) | Run backend test suite |

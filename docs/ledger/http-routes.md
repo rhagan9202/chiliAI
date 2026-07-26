@@ -1,7 +1,7 @@
 # HTTP Route Inventory
 
 **Generated:** 2026-05-22 (merge commit `acae4ac`)
-**Reviewed:** 2026-05-28 against the current working tree for docs-keeper consistency cleanup.
+**Reviewed:** 2026-07-26 against `backend/api/app.py::create_app()` — added `/scorecards`, `/housing`, and the conditionally mounted `/admin/dev-seed`.
 
 All routes mounted under the FastAPI app. Role column shows `require_role` argument; routes without a `dependencies=[Depends(require_role(...))]` call are marked `public`.
 
@@ -113,6 +113,27 @@ All routes mounted under the FastAPI app. Role column shows `require_role` argum
 
 ---
 
+## `/scorecards` — Housing Scorecards
+
+| Method | Path | Role | Notes |
+|--------|------|------|-------|
+| `GET` | `/scorecards/templates` | `viewer` | Configured templates; returns `ScorecardTemplateListResponse` |
+| `POST` | `/scorecards/runs` | `analyst` | Generate + persist a run from `ScorecardRunGenerateRequest`; returns `ScorecardRunResponse`; 404 on unknown template |
+| `GET` | `/scorecards/runs` | `viewer` | List runs (`?knowledge_base_id=` required; `template_id`/`status`/`limit`/`offset` optional); returns `ScorecardRunListResponse` |
+| `GET` | `/scorecards/runs/{run_id}` | `viewer` | Run detail (`?knowledge_base_id=` required); returns `ScorecardRunResponse` |
+| `GET` | `/scorecards/runs/{run_id}/export` | `viewer` | Stored JSON/Markdown export (`?knowledge_base_id=` required, `?format=json\|markdown`); returns `ScorecardExportResponse` |
+
+---
+
+## `/housing` — Air Force Housing Dashboard
+
+| Method | Path | Role | Notes |
+|--------|------|------|-------|
+| `GET` | `/housing/overview` | `viewer` | Executive KPI model computed from ingested feed records; optional `period_start`/`period_end`/`knowledge_base_id` (defaults to newest KB of the active domain); returns `HousingOverviewResponse` |
+| `GET` | `/housing/installations` | `viewer` | Installation list + map points (installations without coordinates appear in `items` only); same query params; returns `HousingInstallationsResponse` |
+
+---
+
 ## `/evidence-packs` — Evidence Packs
 
 | Method | Path | Role | Notes |
@@ -165,3 +186,13 @@ All routes require `?knowledge_base_id=` (KB-scoped). Old `/policy/gaps*` and `P
 |--------|------|------|-------|
 | `WS` | `/ws/alerts` | `viewer` | Real-time alert push |
 | `WS` | `/ws/pipeline` | `viewer` | Real-time pipeline progress push |
+
+---
+
+## `/admin/dev-seed` — Dev/E2E Seed (conditional mount)
+
+Registered in `create_app()` only when `CHILI_ENV != "production"` — never mounted in production.
+
+| Method | Path | Role | Notes |
+|--------|------|------|-------|
+| `POST` | `/admin/dev-seed` | `analyst` | Seeds a deterministic KB, graph subgraph, alert (durable `alert_history`), evidence pack, case, policy item, and conversation into the real repositories for local/e2e testing; returns `DevSeedResponse` |

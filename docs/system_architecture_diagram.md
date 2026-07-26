@@ -38,7 +38,7 @@ flowchart LR
             graphsvc["graph<br/>Graph service + repository protocol<br/>entity and relationship CRUD,<br/>neighborhoods, graph metrics"]
             vectorsvc["vectorstore<br/>Vector service + store protocol<br/>embedding records and similarity search"]
             embedsvc["embeddings<br/>Embedder protocol<br/>local / sentence-transformers / OpenAI-ready"]
-            llmsvc["llm<br/>LLM client protocol<br/>local / OpenAI / Anthropic-ready"]
+            llmsvc["llm<br/>LLM client protocol<br/>local / OpenAI / Anthropic / Ollama"]
             rag["rag<br/>Retrieve, expand graph context,<br/>assemble prompt, generate answer"]
             analytics["analytics<br/>time-series, GNN, risk scoring,<br/>explainability, evidence packs"]
             monitoring["monitoring<br/>Observation source, threshold evaluation,<br/>alert generation"]
@@ -70,7 +70,7 @@ flowchart LR
         graphdb["Graph database<br/>Current dev: Neo4j 5<br/>Selectable: in-memory, Neo4j"]
         vectordb["Vector store<br/>Current dev: in-memory / Qdrant container available<br/>Selectable: in-memory, Qdrant"]
         objectstore["Object store<br/>Current dev: local filesystem volume<br/>Target: S3, MinIO, local FS"]
-        llmprovider["LLM provider<br/>Current: local, OpenAI, Anthropic<br/>Roadmap: Ollama / vLLM"]
+        llmprovider["LLM provider<br/>Current: local, OpenAI, Anthropic, Ollama<br/>Roadmap: vLLM"]
         embedprovider["Embedding provider<br/>Current: local, OpenAI, sentence-transformers"]
     end
 

@@ -1,6 +1,6 @@
 # API Routes Reference
 
-**Verified against codebase:** 2026-07-23
+**Verified against codebase:** 2026-07-26
 **Source:** live `api.app:create_app()` route dump with `CHILI_ENV=local`, plus `backend/api/routers/`, `backend/api/app.py`, `backend/api/contracts.py`
 
 All routes are registered in `api/app.py::create_app()`. RBAC roles follow the hierarchy: `viewer(1) < analyst(2) = service(2) < admin(3)`. When `AuthConfig.enabled=False` (local/dev), all routes are open.
@@ -386,6 +386,93 @@ class EntityTimeseriesResponse(BaseModel):
 - `GET /analytics/timeseries/{entity_id}?kb_id=...` -> `get_timeseries_payload(entity_id, kb_id, source, anomaly_store)` -> iterates `source.metric_names()` (`get_entity_series_source()`, a `RecordAggregateTimeSeriesSource` over `get_record_column_source()` and `DomainConfig.timeseries.metrics`), calling `source.load_series(...)` per spec until one has data, then joins persisted anomalies from `get_timeseries_anomaly_store()` -> returns `EntityTimeseriesResponse` (B2, analytics.07; no longer reads `ApiState`).
 
 No analytics route reads from `ApiState` anymore — overview, both risk-scores routes, and both timeseries routes are all DI/durable-store backed. `ApiState` (`api/state.py`) now owns only the RAG service handle.
+
+---
+
+## Scorecards — `/scorecards`
+
+Air Force housing scorecard templates and runs live in `api/routers/scorecards.py`, backed by `ScorecardService` via `get_scorecard_service()`.
+
+| Method | Path | Query/Request | Response | Auth |
+|--------|------|---------------|----------|------|
+| `GET` | `/scorecards/templates` | — | `ScorecardTemplateListResponse` | viewer |
+| `POST` | `/scorecards/runs` | `ScorecardRunGenerateRequest` | `ScorecardRunResponse`; 404 on unknown template | analyst |
+| `GET` | `/scorecards/runs` | `?knowledge_base_id=` (required) `&template_id=&status=&limit=50&offset=0` | `ScorecardRunListResponse` | viewer |
+| `GET` | `/scorecards/runs/{run_id}` | `?knowledge_base_id=` (required) | `ScorecardRunResponse`; 404 on unknown run | viewer |
+| `GET` | `/scorecards/runs/{run_id}/export` | `?knowledge_base_id=` (required) `&format=json` | `ScorecardExportResponse`; 404 on unknown run/export | viewer |
+
+```python
+class ScorecardRunGenerateRequest(BaseModel):
+    knowledge_base_id: str; template_id: str
+    scope_type: str; scope_id: str
+    period_start: date; period_end: date
+
+class ScorecardTemplateResponse(BaseModel):
+    id: str; name: str
+    category: Literal["UH", "MFH", "combined"]
+    scope: Literal["enterprise", "majcom", "region", "installation", "market_area"]
+    period: Literal["monthly", "quarterly", "annual", "ad_hoc"]
+
+class ScorecardTemplateListResponse(BaseModel):
+    items: list[ScorecardTemplateResponse]
+
+class ScorecardRunResponse(BaseModel):
+    id: str; knowledge_base_id: str
+    template_id: str; template_name: str
+    scope_type: str; scope_id: str
+    period_start: date; period_end: date
+    source_snapshot_hash: str
+    status: Literal["generated", "failed", "superseded"]
+    overall_health: Literal["pass", "warn", "fail", "incomplete"]
+    sections: list[ScorecardSectionResponse]   # sections -> metrics -> citations/warnings
+    created_at: datetime; updated_at: datetime
+
+class ScorecardRunListResponse(BaseModel):
+    items: list[ScorecardRunResponse]
+    total: int; limit: int; offset: int
+
+class ScorecardExportResponse(BaseModel):
+    run_id: str
+    format: Literal["json", "markdown"]
+    content: str
+```
+
+`ScorecardSectionResponse` carries `id`, `label`, and `metrics: list[ScorecardMetricResponse]` (`metric_id`, `label`, `description`, `unit`, `housing_category`, `value: float | None`, `health`, `completeness`, `citations: list[ScorecardCitationResponse]`, `warnings: list[str]`). Stored export payloads are excluded from run responses and served only by the export route.
+
+---
+
+## Housing — `/housing`
+
+Air Force housing dashboard reads live in `api/routers/housing.py` — a thin HTTP layer over `api/_housing_read_model.py`, which computes overview and installation read models from the KB's ingested feed records (the same rows the scorecard evaluator consumes).
+
+| Method | Path | Query | Response | Auth |
+|--------|------|-------|----------|------|
+| `GET` | `/housing/overview` | `?period_start=&period_end=&knowledge_base_id=` (all optional; KB defaults to the newest KB of the active domain) | `HousingOverviewResponse` | viewer |
+| `GET` | `/housing/installations` | `?period_start=&period_end=&knowledge_base_id=` (all optional; same default) | `HousingInstallationsResponse` | viewer |
+
+```python
+class HousingOverviewResponse(BaseModel):
+    period_start: date | None; period_end: date | None
+    portfolio_summary: HousingPortfolioSummaryResponse
+    executive_kpis: list[HousingExecutiveKpiResponse]
+
+class HousingPortfolioSummaryResponse(BaseModel):
+    total_installations: int; installations_reporting: int
+    open_work_orders: int; overdue_work_orders: int
+    occupancy_rate: float | None; resident_satisfaction: float | None
+
+class HousingExecutiveKpiResponse(BaseModel):
+    id: str; label: str; value: float | None; unit: str
+    status: Literal["ok", "watch", "critical", "unknown"]
+
+class HousingInstallationsResponse(BaseModel):
+    period_start: date | None; period_end: date | None
+    total: int
+    items: list[HousingInstallationResponse]
+    map_points: list[HousingInstallationMapPointResponse]
+```
+
+Installations without resolvable coordinates appear in `items` but not in `map_points` — surfaced as location-pending, never silently dropped.
 
 ---
 

@@ -57,8 +57,9 @@ provider. v1 ships one adapter: `InMemoryLruEmbeddingCache`
 ## Cost & Usage Tracking (BL-019)
 
 Each `embed()` call records Prometheus counters (`embeddings.metrics`,
-default registry — served by the API `/metrics` route; worker-process
-exposure lands with BL-043) and one structured log line
+default registry — served by the API `/metrics` route and by the worker
+health server's `/metrics` on port 8001 (BL-043); each process exposes
+only its own registry) and one structured log line
 (`embedding usage: provider=... model=... knowledge_base_id=... texts=...
 cache_hits=... cache_misses=... tokens=... token_source=...`).
 

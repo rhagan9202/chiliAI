@@ -28,6 +28,10 @@
 | `validation` | `ValidationConfig \| None` | no | `ValidationConfig()` | |
 | `records` | `RecordsConfig \| None` | no | `RecordsConfig()` | |
 | `analytics` | `AnalyticsConfig \| None` | no | `AnalyticsConfig()` | |
+| `gnn` | `GnnConfig \| None` | no | None | |
+| `peer_stats` | `PeerStatsConfig \| None` | no | None | |
+| `timeseries` | `TimeseriesAnalyticsConfig \| None` | no | None | |
+| `scorecards` | `ScorecardsConfig` | no | `ScorecardsConfig()` | Default-factory, not None |
 | `policy_rules` | `list[PolicyRulePack]` | no | `[]` | Additive/optional; drives `policy/` item generation in the worker |
 | `alerts` | `AlertsConfig` | yes | — | Thresholds dict |
 | `ui` | `UiConfig \| None` | no | None | Navigation, display_fields, roles |

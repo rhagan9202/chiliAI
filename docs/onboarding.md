@@ -88,7 +88,7 @@ Key documentation files:
 | Git | Any recent | pre-installed on macOS |
 | `gh` CLI | Latest | `brew install gh` |
 
-The full stack (API, worker, Redis, Neo4j, Qdrant, MinIO) runs inside Docker, so Python and Node are only needed for local development without Docker (linters, type-checkers, running tests directly).
+The full stack (API, worker, Redis, Neo4j, Qdrant, MinIO, Postgres/TimescaleDB) runs inside Docker, so Python and Node are only needed for local development without Docker (linters, type-checkers, running tests directly).
 
 ### 3.2 Clone and first run
 
@@ -152,7 +152,7 @@ make down         # Stop the stack (preserves volumes)
 make clean        # Stop the stack AND wipe volumes (fresh state)
 make logs         # Tail all container logs
 make api-shell    # Drop into a bash shell inside the API container
-make test         # Run backend pytest suite inside the API container
+make test         # Run backend pytest --cov via the host venv against chili_test (never the dev DB)
 ```
 
 All service URLs when the dev stack is running:
@@ -181,11 +181,11 @@ Dev-stack notes:
 
 ### 4.2 Running services individually (without Docker)
 
-You will need Redis, Neo4j, Qdrant, and MinIO running separately. The easiest way is to start just the infrastructure containers:
+You will need Redis, Neo4j, Qdrant, MinIO, and Postgres running separately. The easiest way is to start just the infrastructure containers:
 
 ```bash
 # Start only the infrastructure services
-docker compose -f docker-compose.dev.yaml up redis neo4j qdrant minio
+docker compose -f docker-compose.dev.yaml up redis neo4j qdrant minio postgres
 ```
 
 Then in separate terminals:
@@ -341,10 +341,9 @@ pyright                       # strict type check
 ruff check .                  # lint
 ruff format .                 # format
 pytest --cov --cov-report=term-missing   # tests with coverage report
-# ⚠️ With the dev stack up, the default DATABASE_URL points at the stack's live
-# Postgres and the migration tests WIPE it (see backend/README.md). To protect
-# seeded demo state:
-# DATABASE_URL=postgresql://chili:chili@localhost:5432/chili_test pytest --cov
+# tests/conftest.py defaults DATABASE_URL to ...5432/chili_test (the migration
+# tests wipe whatever DB it names). An explicitly exported DATABASE_URL wins —
+# never export the dev chili DB DSN before running pytest.
 ```
 
 ### 6.2 Frontend
@@ -355,8 +354,8 @@ pytest --cov --cov-report=term-missing   # tests with coverage report
 | **Functional components only** | No class components. React hooks for all stateful logic. |
 | **Server state** | TanStack Query for all API data fetching, caching, and mutation. |
 | **Client state** | Zustand for UI-only state (selected entity, panel visibility, filters). |
-| **Routing** | React Router v7. |
-| **No business logic in components** | Extract fetch logic into TanStack Query hooks in `api/hooks/`. |
+| **Routing** | React Router v8. |
+| **No business logic in components** | Extract fetch logic into TanStack Query hooks in `src/hooks/` or the per-resource query modules in `src/api/*.ts`. |
 | **Lint** | `npm run lint` must pass before committing. |
 | **Build** | `npm run build` must succeed (TypeScript compile + Vite bundle). |
 
@@ -659,12 +658,12 @@ The frontend lives at `chili_app/src/` and already has the main workbench pages,
 ```
 chili_app/src/
   pages/
-    Dashboard.tsx
-    KnowledgeBaseManager.tsx
-    AlertFeed.tsx
-    InvestigationWorkbench.tsx
-    RagChat.tsx
-    ConfigEditor.tsx
+    DashboardPage.tsx
+    KnowledgeBaseManagerPage.tsx
+    AlertFeedPage.tsx
+    InvestigationWorkbenchPage.tsx
+    RagChatPage.tsx
+    ConfigurationPage.tsx
 ```
 
 ### 10.1 Create the page component
@@ -780,7 +779,7 @@ export function StatusBadge({ status, label }: StatusBadgeProps) {
 Many components need to render labels driven by the domain configuration rather than hardcoded strings. Read the domain config through `useDomainConfig()`:
 
 ```ts
-import { useDomainConfig } from '../../hooks/useDomainConfig'
+import { useDomainConfig } from '../../api/config'
 
 export function EntityTypeBadge({ entityType }: { entityType: string }) {
   const { config } = useDomainConfig()
@@ -906,17 +905,25 @@ When you add a new pipeline stage, define its input and output events here first
 ### 13.3 Publishing an event from the API
 
 ```python
-from events.runtime import EventRuntime
-from events.types import DocumentUploadedEvent
+from api.dependencies import get_event_bus
+from events.protocols import EventBus
+from events.types import DocumentReference, DocumentsUploadedEvent
 
-async def upload_document(
+async def upload_documents(
     kb_id: str,
     content: bytes,
-    event_runtime: EventRuntime = Depends(get_event_runtime),
+    event_bus: EventBus = Depends(get_event_bus),
 ) -> None:
     # ... save to object store ...
-    await event_runtime.publish(
-        DocumentUploadedEvent(knowledge_base_id=kb_id, document_id=doc_id)
+    event_bus.publish(
+        DocumentsUploadedEvent(
+            documents=[
+                DocumentReference(
+                    knowledge_base_id=kb_id,
+                    source_document_id=doc_id,
+                )
+            ]
+        )
     )
 ```
 
@@ -924,17 +931,26 @@ async def upload_document(
 
 ```python
 # agent/coordinator.py — simplified
-from events.runtime import EventRuntime
+from events.runtime import create_event_bus
+from events.types import DocumentsUploadedEvent, EntitiesExtractedEvent
 
-async def run() -> None:
-    async for event in runtime.consume(group="workers", consumer="worker-1"):
-        match event:
-            case DocumentUploadedEvent():
-                await ingestion_step.run(event)
-            case EntitiesExtractedEvent():
-                await graph_step.run(event)
-            case _:
-                logger.warning("unhandled event type", event=event)
+def run() -> None:
+    event_bus = create_event_bus()
+    while True:
+        deliveries = event_bus.consume(
+            ["documents.uploaded", "entities.extracted"],
+            consumer_group="workers",
+            consumer_name="worker-1",
+        )
+        for delivery in deliveries:
+            match delivery.event:
+                case DocumentsUploadedEvent():
+                    ingestion_service.process_documents_uploaded(delivery.event)
+                case EntitiesExtractedEvent():
+                    graph_step.run(delivery.event)
+                case _:
+                    logger.warning("unhandled event type", event=delivery.event)
+        event_bus.ack(deliveries)
 ```
 
 ### 13.5 Adding a new pipeline event
@@ -958,6 +974,8 @@ backend/config/defaults/
   medicare_fraud_cms_desynpuf.yaml   (exemplar — default for make dev/prod)
   food_supply_chain.yaml             (exemplar-parity peer pack)
   medicare_fraud.yaml                (minimal variant)
+  department_air_force_housing.yaml  (AF housing demo pack — make dev-domain /
+                                       make seed-housing)
 backend/config/overlays/
   medicare_fraud_dev.yaml            (dev overlay over medicare_fraud.yaml,
                                        applied via CHILI_CONFIG_OVERLAY_PATH
@@ -1047,8 +1065,6 @@ gh issue create \
 # Link a PR to an issue (in PR body)
 Closes #137
 ```
-
-The script `.tmp/create_story_issues_batch.py` automates bulk issue creation from story prompts and skips any that already exist.
 
 ---
 

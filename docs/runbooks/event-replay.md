@@ -114,19 +114,21 @@ the durable persist itself failed (rare, logged when it happens).
    curl -s "http://localhost:8000/events/dlq/<dlq_id>" | jq '.error_traceback'
    ```
 
-3. **Correlate with worker logs and workflow state** via `correlation_id`
-   (every event and every workflow run carries one):
+3. **Correlate with worker logs** via `correlation_id`, and **with workflow
+   state** via the knowledge base id (taken from the DLQ record's `payload`
+   `event_body`):
 
    ```bash
    docker compose -f docker-compose.dev.yaml logs worker | grep '<correlation_id>'
-   curl -s "http://localhost:8000/workflows?correlation_id=<correlation_id>" | jq
+   curl -s "http://localhost:8000/workflows?knowledge_base_id=<kb_id>" | jq
    ```
 
    (The Redis stream message id is *not* stored on the `DlqRecord` — by the
    time the wrapper persists the record, the delivery has already been
    ACKed/exhausted at the transport layer, so there is no live stream
-   position to link back to. `correlation_id` is the durable join key across
-   the DLQ record, worker logs, and workflow runs.)
+   position to link back to. `correlation_id` is the durable join key between
+   the DLQ record and worker logs — workflow runs carry it internally but the
+   `/workflows` API does not expose or filter by it.)
 
 ## Decide: replay or discard
 

@@ -1,7 +1,7 @@
 # Module Map
 
 **Generated:** 2026-05-22 (merge commit `acae4ac`)
-**Reviewed:** 2026-05-28 against the current working tree for docs-keeper consistency cleanup.
+**Reviewed:** 2026-07-26 against the current working tree — analytics adapter names corrected, agent handler entries updated, and post-snapshot modules (`cases/`, `conversations/`, `knowledgebases/`, `policy/`, `scorecards/`) added.
 
 Each entry covers: purpose, primary public exports, adapters (if any), and forbidden/allowed dependencies per CLAUDE.md.
 
@@ -136,16 +136,19 @@ Each entry covers: purpose, primary public exports, adapters (if any), and forbi
 **Purpose:** Analytics pipelines triggered by worker events.
 
 ### `timeseries/`
-Time-series anomaly detection. Adapters: `InMemoryTimeSeriesStore`, `PostgresObservationStore` / `PostgresObservationSource`.
+Time-series anomaly detection. Adapters: `InMemoryTimeSeriesHistorySource`, `PostgresTimeSeriesHistorySource` (observation adapters live in `monitoring/adapters/postgres.py`).
 
 ### `gnn/`
-Graph neural network analysis (link prediction, clustering). Adapter: `InMemoryGnnAdapter`.
+Graph neural network analysis (link prediction, clustering). Adapter: `InMemoryGraphSnapshotSource`.
 
 ### `risk/`
-Risk scoring. Adapters: `InMemoryRiskStore`, `PostgresRiskHistoryStore` (writer-only + `load_historical_score`).
+Risk scoring. Adapters: `InMemoryRiskSignalSource`, `InMemoryRiskHistoryWriter`, `PostgresRiskHistoryStore` (writer-only + `load_historical_score`).
 
 ### `explainability/`
-Evidence pack generation. Adapters: `InMemoryExplainabilityStore`, `ShapExplainabilityAdapter`.
+Evidence pack generation. Adapters: `InMemoryExplainabilityContextSource`, `ShapExplainabilityContextSource`.
+
+### `peerstats/`
+Peer-group statistics: aggregates record columns into peer baselines and persists derived risk signals. Adapters: `InMemoryRecordColumnSource`, `InMemoryDerivedRiskSignalWriter`, `PostgresRecordColumnSource`, `PostgresDerivedRiskSignalWriter`.
 
 ### `metrics/`
 Entity-metric persistence (no service, no events). Adapters: `InMemoryEntityMetricRepository`, `PostgresEntityMetricRepository`. Throttled per-KB via `MetricsRecomputeThrottle`.
@@ -162,9 +165,9 @@ Entity-metric persistence (no service, no events). Adapters: `InMemoryEntityMetr
 
 **Pipeline handlers:**
 - `handle_documents_uploaded` — document ingestion pipeline (parse → chunk → extract → upsert graph → embed → index)
-- `handle_records_ingested` — maps raw records to entities/relationships → graph upsert + vector embed/index [enhanced 2026-05-22 to add embed+index step]
+- `handle_records_ingested` — maps raw records to entities/relationships → graph upsert + vector embed/index [enhanced 2026-05-22 to add embed+index step]; also runs best-effort policy/peerstats/timeseries stages and (analytics.34) an in-process Flow B analytics fan-out
 - `handle_knowledge_base_deleted` — full 4-step retry cascade (graph → vector → raw_records → object_store) [added 2026-05-22]
-- `handle_graph_updated_for_analytics` (Flow 2) — graph-metric persistence to Postgres
+- `handle_graph_updated_for_analytics` (Flow 2) — Flow B: GNN → risk → explainability → alerts.created, plus graph property write-back and throttled entity-metric persistence
 - `handle_risk_scored_for_graph` (Flow 3) — risk score persistence + graph property snapshot
 - `handle_alerts_created_for_graph` (Flow 4) — alert history persistence + graph property snapshot
 
@@ -251,6 +254,56 @@ Entity-metric persistence (no service, no events). Adapters: `InMemoryEntityMetr
 **Adapters:** `InMemoryRawRecordStore`, `PostgresRawRecordStore`
 
 **New in 2026-05-22:** `delete_by_kb(kb_id)` on `RawRecordStore` protocol and both adapters. This is the raw-records leg of the KB delete cascade.
+
+---
+
+## `cases/` — Investigation Case Management
+
+**Purpose:** Durable, KB-scoped investigation cases (BL-010). Cases are promoted from alerts (capturing the originating alert, its evidence pack, and a timeline snapshot) and persisted across the API and worker containers.
+
+**Key exports:** `CaseService`, `CaseRepository` (protocol: `create / get / list / update / delete_by_kb`)
+
+**Adapters:** `InMemoryCaseRepository`, `PostgresCaseRepository`
+
+---
+
+## `conversations/` — RAG Chat Conversation Persistence
+
+**Purpose:** Durable RAG chat conversations and message history, including assistant-message citations (BL-012). Shared across API and worker containers.
+
+**Key exports:** `ConversationService`, `ConversationRepository` (protocol: `create / get / save`)
+
+**Adapters:** `InMemoryConversationRepository`, `PostgresConversationRepository`
+
+---
+
+## `knowledgebases/` — KB & Document Metadata
+
+**Purpose:** Knowledge base and document metadata persistence, so `api/` and `agent/` can share KB state without importing from each other. Also owns the centralized KB delete cascade (`cleanup.py`: `KbDeletionStores`, `kb_deletion_steps`, `delete_object_store_prefix`).
+
+**Key exports:** `KnowledgeBaseRepository` (protocol), `cleanup.py` cascade helpers, `snapshots.py`
+
+**Adapters:** `InMemoryKnowledgeBaseRepository`, `ObjectStoreKnowledgeBaseRepository`
+
+---
+
+## `policy/` — Policy Intelligence
+
+**Purpose:** Durable, KB-scoped policy intelligence (BL-011). Rule packs from `DomainConfig.policy_rules` are evaluated (`evaluation.py`, pure `evaluate()` — no I/O) against freshly stored entities and throttled graph metrics; each match upserts a persisted `PolicyItem` that analysts triage (accept / reject / defer / escalate-to-case). Disposed items never reopen (natural key `(kb_id, rule_id, target_ref)`).
+
+**Key exports:** `PolicyService`, `evaluate()`, `PolicyItemRepository` (protocol: `upsert / get / list / update / delete_by_kb`)
+
+**Adapters:** `InMemoryPolicyItemRepository`, `PostgresPolicyItemRepository`
+
+---
+
+## `scorecards/` — Housing Scorecard Runs
+
+**Purpose:** Durable scorecard run generation for the Air Force housing pack. Evaluates config-declared templates (`DomainConfig.scorecards`) over the KB's ingested feed records, persists runs with per-metric health/completeness/citations, and stores JSON/Markdown export payloads.
+
+**Key exports:** `ScorecardService`, `create_scorecard_service`, `ScorecardSourceRecordLoader` (protocol), `ScorecardRunRepository` (protocol)
+
+**Adapters:** `InMemoryScorecardRunRepository`, `PostgresScorecardRunRepository`
 
 ---
 

@@ -101,13 +101,18 @@ require a documented justification in this file.
   processors (story **E10-S08**). No raw request bodies, no API keys, no JWT
   contents. Correlation IDs are emitted; payloads are not.
 - **CORS.** Allowed origins are loaded from the `ALLOWED_ORIGINS` env var (no
-  `*` in production); see the `TODO(production)` in `api/app.py` and
-  story **E10-S09** which replaces the dev-only allowlist.
+  `*` in production); implemented by `_load_allowed_origins()` in `api/app.py`
+  (story **E10-S09**), which falls back to a localhost-only allowlist when the
+  env var is unset.
 - **Default-deny config.** `config/schema.py` ships with conservative defaults
   (in-memory adapters, no remote fetches). Optional features (Neo4j, Qdrant,
   OpenAI) require explicit configuration to enable.
-- **No debug endpoints in prod.** FastAPI's `/docs` and `/redoc` are gated by
-  the `CHILI_ENABLE_DOCS` env var.
+- **Debug endpoints — open finding.** FastAPI's `/docs`, `/redoc`, and
+  `/openapi.json` are currently always enabled (`api/app.py` passes no
+  `docs_url`/`redoc_url` gating); they are only exempted from the default-deny
+  route audit (`api/middleware/policy_registry.py` `SKIP_PREFIXES`). Gating
+  them for `staging`/`production` is tracked as an open finding — see
+  **Findings** below.
 
 ### A06:2021 — Vulnerable and Outdated Components
 
@@ -200,4 +205,16 @@ require a documented justification in this file.
 
 ## Findings
 
-_None yet — first scheduled review: 2026-07-26._
+### 2026-07-26 — Debug/docs endpoints ungated in prod — OPEN
+
+- **Category:** A05:2021 — Security Misconfiguration.
+- **Observation:** FastAPI's `/docs`, `/redoc`, and `/openapi.json` are always
+  enabled: `create_app()` in `backend/api/app.py` passes no
+  `docs_url`/`redoc_url` gating, and the `CHILI_ENABLE_DOCS` env var this
+  checklist previously cited does not exist in code. The endpoints are only
+  exempted from the default-deny route audit
+  (`api/middleware/policy_registry.py` `SKIP_PREFIXES`), so they are reachable
+  unauthenticated in every environment.
+- **Disposition:** OPEN — gate (disable or role-gate) `/docs`, `/redoc`, and
+  `/openapi.json` under `staging`/`production`; flows into the backlog per the
+  review-output policy above (priority P1).

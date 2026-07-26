@@ -78,7 +78,7 @@ backend/tests/{moduleName}/
 - Use `model_copy(update={...})` for immutable state transitions.
 
 ### Cross-Module Interaction
-- Import only from `shared/` (types, protocols, utils) and `events/` (types, protocols).
+- Import only from `shared/` (types, protocols, utils), `events/` (types, protocols), and `storage/` (protocols — the `ObjectStore` port).
 - **Never** import directly from another feature module (e.g., don't import from `ingestion`).
 - Publish typed events via the `EventBus` protocol for downstream consumers.
 
