@@ -110,6 +110,7 @@ export type KnowledgeBaseSummaryResponse = OptionalFields<Schemas['KnowledgeBase
 export type KnowledgeBaseListResponse = Schemas['KbListResponse']
 export type KnowledgeBaseDocumentResponse = Schemas['DocumentSummary']
 export type KnowledgeBaseDocumentListResponse = Schemas['DocumentListResponse']
+export type KnowledgeBaseDocumentPreviewResponse = Schemas['DocumentPreviewResponse']
 export type KnowledgeBaseCreateRequest = Schemas['CreateKbRequest']
 export type DocumentReceiptResponse = Schemas['DocumentReceipt']
 export type DocumentRegistrationResponse = Schemas['DocumentRegistrationResponse']

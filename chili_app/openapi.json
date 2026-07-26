@@ -1634,6 +1634,57 @@
         "title": "DocumentListResponse",
         "type": "object"
       },
+      "DocumentPreviewResponse": {
+        "description": "Preview payload for a single document in a knowledge base.",
+        "properties": {
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "line_count": {
+            "minimum": 0.0,
+            "title": "Line Count",
+            "type": "integer"
+          },
+          "preview_text": {
+            "title": "Preview Text",
+            "type": "string"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "document_id",
+          "filename",
+          "preview_text",
+          "line_count",
+          "truncated"
+        ],
+        "title": "DocumentPreviewResponse",
+        "type": "object"
+      },
       "DocumentReceipt": {
         "description": "Receipt returned after document registration.",
         "properties": {
@@ -9288,6 +9339,82 @@
           }
         },
         "summary": "Delete Knowledge Base Document",
+        "tags": [
+          "knowledge-bases"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/documents/{document_id}/preview": {
+      "get": {
+        "description": "Return a deterministic text preview for a stored KB document.",
+        "operationId": "preview_knowledge_base_document_knowledgebases__knowledge_base_id__documents__document_id__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "line_limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Line Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "char_limit",
+            "required": false,
+            "schema": {
+              "default": 4000,
+              "maximum": 20000,
+              "minimum": 1,
+              "title": "Char Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Knowledge Base Document",
         "tags": [
           "knowledge-bases"
         ]

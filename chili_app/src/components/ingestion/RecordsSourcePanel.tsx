@@ -15,6 +15,7 @@ type RecordsSourcePanelProps = {
   recordFile: File | null
   rows: Record<string, unknown>[]
   issues: ValidationIssue[]
+  showPreviewTable?: boolean
   onDraftChange: () => void
   onFileChange: (file: File | null) => void
   onFeedChange: (feedName: string | null) => void
@@ -61,6 +62,7 @@ export function RecordsSourcePanel({
   recordFile,
   rows,
   issues,
+  showPreviewTable = true,
   onDraftChange,
   onFileChange,
   onFeedChange,
@@ -293,11 +295,13 @@ export function RecordsSourcePanel({
         {parseStatus === 'parsing' ? 'Parsing records' : parseButtonLabel}
       </button>
 
-      <RecordsPreviewTable
-        rows={rows}
-        issues={issues}
-        emptyDescription={emptyPreviewDescription}
-      />
+      {showPreviewTable ? (
+        <RecordsPreviewTable
+          rows={rows}
+          issues={issues}
+          emptyDescription={emptyPreviewDescription}
+        />
+      ) : null}
     </section>
   )
 }

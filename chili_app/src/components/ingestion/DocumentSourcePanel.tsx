@@ -5,6 +5,8 @@ type DocumentSourcePanelProps = {
   onFilesChange: (files: File[]) => void
 }
 
+type DirectoryFile = File & { webkitRelativePath?: string }
+
 function formatFileSize(size: number): string {
   if (size < 1024) {
     return `${size} B`
@@ -17,6 +19,12 @@ function formatFileSize(size: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function fileLabel(file: DirectoryFile): string {
+  return file.webkitRelativePath && file.webkitRelativePath.length > 0
+    ? file.webkitRelativePath
+    : file.name
+}
+
 export function DocumentSourcePanel({ files, onFilesChange }: DocumentSourcePanelProps) {
   return (
     <section className="ingestion-document-source" aria-labelledby="document-source-title">
@@ -27,7 +35,7 @@ export function DocumentSourcePanel({ files, onFilesChange }: DocumentSourcePane
       </div>
 
       <label className="ingestion-source-panel__field">
-        <span className="ingestion-source-panel__label">Document files</span>
+        <span className="ingestion-source-panel__label">Document files (single or multi-select)</span>
         <input
           className="ingestion-document-source__input"
           type="file"
@@ -39,17 +47,34 @@ export function DocumentSourcePanel({ files, onFilesChange }: DocumentSourcePane
         />
       </label>
 
+      <label className="ingestion-source-panel__field">
+        <span className="ingestion-source-panel__label">Document folder</span>
+        <input
+          className="ingestion-document-source__input"
+          type="file"
+          multiple
+          {...{ webkitdirectory: '', directory: '' }}
+          aria-label="Document folder"
+          onChange={(event) => {
+            onFilesChange(Array.from(event.currentTarget.files ?? []))
+          }}
+        />
+      </label>
+
       {files.length > 0 ? (
         <ul className="ingestion-file-list" aria-label="Selected document files">
-          {files.map((file) => (
-            <li className="ingestion-file-list__item" key={`${file.name}-${file.size}`}>
-              <span className="ingestion-file-list__name">{file.name}</span>
-              <span className="ingestion-file-list__meta">
-                <span>{file.type || 'unknown type'}</span>
-                <span>{formatFileSize(file.size)}</span>
-              </span>
-            </li>
-          ))}
+          {files.map((file) => {
+            const label = fileLabel(file as DirectoryFile)
+            return (
+              <li className="ingestion-file-list__item" key={`${label}-${file.size}`}>
+                <span className="ingestion-file-list__name">{label}</span>
+                <span className="ingestion-file-list__meta">
+                  <span>{file.type || 'unknown type'}</span>
+                  <span>{formatFileSize(file.size)}</span>
+                </span>
+              </li>
+            )
+          })}
         </ul>
       ) : null}
     </section>
