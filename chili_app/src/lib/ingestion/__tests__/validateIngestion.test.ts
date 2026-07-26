@@ -172,16 +172,27 @@ describe('ingestion validation', () => {
 
   it('warns for large document files when no max file size is configured', () => {
     const file = new File(['x'], 'large.pdf', { type: 'application/pdf' })
-    Object.defineProperty(file, 'size', { value: 51 * 1024 * 1024 })
+    // Above the 512 MB fallback (backend/config/schema.py's real default) that
+    // applies only when the domain-config fetch fails.
+    Object.defineProperty(file, 'size', { value: 513 * 1024 * 1024 })
 
     const issues = validateDocumentFiles([file], null)
 
     expect(issues).toMatchObject([
       {
         severity: 'warning',
-        message: 'large.pdf is larger than 50 MB; backend limits may reject it.',
+        message: 'large.pdf is larger than 512 MB; backend limits may reject it.',
       },
     ])
+  })
+
+  it('does not warn for files under the 512 MB fallback when no config is available', () => {
+    const file = new File(['x'], 'medium.pdf', { type: 'application/pdf' })
+    Object.defineProperty(file, 'size', { value: 60 * 1024 * 1024 })
+
+    const issues = validateDocumentFiles([file], null)
+
+    expect(issues).toEqual([])
   })
 
   it('requires record rows', () => {

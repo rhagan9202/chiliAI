@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent, KeyboardEvent } from 'react'
 
+import type { ValidationConfig } from '../../api/contracts'
 import {
   ACCEPTED_DOCUMENT_EXTENSIONS,
+  FALLBACK_MAX_FILE_SIZE_MB,
   validateDocumentFile,
 } from '../../hooks/useKnowledgeBaseDocuments'
 import styles from './DropZone.module.css'
@@ -12,6 +14,8 @@ export interface DropZoneProps {
   onValidationError?: (reason: string) => void
   disabled?: boolean
   helperText?: string
+  /** Domain-config validation limits; falls back to FALLBACK_MAX_FILE_SIZE_MB when omitted. */
+  validationConfig?: ValidationConfig | null
 }
 
 export function DropZone({
@@ -19,15 +23,17 @@ export function DropZone({
   onValidationError,
   disabled = false,
   helperText,
+  validationConfig,
 }: DropZoneProps): React.ReactElement {
   const [active, setActive] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const maxFileSizeMb = validationConfig?.max_file_size_mb ?? FALLBACK_MAX_FILE_SIZE_MB
 
   const handleFiles = (files: FileList | null): void => {
     if (!files || files.length === 0) return
     const file = files[0]
     if (!file) return
-    const validation = validateDocumentFile(file)
+    const validation = validateDocumentFile(file, validationConfig)
     if (!validation.ok) {
       onValidationError?.(validation.reason ?? 'Invalid file')
       return
@@ -102,7 +108,7 @@ export function DropZone({
       </span>
       <span className={styles.hint}>
         {helperText ??
-          `Supported: ${ACCEPTED_DOCUMENT_EXTENSIONS.join(', ')} · up to 50 MB`}
+          `Supported: ${ACCEPTED_DOCUMENT_EXTENSIONS.join(', ')} · up to ${maxFileSizeMb} MB`}
       </span>
       <input
         ref={inputRef}

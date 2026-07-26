@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 
+import { useDomainConfig } from '../../api/config'
 import { useKnowledgeBase } from '../../hooks/useKnowledgeBases'
 import {
   useDeleteDocument,
@@ -30,6 +31,7 @@ export function KbDetailView(): React.ReactElement {
     isLoading: docsLoading,
     error: docsError,
   } = useKnowledgeBaseDocuments(kbId)
+  const { data: domainConfig } = useDomainConfig()
 
   const uploadMutation = useUploadDocument(kbId ?? '')
   const deleteMutation = useDeleteDocument(kbId ?? '')
@@ -117,6 +119,7 @@ export function KbDetailView(): React.ReactElement {
           onFile={handleFile}
           disabled={uploadMutation.isPending}
           onValidationError={(reason) => showToast('warning', reason)}
+          validationConfig={domainConfig?.validation}
         />
         {activeUpload ? (
           <UploadProgress

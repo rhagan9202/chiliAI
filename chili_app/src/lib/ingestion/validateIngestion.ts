@@ -13,6 +13,10 @@ function warning(id: string, message: string): ValidationIssue {
   return { id, source: 'client', severity: 'warning', message }
 }
 
+// Used only when the domain-config fetch fails and no `validation.max_file_size_mb`
+// is available to size against. backend/config/schema.py owns the real default.
+const FALLBACK_MAX_FILE_SIZE_MB = 512
+
 export function validateRequiredWizardState({
   knowledgeBaseId,
   sourceType,
@@ -93,11 +97,11 @@ export function validateDocumentFiles(
       )
     }
 
-    if (maxBytes === null && file.size > 50 * 1024 * 1024) {
+    if (maxBytes === null && file.size > FALLBACK_MAX_FILE_SIZE_MB * 1024 * 1024) {
       issues.push(
         warning(
           `large-${file.name}`,
-          `${file.name} is larger than 50 MB; backend limits may reject it.`,
+          `${file.name} is larger than ${FALLBACK_MAX_FILE_SIZE_MB} MB; backend limits may reject it.`,
         ),
       )
     }
