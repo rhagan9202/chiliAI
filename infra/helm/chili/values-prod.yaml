@@ -57,6 +57,7 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/proxy-body-size: "0"  # Body-size checking delegated to API's DomainConfig-driven gate
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"  # Stream request bodies so the API's incremental 413 gate fires before nginx spools to disk
 
 tls:
   enabled: true

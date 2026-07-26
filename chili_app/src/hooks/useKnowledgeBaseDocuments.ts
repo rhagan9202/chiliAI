@@ -10,6 +10,7 @@ import type {
 
 import type { ValidationConfig } from '../api/contracts'
 import { API_BASE_URL, ApiError, apiRequest } from '../lib/apiClient'
+import { FALLBACK_MAX_FILE_SIZE_MB } from '../lib/uploadLimits'
 import type { DocumentListResponse } from '../types/api'
 import { knowledgeBasesQueryKey } from './useKnowledgeBases'
 
@@ -30,10 +31,6 @@ export const ACCEPTED_DOCUMENT_MIME_TYPES = [
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ] as const
-
-// Used only when the domain-config fetch fails and no `validation.max_file_size_mb`
-// is available to size against. backend/config/schema.py owns the real default.
-export const FALLBACK_MAX_FILE_SIZE_MB = 512
 
 export function knowledgeBaseDocumentsQueryKey(
   kbId: string,

@@ -3,6 +3,7 @@ import type {
   RecordFeedConfig,
   ValidationConfig,
 } from '../../api/contracts'
+import { FALLBACK_MAX_FILE_SIZE_MB } from '../uploadLimits'
 import type { IngestionSourceType, ValidationIssue } from './types'
 
 function issue(id: string, message: string, rowIndex?: number, field?: string): ValidationIssue {
@@ -12,10 +13,6 @@ function issue(id: string, message: string, rowIndex?: number, field?: string): 
 function warning(id: string, message: string): ValidationIssue {
   return { id, source: 'client', severity: 'warning', message }
 }
-
-// Used only when the domain-config fetch fails and no `validation.max_file_size_mb`
-// is available to size against. backend/config/schema.py owns the real default.
-const FALLBACK_MAX_FILE_SIZE_MB = 512
 
 export function validateRequiredWizardState({
   knowledgeBaseId,

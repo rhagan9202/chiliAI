@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ValidationConfig } from '../../api/contracts'
-import {
-  FALLBACK_MAX_FILE_SIZE_MB,
-  validateDocumentFile,
-} from '../useKnowledgeBaseDocuments'
+import { FALLBACK_MAX_FILE_SIZE_MB } from '../../lib/uploadLimits'
+import { validateDocumentFile } from '../useKnowledgeBaseDocuments'
 
 function makeFile(name: string, sizeBytes: number, type = 'text/plain'): File {
   const file = new File(['x'], name, { type })

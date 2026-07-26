@@ -80,7 +80,7 @@ require a documented justification in this file.
   pack-overridable), enforced incrementally with HTTP 413 by the
   `read_upload_file_with_limit` readers in `api/routers/knowledgebases.py`
   and `api/routers/records.py`. nginx body-size checking is deliberately
-  disabled (`client_max_body_size 0; Helm ingress proxy-body-size "0"`) so
+  disabled (`client_max_body_size 0; Helm/k8s ingress proxy-body-size "0"`) so
   the config gate is the single authority — a fixed nginx number silently
   contradicted per-pack limits (it defaulted to 1 MB). Multi-GB uploads
   become safe when records.04 (streaming parse) lands; pull-based origins

@@ -4,9 +4,9 @@ import type { ChangeEvent, DragEvent, KeyboardEvent } from 'react'
 import type { ValidationConfig } from '../../api/contracts'
 import {
   ACCEPTED_DOCUMENT_EXTENSIONS,
-  FALLBACK_MAX_FILE_SIZE_MB,
   validateDocumentFile,
 } from '../../hooks/useKnowledgeBaseDocuments'
+import { FALLBACK_MAX_FILE_SIZE_MB } from '../../lib/uploadLimits'
 import styles from './DropZone.module.css'
 
 export interface DropZoneProps {

@@ -145,7 +145,7 @@
 **so that** CMS-scale files (1–10 GB) can be ingested without OOMing the API container and without raising the 413 cap to a memory-dangerous value.
 
 ### Current State
-- `upload_record_file` now reads in 64 KiB chunks through `_read_upload_file_with_limit`, but still materializes the full payload as `bytes` before parsing.
+- `upload_record_file` now reads in 64 KiB chunks through `read_upload_file_with_limit`, but still materializes the full payload as `bytes` before parsing.
 - `CsvFileSource.read_rows(raw: bytes)` (`backend/records/adapters/sources/file_source.py:23-48`) and `JsonlFileSource.read_rows(raw: bytes)` (`:54-77`) both take `bytes` and return a fully-materialized `list[dict[str, object]]`.
 - The 413 ceiling is governed by `ValidationConfig.max_file_size_mb`; raising it still linearly raises API memory pressure because chunks are joined before parsing.
 - `RecordsService.register_records` takes a `list[dict[str, object]]` (`backend/records/service.py:30-35`) so the whole batch is in memory anyway — streaming only the parser stage is a no-op without a service refactor.
@@ -575,7 +575,7 @@
 ### Current State
 - `IngestionSourceConfig.type` is `Literal["file_upload", "api_push"]` (`backend/config/schema.py:64`) — no pull origin exists.
 - The ObjectStore protocol has no streaming read; storage.01 adds `get_stream` (`docs/backlog/storage.md`).
-- `read_upload_file_with_limit` (`backend/api/routers/records.py:45`) is the only inbound byte path for records files.
+- `read_upload_file_with_limit` (`backend/api/routers/records.py:41`) is the only inbound byte path for records files.
 - Design: `docs/superpowers/specs/2026-07-26-records-origin-sources-design.md` §3.
 
 ### Acceptance Criteria

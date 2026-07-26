@@ -90,7 +90,9 @@ ingress:
   enabled: true
   className: "nginx"
   host: "chili.example.com"
-  annotations: {}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"  # Body-size checking delegated to API's DomainConfig-driven gate
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"  # Stream request bodies so the API's incremental 413 gate fires before nginx spools to disk
 
 tls:
   enabled: false
