@@ -55,7 +55,7 @@ make seed-housing # seed the Air Force housing demo KB via the running API (hous
 make demo-cms     # CMS fraud demo bring-up: TN 1% staging + ingest + readiness probes; analytics fire natively on ingest (stack must be running; see docs/demo/)
 make prod         # production stack (built images, nginx, no hot reload)
 ```
-Service URLs: frontend `:5173`, API `:8000`, worker health/metrics `:8001`, Neo4j `:7474`, Qdrant `:6333`, MinIO console `:9001`. `.env` is loaded from `.env.example` (gitignored).
+Service URLs: frontend `:5173`, API `:8000`, worker health/metrics `:8001`, Neo4j `:7474`, Qdrant `:6333`, MinIO console `:9001`. Create `.env` (gitignored) by copying the tracked `.env.example` (`cp .env.example .env`); compose loads `.env`.
 
 ### Backend (`cd backend`)
 ```bash
@@ -119,7 +119,7 @@ Backend FastAPI OpenAPI is the source of truth for HTTP request/response shapes.
 
 ## Backend Module Map (Target)
 
-`api/` (FastAPI gateway, no business logic) · `ingestion/` (PDF/DOCX/HTML/JSON/TXT parsing, chunking, entity extraction) · `graph/` (graph DB protocol + adapters) · `vectorstore/` (vector store protocol + adapters) · `embeddings/` (embedder protocol + adapters) · `rag/` (query → embed → search → graph expand → LLM) · `llm/` (LLM client protocol + adapters) · `analytics/{timeseries,gnn,risk,explainability,metrics}/` · `agent/` (workflow coordinator) · `monitoring/` (claim stream consumer, alert generation) · `shared/` · `config/` · `events/` (Redis Streams) · `storage/` (object storage adapters) · `database/` (Postgres + TimescaleDB connection provider, Alembic migrations) · `records/` (structured/tabular ingestion: CSV/JSONL/api-push, raw_records landing — parallel to `ingestion/` for documents).
+`api/` (FastAPI gateway, no business logic) · `ingestion/` (PDF/DOCX/HTML/JSON/TXT parsing, chunking, entity extraction) · `graph/` (graph DB protocol + adapters) · `vectorstore/` (vector store protocol + adapters) · `embeddings/` (embedder protocol + adapters) · `rag/` (query → embed → search → graph expand → LLM) · `llm/` (LLM client protocol + adapters) · `analytics/{timeseries,gnn,risk,explainability,metrics,peerstats}/` · `agent/` (workflow coordinator) · `monitoring/` (claim stream consumer, alert generation) · `shared/` · `config/` · `events/` (Redis Streams) · `storage/` (object storage adapters) · `database/` (Postgres + TimescaleDB connection provider, Alembic migrations) · `records/` (structured/tabular ingestion: CSV/JSONL/api-push, raw_records landing — parallel to `ingestion/` for documents) · `knowledgebases/` (KB/document metadata persistence) · `cases/` (durable investigation cases) · `conversations/` (durable RAG chat) · `policy/` (policy intelligence) · `scorecards/` (config-driven scorecard runs).
 
 Implementation status varies by module. Verify behavior by reading the code and tests, and use `backend/README.md` § Current State plus `docs/backlog/README.md` (and the per-module files it links) for production-readiness gaps and dependency-ordered work items.
 

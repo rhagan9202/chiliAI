@@ -704,8 +704,8 @@ Frontend Ingestion Studio consumption (`chili_app/src/pages/KnowledgeBaseManager
 
 ### Verification
 - `backend/.venv/bin/pytest --cov -m "not integration"` green (ingestion/agent/api/knowledgebases/database packages); `pyright` 0 errors; `ruff check` clean.
-- `DATABASE_URL=... pytest -m integration tests/database` — deferred to environment-level verification (dev-stack Docker networking unavailable in the implementing session); tracked in sprint 2026-26 progress notes, not additional scope.
-- Manual: ingest a document, observe transitions PENDING → PARSED → VALIDATED (or EXTRACTED_EMPTY) → and FAILED on error, in the projection — pending the same environment blocker.
+- `DATABASE_URL=... pytest -m integration tests/database` — passed 2026-07-14 (deferred verification pass — 22 passed; see docs/project/planning/sprints/2026-26.md § Progress).
+- Manual: ingest a document, observe transitions PENDING → PARSED → VALIDATED (or EXTRACTED_EMPTY) → and FAILED on error, in the projection — passed 2026-07-14 in the same pass (malformed doc → FAILED with reason, zero-entity doc → EXTRACTED_EMPTY, ?status= filter exact).
 
 ### Code touch points
 - `backend/ingestion/adapters/protocols.py` (new)
@@ -1331,7 +1331,7 @@ Metrics (`ingestion_documents_empty_extraction_total`, `validation_entities_drop
 ### Verification
 - `pytest backend/tests/ingestion/test_validator.py backend/tests/agent/test_coordinator_ready.py backend/tests/agent/test_status_projection.py -v` green including the empty/dropped cases.
 - `backend/.venv/bin/pytest --cov -m "not integration"` / `pyright` / `ruff check` full green (2026-07-13, `ingestion`/`agent`/`api`/`knowledgebases`/`database` packages).
-- Manual: ingest a document that extracts nothing and confirm the UI/status shows an empty-extraction warning rather than a clean "ready" — **pending environment** (dev-stack Docker networking unavailable in the implementing session; see sprint 2026-26 progress notes).
+- Manual: ingest a document that extracts nothing and confirm the UI/status shows an empty-extraction warning rather than a clean "ready" — **passed 2026-07-14** (deferred verification pass; see docs/project/planning/sprints/2026-26.md § Progress).
 
 ### Code touch points
 - `backend/ingestion/validator.py` (modify — surface drop reasons)

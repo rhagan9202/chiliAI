@@ -17,7 +17,7 @@ Rendered SVG output is available at `docs/rendered/system_architecture_diagram_r
 | Layer | Local development | Production / cluster path |
 | --- | --- | --- |
 | Frontend | `chili_app` Vite dev server on `:5173` | `chili-app` nginx container behind Ingress |
-| API | `uvicorn api.app:create_app --reload` on `:8000` | `chili-api` Deployment + Service + optional HPA |
+| API | `uvicorn api.app:create_app --factory --reload` on `:8000` | `chili-api` Deployment + Service + optional HPA |
 | Worker | `python -m agent.coordinator` | `chili-worker` Deployment + Service + optional HPA |
 | Events | Redis Compose service | Redis StatefulSet or managed Redis |
 | Graph | Neo4j Compose service in dev config | External Neo4j |

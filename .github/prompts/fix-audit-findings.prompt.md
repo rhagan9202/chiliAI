@@ -68,7 +68,7 @@ Replace `Any` with the narrowest applicable type:
 | `list[Any]` | `list[object]` or a typed union |
 | `Any` in a protocol method signature | The domain type from `shared.types` or module `models.py` |
 
-If `Any` is truly unavoidable (polymorphic containers, YAML parsing intermediates), add a `# type: ignore[explicit-any]` comment with a brief justification.
+If the `Any` falls under the audit prompt's documented exceptions (`shared/types.py` property containers, `config/loader.py` deserialization intermediates, internal helpers), leave it unchanged and note it in the fix report; otherwise narrow the type. Never add `# type: ignore` or other suppression comments — CLAUDE.md forbids bypassing type checks.
 
 #### Fix: Cross-Module Import Violation
 
@@ -133,19 +133,32 @@ If an API router imports from a module's internal `models.py`:
 
 #### Fix: Missing Test Files
 
-Create minimal test file stubs under `backend/tests/{module}/`:
+Create minimal test files under `backend/tests/{module}/`:
 
 ```python
 """Tests for {module} models."""
 
 from __future__ import annotations
 
-# TODO: Add model validation tests — valid inputs, invalid inputs, edge cases.
+import pytest
+from pydantic import ValidationError
+
+from {module}.models import SomeModel  # replace with the module's real model
+
+
+def test_model_constructs_with_valid_input() -> None:
+    model = SomeModel(name="example")  # use the model's real required fields
+    assert model.name == "example"
+
+
+def test_model_rejects_invalid_input() -> None:
+    with pytest.raises(ValidationError):
+        SomeModel()  # missing required fields must fail validation
 ```
 
 Follow the pattern in existing test directories (e.g., `backend/tests/ingestion/`, `backend/tests/events/`).
 
-Only create `__init__.py` and stub test files — do **not** write full test implementations unless the audit finding specifically says tests are needed for a particular behavior.
+Create `__init__.py` plus at least minimal assertion-bearing tests (model happy-path construction and one invalid-input rejection) — TODO-only stubs are not an acceptable fix (CLAUDE.md: missing tests = incomplete work; see scaffold-backend-module.prompt.md Deferred Work Convention). Expand further when the audit finding names specific behaviors.
 
 ## Execution Rules
 

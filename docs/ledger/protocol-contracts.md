@@ -123,7 +123,10 @@ Implemented by: `InMemoryEmbeddingsAdapter`, `OpenAiEmbeddingsAdapter`, `Sentenc
 
 - `persist(records: list[RawRecord]) -> int`
 - `load_batch(*, knowledge_base_id: str, correlation_id: str) -> list[RawRecord]`
+- `load_for_kb(*, knowledge_base_id: str) -> list[RawRecord]`
 - `delete_by_kb(knowledge_base_id: str) -> int` [added 2026-05-22]
+- `was_submitted(*, knowledge_base_id: str, submission_hash: str) -> bool`
+- `record_submission(*, knowledge_base_id: str, submission_hash: str, correlation_id: str) -> None`
 
 Implemented by: `InMemoryRawRecordStore`, `PostgresRawRecordStore`.
 

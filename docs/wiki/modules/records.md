@@ -1,6 +1,6 @@
 # Module: records
 
-**Verified against codebase:** 2026-06-16
+**Verified against codebase:** 2026-07-26
 **Source:** `backend/records/`
 
 ## Purpose
@@ -30,6 +30,9 @@ class RawRecordStore(Protocol):
     def load_batch(self, *, knowledge_base_id: str, correlation_id: str) -> list[RawRecord]:
         """Return all records landed under one ingest run, ordered deterministically."""
 
+    def load_for_kb(self, *, knowledge_base_id: str) -> list[RawRecord]:
+        """Return all records for a knowledge base, ordered deterministically."""
+
     def delete_by_kb(self, knowledge_base_id: str) -> int:
         """Delete all records for a knowledge base; return the count removed."""
 
@@ -44,7 +47,9 @@ class RawRecordStore(Protocol):
 
 `InMemoryRawRecordStore` additionally exposes `count_for_kb(kb_id) -> int`
 (test helper, not on the protocol). `PostgresRawRecordStore` implements the
-protocol through `raw_records` plus `record_submissions`.
+protocol through `raw_records` plus `record_submissions`. `load_for_kb` returns
+every ingested record for the KB — used by the scorecards evaluator source
+loader in `api/dependencies.py`.
 
 ---
 

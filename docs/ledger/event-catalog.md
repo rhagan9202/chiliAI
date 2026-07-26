@@ -40,7 +40,7 @@ All events extend `EventBase` which carries `correlation_id`, `occurred_at`, `so
 |-------|---------------------|----------------|-----------|----------|
 | `RecordsIngestedEvent` | `records.ingested` | `knowledge_base_id: str`, `feed_name: str`, `record_type: str`, `record_count: int` | `RecordsService.register_records()` | `agent.coordinator.handle_records_ingested` |
 
-> `handle_records_ingested` maps rows → entities/relationships → graph upsert, also embeds+indexes records-derived entities into the vector store [enhanced 2026-05-22], and derives observations → `PostgresObservationStore`.
+> `handle_records_ingested` maps rows → entities/relationships → graph upsert, also embeds+indexes records-derived entities into the vector store [enhanced 2026-05-22], and derives observations → `PostgresObservationStore`. Since analytics.34 (2026-07-24) the handler also runs best-effort policy/peerstats/timeseries stages and an in-process Flow B analytics fan-out via `handle_graph_updated_for_analytics` (in-memory `GraphUpdatedEvent` carrying inline `upserted_entity_ids`; never published) — see `docs/wiki/contracts/events.md`.
 
 ---
 

@@ -244,7 +244,7 @@ backend/
 │       ├── ws.py               # WebSocket hub for real-time push
 │       ├── auth.py             # /auth/login, /auth/logout, /auth/me
 │       ├── _oidc_client.py     # OIDC client helpers used by auth router
-│       ├── policy.py           # Route policy introspection
+│       ├── policy.py           # Policy Intelligence items/triage (BL-011)
 │       └── config.py           # Domain configuration endpoints
 ├── ingestion/                  # Document parsing & entity extraction
 │   ├── __init__.py
@@ -895,7 +895,7 @@ Re-uploading a document with identical content bytes is idempotent (same `source
 
 **New NPPES and DE-SynPUF feeds (medicare_fraud config)**
 
-`config/defaults/medicare_fraud_cms_desynpuf.yaml` now declares eight feed definitions under `records.feeds`: `nppes_providers`, `beneficiary_2008`, `beneficiary_2009`, `beneficiary_2010`, `carrier_claims_a`, `carrier_claims_b`, `inpatient_claims`, and `outpatient_claims`. These are config-only additions — the records pipeline code is unchanged. A Tennessee-provider subset materializer lives at `tools/sample_data/build_tennessee_subset.py` and is invoked by the `make demo-tn-subset` target.
+`config/defaults/medicare_fraud_cms_desynpuf.yaml` now declares nine feed definitions under `records.feeds`: `nppes_providers`, `beneficiary_2008`, `beneficiary_2009`, `beneficiary_2010`, `carrier_claims_a`, `carrier_claims_b`, `inpatient_claims`, `outpatient_claims`, and `pde`. These are config-only additions — the records pipeline code is unchanged. A Tennessee-provider subset materializer lives at `tools/sample_data/build_tennessee_subset.py` and is invoked by the `make demo-tn-subset` target.
 
 `handle_records_ingested` in the worker now also embeds and indexes records-derived entities into the vector store so they are co-searchable with document-derived content in RAG queries.
 
@@ -1081,7 +1081,7 @@ The platform supports a dual-graph model: a domain-level reference ("policy") KB
 | Framework | React 19 | Functional components, hooks |
 | Language | TypeScript 5.9.x (strict mode) | `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`; pinned to TS 5 while OpenAPI tooling requires `^5.x` |
 | Build | Vite 8 | Dev server with HMR, production build |
-| Routing | React Router v7 | File-system or config-based routes |
+| Routing | React Router v8 | File-system or config-based routes |
 | Server state | TanStack Query (React Query) | Caching, invalidation, optimistic updates |
 | Client state | Zustand | Lightweight store for UI state (selected entity, panel visibility, etc.) |
 | API client | Typed fetch wrapper + TanStack Query hooks + generated OpenAPI schema aliases | `lib/apiClient.ts` handles transport; `src/api/contracts.ts` aliases `src/lib/api/schema.ts` generated from backend OpenAPI |
@@ -1089,7 +1089,7 @@ The platform supports a dual-graph model: a domain-level reference ("policy") KB
 | Graph visualization | `react-force-graph-2d` | Canvas graph explorer in the Investigation Workbench |
 | Styling | CSS Modules + global app CSS | Component-scoped styles for complex UI surfaces |
 
-> **Current state**: `chili_app/` is a routed React 19 workbench prototype with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, Case Management, Policy Intelligence, RAG Chat, and a read-only Configuration view. Knowledge Base Manager uses the live KB repository, Investigation Workbench uses KB-scoped live `/investigation/*` graph APIs, and dashboard/alert/case/policy surfaces are backed by live service/repository projections. Remaining frontend gaps are configuration-write workflows, standalone workflow/evidence navigation surfaces, and production UX/performance hardening.
+> **Current state**: `chili_app/` is a routed React 19 workbench prototype with Dashboard, Knowledge Base Manager, Alert Feed, Investigation Workbench, Case Management, Policy Intelligence, RAG Chat, and a Configuration page hosting the Config Manager (pack switcher, dry-run validation, hot-swap apply; raw pack save remains a gap). Knowledge Base Manager uses the live KB repository, Investigation Workbench uses KB-scoped live `/investigation/*` graph APIs, and dashboard/alert/case/policy surfaces are backed by live service/repository projections. Remaining frontend gaps are configuration-write workflows, standalone workflow/evidence navigation surfaces, and production UX/performance hardening.
 
 ### 8.2 Page / view structure
 
@@ -1097,20 +1097,31 @@ The platform supports a dual-graph model: a domain-level reference ("policy") KB
 chili_app/src/
 ├── main.tsx                    # App entry point
 ├── App.tsx                     # Root layout, routing
+├── app/
+│   └── providers.tsx           # QueryClient + providers
 ├── lib/
-│   ├── apiClient.ts            # Typed fetch wrapper
-│   └── queryClient.ts          # TanStack Query client
+│   └── apiClient.ts            # Typed fetch wrapper
+├── api/                        # Per-resource TanStack Query modules
+│   ├── contracts.ts            # Aliases generated OpenAPI types
+│   ├── config.ts               # Domain config queries (useDomainConfig)
+│   └── …                       # alerts.ts, cases.ts, rag.ts, records.ts, …
 ├── stores/                     # Zustand stores
 │   ├── appStore.ts             # Sidebar, selected entity, active KB
-│   └── chatStore.ts            # Local chat/session state
+│   ├── chatStore.ts            # Local chat/session state
+│   ├── uiStore.ts              # Panel/sidebar visibility, realtime status, role
+│   └── ingestionStudioStore.ts # Ingestion Studio wizard state
 ├── pages/
-│   ├── Dashboard.tsx
-│   ├── KnowledgeBaseManager.tsx
-│   ├── AlertFeed.tsx
-│   ├── InvestigationWorkbench.tsx
+│   ├── DashboardPage.tsx
+│   ├── KnowledgeBaseManagerPage.tsx
+│   ├── AlertFeedPage.tsx
+│   ├── InvestigationWorkbenchPage.tsx
+│   ├── CaseManagementPage.tsx
+│   ├── PolicyIntelligencePage.tsx
+│   ├── ScorecardRunPage.tsx
 │   ├── HousingExecutivePage.tsx # /housing — map-led DAF housing dashboard (see §6.8)
-│   ├── RagChat.tsx
-│   └── ConfigEditor.tsx
+│   ├── RagChatPage.tsx
+│   ├── ConfigurationPage.tsx
+│   └── Login.tsx
 ├── components/
 │   ├── investigation/          # Graph explorer, entity detail, evidence, timeline
 │   ├── alerts/                 # Alert list item, badge, detail
@@ -1120,7 +1131,6 @@ chili_app/src/
 │   └── common/                 # Shared UI primitives (layout, loading, error)
 └── hooks/                      # Shared custom hooks
     ├── useWebSocket.ts
-    ├── useDomainConfig.ts
     ├── useKnowledgeBases.ts
     └── useNeighborhood.ts
 ```
@@ -1614,7 +1624,7 @@ Adapter selection is driven by environment configuration, not code changes.
 | **Frontend framework** | React 19 | UI components, state management |
 | **Frontend language** | TypeScript 5.9.x (strict) | Type-safe frontend code; held on TS 5 for OpenAPI tooling compatibility |
 | **Frontend build** | Vite 8 | Dev server, production bundling |
-| **Frontend routing** | React Router v7 | Client-side navigation |
+| **Frontend routing** | React Router v8 | Client-side navigation |
 | **Server state (FE)** | TanStack Query | API data fetching, caching, invalidation |
 | **Client state (FE)** | Zustand | Lightweight UI state |
 | **Graph visualization** | `react-force-graph-2d` | Interactive graph explorer in the current prototype |
@@ -1670,7 +1680,7 @@ Adapter selection is driven by environment configuration, not code changes.
 | Component | Current state | Next milestone |
 |-----------|---------------|----------------|
 | `backend/` | Active FastAPI/worker prototype with domain config, typed shared contracts, event bus, ingestion (LLM-driven `LlmDocumentExtractor` + Ollama adapter + `FallbackLlmClient`; registered PDF/DOCX/HTML/TXT/JSON/CSV/XLSX parsers), graph/vector/embedding/LLM/RAG services, analytics modules (timeseries/gnn/risk/explainability/metrics), monitoring, storage adapters, auth/RBAC middleware, route-level guards, live KB metadata projection, worker-updated workflow lifecycle tracking, SSE workspace snapshots, `database/` (psycopg 3 + Alembic + TimescaleDB) connection provider, `records/` structured-ingestion pipeline (raw_records + embed+index step + NPPES/DE-SynPUF feeds), KB delete cascade purging every per-KB store (graph/vector/raw_records+submissions/derived signals/risk history/observations/alert history/metrics/conversations/cases/policy/evidence/scorecard runs/document-status projection/object store; shared step list in `knowledgebases.cleanup`, replayed by both the API and the worker) with 207 partial-failure + complete worker retry, document re-upload idempotency with `replaced_document_id`, `delete_by_source_document` on graph and vector protocols, `delete_by_document` on the document-status store (called from the single-document delete endpoint), `delete_by_kb` on raw records, provenance metadata constants (`shared/provenance.py`), Tennessee subset tooling (`tools/sample_data/build_tennessee_subset.py`), Plan C per-consumer Postgres adapters with write-back flows in `agent/coordinator.py`, and a durable/replayable event dead-letter ledger with an `analyst`/`admin`-gated operator API surface (`event_dlq` table, `/events/dlq*`, BL-023 — see §6.9) | Add a production-grade KB metadata adapter/migration path, wire `delete_by_source_document` to the document-delete endpoint, add production-mode adapter guardrails, and add audit-grade workflow history |
-| `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, live KB-scoped Investigation Workbench, Case Management, Policy Intelligence, RAG Chat, read-only Configuration summary, and realtime SSE hook | Complete config save endpoint integration, add dedicated workflow/evidence navigation surfaces, and production UX/performance polish |
+| `chili_app/` | Routed React 19 analyst workbench prototype with Dashboard, Knowledge Base Manager/detail/upload UI, Alert Feed, live KB-scoped Investigation Workbench, Case Management, Policy Intelligence, RAG Chat, Configuration page with Config Manager (pack switch/apply; config save still a gap), and realtime SSE hook | Complete config save endpoint integration, add dedicated workflow/evidence navigation surfaces, and production UX/performance polish |
 | `docs/` | Architecture, onboarding guide, security checklist, live module backlogs, curated project planning, superpowers plans/specs, wiki, ledger, and archived historical material | Keep active docs synchronized with implementation and archive stale snapshots |
 | `infra/` | Docker Compose, flat Kubernetes manifests, and Helm chart | Add cloud-provider Terraform/Pulumi and production hardening as needed |
 | Testing | Extensive backend pytest suite and frontend Vitest suite | Keep CI coverage gates calibrated and add live adapter profiles where services are available |

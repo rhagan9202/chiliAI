@@ -17,7 +17,7 @@ have different requirements:
 | Path | How items are created | Depends on `config.policy_rules`? |
 |------|----------------------|-----------------------------------|
 | **A. Worker (the real/production path)** | The worker watches ingested data and auto-generates items when a configured rule matches | **Yes** — if the active config has no rules, it generates **nothing** |
-| **B. Dev-seed (test-only shortcut)** | The `/admin/dev-seed` endpoint inserts one item *directly* into the repository | **No** — it bypasses the worker and config entirely |
+| **B. Dev-seed (test-only shortcut)** | The `/admin/dev-seed` endpoint inserts one item *directly* into the repository | **Partly** — it bypasses the worker, but the seeded policy item is built from the active pack's first matching entity-target rule (skipped, `policy_item_id: ""`, when the pack has none) |
 
 The most common "the Policy page is empty" confusion is that **the active config file ships no
 rules**, so the *worker* path produces nothing out of the box — even though the feature is fully
@@ -35,7 +35,8 @@ CHILI_CONFIG_PATH=/app/config/defaults/medicare_fraud_cms_desynpuf.yaml
 ```
 HAS policy_rules:  medicare_fraud.yaml                 ← threshold max_billed_amount: 5000
 HAS policy_rules:  medicare_fraud_cms_desynpuf.yaml    ← THIS is what the stack uses (added for the demo)
-no  policy_rules:  food_supply_chain.yaml
+HAS policy_rules:  food_supply_chain.yaml              ← 3 packs since d466249 (facility_compliance, contamination_watch, graph_scale_watch)
+no  policy_rules:  department_air_force_housing.yaml
 ```
 `medicare_fraud_dev.yaml` also carries a `policy_rules` block (threshold
 `max_billed_amount: 100`), but it now lives at `backend/config/overlays/` as
@@ -55,18 +56,20 @@ if policy_service is not None and policy_rules:    # ← [] is falsy, so this is
 So with a rule-less config, `policy_rules == []`, the `if` is skipped, and **no matter how many
 claims you ingest, the worker creates zero policy items.**
 
-**4. The dev-seed endpoint bypasses all of that.** In `backend/api/routers/dev_seed.py` it calls
-the service directly:
+**4. The dev-seed endpoint bypasses the worker (not the config).** In
+`backend/api/routers/dev_seed.py` it calls the service directly:
 ```python
-policy_service.record_match(rule_id="claim_over_billed", target_ref=claim_id, ...)
+policy_service.record_match(rule_id=rule.id, rule_pack_id=rule_pack.id, target_ref=..., ...)
 ```
-That is why the e2e (`policy-triage.spec.ts`) works — it never relies on the worker or the config
-rules.
+where the rule is chosen by `select_policy_rule` from `config.policy_rules` (first entity-target
+rule matching a seeded type; skipped with `policy_item_id: ""` when the pack has none). That is why
+the e2e (`policy-triage.spec.ts`) works — it never relies on the worker (it does read the active
+config's policy_rules for the seeded item).
 
 ## Concrete examples
 
 ### Example A — a config that ships **no** rules
-1. The stack loads a config whose `policy_rules` is absent/empty (e.g. `food_supply_chain.yaml`).
+1. The stack loads a config whose `policy_rules` is absent/empty (e.g. `department_air_force_housing.yaml`, the one shipped default without the block — the other three defaults all carry rules now).
 2. You upload a CSV of 1,000 claims, some with `amount = $50,000`.
 3. The worker ingests them, builds the graph… and evaluates **zero** rules.
 4. You open the **Policy Intelligence** page → **empty queue**.
@@ -111,7 +114,7 @@ changing `CHILI_CONFIG_PATH`. **This is exactly what we did for `medicare_fraud_
 ## Why it's this way (not a defect)
 
 - `policy_rules` is intentionally **additive/optional** (default `[]`) so that configs *without* it
-  still load — a deliberate design decision (it's what lets `food_supply_chain.yaml` work unchanged).
+  still load — a deliberate design decision (a pack may simply omit the block and still load).
 - The gap is **config coverage, not code.** The engine works; a config that ships no rules simply
   feeds it nothing.
 

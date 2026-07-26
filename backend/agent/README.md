@@ -124,7 +124,12 @@ runs once per entity across the union of both stages' affected ids. A
 failure in either analytics stage no longer skips the other or risk
 assessment for entities the other stage did affect (see `backend/README.md`
 § Analytics Runtime Notes for the per-stage controlled-skip semantics and
-the `timeseries_anomaly:<spec name>` derived-signal naming).
+the `timeseries_anomaly:<spec name>` derived-signal naming). Finally
+(analytics.34), a best-effort, config-gated (`records.analytics_trigger`,
+default off), per-KB-throttled in-process Flow B fan-out
+(`handle_graph_updated_for_analytics`) runs GNN → risk → explainability →
+alerts for the batch's top-N assessed entities; a fan-out failure is logged
+and published as an analytics failure but never re-runs the ingest.
 
 ### handle_knowledge_base_deleted (retry handler)
 

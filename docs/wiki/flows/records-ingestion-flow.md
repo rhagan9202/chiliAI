@@ -1,6 +1,6 @@
 # Records Ingestion Flow: Structured Data → Graph + Observations
 
-**Verified against codebase:** 2026-05-22
+**Verified against codebase:** 2026-07-26
 **Sources:** `records/service.py`, `records/mappers/feed_mapper.py`, `records/models.py`, `records/service_models.py`, `api/routers/records.py`, `events/types.py`
 
 ---
@@ -91,8 +91,26 @@ Worker consumes "records.ingested"
    │     └── VectorStoreProtocol.upsert_records(kb_id, vector_records)
    │           ← No VectorsIndexedEvent published from this path (documents-only)
    │
-   └── ObservationWriter.write_observations(MonitoringBatch)
-         (MonitoringObservation list fed into monitoring service)
+   ├── ObservationWriter.write_observations(MonitoringBatch)
+   │     (MonitoringObservation list fed into monitoring service)
+   │
+   ├── [optional] Best-effort policy / peerstats / timeseries stages (when wired):
+   │     policy-rule evaluation over stored entities + throttled graph metrics,
+   │     peer-derived risk signal persistence + reassessment of affected entities,
+   │     timeseries anomaly detection over record aggregates
+   │
+   └── [optional] Records→analytics fan-out (analytics.34; gated by
+         records.analytics_trigger.enabled, default off):
+         ├── Builds an in-memory GraphUpdatedEvent whose single document
+         │     reference carries inline upserted_entity_ids — never published
+         │     to the bus (Flow A does not re-run; no storage-key artifacts)
+         ├── Direct in-process call to handle_graph_updated_for_analytics
+         │     (Flow B: GNN → risk → explainability → alerts.created)
+         ├── Throttled per KB by a dedicated MetricsRecomputeThrottle
+         │     (min_interval_seconds) and capped to the batch's top-N
+         │     entities by overall_score (max_entities_per_batch)
+         └── Best-effort: failures go through _publish_analytics_fanout_failed
+               (stage "analytics_fanout") — the records ingest is never replayed
 ```
 
 ---
@@ -131,7 +149,7 @@ Records ingest behavior is fully driven by `DomainConfig.records.feeds: list[Rec
 | Embedding | Entities are embedded and indexed in vector store (always) | Embed-and-index when `embeddings_service` + `vector_store` wired (optional) |
 | Provenance | `source_kind=document`, `source_document_id`, `source_chunk_id` | `source_kind=record`, `source_feed`, `source_raw_record_id` |
 | Configuration | Fixed pipeline, format-detected | Fully driven by `RecordFeedConfig` in `DomainConfig` |
-| Event emitted | `DocumentsUploadedEvent` (→ long pipeline chain) | `RecordsIngestedEvent` (→ worker mapping only) |
+| Event emitted | `DocumentsUploadedEvent` (→ long pipeline chain) | `RecordsIngestedEvent` (→ worker mapping + optional policy/peerstats/timeseries stages and, when `records.analytics_trigger.enabled`, an in-process Flow B analytics fan-out — analytics.34) |
 
 ---
 

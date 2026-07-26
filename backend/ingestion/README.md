@@ -63,7 +63,7 @@ Every `Entity` and `Relationship` emitted by the extractor carries provenance fi
 `SourceDocumentStatusStore` (`ingestion/adapters/protocols.py`) is the abstract contract for a durable, per-document ingestion status projection, distinct from the ephemeral `SourceDocument.status` field that only lives for the duration of a single service call. Two adapters implement it:
 
 - `InMemorySourceDocumentStatusStore` (`ingestion/adapters/in_memory.py`) — process-local, used by tests and the `in_memory` backend selection.
-- `PostgresSourceDocumentStatusStore` (`ingestion/adapters/postgres.py`) — backed by the `source_document_status` table (migration `0009_document_status`), selected via `get_document_status_store` in `agent/coordinator.py`.
+- `PostgresSourceDocumentStatusStore` (`ingestion/adapters/postgres.py`) — backed by the `source_document_status` table (migration `0009_document_status`), selected via `build_document_status_store` in `agent/coordinator.py` (API side: `get_document_status_store` in `api/dependencies.py`).
 
 **Status set and monotonic ordering.** `IngestionStatus` (`ingestion/models.py`) carries `PENDING`, `PARSING`, `PARSED`, `CHUNKED`, `EXTRACTED`, `VALIDATED`, `EXTRACTED_EMPTY`, and `FAILED`. `STATUS_RANK` assigns each a numeric rank (gaps of 10, so future stages can be inserted without renumbering) with `EXTRACTED_EMPTY` ranked just below `FAILED`. `EXTRACTED_EMPTY` is a **status value only** — no new event type was introduced; it is derived from the existing `DocumentsExtractionWarningEvent` when `document.empty_extraction` is `True` (`agent/status_projection.py`), keeping the hand-maintained event codec registry untouched.
 

@@ -44,8 +44,8 @@ curl -sS "http://localhost:8000/knowledgebases/$KB_ID"
 Then open:
 
 ```text
-http://localhost:5173/knowledgebases/<KB_ID>
-http://localhost:5173/investigation?kb_id=<KB_ID>
+http://localhost:5173/knowledge-bases  (select the KB in the manager list)
+http://localhost:5173/investigation?kb=<KB_ID>
 ```
 
 Use the Investigation entity search box with one of the `search_queries` listed in `manifest.json`, such as `CLAIM-FIXTURE-001`.
