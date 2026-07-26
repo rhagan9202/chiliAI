@@ -1,6 +1,6 @@
 # records backlog
 
-> **Scope:** Structured/tabular ingestion (CSV/JSONL/api-push → raw_records → Flow 1 fan-out), feed registry, validation, idempotency, observability, streaming.
+> **Scope:** Structured/tabular ingestion (CSV/JSONL/api-push → raw_records → Flow 1 fan-out), feed registry, validation, idempotency, observability, streaming, pull-based origin sources (object store / HTTP / stream).
 > **Story format and rules:** see [design spec §5](../superpowers/specs/2026-05-24-complete-backlog-design.md#5-story-format).
 
 ---
@@ -137,7 +137,7 @@
 **ID:** records.04
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [records.05]
+**Unblocks:** [records.05, records.14]
 **Estimated size:** L
 
 **As an** analyst,
@@ -557,3 +557,148 @@
 - `backend/api/contracts.py` (modify — `RecordFeedSummary`, `RecordFeedListResponse` once api.10 contract split lands)
 - `backend/records/README.md` (modify — API endpoints table)
 - `backend/tests/api/test_records_router.py` (modify — list-feeds test)
+
+---
+
+## Story records.14: Object-store pull origin (S3 / MinIO / blob / local FS) by reference
+
+**ID:** records.14
+**Status:** planned
+**Prerequisites:** [storage.01, records.04]
+**Unblocks:** [records.15, records.16, records.17]
+**Estimated size:** L
+
+**As a** data engineer staging multi-GB feed files,
+**I need** feeds to accept an object reference (store key or `s3://` URI) that the worker pulls and streams through the records pipeline,
+**so that** bulk data never traverses an HTTP upload body and size limits stop applying to it.
+
+### Current State
+- `IngestionSourceConfig.type` is `Literal["file_upload", "api_push"]` (`backend/config/schema.py:64`) — no pull origin exists.
+- The ObjectStore protocol has no streaming read; storage.01 adds `get_stream` (`docs/backlog/storage.md`).
+- `read_upload_file_with_limit` (`backend/api/routers/records.py:45`) is the only inbound byte path for records files.
+- Design: `docs/superpowers/specs/2026-07-26-records-origin-sources-design.md` §3.
+
+### Acceptance Criteria
+- [ ] `RecordOriginSource` protocol in `backend/records/adapters/protocols.py`: `iter_rows(ref: str) -> Iterator[dict[str, object]]` streaming rows; in-memory adapter for tests (REQ-INT-003).
+- [ ] `ObjectStoreOriginSource` adapter streams via `ObjectStore.get_stream` (storage.01) and reuses the records.04 streaming CSV/JSONL parsers; accepts bare keys and `s3://bucket/key` URIs.
+- [ ] `IngestionSourceConfig.type` gains `"object_store"`; feed config validates that object-store feeds name an accepted format.
+- [ ] `POST /records/{kb}/feeds/{feed}/pulls` (RBAC `analyst`) registers a pull `{ref: str}` and returns a 202 receipt with `correlation_id`; the worker executes the pull via a new `records.pull.requested` event handled in `agent/coordinator.py`, ending in the existing validate → dedup → persist → `records.ingested` path.
+- [ ] Pull failures publish the existing ingest-failure surface (no new alert path); receipts are queryable through the existing run timeline.
+- [ ] Integration test against MinIO (`@pytest.mark.integration`) pulls a staged CSV object end-to-end.
+- [ ] `backend/records/README.md` documents the origin model.
+
+### Verification
+- `pytest backend/tests/records/ backend/tests/api/test_records_router.py -q` green; coverage ≥ 85% on new modules.
+- `pytest -m integration -k object_store_origin` green with the dev stack up.
+- Manual: register a pull for a staged `sample_data` object; `records.ingested` appears with the object's row count.
+
+### Code touch points
+- `backend/records/adapters/protocols.py` (modify — `RecordOriginSource`)
+- `backend/records/adapters/sources/object_store_source.py` (create)
+- `backend/config/schema.py` (modify — source type literal)
+- `backend/api/routers/records.py` (modify — pull registration endpoint)
+- `backend/agent/coordinator.py` (modify — pull execution handler)
+- `backend/events/types.py` (modify — `RecordsPullRequestedEvent`)
+- `backend/tests/records/test_object_store_source.py` (create)
+
+---
+
+## Story records.15: HTTP API pull origin
+
+**ID:** records.15
+**Status:** planned
+**Prerequisites:** [records.14]
+**Unblocks:** []
+**Estimated size:** M
+
+**As a** data engineer whose upstream publishes export URLs,
+**I need** a feed origin that fetches a remote HTTP(S) export and streams it through the records pipeline,
+**so that** scheduled exports ingest without an intermediate manual download/upload.
+
+### Current State
+- No outbound-fetch origin exists; records.14 establishes the pull surface and `RecordOriginSource` protocol this story implements against.
+- Auth-by-env-var precedent: `GraphDbConfig.auth_env_var` (`backend/config/schema.py:110`).
+
+### Acceptance Criteria
+- [ ] `HttpPullOriginSource` adapter implements `RecordOriginSource` with chunked `httpx` streaming; `IngestionSourceConfig.type` gains `"http_pull"` with `endpoint` required and optional `auth_env_var` (bearer header).
+- [ ] Response size guard: abort with a recorded failure past a configurable `max_pull_bytes` (default 10 GiB); malformed/absent Content-Length handled (precedent: `tests/ingestion/test_service.py` remote content-length cases).
+- [ ] Paginated-GET support via an optional `next_link_field` config key (JSON responses only); CSV/JSONL exports fetch single-shot streams.
+- [ ] Unit tests with a stub transport cover success, auth header, oversize abort, and pagination.
+
+### Verification
+- `pytest backend/tests/records/test_http_pull_source.py -q` green; coverage ≥ 85%.
+- Manual: point a feed at a local `python -m http.server` export and confirm `records.ingested`.
+
+### Code touch points
+- `backend/records/adapters/sources/http_pull_source.py` (create)
+- `backend/config/schema.py` (modify — source type literal + fields)
+- `backend/tests/records/test_http_pull_source.py` (create)
+
+---
+
+## Story records.16: Stream origin (Redis Streams first)
+
+**ID:** records.16
+**Status:** planned
+**Prerequisites:** [records.14]
+**Unblocks:** []
+**Estimated size:** L
+
+**As a** platform operator with continuously produced records,
+**I need** a feed origin that consumes rows from an event stream with its own consumer group,
+**so that** near-real-time sources feed the same validate/dedup/persist pipeline as files.
+
+### Current State
+- Redis Streams is the existing event transport (`backend/events/adapters/`); no records-facing stream consumption exists.
+- Kafka has no adapter — per the architecture rules it must not enter `DomainConfig` literals until one exists (roadmap).
+
+### Acceptance Criteria
+- [ ] `StreamOriginSource` consumes a configured Redis stream key with consumer group `records:<feed>`, batching rows (configurable batch size / max wait) into pipeline submissions.
+- [ ] `IngestionSourceConfig.type` gains `"stream"` with `stream_key` required; validation rejects it when the event backend is in-memory.
+- [ ] At-least-once semantics documented; per-row dedup relies on the existing records content-hash idempotency (records.02).
+- [ ] Worker lifecycle: consumption starts/stops with the coordinator; unacked entries are reclaimed on restart (respecting the CHILI_EVENT_RECLAIM_MIN_IDLE_MS trap noted in sprint 2026-28 ops lessons).
+- [ ] Integration test (`@pytest.mark.integration`) produces rows to a test stream and asserts persisted records.
+
+### Verification
+- `pytest backend/tests/records/test_stream_source.py -q` green; `pytest -m integration -k stream_origin` green with the stack up.
+- Manual: `redis-cli XADD` a row envelope; observe `records.ingested`.
+
+### Code touch points
+- `backend/records/adapters/sources/stream_source.py` (create)
+- `backend/config/schema.py` (modify — source type literal + fields)
+- `backend/agent/coordinator.py` (modify — consumer lifecycle)
+- `backend/tests/records/test_stream_source.py` (create)
+
+---
+
+## Story records.17: Presigned-URL direct upload path for large interactive files
+
+**ID:** records.17
+**Status:** planned
+**Prerequisites:** [storage.01, records.14]
+**Unblocks:** []
+**Estimated size:** M
+
+**As an** analyst uploading a very large file from the browser,
+**I need** the app to upload directly to object storage via a presigned URL and then register the object by reference,
+**so that** interactive uploads scale past API-buffered limits without traversing the gateway.
+
+### Current State
+- Browser uploads go through `apiUploadWithProgress` (`chili_app/src/lib/apiClient.ts`) as multipart bodies to the API.
+- storage.01 charters `generate_presigned_url`; records.14 charters register-by-reference — this story is the frontend/API glue.
+
+### Acceptance Criteria
+- [ ] `POST /records/{kb}/feeds/{feed}/uploads:presign` (RBAC `analyst`) returns `{url, key, expires_in}` for S3/MinIO backends; 409 with a clear detail on backends without presign support (local FS/in-memory).
+- [ ] Frontend upload flow: files past a configurable threshold (default 256 MB) use presign → PUT direct → register pull by `key` via the records.14 endpoint; smaller files keep the existing multipart path with its progress bar.
+- [ ] Progress + Retry UX parity with the existing `apiUploadWithProgress` behavior.
+- [ ] Playwright e2e against the full stack (MinIO) exercises the presigned path with a >threshold synthetic CSV.
+
+### Verification
+- `npm run test:run` green; `make test-e2e` includes the presigned-path spec, green.
+- Manual: upload a 300 MB synthetic CSV in the browser; observe direct-to-MinIO traffic and a registered pull.
+
+### Code touch points
+- `backend/api/routers/records.py` (modify — presign endpoint)
+- `chili_app/src/lib/apiClient.ts` (modify — threshold branch)
+- `chili_app/src/api/records.ts` (modify — presign + register calls)
+- `chili_app/e2e/` (create — presigned upload spec)

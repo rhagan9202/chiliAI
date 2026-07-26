@@ -10,7 +10,7 @@
 **ID:** storage.01
 **Status:** planned
 **Prerequisites:** []
-**Unblocks:** [_multitenancy.09, analytics.02, analytics.23, storage.02, storage.03, storage.04, storage.05, storage.06, storage.07, storage.08, storage.09, storage.11, storage.12, vectorstore.04, vectorstore.13]
+**Unblocks:** [_multitenancy.09, analytics.02, analytics.23, records.14, records.17, storage.02, storage.03, storage.04, storage.05, storage.06, storage.07, storage.08, storage.09, storage.11, storage.12, vectorstore.04, vectorstore.13]
 **Estimated size:** L
 
 **As a** backend engineer wiring ingestion and KB code against the storage layer,
