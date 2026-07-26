@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { useAcknowledgeAlert, useAlerts } from '../api/alerts'
 import { useCases, usePromoteAlertToCase } from '../api/cases'

@@ -113,6 +113,22 @@ exactly and has no fixed release yet. Drop the override once a redocly
 release depends on `js-yaml >= 4.3.0`. CI's `npm audit --audit-level=high`
 gate enforces this.
 
+Two further `overrides` entries force `brace-expansion >= 5.0.8` and
+`minimatch >= 10.2.5` (GHSA-mh99-v99m-4gvg, unbounded-expansion OOM DoS):
+5.0.8 is the only patched brace-expansion release — there are no 1.x/2.x
+backports — and the minimatch 3/5 versions pinned by the `eslint` and
+`@redocly/openapi-core` chains call brace-expansion's pre-5.x default
+export, so minimatch is lifted tree-wide to 10.x, which consumes
+brace-expansion 5 natively. Verified empirically: lint (including a
+deliberate-violation probe), unit tests, `codegen:api` (no schema drift),
+build, and the full-stack e2e suite. Drop both overrides once eslint and
+redocly ship on `minimatch >= 10` or brace-expansion backports land.
+
+The router is `react-router` v8 (the `react-router-dom` package was removed
+upstream in v8): core APIs import from `react-router`, DOM-specific ones
+(`RouterProvider`) from `react-router/dom`. v8's floor is React >= 19.2.7
+and Node >= 22.22 — CI's frontend jobs run Node 22 accordingly.
+
 `npm run codegen:api` reads `chili_app/openapi.json`; it does not call a live backend. When backend HTTP contracts change, regenerate the snapshot from the repo root first:
 
 ```bash

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 
 import { useKnowledgeBases } from '../api/knowledgebases'
 import { usePolicyItem, usePolicyItems, useTriagePolicyItem } from '../api/policy'

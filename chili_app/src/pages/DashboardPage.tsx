@@ -1,7 +1,7 @@
 import { Activity, AlertTriangle, Database, ShieldCheck } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 import { useAlerts } from '../api/alerts'
 import { useAnalyticsOverview, useGnnClusters, useMetricTimeseries, useRiskScores } from '../api/analytics'

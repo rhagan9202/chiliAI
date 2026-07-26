@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router'
 import type { ReactElement } from 'react'
 
 import { AuthGuard } from '../components/AuthGuard'

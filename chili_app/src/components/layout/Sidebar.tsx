@@ -12,7 +12,7 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink } from 'react-router'
 
 import { getAllowedPageIds } from '../../app/access'
 import type { DomainConfig, DomainFeatures } from '../../api/contracts'

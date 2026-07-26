@@ -1,6 +1,6 @@
 import { type FormEvent, useMemo, useState } from 'react'
 import { Bot, SendHorizontal } from 'lucide-react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router'
 
 import { buildRagChatUrl, parseRagLaunchContext, type RagLaunchContext } from '../../lib/ragContext'
 

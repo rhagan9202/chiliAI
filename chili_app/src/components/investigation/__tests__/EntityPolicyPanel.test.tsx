@@ -36,7 +36,7 @@ vi.mock('../../../api/policy', () => ({
 
 import { EntityPolicyPanel } from '../EntityPolicyPanel'
 import { policyItemsForTarget } from '../policyTargets'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 
 describe('policyItemsForTarget', () => {
   it('filters by target kind and ref', () => {

@@ -46,7 +46,7 @@ const mocks = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('react-router-dom', () => ({
+vi.mock('react-router', () => ({
   Link: ({
     children,
     to,
