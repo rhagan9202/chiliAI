@@ -6,6 +6,7 @@ import type {
   DocumentRegistrationResponse,
   KnowledgeBaseCreateRequest,
   KnowledgeBaseDocumentListResponse,
+  KnowledgeBaseDocumentPreviewResponse,
   KnowledgeBaseListResponse,
   KnowledgeBaseSummaryResponse,
 } from './contracts'
@@ -29,6 +30,17 @@ export function knowledgeBaseDocumentsQueryKey(
   return hasPagination
     ? ['knowledge-bases', knowledgeBaseId, 'documents', options] as const
     : ['knowledge-bases', knowledgeBaseId, 'documents'] as const
+}
+
+export function knowledgeBaseDocumentPreviewQueryKey(
+  knowledgeBaseId: string,
+  documentId: string,
+  options: { lineLimit?: number; charLimit?: number } = {},
+) {
+  const hasOptions = options.lineLimit !== undefined || options.charLimit !== undefined
+  return hasOptions
+    ? ['knowledge-bases', knowledgeBaseId, 'documents', documentId, 'preview', options] as const
+    : ['knowledge-bases', knowledgeBaseId, 'documents', documentId, 'preview'] as const
 }
 
 export function getKnowledgeBases(): Promise<KnowledgeBaseListResponse> {
@@ -74,6 +86,23 @@ export function deleteKnowledgeBaseDocument(
   return apiDelete<void>(`/knowledgebases/${knowledgeBaseId}/documents/${documentId}`)
 }
 
+export function getKnowledgeBaseDocumentPreview(
+  knowledgeBaseId: string,
+  documentId: string,
+  options: { lineLimit?: number; charLimit?: number } = {},
+): Promise<KnowledgeBaseDocumentPreviewResponse> {
+  const searchParams = new URLSearchParams()
+  if (options.lineLimit !== undefined) {
+    searchParams.set('line_limit', String(options.lineLimit))
+  }
+  if (options.charLimit !== undefined) {
+    searchParams.set('char_limit', String(options.charLimit))
+  }
+  const queryString = searchParams.toString()
+  const path = `/knowledgebases/${knowledgeBaseId}/documents/${documentId}/preview${queryString ? `?${queryString}` : ''}`
+  return apiFetch<KnowledgeBaseDocumentPreviewResponse>(path)
+}
+
 export function uploadKnowledgeBaseDocuments(
   knowledgeBaseId: string,
   files: File[],
@@ -113,6 +142,22 @@ export function useKnowledgeBaseDocuments(
     queryKey: knowledgeBaseDocumentsQueryKey(knowledgeBaseId ?? 'missing', options),
     queryFn: () => getKnowledgeBaseDocuments(knowledgeBaseId ?? '', options),
     enabled: Boolean(knowledgeBaseId),
+  })
+}
+
+export function useKnowledgeBaseDocumentPreview(
+  knowledgeBaseId: string | null,
+  documentId: string | null,
+  options: { lineLimit?: number; charLimit?: number } = {},
+) {
+  return useQuery({
+    queryKey: knowledgeBaseDocumentPreviewQueryKey(
+      knowledgeBaseId ?? 'missing',
+      documentId ?? 'missing',
+      options,
+    ),
+    queryFn: () => getKnowledgeBaseDocumentPreview(knowledgeBaseId ?? '', documentId ?? '', options),
+    enabled: Boolean(knowledgeBaseId) && Boolean(documentId),
   })
 }
 

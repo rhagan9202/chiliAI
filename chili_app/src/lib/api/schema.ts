@@ -945,6 +945,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/knowledgebases/{knowledge_base_id}/documents/{document_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Knowledge Base Document
+         * @description Return a deterministic text preview for a stored KB document.
+         */
+        get: operations["preview_knowledge_base_document_knowledgebases__knowledge_base_id__documents__document_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/metrics": {
         parameters: {
             query?: never;
@@ -2024,6 +2044,26 @@ export interface components {
             items: components["schemas"]["DocumentSummary"][];
             /** Total */
             total: number;
+        };
+        /**
+         * DocumentPreviewResponse
+         * @description Preview payload for a single document in a knowledge base.
+         */
+        DocumentPreviewResponse: {
+            /** Content Type */
+            content_type?: string | null;
+            /** Document Id */
+            document_id: string;
+            /** Filename */
+            filename: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Line Count */
+            line_count: number;
+            /** Preview Text */
+            preview_text: string;
+            /** Truncated */
+            truncated: boolean;
         };
         /**
          * DocumentReceipt
@@ -6048,6 +6088,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_knowledge_base_document_knowledgebases__knowledge_base_id__documents__document_id__preview_get: {
+        parameters: {
+            query?: {
+                line_limit?: number;
+                char_limit?: number;
+            };
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentPreviewResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

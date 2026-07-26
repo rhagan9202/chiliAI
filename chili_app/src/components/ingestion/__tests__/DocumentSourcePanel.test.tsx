@@ -27,4 +27,22 @@ describe('DocumentSourcePanel', () => {
     expect(within(list).getByText('unknown type')).toBeInTheDocument()
     expect(within(list).getByText('3 B')).toBeInTheDocument()
   })
+
+  it('supports folder selection while preserving file selection behavior', () => {
+    const onFilesChange = vi.fn()
+    const folderFile = new File(['policy'], 'policy.md', { type: 'text/markdown' }) as File & {
+      webkitRelativePath?: string
+    }
+    folderFile.webkitRelativePath = 'rules/policy.md'
+
+    render(<DocumentSourcePanel files={[folderFile]} onFilesChange={onFilesChange} />)
+
+    fireEvent.change(screen.getByLabelText('Document folder'), {
+      target: { files: [folderFile] },
+    })
+
+    expect(onFilesChange).toHaveBeenCalledWith([folderFile])
+    expect(screen.getByText('rules/policy.md')).toBeInTheDocument()
+    expect(screen.getByText('6 B')).toBeInTheDocument()
+  })
 })

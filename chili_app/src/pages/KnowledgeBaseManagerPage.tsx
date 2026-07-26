@@ -7,12 +7,16 @@ import {
   useDeleteKnowledgeBase,
   useDeleteKnowledgeBaseDocument,
   useKnowledgeBase,
+  useKnowledgeBaseDocumentPreview,
   useKnowledgeBaseDocuments,
   useKnowledgeBases,
   useUploadKnowledgeBaseDocuments,
 } from '../api/knowledgebases'
 import { usePushRecords, useUploadRecordFile } from '../api/records'
-import type { RecordIngestReceipt } from '../api/contracts'
+import type {
+  KnowledgeBaseDocumentPreviewResponse,
+  RecordIngestReceipt,
+} from '../api/contracts'
 import { useWorkflows } from '../api/workflows'
 import { DocumentSourcePanel } from '../components/ingestion/DocumentSourcePanel'
 import { IngestionStepper } from '../components/ingestion/IngestionStepper'
@@ -20,6 +24,7 @@ import { KnowledgeBaseSelector } from '../components/ingestion/KnowledgeBaseSele
 import { isDomainMismatch } from '../components/knowledgebase/domainMismatch'
 import { KbDomainBadge } from '../components/knowledgebase/KbDomainBadge'
 import { RecordsSourcePanel } from '../components/ingestion/RecordsSourcePanel'
+import { RecordsPreviewTable } from '../components/ingestion/RecordsPreviewTable'
 import { RunTimeline } from '../components/ingestion/RunTimeline'
 import { SourceTypeStep } from '../components/ingestion/SourceTypeStep'
 import { SubmitPanel } from '../components/ingestion/SubmitPanel'
@@ -96,6 +101,10 @@ export function KnowledgeBaseManagerPage() {
   const activeDocumentId = documents.some((document) => document.id === selectedDocumentId)
     ? selectedDocumentId
     : documents[0]?.id ?? null
+  const documentPreviewQuery = useKnowledgeBaseDocumentPreview(
+    activeKnowledgeBaseId,
+    activeDocumentId,
+  )
   const knowledgeBase = knowledgeBaseDetailQuery.data ?? null
 
   const createKnowledgeBaseMutation = useCreateKnowledgeBase()
@@ -306,6 +315,26 @@ export function KnowledgeBaseManagerPage() {
     )
   }
 
+  function runIngestion() {
+    if (studio.sourceType === 'documents') {
+      submitDocuments()
+      return
+    }
+
+    if (studio.sourceType === 'records') {
+      submitRecords()
+      return
+    }
+
+    studio.setValidationIssues(
+      validateRequiredWizardState({
+        knowledgeBaseId: activeKnowledgeBaseId,
+        sourceType: studio.sourceType,
+        feedName: studio.selectedFeedName,
+      }),
+    )
+  }
+
   if (knowledgeBasesQuery.isLoading || domainConfigQuery.isLoading) {
     return <LoadingState label="Loading ingestion studio" />
   }
@@ -333,6 +362,16 @@ export function KnowledgeBaseManagerPage() {
     Boolean(activeKnowledgeBaseId) &&
     Boolean(studio.sourceType) &&
     (studio.pendingFiles.length > 0 || studio.parsedRows.length > 0)
+  const canRunIngestion =
+    (studio.sourceType === 'documents' &&
+      studio.pendingFiles.length > 0 &&
+      documentIssues.every((issue) => issue.severity !== 'error')) ||
+    (studio.sourceType === 'records' &&
+      selectedFeed !== null &&
+      (selectedFeed.source !== 'file_upload' || studio.pendingRecordFile !== null) &&
+      studio.parsedRows.length > 0 &&
+      recordIssues.every((issue) => issue.severity !== 'error'))
+  const runPending = uploadMutation.isPending || pushRecordsMutation.isPending || uploadRecordFileMutation.isPending
 
   const completedStepIds = new Set([
     ...(activeKnowledgeBaseId ? (['knowledge-base'] as const) : []),
@@ -413,91 +452,98 @@ export function KnowledgeBaseManagerPage() {
           </Card>
 
           <Card>
-            <SourceTypeStep
-              selectedSourceType={studio.sourceType}
-              onChange={(sourceType) => {
-                studio.setSourceType(sourceType)
-                studio.setCurrentStep('preview')
-              }}
-            />
-          </Card>
-
-          {studio.sourceType === 'documents' ? (
-            <Card>
-              <DocumentSourcePanel
-                files={studio.pendingFiles}
-                onFilesChange={(files) => {
-                  studio.setPendingFiles(files)
-                  studio.setValidationIssues([])
-                  studio.setCurrentStep('validate')
-                }}
-              />
-            </Card>
-          ) : null}
-
-          {studio.sourceType === 'records' ? (
-            <Card>
-              <RecordsSourcePanel
-                feeds={feeds}
-                issues={recordIssues}
-                onDraftChange={() => {
-                  studio.setParsedRows([])
-                  studio.setValidationIssues([])
+            <section className="ingestion-step-section" aria-labelledby="ingestion-step-stage">
+              <div className="ingestion-step-section__header">
+                <strong id="ingestion-step-stage">Step 1 — Stage ingestion source</strong>
+                <p className="page-copy-block">
+                  Choose a source and prepare documents or structured records for review.
+                </p>
+              </div>
+              <SourceTypeStep
+                selectedSourceType={studio.sourceType}
+                onChange={(sourceType) => {
+                  studio.setSourceType(sourceType)
                   studio.setCurrentStep('preview')
                 }}
-                onFileChange={(file) => {
-                  studio.setPendingRecordFile(file)
-                }}
-                rows={studio.parsedRows}
-                recordFile={studio.pendingRecordFile}
-                selectedFeedName={studio.selectedFeedName}
-                onFeedChange={(feedName) => {
-                  studio.setSelectedFeedName(feedName)
-                  studio.setPendingRecordFile(null)
-                }}
-                onRowsParsed={(rows, parseIssues) => {
-                  studio.setParsedRows(rows)
-                  studio.setValidationIssues(parseIssues)
-                  studio.setCurrentStep('validate')
-                }}
               />
-            </Card>
-          ) : null}
 
-          <Card>
-            <ValidationPanel issues={currentIssues} />
+              {studio.sourceType === 'documents' ? (
+                <DocumentSourcePanel
+                  files={studio.pendingFiles}
+                  onFilesChange={(files) => {
+                    studio.setPendingFiles(files)
+                    studio.setValidationIssues([])
+                    studio.setCurrentStep('validate')
+                  }}
+                />
+              ) : null}
+
+              {studio.sourceType === 'records' ? (
+                <RecordsSourcePanel
+                  feeds={feeds}
+                  issues={recordIssues}
+                  showPreviewTable={false}
+                  onDraftChange={() => {
+                    studio.setParsedRows([])
+                    studio.setValidationIssues([])
+                    studio.setCurrentStep('preview')
+                  }}
+                  onFileChange={(file) => {
+                    studio.setPendingRecordFile(file)
+                  }}
+                  rows={studio.parsedRows}
+                  recordFile={studio.pendingRecordFile}
+                  selectedFeedName={studio.selectedFeedName}
+                  onFeedChange={(feedName) => {
+                    studio.setSelectedFeedName(feedName)
+                    studio.setPendingRecordFile(null)
+                  }}
+                  onRowsParsed={(rows, parseIssues) => {
+                    studio.setParsedRows(rows)
+                    studio.setValidationIssues(parseIssues)
+                    studio.setCurrentStep('validate')
+                  }}
+                />
+              ) : null}
+            </section>
           </Card>
 
           <Card>
-            <SubmitPanel
-              canSubmitDocuments={
-                studio.sourceType === 'documents' &&
-                studio.pendingFiles.length > 0 &&
-                documentIssues.every((issue) => issue.severity !== 'error')
-              }
-              canSubmitRecords={
-                studio.sourceType === 'records' &&
-                selectedFeed !== null &&
-                (selectedFeed.source !== 'file_upload' || studio.pendingRecordFile !== null) &&
-                studio.parsedRows.length > 0 &&
-                recordIssues.every((issue) => issue.severity !== 'error')
-              }
-              documentPending={uploadMutation.isPending}
-              recordsPending={pushRecordsMutation.isPending || uploadRecordFileMutation.isPending}
-              onSubmitDocuments={submitDocuments}
-              onSubmitRecords={submitRecords}
-            />
-            <UploadProgress
-              label={
-                studio.sourceType === 'documents'
-                  ? 'Document upload progress'
-                  : 'Records upload progress'
-              }
-              status={uploadStatus}
-              percent={uploadPercent}
-              error={uploadError ?? undefined}
-              onRetry={() => retryUpload?.()}
-            />
+            <section className="ingestion-step-section" aria-labelledby="ingestion-step-review">
+              <div className="ingestion-step-section__header">
+                <strong id="ingestion-step-review">Step 2 — Review and run ingestion</strong>
+                <p className="page-copy-block">
+                  Validate staged content, review previews, then run ingestion.
+                </p>
+              </div>
+
+              {studio.sourceType === 'records' ? (
+                <RecordsPreviewTable
+                  rows={studio.parsedRows}
+                  issues={recordIssues}
+                  emptyDescription="Parse records to review staged rows before running ingestion."
+                />
+              ) : null}
+
+              <ValidationPanel issues={currentIssues} />
+              <SubmitPanel
+                sourceType={studio.sourceType}
+                canRunIngestion={canRunIngestion}
+                runPending={runPending}
+                onRunIngestion={runIngestion}
+              />
+              <UploadProgress
+                label={
+                  studio.sourceType === 'documents'
+                    ? 'Document upload progress'
+                    : 'Records upload progress'
+                }
+                status={uploadStatus}
+                percent={uploadPercent}
+                error={uploadError ?? undefined}
+                onRetry={() => retryUpload?.()}
+              />
+            </section>
           </Card>
         </div>
 
@@ -542,6 +588,9 @@ export function KnowledgeBaseManagerPage() {
               activeDocumentId={activeDocumentId}
               deleteDisabled={deleteDocumentMutation.isPending}
               documents={documents}
+              preview={documentPreviewQuery.data ?? null}
+              previewError={documentPreviewQuery.isError}
+              previewLoading={documentPreviewQuery.isLoading}
               onDeleteDocument={(documentId) => {
                 deleteDocumentMutation.mutate(documentId, {
                   onSuccess: () => setSelectedDocumentId(null),
@@ -691,6 +740,9 @@ type DocumentInventoryProps = {
     warning_count?: number
     warning_reasons?: string[]
   }>
+  preview: KnowledgeBaseDocumentPreviewResponse | null
+  previewLoading: boolean
+  previewError: boolean
   onDeleteDocument: (documentId: string) => void
   onSelectDocument: (documentId: string) => void
 }
@@ -699,6 +751,9 @@ function DocumentInventory({
   activeDocumentId,
   deleteDisabled,
   documents,
+  preview,
+  previewLoading,
+  previewError,
   onDeleteDocument,
   onSelectDocument,
 }: DocumentInventoryProps) {
@@ -765,6 +820,38 @@ function DocumentInventory({
           Remove document
         </button>
       ) : null}
+
+      <section className="ingestion-document-preview" aria-labelledby="document-preview-title">
+        <div className="metric-row">
+          <strong id="document-preview-title">Document preview</strong>
+          {preview?.truncated ? <Chip label="Truncated" tone="warning" /> : null}
+        </div>
+
+        {!activeDocumentId ? (
+          <EmptyState
+            title="No document selected"
+            description="Select a document in inventory to review its preview."
+          />
+        ) : previewLoading ? (
+          <LoadingState label="Loading document preview" />
+        ) : previewError ? (
+          <ErrorState description="Document preview could not be loaded from the API." />
+        ) : preview ? (
+          preview.preview_text.trim().length > 0 ? (
+            <article className="ingestion-document-preview__content">
+              <p className="metric-row__label">
+                {preview.line_count} line{preview.line_count === 1 ? '' : 's'} from {preview.filename}
+              </p>
+              <pre>{preview.preview_text}</pre>
+            </article>
+          ) : (
+            <EmptyState
+              title="No preview text returned"
+              description="This document has no text preview content yet."
+            />
+          )
+        ) : null}
+      </section>
     </section>
   )
 }

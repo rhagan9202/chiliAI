@@ -462,4 +462,23 @@ describe('RecordsSourcePanel', () => {
     expect(file.text).toHaveBeenCalled()
     expect(onRowsParsed).not.toHaveBeenCalled()
   })
+
+  it('can hide inline preview table for unified review flow', () => {
+    render(
+      <RecordsSourcePanel
+        feeds={feeds}
+        issues={[]}
+        onDraftChange={vi.fn()}
+        onFileChange={vi.fn()}
+        onFeedChange={vi.fn()}
+        onRowsParsed={vi.fn()}
+        recordFile={null}
+        rows={[]}
+        selectedFeedName="provider_feed"
+        showPreviewTable={false}
+      />,
+    )
+
+    expect(screen.queryByRole('table', { name: /records preview/i })).not.toBeInTheDocument()
+  })
 })

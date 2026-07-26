@@ -1248,6 +1248,152 @@ def test_list_documents_returns_paginated_summaries(
     assert summary["created_at"]
 
 
+def test_preview_document_returns_line_then_char_bounded_text(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, _, _ = harness
+    created = client.post("/knowledgebases", json={"name": "Preview", "description": ""})
+    kb_id = created.json()["id"]
+    upload = client.post(
+        f"/knowledgebases/{kb_id}/documents",
+        files=[
+            (
+                "files",
+                (
+                    "preview.txt",
+                    b"line1\nline2\nline3\nline4\n",
+                    "text/plain",
+                ),
+            )
+        ],
+    )
+    document_id = upload.json()["documents"][0]["source_document_id"]
+
+    response = client.get(
+        f"/knowledgebases/{kb_id}/documents/{document_id}/preview",
+        params={"line_limit": 3, "char_limit": 12},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["knowledge_base_id"] == kb_id
+    assert payload["document_id"] == document_id
+    assert payload["filename"] == "preview.txt"
+    assert payload["content_type"] == "text/plain"
+    assert payload["preview_text"] == "line1\nline2\n"
+    assert payload["line_count"] == 3
+    assert payload["truncated"] is True
+
+
+def test_preview_document_returns_404_for_missing_kb(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, _, _ = harness
+
+    response = client.get("/knowledgebases/missing/documents/doc-1/preview")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Knowledge base 'missing' not found."}
+
+
+def test_preview_document_returns_404_for_missing_document(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, _, _ = harness
+    created = client.post(
+        "/knowledgebases", json={"name": "PreviewMissingDoc", "description": ""}
+    )
+    kb_id = created.json()["id"]
+
+    response = client.get(f"/knowledgebases/{kb_id}/documents/doc-1/preview")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "detail": f"Document 'doc-1' not found in knowledge base '{kb_id}'."
+    }
+
+
+def test_preview_document_returns_404_for_missing_stored_object(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, _, repository = harness
+    created = client.post(
+        "/knowledgebases", json={"name": "PreviewMissingObject", "description": ""}
+    )
+    kb_id = created.json()["id"]
+    repository.add_document(
+        DocumentRecord(
+            id="doc-missing-object",
+            knowledge_base_id=kb_id,
+            filename="missing.txt",
+            content_type="text/plain",
+            size_bytes=10,
+            status="registered",
+            storage_key=f"knowledgebases/{kb_id}/documents/doc-missing-object/source.txt",
+        )
+    )
+
+    response = client.get(
+        f"/knowledgebases/{kb_id}/documents/doc-missing-object/preview"
+    )
+
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"]
+
+
+def test_preview_document_returns_422_for_non_utf8_text_content(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, object_store, repository = harness
+    created = client.post(
+        "/knowledgebases", json={"name": "PreviewEncoding", "description": ""}
+    )
+    kb_id = created.json()["id"]
+    storage_key = f"knowledgebases/{kb_id}/documents/doc-bad-encoding/source.txt"
+    repository.add_document(
+        DocumentRecord(
+            id="doc-bad-encoding",
+            knowledge_base_id=kb_id,
+            filename="bad.txt",
+            content_type="text/plain",
+            size_bytes=3,
+            status="registered",
+            storage_key=storage_key,
+        )
+    )
+    object_store.put_bytes(storage_key, b"\xff\xfe\xfd", media_type="text/plain")
+
+    response = client.get(f"/knowledgebases/{kb_id}/documents/doc-bad-encoding/preview")
+
+    assert response.status_code == 422
+    assert "not valid UTF-8 text" in response.json()["detail"]
+
+
 def test_delete_document_removes_artifacts(
     harness: tuple[
         TestClient,

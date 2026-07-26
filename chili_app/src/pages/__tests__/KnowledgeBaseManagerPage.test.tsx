@@ -248,12 +248,18 @@ function installFetchMock({
   documentFail = false,
   recordsFail = false,
   structuredRecordsFail = false,
+  previewFail = false,
+  previewText = 'Section 1\nSection 2\nSection 3',
+  previewDelayMs = 0,
   kbDomain = null,
   kbItems,
 }: {
   documentFail?: boolean
   recordsFail?: boolean
   structuredRecordsFail?: boolean
+  previewFail?: boolean
+  previewText?: string
+  previewDelayMs?: number
   /** `domain` stamped on the mocked knowledge base (null = legacy/unknown). */
   kbDomain?: string | null
   /** Full KB list override; defaults to the single kb-1 stamped with `kbDomain`. */
@@ -343,6 +349,31 @@ function installFetchMock({
             },
           ],
           total: 1,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }
+
+    if (url.endsWith('/knowledgebases/kb-1/documents/doc-existing/preview')) {
+      if (previewDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, previewDelayMs))
+      }
+      if (previewFail) {
+        return new Response(JSON.stringify({ detail: 'Preview failed' }), {
+          status: 415,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+
+      return new Response(
+        JSON.stringify({
+          knowledge_base_id: 'kb-1',
+          document_id: 'doc-existing',
+          filename: 'existing-policy.txt',
+          content_type: 'text/plain',
+          preview_text: previewText,
+          line_count: previewText.length === 0 ? 0 : previewText.split('\n').length,
+          truncated: false,
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
@@ -449,6 +480,9 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
     expect(await screen.findByText('Ingestion Studio')).toBeInTheDocument()
+    expect(screen.getByText('Step 1 — Stage ingestion source')).toBeInTheDocument()
+    expect(screen.getByText('Step 2 — Review and run ingestion')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run ingestion' })).toBeInTheDocument()
     expect(await screen.findAllByText('Fraud KB')).toHaveLength(2)
     expect(screen.getByText('Knowledge base')).toBeInTheDocument()
     expect(screen.getByText('existing-policy.txt')).toBeInTheDocument()
@@ -620,6 +654,36 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     expect(within(reasons).getByText(/normalization_failed/)).toBeInTheDocument()
   })
 
+  it('renders document preview content for the selected inventory document', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    expect(await screen.findByText('Document preview')).toBeInTheDocument()
+    expect(await screen.findByText(/Section 1/)).toBeInTheDocument()
+    expect(screen.getByText(/3 lines from existing-policy\.txt/)).toBeInTheDocument()
+  })
+
+  it('renders document preview empty state when preview text is blank', async () => {
+    installFetchMock({ previewText: '' })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    expect(await screen.findByText('No preview text returned')).toBeInTheDocument()
+  })
+
+  it('renders document preview error state when the preview API fails', async () => {
+    installFetchMock({ previewFail: true })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    expect(await screen.findByText('Document preview could not be loaded from the API.')).toBeInTheDocument()
+  })
+
+  it('renders document preview loading state while preview data is in flight', async () => {
+    installFetchMock({ previewDelayMs: 25 })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    expect(await screen.findByText('Loading document preview')).toBeInTheDocument()
+    expect(await screen.findByText(/Section 1/)).toBeInTheDocument()
+  })
+
   it('submits documents and stores a receipt in the timeline', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
@@ -629,7 +693,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
       screen.getByLabelText('Document files'),
       new File(['hello'], 'policy.txt', { type: 'text/plain' }),
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Submit documents' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
     expect(await screen.findByText('1 document accepted.')).toBeInTheDocument()
   })
@@ -643,7 +707,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
       screen.getByLabelText('Document files'),
       new File(['policy'], 'policy.txt', { type: 'text/plain' }),
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Submit documents' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
     expect(await screen.findByText('1 document accepted.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /watch runs/i })).toBeInTheDocument()
@@ -660,7 +724,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
       screen.getByLabelText('Document files'),
       new File(['policy'], 'policy.txt', { type: 'text/plain' }),
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Submit documents' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
     expect(await screen.findByText('1 document accepted.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /investigate entities/i }))
@@ -676,7 +740,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
 
     await screen.findByText('Ingestion Studio')
     await parseValidRecords()
-    await userEvent.click(screen.getByRole('button', { name: 'Submit records' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
     expect(await screen.findByText('1 records accepted for provider_push.')).toBeInTheDocument()
   })
@@ -696,7 +760,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     // File-upload feeds auto-parse on file selection (the manual control is
     // labelled "Re-parse file"); there is no separate "Parse records" step.
     await screen.findByText('Parsed for preview')
-    await userEvent.click(screen.getByRole('button', { name: 'Submit records' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
     // The file-upload feed posts through XMLHttpRequest (for byte-level upload
     // progress), not fetch; a successful receipt in the timeline confirms the
@@ -718,7 +782,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     )
     // File-upload feeds auto-parse on selection, enabling submit.
     await screen.findByText('Parsed for preview')
-    expect(screen.getByRole('button', { name: 'Submit records' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Run ingestion' })).toBeEnabled()
 
     // Changing the file invalidates the prior draft and auto-re-parses the new
     // file, so submit becomes ready again with the updated content.
@@ -730,7 +794,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     )
 
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Submit records' })).toBeEnabled(),
+      expect(screen.getByRole('button', { name: 'Run ingestion' })).toBeEnabled(),
     )
   })
 
@@ -739,11 +803,11 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
 
     await screen.findByText('Ingestion Studio')
     await parseValidRecords()
-    expect(screen.getByRole('button', { name: 'Submit records' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Run ingestion' })).toBeEnabled()
 
     await userEvent.type(screen.getByLabelText('Records content'), '1')
 
-    expect(screen.getByRole('button', { name: 'Submit records' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Run ingestion' })).toBeDisabled()
   })
 
   it('shows client validation before records submit', async () => {
@@ -751,7 +815,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
 
     await screen.findByText('Ingestion Studio')
     await userEvent.click(screen.getByRole('radio', { name: /Structured Records/i }))
-    await userEvent.click(screen.getByRole('button', { name: 'Submit records' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
     expect(await screen.findByText('Select a structured records feed before submitting.')).toBeInTheDocument()
   })
@@ -762,7 +826,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
 
     await screen.findByText('Ingestion Studio')
     await parseValidRecords()
-    await userEvent.click(screen.getByRole('button', { name: 'Submit records' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
     expect(await screen.findByText('Backend response')).toBeInTheDocument()
     expect(screen.getByText('Records backend rejected the file.')).toBeInTheDocument()
@@ -778,7 +842,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
       screen.getByLabelText('Document files'),
       new File(['hello'], 'policy.txt', { type: 'text/plain' }),
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Submit documents' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
     expect(await screen.findByText('Backend response')).toBeInTheDocument()
     // Surfaced both in the validation panel and the retryable upload error.
@@ -796,7 +860,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
       screen.getByLabelText('Document files'),
       new File(['hello'], 'policy.txt', { type: 'text/plain' }),
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Submit documents' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
     const retry = await screen.findByRole('button', { name: /retry upload/i })
 
@@ -813,7 +877,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
 
     await screen.findByText('Ingestion Studio')
     await parseValidRecords()
-    await userEvent.click(screen.getByRole('button', { name: 'Submit records' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
     expect(await screen.findByText('Backend response')).toBeInTheDocument()
     expect(screen.getByText('body.rows.0.provider_npi: Field required')).toBeInTheDocument()
@@ -828,11 +892,11 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
       screen.getByLabelText('Document files'),
       new File(['hello'], 'policy.txt', { type: 'text/plain' }),
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Submit documents' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
     await screen.findByText('1 document accepted.')
 
     await userEvent.click(screen.getByRole('radio', { name: /Structured Records/i }))
-    await userEvent.click(screen.getByRole('button', { name: 'Submit records' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
     await waitFor(() => {
       expect(screen.getByText('1 document accepted.')).toBeInTheDocument()

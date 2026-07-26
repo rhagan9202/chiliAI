@@ -55,6 +55,7 @@ from vectorstore.protocols import VectorServiceProtocol
 __all__ = [
     "CreateKbRequest",
     "DocumentListResponse",
+    "DocumentPreviewResponse",
     "DocumentRegistrationResponse",
     "DocumentSummary",
     "KbListResponse",
@@ -110,8 +111,24 @@ class DocumentListResponse(BaseModel):
     total: int = Field(ge=0)
 
 
+class DocumentPreviewResponse(BaseModel):
+    """Preview payload for a single document in a knowledge base."""
+
+    knowledge_base_id: str
+    document_id: str
+    filename: str
+    content_type: str | None = None
+    preview_text: str
+    line_count: int = Field(ge=0)
+    truncated: bool
+
+
 router = APIRouter(prefix="/knowledgebases", tags=["knowledge-bases"])
 _UPLOAD_READ_CHUNK_SIZE = 64 * 1024
+_DEFAULT_PREVIEW_LINE_LIMIT = 20
+_DEFAULT_PREVIEW_CHAR_LIMIT = 4000
+_MAX_PREVIEW_LINE_LIMIT = 500
+_MAX_PREVIEW_CHAR_LIMIT = 20_000
 
 
 async def read_upload_file_with_limit(
@@ -416,6 +433,136 @@ async def list_knowledge_base_documents(
         for record in records
     ]
     return DocumentListResponse(items=items, total=total)
+
+
+@router.get(
+    "/{knowledge_base_id}/documents/{document_id}/preview",
+    response_model=DocumentPreviewResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
+async def preview_knowledge_base_document(
+    knowledge_base_id: str,
+    document_id: str,
+    line_limit: int = Query(
+        default=_DEFAULT_PREVIEW_LINE_LIMIT,
+        ge=1,
+        le=_MAX_PREVIEW_LINE_LIMIT,
+    ),
+    char_limit: int = Query(
+        default=_DEFAULT_PREVIEW_CHAR_LIMIT,
+        ge=1,
+        le=_MAX_PREVIEW_CHAR_LIMIT,
+    ),
+    repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
+    object_store: ObjectStore = Depends(get_object_store),
+) -> DocumentPreviewResponse:
+    """Return a deterministic text preview for a stored KB document."""
+    if repository.get(knowledge_base_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Knowledge base '{knowledge_base_id}' not found.",
+        )
+
+    document = repository.get_document(knowledge_base_id, document_id)
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Document '{document_id}' not found in knowledge base "
+                f"'{knowledge_base_id}'."
+            ),
+        )
+
+    storage_key = document.storage_key
+    if storage_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Stored object for document '{document_id}' in knowledge base "
+                f"'{knowledge_base_id}' not found: missing storage key metadata."
+            ),
+        )
+
+    try:
+        stored_object = object_store.get_bytes(storage_key)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Stored object '{storage_key}' for document '{document_id}' in "
+                f"knowledge base '{knowledge_base_id}' not found."
+            ),
+        ) from exc
+
+    content_type = document.content_type or stored_object.media_type
+    if not _is_text_preview_content_type(content_type):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=(
+                "Document preview supports UTF-8 text-based documents only; "
+                f"content type '{content_type}' is not previewable."
+            ),
+        )
+
+    try:
+        text_content = stored_object.content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"Document '{document_id}' in knowledge base '{knowledge_base_id}' "
+                "is not valid UTF-8 text. Re-upload the document with UTF-8 "
+                "encoding to enable preview."
+            ),
+        ) from exc
+
+    preview_text, line_count, truncated = _build_preview_text(
+        text_content=text_content,
+        line_limit=line_limit,
+        char_limit=char_limit,
+    )
+    return DocumentPreviewResponse(
+        knowledge_base_id=knowledge_base_id,
+        document_id=document_id,
+        filename=document.filename,
+        content_type=content_type,
+        preview_text=preview_text,
+        line_count=line_count,
+        truncated=truncated,
+    )
+
+
+def _is_text_preview_content_type(content_type: str | None) -> bool:
+    if content_type is None:
+        return True
+    normalized = content_type.lower()
+    if ";" in normalized:
+        normalized = normalized.split(";", maxsplit=1)[0].strip()
+    if normalized.startswith("text/"):
+        return True
+    return (
+        normalized == "application/json"
+        or normalized.endswith("+json")
+        or normalized == "application/xml"
+        or normalized.endswith("+xml")
+        or normalized in {"application/yaml", "application/x-yaml"}
+    )
+
+
+def _build_preview_text(
+    *,
+    text_content: str,
+    line_limit: int,
+    char_limit: int,
+) -> tuple[str, int, bool]:
+    lines = text_content.splitlines()
+    selected_lines = lines[:line_limit]
+    preview_text = "\n".join(selected_lines)
+    truncated_by_lines = len(lines) > line_limit
+    truncated_by_chars = len(preview_text) > char_limit
+    if truncated_by_chars:
+        preview_text = preview_text[:char_limit]
+    return preview_text, len(selected_lines), truncated_by_lines or truncated_by_chars
 
 
 def _document_summary(

@@ -4,81 +4,49 @@ import { describe, expect, it, vi } from 'vitest'
 import { SubmitPanel } from '../SubmitPanel'
 
 describe('SubmitPanel', () => {
-  it('calls document and records submit actions independently', () => {
-    const onSubmitDocuments = vi.fn()
-    const onSubmitRecords = vi.fn()
+  it('runs ingestion through one primary action', () => {
+    const onRunIngestion = vi.fn()
 
     render(
       <SubmitPanel
-        canSubmitDocuments
-        canSubmitRecords
-        documentPending={false}
-        recordsPending={false}
-        onSubmitDocuments={onSubmitDocuments}
-        onSubmitRecords={onSubmitRecords}
+        sourceType="documents"
+        canRunIngestion
+        runPending={false}
+        onRunIngestion={onRunIngestion}
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Submit documents' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Submit records' }))
-
-    expect(onSubmitDocuments).toHaveBeenCalledTimes(1)
-    expect(onSubmitRecords).toHaveBeenCalledTimes(1)
-  })
-
-  it('disables each action when it cannot submit or is pending', () => {
-    render(
-      <SubmitPanel
-        canSubmitDocuments={false}
-        canSubmitRecords
-        documentPending={false}
-        recordsPending
-        onSubmitDocuments={vi.fn()}
-        onSubmitRecords={vi.fn()}
-      />,
-    )
-
-    expect(screen.getByRole('button', { name: 'Submit documents' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Submit records' })).toBeDisabled()
-    expect(screen.getByText('Select documents')).toBeInTheDocument()
-    expect(screen.getByText('Submitting records')).toBeInTheDocument()
-    expect(screen.queryByText('Documents ready')).not.toBeInTheDocument()
-  })
-
-  it('shows unavailable copy when records cannot be submitted', () => {
-    render(
-      <SubmitPanel
-        canSubmitDocuments
-        canSubmitRecords={false}
-        documentPending={false}
-        recordsPending={false}
-        onSubmitDocuments={vi.fn()}
-        onSubmitRecords={vi.fn()}
-      />,
-    )
-
+    fireEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
+    expect(onRunIngestion).toHaveBeenCalledTimes(1)
     expect(screen.getByText('Documents ready')).toBeInTheDocument()
-    expect(screen.getByText('Parse records')).toBeInTheDocument()
-    expect(screen.queryByText('Records ready')).not.toBeInTheDocument()
   })
 
-  it('shows pending copy without changing the action labels', () => {
+  it('shows records readiness and disables run when not ready', () => {
     render(
       <SubmitPanel
-        canSubmitDocuments
-        canSubmitRecords
-        documentPending
-        recordsPending
-        onSubmitDocuments={vi.fn()}
-        onSubmitRecords={vi.fn()}
+        sourceType="records"
+        canRunIngestion={false}
+        runPending={false}
+        onRunIngestion={vi.fn()}
       />,
     )
 
-    const panel = screen.getByRole('region', { name: /submit ingestion/i })
+    expect(screen.getByRole('button', { name: 'Run ingestion' })).toBeDisabled()
+    expect(screen.getByText('Parse records')).toBeInTheDocument()
+  })
 
-    expect(within(panel).getByRole('button', { name: 'Submit documents' })).toBeDisabled()
-    expect(within(panel).getByRole('button', { name: 'Submit records' })).toBeDisabled()
-    expect(within(panel).getByText('Submitting documents')).toBeInTheDocument()
-    expect(within(panel).getByText('Submitting records')).toBeInTheDocument()
+  it('shows pending copy without changing the run action label', () => {
+    render(
+      <SubmitPanel
+        sourceType="documents"
+        canRunIngestion
+        runPending
+        onRunIngestion={vi.fn()}
+      />,
+    )
+
+    const panel = screen.getByRole('region', { name: /run ingestion/i })
+    expect(within(panel).getByRole('button', { name: 'Run ingestion' })).toBeDisabled()
+    expect(within(panel).getByText('Running ingestion')).toBeInTheDocument()
   })
 })
