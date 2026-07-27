@@ -14,6 +14,52 @@ const FALLBACK_COLOR = '#94a3b8'
 const NODE_SIZE_MIN = 4
 const NODE_SIZE_MAX = 24
 
+/** `nodeRelSize` handed to ForceGraph2D; shared so spacing math matches drawing. */
+export const NODE_REL_SIZE = 14
+
+/**
+ * Cap for the post-layout `zoomToFit`.
+ *
+ * Fitting a 2-3 node neighborhood to the canvas magnifies it until the risk-sized
+ * circles are larger than the edges between them, so the graph rendered as a few
+ * unlabelled blobs with no visible structure (UXA-202).
+ */
+export const MAX_FIT_ZOOM = 2.5
+
+/** Radius ForceGraph2D draws for a node value — area-proportional to `val`. */
+export function nodeRadiusFor(value: number): number {
+  return Math.sqrt(Math.max(value, 0)) * NODE_REL_SIZE
+}
+
+/**
+ * Edge length for a link, sized so the two endpoint circles cannot cover it.
+ * A fixed distance is wrong: node radius varies with risk score, so a
+ * high-risk pair drawn at a fixed 50px separation overlaps completely.
+ */
+export function linkDistanceFor(sourceValue: number, targetValue: number): number {
+  const clearance = 48
+  return nodeRadiusFor(sourceValue) + nodeRadiusFor(targetValue) + clearance
+}
+
+/** Longest on-canvas node label before truncation. */
+export const GRAPH_LABEL_MAX_CHARS = 22
+
+/**
+ * Label drawn under a graph node. Long identifiers are truncated so adjacent
+ * labels do not run together — the tooltip still carries the full value.
+ */
+export function graphNodeLabel(entityId: string): string {
+  if (entityId.length === 0) return ''
+  return entityId.length > GRAPH_LABEL_MAX_CHARS
+    ? `${entityId.slice(0, GRAPH_LABEL_MAX_CHARS)}…`
+    : entityId
+}
+
+/** Clamp a fitted zoom so small graphs are not magnified into blobs. */
+export function clampFitZoom(zoom: number): number {
+  return Math.min(zoom, MAX_FIT_ZOOM)
+}
+
 function fnv1aHash(value: string): number {
   let hash = 0x811c9dc5
   for (let i = 0; i < value.length; i += 1) {

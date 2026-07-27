@@ -1,21 +1,11 @@
 import { Link } from 'react-router'
 
-import type { PolicyItemStatus, PolicySeverity } from '../../api/contracts'
+import type { PolicyItemStatus } from '../../api/contracts'
 import { usePolicyItems } from '../../api/policy'
 import { Chip } from '../ui/Chip'
 import { EmptyState } from '../ui/EmptyState'
 import { policyItemsForTarget } from './policyTargets'
-
-function toneForSeverity(severity: PolicySeverity) {
-  switch (severity) {
-    case 'critical':
-      return 'danger' as const
-    case 'high':
-      return 'warning' as const
-    case 'medium':
-      return 'info' as const
-  }
-}
+import { severityTone } from '../../utils/severity'
 
 function toneForStatus(status: PolicyItemStatus) {
   switch (status) {
@@ -69,7 +59,7 @@ export function EntityPolicyPanel({
             <div className="metric-row metric-row--stacked">
               <strong>{item.title}</strong>
               <div className="alert-row-card__meta">
-                <Chip label={item.severity} tone={toneForSeverity(item.severity)} />
+                <Chip label={item.severity} tone={severityTone(item.severity)} />
                 <Chip label={item.status} tone={toneForStatus(item.status)} />
               </div>
               <Link className="metric-row__label" to="/policy">

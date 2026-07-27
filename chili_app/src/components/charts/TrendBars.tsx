@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts'
 
+import { integerTicks } from './axisTicks'
+
 type Datum = {
   label: string
   value: number
@@ -12,6 +14,9 @@ type TrendBarsProps = {
 }
 
 export function TrendBars({ color, data }: TrendBarsProps) {
+  // Counts are discrete: without explicit ticks recharts draws fractional
+  // gridlines (0.25 of an alert). See axisTicks.ts (UXA-203).
+  const ticks = integerTicks(Math.max(0, ...data.map((point) => point.value)))
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
 
@@ -47,10 +52,19 @@ export function TrendBars({ color, data }: TrendBarsProps) {
   return (
     <div className="chart-shell" ref={containerRef}>
       {size.width > 0 && size.height > 0 ? (
-        <BarChart data={data} height={size.height} margin={{ top: 8, right: 0, left: -18, bottom: 0 }} width={size.width}>
+        <BarChart data={data} height={size.height} margin={{ top: 8, right: 0, left: 0, bottom: 0 }} width={size.width}>
           <CartesianGrid stroke="rgba(37, 52, 80, 0.6)" strokeDasharray="4 4" vertical={false} />
           <XAxis dataKey="label" stroke="#8899bb" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
-          <YAxis stroke="#8899bb" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} width={34} />
+          <YAxis
+            allowDecimals={false}
+            axisLine={false}
+            domain={[0, ticks[ticks.length - 1] ?? 1]}
+            stroke="#8899bb"
+            tick={{ fontSize: 10 }}
+            tickLine={false}
+            ticks={ticks}
+            width={34}
+          />
           <Tooltip
             cursor={{ fill: 'rgba(0, 212, 255, 0.06)' }}
             contentStyle={{

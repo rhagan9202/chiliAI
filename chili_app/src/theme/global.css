@@ -12,10 +12,14 @@
   --c-amber: #f59e0b;
   --c-red: #ff4040;
   --c-green: #00e676;
-  --c-purple: #a855f7;
+  --c-purple: #b06bf8;
   --c-text: #e2eaf6;
   --c-dim: #8899bb;
-  --c-muted: #3d5070;
+  --c-muted: #7385a6;
+  /* Boundary for *interactive* controls; meets the 3:1 WCAG 1.4.11 floor on
+     every surface. Card outlines keep the quieter --c-b0/b1/b2 tokens: those
+     are decorative container edges, not component identifiers. */
+  --c-control-border: #52678f;
   --font-display: 'Oxanium', sans-serif;
   --font-body: 'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;

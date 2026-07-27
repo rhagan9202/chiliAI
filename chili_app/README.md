@@ -367,6 +367,90 @@ switching does not stack history entries). Two deliberate exceptions:
   the active KB to be `ready`; the workspace selection itself may point at a
   building KB.
 
+### Graph canvas sizing
+
+`GraphCanvas` draws node *area* proportional to the risk score
+(`nodeVal` x `nodeRelSize`), so node radius varies. Two things follow, and both
+are shared helpers in `src/utils/graphStyles.ts` rather than literals in the
+component:
+
+- **Link distance must account for node radius.** A fixed separation meant a
+  high-risk pair overlapped completely, hiding the edge between them —
+  `linkDistanceFor(a, b)` keeps a constant clearance beyond both radii.
+- **`zoomToFit` needs an upper bound.** Fitting a 2-3 node neighborhood
+  magnified it until the circles were larger than their edges, which is how the
+  workbench rendered as a few unlabelled blobs. `clampFitZoom` caps it at
+  `MAX_FIT_ZOOM`.
+
+Node labels are drawn on canvas via `nodeCanvasObject` (mode `after`), not only
+as `nodeLabel` hover tooltips — a static graph of unlabelled circles conveys
+nothing. Labels hide below 0.5x zoom, where they would collide into noise, and
+`graphNodeLabel` truncates long ids. The legend renders **above** the canvas
+rather than as an absolute overlay, which used to cover whichever node the
+layout settled in the top-left corner.
+
+## Colour contrast
+
+Palette contrast is **asserted in tests**, not eyeballed: `src/theme/contrast.ts`
+implements the WCAG relative-luminance ratio and
+`src/theme/__tests__/contrast.test.ts` walks every text token against every
+surface token, plus every `Chip` tone. Adding a token that fails AA fails the
+suite.
+
+Two defects this pinned (UXA-204):
+
+- `--c-muted` was `#3d5070` — **2.18–2.46:1**, below AA (4.5:1) and below even
+  the 3:1 non-text floor. It carries the label of every *inactive* tab and
+  filter chip in the product, plus KPI sublabels, risk-badge labels and chart
+  eyebrows, so those controls read as **disabled**. Now `#7385a6` (4.76–5.38:1),
+  still quieter than `--c-dim` so the type hierarchy survives.
+- `Chip` with `tone="default"` used `colors.b1` — a **border** token — as its
+  **text** colour, at **1.33:1**. That is why the `BILLING` / `PEER DEVIATION`
+  tag chips, the evidence score chips, and the housing `UNSCORED` chips were
+  effectively invisible. Tone colours now live in
+  `src/components/ui/chipTones.ts` so they are covered by the same assertion.
+
+`--c-control-border` (`#52678f`, ≥3:1 on every surface) is the boundary for
+**interactive** controls, per WCAG 1.4.11. Card outlines keep the quieter
+`--c-b0/b1/b2` tokens — those are decorative container edges, not component
+identifiers, and are deliberately exempt.
+
+The smallest labels that carry real meaning were also raised off 10px
+(`risk-badge__label`, `chart-frame__eyebrow` → 11px; `kpi-card__sublabel` →
+12px): small text needs more contrast, not less.
+
+## Responsive layout: container queries, not viewport breakpoints
+
+The shell reserves a fixed 248px sidebar and a 340px AI panel, so the content
+area is **~588px narrower than the viewport**. Page layouts keyed off
+`@media (max-width: ...)` therefore fire far too late: at a 1440px viewport the
+Ingestion Studio grid still resolved to `260px 190px 340px`, squeezing the
+primary work column to **190px** and slicing text inside cards that set
+`overflow-x: hidden` (UXA-201). The page looked correct only on the large
+monitor it was built on.
+
+`.app-shell__main` is therefore a query container (`container-type: inline-size;
+container-name: workspace`), and page layouts size themselves against it:
+
+```css
+@container workspace (min-width: 1080px) { … }
+```
+
+**Write new multi-column page layouts as `@container workspace` rules.** A
+viewport media query on a page grid is almost always wrong — it cannot see the
+chrome. Viewport media queries remain correct for the *shell itself* (where the
+sidebar and AI panel collapse), which is why the `760px` and `1180px` blocks in
+`pages.css` still exist for shell-level stacking.
+
+`e2e/layout-overflow.spec.ts` guards this: it fails on any element under `<main>`
+whose content is wider than its box, across 1280/1366/1440/1600/1920. It asserts
+the *symptom* (clipped content) rather than any particular CSS mechanism, so it
+stays valid if a layout is later reworked. Two exclusions are deliberate:
+elements that scroll their own content (`overflow-x: auto`, e.g. the housing
+table wrapper) and screen-reader-only labels, which are *intentionally* clipped
+to 1px via `clip: rect(0 0 0 0)` — the tab-panel headings and the "Source type"
+fieldset legend are both sr-only, not bugs.
+
 ## Domain-Driven Dynamic UI
 
 The frontend reads domain configuration from `GET /config/domain` at startup. This drives entity labels, icons, relationship labels, enabled analytics panels, and alert thresholds — allowing the same codebase to serve Medicare fraud, food supply chain, or any configured domain without code changes. Investigation display helpers in `src/utils/domainDisplay.ts` derive entity titles, subtitles, chips, and relationship labels from `DomainConfig.ui.display_fields`, `entities`, and `relationships`. See [`docs/architecture.md` §9](../docs/architecture.md#9-domain-configuration-model).

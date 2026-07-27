@@ -31,7 +31,11 @@ export function TopBar({
   return (
     <header className="app-topbar">
       <div>
-        <h1 className="app-topbar__title">{title}</h1>
+        {/* Not a heading: this is constant chrome. Screen-reader users
+            navigating by heading were told every one of the 11 routes was
+            called "Medicare Fraud Detection" (UXA-205). The page owns its h1
+            via SectionHeader. */}
+        <div className="app-topbar__title">{title}</div>
       </div>
       <div className="app-topbar__actions">
         {roleOptions.length > 0 ? (

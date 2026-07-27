@@ -17,6 +17,11 @@
 .app-shell__main {
   min-height: calc(100vh - 82px);
   padding: 24px;
+  /* Page layouts size themselves against this box, not the viewport. The shell
+     reserves a 248px sidebar and a 340px AI panel, so viewport-keyed
+     breakpoints fire ~588px too late and squeeze page columns (UXA-201). */
+  container-type: inline-size;
+  container-name: workspace;
   /* Prevent browser text/element selection from interrupting pointer events
      when a force-graph node drag escapes the canvas boundary. */
   user-select: none;

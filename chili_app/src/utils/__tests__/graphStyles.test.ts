@@ -3,10 +3,17 @@ import { describe, expect, it } from 'vitest'
 import type { Relationship } from '../../types/api'
 import {
   CLUSTER_COLOR_PALETTE,
-  clusterColorFor,
-  isPredictedRelationship,
+  GRAPH_LABEL_MAX_CHARS,
+  MAX_FIT_ZOOM,
+  NODE_REL_SIZE,
   PREDICTED_LINK_COLOR,
   PREDICTED_LINK_DASH,
+  clampFitZoom,
+  clusterColorFor,
+  graphNodeLabel,
+  isPredictedRelationship,
+  linkDistanceFor,
+  nodeRadiusFor,
   predictedConfidenceFor,
 } from '../graphStyles'
 
@@ -57,5 +64,65 @@ describe('predicted relationship helpers', () => {
   it('exports the dormant predicted-link style constants', () => {
     expect(PREDICTED_LINK_DASH).toEqual([4, 3])
     expect(PREDICTED_LINK_COLOR).toContain('168, 85, 247')
+  })
+})
+
+describe('nodeRadiusFor', () => {
+  it('grows with the node value', () => {
+    expect(nodeRadiusFor(24)).toBeGreaterThan(nodeRadiusFor(4))
+  })
+
+  it('matches the force-graph area-proportional sizing for nodeRelSize', () => {
+    // react-force-graph draws a node whose *area* is proportional to `val`,
+    // so radius = sqrt(val) * nodeRelSize. Link spacing has to use the same
+    // formula or edges end up shorter than the circles that sit on them.
+    expect(nodeRadiusFor(4)).toBeCloseTo(Math.sqrt(4) * NODE_REL_SIZE, 5)
+  })
+})
+
+describe('linkDistanceFor', () => {
+  it('keeps the edge longer than the two node radii it connects', () => {
+    const distance = linkDistanceFor(24, 24)
+    expect(distance).toBeGreaterThan(nodeRadiusFor(24) + nodeRadiusFor(24))
+  })
+
+  it('scales up for larger nodes so big circles cannot swallow their edge', () => {
+    expect(linkDistanceFor(24, 24)).toBeGreaterThan(linkDistanceFor(4, 4))
+  })
+
+  it('leaves visible gap between the smallest nodes', () => {
+    expect(linkDistanceFor(4, 4)).toBeGreaterThan(nodeRadiusFor(4) * 2)
+  })
+})
+
+describe('clampFitZoom', () => {
+  it('leaves a zoomed-out fit untouched', () => {
+    expect(clampFitZoom(0.6)).toBeCloseTo(0.6, 5)
+  })
+
+  it('caps an over-magnified fit so tiny neighborhoods do not fill the canvas', () => {
+    // zoomToFit on a 2-3 node graph would otherwise magnify until the nodes
+    // are larger than the edges between them (UXA-202).
+    expect(clampFitZoom(12)).toBe(MAX_FIT_ZOOM)
+  })
+
+  it('returns the cap exactly at the boundary', () => {
+    expect(clampFitZoom(MAX_FIT_ZOOM)).toBe(MAX_FIT_ZOOM)
+  })
+})
+
+describe('graphNodeLabel', () => {
+  it('uses the entity id', () => {
+    expect(graphNodeLabel('provider-1')).toBe('provider-1')
+  })
+
+  it('truncates long ids so labels cannot overlap into noise', () => {
+    const label = graphNodeLabel('a'.repeat(60))
+    expect(label.length).toBeLessThanOrEqual(GRAPH_LABEL_MAX_CHARS + 1)
+    expect(label.endsWith('…')).toBe(true)
+  })
+
+  it('returns an empty label for a blank id rather than drawing nothing useful', () => {
+    expect(graphNodeLabel('')).toBe('')
   })
 })

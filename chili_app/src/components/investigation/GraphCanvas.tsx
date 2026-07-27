@@ -18,9 +18,15 @@ import {
   ENTITY_COLOR_PALETTE,
   PREDICTED_LINK_COLOR,
   PREDICTED_LINK_DASH,
+  MAX_FIT_ZOOM,
+  NODE_REL_SIZE,
+  clampFitZoom,
   clusterColorFor,
   colorForEntityType,
   communityIdFor,
+  graphNodeLabel,
+  linkDistanceFor,
+  nodeRadiusFor,
   isPredictedRelationship,
   predictedConfidenceFor,
   riskScoreFor,
@@ -173,7 +179,13 @@ export function GraphCanvas({
     if (!g) return
     forcesCustomizedRef.current = true
     const link = g.d3Force('link')
-    if (link) link.distance(50)
+    if (link) {
+      link.distance((edge: { source: GraphNode | string; target: GraphNode | string }) => {
+        const valueOf = (end: GraphNode | string) =>
+          typeof end === 'string' ? 0 : end.size
+        return linkDistanceFor(valueOf(edge.source), valueOf(edge.target))
+      })
+    }
     const charge = g.d3Force('charge')
     if (charge) charge.strength(-150)
     g.d3ReheatSimulation()
@@ -211,6 +223,12 @@ export function GraphCanvas({
     if (hasInitialFitRef.current) return
     hasInitialFitRef.current = true
     graphRef.current.zoomToFit(500, 40)
+    // zoomToFit has no upper bound: a 2-3 node neighborhood magnifies until the
+    // circles swallow their own edges. Pull it back to a readable scale.
+    const fitted = graphRef.current.zoom()
+    if (fitted > MAX_FIT_ZOOM) {
+      graphRef.current.zoom(clampFitZoom(fitted), 300)
+    }
     graphDataRef.current?.nodes.forEach((n) => {
       if (typeof n.x === 'number' && typeof n.y === 'number') {
         n.fx = n.x
@@ -248,52 +266,52 @@ export function GraphCanvas({
     }))
   }, [graphData])
 
+  const legendContent = clusterMode
+    ? clusterLegend.map((item) => (
+        <div key={item.communityId} className={styles.legendRow}>
+          <span className={styles.legendSwatch} style={{ background: item.color }} />
+          <span>{item.communityId}</span>
+        </div>
+      ))
+    : legend.map((item) => (
+        <div key={item.type} className={styles.legendRow}>
+          <span className={styles.legendSwatch} style={{ background: item.color }} />
+          <span>{item.type}</span>
+        </div>
+      ))
+  const showLegend =
+    hasData && (clusterMode ? clusterLegend.length > 0 : legend.length > 0)
+  const showSelectedKey =
+    selectedEntityId !== null && graphData.nodes.some((n) => n.id === selectedEntityId)
+
   return (
-    <div
-      ref={containerRef}
-      className={styles.container}
-      data-testid={testId ?? 'graph-canvas'}
-      onDragStart={(e) => e.preventDefault()}
-    >
-      {!hasData && (
-        <div className={styles.placeholder} role="status">
-          No graph data — select an entity to load its neighborhood.
-        </div>
-      )}
-      {hasData &&
-        (clusterMode ? clusterLegend.length > 0 : legend.length > 0) && (
+    <div className={styles.wrapper}>
+      {/* The legend sits above the canvas rather than floating over it: as an
+          absolute overlay it covered whichever node the layout happened to
+          settle in the top-left corner (UXA-202). */}
+      {showLegend && (
         <div className={styles.legend} aria-hidden="true">
-          {clusterMode
-            ? clusterLegend.map((item) => (
-                <div key={item.communityId} className={styles.legendRow}>
-                  <span
-                    className={styles.legendSwatch}
-                    style={{ background: item.color }}
-                  />
-                  <span>{item.communityId}</span>
-                </div>
-              ))
-            : legend.map((item) => (
-                <div key={item.type} className={styles.legendRow}>
-                  <span
-                    className={styles.legendSwatch}
-                    style={{ background: item.color }}
-                  />
-                  <span>{item.type}</span>
-                </div>
-              ))}
-          {selectedEntityId !== null &&
-            graphData.nodes.some((n) => n.id === selectedEntityId) && (
-              <div className={`${styles.legendRow} ${styles.legendRowSelected}`}>
-                <span
-                  className={styles.legendSwatch}
-                  style={{ background: '#fbbf24' }}
-                />
-                <span>selected</span>
-              </div>
-            )}
+          <span className={styles.legendGroupLabel}>Entity type</span>
+          {legendContent}
+          {showSelectedKey && (
+            <span className={`${styles.legendRow} ${styles.legendRowSelected}`}>
+              <span className={styles.legendSwatch} style={{ background: '#fbbf24' }} />
+              <span>selected</span>
+            </span>
+          )}
         </div>
       )}
+      <div
+        ref={containerRef}
+        className={styles.container}
+        data-testid={testId ?? 'graph-canvas'}
+        onDragStart={(e) => e.preventDefault()}
+      >
+        {!hasData && (
+          <div className={styles.placeholder} role="status">
+            No graph data — select an entity to load its neighborhood.
+          </div>
+        )}
       {hasData && isReady && (
         <ForceGraph2D<GraphNode, GraphLink>
           ref={graphRef}
@@ -302,9 +320,31 @@ export function GraphCanvas({
           graphData={graphData}
           backgroundColor="#0c1222"
           nodeId="id"
-          nodeRelSize={14}
+          nodeRelSize={NODE_REL_SIZE}
           nodeVal={(node) => node.size}
           nodeLabel={(node) => `${node.entity.type}: ${node.id}`}
+          nodeCanvasObjectMode={() => 'after'}
+          nodeCanvasObject={(node, ctx, globalScale) => {
+            // Hover tooltips are not enough: a static graph with unlabelled
+            // circles cannot be read at all (UXA-202). Labels are drawn under
+            // each node and hidden when zoomed far out, where they would only
+            // collide into noise.
+            if (globalScale < 0.5) return
+            const label = graphNodeLabel(String(node.id))
+            if (!label) return
+            const fontSize = Math.max(10 / globalScale, 3)
+            ctx.font = `${fontSize}px 'IBM Plex Sans', system-ui, sans-serif`
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'top'
+            const offset = nodeRadiusFor(node.size) + fontSize * 0.6
+            const x = node.x ?? 0
+            const y = (node.y ?? 0) + offset
+            ctx.lineWidth = fontSize * 0.35
+            ctx.strokeStyle = 'rgba(12, 18, 34, 0.9)'
+            ctx.strokeText(label, x, y)
+            ctx.fillStyle = '#e2eaf6'
+            ctx.fillText(label, x, y)
+          }}
           nodeColor={(node) => {
             if (node.id === selectedEntityId || highlightedIds.has(node.id)) {
               return HIGHLIGHT_COLOR
@@ -340,6 +380,7 @@ export function GraphCanvas({
           maxZoom={8}
         />
       )}
+      </div>
     </div>
   )
 }

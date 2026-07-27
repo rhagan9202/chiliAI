@@ -10,10 +10,11 @@ export const colors = {
   amber: '#f59e0b',
   red: '#ff4040',
   green: '#00e676',
-  purple: '#a855f7',
+  purple: '#b06bf8',
   text: '#e2eaf6',
   dim: '#8899bb',
-  muted: '#3d5070',
+  muted: '#7385a6',
+  controlBorder: '#52678f',
 } as const
 
 export const typography = {
