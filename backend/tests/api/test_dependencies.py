@@ -276,7 +276,7 @@ def test_event_bus_explicit_config_carries_recovery_and_trim_settings(
     )
     _install_config(monkeypatch, config)
 
-    settings = dependencies._resolve_event_bus_settings(config)  # pyright: ignore[reportPrivateUsage]
+    settings = dependencies.resolve_event_bus_settings(config)
 
     assert settings.stream_maxlen == 5000
     assert settings.reclaim_min_idle_ms == 45_000
@@ -300,7 +300,7 @@ def test_event_bus_explicit_config_preserves_env_recovery_and_trim_defaults(
     monkeypatch.setenv("CHILI_EVENT_STREAM_MAXLEN", "7500")
     monkeypatch.setenv("CHILI_EVENT_RECLAIM_MIN_IDLE_MS", "90_000")
 
-    settings = dependencies._resolve_event_bus_settings(config)  # pyright: ignore[reportPrivateUsage]
+    settings = dependencies.resolve_event_bus_settings(config)
 
     assert settings.stream_maxlen == 7500
     assert settings.reclaim_min_idle_ms == 90_000
@@ -616,7 +616,7 @@ def test_get_ingestion_service_wires_recovery_store(
 
 
 # ---------------------------------------------------------------------------
-# _resolve_event_bus_settings: explicit EventBusConfig section with defaults
+# resolve_event_bus_settings: explicit EventBusConfig section with defaults
 # ---------------------------------------------------------------------------
 
 

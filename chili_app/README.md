@@ -293,7 +293,7 @@ not on mutable status, so they are order-independent.
 | `air-force-housing-scorecards.spec.ts` | `/housing` dashboard: real CONUS state geography (49 paths), 65 accessible installation markers (public reference layer, or live map points + location-pending accounting when housing feeds are seeded), marker/deep-link selection → detail panel + `?installation=` URL param, summary band rendered above the map with no generation UI (generation is API-only: backend router tests + seed tool), and filter-driven band aggregates pinned against values recomputed from the real API payload (status filter changes them, clear restores) |
 | `air-force-housing-context.spec.ts` | Stack-adaptive housing follow-up surfaces: scorecard viewer guard states (missing `?kb=`, unknown run), dashboard run link → viewer with graded sections/health chips + real JSON export download + back-link round trip, "Why this status" drivers pinned to the API's `status_reasons`, filter strip narrowing map markers + ranking rows + status counts together (clear restores), and a zero-failed-runs probe over every housing-domain KB's workflow history |
 | `ingestion-studio-domain-scoping.spec.ts` | Domain-adaptive Ingestion Studio scoping: default KB list shows only active-domain (+ legacy unstamped) KBs, show-all-domains toggle reveals the cross-domain list and scopes back down; expected sets computed from the real `/config/domain` + `/knowledgebases` |
-| `config-manager.spec.ts` | Pack switcher + YAML editor: dry-run validation errors, apply, and pack hot-swap round-trip (requires an admin session — skips loudly otherwise) |
+| `config-manager.spec.ts` | Pack switcher + YAML editor: dry-run validation errors, apply, pack hot-swap round-trip, an issue revealing its line in the real ~1700-line pack, the transport warning, and the schema browser resolved from the real `/config/domain/schema` (requires an admin session — skips loudly otherwise) |
 | `kb-domain-mismatch.spec.ts` | Real pack switch via `/config/switch` → the other-domain KB drops out of the studio's default scoped list, and the show-all-domains toggle reveals it with the warn-only mismatch badge (requires an admin session) |
 | `demo-walkthrough.spec.ts` | BL-051 demo-walkthrough mechanical validation, stack-adaptive: reference mode (dev-seed) walks alert row (`triage-numeral` + `.flag-label`) → "View evidence" narrative band → workbench dossier tabs → `/policy`; live mode (a "TN Demo" / `medicare_fraud` / `ready` KB, discovered via `/knowledgebases` or `E2E_DEMO_KB`) additionally asserts a factor-tagged alert, the workbench NETWORK tab's `cluster-membership-panel`, the EVIDENCE tab's `attribution-bars`, and a non-empty `/policy` queue — each live assertion `test.skip()`s with a clear reason when no TN KB exists |
 
@@ -303,6 +303,13 @@ admin role, so bring the stack up with `CHILI_DEV_ANONYMOUS_ROLE=admin`
 skip with a loud message rather than failing). They also drive the UI as the
 **supervisor** persona, since both stock packs grant the `configuration` page
 to that persona.
+
+**Put it in `.env`, not a shell export.** `docker-compose.dev.yaml` resolves
+`${CHILI_DEV_ANONYMOUS_ROLE:-viewer}` from the environment compose sees, so
+recreating `api`/`worker` for any unrelated reason silently drops a shell-only
+value back to `viewer` — and the symptom is these specs quietly *skipping*
+rather than failing, which is easy to miss in a green run. `.env` is gitignored
+and survives container recreation.
 
 ### Configuration
 
@@ -579,8 +586,62 @@ than shown as `gnn`/`peer_stats`.
 
 The pack switcher and active-pack editor were already built (admin-gated,
 mirroring the backend's `require_role("admin")` on `/config/packs|validate|
-apply|switch`). Still missing: rendering `/config/domain/schema` as browsable
-reference, and surfacing validation errors against the offending field.
+apply|switch`).
+
+## Configuration: the schema is browsable, not counted
+
+"Schema sections 27" opened to 27 property *names*, which answers nothing an
+operator writing a pack asks. `SchemaBrowser` + `schemaModel.ts` resolve each
+section to its fields — type, required, default, description — and a field
+whose type is a definition opens into that definition. Resolution is one level
+per expansion: the payload carries 50 `$defs` and the schema is cyclic, so
+`canExpand` carries the set of definitions already open above a node and
+renders "Repeats X, shown above" instead of recursing.
+
+A section that resolves *through* a `$ref` seeds that guard with it. Without
+that, `entities` (which resolves to `EntityDefinition`) let its own
+self-referential `children` field expand one extra time before the guard
+noticed — caught by a page test, not by review.
+
+Enums render as the values they accept (`one of: redis, in_memory`), which is
+the question the schema is usually opened to answer.
+
+## Configuration: validation errors point at the line
+
+`ActivePackEditor` listed each issue with its dotted path. That says *what* is
+wrong, not *where*: the active pack is ~1700 lines. Each issue whose `loc`
+resolves against the current buffer is now a button that selects the offending
+**value** and scrolls it into view; `locateInYaml` (`packYaml.ts`) maps the path
+to a character range through the `yaml` package's `parseDocument`, and
+`YamlEditor` hands out its `EditorView` via `onReady`.
+
+An issue stays plain text when it cannot be located — a file-level parse error
+carries an empty `loc`, and the buffer may have been edited since it was
+validated. No dead controls.
+
+## Configuration: transport changes are stated before the swap
+
+`TransportWarning` + `transportDelta.ts` compare the transport a candidate pack
+would run on against the active one, above *Confirm switch* and beside *Apply*.
+It warns; it never blocks. A deliberate transport migration stays possible
+(drain the queue, then swap), and refusing would have meant making
+`/config/validate` depend on the *active* pack, changing what that endpoint
+means.
+
+**The candidate's transport comes from the API (`PackSummary.transport`,
+`ValidatePackResponse.transport`), not from reading the pack's `events` block.**
+The environment wins whenever that block is absent or equal to the default, so
+`medicare_fraud` — which declares none, and therefore resolves to the
+`EventBusConfig()` default of `in_memory` — actually runs on the environment's
+Redis like every other pack. Comparing declared values would warn that the base
+pack changes the transport when it does not. Only this side of the wire can see
+the environment.
+
+Severity is `decoupled` rather than `changed` when either side is in-memory:
+the API and worker are separate processes, so each would build its own
+in-process bus and the pipeline would stop with no error anywhere. Reachable by
+a pack that pins `backend: in_memory` alongside any other non-default field —
+no stock pack does.
 
 ## Toasts can lead somewhere
 

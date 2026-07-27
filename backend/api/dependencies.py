@@ -298,6 +298,7 @@ __all__ = [
     "get_vectorstore_service",
     "get_workflow_run_store",
     "get_workflow_tracker",
+    "resolve_event_bus_settings",
 ]
 
 logger = get_logger("chili.api.dependencies")
@@ -1081,7 +1082,16 @@ def _config_section_is_non_default(value: object, default: object) -> bool:
     return value != default
 
 
-def _resolve_event_bus_settings(config: DomainConfig) -> EventBusSettings:
+def resolve_event_bus_settings(config: DomainConfig) -> EventBusSettings:
+    """Return the event transport a pack would actually run on.
+
+    A pack's ``events`` section is only half the answer: the environment wins
+    when that section is absent, ``None``, or equal to the default
+    ``EventBusConfig()``, so only an explicitly pinned, non-default block
+    overrides it. Public because ``/config/packs`` and ``/config/validate``
+    report this to operators before a hot-swap — the declared section would
+    mis-report any pack that omits it (UXA-404).
+    """
     env_settings = get_event_bus_settings()
     if not _event_bus_section_is_explicit(config):
         return env_settings
@@ -1111,7 +1121,7 @@ def _resolve_event_bus_settings(config: DomainConfig) -> EventBusSettings:
 def get_event_bus() -> EventBus:
     """Return the event bus implementation for API-triggered workflows."""
     config = get_domain_config()
-    settings = _resolve_event_bus_settings(config)
+    settings = resolve_event_bus_settings(config)
     return create_event_bus(settings)
 
 

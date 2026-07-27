@@ -51,6 +51,7 @@ from api.config_models import (
     ConfigValidationIssue,
     PackListResponse,
     PackSummary,
+    PackTransport,
     SwitchPackRequest,
     ValidatePackRequest,
     ValidatePackResponse,
@@ -267,11 +268,29 @@ def _active_pack_state() -> tuple[Path | None, ActivePackState]:
     return None, ActivePackState(source="none")
 
 
+def _pack_transport(config: DomainConfig) -> PackTransport:
+    """Project the transport a pack would actually run on.
+
+    Reports *effective* settings, so a pack that omits ``events:`` is not
+    mis-reported as switching to the ``EventBusConfig()`` default — the
+    environment wins in that case, and a warning that cries wolf on the base
+    pack would be worse than none (UXA-404).
+    """
+    settings = dependencies.resolve_event_bus_settings(config)
+    return PackTransport(
+        backend=settings.backend,
+        uri=settings.redis_url if settings.backend == "redis" else None,
+        stream_prefix=settings.stream_prefix,
+        consumer_group=settings.consumer_group,
+    )
+
+
 def _summarize_pack(path: Path, active_path: Path | None) -> PackSummary:
     """Fully validate one pack file and project it into a summary row."""
     domain_name: str | None = None
     display_name: str | None = None
     error: str | None = None
+    transport: PackTransport | None = None
     try:
         pack_config = load_config(path)
     except ConfigLoadError as exc:
@@ -279,6 +298,7 @@ def _summarize_pack(path: Path, active_path: Path | None) -> PackSummary:
     else:
         domain_name = pack_config.domain.name
         display_name = pack_config.domain.display_name
+        transport = _pack_transport(pack_config)
     return PackSummary(
         name=path.stem,
         file_name=path.name,
@@ -288,6 +308,7 @@ def _summarize_pack(path: Path, active_path: Path | None) -> PackSummary:
         valid=error is None,
         error=error,
         active=active_path is not None and path == active_path,
+        transport=transport,
     )
 
 
@@ -545,6 +566,7 @@ async def validate_pack(
         valid=True,
         pack_name=candidate.domain.name,
         display_name=candidate.domain.display_name,
+        transport=_pack_transport(candidate),
     )
 
 

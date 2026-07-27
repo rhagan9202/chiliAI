@@ -67,6 +67,51 @@ const domainConfig: DomainConfig = {
   capabilities,
   ingestion: {},
   alerts: { thresholds: {} },
+  // The active side of the transport comparison (UXA-404).
+  events: {
+    backend: 'redis',
+    uri: 'redis://redis:6379',
+    stream_prefix: 'chili',
+    consumer_group: 'chili-workers',
+    stream_maxlen: null,
+    reclaim_min_idle_ms: null,
+  },
+}
+
+const REDIS_TRANSPORT = {
+  backend: 'redis',
+  uri: 'redis://redis:6379',
+  stream_prefix: 'chili',
+  consumer_group: 'chili-workers',
+}
+
+/** A schema with a $ref, a list-of-$ref, an enum and a cycle. */
+const domainSchema = {
+  properties: {
+    domain: { $ref: '#/$defs/DomainInfo' },
+    entities: { items: { $ref: '#/$defs/EntityDefinition' }, type: 'array' },
+    events: { anyOf: [{ $ref: '#/$defs/EventBusConfig' }, { type: 'null' }], default: null },
+  },
+  required: ['domain', 'entities'],
+  $defs: {
+    DomainInfo: {
+      type: 'object',
+      required: ['name'],
+      properties: {
+        name: { type: 'string', description: 'Machine name for the domain.' },
+      },
+    },
+    EntityDefinition: {
+      type: 'object',
+      properties: { children: { items: { $ref: '#/$defs/EntityDefinition' }, type: 'array' } },
+    },
+    EventBusConfig: {
+      type: 'object',
+      properties: {
+        backend: { enum: ['redis', 'in_memory'], type: 'string', default: 'in_memory' },
+      },
+    },
+  },
 }
 
 const domainFeatures: DomainFeatures = {
@@ -88,6 +133,7 @@ const packList: PackListResponse = {
       valid: true,
       error: null,
       active: true,
+      transport: REDIS_TRANSPORT,
     },
     {
       name: 'food_supply_chain',
@@ -98,6 +144,8 @@ const packList: PackListResponse = {
       valid: true,
       error: null,
       active: false,
+      // Same Redis, different consumer group: queued work is abandoned.
+      transport: { ...REDIS_TRANSPORT, consumer_group: 'food-workers' },
     },
     {
       name: 'broken_pack',
@@ -108,6 +156,8 @@ const packList: PackListResponse = {
       valid: false,
       error: 'domain.name: Field required',
       active: false,
+      // An unloadable pack resolves to nothing; unknown is not a change.
+      transport: null,
     },
   ],
   active: {
@@ -167,7 +217,7 @@ beforeEach(() => {
       case '/config/features':
         return Promise.resolve(domainFeatures)
       case '/config/domain/schema':
-        return Promise.resolve({ properties: { domain: {} } })
+        return Promise.resolve(domainSchema)
       case '/config/packs':
         return Promise.resolve(packList)
       default:
@@ -244,6 +294,73 @@ describe('pack switcher', () => {
     )
   })
 
+  it('warns what a transport change costs, above the confirm button (UXA-404)', async () => {
+    renderPage(['admin'])
+
+    const item = await screen.findByTestId('pack-item-food_supply_chain')
+    fireEvent.click(within(item).getByRole('button', { name: 'Activate' }))
+
+    const warning = within(item).getByTestId('transport-warning')
+    expect(warning).toHaveAttribute('data-severity', 'changed')
+    expect(warning).toHaveTextContent('consumer_group')
+    expect(warning).toHaveTextContent('chili-workers → food-workers')
+    expect(warning).toHaveTextContent(/abandoned/)
+    // Read before the irreversible click, not explained after it.
+    expect(
+      warning.compareDocumentPosition(within(item).getByRole('button', { name: 'Confirm switch' })),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+
+  it('says nothing when the transport is unchanged', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/config/packs') {
+        return Promise.resolve({
+          ...packList,
+          packs: packList.packs.map((pack) =>
+            pack.name === 'food_supply_chain' ? { ...pack, transport: REDIS_TRANSPORT } : pack,
+          ),
+        })
+      }
+      if (path === '/config/domain') return Promise.resolve(domainConfig)
+      if (path === '/config/features') return Promise.resolve(domainFeatures)
+      if (path === '/config/domain/schema') return Promise.resolve(domainSchema)
+      return Promise.reject(new Error(`Unexpected apiFetch call: ${path}`))
+    })
+    renderPage(['admin'])
+
+    const item = await screen.findByTestId('pack-item-food_supply_chain')
+    fireEvent.click(within(item).getByRole('button', { name: 'Activate' }))
+
+    expect(within(item).queryByTestId('transport-warning')).not.toBeInTheDocument()
+  })
+
+  it('escalates the wording when a swap would decouple the API from the worker', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/config/packs') {
+        return Promise.resolve({
+          ...packList,
+          packs: packList.packs.map((pack) =>
+            pack.name === 'food_supply_chain'
+              ? { ...pack, transport: { ...REDIS_TRANSPORT, backend: 'in-memory', uri: null } }
+              : pack,
+          ),
+        })
+      }
+      if (path === '/config/domain') return Promise.resolve(domainConfig)
+      if (path === '/config/features') return Promise.resolve(domainFeatures)
+      if (path === '/config/domain/schema') return Promise.resolve(domainSchema)
+      return Promise.reject(new Error(`Unexpected apiFetch call: ${path}`))
+    })
+    renderPage(['admin'])
+
+    const item = await screen.findByTestId('pack-item-food_supply_chain')
+    fireEvent.click(within(item).getByRole('button', { name: 'Activate' }))
+
+    const warning = within(item).getByTestId('transport-warning')
+    expect(warning).toHaveAttribute('data-severity', 'decoupled')
+    expect(warning).toHaveTextContent(/separate processes/)
+  })
+
   it('cancelling the confirm step sends nothing', async () => {
     renderPage(['admin'])
 
@@ -315,6 +432,61 @@ describe('active pack editor', () => {
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled()
   })
 
+  it('makes an issue whose field is in the buffer a control that reveals it (UXA-404)', async () => {
+    // The dotted path said what was wrong; it did not say where to look.
+    apiPostMock.mockResolvedValue({
+      valid: false,
+      errors: [
+        {
+          loc: ['domain', 'name'],
+          field: 'domain.name',
+          message: 'String should match pattern',
+          error_type: 'string_pattern_mismatch',
+        },
+      ],
+    })
+    renderPage(['admin'])
+
+    const textarea = await findEditorTextarea()
+    fireEvent.change(textarea, { target: { value: 'domain:\n  name: Not A Slug\n' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Validate' }))
+
+    const issues = await screen.findByTestId('validation-issues')
+    expect(within(issues).getByRole('button', { name: 'domain.name' })).toBeInTheDocument()
+  })
+
+  it('leaves an unlocatable issue as plain text rather than a dead control', async () => {
+    // A file-level parse error carries no path, and the buffer may have moved
+    // on since it was validated.
+    apiPostMock.mockResolvedValue({
+      valid: false,
+      errors: [
+        {
+          loc: [],
+          field: '',
+          message: 'Pack must be a mapping.',
+          error_type: 'parse_error',
+        },
+        {
+          loc: ['domain', 'gone'],
+          field: 'domain.gone',
+          message: 'Field required',
+          error_type: 'missing',
+        },
+      ],
+    })
+    renderPage(['admin'])
+
+    const textarea = await findEditorTextarea()
+    fireEvent.change(textarea, { target: { value: 'domain:\n  name: ok\n' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Validate' }))
+
+    const issues = await screen.findByTestId('validation-issues')
+    expect(within(issues).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(issues).getByText('domain.gone')).toBeInTheDocument()
+    expect(within(issues).getByText('Pack must be a mapping.')).toBeInTheDocument()
+  })
+
   it('enables Apply after a successful validate, re-gates on edit, and applies', async () => {
     apiPostMock.mockImplementation((path: string) => {
       if (path === '/config/validate') {
@@ -372,6 +544,54 @@ describe('active pack editor', () => {
 
     expect(within(details as HTMLElement).getByText('Provider')).toBeInTheDocument()
     expect(within(details as HTMLElement).getByText('Claim')).toBeInTheDocument()
+  })
+
+  it('browses the schema down to fields, types and defaults (UXA-404)', async () => {
+    // The page listed 27 property names, which answers nothing an operator
+    // writing a pack asks.
+    renderPage(['analyst'])
+
+    const browser = await screen.findByTestId('schema-browser')
+    fireEvent.click(within(browser).getByText('Schema sections'))
+
+    // A section resolves through its $ref to the fields behind it.
+    fireEvent.click(within(browser).getByText('domain'))
+    expect(within(browser).getByText('Machine name for the domain.')).toBeInTheDocument()
+    expect(within(browser).getByText('required')).toBeInTheDocument()
+
+    // An enum renders as the values it accepts, with its default.
+    fireEvent.click(within(browser).getByText('events'))
+    expect(within(browser).getByText('one of: redis, in_memory')).toBeInTheDocument()
+    expect(within(browser).getByText(/default in_memory/)).toBeInTheDocument()
+  })
+
+  it('stops a self-referential definition instead of expanding forever', async () => {
+    renderPage(['analyst'])
+
+    const browser = await screen.findByTestId('schema-browser')
+    fireEvent.click(within(browser).getByText('Schema sections'))
+    fireEvent.click(within(browser).getByText('entities'))
+
+    // The entities section already resolved through EntityDefinition, so its
+    // self-referential `children` field points back instead of expanding —
+    // one "array of EntityDefinition" on screen, not a chain of them.
+    expect(within(browser).getByText('array of EntityDefinition')).toBeInTheDocument()
+    expect(within(browser).getByText(/Repeats/)).toBeInTheDocument()
+  })
+
+  it('says so when the schema is unavailable', async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/config/domain/schema') return Promise.resolve({})
+      if (path === '/config/domain') return Promise.resolve(domainConfig)
+      if (path === '/config/features') return Promise.resolve(domainFeatures)
+      return Promise.reject(new Error(`Unexpected apiFetch call: ${path}`))
+    })
+    renderPage(['analyst'])
+
+    const browser = await screen.findByTestId('schema-browser')
+    fireEvent.click(within(browser).getByText('Schema sections'))
+
+    expect(within(browser).getByText('The pack schema is unavailable.')).toBeInTheDocument()
   })
 
   it('shows the relationships and capabilities behind their counts', async () => {

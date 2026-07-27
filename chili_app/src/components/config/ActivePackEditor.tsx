@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { EditorSelection } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
 import { stringify as stringifyYaml } from 'yaml'
 
 import { useApplyPack, useDomainConfig, useValidatePack } from '../../api/config'
@@ -7,9 +9,10 @@ import { Card } from '../ui/Card'
 import { ErrorState } from '../ui/ErrorState'
 import { LoadingState } from '../ui/LoadingState'
 import { SwapResultBanner } from './SwapResultBanner'
+import { TransportWarning } from './TransportWarning'
 import { YamlEditor } from './YamlEditor'
 import styles from './YamlEditor.module.css'
-import { parseBufferToContent } from './packYaml'
+import { locateInYaml, parseBufferToContent } from './packYaml'
 import './configManager.css'
 
 interface ValidationOutcome {
@@ -34,6 +37,7 @@ export function ActivePackEditor() {
   const [buffer, setBuffer] = useState<string | null>(null)
   const [validation, setValidation] = useState<ValidationOutcome | null>(null)
   const [lastSwap, setLastSwap] = useState<ConfigSwapResponse | null>(null)
+  const viewRef = useRef<EditorView | null>(null)
 
   const seededYaml = useMemo(
     () => (domainConfig.data ? stringifyYaml(domainConfig.data) : ''),
@@ -58,6 +62,29 @@ export function ActivePackEditor() {
 
   const handleChange = (next: string) => {
     setBuffer(next)
+  }
+
+  /**
+   * Select the value an issue points at and scroll it into view (UXA-404).
+   *
+   * The dotted `field` path told an operator *what* was wrong; it did not tell
+   * them where in a 600-line pack to look.
+   */
+  const revealIssue = (loc: readonly string[]) => {
+    const view = viewRef.current
+    if (!view) {
+      return
+    }
+    const range = locateInYaml(editorValue, loc)
+    if (!range) {
+      return
+    }
+    view.dispatch({
+      selection: EditorSelection.range(range.from, range.to),
+      effects: EditorView.scrollIntoView(range.from, { y: 'center' }),
+      scrollIntoView: true,
+    })
+    view.focus()
   }
 
   const handleValidate = () => {
@@ -106,6 +133,9 @@ export function ActivePackEditor() {
         <YamlEditor
           ariaLabel="Active domain pack editor"
           onChange={handleChange}
+          onReady={(view) => {
+            viewRef.current = view
+          }}
           value={editorValue}
         />
         <div className={styles.toolbar}>
@@ -148,17 +178,42 @@ export function ActivePackEditor() {
             </span>
           ) : null}
         </div>
+        {/* Only meaningful once the buffer validated — an invalid pack reports
+            no transport to compare (UXA-404). */}
+        {bufferValidated ? (
+          <TransportWarning
+            active={domainConfig.data?.events}
+            candidate={validation?.result.transport}
+          />
+        ) : null}
         {validationErrors.length > 0 ? (
           <ul className="config-manager__issues" data-testid="validation-issues" role="alert">
-            {validationErrors.map((issue, index) => (
-              <li className="config-manager__issue" key={`${issue.field}-${index}`}>
-                {issue.field ? (
-                  <code className="config-manager__issue-field">{issue.field}</code>
-                ) : null}
-                <span>{issue.message}</span>
-                <span className="config-manager__issue-type">{issue.error_type}</span>
-              </li>
-            ))}
+            {validationErrors.map((issue, index) => {
+              // A file-level issue carries no path, and the buffer may have been
+              // edited since it was validated — neither gets a dead control.
+              const locatable =
+                issue.field !== '' && locateInYaml(editorValue, issue.loc) !== null
+              return (
+                <li className="config-manager__issue" key={`${issue.field}-${index}`}>
+                  {issue.field ? (
+                    locatable ? (
+                      <button
+                        className="config-manager__issue-field config-manager__issue-field--link"
+                        onClick={() => revealIssue(issue.loc)}
+                        title="Show this field in the editor"
+                        type="button"
+                      >
+                        {issue.field}
+                      </button>
+                    ) : (
+                      <code className="config-manager__issue-field">{issue.field}</code>
+                    )
+                  ) : null}
+                  <span>{issue.message}</span>
+                  <span className="config-manager__issue-type">{issue.error_type}</span>
+                </li>
+              )
+            })}
           </ul>
         ) : null}
         {validateMutation.isError ? (

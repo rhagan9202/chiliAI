@@ -180,4 +180,128 @@ test.describe('Config Manager', () => {
     await editor.getByRole('button', { name: 'Reset to active config' }).click()
     await expect(issues).toHaveCount(0)
   })
+
+  test('an issue reveals the line that caused it (UXA-404)', async ({ page }) => {
+    await openConfigurationPage(page)
+    const editor = page.getByTestId('active-pack-editor')
+    await expect(editor).toBeVisible()
+
+    // Break a value deep inside the active pack rather than replacing the
+    // buffer: the point of this feature is finding one bad line among ~1700,
+    // which a two-line pack cannot demonstrate.
+    const broke = await page.evaluate(() => {
+      const content = document.querySelector('[data-testid="yaml-editor"] .cm-content')
+      const view = (content as unknown as { cmTile?: { view?: EditorViewLike } })?.cmTile?.view
+      if (!view) return null
+      const text = view.state.doc.toString()
+      const needle = 'backend: redis'
+      const at = text.indexOf(needle)
+      if (at < 0) return null
+      view.dispatch({ changes: { from: at, to: at + needle.length, insert: 'backend: kafka' } })
+      return { line: view.state.doc.lineAt(at).number, totalLines: view.state.doc.lines }
+    })
+    expect(broke, 'the active pack should pin events.backend: redis').not.toBeNull()
+    expect(broke!.totalLines).toBeGreaterThan(100)
+
+    await editor.getByRole('button', { name: 'Validate' }).click()
+
+    // The real validator returns loc: ["events","backend"]; the path renders as
+    // a control because it resolves against the current buffer.
+    const issues = page.getByTestId('validation-issues')
+    const issueButton = issues.getByRole('button', { name: 'events.backend' })
+    await expect(issueButton).toBeVisible()
+
+    await issueButton.click()
+
+    // The offending *value* is selected, not the key and not the whole line.
+    const selection = await page.evaluate(() => {
+      const content = document.querySelector('[data-testid="yaml-editor"] .cm-content')
+      const view = (content as unknown as { cmTile?: { view?: EditorViewLike } })?.cmTile?.view
+      if (!view) return null
+      const main = view.state.selection.main
+      return {
+        text: view.state.sliceDoc(main.from, main.to),
+        line: view.state.doc.lineAt(main.from).number,
+      }
+    })
+    expect(selection).toEqual({ text: 'kafka', line: broke!.line })
+
+    await editor.getByRole('button', { name: 'Reset to active config' }).click()
+    await expect(issues).toHaveCount(0)
+  })
+
+  test('warns before confirming a swap that changes the event transport (UXA-404)', async ({
+    page,
+    request,
+  }) => {
+    originalPack = await activePackName(request)
+    await openConfigurationPage(page)
+
+    // Every stock pack resolves to the same effective transport, so the
+    // switcher must stay quiet — a warning here would be the false alarm the
+    // server-side resolution exists to prevent (a pack that omits `events:`
+    // inherits the environment's transport rather than changing it).
+    const target = originalPack === FOOD_PACK ? 'medicare_fraud' : FOOD_PACK
+    const item = page.getByTestId(`pack-item-${target}`)
+    await item.getByRole('button', { name: 'Activate' }).click()
+    await expect(item.getByTestId('transport-warning')).toHaveCount(0)
+    await item.getByRole('button', { name: 'Cancel' }).click()
+
+    // The editor path proves the warning fires when the transport really does
+    // differ: pin a different consumer group and validate through the real API.
+    const editor = page.getByTestId('active-pack-editor')
+    const patched = await page.evaluate(() => {
+      const content = document.querySelector('[data-testid="yaml-editor"] .cm-content')
+      const view = (content as unknown as { cmTile?: { view?: EditorViewLike } })?.cmTile?.view
+      if (!view) return false
+      const text = view.state.doc.toString()
+      const needle = 'consumer_group: chili-workers'
+      const at = text.indexOf(needle)
+      if (at < 0) return false
+      view.dispatch({
+        changes: { from: at, to: at + needle.length, insert: 'consumer_group: e2e-workers' },
+      })
+      return true
+    })
+    expect(patched, 'the active pack should pin a consumer group').toBe(true)
+
+    await editor.getByRole('button', { name: 'Validate' }).click()
+
+    const warning = editor.getByTestId('transport-warning')
+    await expect(warning).toBeVisible()
+    await expect(warning).toHaveAttribute('data-severity', 'changed')
+    await expect(warning).toContainText('chili-workers → e2e-workers')
+    // The swap is allowed — this warns, it does not block.
+    await expect(editor.getByRole('button', { name: 'Apply' })).toBeEnabled()
+
+    await editor.getByRole('button', { name: 'Reset to active config' }).click()
+    await expect(warning).toHaveCount(0)
+  })
+
+  test('browses the pack schema down to fields and allowed values (UXA-404)', async ({ page }) => {
+    await openConfigurationPage(page)
+
+    const browser = page.getByTestId('schema-browser')
+    await browser.getByText('Schema sections').click()
+
+    // Resolved from the real /config/domain/schema, not a fixture: the events
+    // section opens to the values its backend actually accepts.
+    await browser.locator('summary', { hasText: 'events' }).first().click()
+    await expect(browser.getByText('one of: redis, in_memory')).toBeVisible()
+    await expect(browser.getByText('default chili-workers')).toBeVisible()
+  })
 })
+
+/** The slice of CodeMirror's EditorView these specs drive from page context. */
+interface EditorViewLike {
+  state: {
+    doc: {
+      toString(): string
+      lines: number
+      lineAt(pos: number): { number: number }
+    }
+    selection: { main: { from: number; to: number } }
+    sliceDoc(from: number, to: number): string
+  }
+  dispatch(spec: { changes: { from: number; to: number; insert: string } }): void
+}

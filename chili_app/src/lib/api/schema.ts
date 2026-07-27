@@ -3201,11 +3201,45 @@ export interface components {
              * @description Resolved filesystem path of the pack file.
              */
             path: string;
+            /** @description Event transport this pack would run on; null when the pack does not load, since there is nothing to resolve. */
+            transport?: components["schemas"]["PackTransport"] | null;
             /**
              * Valid
              * @description Whether the pack currently passes full validation.
              */
             valid: boolean;
+        };
+        /**
+         * PackTransport
+         * @description The event transport a pack would actually run on.
+         *
+         *     Effective settings, **not** the pack's declared ``events`` section: the
+         *     environment wins when that section is absent or equal to the default
+         *     ``EventBusConfig()``, so a pack that omits it does not change the transport
+         *     at all. Reported so an operator can see, before confirming a hot-swap,
+         *     whether the swap would abandon queued worker jobs (UXA-404).
+         */
+        PackTransport: {
+            /**
+             * Backend
+             * @description Effective transport backend ("redis" or "in-memory").
+             */
+            backend: string;
+            /**
+             * Consumer Group
+             * @description Effective consumer group.
+             */
+            consumer_group: string;
+            /**
+             * Stream Prefix
+             * @description Effective stream prefix.
+             */
+            stream_prefix: string;
+            /**
+             * Uri
+             * @description Effective transport URI, when any.
+             */
+            uri?: string | null;
         };
         /**
          * PageInfo
@@ -4527,6 +4561,8 @@ export interface components {
              * @description ``domain.name`` of the validated pack when valid.
              */
             pack_name?: string | null;
+            /** @description Event transport the validated pack would run on; null when the pack is invalid. */
+            transport?: components["schemas"]["PackTransport"] | null;
             /** Valid */
             valid: boolean;
         };
