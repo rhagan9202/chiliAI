@@ -26,7 +26,7 @@ export function PackSwitcher() {
   }
 
   if (packsQuery.isError || !packsQuery.data) {
-    return <ErrorState description="Domain packs could not be loaded. Pack management requires the admin role and a running backend." />
+    return <ErrorState description="Domain packs could not be loaded. Switching packs requires the administrator role." />
   }
 
   const { packs, active, generation } = packsQuery.data

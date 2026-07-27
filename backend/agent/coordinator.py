@@ -37,6 +37,7 @@ from agent.policy import (
 )
 from agent.status_projection import project_document_status
 from agent.workflow_tracking import WorkflowEventTracker
+from config.display import entity_display_label
 from config.loader import load_active_config
 from config.schema import (
     AnalyticsConfig,
@@ -429,6 +430,7 @@ class WorkerDependencies:
     explainability_service: ExplainabilityService
     monitoring_service: MonitoringService
     records_config: RecordsConfig
+    domain_config: DomainConfig
     raw_record_store: RawRecordStore
     derived_signal_store: DerivedRiskSignalWriterProtocol
     observation_writer: ObservationWriter
@@ -1235,6 +1237,7 @@ def build_worker_dependencies() -> WorkerDependencies:
         explainability_service=explainability_service,
         monitoring_service=monitoring_service,
         records_config=records_config,
+        domain_config=config,
         raw_record_store=raw_record_store,
         derived_signal_store=derived_signal_store,
         observation_writer=observation_writer,
@@ -2081,6 +2084,7 @@ def handle_graph_updated_for_analytics(
     entity_metric_repository: EntityMetricRepository | None = None,
     metrics_throttle: MetricsRecomputeThrottle | None = None,
     gnn_cluster_store: ClusterSummaryStoreProtocol | None = None,
+    domain_config: DomainConfig | None = None,
     is_cancelled: Callable[[], bool] | None = None,
 ) -> int:
     """Run Flow B (GNN -> risk -> explainability -> alerts.created).
@@ -2172,6 +2176,7 @@ def handle_graph_updated_for_analytics(
                 risk_response=risk_response,
                 evidence_pack_repository=evidence_pack_repository,
                 event_bus=event_bus,
+                domain_config=domain_config,
             )
             if alert_reference is not None:
                 alerts.append(alert_reference)
@@ -2333,6 +2338,33 @@ def _run_risk_stage(
         return None
 
 
+def _resolve_entity_label(
+    *,
+    graph_service: GraphService,
+    knowledge_base_id: str,
+    entity_id: str,
+    domain_config: DomainConfig | None,
+) -> str:
+    """Human name for an alert's subject, or its id when nothing can name it.
+
+    Costs one keyed graph read per alert, which is negligible next to the GNN,
+    risk and explainability work already done for the same entity — and without
+    it the alert feed shows an internal handle where the workbench shows the
+    configured display field (UXA-304).
+    """
+
+    if domain_config is None:
+        return entity_id
+    try:
+        entity = graph_service.get_entity([knowledge_base_id], entity_id)
+    except GraphError:
+        # A naming lookup must never cost the alert itself.
+        return entity_id
+    if entity is None:
+        return entity_id
+    return entity_display_label(entity, domain_config)
+
+
 def _run_explainability_stage(
     *,
     event: GraphUpdatedEvent,
@@ -2343,6 +2375,7 @@ def _run_explainability_stage(
     risk_response: RiskAssessmentResponse,
     event_bus: EventBus,
     evidence_pack_repository: EvidencePackRepository | None = None,
+    domain_config: DomainConfig | None = None,
 ) -> AlertCreatedReference | None:
     alert_id = f"alert-{entity_id}-{risk_response.request_id}"
     try:
@@ -2379,6 +2412,13 @@ def _run_explainability_stage(
                 exc,
             )
 
+    entity_label = _resolve_entity_label(
+        graph_service=graph_service,
+        knowledge_base_id=knowledge_base_id,
+        entity_id=entity_id,
+        domain_config=domain_config,
+    )
+
     return AlertCreatedReference(
         knowledge_base_id=knowledge_base_id,
         alert_id=response.alert_id,
@@ -2387,15 +2427,11 @@ def _run_explainability_stage(
         severity=risk_response.risk_level,
         evidence_pack_id=response.evidence_pack.id,
         status="open",
-        title=f"{risk_response.risk_level.title()} risk: {entity_id}",
+        # Both the title and the label name the entity the way the active pack
+        # does, so an analyst reads the same subject on every surface.
+        title=f"{risk_response.risk_level.title()} risk: {entity_label}",
         reasoning=response.evidence_pack.reasoning,
-        # entity_label: no display value is cheaply in scope here. The only
-        # entity read happens inside build_explanation_context (a private
-        # local `focal_entity`, not surfaced on ExplanationContext/Alert), so
-        # threading a real label through would require either widening the
-        # ExplanationContext/Alert public contract or a second graph read —
-        # both out of scope for this task. Falls back to entity_id.
-        entity_label=entity_id,
+        entity_label=entity_label,
         confidence=risk_response.overall_score,
         tags=[factor.factor_name.replace("_", "-") for factor in risk_response.factors[:3]],
     )
@@ -2965,6 +3001,7 @@ def handle_records_ingested(
     *,
     records_config: RecordsConfig,
     raw_record_store: RawRecordStore,
+    domain_config: DomainConfig | None = None,
     graph_service: GraphService,
     observation_writer: ObservationWriter,
     embeddings_service: EmbeddingsServiceProtocol | None = None,
@@ -3211,6 +3248,7 @@ def handle_records_ingested(
                 entity_metric_repository=entity_metric_repository,
                 metrics_throttle=graph_metrics_throttle,
                 gnn_cluster_store=gnn_cluster_store,
+                domain_config=domain_config,
                 is_cancelled=is_cancelled,
             )
         except Exception as exc:  # noqa: BLE001 - analytics must not re-run Flow 1
@@ -3740,6 +3778,7 @@ def handle_event(
     explainability_service: ExplainabilityService | None = None,
     monitoring_service: MonitoringService | None = None,
     records_config: RecordsConfig | None = None,
+    domain_config: DomainConfig | None = None,
     raw_record_store: RawRecordStore | None = None,
     observation_writer: ObservationWriter | None = None,
     policy_service: PolicyService | None = None,
@@ -3805,6 +3844,7 @@ def handle_event(
             explainability_service=explainability_service,
             monitoring_service=monitoring_service,
             records_config=records_config,
+            domain_config=domain_config,
             raw_record_store=raw_record_store,
             observation_writer=observation_writer,
             policy_service=policy_service,
@@ -3854,6 +3894,7 @@ def _dispatch_event(
     explainability_service: ExplainabilityService | None,
     monitoring_service: MonitoringService | None,
     records_config: RecordsConfig | None,
+    domain_config: DomainConfig | None,
     raw_record_store: RawRecordStore | None,
     observation_writer: ObservationWriter | None,
     policy_service: PolicyService | None,
@@ -3944,6 +3985,7 @@ def _dispatch_event(
                     entity_metric_repository=entity_metric_repository,
                     metrics_throttle=metrics_throttle,
                     gnn_cluster_store=gnn_cluster_store,
+                    domain_config=domain_config,
                     is_cancelled=is_cancelled,
                 )
             except Exception as exc:  # noqa: BLE001 - analytics must not re-run Flow A
@@ -4025,6 +4067,7 @@ def _dispatch_event(
         return handle_records_ingested(
             event,
             records_config=records_config,
+            domain_config=domain_config,
             raw_record_store=raw_record_store,
             graph_service=graph_service,
             observation_writer=observation_writer,
@@ -4217,6 +4260,7 @@ async def drain_ingestion_events(
     explainability_service: ExplainabilityService | None = None,
     monitoring_service: MonitoringService | None = None,
     records_config: RecordsConfig | None = None,
+    domain_config: DomainConfig | None = None,
     raw_record_store: RawRecordStore | None = None,
     observation_writer: ObservationWriter | None = None,
     policy_service: PolicyService | None = None,
@@ -4302,6 +4346,7 @@ async def drain_ingestion_events(
                 explainability_service=explainability_service,
                 monitoring_service=monitoring_service,
                 records_config=records_config,
+                domain_config=domain_config,
                 raw_record_store=raw_record_store,
                 observation_writer=observation_writer,
                 policy_service=policy_service,
@@ -4431,6 +4476,7 @@ async def _drain_once(
         explainability_service=deps.explainability_service,
         monitoring_service=deps.monitoring_service,
         records_config=deps.records_config,
+        domain_config=deps.domain_config,
         raw_record_store=deps.raw_record_store,
         kb_deletion_stores=deps.kb_deletion_stores,
         kb_repository=deps.kb_repository,

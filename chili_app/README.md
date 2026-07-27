@@ -59,8 +59,12 @@ indicator, and a bounded list of rejected-row reasons.
 Routes are defined in `src/app/router.tsx`. `AppProviders` wraps the app with
 `QueryClientProvider` + `SessionProvider`, and the `/` route tree is wrapped in
 `<AuthGuard><AppShell /></AuthGuard>`; unauthenticated requests redirect to
-`/login`. A catch-all under `/` renders `<PagePlaceholder>` for any
-domain-configured page id that doesn't yet have a built component.
+`/login`. A catch-all under `/` renders `<NotFoundPage>`, which reads the
+active pack's configured routes to choose between two very different messages:
+"Not available yet" for a page id the pack declares but the SPA has not built,
+and "Page not found" for the far more common mistyped or stale address. Both
+offer a way back (UXA-301) — before, every unknown URL claimed to be
+"registered in the active domain config", which was untrue for a typo.
 
 **Routes are gated by the active domain pack, not just hidden from navigation.**
 `PACK_PAGE_ROUTES` in `src/app/access.ts` maps each route that corresponds to a
@@ -85,7 +89,7 @@ under the wrong domain.
 | `/alerts` | Alert feed with filters, bulk actions, and realtime status |
 | `/investigation`, `/investigation/:entityId` | Graph workbench |
 | `/cases` | Case management queue |
-| `/knowledge-bases` | Ingestion Studio — knowledge base list (scoped to the active domain by default, with a show-all-domains toggle), detail, document inventory |
+| `/knowledge-bases` | Knowledge Bases — knowledge base list (scoped to the active domain by default, with a show-all-domains toggle), detail, document inventory, ingestion wizard |
 | `/policy` | Policy intelligence item queue |
 | `/housing` | Air Force housing executive dashboard — filter-driven summary band above an Albers CONUS installation health map, status/branch/command filter strip, ranking, status context (see "Housing dashboard" below) |
 | `/scorecards/:runId?kb=<kbId>` | Scorecard run viewer — graded sections, metric health/completeness chips, citations, JSON/Markdown export (see "Housing dashboard" below) |
@@ -388,6 +392,126 @@ nothing. Labels hide below 0.5x zoom, where they would collide into noise, and
 `graphNodeLabel` truncates long ids. The legend renders **above** the canvas
 rather than as an absolute overlay, which used to cover whichever node the
 layout settled in the top-left corner.
+
+## Copy: analyst voice, asserted in tests
+
+User-facing strings are linted, not reviewed by eye. `src/test-utils/userFacingCopy.ts`
+scans every non-test file under `src/` — collecting string literals, template
+literal static spans, and JSX text nodes while blanking comments — and
+`src/__tests__/copyVoice.test.ts` asserts what that copy may not say (UXA-301):
+
+- **No implementation vocabulary**: `adapter`, `backend`, `durable`, `KB-scoped`,
+  `primitive`, `GNN`, `human feedback loop`, `schema-driven`, `hot-swap`,
+  `re-render`, `wired`. Comments are deliberately excluded — implementation
+  notes *should* name adapters and backends.
+- **No release-note voice** (`now reads`, `now uses`, …): the product describes
+  what an analyst can do, not what the software recently learned to do.
+- **One term per concept**: `thread` is banned in favour of `conversation`,
+  which is what the API, the route and the stored records already call it. RAG
+  Chat previously showed "NO ACTIVE THREAD" and "NO ACTIVE CONVERSATION" at once.
+- **No `(s)` pluralization dodge.** Counts go through `countLabel(n, 'alert')`
+  (`src/utils/countLabel.ts`), which agrees in number and groups thousands.
+
+The page at `/knowledge-bases` answers to **one** name. It used to be "Knowledge
+Bases" in the nav, "Ingestion Studio" as the title and "Ingestion Control" as
+the eyebrow; the nav label and the URL win, and the section that picks a KB is
+now titled "Choose a knowledge base" so two headings don't share a name.
+
+`src/utils/knowledgeBaseStatus.ts` names the KB lifecycle for readers. The API's
+`active` is the *empty* state — created, nothing ingested — which reads as the
+healthy one next to `ready`. The UI shows **Empty / Building / Ready / Failed /
+Archived** with a hover hint, while `data-status` keeps the raw value for CSS
+and e2e selectors.
+
+## Entity properties come from the pack
+
+`src/utils/entityProperties.ts` turns an entity's raw property bag into labeled,
+ordered, formatted rows (UXA-302):
+
+- Labels resolve through `PropertyDefinition.display` in the active pack,
+  falling back to a humanized key. Switching packs changes every label with no
+  frontend change — asserted end to end in `e2e/investigation-workbench.spec.ts`.
+- Order follows the pack's declaration order, not `Object.keys`. The dossier
+  used to show four alphabetically-first keys, which cut NPI and organization
+  name — the identifying fields — in favour of `deactivation_date`.
+- The `title`/`subtitle` fields are dropped: the dossier header already renders
+  them, and repeating them crowded out everything else.
+- Values format by `PropertyType` — dates as `Jan 15, 2026` (fixed locale, UTC,
+  and a deliberately strict ISO parse so `"sometime in 2020"` is never silently
+  rendered as 1 Jan), decimals to two places, integers grouped, booleans as
+  Yes/No.
+- Everything past the leading fields sits behind one **Show all N properties**
+  control instead of being silently truncated, and rows render as a `<dl>` —
+  chip styling made non-interactive facts look like filters you could click.
+
+## Empty states
+
+Every empty screen says what to do next, and says the *right* thing for the
+state it is actually in (UXA-305):
+
+- **Filtered to nothing vs nothing yet** are different problems. Cases compares
+  the filtered list against the full one; Policy (filtered server-side) keys
+  off whether a status filter is active. The first offers *Clear filter*, the
+  second points at where the data would come from.
+- **`EmptyKnowledgeBaseNotice`** warns on RAG Chat and the workbench when the
+  selected knowledge base has no documents *and* no entities — before the
+  question is asked, rather than after it returns nothing.
+- **The risk-unavailable reason is stated once**, in the dossier header beside
+  the badge it qualifies. It used to appear there, again as the Signals-tab
+  empty-state description, and a third time as that panel's title.
+- **`AnomalyTrendPanel` takes `entitySelected`** so it stops saying "Select an
+  entity to load its trend" while an entity is selected.
+- **The Dashboard header names the knowledge base** it is reporting on. It used
+  to show a chip repeating the domain title already in the top bar, which told
+  an analyst nothing about which corpus the numbers describe.
+
+## The alert card
+
+A triage card answers three questions, each exactly once (UXA-303):
+
+- **What is wrong** — `alert.title` is the headline. The card used to render
+  only `entity_label`, so an analyst saw the subject but never the finding.
+- **Who it happened to** — `entity_label` is the subject line beneath it.
+- **How old it is** — `relativeAge` / `absoluteTime` (`src/utils/relativeTime.ts`,
+  fixed locale, UTC) render "3h ago" with the exact timestamp on hover. A
+  triage queue with no alert age is missing its most important sort key.
+
+The severity-coloured numeral is **confidence**, and now says so. It used to
+sit unlabeled — sized and coloured like a risk score — with the same number
+repeated in a `ConfidenceBar` below; the bar is gone. On the evidence panel the
+pack's own confidence is labeled "Evidence confidence" with a hover note on how
+it differs from the alert's, and raw score keys (`peer_deviation`) are
+humanized.
+
+Tags render once, in the mono flag label. The card also mapped every tag to a
+chip, so BILLING appeared twice.
+
+One action carries `page-button--primary` (asserted for contrast in
+`src/theme/__tests__/contrast.test.ts`); the rest are secondary. `.page-button`
+now sets `text-decoration: none` and `inline-flex` so an anchor and a `<button>`
+read as the same control — "Investigate entity" was an underlined link sitting
+among four buttons. A true overflow menu was **not** built: it would hide
+Acknowledge and Promote to case, the queue's two disposition actions, behind an
+extra click. The AC — one visually primary action at every viewport — is met
+without it, and `e2e/layout-overflow.spec.ts` covers 1280–1920px.
+
+## One entity, one name
+
+`getEntityTitle` (`src/utils/domainDisplay.ts`) is the single display-name
+ladder: the pack's configured `title` property, then a `name` property, then
+`"<type display label> <id>"`. The last rung is deliberately not a bare id — an
+id alone reads as an internal handle, which is what UXA-304 was filed about.
+
+The same ladder exists in `backend/config/display.py::entity_display_label`,
+because alerts store the name they were raised with. **Change both together.**
+`e2e/entity-name-consistency.spec.ts` asserts they agree by clicking
+"Investigate <name>" on the alert feed and checking the workbench `h1` matches.
+
+Surfaces that use it: the workbench heading and dossier, graph node labels
+(`GraphCanvas`'s `labelFor` prop — pass a `useCallback`-stable function or the
+force layout rebuilds every paint), the evidence-pack subgraph, and the AI
+Investigator rail. The rail used to print `Alert context: ede44288-b501-…`;
+it now names the alert and its subject, with the identifier on hover.
 
 ## Colour contrast
 

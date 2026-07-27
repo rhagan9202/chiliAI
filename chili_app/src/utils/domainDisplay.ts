@@ -8,23 +8,27 @@ export function getRelationshipTypeLabel(relationshipType: string, config: Domai
   return config.relationships.find((relationship) => relationship.name === relationshipType)?.display_label ?? relationshipType
 }
 
+/**
+ * The one name an entity answers to, everywhere.
+ *
+ * Mirrors `backend/config/display.py::entity_display_label`: the configured
+ * title property, then a `name` property, then the entity type's label plus
+ * its id. The last rung is deliberately not a bare id — an id alone reads as
+ * an internal handle, which is what UXA-304 was filed about. Change both
+ * implementations together.
+ */
 export function getEntityTitle(entity: RuntimeEntity, config: DomainConfig) {
   const fieldName = config.ui?.display_fields?.[entity.type]?.title
-  return propertyText(entity, fieldName) ?? propertyText(entity, 'name') ?? entity.id
+  return (
+    propertyText(entity, fieldName) ??
+    propertyText(entity, 'name') ??
+    `${getEntityTypeLabel(entity.type, config)} ${entity.id}`
+  )
 }
 
 export function getEntitySubtitle(entity: RuntimeEntity, config: DomainConfig) {
   const fieldName = config.ui?.display_fields?.[entity.type]?.subtitle
   return propertyText(entity, fieldName)
-}
-
-export function getEntityChips(entity: RuntimeEntity, config: DomainConfig) {
-  const configuredFields = config.ui?.display_fields?.[entity.type]?.chips ?? []
-  const fields = configuredFields.length > 0 ? configuredFields : Object.keys(entity.properties).slice(0, 4)
-  return fields.flatMap((fieldName) => {
-    const value = propertyText(entity, fieldName)
-    return value ? [`${fieldName}: ${value}`] : []
-  })
 }
 
 export function propertyText(entity: RuntimeEntity, fieldName: string | undefined) {

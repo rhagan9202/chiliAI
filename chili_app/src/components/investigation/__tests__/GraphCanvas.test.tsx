@@ -28,6 +28,7 @@ vi.mock('react-force-graph-2d', () => ({
               type="button"
               data-testid={`graph-node-${node.id}`}
               data-color={nodeColor?.(node) ?? ''}
+              data-label={node.label}
               onClick={() => onNodeClick?.(node)}
             >
               {node.entity.type}:{node.id}
@@ -245,6 +246,38 @@ describe('GraphCanvas', () => {
     expect(link.dataset.predicted).toBe('true')
     expect(link.dataset.dash).toBe(JSON.stringify([4, 3]))
     expect(link.dataset.label).toContain('0.7')
+  })
+
+  it('labels nodes by entity id when the caller supplies no resolver', () => {
+    setRectMock()
+    render(
+      <GraphCanvas
+        subgraph={makeSubgraph()}
+        selectedEntityId={null}
+        onSelectNode={() => undefined}
+        entityTypes={['Provider', 'Beneficiary', 'Claim']}
+      />,
+    )
+
+    expect(screen.getByTestId('graph-node-e1')).toHaveAttribute('data-label', 'e1')
+  })
+
+  it("labels nodes through the caller's resolver so the graph agrees with the dossier", () => {
+    setRectMock()
+    render(
+      <GraphCanvas
+        subgraph={makeSubgraph()}
+        selectedEntityId={null}
+        onSelectNode={() => undefined}
+        entityTypes={['Provider', 'Beneficiary', 'Claim']}
+        labelFor={(entity) => `Name of ${entity.id}`}
+      />,
+    )
+
+    expect(screen.getByTestId('graph-node-e1')).toHaveAttribute(
+      'data-label',
+      'Name of e1',
+    )
   })
 
   it('applies the highlight ring color to entities in highlightedEntityIds', () => {

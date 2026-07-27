@@ -99,9 +99,9 @@ export function ActivePackEditor() {
     <Card>
       <div className="config-manager__editor" data-testid="active-pack-editor">
         <p className={styles.deviationNote}>
-          Edits here are dry-run validated against the full domain-pack schema. Apply re-validates
-          and re-applies the active pack from disk and hot-swaps the workspace — it does not
-          persist browser-side edits.
+          Check runs your edit against the full pack definition and reports what would break.
+          Apply re-reads the pack from disk and puts it into effect — edits made here in the
+          browser are not saved.
         </p>
         <YamlEditor
           ariaLabel="Active domain pack editor"

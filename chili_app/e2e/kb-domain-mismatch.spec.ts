@@ -94,7 +94,7 @@ test.describe('KB domain mismatch warning', () => {
     try {
       // --- Create a KB through the real UI under the original domain. ---
       await page.goto('/knowledge-bases')
-      await expect(page.getByRole('heading', { name: 'Ingestion Studio' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Knowledge Bases' })).toBeVisible()
 
       await page.getByLabel(/knowledge base name/i).fill(kbName)
       await page.getByLabel(/^description$/i).fill('Created before a domain swap (e2e).')
@@ -120,7 +120,7 @@ test.describe('KB domain mismatch warning', () => {
 
       // --- The KB now warns, and nothing is blocked. ---
       await page.reload()
-      await expect(page.getByRole('heading', { name: 'Ingestion Studio' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Knowledge Bases' })).toBeVisible()
 
       // The studio scopes the KB list to the active domain by default, so the
       // mismatched KB is hidden until the show-all-domains toggle reveals it.

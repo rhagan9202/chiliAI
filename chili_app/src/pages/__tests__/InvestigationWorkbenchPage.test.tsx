@@ -348,7 +348,29 @@ describe('InvestigationWorkbenchPage', () => {
     // dossier header now renders type label + subtitle joined in one
     // flag-label line, so this asserts the combined text instead.
     expect(within(dossierHeader).getByText('Provider · Pain Management')).toBeInTheDocument()
-    expect(screen.getByText('state: WA')).toBeInTheDocument()
+    // Properties render as labeled facts (UXA-302), not `key: value` chips.
+    expect(within(dossierHeader).getByText('State')).toBeInTheDocument()
+    expect(within(dossierHeader).getByText('WA')).toBeInTheDocument()
+  })
+
+  it('states an unavailable risk profile once, not three times', () => {
+    // The reason appeared as dossier body copy, again as the Signals-tab
+    // empty-state description, and a third time as its "No risk score"
+    // eyebrow — all above a CRITICAL badge (UXA-305).
+    // riskAvailable defaults to false in beforeEach.
+    selectLiveProvider()
+
+    renderInvestigationWorkbench()
+
+    expect(screen.getAllByText(/no risk profile has been generated/i)).toHaveLength(1)
+  })
+
+  it('does not tell an analyst to select an entity while one is selected', () => {
+    selectLiveProvider()
+
+    renderInvestigationWorkbench()
+
+    expect(screen.queryByText(/select an entity to load its trend/i)).not.toBeInTheDocument()
   })
 
   it('passes active knowledge base scope into analytics queries', () => {
@@ -367,13 +389,18 @@ describe('InvestigationWorkbenchPage', () => {
     expect(screen.queryByText('Risk pressure trend')).not.toBeInTheDocument()
   })
 
-  it('renders unavailable risk analytics without a reason as the fallback empty state', () => {
+  it('renders unavailable risk analytics with a next step, not a restated reason', () => {
     selectLiveProvider()
     mocks.riskUnavailableReason = null
 
     renderInvestigationWorkbench()
 
-    expect(screen.getByText(/Risk scoring is unavailable until an entity is selected and analytics respond/i)).toBeInTheDocument()
+    // The panel offers what to do about it; the reason (when there is one)
+    // lives once in the dossier header (UXA-305).
+    expect(screen.getByText(/Risk factors appear once analytics have scored this entity/i)).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Add data to this knowledge base' }),
+    ).toBeInTheDocument()
     // "Composite risk" was the old metric-row label for the RiskBadge in the
     // pre-restructure entity Card; it no longer exists anywhere on the page
     // (the dossier header shows a risk numeral instead) so this assertion is

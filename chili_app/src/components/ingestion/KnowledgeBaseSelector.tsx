@@ -1,6 +1,8 @@
 import type { FormEvent } from 'react'
 
 import type { KnowledgeBaseStatus, KnowledgeBaseSummaryResponse } from '../../api/contracts'
+import { countLabel } from '../../utils/countLabel'
+import { knowledgeBaseStatusLabel } from '../../utils/knowledgeBaseStatus'
 import { KbDomainBadge } from '../knowledgebase/KbDomainBadge'
 import { Chip } from '../ui/Chip'
 import { EmptyState } from '../ui/EmptyState'
@@ -28,10 +30,6 @@ type KnowledgeBaseSelectorProps = {
   onToggleShowAllDomains?: () => void
   /** Whether the list currently includes knowledge bases from all domains. */
   showAllDomains?: boolean
-}
-
-function countLabel(count: number) {
-  return `${count} ${count === 1 ? 'knowledge base' : 'knowledge bases'}`
 }
 
 function toneForKnowledgeBaseStatus(status: KnowledgeBaseStatus) {
@@ -78,10 +76,13 @@ export function KnowledgeBaseSelector({
   return (
     <section className="ingestion-kb-selector" aria-labelledby="ingestion-kb-selector-title">
       <div className="ingestion-kb-selector__header">
+        {/* Named for its job, not its contents: the page itself is already
+            called Knowledge Bases, and two headings by that name are two
+            things with one name. */}
         <h2 id="ingestion-kb-selector-title" className="ingestion-kb-selector__title">
-          Knowledge bases
+          Choose a knowledge base
         </h2>
-        <Chip label={countLabel(knowledgeBases.length)} tone="info" />
+        <Chip label={countLabel(knowledgeBases.length, 'knowledge base')} tone="info" />
       </div>
 
       {hiddenDomainCount > 0 ? (
@@ -123,11 +124,11 @@ export function KnowledgeBaseSelector({
                 </span>
                 <span className="ingestion-kb-list__meta">
                   <Chip
-                    label={knowledgeBase.status}
+                    label={knowledgeBaseStatusLabel(knowledgeBase.status)}
                     tone={toneForKnowledgeBaseStatus(knowledgeBase.status)}
                   />
-                  <Chip label={`${knowledgeBase.document_count} docs`} tone="default" />
-                  <Chip label={`${knowledgeBase.entity_count} entities`} tone="network" />
+                  <Chip label={countLabel(knowledgeBase.document_count, 'document')} tone="default" />
+                  <Chip label={countLabel(knowledgeBase.entity_count, 'entity', 'entities')} tone="network" />
                   <KbDomainBadge
                     activeDomainName={activeDomainName}
                     kbDomain={knowledgeBase.domain ?? null}

@@ -1,5 +1,5 @@
 /**
- * Ingestion Studio — structured records flow (full stack, BL-013).
+ * Knowledge Bases — structured records flow (full stack, BL-013).
  *
  * Drives the records source path end-to-end against the real API/worker:
  * pick the Structured Records source, select the config-defined
@@ -26,21 +26,21 @@ const CARRIER_CLAIMS_CSV = [
   '',
 ].join('\n')
 
-test.describe('Ingestion Studio records flow', () => {
+test.describe('Knowledge Bases records flow', () => {
   test('uploads a CSV through the carrier_claims_a feed and shows a success receipt', async ({
     page,
   }) => {
     const kb = seeded().knowledge_base_id
     await page.goto(`/knowledge-bases?kb=${kb}`)
 
-    await expect(page.getByRole('heading', { name: 'Ingestion Studio' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Knowledge Bases' })).toBeVisible()
 
     // The ?kb= deep-link must actually bind the selection: uploading into
     // whatever KB happens to sort first would pollute real data (e.g. the TN
     // demo KB) and hit its workflow-in-progress guard. Fail fast instead.
     await expect(
       page
-        .getByRole('region', { name: 'Knowledge bases' })
+        .getByRole('region', { name: 'Choose a knowledge base' })
         .getByRole('button', { name: /E2E Seed KB/, pressed: true }),
     ).toBeVisible()
 

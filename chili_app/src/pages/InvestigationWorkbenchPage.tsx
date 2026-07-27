@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+
+import type { RuntimeEntity } from '../api/contracts'
+import type { Entity as ApiEntity } from '../types/api'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { useAlerts } from '../api/alerts'
@@ -15,6 +18,7 @@ import { AnomalyTrendPanel } from '../components/investigation/AnomalyTrendPanel
 import { ClusterMembershipPanel } from '../components/investigation/ClusterMembershipPanel'
 import { EntityDossierHeader } from '../components/investigation/EntityDossierHeader'
 import { EntityPolicyPanel } from '../components/investigation/EntityPolicyPanel'
+import { EmptyKnowledgeBaseNotice } from '../components/knowledgebase/EmptyKnowledgeBaseNotice'
 import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { GraphCanvas } from '../components/investigation/GraphCanvas'
 import { SignalBand } from '../components/investigation/SignalBand'
@@ -32,6 +36,7 @@ import {
   getEntityTypeLabel,
 } from '../utils/domainDisplay'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
+import { knowledgeBaseStatusLabel } from '../utils/knowledgeBaseStatus'
 import { severityTone } from '../utils/severity'
 import { toSubgraphResult } from '../utils/subgraph'
 import { SectionHeader } from '../components/ui/SectionHeader'
@@ -80,6 +85,13 @@ export function InvestigationWorkbenchPage() {
     () => alertsQuery.data?.items.find((alert) => alert.entity_id === selectedEntityId) ?? null,
     [alertsQuery.data?.items, selectedEntityId],
   )
+  // Stable across renders so the force layout is not rebuilt on every paint.
+  const domainConfig = domainConfigQuery.data ?? null
+  const labelForNode = useCallback(
+    (node: ApiEntity) =>
+      domainConfig ? getEntityTitle(node as unknown as RuntimeEntity, domainConfig) : node.id,
+    [domainConfig],
+  )
   const evidenceQuery = useEvidencePack(selectedAlert?.evidence_pack_id ?? null, activeKnowledgeBaseId)
 
   if (domainConfigQuery.isLoading || knowledgeBasesLoading || alertsQuery.isLoading) {
@@ -87,7 +99,7 @@ export function InvestigationWorkbenchPage() {
   }
 
   if (domainConfigQuery.isError || knowledgeBasesError || alertsQuery.isError) {
-    return <ErrorState description="Investigation data could not be loaded from the backend." />
+    return <ErrorState description="This investigation could not be loaded. Try again, or search for another entity." />
   }
 
   if (!domainConfigQuery.data || !alertsQuery.data) {
@@ -157,8 +169,12 @@ export function InvestigationWorkbenchPage() {
       <SectionHeader
         actions={selectedAlert ? <Chip label={selectedAlert.severity} tone={severityTone(selectedAlert.severity)} /> : undefined}
         eyebrow="Entity workbench"
-        subtitle="Search the active knowledge base, load an entity, and inspect its live graph neighborhood through backend graph adapters."
+        subtitle="Follow one subject through its connections: who it deals with, how often, and what the risk and policy signals say."
         title={entityTitle}
+      />
+
+      <EmptyKnowledgeBaseNotice
+        knowledgeBase={knowledgeBases.find((kb) => kb.id === activeKnowledgeBaseId) ?? null}
       />
 
       <div className="workbench-layout">
@@ -181,7 +197,7 @@ export function InvestigationWorkbenchPage() {
                 >
                   {knowledgeBases.map((knowledgeBase) => (
                     <option key={knowledgeBase.id} value={knowledgeBase.id}>
-                      {knowledgeBase.name} · {knowledgeBase.status}
+                      {knowledgeBase.name} · {knowledgeBaseStatusLabel(knowledgeBase.status)}
                     </option>
                   ))}
                 </select>
@@ -272,6 +288,7 @@ export function InvestigationWorkbenchPage() {
                   <div className="dashboard-panels">
                     {capabilities?.timeseries ? (
                       <AnomalyTrendPanel
+                        entitySelected={Boolean(entity)}
                         timeseries={timeseriesAvailability.unavailable ? null : timeseries}
                         unavailableReason={timeseriesAvailability.reason}
                       />
@@ -287,9 +304,21 @@ export function InvestigationWorkbenchPage() {
                             <ConfidenceBar value={Math.round(factor.contribution * 100)} />
                           </div>
                         )) : (
+                          // The reason is stated once, in the dossier header
+                          // beside the badge it qualifies. Repeating it here
+                          // (and again as this panel's title) is what made one
+                          // screen say it three times (UXA-305).
                           <EmptyState
-                            description={riskAvailability.reason ?? 'Risk scoring is unavailable until an entity is selected and analytics respond.'}
-                            title="No risk score"
+                            action={
+                              <Link
+                                className="page-button page-button--sm"
+                                to={`/knowledge-bases?kb=${encodeURIComponent(activeKnowledgeBaseId ?? '')}`}
+                              >
+                                Add data to this knowledge base
+                              </Link>
+                            }
+                            description="Risk factors appear once analytics have scored this entity."
+                            title="No risk factors"
                           />
                         )}
                       </div>
@@ -330,6 +359,7 @@ export function InvestigationWorkbenchPage() {
                               clusterMode={clusterMode}
                               entityTypes={domainConfigQuery.data.entities.map((e) => e.name)}
                               highlightedEntityIds={selectedCluster?.entity_ids}
+                              labelFor={labelForNode}
                               onSelectNode={navigateToEntity}
                               selectedEntityId={entity.id}
                               subgraph={toSubgraphResult(neighborhood.entities, neighborhood.relationships)}
@@ -369,6 +399,7 @@ export function InvestigationWorkbenchPage() {
                   {evidenceQuery.data ? (
                     <EvidencePackViewer
                       entityTypes={domainConfigQuery.data.entities.map((e) => e.name)}
+                      labelFor={labelForNode}
                       onSelectNode={navigateToEntity}
                       pack={evidenceQuery.data}
                       selectedEntityId={selectedEntityId}

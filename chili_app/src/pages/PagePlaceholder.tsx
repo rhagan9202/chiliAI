@@ -11,7 +11,8 @@ export function PagePlaceholder({ title, eyebrow, children }: PagePlaceholderPro
     <section className="page-placeholder">
       <div className="page-placeholder__accent" aria-hidden="true" />
       <div className="page-placeholder__eyebrow">{eyebrow}</div>
-      <h2 className="page-placeholder__title">{title}</h2>
+      {/* The placeholder is the whole page, so its title owns the h1. */}
+      <h1 className="page-placeholder__title">{title}</h1>
       <div className="page-placeholder__body">{children}</div>
     </section>
   )

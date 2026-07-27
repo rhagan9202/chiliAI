@@ -12,13 +12,13 @@ test.describe('RAG chat', () => {
     await page.goto(`/rag-chat?kb=${kb}`)
 
     await expect(page.getByRole('heading', { name: 'RAG Chat' })).toBeVisible()
-    await page.getByRole('button', { name: 'New thread' }).click()
+    await page.getByRole('button', { name: 'New conversation' }).click()
 
     await page
       .getByPlaceholder('Ask the investigation assistant about an entity, alert, or evidence trail')
       .fill('Why is provider-1 risky?')
 
-    // The Send button enables once the conversation is created (New thread is async).
+    // The Send button enables once the conversation is created (New conversation is async).
     const send = page.getByRole('button', { name: 'Send', exact: true })
     await expect(send).toBeEnabled()
     await send.click()

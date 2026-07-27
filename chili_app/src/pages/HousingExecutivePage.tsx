@@ -39,6 +39,7 @@ import {
 } from '../data/airForceInstallations'
 import { buildRagChatUrl } from '../lib/ragContext'
 import './pages.css'
+import { countLabel } from '../utils/countLabel'
 
 const STATUS_TONE: Record<HousingInstallationResponse['status'], 'default' | 'success' | 'warning' | 'danger'> = {
   ok: 'success',
@@ -235,8 +236,8 @@ export function HousingExecutivePage() {
             <Chip
               label={
                 referenceMode
-                  ? `${installations.length} public locations`
-                  : `${installationsPayload?.total ?? installations.length} installations`
+                  ? countLabel(installations.length, 'public location')
+                  : countLabel(installationsPayload?.total ?? installations.length, 'installation')
               }
               tone="info"
             />
@@ -414,7 +415,7 @@ export function HousingExecutivePage() {
         <div className="metric-stack">
           <div className="metric-row">
             <strong>Installation ranking</strong>
-            <Chip label={`${filteredInstallations.length} rows`} tone="info" />
+            <Chip label={countLabel(filteredInstallations.length, 'row')} tone="info" />
           </div>
           {filteredInstallations.length === 0 && filtersActive ? (
             <EmptyState

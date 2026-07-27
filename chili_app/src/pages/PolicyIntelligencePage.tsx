@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router'
 
 import { usePolicyItem, usePolicyItems, useTriagePolicyItem } from '../api/policy'
 import type { PolicyItemStatus, PolicyTriageRequest } from '../api/contracts'
@@ -11,6 +12,7 @@ import { FilterBar } from '../components/ui/FilterBar'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
+import { countLabel } from '../utils/countLabel'
 import { severityTone } from '../utils/severity'
 import './pages.css'
 
@@ -54,7 +56,7 @@ export function PolicyIntelligencePage() {
   }
 
   if (knowledgeBasesError) {
-    return <ErrorState description="Knowledge base inventory could not be loaded from the backend." />
+    return <ErrorState description="Your knowledge bases could not be loaded. Try again in a moment." />
   }
 
   if (!knowledgeBaseId) {
@@ -62,7 +64,7 @@ export function PolicyIntelligencePage() {
       <section className="page-grid">
         <SectionHeader
           actions={<Chip label="No knowledge base" tone="default" />}
-          eyebrow="Policy knowledge graph"
+          eyebrow="Rule findings"
           subtitle="Create or select a knowledge base to review its policy items."
           title="Policy Intelligence"
         />
@@ -81,7 +83,7 @@ export function PolicyIntelligencePage() {
   }
 
   if (itemsQuery.isError) {
-    return <ErrorState description="Policy intelligence data could not be loaded from the backend." />
+    return <ErrorState description="Policy items could not be loaded. Try again in a moment." />
   }
 
   const handleTriage = (action: PolicyTriageRequest['action']) => {
@@ -103,9 +105,9 @@ export function PolicyIntelligencePage() {
   return (
     <section className="page-grid">
       <SectionHeader
-        actions={<Chip label={`${itemsQuery.data?.total ?? items.length} items`} tone="info" />}
-        eyebrow="Policy knowledge graph"
-        subtitle="Configured rule packs generate durable, KB-scoped policy items for analyst triage."
+        actions={<Chip label={countLabel(itemsQuery.data?.total ?? items.length, 'item')} tone="info" />}
+        eyebrow="Rule findings"
+        subtitle="Decide what the configured rules found: accept a finding, reject it, defer it, or escalate it to an investigation."
         title="Policy Intelligence"
       />
 
@@ -135,7 +137,36 @@ export function PolicyIntelligencePage() {
               </button>
             ))}
             {items.length === 0 ? (
-              <EmptyState description="No policy items match the current filter." title="Empty queue" />
+              // The queue is filtered server-side, so an active status filter
+              // is the only thing that distinguishes "hidden" from "absent".
+              statusFilter !== 'all' ? (
+                <EmptyState
+                  action={
+                    <button
+                      className="page-button page-button--sm"
+                      onClick={() => setStatusFilter('all')}
+                      type="button"
+                    >
+                      Clear filter
+                    </button>
+                  }
+                  description={`No policy items are ${statusFilter}. Clear the filter to see the rest of the queue.`}
+                  title="No items match this filter"
+                />
+              ) : (
+                <EmptyState
+                  action={
+                    <Link
+                      className="page-button page-button--sm page-button--primary"
+                      to={`/knowledge-bases?kb=${encodeURIComponent(knowledgeBaseId)}`}
+                    >
+                      Add data to this knowledge base
+                    </Link>
+                  }
+                  description="Policy items appear when the configured rules find something in ingested records. Nothing has matched yet."
+                  title="No policy items yet"
+                />
+              )
             ) : null}
           </div>
         </Card>
@@ -147,7 +178,7 @@ export function PolicyIntelligencePage() {
             </Card>
           ) : itemQuery.isError ? (
             <Card>
-              <ErrorState description="Policy item detail could not be loaded from the backend." />
+              <ErrorState description="This policy item could not be opened. Try again, or pick another item." />
             </Card>
           ) : detail ? (
             <Card>

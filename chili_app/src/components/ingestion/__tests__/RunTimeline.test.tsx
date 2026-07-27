@@ -82,7 +82,7 @@ describe('RunTimeline', () => {
       {
         status: 'running',
         label: 'Running',
-        description: 'The backend is processing this run.',
+        description: 'This run is being processed now.',
       },
       {
         status: 'completed',

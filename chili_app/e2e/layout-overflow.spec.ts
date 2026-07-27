@@ -3,7 +3,7 @@
  *
  * The workbench reserves a fixed 248px sidebar and a 340px AI panel, so the
  * content area is ~588px narrower than the viewport. Page breakpoints keyed off
- * the *viewport* therefore fire far too late: at 1440px the Ingestion Studio
+ * the *viewport* therefore fire far too late: at 1440px the Knowledge Bases
  * grid still resolved to `260px 190px 340px`, squeezing the primary work column
  * to 190px and slicing text inside cards that set `overflow-x: hidden`.
  *
@@ -33,7 +33,7 @@ interface Overflowing {
 const VIEWPORTS = [1280, 1366, 1440, 1600, 1920]
 
 const PAGES = [
-  { name: 'Ingestion Studio', path: (kb: string) => `/knowledge-bases?kb=${kb}` },
+  { name: 'Knowledge Bases', path: (kb: string) => `/knowledge-bases?kb=${kb}` },
   { name: 'Dashboard', path: () => '/dashboard' },
   { name: 'Alert Feed', path: () => '/alerts' },
   { name: 'Cases', path: () => '/cases' },

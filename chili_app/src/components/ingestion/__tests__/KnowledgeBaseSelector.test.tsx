@@ -64,7 +64,7 @@ describe('KnowledgeBaseSelector', () => {
     expect(activeButton).toHaveAttribute('aria-pressed', 'true')
     expect(inactiveButton).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByText('2 knowledge bases')).toBeInTheDocument()
-    expect(screen.getByText('12 docs')).toBeInTheDocument()
+    expect(screen.getByText('12 documents')).toBeInTheDocument()
     expect(screen.getByText('84 entities')).toBeInTheDocument()
   })
 

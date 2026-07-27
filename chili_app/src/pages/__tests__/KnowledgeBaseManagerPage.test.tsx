@@ -460,7 +460,7 @@ function getStepperItem(stepLabel: string): HTMLLIElement {
   return item as HTMLLIElement
 }
 
-describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
+describe('KnowledgeBaseManagerPage ingestion', () => {
   const originalFetch = globalThis.fetch
   const originalXhr = globalThis.XMLHttpRequest
 
@@ -476,10 +476,22 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders the Ingestion Studio shell and existing knowledge base', async () => {
+  it('calls the destination what the sidebar calls it', async () => {
+    // The page used to answer to three names at once — "Knowledge Bases" in the
+    // nav, "Ingestion Studio" as the title, "Ingestion Control" as the eyebrow.
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    expect(await screen.findByText('Ingestion Studio')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/ingestion studio/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/ingestion control/i)).not.toBeInTheDocument()
+  })
+
+  it('renders the ingestion shell and existing knowledge base', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })).toBeInTheDocument()
     expect(screen.getByText('Step 1 — Stage ingestion source')).toBeInTheDocument()
     expect(screen.getByText('Step 2 — Review and run ingestion')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run ingestion' })).toBeInTheDocument()
@@ -493,7 +505,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     installFetchMock({ kbDomain: 'food_supply_chain' })
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
 
     // Scoped by default: the foreign-domain KB is hidden until revealed.
     expect(screen.queryByRole('button', { name: /fraud kb/i })).not.toBeInTheDocument()
@@ -521,7 +533,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     installFetchMock({ kbDomain: 'medicare_fraud' })
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await screen.findAllByText('Fraud KB')
 
     expect(screen.queryByTestId('kb-domain-mismatch')).not.toBeInTheDocument()
@@ -533,7 +545,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     // Default mock leaves kbDomain null (legacy KB created before stamping).
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await screen.findAllByText('Fraud KB')
 
     // List entry + summary card each show the subtle unknown chip, no warning.
@@ -546,7 +558,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     installFetchMock({ kbItems: [medicareKb, housingKb] })
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await screen.findAllByText('Fraud KB')
 
     // Scoped default: the other-domain KB is hidden, with an accurate count.
@@ -566,7 +578,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     installFetchMock({ kbItems: [{ ...medicareKb, domain: null }, housingKb] })
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await screen.findAllByText('Fraud KB')
 
     // Legacy KB stays visible with its unknown badge; the foreign KB is hidden.
@@ -581,7 +593,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     installFetchMock({ kbItems: [housingKb, medicareKb] })
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
 
     // List row + selected-KB summary both show the in-scope KB.
     expect(await screen.findAllByText('Fraud KB')).toHaveLength(2)
@@ -598,7 +610,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     installFetchMock({ kbItems: [secondMedicareKb, medicareKb] })
     renderWithClient(<KnowledgeBaseManagerPage />, ['/knowledge-bases?kb=kb-1'])
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
 
     // List row + selected-KB summary both show the deep-linked KB, not the
     // first-listed one.
@@ -616,7 +628,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     installFetchMock()
     renderWithClient(<KnowledgeBaseManagerPage />, ['/knowledge-bases?kb=does-not-exist'])
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     expect(await screen.findAllByText('Fraud KB')).toHaveLength(2)
   })
 
@@ -624,7 +636,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     installFetchMock({ kbItems: [medicareKb, housingKb] })
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await userEvent.click(
       screen.getByRole('button', { name: 'Show all domains (1 hidden)' }),
     )
@@ -687,7 +699,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
   it('submits documents and stores a receipt in the timeline', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
     await userEvent.upload(
       screen.getByLabelText('Document files'),
@@ -701,7 +713,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
   it('shows next actions after document submission', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
     await userEvent.upload(
       screen.getByLabelText('Document files'),
@@ -718,7 +730,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
   it('navigates to investigation with the selected knowledge base after document submission', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
     await userEvent.upload(
       screen.getByLabelText('Document files'),
@@ -738,7 +750,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
   it('parses and submits records through a configured feed', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await parseValidRecords()
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
@@ -748,7 +760,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
   it('uploads configured file-upload records feeds through the records file endpoint', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await userEvent.click(screen.getByRole('radio', { name: /Structured Records/i }))
     await userEvent.selectOptions(screen.getByLabelText('Records feed'), 'claims_feed')
     await userEvent.upload(
@@ -771,7 +783,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
   it('auto-re-parses when the records file upload draft changes', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await userEvent.click(screen.getByRole('radio', { name: /Structured Records/i }))
     await userEvent.selectOptions(screen.getByLabelText('Records feed'), 'claims_feed')
     await userEvent.upload(
@@ -801,7 +813,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
   it('requires re-parsing after editing pasted api-push records', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await parseValidRecords()
     expect(screen.getByRole('button', { name: 'Run ingestion' })).toBeEnabled()
 
@@ -813,7 +825,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
   it('shows client validation before records submit', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await userEvent.click(screen.getByRole('radio', { name: /Structured Records/i }))
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
@@ -824,11 +836,11 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     installFetchMock({ recordsFail: true })
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await parseValidRecords()
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
-    expect(await screen.findByText('Backend response')).toBeInTheDocument()
+    expect(await screen.findByText('Checked after upload')).toBeInTheDocument()
     expect(screen.getByText('Records backend rejected the file.')).toBeInTheDocument()
   })
 
@@ -836,7 +848,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     installFetchMock({ documentFail: true })
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
     await userEvent.upload(
       screen.getByLabelText('Document files'),
@@ -844,7 +856,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
-    expect(await screen.findByText('Backend response')).toBeInTheDocument()
+    expect(await screen.findByText('Checked after upload')).toBeInTheDocument()
     // Surfaced both in the validation panel and the retryable upload error.
     expect(screen.getAllByText('Unsupported document content type.').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: /retry upload/i })).toBeInTheDocument()
@@ -854,7 +866,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     installFetchMock({ documentFail: true })
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
     await userEvent.upload(
       screen.getByLabelText('Document files'),
@@ -875,18 +887,18 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
     installFetchMock({ structuredRecordsFail: true })
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await parseValidRecords()
     await userEvent.click(screen.getByRole('button', { name: 'Run ingestion' }))
 
-    expect(await screen.findByText('Backend response')).toBeInTheDocument()
+    expect(await screen.findByText('Checked after upload')).toBeInTheDocument()
     expect(screen.getByText('body.rows.0.provider_npi: Field required')).toBeInTheDocument()
   })
 
   it('preserves successful document receipt when records validation fails', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
     await userEvent.upload(
       screen.getByLabelText('Document files'),
@@ -907,7 +919,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
   it('renders the Validate stepper item as idle on cold load (no error chip, no complete chip)', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
 
     const validateItem = getStepperItem('Validate')
     expect(within(validateItem).queryByText('Needs attention')).not.toBeInTheDocument()
@@ -917,7 +929,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
   it('flips Validate to Needs attention when an empty document file is queued', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
     await userEvent.upload(
       screen.getByLabelText('Document files'),
@@ -931,7 +943,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
   it('marks Validate as Complete when a clean document file is queued', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
     await userEvent.upload(
       screen.getByLabelText('Document files'),
@@ -945,7 +957,7 @@ describe('KnowledgeBaseManagerPage Ingestion Studio', () => {
   it('keeps Validate idle after Documents source is picked but no files have been uploaded', async () => {
     renderWithClient(<KnowledgeBaseManagerPage />)
 
-    await screen.findByText('Ingestion Studio')
+    await screen.findByRole('heading', { level: 1, name: 'Knowledge Bases' })
     await userEvent.click(screen.getByRole('radio', { name: /Documents/i }))
 
     const validateItem = getStepperItem('Validate')

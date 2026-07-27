@@ -14,12 +14,14 @@ import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import { EmptyKnowledgeBaseNotice } from '../components/knowledgebase/EmptyKnowledgeBaseNotice'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import {
   buildRagMessageFilters,
   citationNavigationTarget,
   parseRagLaunchContext,
 } from '../lib/ragContext'
+import { knowledgeBaseStatusLabel } from '../utils/knowledgeBaseStatus'
 import './pages.css'
 
 const contextTitleBySource = {
@@ -125,11 +127,11 @@ export function RagChatPage() {
   }
 
   if (knowledgeBasesError) {
-    return <ErrorState description="Knowledge base inventory could not be loaded from the backend." />
+    return <ErrorState description="Your knowledge bases could not be loaded. Try again in a moment." />
   }
 
   if (conversationId && conversationQuery.isError) {
-    return <ErrorState description="RAG conversation history could not be loaded from the backend." />
+    return <ErrorState description="Your conversation history could not be loaded. Try again in a moment." />
   }
 
   if (!selectedKnowledgeBaseId) {
@@ -152,7 +154,7 @@ export function RagChatPage() {
                 + Create Knowledge Base
               </button>
             }
-            description="RAG conversations need at least one knowledge base for retrieval context. Create one and return here to start a thread."
+            description="The assistant answers from an ingested knowledge base. Create one, ingest something into it, then come back and ask."
             title="No knowledge base available"
           />
         </Card>
@@ -167,10 +169,12 @@ export function RagChatPage() {
       <div className="chat-page__toolbar">
         <div>
           <div className="chat-page__eyebrow">Conversational RAG</div>
-          <h2 className="chat-page__title">RAG Chat</h2>
+          {/* The page's own toolbar stands in for SectionHeader here, so this
+              is the route's h1 (UXA-205: one h1 per page). */}
+          <h1 className="chat-page__title">RAG Chat</h1>
         </div>
         <div className="chat-page__toolbar-controls">
-          <Chip label={conversation?.title ?? 'No active thread'} tone="info" />
+          <Chip label={conversation?.title ?? 'No active conversation'} tone="info" />
           <select
             aria-label="Knowledge base"
             className="page-input--inline"
@@ -186,7 +190,7 @@ export function RagChatPage() {
           >
             {knowledgeBases.map((kb) => (
               <option key={kb.id} value={kb.id}>
-                {kb.name} · {kb.status}
+                {kb.name} · {knowledgeBaseStatusLabel(kb.status)}
               </option>
             ))}
           </select>
@@ -197,7 +201,7 @@ export function RagChatPage() {
               createConversationMutation.mutate(
                 {
                   knowledge_base_id: selectedKnowledgeBaseId,
-                  title: `Investigation thread ${new Date().toLocaleTimeString()}`,
+                  title: `Investigation conversation ${new Date().toLocaleTimeString()}`,
                 },
                 {
                   onSuccess: (created) => {
@@ -210,7 +214,7 @@ export function RagChatPage() {
             }
             type="button"
           >
-            New thread
+            New conversation
           </button>
           {canStartContextualThread ? (
             <button
@@ -246,11 +250,17 @@ export function RagChatPage() {
               }}
               type="button"
             >
-              Start contextual thread
+              Start with this context
             </button>
           ) : null}
         </div>
       </div>
+
+      <EmptyKnowledgeBaseNotice
+        knowledgeBase={
+          knowledgeBases.find((kb) => kb.id === selectedKnowledgeBaseId) ?? null
+        }
+      />
 
       {contextChips.length > 0 ? (
         <div className="alert-row-card__meta" aria-label="Launch context">
@@ -262,7 +272,7 @@ export function RagChatPage() {
 
       {showContextualRetryMessage ? (
         <div className="alert-row-card__meta" role="status">
-          Thread was created, but the first message failed. Review and send again.
+          The conversation was created, but the first message failed. Review it and send again.
         </div>
       ) : null}
 
@@ -328,7 +338,7 @@ export function RagChatPage() {
           </div>
         ) : (
           <EmptyState
-            description="Start a thread to ask questions against the current knowledge base."
+            description="Ask a question below, or start a new conversation, to search the active knowledge base."
             title="No active conversation"
           />
         )}

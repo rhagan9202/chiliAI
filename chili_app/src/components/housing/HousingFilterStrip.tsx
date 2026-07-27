@@ -1,3 +1,4 @@
+import { countLabel } from '../../utils/countLabel'
 import type { InstallationBranch } from './installationMapGeometry'
 import {
   hasActiveHousingFilters,
@@ -81,8 +82,8 @@ export function HousingFilterStrip({
       <div className="housing-filter-strip__meta">
         <span aria-live="polite">
           {filtersActive
-            ? `Showing ${matchCount} of ${totalCount} installations`
-            : `Showing all ${totalCount} installations`}
+            ? `Showing ${matchCount} of ${countLabel(totalCount, 'installation')}`
+            : `Showing all ${countLabel(totalCount, 'installation')}`}
         </span>
         {filtersActive ? (
           <button className="housing-filter-clear" onClick={onClear} type="button">

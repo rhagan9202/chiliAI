@@ -60,6 +60,7 @@ from api.dependencies import (
     get_policy_repository,
 )
 from api.middleware.rbac import require_role
+from config.display import entity_display_label
 from config.schema import DomainConfig, PolicyRule, PolicyRulePack
 from monitoring.adapters.protocols import AlertFeedStoreProtocol
 from monitoring.models import AlertHistoryRecord
@@ -357,15 +358,29 @@ def select_demo_shape(config: DomainConfig) -> DemoShape:
     return DemoShape(hub=config.entities[0], spokes=())
 
 
-def display_label_for(
-    entity: Entity, definition: EntityDefinition, config: DomainConfig
-) -> str:
-    """Human label for an entity from the config's UI display fields."""
+def _nameable_title_field(
+    definition: EntityDefinition, config: DomainConfig
+) -> str | None:
+    """The title property a demo name may safely be written into.
+
+    ``ui.display_fields`` may point at a formatted identifier — the base
+    medicare pack titles a provider by its NPI, constrained to ten digits — and
+    writing prose there would produce data the pack itself rejects. Only an
+    unconstrained string field is nameable.
+    """
+
     display_fields = config.ui.display_fields if config.ui is not None else {}
-    fields = display_fields.get(entity.type)
-    if fields is not None and fields.title in entity.properties:
-        return str(entity.properties[fields.title])
-    return f"{definition.display_label} {entity.id}"
+    fields = display_fields.get(definition.name)
+    if fields is None:
+        return None
+    property_definition = definition.properties.get(fields.title)
+    if property_definition is None:
+        return None
+    if property_definition.type is not PropertyType.STRING:
+        return None
+    if property_definition.pattern is not None:
+        return None
+    return fields.title
 
 
 # ---------------------------------------------------------------------------
@@ -511,7 +526,6 @@ async def dev_seed(
         )
 
     # --- display text: medicare pack keeps the e2e-locked strings ----------
-    entity_label = display_label_for(anchor_entity, anchor_definition, config)
     is_medicare_shape = (
         shape.hub.name == "claim"
         and anchor_definition.name == "provider"
@@ -519,7 +533,13 @@ async def dev_seed(
         and spoke_entities[1][0].name == "beneficiary"
     )
     if is_medicare_shape:
-        entity_label = "Redwood DME Group"
+        # Write the demo name onto the entity's configured title property
+        # rather than onto the alert alone. Overriding only the alert's label
+        # is what made the feed say "Redwood DME Group" and the workbench say
+        # "npi-1" for the same provider (UXA-304).
+        title_field = _nameable_title_field(anchor_definition, config)
+        if title_field is not None:
+            anchor_entity.properties[title_field] = "Redwood DME Group"
         alert_title = "Outlier billing concentration"
         alert_reasoning = "Provider activity is materially above peers."
         evidence_reasoning = (
@@ -541,13 +561,18 @@ async def dev_seed(
             f"{anchor_definition.display_label} activity concentration "
             "indicates elevated risk."
         )
-        case_title = f"{entity_label} escalation"
-        conversation_title = f"{entity_label} review"
+        fallback_label = entity_display_label(anchor_entity, config)
+        case_title = f"{fallback_label} escalation"
+        conversation_title = f"{fallback_label} review"
         assistant_answer = (
-            f"{entity_label} shows outlier activity well above its peer cohort, "
+            f"{fallback_label} shows outlier activity well above its peer cohort, "
             "with linked high-risk records."
         )
         alert_tags = [anchor_entity.type, "peer-deviation"]
+
+    # One resolver for every surface: the alert's stored label is exactly what
+    # the workbench, the graph and the chat rail will independently compute.
+    entity_label = entity_display_label(anchor_entity, config)
 
     # --- knowledge base -----------------------------------------------------
     kb_repository.create(

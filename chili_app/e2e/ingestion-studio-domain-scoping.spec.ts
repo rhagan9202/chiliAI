@@ -1,5 +1,5 @@
 /**
- * Ingestion Studio domain scoping (full stack). The studio's knowledge base
+ * Knowledge Bases domain scoping (full stack). The page's knowledge base
  * selector defaults to KBs stamped with the ACTIVE domain (plus legacy KBs
  * without a domain stamp) and offers a show-all-domains toggle whenever other
  * domains' KBs are hidden.
@@ -53,12 +53,12 @@ test.beforeAll(async () => {
   hiddenCount = allKnowledgeBases.length - scopedKnowledgeBases.length
 })
 
-test.describe('Ingestion Studio domain scoping', () => {
+test.describe('Knowledge Bases domain scoping', () => {
   test('defaults to active-domain KBs and reveals all domains via the toggle', async ({
     page,
   }) => {
     await page.goto('/knowledge-bases')
-    await expect(page.getByRole('heading', { name: 'Ingestion Studio' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Knowledge Bases' })).toBeVisible()
 
     const listItems = page.locator('.ingestion-kb-list__item')
     const countChip = page.locator('.ingestion-kb-selector__header .ui-chip')

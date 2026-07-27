@@ -39,6 +39,9 @@ const HIGHLIGHT_COLOR = '#fbbf24'
 export interface GraphNode extends NodeObject {
   id: string
   entity: Entity
+  /** Name drawn on the canvas — resolved by the caller so the graph, the
+      dossier and the alert feed all say the same thing (UXA-304). */
+  label: string
   color: string
   communityColor: string | null
   size: number
@@ -62,6 +65,8 @@ export interface GraphCanvasProps {
   testId?: string
   clusterMode?: boolean
   highlightedEntityIds?: readonly string[]
+  /** Resolves a node's on-canvas name. Defaults to the raw entity id. */
+  labelFor?: (entity: Entity) => string
 }
 
 export function GraphCanvas({
@@ -72,6 +77,7 @@ export function GraphCanvas({
   testId,
   clusterMode = false,
   highlightedEntityIds,
+  labelFor,
 }: GraphCanvasProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const graphRef =
@@ -121,6 +127,7 @@ export function GraphCanvas({
       return {
         id: entity.id,
         entity,
+        label: labelFor ? labelFor(entity) : entity.id,
         color: colorForEntityType(entity.type, entityTypes),
         communityColor: communityId ? clusterColorFor(communityId) : null,
         size: sizeForRiskScore(riskScoreFor(entity)),
@@ -141,7 +148,7 @@ export function GraphCanvas({
         confidence: predictedConfidenceFor(edge),
       }))
     return { nodes, links }
-  }, [subgraph, entityTypes])
+  }, [subgraph, entityTypes, labelFor])
 
   const highlightedIds = useMemo(
     () => new Set(highlightedEntityIds ?? []),
@@ -330,7 +337,7 @@ export function GraphCanvas({
             // each node and hidden when zoomed far out, where they would only
             // collide into noise.
             if (globalScale < 0.5) return
-            const label = graphNodeLabel(String(node.id))
+            const label = graphNodeLabel(node.label)
             if (!label) return
             const fontSize = Math.max(10 / globalScale, 3)
             ctx.font = `${fontSize}px 'IBM Plex Sans', system-ui, sans-serif`

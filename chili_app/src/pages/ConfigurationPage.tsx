@@ -26,7 +26,7 @@ export function ConfigurationPage() {
   if (domainConfig.isError) {
     return (
       <ErrorState
-        description="The configuration endpoint is not available yet. Once the backend is running, this page will render entity, relationship, capability, and UI metadata tables."
+        description="The workspace configuration could not be loaded, so entity, relationship and capability details are unavailable. Try again in a moment."
       />
     )
   }
@@ -34,8 +34,8 @@ export function ConfigurationPage() {
   return (
     <section className="page-grid">
       <SectionHeader
-        eyebrow="Domain configuration"
-        subtitle="This page now uses the shared loading, error, card, and section primitives that future schema-driven configuration views will build on."
+        eyebrow="Workspace setup"
+        subtitle="What this workspace is set up to track: the entity and relationship types it knows, the analysis it can run, and who can see which pages."
         title="Configuration"
       />
       <div className="dashboard-panels">
@@ -66,7 +66,7 @@ export function ConfigurationPage() {
               <strong>{domainConfig.data?.capabilities.timeseries ? 'Enabled' : 'Disabled'}</strong>
             </div>
             <div className="metric-row">
-              <span className="metric-row__label">GNN</span>
+              <span className="metric-row__label">Graph clustering</span>
               <strong>{domainConfig.data?.capabilities.gnn ? 'Enabled' : 'Disabled'}</strong>
             </div>
             <div className="metric-row">
@@ -100,13 +100,13 @@ export function ConfigurationPage() {
         <>
           <SectionHeader
             eyebrow="Domain packs"
-            subtitle="Activate a different domain pack. The switch validates first, then hot-swaps the whole workspace in place — navigation, labels, and the entity registry re-render without a reload."
+            subtitle="Retarget the workspace at a different domain. The new pack is checked before it is applied, and navigation, labels and entity types change in place — no reload, no data loss."
             title="Pack switcher"
           />
           <PackSwitcher />
           <SectionHeader
             eyebrow="Active pack"
-            subtitle="Dry-run validate edits against the full domain-pack schema, then re-apply the active pack to hot-swap the running configuration."
+            subtitle="Check an edit against the full pack definition before anything changes, then re-apply the active pack to put it into effect."
             title="Pack editor"
           />
           <ActivePackEditor />

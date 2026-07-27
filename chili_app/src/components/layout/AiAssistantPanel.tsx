@@ -2,25 +2,44 @@ import { type FormEvent, useMemo, useState } from 'react'
 import { Bot, SendHorizontal } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router'
 
+import { useAlert } from '../../api/alerts'
+import { useCase } from '../../api/cases'
+import { useDomainConfig } from '../../api/config'
+import { useInvestigationEntity } from '../../api/investigation'
 import { buildRagChatUrl, parseRagLaunchContext, type RagLaunchContext } from '../../lib/ragContext'
+import { getEntityTitle } from '../../utils/domainDisplay'
 
 type AssistantContext = RagLaunchContext & {
   summary: string
 }
 
+/**
+ * What the panel says while it has only an id. The id itself never appears in
+ * the copy — "Alert context: ede44288-b501-4bb8-a50b-ef142bc12be7" told an
+ * analyst nothing about what they were asking about (UXA-304). It stays
+ * reachable as the element's `title`.
+ */
 const contextSummary = (context: RagLaunchContext): string | null => {
   if (context.source === 'alert' && context.alertId) {
-    return `Alert context: ${context.alertId}`
+    return 'Attached to the selected alert'
   }
 
   if (context.source === 'case' && context.caseId) {
-    return `Case context: ${context.caseId}`
+    return 'Attached to the selected case'
   }
 
   if (context.source === 'entity' && context.entityId) {
-    return `Entity context: ${context.entityId}`
+    return 'Attached to the selected entity'
   }
 
+  return null
+}
+
+/** The id behind the current context, kept for hover but out of the copy. */
+const contextIdentifier = (context: RagLaunchContext): string | null => {
+  if (context.source === 'alert') return context.alertId ?? null
+  if (context.source === 'case') return context.caseId ?? null
+  if (context.source === 'entity') return context.entityId ?? null
   return null
 }
 
@@ -31,14 +50,19 @@ const parseAssistantContext = (pathname: string, search: string): AssistantConte
   if (pathname === '/alerts') {
     const alertId = params.get('alert') || null
     if (alertId) {
-      return { knowledgeBaseId, source: 'alert', alertId, summary: `Alert context: ${alertId}` }
+      return {
+        knowledgeBaseId,
+        source: 'alert',
+        alertId,
+        summary: 'Attached to the selected alert',
+      }
     }
   }
 
   if (pathname === '/cases') {
     const caseId = params.get('case') || null
     if (caseId) {
-      return { knowledgeBaseId, source: 'case', caseId, summary: `Case context: ${caseId}` }
+      return { knowledgeBaseId, source: 'case', caseId, summary: 'Attached to the selected case' }
     }
   }
 
@@ -51,7 +75,12 @@ const parseAssistantContext = (pathname: string, search: string): AssistantConte
       return null
     }
 
-    return { knowledgeBaseId, source: 'entity', entityId, summary: `Entity context: ${entityId}` }
+    return {
+      knowledgeBaseId,
+      source: 'entity',
+      entityId,
+      summary: 'Attached to the selected entity',
+    }
   }
 
   if (pathname === '/rag-chat') {
@@ -72,6 +101,33 @@ export function AiAssistantPanel() {
     [location.pathname, location.search],
   )
   const canSend = context != null && draft.trim().length > 0
+
+  // These reads hit the same query keys the page behind the panel already
+  // populated, so attaching a name costs a cache lookup, not a request.
+  const domainConfigQuery = useDomainConfig()
+  const alertQuery = useAlert(context?.source === 'alert' ? context.alertId ?? null : null)
+  const caseQuery = useCase(
+    context?.knowledgeBaseId ?? null,
+    context?.source === 'case' ? context.caseId ?? null : null,
+  )
+  const entityQuery = useInvestigationEntity(
+    context?.knowledgeBaseId ?? null,
+    context?.source === 'entity' ? context.entityId ?? null : null,
+  )
+
+  const resolvedName = ((): string | null => {
+    if (context?.source === 'alert' && alertQuery.data) {
+      const { alert } = alertQuery.data
+      return [alert.title, alert.entity_label].filter(Boolean).join(' · ') || null
+    }
+    if (context?.source === 'case' && caseQuery.data) {
+      return caseQuery.data.case.title || null
+    }
+    if (context?.source === 'entity' && entityQuery.data && domainConfigQuery.data) {
+      return getEntityTitle(entityQuery.data.entity, domainConfigQuery.data)
+    }
+    return null
+  })()
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -95,7 +151,11 @@ export function AiAssistantPanel() {
         </div>
       </div>
       <div className="ai-panel__body">
-        <p>{context ? context.summary : 'Open an alert, case, or entity to attach context.'}</p>
+        <p title={context ? contextIdentifier(context) ?? undefined : undefined}>
+          {context
+            ? resolvedName ?? context.summary
+            : 'Open an alert, case, or entity to attach context.'}
+        </p>
       </div>
       <form className="ai-panel__composer" onSubmit={handleSubmit}>
         <input

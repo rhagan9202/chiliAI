@@ -6,16 +6,24 @@ import { EmptyState } from '../ui/EmptyState'
 export interface AnomalyTrendPanelProps {
   timeseries: TimeseriesResponse | null
   unavailableReason: string | null
+  /** Whether the workbench currently has an entity loaded. */
+  entitySelected?: boolean
 }
 
-export function AnomalyTrendPanel({ timeseries, unavailableReason }: AnomalyTrendPanelProps) {
+export function AnomalyTrendPanel({
+  timeseries,
+  unavailableReason,
+  entitySelected = false,
+}: AnomalyTrendPanelProps) {
   if (!timeseries) {
+    // Without this the panel asked for an entity while one was selected —
+    // the wrong empty state for the state (UXA-305).
+    const fallback = entitySelected
+      ? 'No trend has been generated for this entity yet.'
+      : 'Select an entity to load its trend.'
     return (
       <Card>
-        <EmptyState
-          description={unavailableReason ?? 'Select an entity to load its trend.'}
-          title="No time series"
-        />
+        <EmptyState description={unavailableReason ?? fallback} title="No time series" />
       </Card>
     )
   }

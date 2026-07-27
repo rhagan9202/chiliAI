@@ -1,6 +1,7 @@
 import { Chip } from '../ui/Chip'
 import { EmptyState } from '../ui/EmptyState'
 import type { ValidationIssue, ValidationSource } from '../../lib/ingestion/types'
+import { countLabel } from '../../utils/countLabel'
 import './ingestion.css'
 
 type ValidationPanelProps = {
@@ -8,14 +9,14 @@ type ValidationPanelProps = {
 }
 
 const sourceLabels: Record<ValidationSource, string> = {
-  client: 'Client check',
-  backend: 'Backend response',
+  client: 'Checked before upload',
+  backend: 'Checked after upload',
 }
 
 const sourceOrder: ValidationSource[] = ['client', 'backend']
 
-function countLabel(count: number): string {
-  return `${count} ${count === 1 ? 'issue' : 'issues'}`
+function issueCountLabel(count: number): string {
+  return countLabel(count, 'issue')
 }
 
 function prerequisiteCountLabel(count: number): string {
@@ -88,7 +89,7 @@ export function ValidationPanel({ issues }: ValidationPanelProps) {
               </h3>
               <Chip
                 tone={sourceIssues.some((issue) => issue.severity === 'error') ? 'danger' : 'warning'}
-                label={countLabel(sourceIssues.length)}
+                label={issueCountLabel(sourceIssues.length)}
               />
             </div>
             <ul className="ingestion-validation-panel__list">

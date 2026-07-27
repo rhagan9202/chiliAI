@@ -539,13 +539,18 @@ describe('DashboardPage', () => {
     expect(screen.getByText(/loading policy signal analytics/i)).toBeInTheDocument()
   })
 
-  it('shows the domain display-name chip and drops the stale phase copy', () => {
+  it('names the knowledge base it is reporting on, not the domain already in the top bar', () => {
     renderDashboard()
 
     expect(screen.queryByText(/phase 5 data live/i)).not.toBeInTheDocument()
-    expect(screen.getByText('Medicare Fraud Detection')).toBeInTheDocument()
+    // The domain title is already the top bar's h1; repeating it in a chip
+    // told an analyst nothing about *which* corpus these numbers describe.
+    expect(screen.getByTestId('dashboard-scope')).toHaveTextContent('Ready KB')
+    expect(screen.queryByText('Medicare Fraud Detection')).not.toBeInTheDocument()
     expect(
-      screen.getByText('Live operational overview for the active knowledge base.'),
+      screen.getByText(
+        'Where the queue stands right now, what ingestion is doing, and which entities are drawing the most attention.',
+      ),
     ).toBeInTheDocument()
   })
 

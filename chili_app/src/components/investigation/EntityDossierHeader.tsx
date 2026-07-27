@@ -1,11 +1,13 @@
+import { useState } from 'react'
+
 import type { DomainConfig, RiskScoreResponse, RuntimeEntity } from '../../api/contracts'
 import {
-  getEntityChips,
   getEntitySubtitle,
   getEntityTitle,
   getEntityTypeLabel,
 } from '../../utils/domainDisplay'
-import { Chip } from '../ui/Chip'
+import { getEntityProperties } from '../../utils/entityProperties'
+import { countLabel } from '../../utils/countLabel'
 
 export interface EntityDossierHeaderProps {
   entity: RuntimeEntity
@@ -31,6 +33,12 @@ export function EntityDossierHeader({
 }: EntityDossierHeaderProps) {
   const subtitle = getEntitySubtitle(entity, config)
   const numeral = riskScore ? Math.round(riskScore.overall_score * 100) : null
+  const [showAllProperties, setShowAllProperties] = useState(false)
+  const properties = getEntityProperties(entity, config)
+  const hiddenCount = properties.filter((property) => !property.featured).length
+  const visibleProperties = showAllProperties
+    ? properties
+    : properties.filter((property) => property.featured)
   return (
     <div className="dossier-header fade-up" data-testid="entity-dossier-header">
       <div className="dossier-header__identity">
@@ -39,11 +47,29 @@ export function EntityDossierHeader({
           {getEntityTypeLabel(entity.type, config)}
           {subtitle ? ` · ${subtitle}` : ''}
         </span>
-        <div className="alert-row-card__meta">
-          {getEntityChips(entity, config).map((chip) => (
-            <Chip key={chip} label={chip} tone="info" />
-          ))}
-        </div>
+        {visibleProperties.length > 0 ? (
+          // A definition list, not chips: these are facts to read, and chip
+          // styling made them look like filters you could click.
+          <dl className="dossier-properties">
+            {visibleProperties.map((property) => (
+              <div className="dossier-properties__row" key={property.key}>
+                <dt className="dossier-properties__label">{property.label}</dt>
+                <dd className="dossier-properties__value">{property.value}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
+        {hiddenCount > 0 && !showAllProperties ? (
+          <div>
+            <button
+              className="page-button page-button--sm page-button--secondary"
+              onClick={() => setShowAllProperties(true)}
+              type="button"
+            >
+              {`Show all ${countLabel(properties.length, 'property', 'properties')}`}
+            </button>
+          </div>
+        ) : null}
         <div>
           <button className="page-button page-button--secondary" onClick={onAskAi} type="button">
             Ask AI

@@ -1,5 +1,5 @@
 /**
- * Ingestion Studio — per-document warning surfacing (full stack).
+ * Knowledge Bases — per-document warning surfacing (full stack).
  *
  * Uploads a ragged CSV through the real documents pipeline and asserts the
  * worker-persisted parser/extraction warnings reach the Document inventory as
@@ -17,14 +17,14 @@ const RAGGED_CSV = [
   '',
 ].join('\n')
 
-test.describe('Ingestion Studio document warnings', () => {
+test.describe('Knowledge Bases document warnings', () => {
   test('shows a warning chip with reasons after ingesting a ragged CSV', async ({ page }) => {
     // The default 30s test timeout is what actually failed under a saturated
     // worker (see the pipeline-wait comment below) — the whole test needs
     // headroom, not just the expect() waits.
     test.setTimeout(300_000)
     await page.goto('/knowledge-bases')
-    await expect(page.getByRole('heading', { name: 'Ingestion Studio' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Knowledge Bases' })).toBeVisible()
 
     // Fresh KB so accumulated warnings are deterministic for this spec.
     // Creation auto-selects the KB and advances the wizard to the source step.

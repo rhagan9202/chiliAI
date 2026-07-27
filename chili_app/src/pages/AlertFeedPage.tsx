@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { useAcknowledgeAlert, useAlerts } from '../api/alerts'
+import type { RuntimeEntity } from '../api/contracts'
+import type { Entity as ApiEntity } from '../types/api'
 import { useCases, usePromoteAlertToCase } from '../api/cases'
 import { useDomainConfig, useDomainFeatures } from '../api/config'
 import { useEvidencePack } from '../api/evidence'
@@ -11,7 +13,6 @@ import { showToast } from '../components/common/toastStore'
 import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { policyItemsForTarget } from '../components/investigation/policyTargets'
 import { Chip } from '../components/ui/Chip'
-import { ConfidenceBar } from '../components/ui/ConfidenceBar'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
 import { FilterBar } from '../components/ui/FilterBar'
@@ -19,6 +20,9 @@ import { Card } from '../components/ui/Card'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
+import { countLabel } from '../utils/countLabel'
+import { absoluteTime, relativeAge } from '../utils/relativeTime'
+import { getEntityTitle } from '../utils/domainDisplay'
 import { severityTone } from '../utils/severity'
 import { flagLabelFor } from '../utils/flagLabel'
 import { toSubgraphResult } from '../utils/subgraph'
@@ -68,6 +72,12 @@ export function AlertFeedPage() {
     1,
   )
   const domainConfig = domainConfigQuery.data ?? null
+  // Stable across renders so the force layout is not rebuilt on every paint.
+  const labelForNode = useCallback(
+    (node: ApiEntity) =>
+      domainConfig ? getEntityTitle(node as unknown as RuntimeEntity, domainConfig) : node.id,
+    [domainConfig],
+  )
   const capabilities = featuresQuery.data?.capabilities
   const policyItems = policyItemsQuery.data?.items ?? []
 
@@ -86,7 +96,7 @@ export function AlertFeedPage() {
   }
 
   if (alertsQuery.isError) {
-    return <ErrorState description="The alert feed could not be loaded from the backend." />
+    return <ErrorState description="The alert feed could not be loaded. Try again, or switch to another knowledge base." />
   }
 
   if (!alertsQuery.data) {
@@ -106,9 +116,9 @@ export function AlertFeedPage() {
   return (
     <section className="page-grid">
       <SectionHeader
-        actions={<Chip label={`${alertsQuery.data.page.total_items} alerts loaded`} tone="info" />}
+        actions={<Chip label={countLabel(alertsQuery.data.page.total_items, 'alert')} tone="info" />}
         eyebrow="Triage queue"
-        subtitle="The alert feed now reads live backend alert summaries and supports acknowledgement without leaving the queue."
+        subtitle="Work the queue: review what was flagged, acknowledge what you have seen, and promote what needs a case."
         title="Alert Feed"
       />
 
@@ -128,35 +138,51 @@ export function AlertFeedPage() {
           return (
             <Card className="alert-row-card" compact key={alert.id}>
               <div className="triage-row">
-                <div
-                  className="triage-row__numeral"
-                  data-testid="triage-numeral"
-                  style={{ color: triageNumeralColor(alert.severity) }}
-                >
-                  {Math.round(alert.confidence * 100)}
+                {/* One metric, named. The bare numeral was severity-coloured
+                    and sized like a risk score, but carried confidence — and
+                    the same number appeared again in a bar below (UXA-303). */}
+                <div className="triage-row__metric">
+                  <div
+                    className="triage-row__numeral"
+                    data-testid="triage-numeral"
+                    style={{ color: triageNumeralColor(alert.severity) }}
+                  >
+                    {Math.round(alert.confidence * 100)}
+                  </div>
+                  <div className="triage-row__metric-label">confidence</div>
                 </div>
                 <div className="metric-stack">
                   <div className="alert-row-card__header">
                     <div className="alert-row-card__header-info">
-                      <div className="alert-row-card__title">{alert.entity_label}</div>
-                      <span className="flag-label">
-                        {flagLabelFor({ tags: alert.tags, severity: alert.severity })}
-                      </span>
+                      {/* What is wrong leads; who it happened to follows. */}
+                      <div className="alert-row-card__title">{alert.title}</div>
+                      <div className="alert-row-card__subject">{alert.entity_label}</div>
+                      <div className="alert-row-card__eyebrow">
+                        <span className="flag-label">
+                          {flagLabelFor({ tags: alert.tags, severity: alert.severity })}
+                        </span>
+                        {/* A triage queue with no alert age is missing its
+                            most important sort key (UXA-303). */}
+                        <span
+                          className="alert-row-card__age"
+                          data-testid="alert-age"
+                          title={absoluteTime(alert.created_at)}
+                        >
+                          {relativeAge(alert.created_at)}
+                        </span>
+                      </div>
                       <div className="alert-row-card__meta">
                         <Chip label={alert.severity} tone={severityTone(alert.severity)} />
                         <Chip label={alert.status} tone={alert.status === 'acknowledged' ? 'success' : 'info'} />
                         {capabilities?.explainability && hasPolicySignal ? (
                           <Chip label="policy" tone="warning" />
                         ) : null}
-                        {alert.tags.map((tag) => (
-                          <Chip key={tag} label={tag.replace(/-/g, ' ')} tone="default" />
-                        ))}
                       </div>
                     </div>
                     <div className="alert-row-card__header-actions">
                       <Link
                         aria-label={`Investigate ${alert.entity_label}`}
-                        className="page-button page-button--sm page-button--secondary"
+                        className="page-button page-button--sm page-button--primary"
                         to={`/investigation/${encodeURIComponent(alert.entity_id)}?kb=${encodeURIComponent(alert.knowledge_base_id)}`}
                       >
                         Investigate entity
@@ -218,7 +244,7 @@ export function AlertFeedPage() {
                         onClick={() => acknowledgeMutation.mutate(alert.id)}
                         type="button"
                       >
-                        {alert.status === 'acknowledged' ? '✓' : 'Ack'}
+                        {alert.status === 'acknowledged' ? 'Acknowledged' : 'Acknowledge'}
                       </button>
                     </div>
                   </div>
@@ -228,7 +254,6 @@ export function AlertFeedPage() {
                   >
                     {alert.reasoning}
                   </div>
-                  <ConfidenceBar value={Math.round(alert.confidence * 100)} />
                 </div>
               </div>
             </Card>
@@ -250,6 +275,7 @@ export function AlertFeedPage() {
                 : { nodes: [], edges: [] }
             }
             entityTypes={domainConfig ? domainConfig.entities.map((e) => e.name) : []}
+            labelFor={labelForNode}
             selectedEntityId={selectedAlert.entity_id}
           />
         ) : (

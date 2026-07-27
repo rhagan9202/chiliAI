@@ -1,4 +1,8 @@
 import type { KnowledgeBaseStatus } from '../../types/api'
+import {
+  knowledgeBaseStatusHint,
+  knowledgeBaseStatusLabel,
+} from '../../utils/knowledgeBaseStatus'
 import styles from './KbTable.module.css'
 
 const VARIANTS: Record<KnowledgeBaseStatus, string> = {
@@ -22,8 +26,9 @@ export function StatusBadge({
       className={`${styles.badge} ${variantClass}`}
       data-testid="kb-status-badge"
       data-status={status}
+      title={knowledgeBaseStatusHint(status)}
     >
-      {status}
+      {knowledgeBaseStatusLabel(status)}
     </span>
   )
 }

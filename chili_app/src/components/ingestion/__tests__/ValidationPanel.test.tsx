@@ -35,8 +35,8 @@ describe('ValidationPanel', () => {
 
     render(<ValidationPanel issues={issues} />)
 
-    const clientGroup = screen.getByRole('region', { name: /client check/i })
-    const backendGroup = screen.getByRole('region', { name: /backend response/i })
+    const clientGroup = screen.getByRole('region', { name: /checked before upload/i })
+    const backendGroup = screen.getByRole('region', { name: /checked after upload/i })
 
     expect(within(clientGroup).getByText('2 issues')).toBeInTheDocument()
     expect(within(clientGroup).getByText('Select a knowledge base before submitting.')).toBeInTheDocument()
@@ -73,12 +73,12 @@ describe('ValidationPanel', () => {
     // The "Ready for submission" empty state must NOT appear when prerequisites are present.
     expect(screen.queryByText('Ready for submission')).not.toBeInTheDocument()
 
-    // No source-grouped Client check / Backend response section appears when no content issues exist.
-    expect(screen.queryByRole('region', { name: /client check/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: /backend response/i })).not.toBeInTheDocument()
+    // No source-grouped before/after-upload section appears when no content issues exist.
+    expect(screen.queryByRole('region', { name: /checked before upload/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: /checked after upload/i })).not.toBeInTheDocument()
   })
 
-  it('renders both Prerequisites and Client check sections when both kinds are present', () => {
+  it('renders both Prerequisites and before-upload sections when both kinds are present', () => {
     const issues: ValidationIssue[] = [
       {
         id: 'missing-kb',
@@ -100,7 +100,7 @@ describe('ValidationPanel', () => {
     const prereq = screen.getByRole('region', { name: /prerequisites/i })
     expect(within(prereq).getByText('1 to do')).toBeInTheDocument()
 
-    const clientGroup = screen.getByRole('region', { name: /client check/i })
+    const clientGroup = screen.getByRole('region', { name: /checked before upload/i })
     expect(within(clientGroup).getByText('1 issue')).toBeInTheDocument()
     expect(
       within(clientGroup).getByText('Row 1 field Provider NPI does not match ^[0-9]{10}$.'),
@@ -120,7 +120,7 @@ describe('ValidationPanel', () => {
     render(<ValidationPanel issues={issues} />)
 
     expect(screen.queryByRole('region', { name: /prerequisites/i })).not.toBeInTheDocument()
-    const clientGroup = screen.getByRole('region', { name: /client check/i })
+    const clientGroup = screen.getByRole('region', { name: /checked before upload/i })
     expect(within(clientGroup).getByText('1 issue')).toBeInTheDocument()
   })
 })

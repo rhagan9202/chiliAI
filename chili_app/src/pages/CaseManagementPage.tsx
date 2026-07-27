@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { useAlerts } from '../api/alerts'
 import { useAddCaseFeedback, useCase, useCases, usePromoteCase, useUpdateCase } from '../api/cases'
@@ -14,6 +14,7 @@ import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
+import { countLabel } from '../utils/countLabel'
 import './pages.css'
 
 type StatusFilter = 'all' | 'open' | 'in_review' | 'closed'
@@ -57,7 +58,7 @@ export function CaseManagementPage() {
   }
 
   if (knowledgeBasesError) {
-    return <ErrorState description="Knowledge base inventory could not be loaded from the backend." />
+    return <ErrorState description="Your knowledge bases could not be loaded. Try again in a moment." />
   }
 
   if (!knowledgeBaseId) {
@@ -65,7 +66,7 @@ export function CaseManagementPage() {
       <section className="page-grid">
         <SectionHeader
           actions={<Chip label="No knowledge base" tone="default" />}
-          eyebrow="Human feedback loop"
+          eyebrow="Investigations"
           subtitle="Create or select a knowledge base to manage its investigation cases."
           title="Case Management"
         />
@@ -84,7 +85,7 @@ export function CaseManagementPage() {
   }
 
   if (casesQuery.isError || alertsQuery.isError) {
-    return <ErrorState description="Case management data could not be loaded from the backend." />
+    return <ErrorState description="The case queue could not be loaded. Try again in a moment." />
   }
 
   if (!casesQuery.data || !alertsQuery.data) {
@@ -113,9 +114,9 @@ export function CaseManagementPage() {
   return (
     <section className="page-grid">
       <SectionHeader
-        actions={<Chip label={`${casesQuery.data.page.total_items} cases`} tone="info" />}
-        eyebrow="Human feedback loop"
-        subtitle="Cases persist durably per knowledge base and can be promoted from alerts with their evidence."
+        actions={<Chip label={countLabel(casesQuery.data.page.total_items, 'case')} tone="info" />}
+        eyebrow="Investigations"
+        subtitle="Track what you are investigating. Promote an alert to open a case with its evidence attached, then record what you found."
         title="Case Management"
       />
 
@@ -148,7 +149,36 @@ export function CaseManagementPage() {
               </button>
             ))}
             {visibleCases.length === 0 ? (
-              <EmptyState description="No cases match the current filter." title="Empty queue" />
+              // "Filtered to nothing" and "nothing here yet" are different
+              // problems and need different next steps (UXA-305).
+              casesQuery.data.items.length > 0 ? (
+                <EmptyState
+                  action={
+                    <button
+                      className="page-button page-button--sm"
+                      onClick={() => setStatusFilter('all')}
+                      type="button"
+                    >
+                      Clear filter
+                    </button>
+                  }
+                  description={`No cases are ${statusFilter.replace(/_/g, ' ')}. Clear the filter to see the rest of the queue.`}
+                  title="No cases match this filter"
+                />
+              ) : (
+                <EmptyState
+                  action={
+                    <Link
+                      className="page-button page-button--sm page-button--primary"
+                      to={`/alerts?kb=${encodeURIComponent(knowledgeBaseId)}`}
+                    >
+                      Go to the Alert Feed
+                    </Link>
+                  }
+                  description="Cases start life as alerts. Promote one from the queue to open your first case here."
+                  title="No cases yet"
+                />
+              )
             ) : null}
             {unpromotedAlerts.map((alert) => (
               <button

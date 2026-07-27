@@ -32,4 +32,21 @@ describe('AnomalyTrendPanel', () => {
       screen.getByText('No time series is configured or populated for this entity.'),
     ).toBeInTheDocument()
   })
+
+  it('asks for an entity only when none is selected', () => {
+    render(<AnomalyTrendPanel entitySelected={false} timeseries={null} unavailableReason={null} />)
+
+    expect(screen.getByText('Select an entity to load its trend.')).toBeInTheDocument()
+  })
+
+  it('does not ask for an entity while one is selected', () => {
+    // The Signals tab showed "Select an entity to load its trend" *with* an
+    // entity selected — the wrong empty state for the state (UXA-305).
+    render(<AnomalyTrendPanel entitySelected timeseries={null} unavailableReason={null} />)
+
+    expect(screen.queryByText('Select an entity to load its trend.')).not.toBeInTheDocument()
+    expect(
+      screen.getByText('No trend has been generated for this entity yet.'),
+    ).toBeInTheDocument()
+  })
 })
