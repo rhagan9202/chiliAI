@@ -114,6 +114,67 @@ class TestListPacks:
         assert broken["domain_name"] is None
         assert broken["active"] is False
 
+    def test_transport_is_the_effective_one_not_the_declared_one(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A pack with no ``events:`` block runs on the environment's transport.
+
+        ``medicare_fraud.yaml`` declares none, so its ``events`` resolves to the
+        ``EventBusConfig()`` default of ``in_memory`` — but the environment wins
+        in that case, and reporting the declared value would warn an operator
+        about a transport change that will not happen (UXA-404).
+        """
+        monkeypatch.setenv("CHILI_EVENT_BUS_BACKEND", "redis")
+        monkeypatch.setenv("REDIS_URL", "redis://redis:6379")
+        # get_event_bus_settings is lru_cached and the client fixture already
+        # built the app, so the cache is warm with the pre-patch environment.
+        dependencies.reset_domain_config_caches()
+
+        data = client.get("/config/packs").json()
+
+        medicare = next(p for p in data["packs"] if p["name"] == "medicare_fraud")
+        assert medicare["transport"] == {
+            "backend": "redis",
+            "uri": "redis://redis:6379",
+            "stream_prefix": "chili",
+            "consumer_group": "chili-workers",
+        }
+
+    def test_explicitly_pinned_transport_overrides_the_environment(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Only a pinned, non-default ``events`` block beats the environment."""
+        monkeypatch.setenv("CHILI_EVENT_BUS_BACKEND", "redis")
+        pinned = tmp_path / "pinned.yaml"
+        pinned.write_text(
+            MEDICARE_YAML.read_text(encoding="utf-8")
+            + "\nevents:\n  backend: in_memory\n  consumer_group: pinned-workers\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv(PACK_DIRS_ENV_VAR, str(tmp_path))
+
+        data = client.get("/config/packs").json()
+
+        pack = next(p for p in data["packs"] if p["name"] == "pinned")
+        assert pack["valid"] is True
+        assert pack["transport"]["backend"] == "in-memory"
+        assert pack["transport"]["consumer_group"] == "pinned-workers"
+        # in-memory has no URI to report; a stale redis URL here would read as
+        # "same transport" to the comparison on the other side of the wire.
+        assert pack["transport"]["uri"] is None
+
+    def test_unloadable_pack_reports_no_transport(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Unknown is not a claim of change — the UI must not warn on it."""
+        (tmp_path / "broken.yaml").write_text("domain: {name: broken}\n", encoding="utf-8")
+        monkeypatch.setenv(PACK_DIRS_ENV_VAR, str(tmp_path))
+
+        data = client.get("/config/packs").json()
+
+        broken = next(p for p in data["packs"] if p["name"] == "broken")
+        assert broken["transport"] is None
+
 
 # ---------------------------------------------------------------------------
 # POST /config/validate
@@ -129,6 +190,30 @@ class TestValidate:
         assert data["pack_name"] == "food_supply_chain"
         assert data["display_name"]
         assert data["errors"] == []
+
+    def test_valid_inline_content_reports_its_effective_transport(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The editor's path: inline content resolves the same way a file does."""
+        monkeypatch.setenv("CHILI_EVENT_BUS_BACKEND", "redis")
+        monkeypatch.setenv("REDIS_URL", "redis://redis:6379")
+        dependencies.reset_domain_config_caches()
+        content = yaml.safe_load(MEDICARE_YAML.read_text(encoding="utf-8"))
+        assert "events" not in content
+
+        resp = client.post("/config/validate", json={"content": content})
+
+        data = resp.json()
+        assert data["valid"] is True
+        assert data["transport"]["backend"] == "redis"
+        assert data["transport"]["consumer_group"] == "chili-workers"
+
+    def test_invalid_pack_reports_no_transport(self, client: TestClient) -> None:
+        resp = client.post("/config/validate", json={"content": {"domain": {"name": "x"}}})
+
+        data = resp.json()
+        assert data["valid"] is False
+        assert data["transport"] is None
 
     def test_valid_pack_by_path(self, client: TestClient) -> None:
         resp = client.post("/config/validate", json={"pack": str(FOOD_YAML)})

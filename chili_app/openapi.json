@@ -4037,6 +4037,17 @@
             "title": "Path",
             "type": "string"
           },
+          "transport": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PackTransport"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Event transport this pack would run on; null when the pack does not load, since there is nothing to resolve."
+          },
           "valid": {
             "description": "Whether the pack currently passes full validation.",
             "title": "Valid",
@@ -4051,6 +4062,45 @@
           "active"
         ],
         "title": "PackSummary",
+        "type": "object"
+      },
+      "PackTransport": {
+        "description": "The event transport a pack would actually run on.\n\nEffective settings, **not** the pack's declared ``events`` section: the\nenvironment wins when that section is absent or equal to the default\n``EventBusConfig()``, so a pack that omits it does not change the transport\nat all. Reported so an operator can see, before confirming a hot-swap,\nwhether the swap would abandon queued worker jobs (UXA-404).",
+        "properties": {
+          "backend": {
+            "description": "Effective transport backend (\"redis\" or \"in-memory\").",
+            "title": "Backend",
+            "type": "string"
+          },
+          "consumer_group": {
+            "description": "Effective consumer group.",
+            "title": "Consumer Group",
+            "type": "string"
+          },
+          "stream_prefix": {
+            "description": "Effective stream prefix.",
+            "title": "Stream Prefix",
+            "type": "string"
+          },
+          "uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Effective transport URI, when any.",
+            "title": "Uri"
+          }
+        },
+        "required": [
+          "backend",
+          "stream_prefix",
+          "consumer_group"
+        ],
+        "title": "PackTransport",
         "type": "object"
       },
       "PageInfo": {
@@ -6684,6 +6734,17 @@
             ],
             "description": "``domain.name`` of the validated pack when valid.",
             "title": "Pack Name"
+          },
+          "transport": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PackTransport"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Event transport the validated pack would run on; null when the pack is invalid."
           },
           "valid": {
             "title": "Valid",

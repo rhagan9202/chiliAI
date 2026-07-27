@@ -183,6 +183,7 @@ export type RecordsConfig = RequireFields<Omit<Schemas['RecordsConfig'], 'feeds'
 export type DomainConfigSchema = Record<string, unknown>
 
 export type ActivePackState = Schemas['ActivePackState']
+export type PackTransport = Schemas['PackTransport']
 export type PackSummary = Schemas['PackSummary']
 export type PackListResponse = RequireFields<Schemas['PackListResponse'], 'packs'>
 export type ValidatePackRequest = Schemas['ValidatePackRequest']

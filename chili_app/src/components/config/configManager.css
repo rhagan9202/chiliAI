@@ -163,3 +163,117 @@
 .config-manager__swap-result p {
   margin: 0;
 }
+
+/* Clickable issue path: same chip, plus the affordance that it goes
+   somewhere. Selecting the offending line is what "against the offending
+   field" means when the field lives in a 600-line buffer (UXA-404). */
+.config-manager__issue-field--link {
+  border: 0;
+  cursor: pointer;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.config-manager__issue-field--link:hover,
+.config-manager__issue-field--link:focus-visible {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+/* Transport warning: the swap is allowed, so this reads as a caution rather
+   than an error — except when one side is in-memory, which stops the
+   pipeline outright. */
+.config-manager__transport-warning {
+  border: 1px solid rgba(180, 83, 9, 0.4);
+  background: rgba(180, 83, 9, 0.07);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #92400e;
+}
+
+.config-manager__transport-warning[data-severity='decoupled'] {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.08);
+  color: #b91c1c;
+}
+
+.config-manager__transport-warning p {
+  margin: 0;
+}
+
+.config-manager__transport-changes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+/* Schema browser: nested disclosure, indented per level so the nesting is
+   readable without a tree widget. */
+.schema-browser__sections,
+.schema-browser__fields {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.schema-browser__node {
+  border-left: 2px solid var(--c-b1, #1e2c44);
+  padding-left: 10px;
+}
+
+.schema-browser__node-summary {
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.schema-browser__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.schema-browser__field-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.schema-browser__field-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.schema-browser__field-type {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.schema-browser__field-required {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.9;
+}
+
+.schema-browser__field-description {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.85;
+}

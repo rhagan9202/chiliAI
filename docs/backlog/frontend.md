@@ -936,6 +936,7 @@ The frontend has operational views, but no mounted wizard experience for configu
 **Status:** planned
 **Prerequisites:** [frontend.03, config.14]
 **Progress note (2026-07-03, feat/domain-packs-and-config-manager):** only the "raw YAML view remains available" AC is effectively covered — the Config Manager (24eb58c) ships a raw YAML editor for the active pack. Typed per-section controls and a draft diff have NOT landed; drafts do not exist yet (no config.14 backend).
+**Progress note (2026-07-27, UXA-404):** the Configuration page now renders `/config/domain/schema` as a browsable reference (`SchemaBrowser`), and a validation issue reveals the line it came from in the YAML buffer. Neither closes any AC here: this story wants *editable* per-section controls over a draft, and the schema browser is read-only reference beside the raw editor. Still blocked on config.14.
 **Unblocks:** [frontend.26]
 **Estimated size:** L
 

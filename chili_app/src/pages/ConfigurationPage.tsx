@@ -1,6 +1,7 @@
 import { useDomainConfig, useDomainConfigSchema, useDomainFeatures } from '../api/config'
 import { ActivePackEditor } from '../components/config/ActivePackEditor'
 import { ExpandableCount } from '../components/config/ExpandableCount'
+import { SchemaBrowser } from '../components/config/SchemaBrowser'
 import { PackSwitcher } from '../components/config/PackSwitcher'
 import { Card } from '../components/ui/Card'
 import { ErrorState } from '../components/ui/ErrorState'
@@ -41,7 +42,6 @@ export function ConfigurationPage() {
   const navigationLabels = (domainConfig.data?.ui?.navigation?.pages ?? []).map(
     (page) => page.label,
   )
-  const schemaSections = Object.keys(domainConfigSchema.data?.properties ?? {})
 
   if (domainConfig.isLoading) {
     return <LoadingState label="Loading domain configuration" />
@@ -113,11 +113,9 @@ export function ConfigurationPage() {
               label="Navigation pages"
               emptyHint="This pack configures no navigation."
             />
-            <ExpandableCount
-              items={schemaSections}
-              label="Schema sections"
-              emptyHint="The pack schema is unavailable."
-            />
+            {/* Not an ExpandableCount: the names alone answered nothing an
+                operator writing a pack asks (UXA-404). */}
+            <SchemaBrowser schema={domainConfigSchema.data} />
           </div>
         </Card>
       </div>

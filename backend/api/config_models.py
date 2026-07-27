@@ -19,10 +19,27 @@ __all__ = [
     "ConfigValidationIssue",
     "PackListResponse",
     "PackSummary",
+    "PackTransport",
     "SwitchPackRequest",
     "ValidatePackRequest",
     "ValidatePackResponse",
 ]
+
+
+class PackTransport(BaseModel):
+    """The event transport a pack would actually run on.
+
+    Effective settings, **not** the pack's declared ``events`` section: the
+    environment wins when that section is absent or equal to the default
+    ``EventBusConfig()``, so a pack that omits it does not change the transport
+    at all. Reported so an operator can see, before confirming a hot-swap,
+    whether the swap would abandon queued worker jobs (UXA-404).
+    """
+
+    backend: str = Field(description='Effective transport backend ("redis" or "in-memory").')
+    uri: str | None = Field(default=None, description="Effective transport URI, when any.")
+    stream_prefix: str = Field(description="Effective stream prefix.")
+    consumer_group: str = Field(description="Effective consumer group.")
 
 
 class ConfigValidationIssue(BaseModel):
@@ -57,6 +74,13 @@ class PackSummary(BaseModel):
     valid: bool = Field(description="Whether the pack currently passes full validation.")
     error: str | None = Field(
         default=None, description="Validation/parse failure summary when ``valid`` is false."
+    )
+    transport: PackTransport | None = Field(
+        default=None,
+        description=(
+            "Event transport this pack would run on; null when the pack does not load, "
+            "since there is nothing to resolve."
+        ),
     )
     active: bool = Field(description="Whether this pack is the currently active one.")
 
@@ -122,6 +146,12 @@ class ValidatePackResponse(BaseModel):
     )
     errors: list[ConfigValidationIssue] = Field(
         default_factory=lambda: cast(list[ConfigValidationIssue], [])
+    )
+    transport: PackTransport | None = Field(
+        default=None,
+        description=(
+            "Event transport the validated pack would run on; null when the pack is invalid."
+        ),
     )
 
 

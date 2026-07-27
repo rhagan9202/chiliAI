@@ -1,11 +1,12 @@
 import { useState } from 'react'
 
-import { useConfigPacks, useSwitchPack } from '../../api/config'
+import { useConfigPacks, useDomainConfig, useSwitchPack } from '../../api/config'
 import type { ConfigSwapResponse, PackSummary } from '../../api/contracts'
 import { Card } from '../ui/Card'
 import { ErrorState } from '../ui/ErrorState'
 import { LoadingState } from '../ui/LoadingState'
 import { SwapResultBanner } from './SwapResultBanner'
+import { TransportWarning } from './TransportWarning'
 import './configManager.css'
 
 function errorMessage(error: unknown): string {
@@ -17,6 +18,8 @@ function errorMessage(error: unknown): string {
 
 export function PackSwitcher() {
   const packsQuery = useConfigPacks()
+  // The active side of the transport comparison; already resolved by the API.
+  const domainConfig = useDomainConfig()
   const switchMutation = useSwitchPack()
   const [pendingPack, setPendingPack] = useState<PackSummary | null>(null)
   const [lastSwap, setLastSwap] = useState<ConfigSwapResponse | null>(null)
@@ -95,6 +98,12 @@ export function PackSwitcher() {
                       <span className="pack-switcher__confirm-copy">
                         Switch the whole workspace to “{pack.display_name ?? pack.name}”?
                       </span>
+                      {/* Above Confirm, so it is read before the irreversible
+                          click rather than explained afterwards (UXA-404). */}
+                      <TransportWarning
+                        active={domainConfig.data?.events}
+                        candidate={pack.transport}
+                      />
                       <button
                         className="page-button"
                         disabled={switchMutation.isPending}
