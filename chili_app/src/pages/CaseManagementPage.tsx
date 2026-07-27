@@ -4,7 +4,6 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { useAlerts } from '../api/alerts'
 import { useAddCaseFeedback, useCase, useCases, usePromoteCase, useUpdateCase } from '../api/cases'
 import type { CaseFeedbackCreateRequest } from '../api/contracts'
-import { useKnowledgeBases } from '../api/knowledgebases'
 import { showToast } from '../components/common/toastStore'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -13,6 +12,7 @@ import { ErrorState } from '../components/ui/ErrorState'
 import { FilterBar } from '../components/ui/FilterBar'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
 import './pages.css'
 
@@ -28,13 +28,12 @@ const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
 export function CaseManagementPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const knowledgeBasesQuery = useKnowledgeBases()
-  const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
-  const requestedKbId = searchParams.get('kb')
+  const {
+    activeKnowledgeBaseId: knowledgeBaseId,
+    isLoading: knowledgeBasesLoading,
+    isError: knowledgeBasesError,
+  } = useActiveKnowledgeBase()
   const requestedCaseId = searchParams.get('case')
-  const knowledgeBaseId = knowledgeBases.some((kb) => kb.id === requestedKbId)
-    ? requestedKbId
-    : knowledgeBases[0]?.id ?? null
 
   const casesQuery = useCases(knowledgeBaseId)
   const alertsQuery = useAlerts({ knowledgeBaseId: knowledgeBaseId ?? undefined })
@@ -53,11 +52,11 @@ export function CaseManagementPage() {
   const [missingEvidence, setMissingEvidence] = useState('')
   const [feedbackNotes, setFeedbackNotes] = useState('')
 
-  if (knowledgeBasesQuery.isLoading) {
+  if (knowledgeBasesLoading) {
     return <LoadingState label="Loading knowledge bases" />
   }
 
-  if (knowledgeBasesQuery.isError) {
+  if (knowledgeBasesError) {
     return <ErrorState description="Knowledge base inventory could not be loaded from the backend." />
   }
 

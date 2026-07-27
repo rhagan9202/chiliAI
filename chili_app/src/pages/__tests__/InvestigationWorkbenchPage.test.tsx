@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useAppStore } from '../../stores/appStore'
+
 import type {
   ClusterResult,
   DomainCapabilities,
@@ -31,6 +33,7 @@ const mocks = vi.hoisted(() => ({
     entity_count: number
     relationship_count: number
     created_at: string
+    updated_at?: string | null
   }>,
   alerts: [] as Array<{
     id: string
@@ -263,6 +266,10 @@ function selectLiveProvider(): RuntimeEntity {
 
 describe('InvestigationWorkbenchPage', () => {
   beforeEach(() => {
+    // The active knowledge base is remembered across pages; reset it so one
+    // test's selection cannot leak into the next.
+    window.localStorage.clear()
+    useAppStore.setState({ activeKnowledgeBaseId: null })
     mocks.knowledgeBases = []
     mocks.alerts = []
     mocks.useAlerts.mockReset()
@@ -373,6 +380,37 @@ describe('InvestigationWorkbenchPage', () => {
     // now unconditionally true, not just true-when-unavailable. Kept as a
     // regression guard against the label being reintroduced.
     expect(screen.queryByText('Composite risk')).not.toBeInTheDocument()
+  })
+
+  it('defaults to the most recently updated knowledge base, not the first listed', () => {
+    mocks.knowledgeBases = [
+      {
+        id: 'kb-stale',
+        name: 'Stale KB',
+        description: 'Listed first but long untouched',
+        status: 'ready',
+        document_count: 1,
+        entity_count: 1,
+        relationship_count: 0,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'kb-current',
+        name: 'Current KB',
+        description: 'Most recently updated',
+        status: 'ready',
+        document_count: 2,
+        entity_count: 2,
+        relationship_count: 1,
+        created_at: '2026-02-01T00:00:00Z',
+        updated_at: '2026-07-01T00:00:00Z',
+      },
+    ]
+
+    renderInvestigationWorkbench('/investigation')
+
+    expect(screen.getByLabelText('Knowledge base')).toHaveValue('kb-current')
   })
 
   it('selects the knowledge base from the incoming kb query parameter', () => {

@@ -64,7 +64,9 @@ test.describe('Ingestion Studio records flow', () => {
     // Auto-parse completes and the preview is ready.
     await expect(page.getByText('Parsed for preview')).toBeVisible()
 
-    const submit = page.getByRole('button', { name: 'Submit records' })
+    // KBM-002 unified both source paths behind a single "Run ingestion" CTA;
+    // there is no longer a per-source "Submit records" button.
+    const submit = page.getByRole('button', { name: 'Run ingestion' })
     await expect(submit).toBeEnabled()
     await submit.click()
 

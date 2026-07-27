@@ -770,9 +770,16 @@ ui:
         label: Investigation Workbench
         route: /investigation
         capability: gnn
+      - id: cases
+        label: Case Management
+        route: /cases
       - id: knowledge_bases
         label: Knowledge Bases
         route: /knowledge-bases
+      - id: policy
+        label: Policy Intelligence
+        route: /policy
+        capability: explainability
       - id: rag_chat
         label: RAG Chat
         route: /rag-chat
@@ -805,9 +812,9 @@ ui:
   roles:
     analyst:
       landing_page: alerts
-      pages: [dashboard, alerts, investigation, knowledge_bases, rag_chat]
-      permissions: [alerts:read, feedback:write]
+      pages: [dashboard, alerts, investigation, cases, policy, knowledge_bases, rag_chat]
+      permissions: [alerts:read, cases:write, policy:triage, feedback:write]
     supervisor:
       landing_page: dashboard
-      pages: [dashboard, alerts, investigation, knowledge_bases, configuration]
+      pages: [dashboard, alerts, investigation, cases, policy, knowledge_bases, configuration]
       permissions: [alerts:read, cases:assign]

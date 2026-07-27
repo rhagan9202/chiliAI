@@ -62,6 +62,22 @@ Routes are defined in `src/app/router.tsx`. `AppProviders` wraps the app with
 `/login`. A catch-all under `/` renders `<PagePlaceholder>` for any
 domain-configured page id that doesn't yet have a built component.
 
+**Routes are gated by the active domain pack, not just hidden from navigation.**
+`PACK_PAGE_ROUTES` in `src/app/access.ts` maps each route that corresponds to a
+pack page id; if the active pack does not grant that id, `AppShell` renders
+`RouteNotAvailable` instead of the page. Before UXA-103 an undeclared route fell
+through the "no configured page matched, so no opinion" branch, which is how
+`/housing` served Air Force content — title bar included — under a Medicare
+pack. Detail routes that hang off a page (`/scorecards/:runId`) are deliberately
+absent from that map: they are not nav pages and are governed by the page that
+links to them.
+
+A consequence for tests: a spec driving a page owned by another pack must switch
+to it. Use `useDomainPack(domainName)` from `e2e/helpers/domainPack.ts` in
+`beforeAll` and call the returned restore function in `afterAll` — the stack is
+shared and specs run serially, so failing to restore runs the rest of the suite
+under the wrong domain.
+
 | Route | View |
 |------|------|
 | `/login` | Sign-in landing page (no auth required) |
@@ -318,6 +334,39 @@ Workbench keeps selected entity, knowledge base, and graph depth in the URL via
 The KB Manager run timeline renders `WorkflowRunResponse.last_error` for failed
 workflow runs when the backend exposes retry-exhaustion details.
 
+### Active knowledge base (workspace state)
+
+Every KB-scoped page reads one shared selection via
+`useActiveKnowledgeBase()` (`src/hooks/useActiveKnowledgeBase.ts`). Pages must
+not pick their own — divergent per-page resolution is what let the Dashboard
+and the Cases page report different counts for the same workspace (UXA-101).
+
+Resolution precedence, implemented as the pure
+`resolveActiveKnowledgeBaseId()` in `src/utils/activeKnowledgeBase.ts`:
+
+1. `?kb=<id>` in the URL — an explicit, shareable selection.
+2. The remembered selection, persisted in `localStorage` under
+   `chiliai.activeKnowledgeBaseId` so it survives reloads and new sessions.
+3. **Default:** the most recently updated (`updated_at`, falling back to
+   `created_at`) knowledge base **with status `ready`**; if none are ready, the
+   most recently updated one of any status. A still-building KB has no entities
+   or analytics yet, so it only wins when nothing better exists.
+
+Candidates from a different domain pack are excluded first (`isDomainMismatch`),
+and both `?kb=` and the remembered id are validated against that in-domain list —
+a deleted or cross-domain id falls through to the default rather than stranding
+the page on a KB the API will refuse.
+
+`setActiveKnowledgeBase(id)` writes both the store and `?kb=` (via `replace`, so
+switching does not stack history entries). Two deliberate exceptions:
+
+- **RAG Chat** refuses to fall back for a *contextual* launch (arriving from an
+  alert, case, or evidence pack) whose `kb` is unknown — answering against a
+  different corpus than the analyst came from is worse than refusing.
+- **Dashboard** analytics panels (risk scores, GNN clusters, timeseries) require
+  the active KB to be `ready`; the workspace selection itself may point at a
+  building KB.
+
 ## Domain-Driven Dynamic UI
 
 The frontend reads domain configuration from `GET /config/domain` at startup. This drives entity labels, icons, relationship labels, enabled analytics panels, and alert thresholds — allowing the same codebase to serve Medicare fraud, food supply chain, or any configured domain without code changes. Investigation display helpers in `src/utils/domainDisplay.ts` derive entity titles, subtitles, chips, and relationship labels from `DomainConfig.ui.display_fields`, `entities`, and `relationships`. See [`docs/architecture.md` §9](../docs/architecture.md#9-domain-configuration-model).
@@ -359,6 +408,25 @@ Role gating happens at two levels:
   **supervisor** persona in both stock packs' `ui.roles`, so reaching the
   page in the UI means selecting the supervisor persona while holding an
   admin-capable session.
+
+### Active role (workspace state)
+
+The selected persona is persisted to `localStorage` under
+`chiliai.selectedRole` and hydrates `uiStore.selectedRole` on boot, using the
+same helpers as the active knowledge base (`stores/persistence.ts`). It has to
+survive a reload: before UXA-102 the role lived only in memory, so refreshing
+on a supervisor-only page silently demoted the user to the pack's
+`default_role` and bounced them to that role's landing page. A role remembered
+from a previous session outranks `default_role`; an unknown or removed role
+falls back to it.
+
+When the active role may not open the current route, `AppShell` renders
+`RouteNotAvailable` **in place** rather than redirecting. Redirecting discarded
+the URL the user asked for and left them unable to tell whether the page was
+missing, broken, or simply not theirs — and the `accessNotice` chip that was
+meant to explain it was set and cleared in the same navigation, so nothing was
+ever shown. That chip has been removed; the page now states which role is
+active and links to an allowed page.
 
 One switch-semantics consequence worth knowing while developing: once a pack
 has been applied/switched, the persisted pointer overrides

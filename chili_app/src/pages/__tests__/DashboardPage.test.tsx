@@ -2,6 +2,8 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useAppStore } from '../../stores/appStore'
+
 import type {
   AlertListResponse,
   AnalyticsOverviewResponse,
@@ -278,6 +280,10 @@ function expectMetricRowValue(panel: HTMLElement, label: RegExp, value: string) 
 
 describe('DashboardPage', () => {
   beforeEach(() => {
+    // The active knowledge base is remembered across pages and persisted, so it
+    // must be reset or one test's resolved KB leaks into the next.
+    window.localStorage.clear()
+    useAppStore.setState({ activeKnowledgeBaseId: null })
     vi.useFakeTimers()
     vi.setSystemTime(new Date(now))
     Object.values(mocks).forEach((mock) => mock.mockReset())

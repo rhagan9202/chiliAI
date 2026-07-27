@@ -21,6 +21,8 @@
  */
 import { expect, test } from '@playwright/test'
 
+import { useDomainPack } from './helpers/domainPack'
+
 const API = process.env['E2E_API_URL'] ?? 'http://localhost:8000'
 
 /** Public reference layer size (src/data/airForceInstallations.ts). */
@@ -105,7 +107,11 @@ function resolveActiveKnowledgeBase(items: KnowledgeBaseItem[]): KnowledgeBaseIt
   })
 }
 
+let restorePack: (() => Promise<void>) | null = null
+
+// See air-force-housing-scorecards.spec.ts: /housing is pack-gated (UXA-103).
 test.beforeAll(async () => {
+  restorePack = await useDomainPack('department_air_force_housing')
   housing = await fetchJson<HousingInstallationsPayload>('/housing/installations')
   referenceMode = housing.items.length === 0
   knowledgeBases = (await fetchJson<{ items: KnowledgeBaseItem[] }>('/knowledgebases')).items
@@ -383,4 +389,11 @@ test.describe('Housing demo ingestion health', () => {
     expect(demoWorkflows.length).toBeGreaterThan(0)
     expect(demoWorkflows.every((workflow) => workflow.status === 'completed')).toBe(true)
   })
+})
+
+test.afterAll(async () => {
+  if (restorePack) {
+    await restorePack()
+    restorePack = null
+  }
 })

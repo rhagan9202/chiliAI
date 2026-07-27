@@ -1,4 +1,4 @@
-import { PanelRightOpen, X } from 'lucide-react'
+import { PanelRightOpen } from 'lucide-react'
 
 import { getDefaultRole } from '../../app/access'
 import type { DomainConfig, DomainFeatures } from '../../api/contracts'
@@ -23,8 +23,6 @@ export function TopBar({
   const selectedRole = useUiStore((state) => state.selectedRole)
   const setSelectedRole = useUiStore((state) => state.setSelectedRole)
   const realtimeConnected = useUiStore((state) => state.realtimeConnected)
-  const accessNotice = useUiStore((state) => state.accessNotice)
-  const setAccessNotice = useUiStore((state) => state.setAccessNotice)
   const title = pageTitleOverride ?? domainConfig?.domain.display_name ?? 'chiliAI Platform'
   const status = loading ? 'Loading config' : unavailable ? 'Config unavailable' : realtimeConnected ? 'Live updates' : 'Realtime reconnecting'
   const roleOptions = Object.keys(domainFeatures?.roles ?? {})
@@ -36,17 +34,6 @@ export function TopBar({
         <h1 className="app-topbar__title">{title}</h1>
       </div>
       <div className="app-topbar__actions">
-        {accessNotice ? (
-          <button
-            aria-label="Dismiss access notice"
-            className="app-topbar__notice"
-            type="button"
-            onClick={() => setAccessNotice(null)}
-          >
-            <span>{accessNotice}</span>
-            <X size={14} aria-hidden="true" />
-          </button>
-        ) : null}
         {roleOptions.length > 0 ? (
           <label className="app-topbar__select-wrap">
             <span className="app-topbar__search-label">Active role</span>

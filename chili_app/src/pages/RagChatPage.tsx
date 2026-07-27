@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
-import { useKnowledgeBases } from '../api/knowledgebases'
 import {
   isStartConversationPartialError,
   useAddMessage,
@@ -15,6 +14,7 @@ import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import {
   buildRagMessageFilters,
   citationNavigationTarget,
@@ -67,7 +67,7 @@ function citationKey(messageId: string, citation: ChatCitation, index: number) {
 
 export function RagChatPage() {
   const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
   const launchContext = useMemo(() => parseRagLaunchContext(searchParams), [searchParams])
   const [conversationId, setConversationId] = useState<string | null>(null)
   const launchQuestion = launchContext.question ?? ''
@@ -77,8 +77,13 @@ export function RagChatPage() {
   }))
   const [retryFilters, setRetryFilters] = useState<Record<string, string | number | boolean> | null>(null)
   const [showContextualRetryMessage, setShowContextualRetryMessage] = useState(false)
-  const knowledgeBasesQuery = useKnowledgeBases()
-  const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
+  const {
+    activeKnowledgeBaseId,
+    knowledgeBases,
+    isLoading: knowledgeBasesLoading,
+    isError: knowledgeBasesError,
+    setActiveKnowledgeBase,
+  } = useActiveKnowledgeBase()
   const requestedKbId = launchContext.knowledgeBaseId
   const hasContextualLaunch =
     launchContext.source != null ||
@@ -89,11 +94,14 @@ export function RagChatPage() {
     launchContext.installationId != null ||
     launchContext.scorecardRunId != null ||
     launchContext.question != null
+  // A contextual launch that names an unknown knowledge base must NOT silently
+  // fall back to the workspace default — answering against a different corpus
+  // than the alert/case the analyst arrived from would be worse than refusing.
   const selectedKnowledgeBaseId = knowledgeBases.some((kb) => kb.id === requestedKbId)
     ? requestedKbId
     : hasContextualLaunch
       ? null
-      : knowledgeBases[0]?.id ?? null
+      : activeKnowledgeBaseId
   const conversationQuery = useConversation(conversationId)
   const createConversationMutation = useCreateConversation()
   const startContextualThreadMutation = useStartConversationWithMessage()
@@ -112,11 +120,11 @@ export function RagChatPage() {
   ].filter((value): value is string => typeof value === 'string' && value.length > 0)
   const canStartContextualThread = !conversationId && contextQuestion.length > 0
 
-  if (knowledgeBasesQuery.isLoading || (conversationId && conversationQuery.isLoading)) {
+  if (knowledgeBasesLoading || (conversationId && conversationQuery.isLoading)) {
     return <LoadingState label="Loading RAG conversation" />
   }
 
-  if (knowledgeBasesQuery.isError) {
+  if (knowledgeBasesError) {
     return <ErrorState description="Knowledge base inventory could not be loaded from the backend." />
   }
 
@@ -168,9 +176,7 @@ export function RagChatPage() {
             className="page-input--inline"
             id="rag-kb-select"
             onChange={(event) => {
-              const next = new URLSearchParams(searchParams)
-              next.set('kb', event.target.value)
-              setSearchParams(next)
+              setActiveKnowledgeBase(event.target.value)
               setConversationId(null)
               setDraftForLaunchQuestion('')
               setRetryFilters(null)
