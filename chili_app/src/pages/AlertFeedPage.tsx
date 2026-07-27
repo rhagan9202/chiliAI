@@ -382,6 +382,7 @@ export function AlertFeedPage() {
                       <button
                         aria-label={`Ask AI for ${alert.entity_label}`}
                         className="page-button page-button--sm page-button--secondary"
+                        title={`Opens RAG Chat with this alert and ${alert.entity_label} attached.`}
                         onClick={() =>
                           navigate(buildRagChatUrl({
                             knowledgeBaseId: alert.knowledge_base_id,

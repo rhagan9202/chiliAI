@@ -469,6 +469,21 @@ expressed at all**.
 modelled on the Housing page's FILTER BY STATUS / BRANCH / COMMAND strip, which
 already got this right.
 
+## One assistant, two surfaces
+
+The app had four AI entry points with nothing distinguishing them, and showed
+two composers side by side on RAG Chat (UXA-407). The settled model:
+
+- **RAG Chat is the durable conversation.** History persists per knowledge base.
+- **The AI Investigator rail is a quick ask** that hands its context to RAG
+  Chat rather than holding its own history — which is what it already did, it
+  just never said so. Its subtitle now reads "Quick ask — opens in RAG Chat".
+- **The rail is suppressed on `/rag-chat`**, where it would be a second
+  composer for the same job, and the shell reclaims its 320px.
+- **"Ask AI" states its destination and payload** on hover before navigating.
+
+`e2e/assistant-model.spec.ts` asserts all four.
+
 ## Bulk triage
 
 `src/utils/alertSelection.ts` holds the selection as a set of alert ids on the

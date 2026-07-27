@@ -101,15 +101,35 @@ describe('AiAssistantPanel', () => {
   it('treats malformed encoded investigation paths as no context', () => {
     renderPanel('/investigation/%E0%A4%A?kb=kb-1')
 
-    expect(screen.getByText('Open an alert, case, or entity to attach context.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Open an alert, case, or entity to ask about it here.'),
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /send message/i })).toBeDisabled()
   })
 
   it('disables sending when no contextual route is active', () => {
     renderPanel('/dashboard')
 
-    expect(screen.getByText('Open an alert, case, or entity to attach context.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Open an alert, case, or entity to ask about it here.'),
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /send message/i })).toBeDisabled()
+  })
+
+  it('says what it is and where its answers go', () => {
+    // Four AI entry points existed with nothing distinguishing them
+    // (UXA-407). The rail is the quick ask; RAG Chat is the durable one.
+    renderPanel('/alerts?kb=kb-1&alert=alert-1')
+
+    expect(screen.getByText('Quick ask — opens in RAG Chat')).toBeInTheDocument()
+  })
+
+  it('explains what it can see when nothing is attached', () => {
+    renderPanel('/dashboard')
+
+    expect(
+      screen.getByText('Open an alert, case, or entity to ask about it here.'),
+    ).toBeInTheDocument()
   })
 
   it('names the alert it is attached to instead of showing its id', () => {

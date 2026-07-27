@@ -1188,6 +1188,12 @@ page that links to them.
 
 The investigation workbench is the primary analyst view. It is a composite page with multiple coordinated panels. In the current prototype, the workbench selects an active knowledge base, searches entities through `/investigation/search?kb_id=...`, and loads entity detail plus neighborhood data through KB-scoped investigation endpoints. Entity titles, subtitles, properties, and relationship labels derive from the active domain config's entity/relationship definitions and `ui.display_fields` metadata instead of hardcoded Medicare-specific labels.
 
+**One assistant, two surfaces** (UXA-407). RAG Chat owns durable, KB-scoped
+conversation history; the `AiAssistantPanel` rail is a quick-ask surface that
+carries its context into RAG Chat via `buildRagChatUrl` and keeps no history of
+its own. `AppShell` suppresses the rail on `/rag-chat` — where it would be a
+second composer for the same job — and reclaims the 320px column.
+
 **One entity, one name.** The display-name ladder — configured `title` property, then a `name` property, then `"<type display label> <id>"` — is implemented twice on purpose: `backend/config/display.py::entity_display_label` for producers (alert labels and titles, demo seeding) and `chili_app/src/utils/domainDisplay.ts::getEntityTitle` for the SPA (workbench heading, graph node labels, evidence-pack subgraph, AI context rail). They must be changed together; `e2e/entity-name-consistency.spec.ts` asserts the two agree by clicking through from an alert card to the workbench against the live stack. Entity *properties* resolve through `PropertyDefinition.display` in config declaration order (`chili_app/src/utils/entityProperties.ts`, UXA-302); the configured title/subtitle fields are omitted from that list because the dossier header already renders them.
 
 ```

@@ -220,6 +220,7 @@ export function CaseManagementPage() {
               <div className="page-actions-inline">
                 <button
                   aria-label={`Ask AI for ${caseQuery.data.case.title}`}
+                  title={`Opens RAG Chat with this case and its evidence attached.`}
                   className="page-button page-button--secondary"
                   onClick={() =>
                     navigate(buildRagChatUrl({

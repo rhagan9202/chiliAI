@@ -19,6 +19,8 @@ export function AppShell() {
   const selectedRole = useUiStore((state) => state.selectedRole)
   const setSelectedRole = useUiStore((state) => state.setSelectedRole)
   const location = useLocation()
+  // RAG Chat *is* the assistant; its own composer is the one to use there.
+  const railSuppressed = location.pathname.startsWith('/rag-chat')
 
   useRealtimeWorkspaceStream()
 
@@ -73,7 +75,7 @@ export function AppShell() {
       : undefined
 
   return (
-    <div className={aiPanelOpen ? 'app-shell' : 'app-shell app-shell--ai-closed'}>
+    <div className={aiPanelOpen && !railSuppressed ? 'app-shell' : 'app-shell app-shell--ai-closed'}>
       <Sidebar domainConfig={domainConfigQuery.data} domainFeatures={domainFeaturesQuery.data} selectedRole={selectedRole} />
       <div className="app-shell__workspace">
         <TopBar
@@ -95,7 +97,10 @@ export function AppShell() {
           )}
         </main>
       </div>
-      {aiPanelOpen ? <AiAssistantPanel /> : null}
+      {/* One assistant, two surfaces (UXA-407): RAG Chat is the durable
+          conversation, the rail is a quick ask that hands off to it. On RAG
+          Chat itself the rail would be a second composer for the same job. */}
+      {aiPanelOpen && !railSuppressed ? <AiAssistantPanel /> : null}
     </div>
   )
 }

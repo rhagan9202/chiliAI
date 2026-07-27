@@ -37,9 +37,9 @@ const domainConfig = {
 
 const domainFeatures = {
   default_role: 'analyst',
-  enabled_pages: ['alerts', 'configuration'],
+  enabled_pages: ['alerts', 'configuration', 'rag_chat'],
   roles: {
-    analyst: { landing_page: 'alerts', pages: ['alerts'], permissions: [] },
+    analyst: { landing_page: 'alerts', pages: ['alerts', 'rag_chat'], permissions: [] },
     supervisor: {
       landing_page: 'alerts',
       pages: ['alerts', 'configuration'],
@@ -56,6 +56,7 @@ function renderShell(initialEntry: string) {
           <Route element={<div>Configuration page body</div>} path="configuration" />
           <Route element={<div>Alert feed body</div>} path="alerts" />
           <Route element={<div>Housing body</div>} path="housing" />
+          <Route element={<div>RAG chat body</div>} path="rag-chat" />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -128,5 +129,22 @@ describe('AppShell route access', () => {
     renderShell('/configuration')
 
     expect(screen.getByText('Configuration page body')).toBeInTheDocument()
+  })
+  it('does not hold the rail open on the page that is the assistant', () => {
+    // RAG Chat has its own composer; showing the rail's too presented two
+    // composers for the same job with nothing distinguishing them (UXA-407).
+    useUiStore.setState({ aiPanelOpen: true })
+
+    renderShell('/rag-chat')
+
+    expect(screen.queryByTestId('ai-panel')).not.toBeInTheDocument()
+  })
+
+  it('keeps the rail on pages that can attach context to it', () => {
+    useUiStore.setState({ aiPanelOpen: true })
+
+    renderShell('/alerts')
+
+    expect(screen.getByTestId('ai-panel')).toBeInTheDocument()
   })
 })
