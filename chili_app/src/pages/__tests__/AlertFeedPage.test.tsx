@@ -427,8 +427,11 @@ describe('AlertFeedPage', () => {
   })
 
   it('disables a promoted alert row after promotion succeeds', () => {
+    // The real mutation always hands onSuccess a CaseDetailResponse; a mock
+    // that calls it bare lies about the contract and hid a crash in the
+    // promote handler until CI surfaced it as an unhandled error.
     mocks.promoteAlertToCase.mockImplementation((_variables, options) => {
-      options.onSuccess()
+      options.onSuccess({ case: { id: 'case-harbor', knowledge_base_id: 'kb-harbor' } })
     })
     renderAlertFeed()
 
