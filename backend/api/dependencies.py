@@ -937,17 +937,30 @@ def _apply_policy_triage(
 
 def get_policy_item_list_payload(
     knowledge_base_id: str = Query(...),
-    status: str | None = Query(default=None),
+    status: list[str] | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     service: PolicyService = Depends(get_policy_service),
 ) -> PolicyItemListResponse:
-    """Return a KB-scoped page of policy items, optionally filtered by status."""
+    """Return a KB-scoped page of policy items, narrowed by status and title.
+
+    ``status`` repeats (``?status=open&status=escalated``) so "open **or**
+    escalated" — the working set an analyst actually wants — is expressible in
+    one request. A single ``?status=open`` still parses to a one-element list,
+    so the pre-multi-select wire form keeps working (UXA-401).
+    """
     items, total = service.list(
-        knowledge_base_id=knowledge_base_id, limit=limit, offset=offset, status=status
+        knowledge_base_id=knowledge_base_id,
+        limit=limit,
+        offset=offset,
+        statuses=status,
+        query=q,
     )
     return PolicyItemListResponse(
-        items=[_policy_item_to_summary(item) for item in items], total=total
+        items=[_policy_item_to_summary(item) for item in items],
+        total=total,
+        status_counts=service.count_by_status(knowledge_base_id=knowledge_base_id),
     )
 
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from policy.adapters.protocols import PolicyItemRepository
 from policy.exceptions import (
     PolicyError,
@@ -69,11 +71,21 @@ class PolicyService:
         knowledge_base_id: str,
         limit: int,
         offset: int,
-        status: str | None = None,
+        statuses: Sequence[str] | None = None,
+        query: str | None = None,
     ) -> tuple[list[PolicyItem], int]:
+        """Page a KB's items, narrowed to any of ``statuses`` and a title ``query``."""
         return self._repository.list(
-            knowledge_base_id=knowledge_base_id, limit=limit, offset=offset, status=status
+            knowledge_base_id=knowledge_base_id,
+            limit=limit,
+            offset=offset,
+            statuses=statuses,
+            query=query,
         )
+
+    def count_by_status(self, *, knowledge_base_id: str) -> dict[str, int]:
+        """Per-status counts across the whole KB, unaffected by the active filter."""
+        return self._repository.count_by_status(knowledge_base_id)
 
     def triage(
         self,

@@ -120,6 +120,15 @@ class PolicyItemListResponse(BaseModel):
         default_factory=lambda: cast(list[PolicyItemSummaryResponse], [])
     )
     total: int = 0
+    status_counts: dict[str, int] = Field(
+        default_factory=lambda: cast(dict[str, int], {}),
+        description=(
+            "Item counts per status across the whole knowledge base, ignoring "
+            "the active filter. The filter UI shows a count beside every status "
+            "option; tallying the filtered page instead would collapse every "
+            "other option to zero the moment one was selected (UXA-401)."
+        ),
+    )
 
 
 class PolicyItemDetailResponse(BaseModel):
@@ -239,6 +248,21 @@ class EvidencePackResponse(BaseModel):
     # unattributed, undated assertion (UXA-405).
     created_at: datetime
     source_documents: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class EntityLocationResponse(BaseModel):
+    """One knowledge base that holds a given entity (UXA-104)."""
+
+    knowledge_base_id: str
+    knowledge_base_name: str
+
+
+class EntityLocationListResponse(BaseModel):
+    """Where an entity lives, so a deep link with no `?kb=` can recover."""
+
+    items: list[EntityLocationResponse] = Field(
+        default_factory=lambda: cast(list[EntityLocationResponse], [])
+    )
 
 
 class CaseSummaryResponse(BaseModel):

@@ -9,18 +9,26 @@ import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
-import { FilterBar } from '../components/ui/FilterBar'
+import { FilterGroup } from '../components/ui/FilterGroup'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
+import { useUrlSearchDraft } from '../hooks/useUrlSearchDraft'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
+import {
+  applyCaseFilters,
+  EMPTY_CASE_FILTERS,
+  hasActiveCaseFilters,
+  parseCaseFilters,
+  serializeCaseFilters,
+  summarizeCaseFilters,
+  type CaseFilterState,
+} from '../utils/caseFilters'
+import { countBy } from '../utils/alertFilters'
 import { countLabel } from '../utils/countLabel'
 import './pages.css'
 
-type StatusFilter = 'all' | 'open' | 'in_review' | 'closed'
-
-const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
-  { id: 'all', label: 'All' },
+const STATUS_OPTIONS = [
   { id: 'open', label: 'Open' },
   { id: 'in_review', label: 'In review' },
   { id: 'closed', label: 'Closed' },
@@ -35,12 +43,33 @@ export function CaseManagementPage() {
     isError: knowledgeBasesError,
   } = useActiveKnowledgeBase()
   const requestedCaseId = searchParams.get('case')
+  // URL-backed so a case view is shareable and survives a reload (UXA-401).
+  // `replace` because a filter is a view state, not a destination: pushing would
+  // make the back button walk through every toggle instead of leaving the page.
+  const filters = parseCaseFilters(searchParams)
+  const setFilters = (next: CaseFilterState) => {
+    const params = new URLSearchParams(searchParams)
+    for (const key of ['status', 'q']) params.delete(key)
+    for (const [key, value] of serializeCaseFilters(next)) params.append(key, value)
+    setSearchParams(params, { preventScrollReset: true, replace: true })
+  }
+  // No delay: this list is filtered in the browser, so the URL write costs
+  // nothing. The draft is still local — see the hook for why.
+  const [searchDraft, setSearchDraft] = useUrlSearchDraft(filters.search, (next) =>
+    setFilters({ ...parseCaseFilters(searchParams), search: next }),
+  )
+  const toggleStatus = (optionId: string) =>
+    setFilters({
+      ...filters,
+      statuses: filters.statuses.includes(optionId)
+        ? filters.statuses.filter((value) => value !== optionId)
+        : [...filters.statuses, optionId],
+    })
 
   const casesQuery = useCases(knowledgeBaseId)
   const alertsQuery = useAlerts({ knowledgeBaseId: knowledgeBaseId ?? undefined })
   const promoteMutation = usePromoteCase(knowledgeBaseId)
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const activeCaseId = casesQuery.data?.items.some((caseItem) => caseItem.id === requestedCaseId)
     ? requestedCaseId
     : selectedCaseId ?? casesQuery.data?.items[0]?.id ?? null
@@ -92,10 +121,8 @@ export function CaseManagementPage() {
     return <LoadingState label="Waiting for case data" />
   }
 
-  const visibleCases =
-    statusFilter === 'all'
-      ? casesQuery.data.items
-      : casesQuery.data.items.filter((caseItem) => caseItem.status === statusFilter)
+  const visibleCases = applyCaseFilters(casesQuery.data.items, filters)
+  const statusCounts = countBy(casesQuery.data.items, (caseItem) => caseItem.status)
 
   const unpromotedAlerts = alertsQuery.data.items.filter(
     (alert) => !casesQuery.data.items.some((existingCase) => existingCase.alert_ids.includes(alert.id)),
@@ -120,11 +147,48 @@ export function CaseManagementPage() {
         title="Case Management"
       />
 
-      <FilterBar
-        activeFilterId={statusFilter}
-        filters={STATUS_FILTERS}
-        onChange={(value) => setStatusFilter(value as StatusFilter)}
-      />
+      <div className="alert-filter-strip">
+        <FilterGroup
+          label="Status"
+          onToggle={toggleStatus}
+          options={STATUS_OPTIONS.map((option) => ({
+            ...option,
+            count: statusCounts[option.id] ?? 0,
+          }))}
+          selected={filters.statuses}
+        />
+        <div className="alert-filter-strip__controls">
+          <label className="filter-group__label" htmlFor="case-search">
+            Search
+          </label>
+          <input
+            className="page-input--inline"
+            id="case-search"
+            onChange={(event) => setSearchDraft(event.target.value)}
+            placeholder="Case title"
+            type="search"
+            value={searchDraft}
+          />
+        </div>
+        <div className="alert-filter-strip__summary">
+          <span aria-live="polite">
+            {summarizeCaseFilters({
+              shown: visibleCases.length,
+              total: casesQuery.data.items.length,
+              filters,
+            })}
+          </span>
+          {hasActiveCaseFilters(filters) ? (
+            <button
+              className="page-button page-button--sm page-button--secondary"
+              onClick={() => setFilters(EMPTY_CASE_FILTERS)}
+              type="button"
+            >
+              Clear filters
+            </button>
+          ) : null}
+        </div>
+      </div>
 
       <div className="case-layout">
         <Card>
@@ -156,13 +220,13 @@ export function CaseManagementPage() {
                   action={
                     <button
                       className="page-button page-button--sm"
-                      onClick={() => setStatusFilter('all')}
+                      onClick={() => setFilters(EMPTY_CASE_FILTERS)}
                       type="button"
                     >
                       Clear filter
                     </button>
                   }
-                  description={`No cases are ${statusFilter.replace(/_/g, ' ')}. Clear the filter to see the rest of the queue.`}
+                  description="No cases match the filters you have set. Clear them to see the rest of the queue."
                   title="No cases match this filter"
                 />
               ) : (

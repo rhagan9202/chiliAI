@@ -272,6 +272,38 @@ describe('CaseManagementPage', () => {
     expect(screen.getByText('prior auth')).toBeInTheDocument()
   })
 
+  it('expresses "open or in review" in one view', () => {
+    // The single-select chip row could only ever show one status (UXA-401).
+    mocks.useCases.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        items: [
+          caseSummary,
+          { ...caseSummary, id: 'case-2', title: 'North Harbor review', status: 'in_review' },
+          { ...caseSummary, id: 'case-3', title: 'Cedar Ridge closure', status: 'closed' },
+        ],
+        page: { page: 1, page_size: 3, total_items: 3 },
+      },
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/cases?kb=kb-1&status=open&status=in_review']}>
+        <CaseManagementPage />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('Showing 2 of 3 cases')).toBeInTheDocument()
+    expect(screen.queryByText('Cedar Ridge closure')).not.toBeInTheDocument()
+  })
+
+  it('shows a count on every status option', () => {
+    renderPage()
+
+    expect(screen.getByRole('button', { name: 'Open, 1 matching' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Closed, 0 matching' })).toBeInTheDocument()
+  })
+
   it('offers a way out of a filter that matched nothing', () => {
     mocks.useCases.mockReturnValue({
       isLoading: false,
@@ -280,7 +312,7 @@ describe('CaseManagementPage', () => {
     })
 
     renderPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Closed' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Closed, 0 matching' }))
 
     expect(screen.getByText('No cases match this filter')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }))

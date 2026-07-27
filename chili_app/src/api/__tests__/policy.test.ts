@@ -6,12 +6,30 @@ import { getPolicyItems, getPolicyItem, triagePolicyItem } from '../policy'
 describe('policy api client', () => {
   it('threads knowledge_base_id and status into requests', async () => {
     const apiFetch = vi.spyOn(client, 'apiFetch').mockResolvedValue({ items: [], total: 0 })
-    await getPolicyItems('kb-1', 'open')
+    await getPolicyItems('kb-1', { statuses: ['open'] })
     expect(apiFetch).toHaveBeenCalledWith('/policy/items?knowledge_base_id=kb-1&status=open')
 
     apiFetch.mockResolvedValue({ item: {}, matched_fields: {}, citations: [] })
     await getPolicyItem('kb-1', 'item-9')
     expect(apiFetch).toHaveBeenCalledWith('/policy/items/item-9?knowledge_base_id=kb-1')
+  })
+
+  it('repeats status for a multi-select and sends the search as q (UXA-401)', async () => {
+    const apiFetch = vi.spyOn(client, 'apiFetch').mockResolvedValue({ items: [], total: 0 })
+
+    await getPolicyItems('kb-1', { statuses: ['open', 'escalated'], search: 'upcoding' })
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/policy/items?knowledge_base_id=kb-1&status=open&status=escalated&q=upcoding',
+    )
+  })
+
+  it('omits both parameters when nothing is filtered', async () => {
+    const apiFetch = vi.spyOn(client, 'apiFetch').mockResolvedValue({ items: [], total: 0 })
+
+    await getPolicyItems('kb-1', { statuses: [], search: '' })
+
+    expect(apiFetch).toHaveBeenCalledWith('/policy/items?knowledge_base_id=kb-1')
   })
 
   it('posts triage actions', async () => {

@@ -10,9 +10,9 @@ Durable, KB-scoped **policy intelligence** (BL-011). Rule packs defined in the d
 |------|----------------|
 | `models.py` | `PolicyItem`, `PolicyDisposition`, `PolicyCitation` domain models; `PolicyItemStatus`, `PolicySeverity`, `PolicyTargetKind`, `TriageAction` literals; `ACTION_TO_STATUS` mapping. |
 | `evaluation.py` | Pure `evaluate(rule_packs, state) -> list[PolicyMatch]` - no I/O. Receives freshly-stored entities + (throttled) graph metrics; returns one `PolicyMatch` per rule hit. |
-| `service.py` | `PolicyService` - `record_match(...)` upserts new items; `triage(...)` records analyst disposition; `link_case(...)` attaches an escalated case id; `get` / `list` delegates to the repository. |
+| `service.py` | `PolicyService` - `record_match(...)` upserts new items; `triage(...)` records analyst disposition; `link_case(...)` attaches an escalated case id; `get` / `list` / `count_by_status` delegate to the repository. |
 | `exceptions.py` | `PolicyError`, `PolicyPersistenceError`, `PolicyItemNotFoundError`, `PolicyItemAlreadyTriagedError`. |
-| `adapters/protocols.py` | `PolicyItemRepository` protocol - `upsert / get / list / update / delete_by_kb`. |
+| `adapters/protocols.py` | `PolicyItemRepository` protocol - `upsert / get / list / count_by_status / update / delete_by_kb`. |
 | `adapters/in_memory.py` | `InMemoryPolicyItemRepository` (dict keyed by natural key) for tests / local dev. |
 | `adapters/postgres.py` | `PostgresPolicyItemRepository` over `database.ConnectionProvider`; disposition stored as jsonb; migration `0003_policy`. |
 
@@ -62,7 +62,7 @@ Routed by `api/routers/policy.py`, all routes require `?knowledge_base_id=`:
 
 | Method | Path | Role | Notes |
 |--------|------|------|-------|
-| `GET` | `/policy/items` | `viewer` | List KB-scoped items; optional `?status=` filter; paginated. |
+| `GET` | `/policy/items` | `viewer` | List KB-scoped items; paginated. `?status=` **repeats** (`?status=open&status=escalated`) and matches any of the given values, so "open **or** escalated" is one request; a single `?status=open` still parses to a one-element list, so the pre-multi-select form keeps working. `?q=` is a case-insensitive substring match on the title (LIKE wildcards in the term are escaped, so `50%` searches for a literal `50%`). The response carries `status_counts`, a per-status tally over the **whole** KB — the filter UI shows a count beside every option, and a count taken from the filtered page would zero every other option the moment one was selected (UXA-401). |
 | `GET` | `/policy/items/{item_id}` | `viewer` | Item detail (item + disposition + citations). |
 | `POST` | `/policy/items/{item_id}/triage` | `analyst` | Accept / reject / defer / escalate-to-case; persists `PolicyDisposition`; escalate creates a case via `CaseService` and links its `case_id` back onto the disposition. |
 
@@ -78,8 +78,8 @@ The `policy_items` table is created by Alembic migration `database/migrations/ve
 
 ## Tests
 
-- `tests/policy/test_in_memory_store.py` - repository CRUD, KB isolation, natural-key upsert semantics, no-reopen invariant.
-- `tests/policy/test_postgres_store.py` - `@pytest.mark.integration` (skipped without `DATABASE_URL`).
+- `tests/policy/test_in_memory_store.py` - repository CRUD, KB isolation, natural-key upsert semantics, no-reopen invariant, multi-status/title filtering and `count_by_status`.
+- `tests/policy/test_postgres_store.py` - `@pytest.mark.integration` (skipped without `DATABASE_URL`). Covers the SQL the in-memory adapter cannot: `status = ANY(%s)`, `GROUP BY status`, and that a searched `%` stays literal rather than matching every row.
 - `tests/policy/test_service.py` - service upsert + triage, already-triaged guard.
 - `tests/policy/test_evaluation.py` - pure evaluator: entity/metric targets, predicate operators, threshold config refs.
 - `tests/api/test_policy_router.py` - KB-scoped routes + triage flow.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from api.contracts import EntityLocationListResponse, EntityLocationResponse
 from api.middleware.rbac import require_role
 from config.schema import DomainConfig, ValidationConfig
 from graph.protocols import GraphServiceProtocol
@@ -39,7 +40,52 @@ def get_knowledge_base_repository() -> KnowledgeBaseExistenceCheck:
     return application_get_kb_repo()
 
 
+# Pagination for the cross-KB scan; workspaces hold tens of KBs, not thousands.
+_KB_SCAN_PAGE_SIZE = 200
+
 router = APIRouter(prefix="/investigation", tags=["investigation"])
+
+
+@router.get(
+    "/entities/{entity_id}/locate",
+    response_model=EntityLocationListResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
+async def locate_entity(
+    entity_id: str,
+    kb_repository: KnowledgeBaseExistenceCheck = Depends(get_knowledge_base_repository),
+    graph_service: GraphServiceProtocol = Depends(get_graph_service),
+) -> EntityLocationListResponse:
+    """Return the knowledge bases holding ``entity_id``.
+
+    A deep link that arrives without ``?kb=`` used to resolve against whatever
+    the workspace happened to point at and fail (UXA-104). This lets the UI
+    offer "this entity is in <KB> — switch and open it", and to say plainly
+    when it exists nowhere. An empty list is the honest answer to the latter,
+    not a 404: the question "where does this live" was answered.
+    """
+    listing = getattr(kb_repository, "list", None)
+    if listing is None:
+        return EntityLocationListResponse(items=[])
+
+    located: list[EntityLocationResponse] = []
+    offset = 0
+    while True:
+        page, total = listing(limit=_KB_SCAN_PAGE_SIZE, offset=offset)
+        for knowledge_base in page:
+            # get_entity takes a KB id list, so this is one keyed read per KB
+            # rather than a scan of each graph.
+            if graph_service.get_entity([knowledge_base.id], entity_id) is not None:
+                located.append(
+                    EntityLocationResponse(
+                        knowledge_base_id=knowledge_base.id,
+                        knowledge_base_name=knowledge_base.name,
+                    )
+                )
+        offset += len(page)
+        if not page or offset >= total:
+            break
+    return EntityLocationListResponse(items=located)
 
 
 @router.get(

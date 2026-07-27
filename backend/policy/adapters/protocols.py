@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
 from policy.models import PolicyItem
@@ -29,9 +30,24 @@ class PolicyItemRepository(Protocol):
         knowledge_base_id: str,
         limit: int,
         offset: int,
-        status: str | None = None,
+        statuses: Sequence[str] | None = None,
+        query: str | None = None,
     ) -> tuple[list[PolicyItem], int]:
-        """Return a page of items (newest first) plus the total match count."""
+        """Return a page of items (newest first) plus the total match count.
+
+        ``statuses`` matches any of the given statuses (``None`` or empty = every
+        status), so an analyst can ask for "open **or** escalated" in one view.
+        ``query`` is a case-insensitive substring match on the item title.
+        """
+        ...
+
+    def count_by_status(self, knowledge_base_id: str) -> dict[str, int]:
+        """Return item counts per status for a KB, ignoring any filter.
+
+        The filter UI shows a count beside every status option; those counts
+        must not collapse to the current selection when a filter is applied,
+        so they are tallied over the whole KB rather than the filtered page.
+        """
         ...
 
     def update(self, item: PolicyItem) -> PolicyItem:

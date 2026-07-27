@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 
 import { useDomainConfig } from '../api/config'
@@ -77,6 +77,10 @@ export function KnowledgeBaseManagerPage() {
   // Holds the last upload invocation so the Retry button can re-run it verbatim.
   const [retryUpload, setRetryUpload] = useState<(() => void) | null>(null)
   const [showAllDomains, setShowAllDomains] = useState(false)
+  // The staging form lives in the main column while the inventory that reports
+  // "no documents yet" sits in the aside; the empty state's action has to take
+  // the analyst back across the page to it (UXA-305).
+  const sourceStepRef = useRef<HTMLElement | null>(null)
 
   const knowledgeBases = knowledgeBasesQuery.data?.items ?? []
   const activeDomainName = domainConfigQuery.data?.domain.name ?? null
@@ -111,6 +115,12 @@ export function KnowledgeBaseManagerPage() {
     activeDocumentId,
   )
   const knowledgeBase = knowledgeBaseDetailQuery.data ?? null
+  // A brand-new knowledge base has no runs *because* it has nothing in it, and
+  // the document inventory already says so; the timeline only earns its card
+  // once there is something to time (UXA-305). "Watch runs" keys off the same
+  // value so it can never scroll to a card that isn't rendered.
+  const runTimelineVisible =
+    documents.length > 0 || studio.receipts.length > 0 || workflows.length > 0
 
   const createKnowledgeBaseMutation = useCreateKnowledgeBase()
   const deleteKnowledgeBaseMutation = useDeleteKnowledgeBase()
@@ -456,7 +466,11 @@ export function KnowledgeBaseManagerPage() {
           </Card>
 
           <Card>
-            <section className="ingestion-step-section" aria-labelledby="ingestion-step-stage">
+            <section
+              aria-labelledby="ingestion-step-stage"
+              className="ingestion-step-section"
+              ref={sourceStepRef}
+            >
               <div className="ingestion-step-section__header">
                 <strong id="ingestion-step-stage">Step 1 — Stage ingestion source</strong>
                 <p className="page-copy-block">
@@ -562,6 +576,7 @@ export function KnowledgeBaseManagerPage() {
           <Card>
             <NextActionsPanel
               activeKnowledgeBaseId={activeKnowledgeBaseId}
+              canWatchRuns={runTimelineVisible}
               hasReceipts={studio.receipts.length > 0}
               hasWorkflows={workflows.length > 0}
               onInvestigateEntities={() => {
@@ -580,12 +595,14 @@ export function KnowledgeBaseManagerPage() {
             />
           </Card>
 
-          <Card>
-            <RunTimeline
-              receipts={studio.receipts}
-              workflows={workflows}
-            />
-          </Card>
+          {runTimelineVisible ? (
+            <Card>
+              <RunTimeline
+                receipts={studio.receipts}
+                workflows={workflows}
+              />
+            </Card>
+          ) : null}
 
           <Card>
             <DocumentInventory
@@ -601,6 +618,13 @@ export function KnowledgeBaseManagerPage() {
                 })
               }}
               onSelectDocument={setSelectedDocumentId}
+              onStageSource={() => {
+                studio.setCurrentStep('source')
+                const section = sourceStepRef.current
+                if (section && typeof section.scrollIntoView === 'function') {
+                  section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }
+              }}
             />
           </Card>
         </aside>
@@ -615,6 +639,7 @@ function knowledgeBaseSearch(knowledgeBaseId: string | null): string | null {
 
 function NextActionsPanel({
   activeKnowledgeBaseId,
+  canWatchRuns,
   hasReceipts,
   hasWorkflows,
   onInvestigateEntities,
@@ -622,6 +647,8 @@ function NextActionsPanel({
   onWatchRuns,
 }: {
   activeKnowledgeBaseId: string | null
+  /** Whether the run timeline is on screen for this knowledge base. */
+  canWatchRuns: boolean
   hasReceipts: boolean
   hasWorkflows: boolean
   onInvestigateEntities: () => void
@@ -645,7 +672,7 @@ function NextActionsPanel({
       <div className="ingestion-next-actions__buttons">
         <button
           className="page-button page-button--secondary"
-          disabled={disabled}
+          disabled={disabled || !canWatchRuns}
           onClick={onWatchRuns}
           type="button"
         >
@@ -751,6 +778,7 @@ type DocumentInventoryProps = {
   preview: KnowledgeBaseDocumentPreviewResponse | null
   previewLoading: boolean
   previewError: boolean
+  onStageSource: () => void
   onDeleteDocument: (documentId: string) => void
   onSelectDocument: (documentId: string) => void
 }
@@ -764,6 +792,7 @@ function DocumentInventory({
   previewError,
   onDeleteDocument,
   onSelectDocument,
+  onStageSource,
 }: DocumentInventoryProps) {
   return (
     <section className="ingestion-studio-documents" aria-labelledby="document-inventory-title">
@@ -813,6 +842,15 @@ function DocumentInventory({
         </div>
       ) : (
         <EmptyState
+          action={
+            <button
+              className="page-button page-button--sm page-button--primary"
+              onClick={onStageSource}
+              type="button"
+            >
+              Stage a source
+            </button>
+          }
           description="Register policy, claims, or reference documents to start ingestion."
           title="No documents yet"
         />
@@ -829,37 +867,43 @@ function DocumentInventory({
         </button>
       ) : null}
 
-      <section className="ingestion-document-preview" aria-labelledby="document-preview-title">
-        <div className="metric-row">
-          <strong id="document-preview-title">Document preview</strong>
-          {preview?.truncated ? <Chip label="Truncated" tone="warning" /> : null}
-        </div>
+      {/* With no documents at all, the inventory's empty state has already said
+          so; a second "no document selected" and a third "no runs yet" made one
+          screen state the same fact three times (UXA-305). There is nothing to
+          preview until something has been ingested. */}
+      {documents.length === 0 ? null : (
+        <section className="ingestion-document-preview" aria-labelledby="document-preview-title">
+          <div className="metric-row">
+            <strong id="document-preview-title">Document preview</strong>
+            {preview?.truncated ? <Chip label="Truncated" tone="warning" /> : null}
+          </div>
 
-        {!activeDocumentId ? (
-          <EmptyState
-            title="No document selected"
-            description="Select a document in inventory to review its preview."
-          />
-        ) : previewLoading ? (
-          <LoadingState label="Loading document preview" />
-        ) : previewError ? (
-          <ErrorState description="Document preview could not be loaded from the API." />
-        ) : preview ? (
-          preview.preview_text.trim().length > 0 ? (
-            <article className="ingestion-document-preview__content">
-              <p className="metric-row__label">
-                {countLabel(preview.line_count, 'line')} from {preview.filename}
-              </p>
-              <pre>{preview.preview_text}</pre>
-            </article>
-          ) : (
+          {!activeDocumentId ? (
             <EmptyState
-              title="No preview text returned"
-              description="This document has no text preview content yet."
+              title="No document selected"
+              description="Select a document in inventory to review its preview."
             />
-          )
-        ) : null}
-      </section>
+          ) : previewLoading ? (
+            <LoadingState label="Loading document preview" />
+          ) : previewError ? (
+            <ErrorState description="Document preview could not be loaded from the API." />
+          ) : preview ? (
+            preview.preview_text.trim().length > 0 ? (
+              <article className="ingestion-document-preview__content">
+                <p className="metric-row__label">
+                  {countLabel(preview.line_count, 'line')} from {preview.filename}
+                </p>
+                <pre>{preview.preview_text}</pre>
+              </article>
+            ) : (
+              <EmptyState
+                title="No preview text returned"
+                description="This document has no text preview content yet."
+              />
+            )
+          ) : null}
+        </section>
+      )}
     </section>
   )
 }

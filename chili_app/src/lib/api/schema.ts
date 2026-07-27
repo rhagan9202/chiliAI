@@ -809,6 +809,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/investigation/entities/{entity_id}/locate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Locate Entity
+         * @description Return the knowledge bases holding ``entity_id``.
+         *
+         *     A deep link that arrives without ``?kb=`` used to resolve against whatever
+         *     the workspace happened to point at and fail (UXA-104). This lets the UI
+         *     offer "this entity is in <KB> — switch and open it", and to say plainly
+         *     when it exists nowhere. An empty list is the honest answer to the latter,
+         *     not a 404: the question "where does this live" was answered.
+         */
+        get: operations["locate_entity_investigation_entities__entity_id__locate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/investigation/entities/{entity_id}/neighborhood": {
         parameters: {
             query?: never;
@@ -2383,6 +2409,24 @@ export interface components {
             entity: components["schemas"]["Entity"];
         };
         /**
+         * EntityLocationListResponse
+         * @description Where an entity lives, so a deep link with no `?kb=` can recover.
+         */
+        EntityLocationListResponse: {
+            /** Items */
+            items?: components["schemas"]["EntityLocationResponse"][];
+        };
+        /**
+         * EntityLocationResponse
+         * @description One knowledge base that holds a given entity (UXA-104).
+         */
+        EntityLocationResponse: {
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Knowledge Base Name */
+            knowledge_base_name: string;
+        };
+        /**
          * EntitySearchResponse
          * @description API-facing response for entity search queries.
          */
@@ -3330,6 +3374,13 @@ export interface components {
         PolicyItemListResponse: {
             /** Items */
             items?: components["schemas"]["PolicyItemSummaryResponse"][];
+            /**
+             * Status Counts
+             * @description Item counts per status across the whole knowledge base, ignoring the active filter. The filter UI shows a count beside every status option; tallying the filtered page instead would collapse every other option to zero the moment one was selected (UXA-401).
+             */
+            status_counts?: {
+                [key: string]: number;
+            };
             /**
              * Total
              * @default 0
@@ -5920,6 +5971,37 @@ export interface operations {
             };
         };
     };
+    locate_entity_investigation_entities__entity_id__locate_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityLocationListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     read_entity_neighborhood_investigation_entities__entity_id__neighborhood_get: {
         parameters: {
             query: {
@@ -6280,7 +6362,8 @@ export interface operations {
         parameters: {
             query: {
                 knowledge_base_id: string;
-                status?: string | null;
+                status?: string[] | null;
+                q?: string | null;
                 limit?: number;
                 offset?: number;
             };

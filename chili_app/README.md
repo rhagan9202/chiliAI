@@ -287,7 +287,7 @@ not on mutable status, so they are order-independent.
 | `case-feedback.spec.ts` | Submitting feedback persists and renders in history |
 | `case-promote.spec.ts` | Promoting the seeded alert creates a case (real `/cases/promote`) |
 | `rag-chat.spec.ts` | New thread → send → real assistant reply renders |
-| `policy-intelligence.spec.ts` | Policy gap queue renders from the real API |
+| `policy-intelligence.spec.ts` | Rule-generated policy queue renders from the real API; server-side multi-status filtering (`?status=` repeated) unions rather than replaces, survives a reload, and clears |
 | `policy-triage.spec.ts` | Escalating the seeded policy item creates a case via the real triage endpoint |
 | `ingestion-document-warnings.spec.ts` | Ragged-CSV upload surfaces worker-persisted parser warnings in the document inventory |
 | `air-force-housing-scorecards.spec.ts` | `/housing` dashboard: real CONUS state geography (49 paths), 65 accessible installation markers (public reference layer, or live map points + location-pending accounting when housing feeds are seeded), marker/deep-link selection → detail panel + `?installation=` URL param, summary band rendered above the map with no generation UI (generation is API-only: backend router tests + seed tool), and filter-driven band aggregates pinned against values recomputed from the real API payload (status filter changes them, clear restores) |
@@ -468,6 +468,104 @@ expressed at all**.
 `FilterGroup` (`src/components/ui/FilterGroup.tsx`) renders one dimension,
 modelled on the Housing page's FILTER BY STATUS / BRANCH / COMMAND strip, which
 already got this right.
+
+## Case queue filters
+
+`src/utils/caseFilters.ts` gives Cases the same treatment as the Alert Feed
+(UXA-401): multi-select status with per-option counts, title search, a result
+line, and URL-backed state that survives reload while preserving `?kb=` and
+`?case=`. So "open **or** in review" — the working set an analyst actually
+wants — is now expressible.
+
+It is deliberately narrower than `alertFilters`: a case queue has no severity,
+no confidence and no useful age sort at this size, and inventing dimensions the
+data does not support would be worse than omitting them.
+
+## Policy queue filters (server-side)
+
+Policy got the same strip, but the work is on the other side of the wire:
+`GET /policy/items` filters **server-side**, so `src/utils/policyFilters.ts`
+owns only the state and its URL round-trip and `usePolicyItems` sends it. The
+API's `?status=` now repeats (`?status=open&status=escalated`) and matches any
+of the values, and `?q=` searches titles.
+
+Two consequences worth knowing:
+
+- **Counts come from the response, not the page.** `PolicyItemListResponse
+  .status_counts` is a per-status tally over the whole knowledge base. Counting
+  the returned items — what Cases does, correctly, over its full client-side
+  list — would drop every unselected option to zero as soon as one was picked.
+  The result line's total is `totalFromStatusCounts`, not `total` (which is the
+  *filtered* match count).
+- **"Filtered to nothing" is read off the filter state**, not off a comparison
+  with a fuller list: the fuller list was never fetched.
+
+**Typing must not be bound straight to the URL.** `useUrlSearchDraft`
+(`src/hooks/`) holds the typed text in local state and writes the URL from it.
+Bound directly, the router's asynchronous update re-rendered the input with the
+previous value and the browser reverted the keystroke that arrived in between —
+typing "redwood" left `?q=wd`, on **both** Cases and Policy. The hook also
+debounces the URL write where the URL drives a request (250 ms on Policy; 0 on
+Cases, which filters in the browser), and both pages now `replace` rather than
+push, so the back button leaves the page instead of walking back through every
+keystroke and toggle.
+
+## Investigation landing state
+
+The landing state was a ~300px search card in a 1440px viewport with no graph,
+no recent entities and no suggested starting points (UXA-305). It now offers
+**flagged subjects** — the distinct entities the alert queue has already raised,
+drawn from the alerts already loaded on the page, so no new endpoint. An empty
+search box against an unfamiliar corpus is the hardest possible starting point.
+
+## Ingestion Studio states an empty knowledge base once
+
+A brand-new knowledge base stacked three cards down the context rail that all
+said the same thing — *No runs yet*, *No documents yet*, *No document selected*
+(UXA-305). It has no runs **because** it has nothing in it, and there is nothing
+to preview until something lands, so only the document inventory's empty state
+survives, and that one carries a *Stage a source* button that scrolls back to
+the staging form in the main column.
+
+The run timeline earns its card once `documents`, `studio.receipts` or
+`workflows` is non-empty — documents are in the test because a KB ingested in an
+earlier session has no receipts (those are per-session) and may have no live
+workflow, and its inventory is the honest signal that runs happened. **Next
+actions' *Watch runs* keys off the same value**: hiding the timeline without
+disabling that button would leave it scrolling to a card that is not rendered.
+
+## Entity deep links recover
+
+`/investigation/:entityId` with no `?kb=` used to resolve against whatever
+knowledge base the workspace pointed at and die with "the selected entity could
+not be loaded" — a frame naming neither the cause nor a next step (UXA-104).
+
+`GET /investigation/entities/{id}/locate` answers *where an entity lives*. It is
+asked only once the active KB has already failed to produce the entity, and
+returns an empty list rather than a 404 when the entity exists nowhere —
+"it is elsewhere" and "it does not exist" are different answers and
+`EntityNotHere` gives them different offers: a one-click switch naming the
+knowledge base, or a plain statement that the link is stale.
+
+The workspace resolver (UXA-101) already handles the common case where the only
+ready KB happens to hold the entity, so `e2e/entity-deep-link.spec.ts` creates a
+**real** empty KB and points the workspace at it to reach the path that still
+dead-ended.
+
+**Known inconsistency:** the Alert Feed reads `?kb=` straight off the URL and
+never writes it to the workspace store, so `/alerts?kb=X` is honoured but not
+remembered. Noted on #47 rather than changed here.
+
+## Mobile navigation wraps, it does not scroll
+
+At 390px the sidebar was a horizontally-scrolling strip cut off mid-word, with
+Knowledge Bases and RAG Chat off-screen and no fade, chevron or drawer to say
+more existed (UXA-105). It now wraps: a little vertical space for nothing
+hidden, which also makes the active item always visible and stops any label
+being clipped. `e2e/mobile-navigation.spec.ts` asserts all three at 390×844,
+measuring overflow on the **nav container** — a `nowrap` link inside a scroll
+strip reports no overflow of its own, so asserting on the link would pass
+against the very layout the ticket is about.
 
 ## Configuration: counts you can open
 

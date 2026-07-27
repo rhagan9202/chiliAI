@@ -157,6 +157,11 @@ All routes KB-scoped via `?knowledge_base_id=`. RBAC: reads `require_role("viewe
 
 **Removed** (this is the BL-011-owned policy-gaps de-seed; the sprint plan assigns it here, not to BL-012): `GET /policy/gaps`, `GET /policy/gaps/{id}`, `GET /policy/gaps/{id}/cases`, `POST /policy/briefs`, the `PolicyGap*` Pydantic contracts, their `api/dependencies.py` payload builders, and `ApiState._seed_policy_gaps`.
 
+> **Extended since (UXA-401, 2026-07-27).** The list route's `status` now repeats
+> and matches any of the given values, `q` searches titles, and the response
+> carries a KB-wide `status_counts` facet. This section records the v1 design as
+> approved; the current contract is [`backend/policy/README.md`](../../../backend/policy/README.md#api-surface).
+
 Frontend-consumed change → follow the generated-contract workflow: update Pydantic models → `python -m tools.export_openapi --output chili_app/openapi.json` → `cd chili_app && npm run codegen:api` → update `api/policy.ts` + page. No hand-written wire DTOs.
 
 ## 7. Worker evaluation (reactive + throttled)

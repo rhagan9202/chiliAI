@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { apiFetch } from './client'
 import type {
+  EntityLocationListResponse,
   InvestigationEntityDetailResponse,
   InvestigationEntitySearchResponse,
   InvestigationNeighborhoodResponse,
@@ -76,6 +77,28 @@ export function useInvestigationEntitySearch(
     queryKey: investigationSearchQueryKey(knowledgeBaseId, normalizedQuery),
     queryFn: () => searchInvestigationEntities(knowledgeBaseId ?? '', normalizedQuery),
     enabled: Boolean(knowledgeBaseId) && normalizedQuery.length > 0,
+  })
+}
+
+export function entityLocationsQueryKey(entityId: string | null) {
+  return ['investigation', 'entity-locations', entityId] as const
+}
+
+export function getEntityLocations(entityId: string): Promise<EntityLocationListResponse> {
+  return apiFetch<EntityLocationListResponse>(
+    `/investigation/entities/${encodeURIComponent(entityId)}/locate`,
+  )
+}
+
+/**
+ * Where an entity lives, asked only when the active KB does not hold it, so a
+ * deep link with no `?kb=` can recover instead of dead-ending (UXA-104).
+ */
+export function useEntityLocations(entityId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: entityLocationsQueryKey(entityId),
+    queryFn: () => getEntityLocations(entityId ?? ''),
+    enabled: Boolean(entityId) && enabled,
   })
 }
 

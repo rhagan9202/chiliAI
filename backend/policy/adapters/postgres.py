@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import datetime
 from typing import cast
 
@@ -55,6 +56,14 @@ _UPDATE_FULL = """
            status = %s, disposition = %s::jsonb, updated_at = %s
      WHERE knowledge_base_id = %s AND rule_id = %s AND target_ref = %s
 """
+
+
+def _escape_like(value: str) -> str:
+    """Neutralise LIKE wildcards so a searched ``%`` matches a literal ``%``.
+
+    Without this a search for "50%" would match every title.
+    """
+    return value.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
 
 
 class PostgresPolicyItemRepository:
@@ -114,13 +123,25 @@ class PostgresPolicyItemRepository:
         return None if row is None else _row_to_item(row)
 
     def list(
-        self, *, knowledge_base_id: str, limit: int, offset: int, status: str | None = None
+        self,
+        *,
+        knowledge_base_id: str,
+        limit: int,
+        offset: int,
+        statuses: Sequence[str] | None = None,
+        query: str | None = None,
     ) -> tuple[list[PolicyItem], int]:
         where = "WHERE knowledge_base_id = %s"
         params: list[object] = [knowledge_base_id]
-        if status is not None:
-            where += " AND status = %s"
-            params.append(status)
+        if statuses:
+            # ANY(array) rather than an IN list built by string interpolation:
+            # one placeholder whatever the selection size, still parameterised.
+            where += " AND status = ANY(%s)"
+            params.append(list(statuses))
+        needle = (query or "").strip()
+        if needle:
+            where += " AND title ILIKE %s"
+            params.append(f"%{_escape_like(needle)}%")
         try:
             with self._provider.connection() as conn:
                 total_row = conn.execute(
@@ -137,6 +158,18 @@ class PostgresPolicyItemRepository:
         except Exception as exc:  # noqa: BLE001
             raise PolicyPersistenceError("Failed to list policy items.") from exc
         return [_row_to_item(row) for row in rows], total
+
+    def count_by_status(self, knowledge_base_id: str) -> dict[str, int]:
+        try:
+            with self._provider.connection() as conn:
+                rows = conn.execute(
+                    "SELECT status, count(*) FROM policy_items "
+                    "WHERE knowledge_base_id = %s GROUP BY status",
+                    (knowledge_base_id,),
+                ).fetchall()
+        except Exception as exc:  # noqa: BLE001
+            raise PolicyPersistenceError("Failed to count policy items.") from exc
+        return {cast(str, row[0]): cast(int, row[1]) for row in rows}
 
     def update(self, item: PolicyItem) -> PolicyItem:
         try:
