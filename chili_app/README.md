@@ -62,6 +62,22 @@ Routes are defined in `src/app/router.tsx`. `AppProviders` wraps the app with
 `/login`. A catch-all under `/` renders `<PagePlaceholder>` for any
 domain-configured page id that doesn't yet have a built component.
 
+**Routes are gated by the active domain pack, not just hidden from navigation.**
+`PACK_PAGE_ROUTES` in `src/app/access.ts` maps each route that corresponds to a
+pack page id; if the active pack does not grant that id, `AppShell` renders
+`RouteNotAvailable` instead of the page. Before UXA-103 an undeclared route fell
+through the "no configured page matched, so no opinion" branch, which is how
+`/housing` served Air Force content — title bar included — under a Medicare
+pack. Detail routes that hang off a page (`/scorecards/:runId`) are deliberately
+absent from that map: they are not nav pages and are governed by the page that
+links to them.
+
+A consequence for tests: a spec driving a page owned by another pack must switch
+to it. Use `useDomainPack(domainName)` from `e2e/helpers/domainPack.ts` in
+`beforeAll` and call the returned restore function in `afterAll` — the stack is
+shared and specs run serially, so failing to restore runs the rest of the suite
+under the wrong domain.
+
 | Route | View |
 |------|------|
 | `/login` | Sign-in landing page (no auth required) |

@@ -141,4 +141,41 @@ describe('isRouteAllowed', () => {
   it('returns true for paths not matched by any configured page (no opinion)', () => {
     expect(isRouteAllowed(domainConfig, features, 'viewer', '/auth/callback')).toBe(true)
   })
+
+  it('blocks a page the SPA implements but the active pack does not declare', () => {
+    // /housing is a real page in this SPA, but this pack's navigation has no
+    // housing entry — rendering Air Force content under a Medicare pack is a
+    // cross-domain leak, not a "no opinion" case (UXA-103).
+    expect(isRouteAllowed(domainConfig, features, 'analyst', '/housing')).toBe(false)
+  })
+
+  it('blocks an undeclared page for every role, not just restricted ones', () => {
+    expect(isRouteAllowed(domainConfig, features, 'admin', '/housing')).toBe(false)
+  })
+
+  it('allows a page the active pack does declare', () => {
+    // The same gate must not break the pack that owns the page: under the
+    // housing pack, /housing is declared and granted, so it renders.
+    const housingConfig = {
+      ui: {
+        navigation: {
+          pages: [{ id: 'housing', label: 'Housing', route: '/housing' }],
+        },
+      },
+    } as unknown as DomainConfig
+    const housingFeatures = {
+      capabilities: {},
+      default_role: 'executive',
+      enabled_pages: ['housing'],
+      roles: { executive: { landing_page: 'housing', pages: ['housing'], permissions: [] } },
+    } as unknown as DomainFeatures
+
+    expect(isRouteAllowed(housingConfig, housingFeatures, 'executive', '/housing')).toBe(true)
+  })
+
+  it('allows detail routes that hang off a page rather than being nav pages', () => {
+    // Scorecard runs are reached from the housing dashboard and never appear in
+    // navigation, so they must not be gated as if they were a pack page.
+    expect(isRouteAllowed(domainConfig, features, 'analyst', '/scorecards/run-1')).toBe(true)
+  })
 })

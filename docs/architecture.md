@@ -1155,6 +1155,18 @@ of stranding the page. Frontend detail and the two deliberate exceptions
 `GET /analytics/overview` is still aggregated across all knowledge bases rather
 than scoped to this selection — see the open backend work item.
 
+#### Pack-gated routes
+
+Navigation is derived from `ui.navigation.pages`, but hiding a nav item never
+stopped anyone typing the URL. Routes that correspond to a pack page id are
+therefore gated on the active pack, not merely hidden: `PACK_PAGE_ROUTES` in
+`chili_app/src/app/access.ts` maps them, and `AppShell` renders an in-place
+"not available" state when the active pack does not grant the id. Without this,
+`/housing` rendered a full Air Force dashboard — title bar included — while a
+Medicare pack was active. Detail routes reached from a page rather than from
+navigation (`/scorecards/:runId`) are excluded from the map and governed by the
+page that links to them.
+
 ### 8.3 Investigation Workbench
 
 The investigation workbench is the primary analyst view. It is a composite page with multiple coordinated panels. In the current prototype, the workbench selects an active knowledge base, searches entities through `/investigation/search?kb_id=...`, and loads entity detail plus neighborhood data through KB-scoped investigation endpoints. Entity titles, subtitles, chips, and relationship labels derive from the active domain config's entity/relationship definitions and `ui.display_fields` metadata instead of hardcoded Medicare-specific labels.

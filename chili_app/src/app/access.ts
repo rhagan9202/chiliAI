@@ -1,5 +1,44 @@
 import type { DomainConfig, DomainFeatures } from '../api/contracts'
 
+/**
+ * Routes this SPA implements that correspond to a domain-pack page id.
+ *
+ * A pack decides which of these its analysts get. Anything a pack does not
+ * declare must be refused rather than rendered: `/housing` is a real page here,
+ * so without this table it slipped through the "no configured page matched, so
+ * no opinion" branch and served Air Force content under a Medicare pack.
+ *
+ * Detail routes that hang off a page (`/scorecards/:runId`, reached from the
+ * housing dashboard) are deliberately absent — they are not nav pages and are
+ * governed by the page that links to them.
+ */
+const PACK_PAGE_ROUTES: ReadonlyMap<string, string> = new Map([
+  ['/dashboard', 'dashboard'],
+  ['/alerts', 'alerts'],
+  ['/investigation', 'investigation'],
+  ['/cases', 'cases'],
+  ['/knowledge-bases', 'knowledge_bases'],
+  ['/policy', 'policy'],
+  ['/housing', 'housing'],
+  ['/rag-chat', 'rag_chat'],
+  ['/configuration', 'configuration'],
+])
+
+function normalizePath(pathname: string): string {
+  return pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname
+}
+
+/** The pack page id a path belongs to, matching sub-paths to their parent. */
+function packPageIdForPath(pathname: string): string | null {
+  const normalized = normalizePath(pathname)
+  for (const [route, pageId] of PACK_PAGE_ROUTES) {
+    if (normalized === route || normalized.startsWith(`${route}/`)) {
+      return pageId
+    }
+  }
+  return null
+}
+
 export function getDefaultRole(features?: DomainFeatures) {
   if (!features) {
     return null
@@ -62,15 +101,24 @@ export function isRouteAllowed(
   const navigationPages = domainConfig?.ui?.navigation?.pages ?? []
   const allowedPageIds = new Set(getAllowedPageIds(features, selectedRole))
 
-  const normalizedPath = pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname
+  const normalizedPath = normalizePath(pathname)
   const matchedPage = navigationPages.find((page) => {
-    const route = page.route.endsWith('/') && page.route !== '/' ? page.route.slice(0, -1) : page.route
+    const route = normalizePath(page.route)
     return normalizedPath === route || normalizedPath.startsWith(`${route}/`)
   })
 
-  if (!matchedPage) {
-    return true
+  if (matchedPage) {
+    return allowedPageIds.has(matchedPage.id)
   }
 
-  return allowedPageIds.has(matchedPage.id)
+  // The active pack declares no page for this path. If the SPA nonetheless
+  // implements it as a pack page, the pack has excluded it — refuse rather than
+  // leaking another domain's page. Anything else (auth callbacks, detail routes)
+  // gets no opinion.
+  const knownPageId = packPageIdForPath(normalizedPath)
+  if (knownPageId !== null) {
+    return allowedPageIds.has(knownPageId)
+  }
+
+  return true
 }

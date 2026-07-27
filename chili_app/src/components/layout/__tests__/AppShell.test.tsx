@@ -16,7 +16,11 @@ vi.mock('../../../api/config', () => ({
 }))
 vi.mock('../../../api/realtime', () => ({ useRealtimeWorkspaceStream: () => undefined }))
 vi.mock('../Sidebar', () => ({ Sidebar: () => <nav data-testid="sidebar" /> }))
-vi.mock('../TopBar', () => ({ TopBar: () => <header data-testid="topbar" /> }))
+vi.mock('../TopBar', () => ({
+  TopBar: ({ pageTitleOverride }: { pageTitleOverride?: string }) => (
+    <header data-testid="topbar">{pageTitleOverride ?? 'default title'}</header>
+  ),
+}))
 vi.mock('../AiAssistantPanel', () => ({ AiAssistantPanel: () => <aside data-testid="ai-panel" /> }))
 
 const domainConfig = {
@@ -51,6 +55,7 @@ function renderShell(initialEntry: string) {
         <Route element={<AppShell />} path="/">
           <Route element={<div>Configuration page body</div>} path="configuration" />
           <Route element={<div>Alert feed body</div>} path="alerts" />
+          <Route element={<div>Housing body</div>} path="housing" />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -93,6 +98,25 @@ describe('AppShell route access', () => {
     renderShell('/configuration')
 
     expect(screen.getByRole('link', { name: /alert feed/i })).toHaveAttribute('href', '/alerts')
+  })
+
+  it('refuses a page this SPA implements that the active pack does not declare', () => {
+    useUiStore.setState({ selectedRole: 'supervisor' })
+
+    renderShell('/housing')
+
+    expect(screen.getByRole('heading', { name: /not available/i })).toBeInTheDocument()
+    expect(screen.queryByText('Housing body')).not.toBeInTheDocument()
+  })
+
+  it('does not announce another domain\'s page title on a refused route', () => {
+    useUiStore.setState({ selectedRole: 'supervisor' })
+
+    renderShell('/housing')
+
+    // The body was already refused; the top bar must not still read
+    // "Department of the Air Force Housing" under a Medicare pack.
+    expect(screen.getByTestId('topbar')).toHaveTextContent('default title')
   })
 
   it('uses the role remembered from a previous session rather than the pack default', () => {

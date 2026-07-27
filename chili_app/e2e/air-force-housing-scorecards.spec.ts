@@ -26,6 +26,8 @@
  */
 import { expect, test } from '@playwright/test'
 
+import { useDomainPack } from './helpers/domainPack'
+
 const API = process.env['E2E_API_URL'] ?? 'http://localhost:8000'
 
 /** Public reference layer size (src/data/airForceInstallations.ts). */
@@ -186,7 +188,13 @@ function bandExpectations(items: HousingInstallationItem[]): Record<BandLabel, s
   }
 }
 
+let restorePack: (() => Promise<void>) | null = null
+
+// /housing belongs to the housing pack; since UXA-103 the SPA refuses routes
+// the active pack does not declare, so this suite runs under that pack and
+// restores the stack afterwards.
 test.beforeAll(async () => {
+  restorePack = await useDomainPack('department_air_force_housing')
   const res = await fetch(`${API}/housing/installations`)
   if (!res.ok) {
     throw new Error(`GET /housing/installations failed (${res.status}): ${await res.text()}`)
@@ -405,4 +413,11 @@ test.describe('Air Force Housing Scorecards', () => {
       await expect(cardValue(label)).toHaveText(full[label])
     }
   })
+})
+
+test.afterAll(async () => {
+  if (restorePack) {
+    await restorePack()
+    restorePack = null
+  }
 })

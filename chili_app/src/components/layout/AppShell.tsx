@@ -64,9 +64,13 @@ export function AppShell() {
       ?.label ?? 'the workspace'
   const domainQueriesDone = !domainConfigQuery.isLoading && !domainFeaturesQuery.isLoading
   const routeBlocked = domainQueriesDone && !routeAllowed
-  const pageTitleOverride = location.pathname.startsWith('/housing')
-    ? 'Department of the Air Force Housing'
-    : undefined
+  // Only dress the top bar for a page we are actually rendering. On a refused
+  // route the body already says "not available"; announcing another domain's
+  // title above it would re-introduce the leak this gate closes (UXA-103).
+  const pageTitleOverride =
+    !routeBlocked && location.pathname.startsWith('/housing')
+      ? 'Department of the Air Force Housing'
+      : undefined
 
   return (
     <div className={aiPanelOpen ? 'app-shell' : 'app-shell app-shell--ai-closed'}>
