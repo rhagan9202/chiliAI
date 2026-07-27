@@ -367,6 +367,38 @@ switching does not stack history entries). Two deliberate exceptions:
   the active KB to be `ready`; the workspace selection itself may point at a
   building KB.
 
+## Responsive layout: container queries, not viewport breakpoints
+
+The shell reserves a fixed 248px sidebar and a 340px AI panel, so the content
+area is **~588px narrower than the viewport**. Page layouts keyed off
+`@media (max-width: ...)` therefore fire far too late: at a 1440px viewport the
+Ingestion Studio grid still resolved to `260px 190px 340px`, squeezing the
+primary work column to **190px** and slicing text inside cards that set
+`overflow-x: hidden` (UXA-201). The page looked correct only on the large
+monitor it was built on.
+
+`.app-shell__main` is therefore a query container (`container-type: inline-size;
+container-name: workspace`), and page layouts size themselves against it:
+
+```css
+@container workspace (min-width: 1080px) { … }
+```
+
+**Write new multi-column page layouts as `@container workspace` rules.** A
+viewport media query on a page grid is almost always wrong — it cannot see the
+chrome. Viewport media queries remain correct for the *shell itself* (where the
+sidebar and AI panel collapse), which is why the `760px` and `1180px` blocks in
+`pages.css` still exist for shell-level stacking.
+
+`e2e/layout-overflow.spec.ts` guards this: it fails on any element under `<main>`
+whose content is wider than its box, across 1280/1366/1440/1600/1920. It asserts
+the *symptom* (clipped content) rather than any particular CSS mechanism, so it
+stays valid if a layout is later reworked. Two exclusions are deliberate:
+elements that scroll their own content (`overflow-x: auto`, e.g. the housing
+table wrapper) and screen-reader-only labels, which are *intentionally* clipped
+to 1px via `clip: rect(0 0 0 0)` — the tab-panel headings and the "Source type"
+fieldset legend are both sr-only, not bugs.
+
 ## Domain-Driven Dynamic UI
 
 The frontend reads domain configuration from `GET /config/domain` at startup. This drives entity labels, icons, relationship labels, enabled analytics panels, and alert thresholds — allowing the same codebase to serve Medicare fraud, food supply chain, or any configured domain without code changes. Investigation display helpers in `src/utils/domainDisplay.ts` derive entity titles, subtitles, chips, and relationship labels from `DomainConfig.ui.display_fields`, `entities`, and `relationships`. See [`docs/architecture.md` §9](../docs/architecture.md#9-domain-configuration-model).
