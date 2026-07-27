@@ -13,7 +13,6 @@ import { showToast } from '../components/common/toastStore'
 import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { policyItemsForTarget } from '../components/investigation/policyTargets'
 import { Chip } from '../components/ui/Chip'
-import { ConfidenceBar } from '../components/ui/ConfidenceBar'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
 import { FilterBar } from '../components/ui/FilterBar'
@@ -22,6 +21,7 @@ import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
 import { countLabel } from '../utils/countLabel'
+import { absoluteTime, relativeAge } from '../utils/relativeTime'
 import { getEntityTitle } from '../utils/domainDisplay'
 import { severityTone } from '../utils/severity'
 import { flagLabelFor } from '../utils/flagLabel'
@@ -138,35 +138,51 @@ export function AlertFeedPage() {
           return (
             <Card className="alert-row-card" compact key={alert.id}>
               <div className="triage-row">
-                <div
-                  className="triage-row__numeral"
-                  data-testid="triage-numeral"
-                  style={{ color: triageNumeralColor(alert.severity) }}
-                >
-                  {Math.round(alert.confidence * 100)}
+                {/* One metric, named. The bare numeral was severity-coloured
+                    and sized like a risk score, but carried confidence — and
+                    the same number appeared again in a bar below (UXA-303). */}
+                <div className="triage-row__metric">
+                  <div
+                    className="triage-row__numeral"
+                    data-testid="triage-numeral"
+                    style={{ color: triageNumeralColor(alert.severity) }}
+                  >
+                    {Math.round(alert.confidence * 100)}
+                  </div>
+                  <div className="triage-row__metric-label">confidence</div>
                 </div>
                 <div className="metric-stack">
                   <div className="alert-row-card__header">
                     <div className="alert-row-card__header-info">
-                      <div className="alert-row-card__title">{alert.entity_label}</div>
-                      <span className="flag-label">
-                        {flagLabelFor({ tags: alert.tags, severity: alert.severity })}
-                      </span>
+                      {/* What is wrong leads; who it happened to follows. */}
+                      <div className="alert-row-card__title">{alert.title}</div>
+                      <div className="alert-row-card__subject">{alert.entity_label}</div>
+                      <div className="alert-row-card__eyebrow">
+                        <span className="flag-label">
+                          {flagLabelFor({ tags: alert.tags, severity: alert.severity })}
+                        </span>
+                        {/* A triage queue with no alert age is missing its
+                            most important sort key (UXA-303). */}
+                        <span
+                          className="alert-row-card__age"
+                          data-testid="alert-age"
+                          title={absoluteTime(alert.created_at)}
+                        >
+                          {relativeAge(alert.created_at)}
+                        </span>
+                      </div>
                       <div className="alert-row-card__meta">
                         <Chip label={alert.severity} tone={severityTone(alert.severity)} />
                         <Chip label={alert.status} tone={alert.status === 'acknowledged' ? 'success' : 'info'} />
                         {capabilities?.explainability && hasPolicySignal ? (
                           <Chip label="policy" tone="warning" />
                         ) : null}
-                        {alert.tags.map((tag) => (
-                          <Chip key={tag} label={tag.replace(/-/g, ' ')} tone="default" />
-                        ))}
                       </div>
                     </div>
                     <div className="alert-row-card__header-actions">
                       <Link
                         aria-label={`Investigate ${alert.entity_label}`}
-                        className="page-button page-button--sm page-button--secondary"
+                        className="page-button page-button--sm page-button--primary"
                         to={`/investigation/${encodeURIComponent(alert.entity_id)}?kb=${encodeURIComponent(alert.knowledge_base_id)}`}
                       >
                         Investigate entity
@@ -238,7 +254,6 @@ export function AlertFeedPage() {
                   >
                     {alert.reasoning}
                   </div>
-                  <ConfidenceBar value={Math.round(alert.confidence * 100)} />
                 </div>
               </div>
             </Card>

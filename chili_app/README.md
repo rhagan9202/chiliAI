@@ -444,6 +444,36 @@ ordered, formatted rows (UXA-302):
   control instead of being silently truncated, and rows render as a `<dl>` —
   chip styling made non-interactive facts look like filters you could click.
 
+## The alert card
+
+A triage card answers three questions, each exactly once (UXA-303):
+
+- **What is wrong** — `alert.title` is the headline. The card used to render
+  only `entity_label`, so an analyst saw the subject but never the finding.
+- **Who it happened to** — `entity_label` is the subject line beneath it.
+- **How old it is** — `relativeAge` / `absoluteTime` (`src/utils/relativeTime.ts`,
+  fixed locale, UTC) render "3h ago" with the exact timestamp on hover. A
+  triage queue with no alert age is missing its most important sort key.
+
+The severity-coloured numeral is **confidence**, and now says so. It used to
+sit unlabeled — sized and coloured like a risk score — with the same number
+repeated in a `ConfidenceBar` below; the bar is gone. On the evidence panel the
+pack's own confidence is labeled "Evidence confidence" with a hover note on how
+it differs from the alert's, and raw score keys (`peer_deviation`) are
+humanized.
+
+Tags render once, in the mono flag label. The card also mapped every tag to a
+chip, so BILLING appeared twice.
+
+One action carries `page-button--primary` (asserted for contrast in
+`src/theme/__tests__/contrast.test.ts`); the rest are secondary. `.page-button`
+now sets `text-decoration: none` and `inline-flex` so an anchor and a `<button>`
+read as the same control — "Investigate entity" was an underlined link sitting
+among four buttons. A true overflow menu was **not** built: it would hide
+Acknowledge and Promote to case, the queue's two disposition actions, behind an
+extra click. The AC — one visually primary action at every viewport — is met
+without it, and `e2e/layout-overflow.spec.ts` covers 1280–1920px.
+
 ## One entity, one name
 
 `getEntityTitle` (`src/utils/domainDisplay.ts`) is the single display-name

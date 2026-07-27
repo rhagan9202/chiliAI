@@ -76,6 +76,16 @@ describe('theme token contrast', () => {
     }
   })
 
+  it('keeps the primary button label readable on its filled background', () => {
+    // `.page-button--primary` inverts: page background as text on cyan fill.
+    // It is the one action per alert card that carries visual weight (UXA-303),
+    // so it must not achieve that by becoming unreadable.
+    const ratio = contrastRatio(colors.bg, colors.cyan)
+    expect(ratio, `--c-bg on --c-cyan is ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(
+      AA_NORMAL_TEXT,
+    )
+  })
+
   it('keeps muted quieter than dim so the type hierarchy survives the fix', () => {
     expect(contrastRatio(colors.muted, colors.bg)).toBeLessThan(
       contrastRatio(colors.dim, colors.bg),

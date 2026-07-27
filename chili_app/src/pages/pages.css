@@ -152,6 +152,10 @@
   font-family: var(--font-display);
   font-size: 18px;
   font-weight: 700;
+  /* The headline is now the alert title, which is prose and can be long
+     enough to need a break when the text column is squeezed. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .page-actions-inline {
@@ -162,6 +166,12 @@
 
 .page-button,
 .page-list-item {
+  /* Anchors and buttons must read as the same control. "Investigate entity"
+     was an underlined link sitting among four buttons (UXA-303). */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
   min-height: 38px;
   padding: 0 14px;
   color: var(--c-text);
@@ -181,6 +191,21 @@
 .page-button--secondary {
   background: rgba(136, 153, 187, 0.08);
   border-color: rgba(136, 153, 187, 0.22);
+}
+
+/* Exactly one action per card carries this. Five equal-weight buttons gave an
+   analyst no idea where to start (UXA-303). */
+.page-button--primary {
+  color: var(--c-bg);
+  background: var(--c-cyan);
+  border-color: var(--c-cyan);
+  font-weight: 700;
+}
+
+.page-button--primary:hover {
+  background: var(--c-cyan);
+  border-color: var(--c-cyan);
+  filter: brightness(1.08);
 }
 
 .page-copy-block {
@@ -528,8 +553,9 @@
   min-width: 0;
   /* The action cluster cannot shrink below its five buttons, so give the title
      column a basis wide enough that the actions wrap to their own line instead
-     of starving it (they squeezed it to 92px, clipping the tag chips). */
-  flex: 1 1 260px;
+     of starving it (they squeezed it to 92px, clipping the tag chips). Raised
+     from 260px when the headline became the alert title, which is prose. */
+  flex: 1 1 340px;
 }
 
 .alert-row-card__header-actions {
@@ -1208,6 +1234,44 @@ a.housing-run-link:hover {
   border: 1px solid var(--c-b1);
   border-radius: 6px;
   background: var(--c-s2);
+}
+
+/* The numeral and its name read as one unit, so the number is never bare. */
+.triage-row__metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.triage-row__metric-label {
+  /* Lower-case and untracked on purpose: the uppercase form is ~20% wider and
+     squeezed the card's text column below its content width at 1366px. */
+  color: var(--c-muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+/* What is wrong leads the card; who it happened to is the line beneath. */
+.alert-row-card__subject {
+  color: var(--c-dim);
+  font-size: 13px;
+}
+
+.alert-row-card__eyebrow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.alert-row-card__age {
+  /* Not uppercased: "1m ago" becomes "1M AGO", which reads as one month. */
+  color: var(--c-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
 }
 
 .cluster-swatch {

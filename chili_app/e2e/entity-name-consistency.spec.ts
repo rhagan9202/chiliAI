@@ -14,7 +14,9 @@ test.describe('Entity naming', () => {
     const { knowledge_base_id: kb } = seeded()
     await page.goto(`/alerts?kb=${kb}`)
 
-    const card = page.locator('.alert-row-card__title').first()
+    // The card leads with the alert title (UXA-303); the subject line
+    // beneath it is the entity name.
+    const card = page.locator('.alert-row-card__subject').first()
     await expect(card).toBeVisible()
     const nameOnCard = (await card.innerText()).trim()
     expect(nameOnCard.length).toBeGreaterThan(0)

@@ -21,6 +21,12 @@ export interface EvidencePackViewerProps {
   labelFor?: (entity: Entity) => string
 }
 
+/** `peer_deviation` -> `Peer deviation`: score keys are data, not copy. */
+function humanizeScoreName(name: string): string {
+  const words = name.replace(/[_-]+/g, ' ').trim()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
 /**
  * Render a persisted evidence pack (BL-006): reasoning, contributing items, a
  * metric snapshot (scores + confidence), policy citations, and the explanatory
@@ -77,10 +83,20 @@ export function EvidencePackViewer({
           ))}
         </div>
 
+        {/* The alert card's confidence and this pack's are different numbers
+            answering different questions; say which is which (UXA-303). */}
         <div className="alert-row-card__meta">
-          <Chip label={`confidence ${(pack.confidence * 100).toFixed(0)}%`} tone="info" />
+          <Chip
+            label={`Evidence confidence ${(pack.confidence * 100).toFixed(0)}%`}
+            title="How well the collected evidence supports this explanation. The alert's own confidence scores the detection that raised it."
+            tone="info"
+          />
           {scoreEntries.map(([name, value]) => (
-            <Chip key={name} label={`${name} ${(value * 100).toFixed(0)}%`} tone="default" />
+            <Chip
+              key={name}
+              label={`${humanizeScoreName(name)} ${(value * 100).toFixed(0)}%`}
+              tone="default"
+            />
           ))}
         </div>
 

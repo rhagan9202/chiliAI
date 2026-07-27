@@ -64,8 +64,10 @@ describe('EvidencePackViewer', () => {
     renderViewer(basePack)
 
     expect(screen.getByText('Provider billing is materially above peers.')).toBeInTheDocument()
-    expect(screen.getByText('confidence 82%')).toBeInTheDocument()
-    expect(screen.getByText('upcoding 70%')).toBeInTheDocument()
+    // Labeled so it cannot be confused with the alert's own confidence, and
+    // score keys are humanized rather than shown raw (UXA-303).
+    expect(screen.getByText('Evidence confidence 82%')).toBeInTheDocument()
+    expect(screen.getByText('Upcoding 70%')).toBeInTheDocument()
     expect(screen.getByText('High volume.')).toBeInTheDocument()
     expect(screen.getByText('LCD L1234')).toBeInTheDocument()
 

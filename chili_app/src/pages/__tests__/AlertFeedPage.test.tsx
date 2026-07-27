@@ -215,6 +215,52 @@ describe('AlertFeedPage', () => {
     return locations
   }
 
+  it('leads each card with what is wrong, not only who it happened to', () => {
+    renderAlertFeed()
+
+    // The API returns `title`; the card used to render only `entity_label`,
+    // so an analyst saw the subject but never the finding (UXA-303).
+    const headline = screen.getByText('Outlier billing concentration')
+    expect(headline).toHaveClass('alert-row-card__title')
+    expect(screen.getByText('Redwood DME Group')).toHaveClass('alert-row-card__subject')
+  })
+
+  it('shows how old each alert is, with the exact time on hover', () => {
+    renderAlertFeed()
+
+    const age = screen.getAllByTestId('alert-age')[0]
+    expect(age).toHaveTextContent(/ago$/)
+    expect(age).toHaveAttribute('title', 'May 12, 2026, 00:00 UTC')
+  })
+
+  it('labels the confidence numeral and does not repeat it unlabeled', () => {
+    renderAlertFeed()
+
+    expect(screen.getAllByTestId('triage-numeral')[0]).toHaveTextContent('96')
+    expect(screen.getAllByText('confidence')[0]).toBeInTheDocument()
+    // The ConfidenceBar rendered the same 96% a second time, unexplained.
+    expect(document.querySelector('.alert-row-card .confidence-bar')).toBeNull()
+  })
+
+  it('renders each tag once', () => {
+    renderAlertFeed()
+
+    // `flagLabelFor` already puts the leading tag in the mono eyebrow; the
+    // card also mapped every tag to a chip, so "BILLING" appeared twice.
+    expect(screen.queryByText('peer deviation')).not.toBeInTheDocument()
+    expect(screen.getAllByText('BILLING · PEER-DEVIATION')).toHaveLength(1)
+  })
+
+  it('makes one action primary and demotes the rest', () => {
+    renderAlertFeed()
+
+    const investigate = screen.getAllByRole('link', { name: /^Investigate / })[0]
+    expect(investigate).toHaveClass('page-button--primary')
+    expect(screen.getByRole('button', { name: 'Acknowledge' })).not.toHaveClass(
+      'page-button--primary',
+    )
+  })
+
   it('renders alert feed rows and acknowledgement action', () => {
     renderAlertFeed()
 
