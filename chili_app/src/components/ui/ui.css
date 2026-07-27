@@ -64,7 +64,7 @@
 
 .risk-badge__label {
   color: var(--c-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.05em;
 }
@@ -148,7 +148,7 @@
 .kpi-card__sublabel {
   margin-top: 5px;
   color: var(--c-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -193,7 +193,9 @@
   padding: 0 11px;
   color: var(--c-muted);
   background: transparent;
-  border: 1px solid var(--c-b0);
+  /* An inactive filter is still an available control: give it a boundary that
+     meets the 3:1 UI-component floor so it does not read as disabled. */
+  border: 1px solid var(--c-control-border);
   border-radius: 999px;
 }
 

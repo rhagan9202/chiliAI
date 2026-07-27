@@ -1,9 +1,8 @@
 import type { CSSProperties } from 'react'
 
-import { colors } from '../../theme/tokens'
+import { CHIP_TONE_COLORS } from './chipTones'
+import type { ChipTone } from './chipTones'
 import './ui.css'
-
-type ChipTone = 'default' | 'info' | 'success' | 'warning' | 'danger' | 'network'
 
 type ChipProps = {
   color?: string
@@ -11,17 +10,8 @@ type ChipProps = {
   tone?: ChipTone
 }
 
-const toneColors: Record<ChipTone, string> = {
-  default: colors.b1,
-  info: colors.cyan,
-  success: colors.green,
-  warning: colors.amber,
-  danger: colors.red,
-  network: colors.purple,
-}
-
 export function Chip({ color, label, tone = 'default' }: ChipProps) {
-  const resolvedColor = color ?? toneColors[tone]
+  const resolvedColor = color ?? CHIP_TONE_COLORS[tone]
   const style = {
     '--chip-background': `${resolvedColor}12`,
     '--chip-border': `${resolvedColor}30`,

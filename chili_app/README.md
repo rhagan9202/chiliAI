@@ -389,6 +389,36 @@ nothing. Labels hide below 0.5x zoom, where they would collide into noise, and
 rather than as an absolute overlay, which used to cover whichever node the
 layout settled in the top-left corner.
 
+## Colour contrast
+
+Palette contrast is **asserted in tests**, not eyeballed: `src/theme/contrast.ts`
+implements the WCAG relative-luminance ratio and
+`src/theme/__tests__/contrast.test.ts` walks every text token against every
+surface token, plus every `Chip` tone. Adding a token that fails AA fails the
+suite.
+
+Two defects this pinned (UXA-204):
+
+- `--c-muted` was `#3d5070` — **2.18–2.46:1**, below AA (4.5:1) and below even
+  the 3:1 non-text floor. It carries the label of every *inactive* tab and
+  filter chip in the product, plus KPI sublabels, risk-badge labels and chart
+  eyebrows, so those controls read as **disabled**. Now `#7385a6` (4.76–5.38:1),
+  still quieter than `--c-dim` so the type hierarchy survives.
+- `Chip` with `tone="default"` used `colors.b1` — a **border** token — as its
+  **text** colour, at **1.33:1**. That is why the `BILLING` / `PEER DEVIATION`
+  tag chips, the evidence score chips, and the housing `UNSCORED` chips were
+  effectively invisible. Tone colours now live in
+  `src/components/ui/chipTones.ts` so they are covered by the same assertion.
+
+`--c-control-border` (`#52678f`, ≥3:1 on every surface) is the boundary for
+**interactive** controls, per WCAG 1.4.11. Card outlines keep the quieter
+`--c-b0/b1/b2` tokens — those are decorative container edges, not component
+identifiers, and are deliberately exempt.
+
+The smallest labels that carry real meaning were also raised off 10px
+(`risk-badge__label`, `chart-frame__eyebrow` → 11px; `kpi-card__sublabel` →
+12px): small text needs more contrast, not less.
+
 ## Responsive layout: container queries, not viewport breakpoints
 
 The shell reserves a fixed 248px sidebar and a 340px AI panel, so the content
