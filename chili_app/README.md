@@ -469,6 +469,24 @@ expressed at all**.
 modelled on the Housing page's FILTER BY STATUS / BRANCH / COMMAND strip, which
 already got this right.
 
+## Bulk triage
+
+`src/utils/alertSelection.ts` holds the selection as a set of alert ids on the
+page rather than in the rows, so it can be summarized and acted on as a whole
+(UXA-406). Every operation returns a new set — React state is never mutated.
+
+**Selection is pruned to what the current filter shows.** "Select all in view"
+means all *in view*; offering to acknowledge rows the analyst cannot see would
+be a trap, and changing a filter drops anything it hid. The confirmation states
+the exact count it will affect, and the whole flow is keyboard reachable.
+
+A note for anyone touching `.alert-row-card__header`: the base rule is a
+**row** layout, so its `justify-content: space-between`, `flex-wrap: wrap` and
+`flex: 1 1 340px` are all row-direction choices. The narrow-workspace container
+query flips it to a column and must reset all three — left alone, `340px`
+becomes a *height* and `space-between` distributes children down it, which
+stretched the card from 181px to 445px.
+
 ## Dashboard scope
 
 The Dashboard reports on the **workspace knowledge base**, not the workspace.

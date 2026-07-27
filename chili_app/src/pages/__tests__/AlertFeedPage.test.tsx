@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { act } from 'react'
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -214,6 +215,53 @@ describe('AlertFeedPage', () => {
     )
     return locations
   }
+
+  it('acknowledges a selected set in one action', async () => {
+    // Every alert had to be acknowledged one at a time (UXA-406).
+    renderAlertFeed()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Outlier billing concentration' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Referral concentration anomaly' }))
+
+    expect(screen.getByText('2 alerts selected')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Acknowledge 2 alerts' }))
+    // Scoped to the dialog: each row also has its own Acknowledge button.
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Acknowledge' }),
+    )
+
+    expect(mocks.acknowledge).toHaveBeenCalledTimes(2)
+  })
+
+  it('selects every alert the current filter shows, not the whole queue', () => {
+    renderAlertFeed('/alerts?severity=critical')
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all alerts in view' }))
+
+    expect(screen.getByText('1 alert selected')).toBeInTheDocument()
+  })
+
+  it('states the exact count in the confirmation', () => {
+    renderAlertFeed()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Outlier billing concentration' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Acknowledge 1 alert' }))
+
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      'This marks 1 alert as seen. It cannot be undone from here.',
+    )
+  })
+
+  it('clears the selection without acting on it', () => {
+    renderAlertFeed()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Outlier billing concentration' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }))
+
+    expect(screen.queryByText(/alerts? selected/)).not.toBeInTheDocument()
+    expect(mocks.acknowledge).not.toHaveBeenCalled()
+  })
 
   it('expresses critical AND unacknowledged in one view', () => {
     // The single-select chip row conflated severity and status, so the

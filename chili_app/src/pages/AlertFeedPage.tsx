@@ -9,6 +9,7 @@ import { useDomainConfig, useDomainFeatures } from '../api/config'
 import { useEvidencePack } from '../api/evidence'
 import { useInvestigationNeighborhood } from '../api/investigation'
 import { usePolicyItems } from '../api/policy'
+import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { showToast } from '../components/common/toastStore'
 import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { policyItemsForTarget } from '../components/investigation/policyTargets'
@@ -33,6 +34,13 @@ import {
   type AlertSortId,
 } from '../utils/alertFilters'
 import { countLabel } from '../utils/countLabel'
+import {
+  clearSelection,
+  describeSelection,
+  pruneSelection,
+  selectAll,
+  toggleSelection,
+} from '../utils/alertSelection'
 import { absoluteTime, relativeAge } from '../utils/relativeTime'
 import { getEntityTitle } from '../utils/domainDisplay'
 import { severityTone } from '../utils/severity'
@@ -61,6 +69,8 @@ export function AlertFeedPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [promotedAlertIds, setPromotedAlertIds] = useState<Set<string>>(() => new Set())
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [pendingBulkAction, setPendingBulkAction] = useState<'acknowledge' | null>(null)
   const selectedKnowledgeBaseId = searchParams.get('kb')
   const requestedAlertId = searchParams.get('alert')
   const alertsQuery = useAlerts({
@@ -146,6 +156,18 @@ export function AlertFeedPage() {
   const alerts = applyAlertFilters(alertItems, filters)
   const severityCounts = countBy(alertItems, (alert) => alert.severity)
   const statusCounts = countBy(alertItems, (alert) => alert.status)
+  const visibleIds = alerts.map((alert) => alert.id)
+  // A bulk action must never touch an alert the analyst can no longer see, so
+  // the selection is pruned to what the current filter shows (UXA-406).
+  const selection = pruneSelection(selectedIds, visibleIds)
+  const allVisibleSelected = visibleIds.length > 0 && selection.size === visibleIds.length
+
+  const runBulkAcknowledge = () => {
+    for (const alertId of selection) acknowledgeMutation.mutate(alertId)
+    showToast('success', `${describeSelection(selection.size)} — acknowledged.`)
+    setSelectedIds(clearSelection())
+    setPendingBulkAction(null)
+  }
 
   return (
     <section className="page-grid">
@@ -243,6 +265,50 @@ export function AlertFeedPage() {
         </div>
       </div>
 
+      <div className="alert-bulk-bar">
+        <label className="alert-bulk-bar__select-all">
+          <input
+            aria-label="Select all alerts in view"
+            checked={allVisibleSelected}
+            disabled={visibleIds.length === 0}
+            onChange={(event) =>
+              setSelectedIds(event.target.checked ? selectAll(visibleIds) : clearSelection())
+            }
+            type="checkbox"
+          />
+          Select all in view
+        </label>
+        {selection.size > 0 ? (
+          <>
+            <span aria-live="polite">{describeSelection(selection.size)}</span>
+            <button
+              className="page-button page-button--sm page-button--primary"
+              onClick={() => setPendingBulkAction('acknowledge')}
+              type="button"
+            >
+              {`Acknowledge ${countLabel(selection.size, 'alert')}`}
+            </button>
+            <button
+              className="page-button page-button--sm page-button--secondary"
+              onClick={() => setSelectedIds(clearSelection())}
+              type="button"
+            >
+              Clear selection
+            </button>
+          </>
+        ) : null}
+      </div>
+
+      <ConfirmDialog
+        cancelLabel="Cancel"
+        confirmLabel="Acknowledge"
+        message={`This marks ${countLabel(selection.size, 'alert')} as seen. It cannot be undone from here.`}
+        onCancel={() => setPendingBulkAction(null)}
+        onConfirm={runBulkAcknowledge}
+        open={pendingBulkAction === 'acknowledge'}
+        title={`Acknowledge ${countLabel(selection.size, 'alert')}`}
+      />
+
       {alerts.length > 0 ? (
         alerts.map((alert) => {
           const isPromoted =
@@ -257,6 +323,13 @@ export function AlertFeedPage() {
           return (
             <Card className="alert-row-card" compact key={alert.id}>
               <div className="triage-row">
+                <input
+                  aria-label={`Select ${alert.title}`}
+                  checked={selection.has(alert.id)}
+                  className="triage-row__select"
+                  onChange={() => setSelectedIds(toggleSelection(selection, alert.id))}
+                  type="checkbox"
+                />
                 {/* One metric, named. The bare numeral was severity-coloured
                     and sized like a risk score, but carried confidence — and
                     the same number appeared again in a bar below (UXA-303). */}

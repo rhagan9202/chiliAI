@@ -41,22 +41,24 @@ export function ConfirmDialog({
     >
       <div
         style={{
-          background: 'var(--bg, #fff)',
-          borderRadius: 8,
+          background: 'var(--c-s2)',
+          border: '1px solid var(--c-b1)',
+          color: 'var(--c-text)',
+          borderRadius: 12,
           padding: 24,
           minWidth: 320,
           maxWidth: 440,
           width: '100%',
-          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.18)',
+          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.5)',
         }}
       >
         <h2
           id="confirm-dialog-title"
-          style={{ margin: '0 0 8px', fontSize: 18 }}
+          style={{ margin: '0 0 8px', fontSize: 18, color: 'var(--c-text)' }}
         >
           {title}
         </h2>
-        <p style={{ margin: '0 0 16px', color: 'var(--text, #6b6375)' }}>
+        <p style={{ margin: '0 0 16px', color: 'var(--c-dim)' }}>
           {message}
         </p>
         <div
@@ -72,8 +74,9 @@ export function ConfirmDialog({
             style={{
               padding: '8px 14px',
               borderRadius: 4,
-              border: '1px solid var(--border, #e5e4e7)',
+              border: '1px solid var(--c-control-border)',
               background: 'transparent',
+              color: 'var(--c-text)',
               cursor: 'pointer',
             }}
           >
@@ -86,8 +89,9 @@ export function ConfirmDialog({
               padding: '8px 14px',
               borderRadius: 4,
               border: 'none',
-              background: destructive ? '#b91c1c' : 'var(--accent, #aa3bff)',
-              color: '#fff',
+              background: destructive ? 'var(--c-red)' : 'var(--c-cyan)',
+              color: destructive ? '#fff' : 'var(--c-bg)',
+              fontWeight: 700,
               cursor: 'pointer',
             }}
           >

@@ -558,6 +558,32 @@
   flex: 1 1 340px;
 }
 
+/* Five action buttons need ~515px and cannot shrink. Where the workspace
+   cannot afford them beside a prose headline, they take their own row rather
+   than starving the title to 84px (UXA-303/406 regression, caught at 1366px
+   by e2e/layout-overflow.spec.ts). */
+@container workspace (max-width: 900px) {
+  .alert-row-card__header {
+    flex-direction: column;
+    align-items: stretch;
+    /* The base rule's `space-between` and `wrap` are row-direction choices;
+       in a column they distribute children down the full height and wrap into
+       extra columns, which stretched the card to 445px. */
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+  }
+
+  .alert-row-card__header-info {
+    /* `flex: 1 1 340px` is a *width* basis in the row layout; in a column it
+       becomes a 340px height and stretched the card. */
+    flex: 0 0 auto;
+  }
+
+  .alert-row-card__header-actions {
+    justify-content: flex-start;
+  }
+}
+
 .alert-row-card__header-actions {
   display: flex;
   align-items: flex-start;
@@ -1452,4 +1478,37 @@ a.housing-run-link:hover {
   padding-top: 4px;
   color: var(--c-dim);
   border-top: 1px solid var(--c-b0);
+}
+
+/* Bulk triage: select-all sits with the selection summary and its actions. */
+.alert-bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  color: var(--c-dim);
+  background: var(--c-s2);
+  border: 1px solid var(--c-b0);
+  border-radius: 10px;
+}
+
+.alert-bulk-bar__select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Sized as a real tap target; it is the first control in every row. */
+.triage-row__select,
+.alert-bulk-bar__select-all input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--c-cyan);
+  cursor: pointer;
+}
+
+.triage-row__select {
+  margin-top: 12px;
+  flex-shrink: 0;
 }

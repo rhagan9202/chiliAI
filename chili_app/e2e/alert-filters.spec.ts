@@ -17,11 +17,16 @@ test.describe('Alert Feed filters', () => {
     await expect(page.getByRole('group', { name: 'Severity' })).toBeVisible()
     await expect(page.getByRole('group', { name: 'Status' })).toBeVisible()
 
+    // Specs run serially against one shared stack and earlier ones may have
+    // acknowledged the seeded alert, so the status dimension is read from the
+    // live counts rather than assumed to be `open`.
+    const status = (await page.locator('.alert-row-card .ui-chip').nth(1).innerText()).trim()
+
     await page.getByRole('button', { name: /^Critical, \d+ matching$/ }).click()
-    await page.getByRole('button', { name: /^Open, \d+ matching$/ }).click()
+    await page.getByRole('button', { name: new RegExp(`^${status}, \\d+ matching$`, 'i') }).click()
 
     await expect(page).toHaveURL(/severity=critical/)
-    await expect(page).toHaveURL(/status=open/)
+    await expect(page).toHaveURL(new RegExp(`status=${status}`, 'i'))
     // The knowledge base scope is not this model's parameter and must survive.
     await expect(page).toHaveURL(new RegExp(`kb=${kb}`))
     await expect(page.locator('.alert-row-card')).toHaveCount(1)
