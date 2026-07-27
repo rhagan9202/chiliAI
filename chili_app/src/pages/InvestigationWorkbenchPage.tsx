@@ -158,6 +158,16 @@ export function InvestigationWorkbenchPage() {
   ]
   const resolvedActiveTabId = tabs.some((tab) => tab.id === activeTabId) ? activeTabId : tabs[0].id
 
+  // Distinct subjects the queue has already flagged, newest first, as opening
+  // moves for an analyst who does not know the corpus yet.
+  const suggestedSubjects = Array.from(
+    new Map(
+      (alertsQuery.data?.items ?? [])
+        .filter((alert) => alert.knowledge_base_id === activeKnowledgeBaseId)
+        .map((alert) => [alert.entity_id, alert]),
+    ).values(),
+  ).slice(0, 5)
+
   const navigateToEntity = (nextId: string) => {
     const nextSearch = new URLSearchParams(searchParams)
     if (activeKnowledgeBaseId) {
@@ -242,7 +252,33 @@ export function InvestigationWorkbenchPage() {
                   )}
                 </div>
               ) : (
-                <EmptyState description="Search by an entity property value, then select a result to load its graph neighborhood." title="Search live graph entities" />
+                <div className="metric-stack">
+                  <EmptyState
+                    description="Search by a property value, or start from something already flagged."
+                    title="Pick a subject to investigate"
+                  />
+                  {/* The landing state was a bare search box against an
+                      unfamiliar corpus (UXA-305). These come from the alerts
+                      already loaded on this page — no new endpoint. */}
+                  {suggestedSubjects.length > 0 ? (
+                    <div aria-label="Flagged subjects" role="group">
+                      <span className="filter-group__label">Flagged subjects</span>
+                      {suggestedSubjects.map((subject) => (
+                        <button
+                          className="page-list-item"
+                          key={subject.entity_id}
+                          onClick={() => navigateToEntity(subject.entity_id)}
+                          type="button"
+                        >
+                          <strong>{subject.entity_label || subject.entity_id}</strong>
+                          <span className="metric-row__label">
+                            {subject.severity} · {subject.entity_id}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               )}
             </div>
           </Card>

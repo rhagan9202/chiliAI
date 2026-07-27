@@ -365,6 +365,69 @@ describe('InvestigationWorkbenchPage', () => {
     expect(within(dossierHeader).getByText('WA')).toBeInTheDocument()
   })
 
+  it('offers flagged subjects as starting points instead of a bare search box', () => {
+    // The landing state was a ~300px search card in a 1440px viewport with no
+    // graph, no recent entities and no suggested starting points (UXA-305).
+    mocks.knowledgeBases = [
+      {
+        id: 'kb-live',
+        name: 'Live Fraud KB',
+        description: 'Live KB',
+        status: 'ready',
+        document_count: 1,
+        entity_count: 1,
+        relationship_count: 0,
+        created_at: '2026-05-10T00:00:00Z',
+      },
+    ]
+    mocks.alerts = [
+      {
+        id: 'alert-1',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'critical',
+        evidence_pack_id: null,
+      },
+    ]
+
+    renderInvestigationWorkbench()
+
+    const suggestions = screen.getByRole('group', { name: 'Flagged subjects' })
+    expect(within(suggestions).getByRole('button', { name: /provider-204/ })).toBeInTheDocument()
+  })
+
+  it('opens a suggested subject on click', async () => {
+    mocks.knowledgeBases = [
+      {
+        id: 'kb-live',
+        name: 'Live Fraud KB',
+        description: 'Live KB',
+        status: 'ready',
+        document_count: 1,
+        entity_count: 1,
+        relationship_count: 0,
+        created_at: '2026-05-10T00:00:00Z',
+      },
+    ]
+    mocks.alerts = [
+      {
+        id: 'alert-1',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'critical',
+        evidence_pack_id: null,
+      },
+    ]
+
+    renderInvestigationWorkbench()
+    await userEvent.click(screen.getByRole('button', { name: /provider-204/ }))
+
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: '/investigation/provider-204' }),
+      { preventScrollReset: true },
+    )
+  })
+
   it('offers a switch when the entity lives in another knowledge base', () => {
     // A deep link with no ?kb= resolved against whatever the workspace pointed
     // at and dead-ended with "could not be loaded" (UXA-104).

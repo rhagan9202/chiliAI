@@ -469,6 +469,31 @@ expressed at all**.
 modelled on the Housing page's FILTER BY STATUS / BRANCH / COMMAND strip, which
 already got this right.
 
+## Case queue filters
+
+`src/utils/caseFilters.ts` gives Cases the same treatment as the Alert Feed
+(UXA-401): multi-select status with per-option counts, title search, a result
+line, and URL-backed state that survives reload while preserving `?kb=` and
+`?case=`. So "open **or** in review" — the working set an analyst actually
+wants — is now expressible.
+
+It is deliberately narrower than `alertFilters`: a case queue has no severity,
+no confidence and no useful age sort at this size, and inventing dimensions the
+data does not support would be worse than omitting them.
+
+**Policy is still on the old single-select row.** `usePolicyItems(kb, status)`
+filters server-side on one status, so multi-select there needs an API change —
+an array parameter, or client-side filtering over a full fetch, the same trade
+`monitoring.21` is charting for alerts. That decision is open on #62.
+
+## Investigation landing state
+
+The landing state was a ~300px search card in a 1440px viewport with no graph,
+no recent entities and no suggested starting points (UXA-305). It now offers
+**flagged subjects** — the distinct entities the alert queue has already raised,
+drawn from the alerts already loaded on the page, so no new endpoint. An empty
+search box against an unfamiliar corpus is the hardest possible starting point.
+
 ## Entity deep links recover
 
 `/investigation/:entityId` with no `?kb=` used to resolve against whatever
