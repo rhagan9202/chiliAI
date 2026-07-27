@@ -469,6 +469,39 @@ expressed at all**.
 modelled on the Housing page's FILTER BY STATUS / BRANCH / COMMAND strip, which
 already got this right.
 
+## Entity deep links recover
+
+`/investigation/:entityId` with no `?kb=` used to resolve against whatever
+knowledge base the workspace pointed at and die with "the selected entity could
+not be loaded" — a frame naming neither the cause nor a next step (UXA-104).
+
+`GET /investigation/entities/{id}/locate` answers *where an entity lives*. It is
+asked only once the active KB has already failed to produce the entity, and
+returns an empty list rather than a 404 when the entity exists nowhere —
+"it is elsewhere" and "it does not exist" are different answers and
+`EntityNotHere` gives them different offers: a one-click switch naming the
+knowledge base, or a plain statement that the link is stale.
+
+The workspace resolver (UXA-101) already handles the common case where the only
+ready KB happens to hold the entity, so `e2e/entity-deep-link.spec.ts` creates a
+**real** empty KB and points the workspace at it to reach the path that still
+dead-ended.
+
+**Known inconsistency:** the Alert Feed reads `?kb=` straight off the URL and
+never writes it to the workspace store, so `/alerts?kb=X` is honoured but not
+remembered. Noted on #47 rather than changed here.
+
+## Mobile navigation wraps, it does not scroll
+
+At 390px the sidebar was a horizontally-scrolling strip cut off mid-word, with
+Knowledge Bases and RAG Chat off-screen and no fade, chevron or drawer to say
+more existed (UXA-105). It now wraps: a little vertical space for nothing
+hidden, which also makes the active item always visible and stops any label
+being clipped. `e2e/mobile-navigation.spec.ts` asserts all three at 390×844,
+measuring overflow on the **nav container** — a `nowrap` link inside a scroll
+strip reports no overflow of its own, so asserting on the link would pass
+against the very layout the ticket is about.
+
 ## Configuration: counts you can open
 
 `/configuration` reported "Entities loaded 8" and "Configured roles 2" with no

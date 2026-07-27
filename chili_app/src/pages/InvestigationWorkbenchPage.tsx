@@ -10,6 +10,7 @@ import { useGnnClusters, useRiskScore, useTimeseries } from '../api/analytics'
 import { useDomainConfig, useDomainFeatures } from '../api/config'
 import { useEvidencePack } from '../api/evidence'
 import {
+  useEntityLocations,
   useInvestigationEntity,
   useInvestigationEntitySearch,
   useInvestigationNeighborhood,
@@ -17,6 +18,7 @@ import {
 import { AnomalyTrendPanel } from '../components/investigation/AnomalyTrendPanel'
 import { ClusterMembershipPanel } from '../components/investigation/ClusterMembershipPanel'
 import { EntityDossierHeader } from '../components/investigation/EntityDossierHeader'
+import { EntityNotHere } from '../components/investigation/EntityNotHere'
 import { EntityPolicyPanel } from '../components/investigation/EntityPolicyPanel'
 import { EmptyKnowledgeBaseNotice } from '../components/knowledgebase/EmptyKnowledgeBaseNotice'
 import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
@@ -93,6 +95,9 @@ export function InvestigationWorkbenchPage() {
     [domainConfig],
   )
   const evidenceQuery = useEvidencePack(selectedAlert?.evidence_pack_id ?? null, activeKnowledgeBaseId)
+  const entityLoadFailed = entityQuery.isError || neighborhoodQuery.isError
+  // Asked only once the active KB has already failed to produce the entity.
+  const entityLocationsQuery = useEntityLocations(selectedEntityId, entityLoadFailed)
 
   if (domainConfigQuery.isLoading || knowledgeBasesLoading || alertsQuery.isLoading) {
     return <LoadingState label="Loading investigation context" />
@@ -245,8 +250,14 @@ export function InvestigationWorkbenchPage() {
 
         <div className="metric-stack">
           {entityQuery.isLoading || neighborhoodQuery.isLoading ? <LoadingState label="Loading selected entity graph" /> : null}
-          {entityQuery.isError || neighborhoodQuery.isError ? (
-            <ErrorState description="The selected entity could not be loaded from the active knowledge base." />
+          {/* "It is somewhere else" and "it does not exist" are different
+              answers; the old generic frame gave neither (UXA-104). */}
+          {entityLoadFailed && selectedEntityId ? (
+            <EntityNotHere
+              entityId={selectedEntityId}
+              isResolving={entityLocationsQuery.isLoading}
+              locations={entityLocationsQuery.data?.items ?? []}
+            />
           ) : null}
 
           {entity ? (

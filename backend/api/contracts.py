@@ -241,6 +241,21 @@ class EvidencePackResponse(BaseModel):
     source_documents: list[str] = Field(default_factory=lambda: cast(list[str], []))
 
 
+class EntityLocationResponse(BaseModel):
+    """One knowledge base that holds a given entity (UXA-104)."""
+
+    knowledge_base_id: str
+    knowledge_base_name: str
+
+
+class EntityLocationListResponse(BaseModel):
+    """Where an entity lives, so a deep link with no `?kb=` can recover."""
+
+    items: list[EntityLocationResponse] = Field(
+        default_factory=lambda: cast(list[EntityLocationResponse], [])
+    )
+
+
 class CaseSummaryResponse(BaseModel):
     """Case list item for the human review workflow."""
 

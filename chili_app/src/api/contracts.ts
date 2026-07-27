@@ -98,6 +98,11 @@ export type ChatMessageResponse = RequireFields<
   Schemas['ChatMessageResponse'],
   'citation_ids' | 'citations'
 >
+export type EntityLocationResponse = Schemas['EntityLocationResponse']
+export type EntityLocationListResponse = RequireFields<
+  Schemas['EntityLocationListResponse'],
+  'items'
+>
 export type ChatConversationSummaryResponse = Schemas['ChatConversationSummaryResponse']
 export type ChatConversationListResponse = RequireFields<
   Schemas['ChatConversationListResponse'],

@@ -2461,6 +2461,39 @@
         "title": "EntityDetailResponse",
         "type": "object"
       },
+      "EntityLocationListResponse": {
+        "description": "Where an entity lives, so a deep link with no `?kb=` can recover.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EntityLocationResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "EntityLocationListResponse",
+        "type": "object"
+      },
+      "EntityLocationResponse": {
+        "description": "One knowledge base that holds a given entity (UXA-104).",
+        "properties": {
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "knowledge_base_name": {
+            "title": "Knowledge Base Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "knowledge_base_name"
+        ],
+        "title": "EntityLocationResponse",
+        "type": "object"
+      },
       "EntitySearchResponse": {
         "description": "API-facing response for entity search queries.",
         "properties": {
@@ -9040,6 +9073,49 @@
           }
         },
         "summary": "Read Entity",
+        "tags": [
+          "investigation"
+        ]
+      }
+    },
+    "/investigation/entities/{entity_id}/locate": {
+      "get": {
+        "description": "Return the knowledge bases holding ``entity_id``.\n\nA deep link that arrives without ``?kb=`` used to resolve against whatever\nthe workspace happened to point at and fail (UXA-104). This lets the UI\noffer \"this entity is in <KB> \u2014 switch and open it\", and to say plainly\nwhen it exists nowhere. An empty list is the honest answer to the latter,\nnot a 404: the question \"where does this live\" was answered.",
+        "operationId": "locate_entity_investigation_entities__entity_id__locate_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityLocationListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Locate Entity",
         "tags": [
           "investigation"
         ]

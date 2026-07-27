@@ -328,16 +328,23 @@
   }
 
   .app-sidebar__nav {
+    /* Wrap rather than scroll (UXA-105). The strip was `overflow-x: auto`
+       with no fade, chevron or drawer, so at 390px it cut off mid-word and
+       Knowledge Bases and RAG Chat were simply invisible. Wrapping costs a
+       little vertical space and hides nothing — which also means the active
+       item is always in view and no label is ever clipped. */
     flex-direction: row;
+    flex-wrap: wrap;
     gap: 8px;
-    overflow-x: auto;
+    overflow-x: visible;
     padding-bottom: 2px;
   }
 
   .app-sidebar__link {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
     min-height: 36px;
-    white-space: nowrap;
+    /* Labels may wrap within their own button; they must not be truncated. */
+    white-space: normal;
   }
 
   .app-sidebar__link--active {
