@@ -9,6 +9,10 @@ entities:
     icon: stethoscope
     properties:
       npi: { type: string, display: "NPI", required: true, pattern: "^[0-9]{10}$" }
+      # The name an analyst recognises. `ui.display_fields` titles a provider by
+      # this and puts the NPI beneath it, so the alert feed, the workbench and
+      # the graph all say the same thing (UXA-304).
+      name: { type: string, display: "Provider Name" }
       specialty: { type: string, display: "Specialty" }
       state: { type: string, display: "State" }
 
@@ -274,7 +278,8 @@ ui:
         route: /configuration
   display_fields:
     provider:
-      title: npi
+      title: name
+      subtitle: npi
       subtitle: specialty
       chips: [state]
     beneficiary:

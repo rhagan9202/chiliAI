@@ -32,8 +32,10 @@ test.describe('Investigation workbench', () => {
     const dossier = page.getByTestId('entity-dossier-header')
     await expect(dossier).toBeVisible()
 
-    // `organization_name: { display: "Organization Name" }` in the active pack.
-    await expect(dossier.getByText('Organization Name', { exact: true })).toBeVisible()
+    // `entity_type_code: { display: "Entity Type Code" }` in the active pack.
+    // `organization_name` is deliberately absent: it is the configured title,
+    // so the header renders it and the property list does not repeat it.
+    await expect(dossier.getByText('Entity Type Code', { exact: true })).toBeVisible()
 
     // Everything past the leading fields waits behind one control, rather than
     // being silently truncated to four alphabetical keys.

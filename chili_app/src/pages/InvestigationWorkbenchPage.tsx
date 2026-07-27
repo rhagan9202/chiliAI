@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+
+import type { RuntimeEntity } from '../api/contracts'
+import type { Entity as ApiEntity } from '../types/api'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { useAlerts } from '../api/alerts'
@@ -80,6 +83,13 @@ export function InvestigationWorkbenchPage() {
   const selectedAlert = useMemo(
     () => alertsQuery.data?.items.find((alert) => alert.entity_id === selectedEntityId) ?? null,
     [alertsQuery.data?.items, selectedEntityId],
+  )
+  // Stable across renders so the force layout is not rebuilt on every paint.
+  const domainConfig = domainConfigQuery.data ?? null
+  const labelForNode = useCallback(
+    (node: ApiEntity) =>
+      domainConfig ? getEntityTitle(node as unknown as RuntimeEntity, domainConfig) : node.id,
+    [domainConfig],
   )
   const evidenceQuery = useEvidencePack(selectedAlert?.evidence_pack_id ?? null, activeKnowledgeBaseId)
 
@@ -331,6 +341,7 @@ export function InvestigationWorkbenchPage() {
                               clusterMode={clusterMode}
                               entityTypes={domainConfigQuery.data.entities.map((e) => e.name)}
                               highlightedEntityIds={selectedCluster?.entity_ids}
+                              labelFor={labelForNode}
                               onSelectNode={navigateToEntity}
                               selectedEntityId={entity.id}
                               subgraph={toSubgraphResult(neighborhood.entities, neighborhood.relationships)}
@@ -370,6 +381,7 @@ export function InvestigationWorkbenchPage() {
                   {evidenceQuery.data ? (
                     <EvidencePackViewer
                       entityTypes={domainConfigQuery.data.entities.map((e) => e.name)}
+                      labelFor={labelForNode}
                       onSelectNode={navigateToEntity}
                       pack={evidenceQuery.data}
                       selectedEntityId={selectedEntityId}

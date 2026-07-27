@@ -444,6 +444,24 @@ ordered, formatted rows (UXA-302):
   control instead of being silently truncated, and rows render as a `<dl>` —
   chip styling made non-interactive facts look like filters you could click.
 
+## One entity, one name
+
+`getEntityTitle` (`src/utils/domainDisplay.ts`) is the single display-name
+ladder: the pack's configured `title` property, then a `name` property, then
+`"<type display label> <id>"`. The last rung is deliberately not a bare id — an
+id alone reads as an internal handle, which is what UXA-304 was filed about.
+
+The same ladder exists in `backend/config/display.py::entity_display_label`,
+because alerts store the name they were raised with. **Change both together.**
+`e2e/entity-name-consistency.spec.ts` asserts they agree by clicking
+"Investigate <name>" on the alert feed and checking the workbench `h1` matches.
+
+Surfaces that use it: the workbench heading and dossier, graph node labels
+(`GraphCanvas`'s `labelFor` prop — pass a `useCallback`-stable function or the
+force layout rebuilds every paint), the evidence-pack subgraph, and the AI
+Investigator rail. The rail used to print `Alert context: ede44288-b501-…`;
+it now names the alert and its subject, with the identifier on hover.
+
 ## Colour contrast
 
 Palette contrast is **asserted in tests**, not eyeballed: `src/theme/contrast.ts`

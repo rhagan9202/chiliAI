@@ -789,7 +789,12 @@ ui:
         route: /configuration
   display_fields:
     provider:
-      title: npi
+      # An analyst recognises an organization by its name, with the NPI beneath
+      # it as the identifier. Individual providers carry no organization_name,
+      # so they fall back to "Provider <id>" — the id is NPI-derived, so the
+      # identifying number still shows. One name per entity, everywhere (UXA-304).
+      title: organization_name
+      subtitle: npi
     beneficiary:
       title: hic_number
       subtitle: birth_date

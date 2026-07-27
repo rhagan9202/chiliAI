@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { useAcknowledgeAlert, useAlerts } from '../api/alerts'
+import type { RuntimeEntity } from '../api/contracts'
+import type { Entity as ApiEntity } from '../types/api'
 import { useCases, usePromoteAlertToCase } from '../api/cases'
 import { useDomainConfig, useDomainFeatures } from '../api/config'
 import { useEvidencePack } from '../api/evidence'
@@ -20,6 +22,7 @@ import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
 import { countLabel } from '../utils/countLabel'
+import { getEntityTitle } from '../utils/domainDisplay'
 import { severityTone } from '../utils/severity'
 import { flagLabelFor } from '../utils/flagLabel'
 import { toSubgraphResult } from '../utils/subgraph'
@@ -69,6 +72,12 @@ export function AlertFeedPage() {
     1,
   )
   const domainConfig = domainConfigQuery.data ?? null
+  // Stable across renders so the force layout is not rebuilt on every paint.
+  const labelForNode = useCallback(
+    (node: ApiEntity) =>
+      domainConfig ? getEntityTitle(node as unknown as RuntimeEntity, domainConfig) : node.id,
+    [domainConfig],
+  )
   const capabilities = featuresQuery.data?.capabilities
   const policyItems = policyItemsQuery.data?.items ?? []
 
@@ -251,6 +260,7 @@ export function AlertFeedPage() {
                 : { nodes: [], edges: [] }
             }
             entityTypes={domainConfig ? domainConfig.entities.map((e) => e.name) : []}
+            labelFor={labelForNode}
             selectedEntityId={selectedAlert.entity_id}
           />
         ) : (

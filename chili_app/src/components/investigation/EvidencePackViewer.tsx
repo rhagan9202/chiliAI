@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 
 import type { EvidencePackResponse } from '../../api/contracts'
-import type { SubgraphResult } from '../../types/api'
+import type { Entity, SubgraphResult } from '../../types/api'
 import { AttributionBars } from '../charts/AttributionBars'
 import { Card } from '../ui/Card'
 import { Chip } from '../ui/Chip'
@@ -16,6 +16,9 @@ export interface EvidencePackViewerProps {
   selectedEntityId?: string | null
   onSelectNode?: (entityId: string) => void
   testId?: string
+  /** Resolves an entity's on-canvas name; passed straight to {@link GraphCanvas}
+      so the pack subgraph names entities exactly like the dossier (UXA-304). */
+  labelFor?: (entity: Entity) => string
 }
 
 /**
@@ -31,6 +34,7 @@ export function EvidencePackViewer({
   selectedEntityId = null,
   onSelectNode,
   testId = 'evidence-pack-viewer',
+  labelFor,
 }: EvidencePackViewerProps) {
   const packSubgraph = useMemo<SubgraphResult>(() => {
     const packNodeIds = new Set(pack.subgraph_node_ids)
@@ -89,6 +93,7 @@ export function EvidencePackViewer({
               selectedEntityId={selectedEntityId}
               centerEntityId={selectedEntityId}
               entityTypes={entityTypes}
+              labelFor={labelFor}
               onSelectNode={onSelectNode ?? (() => undefined)}
               testId="evidence-pack-subgraph"
             />

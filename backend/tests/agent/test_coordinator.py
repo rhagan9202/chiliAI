@@ -2707,6 +2707,7 @@ def test_graceful_shutdown_finishes_in_flight_event(
             InMemoryObservationSource(), event_bus=event_bus
         ),
         records_config=RecordsConfig(),
+        domain_config=_base_config(),
         raw_record_store=InMemoryRawRecordStore(),
         derived_signal_store=build_derived_signal_writer(None),
         observation_writer=InMemoryObservationWriter(),
