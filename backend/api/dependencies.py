@@ -1751,15 +1751,25 @@ def get_graph_entity_detail_payload(
 
 
 def get_analytics_overview_payload(
+    knowledge_base_id: str | None = Query(
+        default=None,
+        alias="kb",
+        description="Restrict every figure to one knowledge base. Omit for workspace-wide totals.",
+    ),
     alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
     case_service: CaseService = Depends(get_case_service),
     kb_repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
 ) -> AnalyticsOverviewResponse:
-    """Return the analytics overview computed from durable stores (BL-012)."""
+    """Return the analytics overview computed from durable stores (BL-012).
+
+    The ``kb`` alias matches ``GET /alerts`` (UXA-408). Omitting it preserves
+    the workspace-wide behaviour existing consumers depend on.
+    """
     return build_analytics_overview(
         alert_store=alert_store,
         case_service=case_service,
         kb_repository=kb_repository,
+        knowledge_base_id=knowledge_base_id,
     )
 
 
@@ -1817,20 +1827,16 @@ def get_alert_list_payload(
 ) -> AlertListResponse:
     """Return the paginated alert feed from the durable ``alert_history`` store."""
     statuses = [status_filter] if status_filter is not None else None
-    if knowledge_base_id is None:
-        records, total = store.list_alerts(statuses=statuses, limit=limit, offset=offset)
-    else:
-        first_page, total_records = store.list_alerts(statuses=statuses, limit=1, offset=0)
-        all_records = first_page
-        if total_records > 1:
-            all_records, _ = store.list_alerts(
-                statuses=statuses, limit=total_records, offset=0
-            )
-        filtered_records = [
-            record for record in all_records if record.knowledge_base_id == knowledge_base_id
-        ]
-        total = len(filtered_records)
-        records = filtered_records[offset : offset + limit]
+    # The store owns the predicate (UXA-408). This used to fetch a first page
+    # to learn the total, re-fetch the *entire* alert_history table, then
+    # filter and paginate in Python — so reading one KB's queue cost grew with
+    # every other KB's alert volume.
+    records, total = store.list_alerts(
+        knowledge_base_id=knowledge_base_id,
+        statuses=statuses,
+        limit=limit,
+        offset=offset,
+    )
 
     page = (offset // limit) + 1 if limit else 1
     return AlertListResponse(

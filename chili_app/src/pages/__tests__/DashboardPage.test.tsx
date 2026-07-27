@@ -539,6 +539,14 @@ describe('DashboardPage', () => {
     expect(screen.getByText(/loading policy signal analytics/i)).toBeInTheDocument()
   })
 
+  it('scopes the KPI tiles to the workspace knowledge base', () => {
+    // Before UXA-408 the endpoint took no parameters and summed every KB, so
+    // "Open cases" could disagree with the Cases page.
+    renderDashboard()
+
+    expect(mocks.useAnalyticsOverview).toHaveBeenCalledWith('kb-ready')
+  })
+
   it('names the knowledge base it is reporting on, not the domain already in the top bar', () => {
     renderDashboard()
 

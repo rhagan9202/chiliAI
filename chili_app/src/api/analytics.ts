@@ -10,7 +10,9 @@ import type {
   TimeseriesResponse,
 } from './contracts'
 
-export const analyticsOverviewQueryKey = ['analytics', 'overview'] as const
+export function analyticsOverviewQueryKey(knowledgeBaseId: string | null) {
+  return ['analytics', 'overview', knowledgeBaseId] as const
+}
 
 export type RiskScoresFilters = {
   knowledgeBaseId: string
@@ -45,8 +47,12 @@ export function gnnClustersQueryKey(knowledgeBaseId: string | null) {
   return ['analytics', 'gnn-clusters', knowledgeBaseId] as const
 }
 
-export function getAnalyticsOverview(): Promise<AnalyticsOverviewResponse> {
-  return apiFetch<AnalyticsOverviewResponse>('/analytics/overview')
+export function getAnalyticsOverview(
+  knowledgeBaseId: string | null,
+): Promise<AnalyticsOverviewResponse> {
+  // Omitting `kb` keeps the endpoint's workspace-wide behaviour (UXA-408).
+  const query = knowledgeBaseId ? `?kb=${encodeURIComponent(knowledgeBaseId)}` : ''
+  return apiFetch<AnalyticsOverviewResponse>(`/analytics/overview${query}`)
 }
 
 export function getRiskScores(filters: RiskScoresFilters): Promise<RiskScoreListResponse> {
@@ -83,10 +89,10 @@ export function getGnnClusters(knowledgeBaseId: string): Promise<GnnClusterRespo
   return apiFetch<GnnClusterResponse>(`/analytics/gnn/clusters?${params}`)
 }
 
-export function useAnalyticsOverview() {
+export function useAnalyticsOverview(knowledgeBaseId: string | null) {
   return useQuery({
-    queryKey: analyticsOverviewQueryKey,
-    queryFn: getAnalyticsOverview,
+    queryKey: analyticsOverviewQueryKey(knowledgeBaseId),
+    queryFn: () => getAnalyticsOverview(knowledgeBaseId),
   })
 }
 

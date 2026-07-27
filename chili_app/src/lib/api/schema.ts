@@ -4709,7 +4709,10 @@ export interface operations {
     };
     get_analytics_overview_analytics_overview_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Restrict every figure to one knowledge base. Omit for workspace-wide totals. */
+                kb?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4723,6 +4726,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalyticsOverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

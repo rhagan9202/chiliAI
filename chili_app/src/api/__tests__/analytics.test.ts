@@ -1,5 +1,11 @@
 import { apiFetch } from '../client'
-import { getGnnClusters, getMetricTimeseries, getRiskScores } from '../analytics'
+import {
+  analyticsOverviewQueryKey,
+  getAnalyticsOverview,
+  getGnnClusters,
+  getMetricTimeseries,
+  getRiskScores,
+} from '../analytics'
 
 vi.mock('../client', () => ({
   apiFetch: vi.fn(),
@@ -10,6 +16,28 @@ const apiFetchMock = vi.mocked(apiFetch)
 describe('analytics api helpers', () => {
   beforeEach(() => {
     apiFetchMock.mockReset()
+  })
+
+  it('scopes the overview to a knowledge base when one is active', async () => {
+    apiFetchMock.mockResolvedValue({ active_alerts: 0 })
+
+    await getAnalyticsOverview('kb-1')
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/analytics/overview?kb=kb-1')
+  })
+
+  it('omits the scope so the endpoint keeps its workspace-wide behaviour', async () => {
+    apiFetchMock.mockResolvedValue({ active_alerts: 0 })
+
+    await getAnalyticsOverview(null)
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/analytics/overview')
+  })
+
+  it('keys the overview query by knowledge base so switching refetches', () => {
+    // Without the scope in the key, switching KBs would serve the previous
+    // KB's cached totals (UXA-408).
+    expect(analyticsOverviewQueryKey('kb-1')).not.toEqual(analyticsOverviewQueryKey('kb-2'))
   })
 
   it('serializes risk score collection filters', async () => {

@@ -444,6 +444,16 @@ ordered, formatted rows (UXA-302):
   control instead of being silently truncated, and rows render as a `<dl>` —
   chip styling made non-interactive facts look like filters you could click.
 
+## Dashboard scope
+
+The Dashboard reports on the **workspace knowledge base**, not the workspace.
+`useAnalyticsOverview(knowledgeBaseId)` passes it as `?kb=` and includes it in
+the query key, so switching knowledge bases refetches rather than serving the
+previous KB's cached totals (UXA-408). `e2e/dashboard-kb-scope.spec.ts` seeds a
+**second** knowledge base with its own case before asserting the Open cases
+tile matches the Cases page — without that decoy every assertion would pass
+unscoped too, which is exactly why the defect went unnoticed.
+
 ## Empty states
 
 Every empty screen says what to do next, and says the *right* thing for the

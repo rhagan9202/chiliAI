@@ -7056,6 +7056,26 @@
       "get": {
         "description": "Return dashboard overview metrics for the analytics page.",
         "operationId": "get_analytics_overview_analytics_overview_get",
+        "parameters": [
+          {
+            "description": "Restrict every figure to one knowledge base. Omit for workspace-wide totals.",
+            "in": "query",
+            "name": "kb",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Restrict every figure to one knowledge base. Omit for workspace-wide totals.",
+              "title": "Kb"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -7066,6 +7086,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Get Analytics Overview",

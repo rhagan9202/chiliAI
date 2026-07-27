@@ -82,7 +82,9 @@ export function DashboardPage() {
     isLoading: knowledgeBasesLoading,
     isError: knowledgeBasesError,
   } = useActiveKnowledgeBase()
-  const overviewQuery = useAnalyticsOverview()
+  // Scoped to the workspace KB (UXA-408) so the KPI tiles report the same
+  // corpus as every other panel on the page, and refetch when it changes.
+  const overviewQuery = useAnalyticsOverview(activeKnowledgeBaseId)
   const alertsQuery = useAlerts({ knowledgeBaseId: activeKnowledgeBaseId ?? undefined })
   const workflowsQuery = useWorkflows()
   const domainFeaturesQuery = useDomainFeatures()

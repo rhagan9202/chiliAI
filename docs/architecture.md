@@ -826,6 +826,23 @@ Triggered by `RiskScoredEvent`. Writes the full risk assessment to `risk_score_h
 
 Triggered by `AlertsCreatedEvent`. Writes each alert to `alert_history` for durable audit. Also snapshots `active_alert_count`, `last_alert_at`, and `last_alert_severity` onto the affected graph entities. The row's read-model columns (`entity_label`/`confidence`/`tags`, alerts.36) are populated by whichever producer built the `AlertCreatedReference`: the analytics pipeline's `_run_explainability_stage` sets `confidence` from the risk assessment's `overall_score` and `tags` from the top-3 risk-factor names (kebab-cased), and resolves `entity_label` — and the alert title — through `config.display.entity_display_label` (UXA-304), costing one keyed graph read per alert; when no `DomainConfig` is threaded in (unit scaffolding), it falls back to `entity_id`. `MonitoringService.evaluate()` sets `confidence` from the alert candidate's threshold-ratio score and `tags` from a kebab-slugged `metric_name`, leaving `entity_label` at its `""` default (monitoring observations carry no display name). All three fields default (`""`/`0.0`/`[]`) so a legacy serialized `AlertCreatedReference` predating alerts.36 still decodes.
 
+`GET /analytics/overview` accepts an optional `kb` query parameter (UXA-408),
+using the same alias as `GET /alerts`. Omitting it keeps the workspace-wide
+aggregate existing consumers rely on; supplying it scopes **every** figure —
+active alerts, high-risk entities, open cases and entities monitored — to that
+one knowledge base, so the Dashboard's KPI tiles report the same corpus as the
+rest of the page. An unknown id reads as empty rather than falling back to
+workspace-wide, which would answer a different question than the one asked.
+"Entities monitored" is deliberately scoped: its sublabel says "in the active
+investigation graph", which is a KB-level statement.
+
+`AlertFeedStoreProtocol.list_alerts` now takes `knowledge_base_id`, pushed into
+SQL in the Postgres adapter and into the comprehension in the in-memory one.
+`get_alert_list_payload` previously fetched a page to learn the total, re-read
+the **entire** `alert_history` table, then filtered and paginated in Python —
+so the cost of reading one KB's queue grew with every other KB's alert volume.
+The remaining index work stays charted as `monitoring.21`.
+
 **Flow 5 — Document status projection** (BL-041)
 
 Every drained ingestion event passes through the worker's `_dispatch_event` (`agent/coordinator.py`), which calls `agent.status_projection.project_document_status(event, document_status_store)` before/alongside its existing handler dispatch. `project_document_status` maps four subscribed event types onto a monotonic `IngestionStatus` transition per document and applies it via `SourceDocumentStatusStore.apply()`:
