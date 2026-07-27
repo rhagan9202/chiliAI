@@ -348,7 +348,9 @@ describe('InvestigationWorkbenchPage', () => {
     // dossier header now renders type label + subtitle joined in one
     // flag-label line, so this asserts the combined text instead.
     expect(within(dossierHeader).getByText('Provider · Pain Management')).toBeInTheDocument()
-    expect(screen.getByText('state: WA')).toBeInTheDocument()
+    // Properties render as labeled facts (UXA-302), not `key: value` chips.
+    expect(within(dossierHeader).getByText('State')).toBeInTheDocument()
+    expect(within(dossierHeader).getByText('WA')).toBeInTheDocument()
   })
 
   it('passes active knowledge base scope into analytics queries', () => {

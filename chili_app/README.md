@@ -423,6 +423,27 @@ healthy one next to `ready`. The UI shows **Empty / Building / Ready / Failed /
 Archived** with a hover hint, while `data-status` keeps the raw value for CSS
 and e2e selectors.
 
+## Entity properties come from the pack
+
+`src/utils/entityProperties.ts` turns an entity's raw property bag into labeled,
+ordered, formatted rows (UXA-302):
+
+- Labels resolve through `PropertyDefinition.display` in the active pack,
+  falling back to a humanized key. Switching packs changes every label with no
+  frontend change — asserted end to end in `e2e/investigation-workbench.spec.ts`.
+- Order follows the pack's declaration order, not `Object.keys`. The dossier
+  used to show four alphabetically-first keys, which cut NPI and organization
+  name — the identifying fields — in favour of `deactivation_date`.
+- The `title`/`subtitle` fields are dropped: the dossier header already renders
+  them, and repeating them crowded out everything else.
+- Values format by `PropertyType` — dates as `Jan 15, 2026` (fixed locale, UTC,
+  and a deliberately strict ISO parse so `"sometime in 2020"` is never silently
+  rendered as 1 Jan), decimals to two places, integers grouped, booleans as
+  Yes/No.
+- Everything past the leading fields sits behind one **Show all N properties**
+  control instead of being silently truncated, and rows render as a `<dl>` —
+  chip styling made non-interactive facts look like filters you could click.
+
 ## Colour contrast
 
 Palette contrast is **asserted in tests**, not eyeballed: `src/theme/contrast.ts`

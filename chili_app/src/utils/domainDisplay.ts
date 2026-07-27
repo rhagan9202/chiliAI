@@ -18,15 +18,6 @@ export function getEntitySubtitle(entity: RuntimeEntity, config: DomainConfig) {
   return propertyText(entity, fieldName)
 }
 
-export function getEntityChips(entity: RuntimeEntity, config: DomainConfig) {
-  const configuredFields = config.ui?.display_fields?.[entity.type]?.chips ?? []
-  const fields = configuredFields.length > 0 ? configuredFields : Object.keys(entity.properties).slice(0, 4)
-  return fields.flatMap((fieldName) => {
-    const value = propertyText(entity, fieldName)
-    return value ? [`${fieldName}: ${value}`] : []
-  })
-}
-
 export function propertyText(entity: RuntimeEntity, fieldName: string | undefined) {
   if (!fieldName) {
     return null

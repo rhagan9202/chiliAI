@@ -1110,6 +1110,36 @@ a.housing-run-link:hover {
 }
 
 .dossier-risk__label,
+/* Entity properties read as facts, not as controls: no chip border, no chip
+   background, and a label/value pair rather than a `key: value` blob. */
+.dossier-properties {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, max-content));
+  gap: 4px 24px;
+  margin: 4px 0 0;
+}
+
+.dossier-properties__row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.dossier-properties__label {
+  color: var(--c-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dossier-properties__value {
+  margin: 0;
+  color: var(--c-text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .flag-label {
   font-family: var(--font-mono);
   font-size: 10px;
