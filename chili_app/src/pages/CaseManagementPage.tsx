@@ -13,6 +13,7 @@ import { FilterGroup } from '../components/ui/FilterGroup'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
+import { useUrlSearchDraft } from '../hooks/useUrlSearchDraft'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
 import {
   applyCaseFilters,
@@ -43,13 +44,20 @@ export function CaseManagementPage() {
   } = useActiveKnowledgeBase()
   const requestedCaseId = searchParams.get('case')
   // URL-backed so a case view is shareable and survives a reload (UXA-401).
+  // `replace` because a filter is a view state, not a destination: pushing would
+  // make the back button walk through every toggle instead of leaving the page.
   const filters = parseCaseFilters(searchParams)
   const setFilters = (next: CaseFilterState) => {
     const params = new URLSearchParams(searchParams)
     for (const key of ['status', 'q']) params.delete(key)
     for (const [key, value] of serializeCaseFilters(next)) params.append(key, value)
-    setSearchParams(params, { preventScrollReset: true })
+    setSearchParams(params, { preventScrollReset: true, replace: true })
   }
+  // No delay: this list is filtered in the browser, so the URL write costs
+  // nothing. The draft is still local — see the hook for why.
+  const [searchDraft, setSearchDraft] = useUrlSearchDraft(filters.search, (next) =>
+    setFilters({ ...parseCaseFilters(searchParams), search: next }),
+  )
   const toggleStatus = (optionId: string) =>
     setFilters({
       ...filters,
@@ -156,10 +164,10 @@ export function CaseManagementPage() {
           <input
             className="page-input--inline"
             id="case-search"
-            onChange={(event) => setFilters({ ...filters, search: event.target.value })}
+            onChange={(event) => setSearchDraft(event.target.value)}
             placeholder="Case title"
             type="search"
-            value={filters.search}
+            value={searchDraft}
           />
         </div>
         <div className="alert-filter-strip__summary">

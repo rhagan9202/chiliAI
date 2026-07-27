@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from policy.exceptions import PolicyItemNotFoundError
 from policy.models import PolicyItem
 
@@ -54,19 +56,31 @@ class InMemoryPolicyItemRepository:
         knowledge_base_id: str,
         limit: int,
         offset: int,
-        status: str | None = None,
+        statuses: Sequence[str] | None = None,
+        query: str | None = None,
     ) -> tuple[list[PolicyItem], int]:
+        wanted = frozenset(statuses or ())
+        needle = (query or "").strip().lower()
         matches = [
             item
             for item in self._items.values()
             if item.knowledge_base_id == knowledge_base_id
-            and (status is None or item.status == status)
+            and (not wanted or item.status in wanted)
+            and (not needle or needle in item.title.lower())
         ]
         matches.sort(key=lambda item: (item.updated_at, item.id), reverse=True)
         total = len(matches)
         if limit <= 0 or offset < 0:
             return [], total
         return matches[offset : offset + limit], total
+
+    def count_by_status(self, knowledge_base_id: str) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for item in self._items.values():
+            if item.knowledge_base_id != knowledge_base_id:
+                continue
+            counts[item.status] = counts.get(item.status, 0) + 1
+        return counts
 
     def update(self, item: PolicyItem) -> PolicyItem:
         key = _key(item)

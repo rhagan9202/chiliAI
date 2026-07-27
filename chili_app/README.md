@@ -287,7 +287,7 @@ not on mutable status, so they are order-independent.
 | `case-feedback.spec.ts` | Submitting feedback persists and renders in history |
 | `case-promote.spec.ts` | Promoting the seeded alert creates a case (real `/cases/promote`) |
 | `rag-chat.spec.ts` | New thread → send → real assistant reply renders |
-| `policy-intelligence.spec.ts` | Policy gap queue renders from the real API |
+| `policy-intelligence.spec.ts` | Rule-generated policy queue renders from the real API; server-side multi-status filtering (`?status=` repeated) unions rather than replaces, survives a reload, and clears |
 | `policy-triage.spec.ts` | Escalating the seeded policy item creates a case via the real triage endpoint |
 | `ingestion-document-warnings.spec.ts` | Ragged-CSV upload surfaces worker-persisted parser warnings in the document inventory |
 | `air-force-housing-scorecards.spec.ts` | `/housing` dashboard: real CONUS state geography (49 paths), 65 accessible installation markers (public reference layer, or live map points + location-pending accounting when housing feeds are seeded), marker/deep-link selection → detail panel + `?installation=` URL param, summary band rendered above the map with no generation UI (generation is API-only: backend router tests + seed tool), and filter-driven band aggregates pinned against values recomputed from the real API payload (status filter changes them, clear restores) |
@@ -481,10 +481,34 @@ It is deliberately narrower than `alertFilters`: a case queue has no severity,
 no confidence and no useful age sort at this size, and inventing dimensions the
 data does not support would be worse than omitting them.
 
-**Policy is still on the old single-select row.** `usePolicyItems(kb, status)`
-filters server-side on one status, so multi-select there needs an API change —
-an array parameter, or client-side filtering over a full fetch, the same trade
-`monitoring.21` is charting for alerts. That decision is open on #62.
+## Policy queue filters (server-side)
+
+Policy got the same strip, but the work is on the other side of the wire:
+`GET /policy/items` filters **server-side**, so `src/utils/policyFilters.ts`
+owns only the state and its URL round-trip and `usePolicyItems` sends it. The
+API's `?status=` now repeats (`?status=open&status=escalated`) and matches any
+of the values, and `?q=` searches titles.
+
+Two consequences worth knowing:
+
+- **Counts come from the response, not the page.** `PolicyItemListResponse
+  .status_counts` is a per-status tally over the whole knowledge base. Counting
+  the returned items — what Cases does, correctly, over its full client-side
+  list — would drop every unselected option to zero as soon as one was picked.
+  The result line's total is `totalFromStatusCounts`, not `total` (which is the
+  *filtered* match count).
+- **"Filtered to nothing" is read off the filter state**, not off a comparison
+  with a fuller list: the fuller list was never fetched.
+
+**Typing must not be bound straight to the URL.** `useUrlSearchDraft`
+(`src/hooks/`) holds the typed text in local state and writes the URL from it.
+Bound directly, the router's asynchronous update re-rendered the input with the
+previous value and the browser reverted the keystroke that arrived in between —
+typing "redwood" left `?q=wd`, on **both** Cases and Policy. The hook also
+debounces the URL write where the URL drives a request (250 ms on Policy; 0 on
+Cases, which filters in the browser), and both pages now `replace` rather than
+push, so the back button leaves the page instead of walking back through every
+keystroke and toggle.
 
 ## Investigation landing state
 

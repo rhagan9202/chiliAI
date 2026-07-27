@@ -4415,6 +4415,14 @@
             "title": "Items",
             "type": "array"
           },
+          "status_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Item counts per status across the whole knowledge base, ignoring the active filter. The filter UI shows a count beside every status option; tallying the filtered page instead would collapse every other option to zero the moment one was selected (UXA-401).",
+            "title": "Status Counts",
+            "type": "object"
+          },
           "total": {
             "default": 0,
             "title": "Total",
@@ -9746,13 +9754,33 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
             }
           },
           {

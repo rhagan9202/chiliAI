@@ -12,14 +12,36 @@ const kbQuery = (kb: string, extra?: Record<string, string>) => {
   return params.toString()
 }
 
-export const policyItemsQueryKey = (kb: string | null, status?: string) =>
-  ['policy', 'items', kb, status ?? 'all'] as const
+/**
+ * Policy items are filtered server-side, so the query is part of the cache key.
+ * `statuses` is sorted into the key so ["open","escalated"] and
+ * ["escalated","open"] are one cache entry, not two (UXA-401).
+ */
+export interface PolicyItemQuery {
+  statuses?: string[]
+  search?: string
+}
+
+export const policyItemsQueryKey = (kb: string | null, query?: PolicyItemQuery) =>
+  [
+    'policy',
+    'items',
+    kb,
+    [...(query?.statuses ?? [])].sort().join(',') || 'all',
+    query?.search ?? '',
+  ] as const
 export const policyItemQueryKey = (kb: string | null, itemId: string | null) =>
   ['policy', 'items', kb, itemId] as const
 
-export function getPolicyItems(kb: string, status?: string): Promise<PolicyItemListResponse> {
-  const query = status ? kbQuery(kb, { status }) : kbQuery(kb)
-  return apiFetch<PolicyItemListResponse>(`/policy/items?${query}`)
+export function getPolicyItems(
+  kb: string,
+  query?: PolicyItemQuery,
+): Promise<PolicyItemListResponse> {
+  const params = new URLSearchParams({ knowledge_base_id: kb })
+  // Repeated `status=` — the API matches any of them.
+  for (const status of query?.statuses ?? []) params.append('status', status)
+  if (query?.search) params.set('q', query.search)
+  return apiFetch<PolicyItemListResponse>(`/policy/items?${params.toString()}`)
 }
 
 export function getPolicyItem(kb: string, itemId: string): Promise<PolicyItemDetailResponse> {
@@ -34,11 +56,14 @@ export function triagePolicyItem(
   )
 }
 
-export function usePolicyItems(kb: string | null, status?: string) {
+export function usePolicyItems(kb: string | null, query?: PolicyItemQuery) {
   return useQuery({
-    queryKey: policyItemsQueryKey(kb, status),
-    queryFn: () => getPolicyItems(kb ?? '', status),
+    queryKey: policyItemsQueryKey(kb, query),
+    queryFn: () => getPolicyItems(kb ?? '', query),
     enabled: Boolean(kb),
+    // Typing in the search box re-queries; keeping the previous page on screen
+    // stops the queue flashing its loading state on every keystroke.
+    placeholderData: (previous) => previous,
   })
 }
 

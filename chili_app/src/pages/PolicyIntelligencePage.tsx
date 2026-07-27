@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 
 import { usePolicyItem, usePolicyItems, useTriagePolicyItem } from '../api/policy'
 import type { PolicyItemStatus, PolicyTriageRequest } from '../api/contracts'
@@ -8,18 +8,29 @@ import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
-import { FilterBar } from '../components/ui/FilterBar'
+import { FilterGroup } from '../components/ui/FilterGroup'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
+import { useUrlSearchDraft } from '../hooks/useUrlSearchDraft'
 import { countLabel } from '../utils/countLabel'
+import {
+  EMPTY_POLICY_FILTERS,
+  hasActivePolicyFilters,
+  parsePolicyFilters,
+  serializePolicyFilters,
+  summarizePolicyFilters,
+  togglePolicyStatus,
+  totalFromStatusCounts,
+  type PolicyFilterState,
+} from '../utils/policyFilters'
 import { severityTone } from '../utils/severity'
 import './pages.css'
 
-type StatusFilter = 'all' | 'open' | 'accepted' | 'rejected' | 'deferred' | 'escalated'
+/** Long enough to coalesce a typed word into one request, short enough to feel live. */
+const SEARCH_COMMIT_DELAY_MS = 250
 
-const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
-  { id: 'all', label: 'All' },
+const STATUS_OPTIONS: { id: PolicyItemStatus; label: string }[] = [
   { id: 'open', label: 'Open' },
   { id: 'accepted', label: 'Accepted' },
   { id: 'rejected', label: 'Rejected' },
@@ -41,9 +52,32 @@ export function PolicyIntelligencePage() {
     isError: knowledgeBasesError,
   } = useActiveKnowledgeBase()
 
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const itemsQuery = usePolicyItems(knowledgeBaseId, statusFilter === 'all' ? undefined : statusFilter)
+  const [searchParams, setSearchParams] = useSearchParams()
+  // URL-backed so a filtered queue is shareable and survives a reload (UXA-401).
+  // `replace` because a filter is a view state, not a destination: pushing would
+  // make the back button walk through every toggle instead of leaving the page.
+  const filters = parsePolicyFilters(searchParams)
+  const setFilters = (next: PolicyFilterState) => {
+    const params = new URLSearchParams(searchParams)
+    for (const key of ['status', 'q']) params.delete(key)
+    for (const [key, value] of serializePolicyFilters(next)) params.append(key, value)
+    setSearchParams(params, { preventScrollReset: true, replace: true })
+  }
+  // Every committed keystroke is a filtered SQL query, so the URL write waits
+  // for a pause in typing; the box itself stays instant.
+  const [searchDraft, setSearchDraft] = useUrlSearchDraft(
+    filters.search,
+    (next) => setFilters({ ...parsePolicyFilters(searchParams), search: next }),
+    SEARCH_COMMIT_DELAY_MS,
+  )
+
+  const itemsQuery = usePolicyItems(knowledgeBaseId, {
+    statuses: filters.statuses,
+    search: filters.search,
+  })
   const items = itemsQuery.data?.items ?? []
+  const statusCounts = itemsQuery.data?.status_counts ?? {}
+  const knowledgeBaseTotal = totalFromStatusCounts(statusCounts)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const activeItemId = items.some((item) => item.id === selectedItemId)
     ? selectedItemId
@@ -105,17 +139,57 @@ export function PolicyIntelligencePage() {
   return (
     <section className="page-grid">
       <SectionHeader
-        actions={<Chip label={countLabel(itemsQuery.data?.total ?? items.length, 'item')} tone="info" />}
+        actions={<Chip label={countLabel(knowledgeBaseTotal, 'item')} tone="info" />}
         eyebrow="Rule findings"
         subtitle="Decide what the configured rules found: accept a finding, reject it, defer it, or escalate it to an investigation."
         title="Policy Intelligence"
       />
 
-      <FilterBar
-        activeFilterId={statusFilter}
-        filters={STATUS_FILTERS}
-        onChange={(value) => setStatusFilter(value as StatusFilter)}
-      />
+      <div className="alert-filter-strip">
+        <FilterGroup
+          label="Status"
+          onToggle={(optionId) => setFilters(togglePolicyStatus(filters, optionId))}
+          options={STATUS_OPTIONS.map((option) => ({
+            ...option,
+            count: statusCounts[option.id] ?? 0,
+          }))}
+          selected={filters.statuses}
+        />
+        <div className="alert-filter-strip__controls">
+          <label className="filter-group__label" htmlFor="policy-search">
+            Search
+          </label>
+          <input
+            className="page-input--inline"
+            id="policy-search"
+            // The API caps `q` at 200 characters; stopping the input there beats
+            // letting a long paste come back as a 422.
+            maxLength={200}
+            onChange={(event) => setSearchDraft(event.target.value)}
+            placeholder="Item title"
+            type="search"
+            value={searchDraft}
+          />
+        </div>
+        <div className="alert-filter-strip__summary">
+          <span aria-live="polite">
+            {summarizePolicyFilters({
+              shown: items.length,
+              total: knowledgeBaseTotal,
+              filters,
+            })}
+          </span>
+          {hasActivePolicyFilters(filters) ? (
+            <button
+              className="page-button page-button--sm page-button--secondary"
+              onClick={() => setFilters(EMPTY_POLICY_FILTERS)}
+              type="button"
+            >
+              Clear filters
+            </button>
+          ) : null}
+        </div>
+      </div>
 
       <div className="policy-layout">
         <Card>
@@ -137,21 +211,22 @@ export function PolicyIntelligencePage() {
               </button>
             ))}
             {items.length === 0 ? (
-              // The queue is filtered server-side, so an active status filter
-              // is the only thing that distinguishes "hidden" from "absent".
-              statusFilter !== 'all' ? (
+              // The queue is filtered server-side, so the filter state — not a
+              // comparison against a fuller list — is what distinguishes
+              // "hidden by a filter" from "nothing here at all" (UXA-305).
+              hasActivePolicyFilters(filters) ? (
                 <EmptyState
                   action={
                     <button
                       className="page-button page-button--sm"
-                      onClick={() => setStatusFilter('all')}
+                      onClick={() => setFilters(EMPTY_POLICY_FILTERS)}
                       type="button"
                     >
-                      Clear filter
+                      Clear filters
                     </button>
                   }
-                  description={`No policy items are ${statusFilter}. Clear the filter to see the rest of the queue.`}
-                  title="No items match this filter"
+                  description={`No policy items match the filters you have set. ${countLabel(knowledgeBaseTotal, 'item')} are in the queue.`}
+                  title="No items match these filters"
                 />
               ) : (
                 <EmptyState

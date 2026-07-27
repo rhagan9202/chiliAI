@@ -120,6 +120,15 @@ class PolicyItemListResponse(BaseModel):
         default_factory=lambda: cast(list[PolicyItemSummaryResponse], [])
     )
     total: int = 0
+    status_counts: dict[str, int] = Field(
+        default_factory=lambda: cast(dict[str, int], {}),
+        description=(
+            "Item counts per status across the whole knowledge base, ignoring "
+            "the active filter. The filter UI shows a count beside every status "
+            "option; tallying the filtered page instead would collapse every "
+            "other option to zero the moment one was selected (UXA-401)."
+        ),
+    )
 
 
 class PolicyItemDetailResponse(BaseModel):

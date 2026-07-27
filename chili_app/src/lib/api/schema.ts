@@ -3375,6 +3375,13 @@ export interface components {
             /** Items */
             items?: components["schemas"]["PolicyItemSummaryResponse"][];
             /**
+             * Status Counts
+             * @description Item counts per status across the whole knowledge base, ignoring the active filter. The filter UI shows a count beside every status option; tallying the filtered page instead would collapse every other option to zero the moment one was selected (UXA-401).
+             */
+            status_counts?: {
+                [key: string]: number;
+            };
+            /**
              * Total
              * @default 0
              */
@@ -6355,7 +6362,8 @@ export interface operations {
         parameters: {
             query: {
                 knowledge_base_id: string;
-                status?: string | null;
+                status?: string[] | null;
+                q?: string | null;
                 limit?: number;
                 offset?: number;
             };
