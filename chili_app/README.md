@@ -494,6 +494,22 @@ no recent entities and no suggested starting points (UXA-305). It now offers
 drawn from the alerts already loaded on the page, so no new endpoint. An empty
 search box against an unfamiliar corpus is the hardest possible starting point.
 
+## Ingestion Studio states an empty knowledge base once
+
+A brand-new knowledge base stacked three cards down the context rail that all
+said the same thing — *No runs yet*, *No documents yet*, *No document selected*
+(UXA-305). It has no runs **because** it has nothing in it, and there is nothing
+to preview until something lands, so only the document inventory's empty state
+survives, and that one carries a *Stage a source* button that scrolls back to
+the staging form in the main column.
+
+The run timeline earns its card once `documents`, `studio.receipts` or
+`workflows` is non-empty — documents are in the test because a KB ingested in an
+earlier session has no receipts (those are per-session) and may have no live
+workflow, and its inventory is the honest signal that runs happened. **Next
+actions' *Watch runs* keys off the same value**: hiding the timeline without
+disabling that button would leave it scrolling to a card that is not rendered.
+
 ## Entity deep links recover
 
 `/investigation/:entityId` with no `?kb=` used to resolve against whatever

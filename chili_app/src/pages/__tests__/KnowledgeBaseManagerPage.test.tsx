@@ -253,6 +253,7 @@ function installFetchMock({
   previewDelayMs = 0,
   kbDomain = null,
   kbItems,
+  emptyInventory = false,
 }: {
   documentFail?: boolean
   recordsFail?: boolean
@@ -264,6 +265,8 @@ function installFetchMock({
   kbDomain?: string | null
   /** Full KB list override; defaults to the single kb-1 stamped with `kbDomain`. */
   kbItems?: MockKnowledgeBase[]
+  /** kb-1 has landed nothing yet — the brand-new knowledge base case. */
+  emptyInventory?: boolean
 } = {}) {
   const knowledgeBaseItems = kbItems ?? [{ ...medicareKb, domain: kbDomain }]
   installXhrMock({ documentFail, recordsFail })
@@ -330,6 +333,13 @@ function installFetchMock({
     }
 
     if (url.endsWith('/knowledgebases/kb-1/documents')) {
+      if (emptyInventory) {
+        return new Response(JSON.stringify({ items: [], total: 0 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+
       return new Response(
         JSON.stringify({
           items: [
@@ -664,6 +674,41 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     const reasons = await screen.findByTestId('document-warning-reasons')
     expect(within(reasons).getByText(/csv\.ragged_row/)).toBeInTheDocument()
     expect(within(reasons).getByText(/normalization_failed/)).toBeInTheDocument()
+  })
+
+  it('states an empty knowledge base once, with an action (UXA-305)', async () => {
+    // A brand-new KB used to stack three cards that all said the same thing:
+    // "No runs yet", "No documents yet", "No document selected".
+    installFetchMock({ emptyInventory: true })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    expect(await screen.findByText('No documents yet')).toBeInTheDocument()
+    expect(screen.queryByText('No runs yet')).not.toBeInTheDocument()
+    expect(screen.queryByText('No document selected')).not.toBeInTheDocument()
+    expect(screen.queryByText('Document preview')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Stage a source' })).toBeInTheDocument()
+    // Hiding the timeline must not leave "Watch runs" pointing at nothing.
+    expect(screen.getByRole('button', { name: 'Watch runs' })).toBeDisabled()
+  })
+
+  it('sends the empty-inventory action back to the staging step (UXA-305)', async () => {
+    installFetchMock({ emptyInventory: true })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Stage a source' }))
+
+    expect(useIngestionStudioStore.getState().currentStep).toBe('source')
+  })
+
+  it('keeps the run timeline once a knowledge base has documents (UXA-305)', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    // Documents exist but no run has been submitted in this session: the
+    // timeline's own empty state is the honest report, not a duplicate.
+    expect(await screen.findByText('existing-policy.txt')).toBeInTheDocument()
+    expect(screen.getByText('No runs yet')).toBeInTheDocument()
+    expect(screen.getByText('Document preview')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Watch runs' })).toBeEnabled()
   })
 
   it('renders document preview content for the selected inventory document', async () => {
