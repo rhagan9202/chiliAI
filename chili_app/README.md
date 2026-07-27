@@ -469,6 +469,21 @@ expressed at all**.
 modelled on the Housing page's FILTER BY STATUS / BRANCH / COMMAND strip, which
 already got this right.
 
+## Configuration: counts you can open
+
+`/configuration` reported "Entities loaded 8" and "Configured roles 2" with no
+way to see *which* — a read-only stat dump about the configuration that drives
+the whole product (UXA-404). `ExpandableCount` wraps each figure in a
+`<details>` so the page stays scannable but every number opens to the entity
+types, relationships, capabilities, enabled pages, roles, navigation labels and
+schema sections behind it. Capability keys are mapped to operator words rather
+than shown as `gnn`/`peer_stats`.
+
+The pack switcher and active-pack editor were already built (admin-gated,
+mirroring the backend's `require_role("admin")` on `/config/packs|validate|
+apply|switch`). Still missing: rendering `/config/domain/schema` as browsable
+reference, and surfacing validation errors against the offending field.
+
 ## Toasts can lead somewhere
 
 `showToast(variant, message, action?)` takes an optional `{ label, to }`, so a

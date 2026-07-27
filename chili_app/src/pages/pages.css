@@ -1571,3 +1571,37 @@ a.housing-run-link:hover {
   justify-content: space-between;
   gap: 8px;
 }
+
+/* A summary count you can open. The marker sits with the label so the row
+   still reads as a metric row until you want the detail (UXA-404). */
+.config-count {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--c-b0);
+}
+
+.config-count:last-child {
+  border-bottom: none;
+}
+
+.config-count__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--c-text);
+}
+
+.config-count__summary::marker {
+  color: var(--c-muted);
+}
+
+.config-count__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 8px 0 0;
+  padding: 0 0 0 18px;
+  color: var(--c-dim);
+  font-size: 13px;
+}
