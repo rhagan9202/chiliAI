@@ -384,7 +384,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Conversations
+         * @description Return the active knowledge base's conversations, newest activity first.
+         */
+        get: operations["list_conversations_chat_conversations_get"];
         put?: never;
         /**
          * Create Conversation
@@ -1741,6 +1745,15 @@ export interface components {
             title?: string | null;
         };
         /**
+         * ChatConversationListResponse
+         * @description A knowledge base's conversations, most recently updated first.
+         */
+        ChatConversationListResponse: {
+            /** Items */
+            items?: components["schemas"]["ChatConversationSummaryResponse"][];
+            page: components["schemas"]["PageInfo"];
+        };
+        /**
          * ChatConversationResponse
          * @description Conversation state returned to the RAG chat UI.
          */
@@ -1753,6 +1766,30 @@ export interface components {
             messages?: components["schemas"]["ChatMessageResponse"][];
             /** Title */
             title: string;
+        };
+        /**
+         * ChatConversationSummaryResponse
+         * @description One row in the conversation list (UXA-403).
+         *
+         *     Carries enough to choose from — title, when it was last touched, how much
+         *     was said, and the last thing said — without shipping every message.
+         */
+        ChatConversationSummaryResponse: {
+            /** Id */
+            id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Last Message */
+            last_message?: string | null;
+            /** Message Count */
+            message_count: number;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * ChatMessageCreateRequest
@@ -5187,6 +5224,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CaseDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_conversations_chat_conversations_get: {
+        parameters: {
+            query: {
+                /** @description Knowledge base scope. */
+                kb: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatConversationListResponse"];
                 };
             };
             /** @description Validation Error */

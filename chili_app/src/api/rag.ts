@@ -3,9 +3,22 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch, apiPost } from './client'
 import type {
   ChatConversationCreateRequest,
+  ChatConversationListResponse,
   ChatConversationResponse,
   ChatMessageCreateRequest,
 } from './contracts'
+
+export function conversationListQueryKey(knowledgeBaseId: string | null) {
+  return ['rag', 'conversations', knowledgeBaseId] as const
+}
+
+export function getConversations(
+  knowledgeBaseId: string,
+): Promise<ChatConversationListResponse> {
+  return apiFetch<ChatConversationListResponse>(
+    `/chat/conversations?kb=${encodeURIComponent(knowledgeBaseId)}`,
+  )
+}
 
 export function conversationQueryKey(conversationId: string) {
   return ['conversation', conversationId] as const
@@ -70,6 +83,15 @@ export async function startConversationWithMessage(payload: {
   } catch (error) {
     throw new StartConversationWithMessageError(created, error)
   }
+}
+
+/** The active KB's conversations, so a past one can be resumed (UXA-403). */
+export function useConversations(knowledgeBaseId: string | null) {
+  return useQuery({
+    queryKey: conversationListQueryKey(knowledgeBaseId),
+    queryFn: () => getConversations(knowledgeBaseId ?? ''),
+    enabled: Boolean(knowledgeBaseId),
+  })
 }
 
 export function useConversation(conversationId: string | null) {

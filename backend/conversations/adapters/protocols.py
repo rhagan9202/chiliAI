@@ -23,6 +23,16 @@ class ConversationRepository(Protocol):
         """Upsert a conversation (e.g. after appending messages) and return it."""
         ...
 
+    def list_by_kb(
+        self, knowledge_base_id: str, *, limit: int, offset: int
+    ) -> tuple[list[Conversation], int]:
+        """Return a page of a KB's conversations (most recently updated first).
+
+        Without this the durable-conversation feature is invisible: RAG Chat
+        can start a conversation but never resume one (UXA-403).
+        """
+        ...
+
     def delete_by_kb(self, knowledge_base_id: str) -> int:
         """Delete all conversations for a knowledge base; return rows removed."""
         ...

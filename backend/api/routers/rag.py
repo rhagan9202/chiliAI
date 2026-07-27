@@ -17,10 +17,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from knowledgebases.protocols import KnowledgeBaseRepository
-from api.contracts import ChatConversationResponse, ChatMessageCreateRequest
+from api.contracts import (
+    ChatConversationListResponse,
+    ChatConversationResponse,
+    ChatMessageCreateRequest,
+)
 from api.dependencies import (
     get_api_state,
     get_chat_conversation_create_payload,
+    get_chat_conversation_list_payload,
     get_chat_conversation_payload,
     get_chat_message_payload,
     get_conversation_service,
@@ -40,6 +45,18 @@ from shared.validation import validate_query_length
 __all__ = ["router"]
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+@router.get(
+    "/conversations",
+    response_model=ChatConversationListResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
+async def list_conversations(
+    conversations: ChatConversationListResponse = Depends(get_chat_conversation_list_payload),
+) -> ChatConversationListResponse:
+    """Return the active knowledge base's conversations, newest activity first."""
+    return conversations
 
 
 @router.get(

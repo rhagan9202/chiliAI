@@ -325,6 +325,30 @@ class ChatConversationResponse(BaseModel):
     messages: list[ChatMessageResponse] = Field(default_factory=lambda: cast(list[ChatMessageResponse], []))
 
 
+class ChatConversationSummaryResponse(BaseModel):
+    """One row in the conversation list (UXA-403).
+
+    Carries enough to choose from — title, when it was last touched, how much
+    was said, and the last thing said — without shipping every message.
+    """
+
+    id: str
+    title: str
+    knowledge_base_id: str
+    message_count: int
+    last_message: str | None = None
+    updated_at: datetime
+
+
+class ChatConversationListResponse(BaseModel):
+    """A knowledge base's conversations, most recently updated first."""
+
+    items: list[ChatConversationSummaryResponse] = Field(
+        default_factory=lambda: cast(list[ChatConversationSummaryResponse], [])
+    )
+    page: PageInfo
+
+
 class ChatStreamCitationResponse(BaseModel):
     """Citation payload emitted in the final RAG SSE event."""
 

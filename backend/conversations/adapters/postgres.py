@@ -41,6 +41,18 @@ _UPSERT_SQL = f"""
         updated_at = EXCLUDED.updated_at
 """
 
+_LIST_BY_KB_SQL = f"""
+    SELECT {_COLUMNS}
+    FROM conversations
+    WHERE knowledge_base_id = %s
+    ORDER BY updated_at DESC, conversation_id DESC
+    LIMIT %s OFFSET %s
+"""
+
+_COUNT_BY_KB_SQL = """
+    SELECT count(*) FROM conversations WHERE knowledge_base_id = %s
+"""
+
 _DELETE_BY_KB_SQL = """
     DELETE FROM conversations WHERE knowledge_base_id = %s
 """
@@ -77,6 +89,22 @@ class PostgresConversationRepository:
         except Exception as exc:
             raise ConversationPersistenceError("Failed to save conversation.") from exc
         return conversation
+
+    def list_by_kb(
+        self, knowledge_base_id: str, *, limit: int, offset: int
+    ) -> tuple[list[Conversation], int]:
+        try:
+            with self._provider.connection() as conn:
+                total_row = conn.execute(
+                    _COUNT_BY_KB_SQL, (knowledge_base_id,)
+                ).fetchone()
+                total = 0 if total_row is None else int(cast(int, total_row[0]))
+                rows = conn.execute(
+                    _LIST_BY_KB_SQL, (knowledge_base_id, limit, offset)
+                ).fetchall()
+        except Exception as exc:
+            raise ConversationPersistenceError("Failed to list conversations.") from exc
+        return [_row_to_conversation(row) for row in rows], total
 
     def delete_by_kb(self, knowledge_base_id: str) -> int:
         try:

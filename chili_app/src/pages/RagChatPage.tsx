@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
+import { useDomainConfig } from '../api/config'
 import {
   isStartConversationPartialError,
   useAddMessage,
   useConversation,
+  useConversations,
   useCreateConversation,
   useStartConversationWithMessage,
 } from '../api/rag'
@@ -21,7 +23,10 @@ import {
   citationNavigationTarget,
   parseRagLaunchContext,
 } from '../lib/ragContext'
+import { countLabel } from '../utils/countLabel'
 import { knowledgeBaseStatusLabel } from '../utils/knowledgeBaseStatus'
+import { relativeAge } from '../utils/relativeTime'
+import { starterPrompts } from '../utils/starterPrompts'
 import './pages.css'
 
 const contextTitleBySource = {
@@ -105,6 +110,8 @@ export function RagChatPage() {
       ? null
       : activeKnowledgeBaseId
   const conversationQuery = useConversation(conversationId)
+  const conversationsQuery = useConversations(selectedKnowledgeBaseId)
+  const domainConfigQuery = useDomainConfig()
   const createConversationMutation = useCreateConversation()
   const startContextualThreadMutation = useStartConversationWithMessage()
   const addMessageMutation = useAddMessage(conversationId)
@@ -163,6 +170,8 @@ export function RagChatPage() {
   }
 
   const conversation = conversationQuery.data ?? null
+  const conversations = conversationsQuery.data?.items ?? []
+  const prompts = starterPrompts(domainConfigQuery.data ?? null)
 
   return (
     <section className="chat-page">
@@ -337,12 +346,59 @@ export function RagChatPage() {
             ))}
           </div>
         ) : (
-          <EmptyState
-            description="Ask a question below, or start a new conversation, to search the active knowledge base."
-            title="No active conversation"
-          />
+          <div className="chat-page__starters">
+            <EmptyState
+              description="Ask a question below, or pick one of these to begin."
+              title="No active conversation"
+            />
+            {/* Derived from the active pack, so the openers follow the domain
+                rather than hardcoding fraud wording (UXA-403). */}
+            {prompts.length > 0 ? (
+              <div aria-label="Starter prompts" className="chat-page__starter-list" role="group">
+                {prompts.map((prompt) => (
+                  <button
+                    className="page-button page-button--sm page-button--secondary"
+                    key={prompt}
+                    onClick={() => setDraftForLaunchQuestion(prompt)}
+                    type="button"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         )}
       </div>
+
+      {conversations.length > 0 ? (
+        <div className="chat-page__conversations">
+          <span className="filter-group__label">Conversations</span>
+          <ul aria-label="Conversations" className="chat-page__conversation-list">
+            {conversations.map((item) => (
+              <li key={item.id}>
+                <button
+                  className={
+                    item.id === conversationId
+                      ? 'page-list-item page-list-item--active'
+                      : 'page-list-item'
+                  }
+                  onClick={() => setConversationId(item.id)}
+                  type="button"
+                >
+                  <strong>{item.title}</strong>
+                  <span className="metric-row__label">
+                    {item.last_message ?? 'No messages yet'}
+                  </span>
+                  <span className="alert-row-card__age">
+                    {countLabel(item.message_count, 'message')} · {relativeAge(item.updated_at)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="chat-page__compose">
         <div className="chat-page__compose-row">

@@ -1512,3 +1512,45 @@ a.housing-run-link:hover {
   margin-top: 12px;
   flex-shrink: 0;
 }
+
+/* Starter prompts sit with the empty state, closing the ~500px of dead space
+   between it and the composer (UXA-403). */
+.chat-page__starters {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.chat-page__starter-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.chat-page__conversations {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--c-b0);
+}
+
+.chat-page__conversation-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-page__conversation-list > li {
+  min-width: 220px;
+  max-width: 320px;
+  flex: 1 1 220px;
+}
+
+.chat-page__conversation-list .page-list-item {
+  width: 100%;
+  padding: 10px 12px;
+}

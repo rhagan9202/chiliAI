@@ -469,6 +469,25 @@ expressed at all**.
 modelled on the Housing page's FILTER BY STATUS / BRANCH / COMMAND strip, which
 already got this right.
 
+## RAG Chat: conversations and starters
+
+The backend persisted conversations per knowledge base and the dev seed created
+one, but the repository had only create/get/save/delete_by_kb — **no `list`** —
+so the UI had a "New conversation" button and no way to resume anything. The
+durable-conversation feature was invisible (UXA-403).
+
+- `ConversationRepository.list_by_kb` + `GET /chat/conversations?kb=` return a
+  KB's conversations most recently updated first, summarized (title, message
+  count, last message, timestamp) rather than shipping every message.
+- `useConversations(kb)` drives the list; clicking a row resumes it.
+- `src/utils/starterPrompts.ts` derives openers from the **active pack's** own
+  entity and relationship labels, so they change with the domain rather than
+  hardcoding fraud wording. A prompt fills the composer rather than sending
+  blind. They sit with the empty state, closing the dead vertical space.
+
+Not built: renaming and deleting a conversation. Both need new endpoints and
+neither is in the ticket's acceptance criteria.
+
 ## One assistant, two surfaces
 
 The app had four AI entry points with nothing distinguishing them, and showed

@@ -26,6 +26,19 @@ class InMemoryConversationRepository:
         self._conversations[updated.id] = updated
         return updated
 
+    def list_by_kb(
+        self, knowledge_base_id: str, *, limit: int, offset: int
+    ) -> tuple[list[Conversation], int]:
+        scoped = [
+            conversation
+            for conversation in self._conversations.values()
+            if conversation.knowledge_base_id == knowledge_base_id
+        ]
+        # Most recently updated first: a list exists to resume from, and the
+        # conversation you were just in should lead it.
+        scoped.sort(key=lambda conversation: conversation.updated_at, reverse=True)
+        return scoped[offset : offset + limit], len(scoped)
+
     def delete_by_kb(self, knowledge_base_id: str) -> int:
         to_delete = [
             cid

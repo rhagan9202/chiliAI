@@ -31,6 +31,14 @@ class ConversationService:
         )
         return self._repository.create(conversation)
 
+    def list(
+        self, *, knowledge_base_id: str, limit: int, offset: int
+    ) -> tuple[list[Conversation], int]:
+        """Return a KB's conversations, most recently updated first."""
+        return self._repository.list_by_kb(
+            knowledge_base_id, limit=limit, offset=offset
+        )
+
     def get(self, conversation_id: str) -> Conversation | None:
         return self._repository.get(conversation_id)
 

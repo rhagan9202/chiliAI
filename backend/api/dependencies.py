@@ -27,7 +27,9 @@ from api.contracts import (
     CaseTimelineEventResponse,
     CaseUpdateRequest,
     ChatConversationCreateRequest,
+    ChatConversationListResponse,
     ChatConversationResponse,
+    ChatConversationSummaryResponse,
     ChatMessageCreateRequest,
     EntityTimeseriesPointResponse,
     EntityTimeseriesResponse,
@@ -742,6 +744,36 @@ def get_chat_conversation_payload(
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found.")
     return project_conversation(conversation)
+
+
+def get_chat_conversation_list_payload(
+    knowledge_base_id: str = Query(
+        ..., alias="kb", min_length=1, description="Knowledge base scope."
+    ),
+    limit: int = Query(default=25, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    service: ConversationService = Depends(get_conversation_service),
+) -> ChatConversationListResponse:
+    """Return a knowledge base's conversations, most recently updated first."""
+    conversations, total = service.list(
+        knowledge_base_id=knowledge_base_id, limit=limit, offset=offset
+    )
+    return ChatConversationListResponse(
+        items=[
+            ChatConversationSummaryResponse(
+                id=conversation.id,
+                title=conversation.title,
+                knowledge_base_id=conversation.knowledge_base_id,
+                message_count=len(conversation.messages),
+                last_message=(
+                    conversation.messages[-1].content if conversation.messages else None
+                ),
+                updated_at=conversation.updated_at,
+            )
+            for conversation in conversations
+        ],
+        page=PageInfo(page=(offset // limit) + 1, page_size=limit, total_items=total),
+    )
 
 
 def get_chat_conversation_create_payload(
