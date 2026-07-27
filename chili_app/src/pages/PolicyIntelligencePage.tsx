@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { usePolicyItem, usePolicyItems, useTriagePolicyItem } from '../api/policy'
-import type { PolicySeverity, PolicyItemStatus, PolicyTriageRequest } from '../api/contracts'
+import type { PolicyItemStatus, PolicyTriageRequest } from '../api/contracts'
 import { showToast } from '../components/common/toastStore'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -11,6 +11,7 @@ import { FilterBar } from '../components/ui/FilterBar'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
+import { severityTone } from '../utils/severity'
 import './pages.css'
 
 type StatusFilter = 'all' | 'open' | 'accepted' | 'rejected' | 'deferred' | 'escalated'
@@ -128,7 +129,7 @@ export function PolicyIntelligencePage() {
                 <strong>{item.title}</strong>
                 <span className="metric-row__label">Updated {formatTimestamp(item.updated_at)}</span>
                 <div className="alert-row-card__meta">
-                  <Chip label={item.severity} tone={toneForSeverity(item.severity)} />
+                  <Chip label={item.severity} tone={severityTone(item.severity)} />
                   <Chip label={item.status} tone={toneForStatus(item.status)} />
                 </div>
               </button>
@@ -158,7 +159,7 @@ export function PolicyIntelligencePage() {
                   </span>
                 </div>
                 <div className="alert-row-card__meta">
-                  <Chip label={detail.item.severity} tone={toneForSeverity(detail.item.severity)} />
+                  <Chip label={detail.item.severity} tone={severityTone(detail.item.severity)} />
                   <Chip label={detail.item.status} tone={toneForStatus(detail.item.status)} />
                   <Chip label={detail.item.rule_id} tone="default" />
                 </div>
@@ -235,17 +236,6 @@ function formatTimestamp(value: string) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value))
-}
-
-function toneForSeverity(severity: PolicySeverity) {
-  switch (severity) {
-    case 'critical':
-      return 'danger' as const
-    case 'high':
-      return 'warning' as const
-    case 'medium':
-      return 'info' as const
-  }
 }
 
 function toneForStatus(status: PolicyItemStatus) {

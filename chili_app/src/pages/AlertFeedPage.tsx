@@ -19,6 +19,7 @@ import { Card } from '../components/ui/Card'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
+import { severityTone } from '../utils/severity'
 import { flagLabelFor } from '../utils/flagLabel'
 import { toSubgraphResult } from '../utils/subgraph'
 import { triageNumeralColor } from '../utils/triage'
@@ -142,7 +143,7 @@ export function AlertFeedPage() {
                         {flagLabelFor({ tags: alert.tags, severity: alert.severity })}
                       </span>
                       <div className="alert-row-card__meta">
-                        <Chip label={alert.severity} tone={alert.severity === 'critical' ? 'danger' : 'warning'} />
+                        <Chip label={alert.severity} tone={severityTone(alert.severity)} />
                         <Chip label={alert.status} tone={alert.status === 'acknowledged' ? 'success' : 'info'} />
                         {capabilities?.explainability && hasPolicySignal ? (
                           <Chip label="policy" tone="warning" />

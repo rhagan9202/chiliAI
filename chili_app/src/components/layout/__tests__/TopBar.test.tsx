@@ -29,7 +29,10 @@ describe('TopBar', () => {
       />,
     )
 
-    expect(screen.getByRole('heading', { name: 'Department of the Air Force Housing' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Food Supply Chain Integrity' })).not.toBeInTheDocument()
+    // The domain title is constant chrome, deliberately not a heading — the
+    // page owns the h1 via SectionHeader (UXA-205).
+    expect(screen.getByText('Department of the Air Force Housing')).toBeInTheDocument()
+    expect(screen.queryByText('Food Supply Chain Integrity')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument()
   })
 })

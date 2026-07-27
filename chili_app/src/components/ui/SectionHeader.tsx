@@ -14,7 +14,7 @@ export function SectionHeader({ actions, eyebrow, subtitle, title }: SectionHead
     <header className="section-header">
       <div>
         {eyebrow ? <div className="section-header__eyebrow">{eyebrow}</div> : null}
-        <h2 className="section-header__title">{title}</h2>
+        <h1 className="section-header__title">{title}</h1>
         {subtitle ? <p className="section-header__subtitle">{subtitle}</p> : null}
       </div>
       {actions ? <div className="section-header__actions">{actions}</div> : null}

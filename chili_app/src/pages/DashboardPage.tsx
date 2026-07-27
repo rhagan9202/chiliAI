@@ -21,6 +21,7 @@ import { SectionHeader } from '../components/ui/SectionHeader'
 import { Tabs } from '../components/ui/Tabs'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import { flagLabelFor } from '../utils/flagLabel'
+import { countTone } from '../utils/severity'
 import { clusterColorFor } from '../utils/graphStyles'
 import { triageNumeralColor } from '../utils/triage'
 import './pages.css'
@@ -284,15 +285,15 @@ export function DashboardPage() {
                 </div>
                 <div className="metric-row">
                   <span className="metric-row__label">Running workflows</span>
-                  <Chip label={String(workflowCounts.running)} tone="warning" />
+                  <Chip label={String(workflowCounts.running)} tone={countTone(workflowCounts.running, 'warning')} />
                 </div>
                 <div className="metric-row">
                   <span className="metric-row__label">Failed workflows</span>
-                  <Chip label={String(workflowCounts.failed)} tone="danger" />
+                  <Chip label={String(workflowCounts.failed)} tone={countTone(workflowCounts.failed, 'danger')} />
                 </div>
                 <div className="metric-row">
                   <span className="metric-row__label">Completed workflows</span>
-                  <Chip label={String(workflowCounts.completed)} tone="success" />
+                  <Chip label={String(workflowCounts.completed)} tone={countTone(workflowCounts.completed, 'success')} />
                 </div>
               </div>
             </Card>

@@ -32,6 +32,7 @@ import {
   getEntityTypeLabel,
 } from '../utils/domainDisplay'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
+import { severityTone } from '../utils/severity'
 import { toSubgraphResult } from '../utils/subgraph'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import './pages.css'
@@ -154,7 +155,7 @@ export function InvestigationWorkbenchPage() {
   return (
     <section className="page-grid">
       <SectionHeader
-        actions={selectedAlert ? <Chip label={selectedAlert.severity} tone="warning" /> : undefined}
+        actions={selectedAlert ? <Chip label={selectedAlert.severity} tone={severityTone(selectedAlert.severity)} /> : undefined}
         eyebrow="Entity workbench"
         subtitle="Search the active knowledge base, load an entity, and inspect its live graph neighborhood through backend graph adapters."
         title={entityTitle}
