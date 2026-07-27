@@ -1425,3 +1425,31 @@ a.housing-run-link:hover {
   border: 1px solid rgba(255, 176, 32, 0.28);
   border-radius: 10px;
 }
+
+/* Filter dimensions stack; the controls and result line sit under them. */
+.alert-filter-strip {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  background: var(--c-s2);
+  border: 1px solid var(--c-b0);
+  border-radius: 12px;
+}
+
+.alert-filter-strip__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.alert-filter-strip__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 4px;
+  color: var(--c-dim);
+  border-top: 1px solid var(--c-b0);
+}

@@ -256,3 +256,30 @@
     transform: rotate(360deg);
   }
 }
+/* One filter dimension: label, then its multi-select options with counts. */
+.filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.filter-group__label {
+  margin-right: 4px;
+  color: var(--c-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.filter-group__count {
+  margin-left: 6px;
+  color: var(--c-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.filter-bar__button--active .filter-group__count {
+  color: inherit;
+}

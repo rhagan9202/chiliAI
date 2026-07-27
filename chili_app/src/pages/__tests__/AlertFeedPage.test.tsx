@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { act } from 'react'
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -215,6 +215,62 @@ describe('AlertFeedPage', () => {
     return locations
   }
 
+  it('expresses critical AND unacknowledged in one view', () => {
+    // The single-select chip row conflated severity and status, so the
+    // product's most common triage filter could not be stated (UXA-401).
+    renderAlertFeed('/alerts?severity=critical&status=open')
+
+    expect(screen.getByText('Outlier billing concentration')).toBeInTheDocument()
+    expect(screen.queryByText('Referral concentration anomaly')).not.toBeInTheDocument()
+  })
+
+  it('reflects a filter toggle in the URL so the view is shareable', async () => {
+    const locations = renderAlertFeedWithLocationProbe('/alerts')
+
+    fireEvent.click(screen.getByRole('button', { name: /^Critical, \d+ matching$/ }))
+
+    expect(locations.at(-1)).toContain('severity=critical')
+  })
+
+  it('shows a count on every filter option', () => {
+    renderAlertFeed()
+
+    expect(screen.getByRole('button', { name: 'Critical, 1 matching' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'High, 1 matching' })).toBeInTheDocument()
+  })
+
+  it('offers every configured severity, not a hardcoded subset', () => {
+    // Medium and Low were charted by the Severity Mix panel but unfilterable.
+    renderAlertFeed()
+
+    const severities = screen.getByRole('group', { name: 'Severity' })
+    expect(within(severities).getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Critical1',
+      'High1',
+      'Medium0',
+      'Low0',
+    ])
+  })
+
+  it('states what is being shown', () => {
+    renderAlertFeed()
+
+    expect(screen.getByText('Showing all 2 alerts')).toBeInTheDocument()
+  })
+
+  it('states how much of the queue a filter is hiding', () => {
+    renderAlertFeed('/alerts?severity=critical')
+
+    expect(screen.getByText('Showing 1 of 2 alerts')).toBeInTheDocument()
+  })
+
+  it('searches entity label and alert title', () => {
+    renderAlertFeed('/alerts?q=harbor')
+
+    expect(screen.getByText('North Harbor Imaging')).toBeInTheDocument()
+    expect(screen.queryByText('Redwood DME Group')).not.toBeInTheDocument()
+  })
+
   it('leads each card with what is wrong, not only who it happened to', () => {
     renderAlertFeed()
 
@@ -364,27 +420,25 @@ describe('AlertFeedPage', () => {
     )
   })
 
-  it('filters the feed and renders an empty state', () => {
-    renderAlertFeed()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Critical' }))
+  it('filters the feed by each dimension independently', () => {
+    renderAlertFeed('/alerts?severity=critical')
     expect(screen.getByText('Redwood DME Group')).toBeInTheDocument()
     expect(screen.queryByText('North Harbor Imaging')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Acknowledged' }))
+    cleanup()
+    renderAlertFeed('/alerts?status=acknowledged')
     expect(screen.queryByText('Redwood DME Group')).not.toBeInTheDocument()
     expect(screen.getByText('North Harbor Imaging')).toBeInTheDocument()
   })
 
-  it('renders empty state when no alert matches the active filter', () => {
+  it('renders an empty state when no alert matches the active filter', () => {
     mocks.useAlerts.mockReturnValue({
       isLoading: false,
       isError: false,
       data: { items: [alertResponse.items[1]], page: { page: 1, page_size: 1, total_items: 1 } },
     })
 
-    renderAlertFeed()
-    fireEvent.click(screen.getByRole('button', { name: 'Critical' }))
+    renderAlertFeed('/alerts?severity=critical')
 
     expect(screen.getByText('No matching alerts')).toBeInTheDocument()
   })

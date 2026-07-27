@@ -15,11 +15,23 @@ import { policyItemsForTarget } from '../components/investigation/policyTargets'
 import { Chip } from '../components/ui/Chip'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
-import { FilterBar } from '../components/ui/FilterBar'
+import { FilterGroup } from '../components/ui/FilterGroup'
 import { Card } from '../components/ui/Card'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
+import {
+  ALERT_SORTS,
+  applyAlertFilters,
+  countBy,
+  EMPTY_ALERT_FILTERS,
+  hasActiveAlertFilters,
+  parseAlertFilters,
+  serializeAlertFilters,
+  summarizeAlertFilters,
+  type AlertFilterState,
+  type AlertSortId,
+} from '../utils/alertFilters'
 import { countLabel } from '../utils/countLabel'
 import { absoluteTime, relativeAge } from '../utils/relativeTime'
 import { getEntityTitle } from '../utils/domainDisplay'
@@ -29,17 +41,25 @@ import { toSubgraphResult } from '../utils/subgraph'
 import { triageNumeralColor } from '../utils/triage'
 import './pages.css'
 
-const filters = [
-  { id: 'all', label: 'All' },
+/** Every severity the platform ranks, not the subset the old chip row offered. */
+const SEVERITY_OPTIONS = [
   { id: 'critical', label: 'Critical' },
   { id: 'high', label: 'High' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'low', label: 'Low' },
+]
+
+const STATUS_OPTIONS = [
+  { id: 'open', label: 'Open' },
   { id: 'acknowledged', label: 'Acknowledged' },
+  { id: 'investigating', label: 'Investigating' },
+  { id: 'resolved', label: 'Resolved' },
+  { id: 'dismissed', label: 'Dismissed' },
 ]
 
 export function AlertFeedPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [activeFilterId, setActiveFilterId] = useState('all')
   const [promotedAlertIds, setPromotedAlertIds] = useState<Set<string>>(() => new Set())
   const selectedKnowledgeBaseId = searchParams.get('kb')
   const requestedAlertId = searchParams.get('alert')
@@ -71,6 +91,26 @@ export function AlertFeedPage() {
     selectedAlert?.entity_id ?? null,
     1,
   )
+  // Filter state lives in the URL (UXA-401): shareable, and it survives a
+  // reload. Only the parameters the model owns are rewritten, so `?kb=` and
+  // `?alert=` are preserved.
+  const filters = parseAlertFilters(searchParams)
+  const setFilters = (next: AlertFilterState) => {
+    const params = new URLSearchParams(searchParams)
+    for (const key of ['severity', 'status', 'q', 'sort', 'from', 'to']) params.delete(key)
+    for (const [key, value] of serializeAlertFilters(next)) params.append(key, value)
+    setSearchParams(params, { preventScrollReset: true })
+  }
+  const updateFilters = (patch: Partial<AlertFilterState>) => setFilters({ ...filters, ...patch })
+  const toggleFilter = (dimension: 'severities' | 'statuses', optionId: string) => {
+    const current = filters[dimension]
+    updateFilters({
+      [dimension]: current.includes(optionId)
+        ? current.filter((value) => value !== optionId)
+        : [...current, optionId],
+    })
+  }
+
   const domainConfig = domainConfigQuery.data ?? null
   // Stable across renders so the force layout is not rebuilt on every paint.
   const labelForNode = useCallback(
@@ -103,15 +143,9 @@ export function AlertFeedPage() {
     return <LoadingState label="Waiting for alert feed data" />
   }
 
-  const alerts = alertItems.filter((alert) => {
-    if (activeFilterId === 'all') {
-      return true
-    }
-    if (activeFilterId === 'acknowledged') {
-      return alert.status === 'acknowledged'
-    }
-    return alert.severity === activeFilterId
-  })
+  const alerts = applyAlertFilters(alertItems, filters)
+  const severityCounts = countBy(alertItems, (alert) => alert.severity)
+  const statusCounts = countBy(alertItems, (alert) => alert.status)
 
   return (
     <section className="page-grid">
@@ -122,7 +156,92 @@ export function AlertFeedPage() {
         title="Alert Feed"
       />
 
-      <FilterBar activeFilterId={activeFilterId} filters={filters} onChange={setActiveFilterId} />
+      <div className="alert-filter-strip">
+        <FilterGroup
+          label="Severity"
+          onToggle={(id) => toggleFilter('severities', id)}
+          options={SEVERITY_OPTIONS.map((option) => ({
+            ...option,
+            count: severityCounts[option.id] ?? 0,
+          }))}
+          selected={filters.severities}
+        />
+        <FilterGroup
+          label="Status"
+          onToggle={(id) => toggleFilter('statuses', id)}
+          options={STATUS_OPTIONS.map((option) => ({
+            ...option,
+            count: statusCounts[option.id] ?? 0,
+          }))}
+          selected={filters.statuses}
+        />
+        <div className="alert-filter-strip__controls">
+          <label className="filter-group__label" htmlFor="alert-search">
+            Search
+          </label>
+          <input
+            className="page-input--inline"
+            id="alert-search"
+            onChange={(event) => updateFilters({ search: event.target.value })}
+            placeholder="Entity or finding"
+            type="search"
+            value={filters.search}
+          />
+          <label className="filter-group__label" htmlFor="alert-from">
+            From
+          </label>
+          <input
+            className="page-input--inline"
+            id="alert-from"
+            onChange={(event) => updateFilters({ from: event.target.value })}
+            type="date"
+            value={filters.from}
+          />
+          <label className="filter-group__label" htmlFor="alert-to">
+            To
+          </label>
+          <input
+            className="page-input--inline"
+            id="alert-to"
+            onChange={(event) => updateFilters({ to: event.target.value })}
+            type="date"
+            value={filters.to}
+          />
+          <label className="filter-group__label" htmlFor="alert-sort">
+            Sort
+          </label>
+          <select
+            className="page-input--inline"
+            id="alert-sort"
+            onChange={(event) => updateFilters({ sort: event.target.value as AlertSortId })}
+            value={filters.sort}
+          >
+            {ALERT_SORTS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="alert-filter-strip__summary">
+          <span aria-live="polite">
+            {summarizeAlertFilters({
+              shown: alerts.length,
+              total: alertItems.length,
+              filters,
+            })}
+          </span>
+          {hasActiveAlertFilters(filters) ? (
+            <button
+              className="page-button page-button--sm page-button--secondary"
+              onClick={() => setFilters(EMPTY_ALERT_FILTERS)}
+              type="button"
+            >
+              Clear filters
+            </button>
+          ) : null}
+        </div>
+      </div>
 
       {alerts.length > 0 ? (
         alerts.map((alert) => {

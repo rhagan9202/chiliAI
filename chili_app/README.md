@@ -444,6 +444,31 @@ ordered, formatted rows (UXA-302):
   control instead of being silently truncated, and rows render as a `<dl>` —
   chip styling made non-interactive facts look like filters you could click.
 
+## Triage filters
+
+`src/utils/alertFilters.ts` is the filter model (UXA-401). The Alert Feed
+shipped a single-select chip row that conflated two dimensions — All/Critical/
+High were severity, Acknowledged was status — so **"critical AND
+unacknowledged", the product's most common triage filter, could not be
+expressed at all**.
+
+- Selections **within** a dimension are OR; **across** dimensions they are AND.
+- Every severity the platform ranks is offered, not the subset the chip row
+  had. Medium and Low were charted by the Severity Mix panel but unfilterable.
+- Each option carries the count it would return, in its accessible name — a
+  number that says "0" before you click is meaning, not decoration.
+- Search covers entity label and alert title; sort offers newest (default),
+  oldest, severity and confidence, each with a total order so it is stable.
+- **State lives in the URL** (`severity`, `status`, `q`, `sort`, `from`, `to`),
+  so a view is shareable and survives a reload. `serializeAlertFilters` writes
+  only what differs from the default so an unfiltered URL stays clean, and
+  `parseAlertFilters` reads only the parameters it owns so `?kb=` and `?alert=`
+  survive.
+
+`FilterGroup` (`src/components/ui/FilterGroup.tsx`) renders one dimension,
+modelled on the Housing page's FILTER BY STATUS / BRANCH / COMMAND strip, which
+already got this right.
+
 ## Dashboard scope
 
 The Dashboard reports on the **workspace knowledge base**, not the workspace.
