@@ -155,6 +155,16 @@ describe('RagChatPage', () => {
     expect(mocks.navigate).toHaveBeenCalledWith('/knowledge-bases')
   })
 
+  it('gives the page an h1, like every other route', () => {
+    // This page builds its own toolbar rather than using SectionHeader, so the
+    // one-h1-per-page rule (UXA-205) skipped it and it shipped with none.
+    mocks.knowledgeBases = [KB_ONE]
+
+    render(<RagChatPage />)
+
+    expect(screen.getByRole('heading', { level: 1, name: 'RAG Chat' })).toBeInTheDocument()
+  })
+
   it('renders an option for each KB and defaults to the workspace knowledge base', () => {
     mocks.knowledgeBases = [KB_ONE, KB_TWO]
 
@@ -162,8 +172,8 @@ describe('RagChatPage', () => {
 
     const select = screen.getByLabelText('Knowledge base') as HTMLSelectElement
     expect(select.value).toBe('kb-1')
-    expect(screen.getByRole('option', { name: /Fraud KB · ready/ })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: /Policy KB · building/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Fraud KB · Ready/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Policy KB · Building/ })).toBeInTheDocument()
   })
 
   it('defaults to the most recently updated KB rather than the first listed', () => {
@@ -214,7 +224,7 @@ describe('RagChatPage', () => {
     expect(screen.getByText('provider-204')).toBeInTheDocument()
     expect(screen.getByText('evidence-1')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: /start contextual thread/i }))
+    await userEvent.click(screen.getByRole('button', { name: /start with this context/i }))
 
     expect(mocks.startConversationWithMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -265,7 +275,7 @@ describe('RagChatPage', () => {
 
     render(<RagChatPage />)
 
-    await userEvent.click(screen.getByRole('button', { name: /start contextual thread/i }))
+    await userEvent.click(screen.getByRole('button', { name: /start with this context/i }))
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Ask the investigation assistant about an entity, alert, or evidence trail')).toHaveValue('')
@@ -292,13 +302,13 @@ describe('RagChatPage', () => {
 
     render(<RagChatPage />)
 
-    await userEvent.click(screen.getByRole('button', { name: /start contextual thread/i }))
+    await userEvent.click(screen.getByRole('button', { name: /start with this context/i }))
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /^send$/i })).toBeEnabled()
     })
     expect(
-      screen.getByText('Thread was created, but the first message failed. Review and send again.'),
+      screen.getByText('The conversation was created, but the first message failed. Review it and send again.'),
     ).toBeInTheDocument()
     expect(screen.getByDisplayValue('Summarize the case')).toBeInTheDocument()
 
@@ -334,7 +344,7 @@ describe('RagChatPage', () => {
 
     expect(screen.getByText('No knowledge base available')).toBeInTheDocument()
     expect(screen.queryByLabelText('Knowledge base')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /start contextual thread/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /start with this context/i })).not.toBeInTheDocument()
     expect(mocks.startConversationWithMessage).not.toHaveBeenCalled()
   })
 
@@ -656,7 +666,7 @@ describe('RagChatPage', () => {
 
     render(<RagChatPage />)
 
-    await userEvent.click(screen.getByRole('button', { name: /new thread/i }))
+    await userEvent.click(screen.getByRole('button', { name: /new conversation/i }))
     await userEvent.type(
       screen.getByPlaceholderText('Ask the investigation assistant about an entity, alert, or evidence trail'),
       'What does this claim show?',

@@ -19,6 +19,7 @@ import { Card } from '../components/ui/Card'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
+import { countLabel } from '../utils/countLabel'
 import { severityTone } from '../utils/severity'
 import { flagLabelFor } from '../utils/flagLabel'
 import { toSubgraphResult } from '../utils/subgraph'
@@ -86,7 +87,7 @@ export function AlertFeedPage() {
   }
 
   if (alertsQuery.isError) {
-    return <ErrorState description="The alert feed could not be loaded from the backend." />
+    return <ErrorState description="The alert feed could not be loaded. Try again, or switch to another knowledge base." />
   }
 
   if (!alertsQuery.data) {
@@ -106,9 +107,9 @@ export function AlertFeedPage() {
   return (
     <section className="page-grid">
       <SectionHeader
-        actions={<Chip label={`${alertsQuery.data.page.total_items} alerts loaded`} tone="info" />}
+        actions={<Chip label={countLabel(alertsQuery.data.page.total_items, 'alert')} tone="info" />}
         eyebrow="Triage queue"
-        subtitle="The alert feed now reads live backend alert summaries and supports acknowledgement without leaving the queue."
+        subtitle="Work the queue: review what was flagged, acknowledge what you have seen, and promote what needs a case."
         title="Alert Feed"
       />
 
@@ -218,7 +219,7 @@ export function AlertFeedPage() {
                         onClick={() => acknowledgeMutation.mutate(alert.id)}
                         type="button"
                       >
-                        {alert.status === 'acknowledged' ? '✓' : 'Ack'}
+                        {alert.status === 'acknowledged' ? 'Acknowledged' : 'Acknowledge'}
                       </button>
                     </div>
                   </div>

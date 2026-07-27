@@ -158,7 +158,7 @@ export function DashboardPage() {
       <SectionHeader
         actions={<Chip label={domainConfigQuery.data?.domain.display_name ?? 'Live'} tone="info" />}
         eyebrow="Operational overview"
-        subtitle="Live operational overview for the active knowledge base."
+        subtitle="Where the queue stands right now, what ingestion is doing, and which entities are drawing the most attention."
         title="Dashboard"
       />
 
@@ -244,7 +244,7 @@ export function DashboardPage() {
               </div>
             </Card>
           ) : (
-            <EmptyState description="No alerts are currently available from the backend feed." title="Queue is empty" />
+            <EmptyState description="Nothing has been flagged in this knowledge base yet." title="Queue is empty" />
           )}
         </DashboardTabPanel>
       ) : null}
@@ -335,7 +335,7 @@ export function DashboardPage() {
                 <div className="metric-stack">
                   <div className="metric-row metric-row--stacked">
                     <strong>Graph clusters</strong>
-                    <span className="metric-row__label">GNN cluster summary</span>
+                    <span className="metric-row__label">Entities that behave alike</span>
                   </div>
                   {clusters.map((cluster) => {
                     const firstMember = cluster.entity_ids?.[0]

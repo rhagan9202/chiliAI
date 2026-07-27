@@ -9,6 +9,7 @@ import {
   useUploadDocument,
 } from '../../hooks/useKnowledgeBaseDocuments'
 import type { DocumentSummary } from '../../types/api'
+import { countLabel } from '../../utils/countLabel'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { Skeleton } from '../common/Skeleton'
 import { showToast } from '../common/toastStore'
@@ -106,7 +107,7 @@ export function KbDetailView(): React.ReactElement {
           <h1 style={{ margin: 0 }}>{kb.name}</h1>
           <StatusBadge status={kb.status} />
           <span style={{ fontSize: 13, color: 'var(--text, #6b6375)' }}>
-            {kb.document_count} document(s)
+            {countLabel(kb.document_count, 'document')}
           </span>
         </div>
       ) : null}

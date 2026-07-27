@@ -17,7 +17,7 @@ const workflowStatusCopy: Record<
   },
   running: {
     label: 'Running',
-    description: 'The backend is processing this run.',
+    description: 'This run is being processed now.',
   },
   completed: {
     label: 'Completed',
@@ -181,7 +181,7 @@ export function RunTimeline({ receipts, workflows }: RunTimelineProps) {
                   </dl>
                   {workflow.status === 'failed' ? (
                     <p className="ingestion-run-timeline__message" role="alert">
-                      {workflow.last_error ?? 'Workflow failed. Check backend logs for full retry details.'}
+                      {workflow.last_error ?? 'This step failed and no reason was reported. Retry the run, or ask an administrator to check the service logs.'}
                     </p>
                   ) : null}
                 </div>

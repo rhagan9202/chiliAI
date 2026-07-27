@@ -98,7 +98,7 @@ export function validateDocumentFiles(
       issues.push(
         warning(
           `large-${file.name}`,
-          `${file.name} is larger than ${FALLBACK_MAX_FILE_SIZE_MB} MB; backend limits may reject it.`,
+          `${file.name} is larger than ${FALLBACK_MAX_FILE_SIZE_MB} MB and may be rejected on upload.`,
         ),
       )
     }

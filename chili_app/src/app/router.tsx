@@ -12,7 +12,7 @@ import { HousingExecutivePage } from '../pages/HousingExecutivePage'
 import { InvestigationWorkbenchPage } from '../pages/InvestigationWorkbenchPage'
 import { KnowledgeBaseManagerPage } from '../pages/KnowledgeBaseManagerPage'
 import { Login } from '../pages/Login'
-import { PagePlaceholder } from '../pages/PagePlaceholder'
+import { NotFoundPage } from '../pages/NotFoundPage'
 import { PolicyIntelligencePage } from '../pages/PolicyIntelligencePage'
 import { RagChatPage } from '../pages/RagChatPage'
 import { ScorecardRunPage } from '../pages/ScorecardRunPage'
@@ -44,21 +44,11 @@ export const router = createBrowserRouter([
       { path: 'policy', element: withPageBoundary(<PolicyIntelligencePage />) },
       { path: 'rag-chat', element: withPageBoundary(<RagChatPage />) },
       { path: 'configuration', element: withPageBoundary(<ConfigurationPage />) },
-      // Catch-all inside the authenticated shell — renders a placeholder for
-      // any domain-configured page id that doesn't yet have a built component.
-      // Lets a new domain pack ship a page id and route without a frontend
-      // code change; devs can replace the placeholder when ready.
-      {
-        path: '*',
-        element: (
-          <PagePlaceholder title="Coming soon" eyebrow="Page not yet implemented">
-            <p>
-              This page is registered in the active domain config but the frontend
-              component has not been wired yet.
-            </p>
-          </PagePlaceholder>
-        ),
-      },
+      // Catch-all inside the authenticated shell. It covers both a domain pack
+      // that ships a page id the SPA hasn't built yet and — far more often — a
+      // mistyped address; NotFoundPage picks the right explanation from the
+      // configured routes and always offers a way back.
+      { path: '*', element: withPageBoundary(<NotFoundPage />) },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

@@ -32,6 +32,7 @@ import {
   getEntityTypeLabel,
 } from '../utils/domainDisplay'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
+import { knowledgeBaseStatusLabel } from '../utils/knowledgeBaseStatus'
 import { severityTone } from '../utils/severity'
 import { toSubgraphResult } from '../utils/subgraph'
 import { SectionHeader } from '../components/ui/SectionHeader'
@@ -87,7 +88,7 @@ export function InvestigationWorkbenchPage() {
   }
 
   if (domainConfigQuery.isError || knowledgeBasesError || alertsQuery.isError) {
-    return <ErrorState description="Investigation data could not be loaded from the backend." />
+    return <ErrorState description="This investigation could not be loaded. Try again, or search for another entity." />
   }
 
   if (!domainConfigQuery.data || !alertsQuery.data) {
@@ -157,7 +158,7 @@ export function InvestigationWorkbenchPage() {
       <SectionHeader
         actions={selectedAlert ? <Chip label={selectedAlert.severity} tone={severityTone(selectedAlert.severity)} /> : undefined}
         eyebrow="Entity workbench"
-        subtitle="Search the active knowledge base, load an entity, and inspect its live graph neighborhood through backend graph adapters."
+        subtitle="Follow one subject through its connections: who it deals with, how often, and what the risk and policy signals say."
         title={entityTitle}
       />
 
@@ -181,7 +182,7 @@ export function InvestigationWorkbenchPage() {
                 >
                   {knowledgeBases.map((knowledgeBase) => (
                     <option key={knowledgeBase.id} value={knowledgeBase.id}>
-                      {knowledgeBase.name} · {knowledgeBase.status}
+                      {knowledgeBase.name} · {knowledgeBaseStatusLabel(knowledgeBase.status)}
                     </option>
                   ))}
                 </select>

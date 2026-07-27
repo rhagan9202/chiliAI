@@ -59,8 +59,12 @@ indicator, and a bounded list of rejected-row reasons.
 Routes are defined in `src/app/router.tsx`. `AppProviders` wraps the app with
 `QueryClientProvider` + `SessionProvider`, and the `/` route tree is wrapped in
 `<AuthGuard><AppShell /></AuthGuard>`; unauthenticated requests redirect to
-`/login`. A catch-all under `/` renders `<PagePlaceholder>` for any
-domain-configured page id that doesn't yet have a built component.
+`/login`. A catch-all under `/` renders `<NotFoundPage>`, which reads the
+active pack's configured routes to choose between two very different messages:
+"Not available yet" for a page id the pack declares but the SPA has not built,
+and "Page not found" for the far more common mistyped or stale address. Both
+offer a way back (UXA-301) — before, every unknown URL claimed to be
+"registered in the active domain config", which was untrue for a typo.
 
 **Routes are gated by the active domain pack, not just hidden from navigation.**
 `PACK_PAGE_ROUTES` in `src/app/access.ts` maps each route that corresponds to a
@@ -85,7 +89,7 @@ under the wrong domain.
 | `/alerts` | Alert feed with filters, bulk actions, and realtime status |
 | `/investigation`, `/investigation/:entityId` | Graph workbench |
 | `/cases` | Case management queue |
-| `/knowledge-bases` | Ingestion Studio — knowledge base list (scoped to the active domain by default, with a show-all-domains toggle), detail, document inventory |
+| `/knowledge-bases` | Knowledge Bases — knowledge base list (scoped to the active domain by default, with a show-all-domains toggle), detail, document inventory, ingestion wizard |
 | `/policy` | Policy intelligence item queue |
 | `/housing` | Air Force housing executive dashboard — filter-driven summary band above an Albers CONUS installation health map, status/branch/command filter strip, ranking, status context (see "Housing dashboard" below) |
 | `/scorecards/:runId?kb=<kbId>` | Scorecard run viewer — graded sections, metric health/completeness chips, citations, JSON/Markdown export (see "Housing dashboard" below) |
@@ -388,6 +392,36 @@ nothing. Labels hide below 0.5x zoom, where they would collide into noise, and
 `graphNodeLabel` truncates long ids. The legend renders **above** the canvas
 rather than as an absolute overlay, which used to cover whichever node the
 layout settled in the top-left corner.
+
+## Copy: analyst voice, asserted in tests
+
+User-facing strings are linted, not reviewed by eye. `src/test-utils/userFacingCopy.ts`
+scans every non-test file under `src/` — collecting string literals, template
+literal static spans, and JSX text nodes while blanking comments — and
+`src/__tests__/copyVoice.test.ts` asserts what that copy may not say (UXA-301):
+
+- **No implementation vocabulary**: `adapter`, `backend`, `durable`, `KB-scoped`,
+  `primitive`, `GNN`, `human feedback loop`, `schema-driven`, `hot-swap`,
+  `re-render`, `wired`. Comments are deliberately excluded — implementation
+  notes *should* name adapters and backends.
+- **No release-note voice** (`now reads`, `now uses`, …): the product describes
+  what an analyst can do, not what the software recently learned to do.
+- **One term per concept**: `thread` is banned in favour of `conversation`,
+  which is what the API, the route and the stored records already call it. RAG
+  Chat previously showed "NO ACTIVE THREAD" and "NO ACTIVE CONVERSATION" at once.
+- **No `(s)` pluralization dodge.** Counts go through `countLabel(n, 'alert')`
+  (`src/utils/countLabel.ts`), which agrees in number and groups thousands.
+
+The page at `/knowledge-bases` answers to **one** name. It used to be "Knowledge
+Bases" in the nav, "Ingestion Studio" as the title and "Ingestion Control" as
+the eyebrow; the nav label and the URL win, and the section that picks a KB is
+now titled "Choose a knowledge base" so two headings don't share a name.
+
+`src/utils/knowledgeBaseStatus.ts` names the KB lifecycle for readers. The API's
+`active` is the *empty* state — created, nothing ingested — which reads as the
+healthy one next to `ready`. The UI shows **Empty / Building / Ready / Failed /
+Archived** with a hover hint, while `data-status` keeps the raw value for CSS
+and e2e selectors.
 
 ## Colour contrast
 

@@ -2,6 +2,7 @@ import { Chip } from '../ui/Chip'
 import { EmptyState } from '../ui/EmptyState'
 import type { ValidationIssue } from '../../lib/ingestion/types'
 import './ingestion.css'
+import { countLabel } from '../../utils/countLabel'
 
 type RecordsPreviewTableProps = {
   rows: Record<string, unknown>[]
@@ -40,7 +41,7 @@ function formatValue(value: unknown): string {
 }
 
 function statusLabel(count: number): string {
-  return count === 0 ? 'valid' : `${count} ${count === 1 ? 'issue' : 'issues'}`
+  return count === 0 ? 'valid' : countLabel(count, 'issue')
 }
 
 const previewRowLimit = 25

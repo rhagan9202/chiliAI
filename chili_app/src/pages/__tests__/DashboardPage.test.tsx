@@ -545,7 +545,9 @@ describe('DashboardPage', () => {
     expect(screen.queryByText(/phase 5 data live/i)).not.toBeInTheDocument()
     expect(screen.getByText('Medicare Fraud Detection')).toBeInTheDocument()
     expect(
-      screen.getByText('Live operational overview for the active knowledge base.'),
+      screen.getByText(
+        'Where the queue stands right now, what ingestion is doing, and which entities are drawing the most attention.',
+      ),
     ).toBeInTheDocument()
   })
 

@@ -9,7 +9,7 @@ test.describe('Knowledge base manager', () => {
   test('the seeded knowledge base appears', async ({ page }) => {
     await page.goto('/knowledge-bases')
 
-    await expect(page.getByRole('heading', { name: 'Ingestion Studio' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Knowledge Bases' })).toBeVisible()
     await expect(page.getByText('E2E Seed KB').first()).toBeVisible()
   })
 })

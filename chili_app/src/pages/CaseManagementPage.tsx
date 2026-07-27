@@ -14,6 +14,7 @@ import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
+import { countLabel } from '../utils/countLabel'
 import './pages.css'
 
 type StatusFilter = 'all' | 'open' | 'in_review' | 'closed'
@@ -57,7 +58,7 @@ export function CaseManagementPage() {
   }
 
   if (knowledgeBasesError) {
-    return <ErrorState description="Knowledge base inventory could not be loaded from the backend." />
+    return <ErrorState description="Your knowledge bases could not be loaded. Try again in a moment." />
   }
 
   if (!knowledgeBaseId) {
@@ -65,7 +66,7 @@ export function CaseManagementPage() {
       <section className="page-grid">
         <SectionHeader
           actions={<Chip label="No knowledge base" tone="default" />}
-          eyebrow="Human feedback loop"
+          eyebrow="Investigations"
           subtitle="Create or select a knowledge base to manage its investigation cases."
           title="Case Management"
         />
@@ -84,7 +85,7 @@ export function CaseManagementPage() {
   }
 
   if (casesQuery.isError || alertsQuery.isError) {
-    return <ErrorState description="Case management data could not be loaded from the backend." />
+    return <ErrorState description="The case queue could not be loaded. Try again in a moment." />
   }
 
   if (!casesQuery.data || !alertsQuery.data) {
@@ -113,9 +114,9 @@ export function CaseManagementPage() {
   return (
     <section className="page-grid">
       <SectionHeader
-        actions={<Chip label={`${casesQuery.data.page.total_items} cases`} tone="info" />}
-        eyebrow="Human feedback loop"
-        subtitle="Cases persist durably per knowledge base and can be promoted from alerts with their evidence."
+        actions={<Chip label={countLabel(casesQuery.data.page.total_items, 'case')} tone="info" />}
+        eyebrow="Investigations"
+        subtitle="Track what you are investigating. Promote an alert to open a case with its evidence attached, then record what you found."
         title="Case Management"
       />
 

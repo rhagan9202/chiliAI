@@ -181,7 +181,7 @@ describe('ingestion validation', () => {
     expect(issues).toMatchObject([
       {
         severity: 'warning',
-        message: 'large.pdf is larger than 512 MB; backend limits may reject it.',
+        message: 'large.pdf is larger than 512 MB and may be rejected on upload.',
       },
     ])
   })

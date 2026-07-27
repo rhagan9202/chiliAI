@@ -46,6 +46,11 @@ import {
 } from '../lib/ingestion/validateIngestion'
 import { apiErrorMessage } from '../lib/apiClient'
 import { useIngestionStudioStore } from '../stores/ingestionStudioStore'
+import { countLabel } from '../utils/countLabel'
+import {
+  knowledgeBaseStatusHint,
+  knowledgeBaseStatusLabel,
+} from '../utils/knowledgeBaseStatus'
 import './pages.css'
 
 export function KnowledgeBaseManagerPage() {
@@ -154,8 +159,7 @@ export function KnowledgeBaseManagerPage() {
       { files, onUploadProgress: reportUploadProgress },
       {
         onSuccess: (response) => {
-          const count = response.documents.length
-          const suffix = count === 1 ? 'document' : 'documents'
+          const documentsLabel = countLabel(response.documents.length, 'document')
 
           setUploadStatus('done')
           setUploadPercent(100)
@@ -165,12 +169,12 @@ export function KnowledgeBaseManagerPage() {
             id: `documents-${response.documents.map((document) => document.source_document_id).join('-')}`,
             sourceType: 'documents',
             status: 'accepted',
-            message: `${count} ${suffix} accepted.`,
+            message: `${documentsLabel} accepted.`,
             createdAt: response.documents[0]?.created_at ?? new Date().toISOString(),
           })
           studio.setPendingFiles([])
           studio.setCurrentStep('runs')
-          showToast('success', `${count} ${suffix} uploaded.`)
+          showToast('success', `${documentsLabel} uploaded.`)
         },
         onError: (error) => {
           const message = apiErrorMessage(error, 'Document submission failed.')
@@ -336,15 +340,15 @@ export function KnowledgeBaseManagerPage() {
   }
 
   if (knowledgeBasesQuery.isLoading || domainConfigQuery.isLoading) {
-    return <LoadingState label="Loading ingestion studio" />
+    return <LoadingState label="Loading knowledge bases" />
   }
 
   if (knowledgeBasesQuery.isError || domainConfigQuery.isError) {
-    return <ErrorState description="Ingestion Studio configuration could not be loaded from the API." />
+    return <ErrorState description="Your knowledge bases could not be loaded. Try again in a moment." />
   }
 
   if (!knowledgeBasesQuery.data || !domainConfigQuery.data) {
-    return <LoadingState label="Waiting for ingestion studio configuration" />
+    return <LoadingState label="Waiting for knowledge base configuration" />
   }
 
   if (activeKnowledgeBaseId && (knowledgeBaseDetailQuery.isLoading || documentsQuery.isLoading)) {
@@ -352,7 +356,7 @@ export function KnowledgeBaseManagerPage() {
   }
 
   if (knowledgeBaseDetailQuery.isError || documentsQuery.isError) {
-    return <ErrorState description="Selected knowledge base detail could not be loaded from the API." />
+    return <ErrorState description="This knowledge base could not be opened. Try again, or pick another one." />
   }
 
   const contentErrors = currentIssues.filter(
@@ -388,9 +392,9 @@ export function KnowledgeBaseManagerPage() {
     <section className="page-grid">
       <SectionHeader
         actions={<Chip label="Documents + records" tone="info" />}
-        eyebrow="Ingestion control"
-        subtitle="Guide documents and config-defined structured records into the selected knowledge base."
-        title="Ingestion Studio"
+        eyebrow="Ingestion"
+        subtitle="Add documents and structured records to a knowledge base, and check what has already landed in it."
+        title="Knowledge Bases"
       />
 
       <div className="ingestion-studio-layout">
@@ -694,7 +698,11 @@ function SelectedKnowledgeBaseSummary({
           <strong id="selected-kb-title">{knowledgeBase.name}</strong>
           <p className="page-copy-block">{knowledgeBase.description}</p>
         </div>
-        <Chip label={knowledgeBase.status} tone={toneForKnowledgeBaseStatus(knowledgeBase.status)} />
+        <Chip
+          label={knowledgeBaseStatusLabel(knowledgeBase.status)}
+          title={knowledgeBaseStatusHint(knowledgeBase.status)}
+          tone={toneForKnowledgeBaseStatus(knowledgeBase.status)}
+        />
         <KbDomainBadge activeDomainName={activeDomainName} kbDomain={kbDomain} />
       </div>
 
@@ -786,7 +794,7 @@ function DocumentInventory({
                 {(document.warning_count ?? 0) > 0 ? (
                   <span title={(document.warning_reasons ?? []).join('\n')}>
                     <Chip
-                      label={`${document.warning_count} warning${document.warning_count === 1 ? '' : 's'}`}
+                      label={countLabel(document.warning_count, 'warning')}
                       tone="warning"
                     />
                   </span>
@@ -840,7 +848,7 @@ function DocumentInventory({
           preview.preview_text.trim().length > 0 ? (
             <article className="ingestion-document-preview__content">
               <p className="metric-row__label">
-                {preview.line_count} line{preview.line_count === 1 ? '' : 's'} from {preview.filename}
+                {countLabel(preview.line_count, 'line')} from {preview.filename}
               </p>
               <pre>{preview.preview_text}</pre>
             </article>
