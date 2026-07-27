@@ -367,6 +367,28 @@ switching does not stack history entries). Two deliberate exceptions:
   the active KB to be `ready`; the workspace selection itself may point at a
   building KB.
 
+### Graph canvas sizing
+
+`GraphCanvas` draws node *area* proportional to the risk score
+(`nodeVal` x `nodeRelSize`), so node radius varies. Two things follow, and both
+are shared helpers in `src/utils/graphStyles.ts` rather than literals in the
+component:
+
+- **Link distance must account for node radius.** A fixed separation meant a
+  high-risk pair overlapped completely, hiding the edge between them —
+  `linkDistanceFor(a, b)` keeps a constant clearance beyond both radii.
+- **`zoomToFit` needs an upper bound.** Fitting a 2-3 node neighborhood
+  magnified it until the circles were larger than their edges, which is how the
+  workbench rendered as a few unlabelled blobs. `clampFitZoom` caps it at
+  `MAX_FIT_ZOOM`.
+
+Node labels are drawn on canvas via `nodeCanvasObject` (mode `after`), not only
+as `nodeLabel` hover tooltips — a static graph of unlabelled circles conveys
+nothing. Labels hide below 0.5x zoom, where they would collide into noise, and
+`graphNodeLabel` truncates long ids. The legend renders **above** the canvas
+rather than as an absolute overlay, which used to cover whichever node the
+layout settled in the top-left corner.
+
 ## Responsive layout: container queries, not viewport breakpoints
 
 The shell reserves a fixed 248px sidebar and a 340px AI panel, so the content
