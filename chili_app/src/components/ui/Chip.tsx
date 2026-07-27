@@ -9,10 +9,11 @@ type ChipProps = {
   label: string
   /** Hover explanation for a label too terse to stand on its own. */
   title?: string
+  testId?: string
   tone?: ChipTone
 }
 
-export function Chip({ color, label, title, tone = 'default' }: ChipProps) {
+export function Chip({ color, label, testId, title, tone = 'default' }: ChipProps) {
   const resolvedColor = color ?? CHIP_TONE_COLORS[tone]
   const style = {
     '--chip-background': `${resolvedColor}12`,
@@ -21,7 +22,7 @@ export function Chip({ color, label, title, tone = 'default' }: ChipProps) {
   } as CSSProperties
 
   return (
-    <span className="ui-chip" style={style} title={title}>
+    <span className="ui-chip" data-testid={testId} style={style} title={title}>
       {label}
     </span>
   )

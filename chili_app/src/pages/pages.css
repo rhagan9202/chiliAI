@@ -1411,3 +1411,17 @@ a.housing-run-link:hover {
     flex-direction: column;
   }
 }
+
+/* Said before the question is asked, not after it returns nothing (UXA-305). */
+.kb-empty-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  color: var(--c-dim);
+  background: rgba(255, 176, 32, 0.08);
+  border: 1px solid rgba(255, 176, 32, 0.28);
+  border-radius: 10px;
+}

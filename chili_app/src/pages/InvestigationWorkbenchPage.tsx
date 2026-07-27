@@ -18,6 +18,7 @@ import { AnomalyTrendPanel } from '../components/investigation/AnomalyTrendPanel
 import { ClusterMembershipPanel } from '../components/investigation/ClusterMembershipPanel'
 import { EntityDossierHeader } from '../components/investigation/EntityDossierHeader'
 import { EntityPolicyPanel } from '../components/investigation/EntityPolicyPanel'
+import { EmptyKnowledgeBaseNotice } from '../components/knowledgebase/EmptyKnowledgeBaseNotice'
 import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { GraphCanvas } from '../components/investigation/GraphCanvas'
 import { SignalBand } from '../components/investigation/SignalBand'
@@ -172,6 +173,10 @@ export function InvestigationWorkbenchPage() {
         title={entityTitle}
       />
 
+      <EmptyKnowledgeBaseNotice
+        knowledgeBase={knowledgeBases.find((kb) => kb.id === activeKnowledgeBaseId) ?? null}
+      />
+
       <div className="workbench-layout">
         <div className="workbench-rail">
           <Card>
@@ -283,6 +288,7 @@ export function InvestigationWorkbenchPage() {
                   <div className="dashboard-panels">
                     {capabilities?.timeseries ? (
                       <AnomalyTrendPanel
+                        entitySelected={Boolean(entity)}
                         timeseries={timeseriesAvailability.unavailable ? null : timeseries}
                         unavailableReason={timeseriesAvailability.reason}
                       />
@@ -298,9 +304,21 @@ export function InvestigationWorkbenchPage() {
                             <ConfidenceBar value={Math.round(factor.contribution * 100)} />
                           </div>
                         )) : (
+                          // The reason is stated once, in the dossier header
+                          // beside the badge it qualifies. Repeating it here
+                          // (and again as this panel's title) is what made one
+                          // screen say it three times (UXA-305).
                           <EmptyState
-                            description={riskAvailability.reason ?? 'Risk scoring is unavailable until an entity is selected and analytics respond.'}
-                            title="No risk score"
+                            action={
+                              <Link
+                                className="page-button page-button--sm"
+                                to={`/knowledge-bases?kb=${encodeURIComponent(activeKnowledgeBaseId ?? '')}`}
+                              >
+                                Add data to this knowledge base
+                              </Link>
+                            }
+                            description="Risk factors appear once analytics have scored this entity."
+                            title="No risk factors"
                           />
                         )}
                       </div>

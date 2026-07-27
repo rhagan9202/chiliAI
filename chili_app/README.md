@@ -444,6 +444,27 @@ ordered, formatted rows (UXA-302):
   control instead of being silently truncated, and rows render as a `<dl>` —
   chip styling made non-interactive facts look like filters you could click.
 
+## Empty states
+
+Every empty screen says what to do next, and says the *right* thing for the
+state it is actually in (UXA-305):
+
+- **Filtered to nothing vs nothing yet** are different problems. Cases compares
+  the filtered list against the full one; Policy (filtered server-side) keys
+  off whether a status filter is active. The first offers *Clear filter*, the
+  second points at where the data would come from.
+- **`EmptyKnowledgeBaseNotice`** warns on RAG Chat and the workbench when the
+  selected knowledge base has no documents *and* no entities — before the
+  question is asked, rather than after it returns nothing.
+- **The risk-unavailable reason is stated once**, in the dossier header beside
+  the badge it qualifies. It used to appear there, again as the Signals-tab
+  empty-state description, and a third time as that panel's title.
+- **`AnomalyTrendPanel` takes `entitySelected`** so it stops saying "Select an
+  entity to load its trend" while an entity is selected.
+- **The Dashboard header names the knowledge base** it is reporting on. It used
+  to show a chip repeating the domain title already in the top bar, which told
+  an analyst nothing about which corpus the numbers describe.
+
 ## The alert card
 
 A triage card answers three questions, each exactly once (UXA-303):

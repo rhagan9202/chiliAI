@@ -14,6 +14,7 @@ import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import { EmptyKnowledgeBaseNotice } from '../components/knowledgebase/EmptyKnowledgeBaseNotice'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import {
   buildRagMessageFilters,
@@ -254,6 +255,12 @@ export function RagChatPage() {
           ) : null}
         </div>
       </div>
+
+      <EmptyKnowledgeBaseNotice
+        knowledgeBase={
+          knowledgeBases.find((kb) => kb.id === selectedKnowledgeBaseId) ?? null
+        }
+      />
 
       {contextChips.length > 0 ? (
         <div className="alert-row-card__meta" aria-label="Launch context">

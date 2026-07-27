@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router'
 
 import { usePolicyItem, usePolicyItems, useTriagePolicyItem } from '../api/policy'
 import type { PolicyItemStatus, PolicyTriageRequest } from '../api/contracts'
@@ -136,7 +137,36 @@ export function PolicyIntelligencePage() {
               </button>
             ))}
             {items.length === 0 ? (
-              <EmptyState description="No policy items match the current filter." title="Empty queue" />
+              // The queue is filtered server-side, so an active status filter
+              // is the only thing that distinguishes "hidden" from "absent".
+              statusFilter !== 'all' ? (
+                <EmptyState
+                  action={
+                    <button
+                      className="page-button page-button--sm"
+                      onClick={() => setStatusFilter('all')}
+                      type="button"
+                    >
+                      Clear filter
+                    </button>
+                  }
+                  description={`No policy items are ${statusFilter}. Clear the filter to see the rest of the queue.`}
+                  title="No items match this filter"
+                />
+              ) : (
+                <EmptyState
+                  action={
+                    <Link
+                      className="page-button page-button--sm page-button--primary"
+                      to={`/knowledge-bases?kb=${encodeURIComponent(knowledgeBaseId)}`}
+                    >
+                      Add data to this knowledge base
+                    </Link>
+                  }
+                  description="Policy items appear when the configured rules find something in ingested records. Nothing has matched yet."
+                  title="No policy items yet"
+                />
+              )
             ) : null}
           </div>
         </Card>

@@ -272,6 +272,41 @@ describe('CaseManagementPage', () => {
     expect(screen.getByText('prior auth')).toBeInTheDocument()
   })
 
+  it('offers a way out of a filter that matched nothing', () => {
+    mocks.useCases.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: { items: [caseSummary], page: { page: 1, page_size: 1, total_items: 1 } },
+    })
+
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Closed' }))
+
+    expect(screen.getByText('No cases match this filter')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }))
+
+    expect(screen.getAllByText('Redwood DME escalation').length).toBeGreaterThan(0)
+  })
+
+  it('points at the alert queue when there are no cases at all', () => {
+    // "Filtered to nothing" and "nothing here yet" are different problems and
+    // need different next steps (UXA-305).
+    mocks.useCases.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: { items: [], page: { page: 1, page_size: 0, total_items: 0 } },
+    })
+
+    renderPage()
+
+    expect(screen.getByText('No cases yet')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Clear filter' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /alert feed/i })).toHaveAttribute(
+      'href',
+      '/alerts?kb=kb-1',
+    )
+  })
+
   it('scopes to the shared active knowledge base, not the first one listed', () => {
     // The list order puts the stale KB first; the workspace default is the most
     // recently updated one, which is what the Dashboard also reports on.

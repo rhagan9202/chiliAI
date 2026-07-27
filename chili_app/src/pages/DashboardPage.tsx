@@ -5,7 +5,7 @@ import { Link } from 'react-router'
 
 import { useAlerts } from '../api/alerts'
 import { useAnalyticsOverview, useGnnClusters, useMetricTimeseries, useRiskScores } from '../api/analytics'
-import { useDomainConfig, useDomainFeatures } from '../api/config'
+import { useDomainFeatures } from '../api/config'
 import { useWorkflows } from '../api/workflows'
 import { TrendBars } from '../components/charts/TrendBars'
 import { ChartFrame } from '../components/charts/ChartFrame'
@@ -85,7 +85,6 @@ export function DashboardPage() {
   const overviewQuery = useAnalyticsOverview()
   const alertsQuery = useAlerts({ knowledgeBaseId: activeKnowledgeBaseId ?? undefined })
   const workflowsQuery = useWorkflows()
-  const domainConfigQuery = useDomainConfig()
   const domainFeaturesQuery = useDomainFeatures()
   const capabilities = domainFeaturesQuery.data?.capabilities
   // Domain scoping and the ready-KB preference now live in the shared workspace
@@ -156,7 +155,17 @@ export function DashboardPage() {
   return (
     <section className="page-grid">
       <SectionHeader
-        actions={<Chip label={domainConfigQuery.data?.domain.display_name ?? 'Live'} tone="info" />}
+        actions={
+          // The domain title is already the top bar's h1. What an analyst
+          // cannot otherwise tell is *which* knowledge base these numbers
+          // describe (UXA-305).
+          <Chip
+            label={workspaceKnowledgeBase?.name ?? 'No knowledge base'}
+            testId="dashboard-scope"
+            title={workspaceKnowledgeBase ? 'These figures cover this knowledge base.' : undefined}
+            tone={workspaceKnowledgeBase ? 'info' : 'default'}
+          />
+        }
         eyebrow="Operational overview"
         subtitle="Where the queue stands right now, what ingestion is doing, and which entities are drawing the most attention."
         title="Dashboard"

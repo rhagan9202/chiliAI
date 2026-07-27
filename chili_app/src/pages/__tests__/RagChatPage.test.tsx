@@ -165,6 +165,26 @@ describe('RagChatPage', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'RAG Chat' })).toBeInTheDocument()
   })
 
+  it('warns when the selected knowledge base has nothing to answer from', () => {
+    // Asking an empty corpus returns nothing, with no explanation of why
+    // (UXA-305). Say so before the question is typed.
+    mocks.knowledgeBases = [{ ...KB_ONE, status: 'active', document_count: 0, entity_count: 0 }]
+
+    render(<RagChatPage />)
+
+    expect(screen.getByRole('status', { name: 'Knowledge base warning' })).toHaveTextContent(
+      /nothing has been ingested/i,
+    )
+  })
+
+  it('does not warn when the knowledge base holds data', () => {
+    mocks.knowledgeBases = [{ ...KB_ONE, status: 'ready', document_count: 3, entity_count: 12 }]
+
+    render(<RagChatPage />)
+
+    expect(screen.queryByRole('status', { name: 'Knowledge base warning' })).not.toBeInTheDocument()
+  })
+
   it('renders an option for each KB and defaults to the workspace knowledge base', () => {
     mocks.knowledgeBases = [KB_ONE, KB_TWO]
 

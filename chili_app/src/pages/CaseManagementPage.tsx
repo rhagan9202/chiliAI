@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { useAlerts } from '../api/alerts'
 import { useAddCaseFeedback, useCase, useCases, usePromoteCase, useUpdateCase } from '../api/cases'
@@ -149,7 +149,36 @@ export function CaseManagementPage() {
               </button>
             ))}
             {visibleCases.length === 0 ? (
-              <EmptyState description="No cases match the current filter." title="Empty queue" />
+              // "Filtered to nothing" and "nothing here yet" are different
+              // problems and need different next steps (UXA-305).
+              casesQuery.data.items.length > 0 ? (
+                <EmptyState
+                  action={
+                    <button
+                      className="page-button page-button--sm"
+                      onClick={() => setStatusFilter('all')}
+                      type="button"
+                    >
+                      Clear filter
+                    </button>
+                  }
+                  description={`No cases are ${statusFilter.replace(/_/g, ' ')}. Clear the filter to see the rest of the queue.`}
+                  title="No cases match this filter"
+                />
+              ) : (
+                <EmptyState
+                  action={
+                    <Link
+                      className="page-button page-button--sm page-button--primary"
+                      to={`/alerts?kb=${encodeURIComponent(knowledgeBaseId)}`}
+                    >
+                      Go to the Alert Feed
+                    </Link>
+                  }
+                  description="Cases start life as alerts. Promote one from the queue to open your first case here."
+                  title="No cases yet"
+                />
+              )
             ) : null}
             {unpromotedAlerts.map((alert) => (
               <button
