@@ -27,7 +27,9 @@ from api.contracts import (
     CaseTimelineEventResponse,
     CaseUpdateRequest,
     ChatConversationCreateRequest,
+    ChatConversationListResponse,
     ChatConversationResponse,
+    ChatConversationSummaryResponse,
     ChatMessageCreateRequest,
     EntityTimeseriesPointResponse,
     EntityTimeseriesResponse,
@@ -459,6 +461,8 @@ def _evidence_pack_to_response(pack: EvidencePack) -> EvidencePackResponse:
             )
             for section in pack.narrative_sections
         ],
+        created_at=pack.created_at,
+        source_documents=list(pack.source_documents),
     )
 
 
@@ -541,6 +545,7 @@ def _alert_record_to_list_item(record: AlertHistoryRecord) -> AlertListItem:
         confidence=record.confidence,
         evidence_pack_id=record.evidence_pack_id,
         created_at=record.created_at,
+        updated_at=record.updated_at,
         tags=list(record.tags),
     )
 
@@ -742,6 +747,36 @@ def get_chat_conversation_payload(
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found.")
     return project_conversation(conversation)
+
+
+def get_chat_conversation_list_payload(
+    knowledge_base_id: str = Query(
+        ..., alias="kb", min_length=1, description="Knowledge base scope."
+    ),
+    limit: int = Query(default=25, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    service: ConversationService = Depends(get_conversation_service),
+) -> ChatConversationListResponse:
+    """Return a knowledge base's conversations, most recently updated first."""
+    conversations, total = service.list(
+        knowledge_base_id=knowledge_base_id, limit=limit, offset=offset
+    )
+    return ChatConversationListResponse(
+        items=[
+            ChatConversationSummaryResponse(
+                id=conversation.id,
+                title=conversation.title,
+                knowledge_base_id=conversation.knowledge_base_id,
+                message_count=len(conversation.messages),
+                last_message=(
+                    conversation.messages[-1].content if conversation.messages else None
+                ),
+                updated_at=conversation.updated_at,
+            )
+            for conversation in conversations
+        ],
+        page=PageInfo(page=(offset // limit) + 1, page_size=limit, total_items=total),
+    )
 
 
 def get_chat_conversation_create_payload(
@@ -1751,15 +1786,25 @@ def get_graph_entity_detail_payload(
 
 
 def get_analytics_overview_payload(
+    knowledge_base_id: str | None = Query(
+        default=None,
+        alias="kb",
+        description="Restrict every figure to one knowledge base. Omit for workspace-wide totals.",
+    ),
     alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
     case_service: CaseService = Depends(get_case_service),
     kb_repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
 ) -> AnalyticsOverviewResponse:
-    """Return the analytics overview computed from durable stores (BL-012)."""
+    """Return the analytics overview computed from durable stores (BL-012).
+
+    The ``kb`` alias matches ``GET /alerts`` (UXA-408). Omitting it preserves
+    the workspace-wide behaviour existing consumers depend on.
+    """
     return build_analytics_overview(
         alert_store=alert_store,
         case_service=case_service,
         kb_repository=kb_repository,
+        knowledge_base_id=knowledge_base_id,
     )
 
 
@@ -1817,20 +1862,16 @@ def get_alert_list_payload(
 ) -> AlertListResponse:
     """Return the paginated alert feed from the durable ``alert_history`` store."""
     statuses = [status_filter] if status_filter is not None else None
-    if knowledge_base_id is None:
-        records, total = store.list_alerts(statuses=statuses, limit=limit, offset=offset)
-    else:
-        first_page, total_records = store.list_alerts(statuses=statuses, limit=1, offset=0)
-        all_records = first_page
-        if total_records > 1:
-            all_records, _ = store.list_alerts(
-                statuses=statuses, limit=total_records, offset=0
-            )
-        filtered_records = [
-            record for record in all_records if record.knowledge_base_id == knowledge_base_id
-        ]
-        total = len(filtered_records)
-        records = filtered_records[offset : offset + limit]
+    # The store owns the predicate (UXA-408). This used to fetch a first page
+    # to learn the total, re-fetch the *entire* alert_history table, then
+    # filter and paginate in Python — so reading one KB's queue cost grew with
+    # every other KB's alert volume.
+    records, total = store.list_alerts(
+        knowledge_base_id=knowledge_base_id,
+        statuses=statuses,
+        limit=limit,
+        offset=offset,
+    )
 
     page = (offset // limit) + 1 if limit else 1
     return AlertListResponse(

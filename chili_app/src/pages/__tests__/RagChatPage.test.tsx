@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -24,6 +24,14 @@ const mocks = vi.hoisted(() => ({
   createConversation: vi.fn(),
   startConversationWithMessage: vi.fn(),
   addMessage: vi.fn(),
+  conversationList: [] as Array<{
+    id: string
+    title: string
+    knowledge_base_id: string
+    message_count: number
+    last_message: string | null
+    updated_at: string
+  }>,
   conversation: null as null | {
     id: string
     title: string
@@ -69,7 +77,13 @@ vi.mock('react-router', () => ({
 }))
 
 vi.mock('../../api/config', () => ({
-  useDomainConfig: () => ({ data: { domain: { name: 'medicare_fraud' } } }),
+  useDomainConfig: () => ({
+    data: {
+      domain: { name: 'medicare_fraud' },
+      entities: [{ name: 'provider', display_label: 'Provider', properties: {} }],
+      relationships: [],
+    },
+  }),
 }))
 
 vi.mock('../../api/knowledgebases', () => ({
@@ -87,6 +101,11 @@ vi.mock('../../api/rag', () => ({
     isLoading: false,
     isError: false,
     data: mocks.conversation ?? undefined,
+  }),
+  useConversations: () => ({
+    isLoading: false,
+    isError: false,
+    data: { items: mocks.conversationList, page: { page: 1, page_size: 25, total_items: mocks.conversationList.length } },
   }),
   useCreateConversation: () => ({
     isPending: false,
@@ -142,6 +161,7 @@ describe('RagChatPage', () => {
     mocks.startConversationWithMessage.mockReset()
     mocks.addMessage.mockReset()
     mocks.conversation = null
+    mocks.conversationList = []
   })
 
   it('renders a Create Knowledge Base CTA when no KBs exist and navigates on click', async () => {
@@ -183,6 +203,69 @@ describe('RagChatPage', () => {
     render(<RagChatPage />)
 
     expect(screen.queryByRole('status', { name: 'Knowledge base warning' })).not.toBeInTheDocument()
+  })
+
+  it('lists past conversations so one can be resumed', () => {
+    // The backend persisted conversations and the dev seed created one, but
+    // the UI had no way to reach them (UXA-403).
+    mocks.knowledgeBases = [KB_ONE]
+    mocks.conversationList = [
+      {
+        id: 'conv-1',
+        title: 'Redwood review',
+        knowledge_base_id: 'kb-1',
+        message_count: 4,
+        last_message: 'Because peer deviation is high.',
+        updated_at: '2026-07-26T10:00:00Z',
+      },
+    ]
+
+    render(<RagChatPage />)
+
+    const list = screen.getByRole('list', { name: 'Conversations' })
+    expect(within(list).getByText('Redwood review')).toBeInTheDocument()
+    expect(within(list).getByText(/Because peer deviation is high/)).toBeInTheDocument()
+  })
+
+  it('resumes the conversation that was clicked', async () => {
+    mocks.knowledgeBases = [KB_ONE]
+    mocks.conversationList = [
+      {
+        id: 'conv-1',
+        title: 'Redwood review',
+        knowledge_base_id: 'kb-1',
+        message_count: 1,
+        last_message: null,
+        updated_at: '2026-07-26T10:00:00Z',
+      },
+    ]
+
+    render(<RagChatPage />)
+    await userEvent.click(screen.getByRole('button', { name: /Redwood review/ }))
+
+    expect(screen.getByText('Redwood review')).toBeInTheDocument()
+  })
+
+  it('offers starter prompts drawn from the domain pack on an empty conversation', () => {
+    mocks.knowledgeBases = [KB_ONE]
+
+    render(<RagChatPage />)
+
+    expect(screen.getByRole('button', { name: /Which Provider records look most unusual/ }))
+      .toBeInTheDocument()
+  })
+
+  it('puts a starter prompt into the composer rather than sending it blind', async () => {
+    mocks.knowledgeBases = [KB_ONE]
+
+    render(<RagChatPage />)
+    await userEvent.click(
+      screen.getByRole('button', { name: /Which Provider records look most unusual/ }),
+    )
+
+    expect(screen.getByPlaceholderText(/Ask the investigation assistant/)).toHaveValue(
+      'Which Provider records look most unusual, and why?',
+    )
   })
 
   it('renders an option for each KB and defaults to the workspace knowledge base', () => {

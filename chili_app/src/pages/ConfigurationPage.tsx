@@ -1,5 +1,6 @@
 import { useDomainConfig, useDomainConfigSchema, useDomainFeatures } from '../api/config'
 import { ActivePackEditor } from '../components/config/ActivePackEditor'
+import { ExpandableCount } from '../components/config/ExpandableCount'
 import { PackSwitcher } from '../components/config/PackSwitcher'
 import { Card } from '../components/ui/Card'
 import { ErrorState } from '../components/ui/ErrorState'
@@ -7,6 +8,17 @@ import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { useSession } from '../contexts/sessionContextValue'
 import './pages.css'
+
+/** Capability keys are internal; these are what an operator reads (UXA-301). */
+const CAPABILITY_LABELS: Record<string, string> = {
+  timeseries: 'Time series',
+  gnn: 'Graph clustering',
+  risk_scoring: 'Risk scoring',
+  rag_chat: 'RAG Chat',
+  explainability: 'Explainability',
+  peer_stats: 'Peer statistics',
+  structured_ingestion: 'Structured ingestion',
+}
 
 export function ConfigurationPage() {
   const { user } = useSession()
@@ -16,8 +28,20 @@ export function ConfigurationPage() {
   const domainConfig = useDomainConfig()
   const domainFeatures = useDomainFeatures()
   const domainConfigSchema = useDomainConfigSchema()
-  const entityCount = domainConfig.data?.entities.length ?? 0
-  const relationshipCount = domainConfig.data?.relationships.length ?? 0
+  const entityLabels = (domainConfig.data?.entities ?? []).map(
+    (entity) => entity.display_label || entity.name,
+  )
+  const relationshipLabels = (domainConfig.data?.relationships ?? []).map(
+    (relationship) => relationship.display_label || relationship.name,
+  )
+  const enabledCapabilities = Object.entries(domainConfig.data?.capabilities ?? {})
+    .filter(([, enabled]) => enabled)
+    .map(([name]) => CAPABILITY_LABELS[name] ?? name)
+  const roleNames = Object.keys(domainConfig.data?.ui?.roles ?? {})
+  const navigationLabels = (domainConfig.data?.ui?.navigation?.pages ?? []).map(
+    (page) => page.label,
+  )
+  const schemaSections = Object.keys(domainConfigSchema.data?.properties ?? {})
 
   if (domainConfig.isLoading) {
     return <LoadingState label="Loading domain configuration" />
@@ -41,14 +65,18 @@ export function ConfigurationPage() {
       <div className="dashboard-panels">
         <Card>
           <div className="metric-stack">
-            <div className="metric-row">
-              <span className="metric-row__label">Entities loaded</span>
-              <strong>{entityCount}</strong>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Relationships loaded</span>
-              <strong>{relationshipCount}</strong>
-            </div>
+            {/* Every count opens to the items behind it (UXA-404): the page
+                reported "Entities loaded 8" with no way to see which eight. */}
+            <ExpandableCount
+              items={entityLabels}
+              label="Entity types"
+              emptyHint="This pack declares no entity types."
+            />
+            <ExpandableCount
+              items={relationshipLabels}
+              label="Relationship types"
+              emptyHint="This pack declares no relationships."
+            />
             <div className="metric-row">
               <span className="metric-row__label">Domain</span>
               <strong>{domainConfig.data?.domain.display_name}</strong>
@@ -61,38 +89,35 @@ export function ConfigurationPage() {
         </Card>
         <Card>
           <div className="metric-stack">
-            <div className="metric-row">
-              <span className="metric-row__label">Timeseries</span>
-              <strong>{domainConfig.data?.capabilities.timeseries ? 'Enabled' : 'Disabled'}</strong>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Graph clustering</span>
-              <strong>{domainConfig.data?.capabilities.gnn ? 'Enabled' : 'Disabled'}</strong>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">RAG Chat</span>
-              <strong>{domainConfig.data?.capabilities.rag_chat ? 'Enabled' : 'Disabled'}</strong>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Enabled pages</span>
-              <strong>{domainFeatures.data?.enabled_pages.length ?? 0}</strong>
-            </div>
+            <ExpandableCount
+              items={enabledCapabilities}
+              label="Analysis enabled"
+              emptyHint="No analysis capabilities are switched on for this pack."
+            />
+            <ExpandableCount
+              items={domainFeatures.data?.enabled_pages ?? []}
+              label="Enabled pages"
+              emptyHint="This pack enables no pages."
+            />
           </div>
         </Card>
         <Card>
           <div className="metric-stack">
-            <div className="metric-row">
-              <span className="metric-row__label">Configured roles</span>
-              <strong>{domainConfig.data?.ui?.roles ? Object.keys(domainConfig.data.ui.roles).length : 0}</strong>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Navigation pages</span>
-              <strong>{domainConfig.data?.ui?.navigation?.pages.length ?? 0}</strong>
-            </div>
-            <div className="metric-row">
-              <span className="metric-row__label">Schema sections</span>
-              <strong>{domainConfigSchema.data?.properties ? Object.keys(domainConfigSchema.data.properties).length : 0}</strong>
-            </div>
+            <ExpandableCount
+              items={roleNames}
+              label="Configured roles"
+              emptyHint="This pack configures no roles, so every page is open."
+            />
+            <ExpandableCount
+              items={navigationLabels}
+              label="Navigation pages"
+              emptyHint="This pack configures no navigation."
+            />
+            <ExpandableCount
+              items={schemaSections}
+              label="Schema sections"
+              emptyHint="The pack schema is unavailable."
+            />
           </div>
         </Card>
       </div>

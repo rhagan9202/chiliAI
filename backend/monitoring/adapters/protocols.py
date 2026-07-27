@@ -77,6 +77,7 @@ class AlertFeedStoreProtocol(Protocol):
     def list_alerts(
         self,
         *,
+        knowledge_base_id: str | None = None,
         statuses: list[str] | None = None,
         limit: int,
         offset: int,
@@ -86,6 +87,11 @@ class AlertFeedStoreProtocol(Protocol):
         ``statuses=None`` and ``statuses=[]`` are equivalent: both mean "no
         status filter requested" and return all alerts. Use a non-empty list
         to restrict the result to those statuses.
+
+        ``knowledge_base_id=None`` means workspace-wide. Supplying it pushes the
+        predicate into the store (UXA-408); callers must not read every row and
+        filter in Python, which is what made a single KB's queue cost grow with
+        every other KB's alert volume.
         """
         ...
 

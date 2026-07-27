@@ -147,14 +147,14 @@ export function AiAssistantPanel() {
         </div>
         <div>
           <div className="ai-panel__title">AI Investigator</div>
-          <div className="ai-panel__subtitle">Triage support, not a final decision</div>
+          <div className="ai-panel__subtitle">Quick ask — opens in RAG Chat</div>
         </div>
       </div>
       <div className="ai-panel__body">
         <p title={context ? contextIdentifier(context) ?? undefined : undefined}>
           {context
             ? resolvedName ?? context.summary
-            : 'Open an alert, case, or entity to attach context.'}
+            : 'Open an alert, case, or entity to ask about it here.'}
         </p>
       </div>
       <form className="ai-panel__composer" onSubmit={handleSubmit}>

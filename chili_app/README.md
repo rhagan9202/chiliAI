@@ -444,6 +444,141 @@ ordered, formatted rows (UXA-302):
   control instead of being silently truncated, and rows render as a `<dl>` —
   chip styling made non-interactive facts look like filters you could click.
 
+## Triage filters
+
+`src/utils/alertFilters.ts` is the filter model (UXA-401). The Alert Feed
+shipped a single-select chip row that conflated two dimensions — All/Critical/
+High were severity, Acknowledged was status — so **"critical AND
+unacknowledged", the product's most common triage filter, could not be
+expressed at all**.
+
+- Selections **within** a dimension are OR; **across** dimensions they are AND.
+- Every severity the platform ranks is offered, not the subset the chip row
+  had. Medium and Low were charted by the Severity Mix panel but unfilterable.
+- Each option carries the count it would return, in its accessible name — a
+  number that says "0" before you click is meaning, not decoration.
+- Search covers entity label and alert title; sort offers newest (default),
+  oldest, severity and confidence, each with a total order so it is stable.
+- **State lives in the URL** (`severity`, `status`, `q`, `sort`, `from`, `to`),
+  so a view is shareable and survives a reload. `serializeAlertFilters` writes
+  only what differs from the default so an unfiltered URL stays clean, and
+  `parseAlertFilters` reads only the parameters it owns so `?kb=` and `?alert=`
+  survive.
+
+`FilterGroup` (`src/components/ui/FilterGroup.tsx`) renders one dimension,
+modelled on the Housing page's FILTER BY STATUS / BRANCH / COMMAND strip, which
+already got this right.
+
+## Configuration: counts you can open
+
+`/configuration` reported "Entities loaded 8" and "Configured roles 2" with no
+way to see *which* — a read-only stat dump about the configuration that drives
+the whole product (UXA-404). `ExpandableCount` wraps each figure in a
+`<details>` so the page stays scannable but every number opens to the entity
+types, relationships, capabilities, enabled pages, roles, navigation labels and
+schema sections behind it. Capability keys are mapped to operator words rather
+than shown as `gnn`/`peer_stats`.
+
+The pack switcher and active-pack editor were already built (admin-gated,
+mirroring the backend's `require_role("admin")` on `/config/packs|validate|
+apply|switch`). Still missing: rendering `/config/domain/schema` as browsable
+reference, and surfacing validation errors against the offending field.
+
+## Toasts can lead somewhere
+
+`showToast(variant, message, action?)` takes an optional `{ label, to }`, so a
+toast can reach what it created — promoting an alert produced a well-worded
+message that led nowhere, leaving the new case unreachable from the feed
+(UXA-405).
+
+**`ToastContainer` is mounted inside `AppShell`, not beside `<App/>` in
+`main.tsx`.** The action is a `<Link>` and needs router context; mounted
+outside `RouterProvider` it throws into the ErrorBoundary and no toast renders
+at all. That failure is invisible to unit tests that assert the store rather
+than the DOM — it took an e2e to catch.
+
+## Queue Health
+
+`src/utils/queueHealth.ts` answers "is the queue keeping up?" — which counts
+alone never did (UXA-402):
+
+- **Waiting on triage**, **oldest still waiting**, **median time to
+  acknowledge** (median, so one stale outlier does not move the typical
+  figure), and **dispositioned in the last 24h**.
+- A **backlog trend** over the 30-day window the page already computed but
+  never surfaced, one bucket per day so the axis is never sparse.
+- Both panels have headings. The rows that merely repeated the KPI band, and
+  the unexplained "Alerts feed [OPEN]" service words, are gone.
+
+Durations are spelled out — `20 min`, `2 days` — because these render inside
+chips that uppercase, and `11M` reads as eleven months.
+
+This needed `updated_at` on `AlertListItem`; the column already existed on
+`alert_history` and `acknowledge()` sets it, so time-to-acknowledge is the gap
+between it and `created_at` for an acknowledged alert.
+
+## RAG Chat: conversations and starters
+
+The backend persisted conversations per knowledge base and the dev seed created
+one, but the repository had only create/get/save/delete_by_kb — **no `list`** —
+so the UI had a "New conversation" button and no way to resume anything. The
+durable-conversation feature was invisible (UXA-403).
+
+- `ConversationRepository.list_by_kb` + `GET /chat/conversations?kb=` return a
+  KB's conversations most recently updated first, summarized (title, message
+  count, last message, timestamp) rather than shipping every message.
+- `useConversations(kb)` drives the list; clicking a row resumes it.
+- `src/utils/starterPrompts.ts` derives openers from the **active pack's** own
+  entity and relationship labels, so they change with the domain rather than
+  hardcoding fraud wording. A prompt fills the composer rather than sending
+  blind. They sit with the empty state, closing the dead vertical space.
+
+Not built: renaming and deleting a conversation. Both need new endpoints and
+neither is in the ticket's acceptance criteria.
+
+## One assistant, two surfaces
+
+The app had four AI entry points with nothing distinguishing them, and showed
+two composers side by side on RAG Chat (UXA-407). The settled model:
+
+- **RAG Chat is the durable conversation.** History persists per knowledge base.
+- **The AI Investigator rail is a quick ask** that hands its context to RAG
+  Chat rather than holding its own history — which is what it already did, it
+  just never said so. Its subtitle now reads "Quick ask — opens in RAG Chat".
+- **The rail is suppressed on `/rag-chat`**, where it would be a second
+  composer for the same job, and the shell reclaims its 320px.
+- **"Ask AI" states its destination and payload** on hover before navigating.
+
+`e2e/assistant-model.spec.ts` asserts all four.
+
+## Bulk triage
+
+`src/utils/alertSelection.ts` holds the selection as a set of alert ids on the
+page rather than in the rows, so it can be summarized and acted on as a whole
+(UXA-406). Every operation returns a new set — React state is never mutated.
+
+**Selection is pruned to what the current filter shows.** "Select all in view"
+means all *in view*; offering to acknowledge rows the analyst cannot see would
+be a trap, and changing a filter drops anything it hid. The confirmation states
+the exact count it will affect, and the whole flow is keyboard reachable.
+
+A note for anyone touching `.alert-row-card__header`: the base rule is a
+**row** layout, so its `justify-content: space-between`, `flex-wrap: wrap` and
+`flex: 1 1 340px` are all row-direction choices. The narrow-workspace container
+query flips it to a column and must reset all three — left alone, `340px`
+becomes a *height* and `space-between` distributes children down it, which
+stretched the card from 181px to 445px.
+
+## Dashboard scope
+
+The Dashboard reports on the **workspace knowledge base**, not the workspace.
+`useAnalyticsOverview(knowledgeBaseId)` passes it as `?kb=` and includes it in
+the query key, so switching knowledge bases refetches rather than serving the
+previous KB's cached totals (UXA-408). `e2e/dashboard-kb-scope.spec.ts` seeds a
+**second** knowledge base with its own case before asserting the Open cases
+tile matches the Cases page — without that decoy every assertion would pass
+unscoped too, which is exactly why the defect went unnoticed.
+
 ## Empty states
 
 Every empty screen says what to do next, and says the *right* thing for the

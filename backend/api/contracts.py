@@ -56,6 +56,10 @@ class AlertListItem(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     evidence_pack_id: str | None = None
     created_at: datetime
+    # Last write to the row. For an acknowledged alert whose only update was
+    # the acknowledgement this is when that happened, which is what lets the
+    # Queue Health tab measure time-to-acknowledge (UXA-402).
+    updated_at: datetime
     tags: list[str] = Field(default_factory=lambda: cast(list[str], []))
 
 
@@ -230,6 +234,11 @@ class EvidencePackResponse(BaseModel):
     narrative_sections: list[NarrativeSectionResponse] = Field(
         default_factory=lambda: cast(list[NarrativeSectionResponse], [])
     )
+    # When the explanation was generated and what it was drawn from. Both are
+    # already on the persisted pack; without them the narrative is an
+    # unattributed, undated assertion (UXA-405).
+    created_at: datetime
+    source_documents: list[str] = Field(default_factory=lambda: cast(list[str], []))
 
 
 class CaseSummaryResponse(BaseModel):
@@ -323,6 +332,30 @@ class ChatConversationResponse(BaseModel):
     title: str
     knowledge_base_id: str
     messages: list[ChatMessageResponse] = Field(default_factory=lambda: cast(list[ChatMessageResponse], []))
+
+
+class ChatConversationSummaryResponse(BaseModel):
+    """One row in the conversation list (UXA-403).
+
+    Carries enough to choose from — title, when it was last touched, how much
+    was said, and the last thing said — without shipping every message.
+    """
+
+    id: str
+    title: str
+    knowledge_base_id: str
+    message_count: int
+    last_message: str | None = None
+    updated_at: datetime
+
+
+class ChatConversationListResponse(BaseModel):
+    """A knowledge base's conversations, most recently updated first."""
+
+    items: list[ChatConversationSummaryResponse] = Field(
+        default_factory=lambda: cast(list[ChatConversationSummaryResponse], [])
+    )
+    page: PageInfo
 
 
 class ChatStreamCitationResponse(BaseModel):

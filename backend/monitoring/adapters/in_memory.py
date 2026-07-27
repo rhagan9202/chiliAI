@@ -110,6 +110,7 @@ class InMemoryAlertHistoryWriter:
     def list_alerts(
         self,
         *,
+        knowledge_base_id: str | None = None,
         statuses: list[str] | None = None,
         limit: int,
         offset: int,
@@ -118,7 +119,11 @@ class InMemoryAlertHistoryWriter:
         filtered = [
             record
             for record in self._records.values()
-            if status_set is None or record.status in status_set
+            if (status_set is None or record.status in status_set)
+            and (
+                knowledge_base_id is None
+                or record.knowledge_base_id == knowledge_base_id
+            )
         ]
         ordered = sorted(
             filtered,

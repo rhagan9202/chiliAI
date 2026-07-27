@@ -57,8 +57,13 @@ const domainConfig: DomainConfig = {
     display_name: 'Medicare Fraud Detection',
     description: 'Exemplar domain',
   },
-  entities: [],
-  relationships: [],
+  entities: [
+    { name: 'provider', display_label: 'Provider', properties: {} },
+    { name: 'claim', display_label: 'Claim', properties: {} },
+  ],
+  relationships: [
+    { name: 'submitted_by', display_label: 'Submitted By', source: 'claim', target: 'provider' },
+  ],
   capabilities,
   ingestion: {},
   alerts: { thresholds: {} },
@@ -353,5 +358,35 @@ describe('active pack editor', () => {
     })
     const banner = await screen.findByTestId('swap-result')
     expect(banner).toHaveTextContent('Applied medicare_fraud')
+  })
+
+  it('lets every summary count be opened to the items behind it', async () => {
+    // The page reported "Entities loaded 8" with no way to see which eight —
+    // a read-only stat dump about the thing that drives the product (UXA-404).
+    renderPage(['analyst'])
+
+    const entities = await screen.findByText('Entity types')
+    const details = entities.closest('details')
+    expect(details).not.toBeNull()
+    fireEvent.click(entities)
+
+    expect(within(details as HTMLElement).getByText('Provider')).toBeInTheDocument()
+    expect(within(details as HTMLElement).getByText('Claim')).toBeInTheDocument()
+  })
+
+  it('shows the relationships and capabilities behind their counts', async () => {
+    renderPage(['analyst'])
+
+    const relationships = await screen.findByText('Relationship types')
+    fireEvent.click(relationships)
+    expect(
+      within(relationships.closest('details') as HTMLElement).getByText('Submitted By'),
+    ).toBeInTheDocument()
+
+    const capabilitiesRow = await screen.findByText('Analysis enabled')
+    fireEvent.click(capabilitiesRow)
+    expect(
+      within(capabilitiesRow.closest('details') as HTMLElement).getByText(/Graph clustering/),
+    ).toBeInTheDocument()
   })
 })

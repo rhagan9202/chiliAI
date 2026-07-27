@@ -165,6 +165,11 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
           }
         },
         "required": [
@@ -178,7 +183,8 @@
           "title",
           "reasoning",
           "confidence",
-          "created_at"
+          "created_at",
+          "updated_at"
         ],
         "title": "AlertListItem",
         "type": "object"
@@ -1083,6 +1089,26 @@
         "title": "ChatConversationCreateRequest",
         "type": "object"
       },
+      "ChatConversationListResponse": {
+        "description": "A knowledge base's conversations, most recently updated first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChatConversationSummaryResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "page"
+        ],
+        "title": "ChatConversationListResponse",
+        "type": "object"
+      },
       "ChatConversationResponse": {
         "description": "Conversation state returned to the RAG chat UI.",
         "properties": {
@@ -1112,6 +1138,52 @@
           "knowledge_base_id"
         ],
         "title": "ChatConversationResponse",
+        "type": "object"
+      },
+      "ChatConversationSummaryResponse": {
+        "description": "One row in the conversation list (UXA-403).\n\nCarries enough to choose from \u2014 title, when it was last touched, how much\nwas said, and the last thing said \u2014 without shipping every message.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "last_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message"
+          },
+          "message_count": {
+            "title": "Message Count",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "knowledge_base_id",
+          "message_count",
+          "updated_at"
+        ],
+        "title": "ChatConversationSummaryResponse",
         "type": "object"
       },
       "ChatMessageCreateRequest": {
@@ -2607,6 +2679,11 @@
             "title": "Confidence",
             "type": "number"
           },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -2643,6 +2720,13 @@
             "title": "Scores",
             "type": "object"
           },
+          "source_documents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Documents",
+            "type": "array"
+          },
           "subgraph_edge_ids": {
             "items": {
               "type": "string"
@@ -2662,7 +2746,8 @@
           "id",
           "alert_id",
           "reasoning",
-          "confidence"
+          "confidence",
+          "created_at"
         ],
         "title": "EvidencePackResponse",
         "type": "object"
@@ -7056,6 +7141,26 @@
       "get": {
         "description": "Return dashboard overview metrics for the analytics page.",
         "operationId": "get_analytics_overview_analytics_overview_get",
+        "parameters": [
+          {
+            "description": "Restrict every figure to one knowledge base. Omit for workspace-wide totals.",
+            "in": "query",
+            "name": "kb",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Restrict every figure to one knowledge base. Omit for workspace-wide totals.",
+              "title": "Kb"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -7066,6 +7171,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Get Analytics Overview",
@@ -7856,6 +7971,73 @@
       }
     },
     "/chat/conversations": {
+      "get": {
+        "description": "Return the active knowledge base's conversations, newest activity first.",
+        "operationId": "list_conversations_chat_conversations_get",
+        "parameters": [
+          {
+            "description": "Knowledge base scope.",
+            "in": "query",
+            "name": "kb",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base scope.",
+              "minLength": 1,
+              "title": "Kb",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatConversationListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Conversations",
+        "tags": [
+          "chat"
+        ]
+      },
       "post": {
         "description": "Create and return a new conversation.",
         "operationId": "create_conversation_chat_conversations_post",

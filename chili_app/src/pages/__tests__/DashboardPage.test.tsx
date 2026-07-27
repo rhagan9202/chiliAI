@@ -72,6 +72,7 @@ const alerts: AlertListResponse = {
       confidence: 0.85,
       evidence_pack_id: 'evidence-001',
       created_at: now,
+      updated_at: now,
       tags: ['provider', 'risk-spike'],
     },
     {
@@ -87,6 +88,7 @@ const alerts: AlertListResponse = {
       confidence: 0.62,
       evidence_pack_id: 'evidence-002',
       created_at: now,
+      updated_at: now,
       tags: [],
     },
   ],
@@ -325,7 +327,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Advanced Pain Specialists')).toBeInTheDocument()
   })
 
-  it('renders queue health counts and direct drilldown links', async () => {
+  it('answers whether the queue is keeping up, in time not just counts', async () => {
     renderDashboard()
 
     const queueTab = screen.getByRole('tab', { name: /queue health/i })
@@ -335,15 +337,36 @@ describe('DashboardPage', () => {
 
     const panel = screen.getByRole('tabpanel', { name: /queue health/i })
     expect(panel).toHaveAttribute('aria-labelledby', 'dashboard-tab-queue')
-    expectMetricRowValue(panel, /active alerts/i, '4')
-    expectMetricRowValue(panel, /open cases/i, '3')
+
+    // Both alert fixtures are open, and neither has been acknowledged.
+    expectMetricRowValue(panel, /waiting on triage/i, '2')
+    expect(within(panel).getByText(/median time to acknowledge/i)).toBeInTheDocument()
+    expect(within(panel).getByText('Not yet measurable')).toBeInTheDocument()
+    expectMetricRowValue(panel, /dispositioned \(last 24h\)/i, '0')
+    expect(within(panel).getByText('Backlog trend')).toBeInTheDocument()
+
     expectMetricRowValue(panel, /queued workflows/i, '1')
-    expectMetricRowValue(panel, /running workflows/i, '1')
     expectMetricRowValue(panel, /failed workflows/i, '1')
-    expectMetricRowValue(panel, /completed workflows/i, '1')
-    expect(within(panel).getByRole('link', { name: /alerts feed/i })).toHaveAttribute('href', '/alerts')
-    expect(within(panel).getByRole('link', { name: /case queue/i })).toHaveAttribute('href', '/cases')
-    expect(within(panel).getByRole('link', { name: /knowledge bases/i })).toHaveAttribute('href', '/knowledge-bases')
+  })
+
+  it('gives both Queue Health panels a heading', () => {
+    renderDashboard()
+    clickTab(/queue health/i)
+
+    const panel = screen.getByRole('tabpanel', { name: /queue health/i })
+    expect(within(panel).getByText('Is the queue keeping up?')).toBeInTheDocument()
+    expect(within(panel).getByText('Pipeline activity')).toBeInTheDocument()
+  })
+
+  it('drops the rows that only repeated the KPI band and the unexplained status words', () => {
+    // "Alerts feed [OPEN]" never explained what it meant for a feed to be
+    // open, and Active alerts / Open cases were already KPI tiles (UXA-402).
+    renderDashboard()
+    clickTab(/queue health/i)
+
+    const panel = screen.getByRole('tabpanel', { name: /queue health/i })
+    expect(within(panel).queryByRole('link', { name: /alerts feed/i })).not.toBeInTheDocument()
+    expect(within(panel).queryByText(/^Active alerts$/)).not.toBeInTheDocument()
   })
 
   it('renders policy signals from the active ready knowledge base', async () => {
@@ -537,6 +560,14 @@ describe('DashboardPage', () => {
 
     expect(screen.getByRole('tabpanel', { name: /policy signals/i })).toBeInTheDocument()
     expect(screen.getByText(/loading policy signal analytics/i)).toBeInTheDocument()
+  })
+
+  it('scopes the KPI tiles to the workspace knowledge base', () => {
+    // Before UXA-408 the endpoint took no parameters and summed every KB, so
+    // "Open cases" could disagree with the Cases page.
+    renderDashboard()
+
+    expect(mocks.useAnalyticsOverview).toHaveBeenCalledWith('kb-ready')
   })
 
   it('names the knowledge base it is reporting on, not the domain already in the top bar', () => {

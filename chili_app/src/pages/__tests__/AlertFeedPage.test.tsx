@@ -1,9 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { act } from 'react'
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DomainCapabilities, DomainConfig } from '../../api/contracts'
+import { useToastStore } from '../../components/common/toastStore'
 import { AlertFeedPage } from '../AlertFeedPage'
 
 const mocks = vi.hoisted(() => ({
@@ -194,6 +196,7 @@ describe('AlertFeedPage', () => {
       peer_stats: false,
     }
     mocks.policyItems = []
+    useToastStore.getState().clear()
   })
 
   function renderAlertFeed(initialEntry = '/alerts') {
@@ -214,6 +217,142 @@ describe('AlertFeedPage', () => {
     )
     return locations
   }
+
+  it('links the promote toast to the case it just created', () => {
+    // Promotion succeeded with a well-worded toast that led nowhere, so the
+    // artifact the analyst had just made was unreachable (UXA-405).
+    mocks.promoteAlertToCase.mockImplementation((_payload, options) => {
+      options.onSuccess({ case: { id: 'case-new', knowledge_base_id: 'kb-redwood' } })
+    })
+
+    renderAlertFeed()
+    fireEvent.click(screen.getByRole('button', { name: 'Promote Redwood DME Group to case' }))
+
+    const [toast] = useToastStore.getState().toasts
+    expect(toast?.action).toEqual({
+      label: 'Open case',
+      to: '/cases?kb=kb-redwood&case=case-new',
+    })
+  })
+
+  it('reflects the promotion on the alert and refuses a second one', () => {
+    mocks.promoteAlertToCase.mockImplementation((_payload, options) => {
+      options.onSuccess({ case: { id: 'case-new', knowledge_base_id: 'kb-redwood' } })
+    })
+
+    renderAlertFeed()
+    const promote = screen.getByRole('button', { name: 'Promote Redwood DME Group to case' })
+    fireEvent.click(promote)
+
+    const promoted = screen.getByRole('button', { name: 'Promoted Redwood DME Group to case' })
+    expect(promoted).toBeDisabled()
+
+    fireEvent.click(promoted)
+    expect(mocks.promoteAlertToCase).toHaveBeenCalledTimes(1)
+  })
+
+  it('acknowledges a selected set in one action', async () => {
+    // Every alert had to be acknowledged one at a time (UXA-406).
+    renderAlertFeed()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Outlier billing concentration' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Referral concentration anomaly' }))
+
+    expect(screen.getByText('2 alerts selected')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Acknowledge 2 alerts' }))
+    // Scoped to the dialog: each row also has its own Acknowledge button.
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Acknowledge' }),
+    )
+
+    expect(mocks.acknowledge).toHaveBeenCalledTimes(2)
+  })
+
+  it('selects every alert the current filter shows, not the whole queue', () => {
+    renderAlertFeed('/alerts?severity=critical')
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all alerts in view' }))
+
+    expect(screen.getByText('1 alert selected')).toBeInTheDocument()
+  })
+
+  it('states the exact count in the confirmation', () => {
+    renderAlertFeed()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Outlier billing concentration' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Acknowledge 1 alert' }))
+
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      'This marks 1 alert as seen. It cannot be undone from here.',
+    )
+  })
+
+  it('clears the selection without acting on it', () => {
+    renderAlertFeed()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Outlier billing concentration' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }))
+
+    expect(screen.queryByText(/alerts? selected/)).not.toBeInTheDocument()
+    expect(mocks.acknowledge).not.toHaveBeenCalled()
+  })
+
+  it('expresses critical AND unacknowledged in one view', () => {
+    // The single-select chip row conflated severity and status, so the
+    // product's most common triage filter could not be stated (UXA-401).
+    renderAlertFeed('/alerts?severity=critical&status=open')
+
+    expect(screen.getByText('Outlier billing concentration')).toBeInTheDocument()
+    expect(screen.queryByText('Referral concentration anomaly')).not.toBeInTheDocument()
+  })
+
+  it('reflects a filter toggle in the URL so the view is shareable', async () => {
+    const locations = renderAlertFeedWithLocationProbe('/alerts')
+
+    fireEvent.click(screen.getByRole('button', { name: /^Critical, \d+ matching$/ }))
+
+    expect(locations.at(-1)).toContain('severity=critical')
+  })
+
+  it('shows a count on every filter option', () => {
+    renderAlertFeed()
+
+    expect(screen.getByRole('button', { name: 'Critical, 1 matching' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'High, 1 matching' })).toBeInTheDocument()
+  })
+
+  it('offers every configured severity, not a hardcoded subset', () => {
+    // Medium and Low were charted by the Severity Mix panel but unfilterable.
+    renderAlertFeed()
+
+    const severities = screen.getByRole('group', { name: 'Severity' })
+    expect(within(severities).getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Critical1',
+      'High1',
+      'Medium0',
+      'Low0',
+    ])
+  })
+
+  it('states what is being shown', () => {
+    renderAlertFeed()
+
+    expect(screen.getByText('Showing all 2 alerts')).toBeInTheDocument()
+  })
+
+  it('states how much of the queue a filter is hiding', () => {
+    renderAlertFeed('/alerts?severity=critical')
+
+    expect(screen.getByText('Showing 1 of 2 alerts')).toBeInTheDocument()
+  })
+
+  it('searches entity label and alert title', () => {
+    renderAlertFeed('/alerts?q=harbor')
+
+    expect(screen.getByText('North Harbor Imaging')).toBeInTheDocument()
+    expect(screen.queryByText('Redwood DME Group')).not.toBeInTheDocument()
+  })
 
   it('leads each card with what is wrong, not only who it happened to', () => {
     renderAlertFeed()
@@ -288,8 +427,11 @@ describe('AlertFeedPage', () => {
   })
 
   it('disables a promoted alert row after promotion succeeds', () => {
+    // The real mutation always hands onSuccess a CaseDetailResponse; a mock
+    // that calls it bare lies about the contract and hid a crash in the
+    // promote handler until CI surfaced it as an unhandled error.
     mocks.promoteAlertToCase.mockImplementation((_variables, options) => {
-      options.onSuccess()
+      options.onSuccess({ case: { id: 'case-harbor', knowledge_base_id: 'kb-harbor' } })
     })
     renderAlertFeed()
 
@@ -364,27 +506,25 @@ describe('AlertFeedPage', () => {
     )
   })
 
-  it('filters the feed and renders an empty state', () => {
-    renderAlertFeed()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Critical' }))
+  it('filters the feed by each dimension independently', () => {
+    renderAlertFeed('/alerts?severity=critical')
     expect(screen.getByText('Redwood DME Group')).toBeInTheDocument()
     expect(screen.queryByText('North Harbor Imaging')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Acknowledged' }))
+    cleanup()
+    renderAlertFeed('/alerts?status=acknowledged')
     expect(screen.queryByText('Redwood DME Group')).not.toBeInTheDocument()
     expect(screen.getByText('North Harbor Imaging')).toBeInTheDocument()
   })
 
-  it('renders empty state when no alert matches the active filter', () => {
+  it('renders an empty state when no alert matches the active filter', () => {
     mocks.useAlerts.mockReturnValue({
       isLoading: false,
       isError: false,
       data: { items: [alertResponse.items[1]], page: { page: 1, page_size: 1, total_items: 1 } },
     })
 
-    renderAlertFeed()
-    fireEvent.click(screen.getByRole('button', { name: 'Critical' }))
+    renderAlertFeed('/alerts?severity=critical')
 
     expect(screen.getByText('No matching alerts')).toBeInTheDocument()
   })

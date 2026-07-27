@@ -21,10 +21,14 @@ import { SectionHeader } from '../components/ui/SectionHeader'
 import { Tabs } from '../components/ui/Tabs'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import { flagLabelFor } from '../utils/flagLabel'
+import { backlogTrend, queueHealth } from '../utils/queueHealth'
 import { countTone } from '../utils/severity'
 import { clusterColorFor } from '../utils/graphStyles'
 import { triageNumeralColor } from '../utils/triage'
 import './pages.css'
+
+/** The window the backlog trend covers; stated on the chart, not implied. */
+const TREND_DAYS = 30
 
 const dashboardTabs = [
   { id: 'overview', label: 'Overview' },
@@ -82,7 +86,9 @@ export function DashboardPage() {
     isLoading: knowledgeBasesLoading,
     isError: knowledgeBasesError,
   } = useActiveKnowledgeBase()
-  const overviewQuery = useAnalyticsOverview()
+  // Scoped to the workspace KB (UXA-408) so the KPI tiles report the same
+  // corpus as every other panel on the page, and refetch when it changes.
+  const overviewQuery = useAnalyticsOverview(activeKnowledgeBaseId)
   const alertsQuery = useAlerts({ knowledgeBaseId: activeKnowledgeBaseId ?? undefined })
   const workflowsQuery = useWorkflows()
   const domainFeaturesQuery = useDomainFeatures()
@@ -127,7 +133,6 @@ export function DashboardPage() {
   const overview = overviewQuery.data
   const alerts = alertsQuery.data.items
   const workflows = workflowsQuery.data.items
-  const openCasesCount = overview.open_cases
   const workflowCounts = {
     queued: workflows.filter((workflow) => workflow.status === 'queued').length,
     running: workflows.filter((workflow) => workflow.status === 'running').length,
@@ -146,6 +151,8 @@ export function DashboardPage() {
   const policySignalsError = Boolean(activeKnowledgeBase) && (
     riskScoresQuery.isError || gnnClustersQuery.isError || metricTimeseriesQuery.isError
   )
+  const health = queueHealth(alerts)
+  const trend = backlogTrend(alerts, new Date(), TREND_DAYS)
   const leadAlert = alerts[0]
   const severityTrend = ['critical', 'high', 'medium', 'low'].map((severity) => ({
     label: severity.toUpperCase(),
@@ -263,31 +270,54 @@ export function DashboardPage() {
           <div className="dashboard-panels">
             <Card>
               <div className="metric-stack">
+                {/* Counts alone never answered "is the queue keeping up?"
+                    (UXA-402). The rows that merely repeated the KPI band and
+                    the unexplained "Open" service words are gone. */}
+                <h4 className="dashboard-panel__heading">Is the queue keeping up?</h4>
                 <div className="metric-row">
-                  <span className="metric-row__label">Active alerts</span>
-                  <Chip label={String(overview.active_alerts)} tone="warning" />
+                  <span className="metric-row__label">Waiting on triage</span>
+                  <Chip
+                    label={String(health.openCount)}
+                    title="Alerts still open or under investigation."
+                    tone={countTone(health.openCount, 'warning')}
+                  />
                 </div>
                 <div className="metric-row">
-                  <span className="metric-row__label">Open cases</span>
-                  <Chip label={String(openCasesCount)} tone="network" />
+                  <span className="metric-row__label">Oldest still waiting</span>
+                  <Chip
+                    label={health.oldestOpenAge ?? 'Nothing waiting'}
+                    title="How long the least-recently raised untouched alert has been in the queue."
+                    tone={health.oldestOpenAge ? 'warning' : 'success'}
+                  />
                 </div>
-                <Link className="metric-row" style={{ color: 'inherit', textDecoration: 'none' }} to="/alerts">
-                  <span className="metric-row__label">Alerts feed</span>
-                  <Chip label="Open" tone="info" />
-                </Link>
-                <Link className="metric-row" style={{ color: 'inherit', textDecoration: 'none' }} to="/cases">
-                  <span className="metric-row__label">Case queue</span>
-                  <Chip label="Open" tone="network" />
-                </Link>
-                <Link className="metric-row" style={{ color: 'inherit', textDecoration: 'none' }} to="/knowledge-bases">
-                  <span className="metric-row__label">Knowledge bases</span>
-                  <Chip label="Open" tone="default" />
-                </Link>
+                <div className="metric-row">
+                  <span className="metric-row__label">Median time to acknowledge</span>
+                  <Chip
+                    label={health.medianTimeToAcknowledge ?? 'Not yet measurable'}
+                    title="Median, so one stale outlier does not move the typical figure."
+                    tone="info"
+                  />
+                </div>
+                <div className="metric-row">
+                  <span className="metric-row__label">Dispositioned (last 24h)</span>
+                  <Chip
+                    label={String(health.dispositionedLastDay)}
+                    title="Alerts acknowledged, resolved or dismissed in the last day."
+                    tone={countTone(health.dispositionedLastDay, 'success')}
+                  />
+                </div>
+                <ChartFrame
+                  eyebrow={`Alerts raised · last ${TREND_DAYS} days`}
+                  title="Backlog trend"
+                >
+                  <TrendBars color="#00d4ff" data={trend} />
+                </ChartFrame>
               </div>
             </Card>
 
             <Card>
               <div className="metric-stack">
+                <h4 className="dashboard-panel__heading">Pipeline activity</h4>
                 <div className="metric-row">
                   <span className="metric-row__label">Queued workflows</span>
                   <Chip label={String(workflowCounts.queued)} tone="default" />

@@ -228,15 +228,20 @@ class PostgresAlertHistoryStore:
     def list_alerts(
         self,
         *,
+        knowledge_base_id: str | None = None,
         statuses: list[str] | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[AlertHistoryRecord], int]:
-        where = ""
+        clauses: list[str] = []
         params: list[object] = []
         if statuses:
-            where = "WHERE status = ANY(%s)"
+            clauses.append("status = ANY(%s)")
             params.append(list(statuses))
+        if knowledge_base_id is not None:
+            clauses.append("knowledge_base_id = %s")
+            params.append(knowledge_base_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         try:
             with self._provider.connection() as conn:
                 total_row = conn.execute(

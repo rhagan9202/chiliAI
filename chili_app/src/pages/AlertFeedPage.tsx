@@ -9,18 +9,38 @@ import { useDomainConfig, useDomainFeatures } from '../api/config'
 import { useEvidencePack } from '../api/evidence'
 import { useInvestigationNeighborhood } from '../api/investigation'
 import { usePolicyItems } from '../api/policy'
+import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { showToast } from '../components/common/toastStore'
 import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { policyItemsForTarget } from '../components/investigation/policyTargets'
 import { Chip } from '../components/ui/Chip'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
-import { FilterBar } from '../components/ui/FilterBar'
+import { FilterGroup } from '../components/ui/FilterGroup'
 import { Card } from '../components/ui/Card'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
+import {
+  ALERT_SORTS,
+  applyAlertFilters,
+  countBy,
+  EMPTY_ALERT_FILTERS,
+  hasActiveAlertFilters,
+  parseAlertFilters,
+  serializeAlertFilters,
+  summarizeAlertFilters,
+  type AlertFilterState,
+  type AlertSortId,
+} from '../utils/alertFilters'
 import { countLabel } from '../utils/countLabel'
+import {
+  clearSelection,
+  describeSelection,
+  pruneSelection,
+  selectAll,
+  toggleSelection,
+} from '../utils/alertSelection'
 import { absoluteTime, relativeAge } from '../utils/relativeTime'
 import { getEntityTitle } from '../utils/domainDisplay'
 import { severityTone } from '../utils/severity'
@@ -29,18 +49,28 @@ import { toSubgraphResult } from '../utils/subgraph'
 import { triageNumeralColor } from '../utils/triage'
 import './pages.css'
 
-const filters = [
-  { id: 'all', label: 'All' },
+/** Every severity the platform ranks, not the subset the old chip row offered. */
+const SEVERITY_OPTIONS = [
   { id: 'critical', label: 'Critical' },
   { id: 'high', label: 'High' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'low', label: 'Low' },
+]
+
+const STATUS_OPTIONS = [
+  { id: 'open', label: 'Open' },
   { id: 'acknowledged', label: 'Acknowledged' },
+  { id: 'investigating', label: 'Investigating' },
+  { id: 'resolved', label: 'Resolved' },
+  { id: 'dismissed', label: 'Dismissed' },
 ]
 
 export function AlertFeedPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [activeFilterId, setActiveFilterId] = useState('all')
   const [promotedAlertIds, setPromotedAlertIds] = useState<Set<string>>(() => new Set())
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [pendingBulkAction, setPendingBulkAction] = useState<'acknowledge' | null>(null)
   const selectedKnowledgeBaseId = searchParams.get('kb')
   const requestedAlertId = searchParams.get('alert')
   const alertsQuery = useAlerts({
@@ -71,6 +101,26 @@ export function AlertFeedPage() {
     selectedAlert?.entity_id ?? null,
     1,
   )
+  // Filter state lives in the URL (UXA-401): shareable, and it survives a
+  // reload. Only the parameters the model owns are rewritten, so `?kb=` and
+  // `?alert=` are preserved.
+  const filters = parseAlertFilters(searchParams)
+  const setFilters = (next: AlertFilterState) => {
+    const params = new URLSearchParams(searchParams)
+    for (const key of ['severity', 'status', 'q', 'sort', 'from', 'to']) params.delete(key)
+    for (const [key, value] of serializeAlertFilters(next)) params.append(key, value)
+    setSearchParams(params, { preventScrollReset: true })
+  }
+  const updateFilters = (patch: Partial<AlertFilterState>) => setFilters({ ...filters, ...patch })
+  const toggleFilter = (dimension: 'severities' | 'statuses', optionId: string) => {
+    const current = filters[dimension]
+    updateFilters({
+      [dimension]: current.includes(optionId)
+        ? current.filter((value) => value !== optionId)
+        : [...current, optionId],
+    })
+  }
+
   const domainConfig = domainConfigQuery.data ?? null
   // Stable across renders so the force layout is not rebuilt on every paint.
   const labelForNode = useCallback(
@@ -103,15 +153,21 @@ export function AlertFeedPage() {
     return <LoadingState label="Waiting for alert feed data" />
   }
 
-  const alerts = alertItems.filter((alert) => {
-    if (activeFilterId === 'all') {
-      return true
-    }
-    if (activeFilterId === 'acknowledged') {
-      return alert.status === 'acknowledged'
-    }
-    return alert.severity === activeFilterId
-  })
+  const alerts = applyAlertFilters(alertItems, filters)
+  const severityCounts = countBy(alertItems, (alert) => alert.severity)
+  const statusCounts = countBy(alertItems, (alert) => alert.status)
+  const visibleIds = alerts.map((alert) => alert.id)
+  // A bulk action must never touch an alert the analyst can no longer see, so
+  // the selection is pruned to what the current filter shows (UXA-406).
+  const selection = pruneSelection(selectedIds, visibleIds)
+  const allVisibleSelected = visibleIds.length > 0 && selection.size === visibleIds.length
+
+  const runBulkAcknowledge = () => {
+    for (const alertId of selection) acknowledgeMutation.mutate(alertId)
+    showToast('success', `${describeSelection(selection.size)} — acknowledged.`)
+    setSelectedIds(clearSelection())
+    setPendingBulkAction(null)
+  }
 
   return (
     <section className="page-grid">
@@ -122,7 +178,136 @@ export function AlertFeedPage() {
         title="Alert Feed"
       />
 
-      <FilterBar activeFilterId={activeFilterId} filters={filters} onChange={setActiveFilterId} />
+      <div className="alert-filter-strip">
+        <FilterGroup
+          label="Severity"
+          onToggle={(id) => toggleFilter('severities', id)}
+          options={SEVERITY_OPTIONS.map((option) => ({
+            ...option,
+            count: severityCounts[option.id] ?? 0,
+          }))}
+          selected={filters.severities}
+        />
+        <FilterGroup
+          label="Status"
+          onToggle={(id) => toggleFilter('statuses', id)}
+          options={STATUS_OPTIONS.map((option) => ({
+            ...option,
+            count: statusCounts[option.id] ?? 0,
+          }))}
+          selected={filters.statuses}
+        />
+        <div className="alert-filter-strip__controls">
+          <label className="filter-group__label" htmlFor="alert-search">
+            Search
+          </label>
+          <input
+            className="page-input--inline"
+            id="alert-search"
+            onChange={(event) => updateFilters({ search: event.target.value })}
+            placeholder="Entity or finding"
+            type="search"
+            value={filters.search}
+          />
+          <label className="filter-group__label" htmlFor="alert-from">
+            From
+          </label>
+          <input
+            className="page-input--inline"
+            id="alert-from"
+            onChange={(event) => updateFilters({ from: event.target.value })}
+            type="date"
+            value={filters.from}
+          />
+          <label className="filter-group__label" htmlFor="alert-to">
+            To
+          </label>
+          <input
+            className="page-input--inline"
+            id="alert-to"
+            onChange={(event) => updateFilters({ to: event.target.value })}
+            type="date"
+            value={filters.to}
+          />
+          <label className="filter-group__label" htmlFor="alert-sort">
+            Sort
+          </label>
+          <select
+            className="page-input--inline"
+            id="alert-sort"
+            onChange={(event) => updateFilters({ sort: event.target.value as AlertSortId })}
+            value={filters.sort}
+          >
+            {ALERT_SORTS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="alert-filter-strip__summary">
+          <span aria-live="polite">
+            {summarizeAlertFilters({
+              shown: alerts.length,
+              total: alertItems.length,
+              filters,
+            })}
+          </span>
+          {hasActiveAlertFilters(filters) ? (
+            <button
+              className="page-button page-button--sm page-button--secondary"
+              onClick={() => setFilters(EMPTY_ALERT_FILTERS)}
+              type="button"
+            >
+              Clear filters
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="alert-bulk-bar">
+        <label className="alert-bulk-bar__select-all">
+          <input
+            aria-label="Select all alerts in view"
+            checked={allVisibleSelected}
+            disabled={visibleIds.length === 0}
+            onChange={(event) =>
+              setSelectedIds(event.target.checked ? selectAll(visibleIds) : clearSelection())
+            }
+            type="checkbox"
+          />
+          Select all in view
+        </label>
+        {selection.size > 0 ? (
+          <>
+            <span aria-live="polite">{describeSelection(selection.size)}</span>
+            <button
+              className="page-button page-button--sm page-button--primary"
+              onClick={() => setPendingBulkAction('acknowledge')}
+              type="button"
+            >
+              {`Acknowledge ${countLabel(selection.size, 'alert')}`}
+            </button>
+            <button
+              className="page-button page-button--sm page-button--secondary"
+              onClick={() => setSelectedIds(clearSelection())}
+              type="button"
+            >
+              Clear selection
+            </button>
+          </>
+        ) : null}
+      </div>
+
+      <ConfirmDialog
+        cancelLabel="Cancel"
+        confirmLabel="Acknowledge"
+        message={`This marks ${countLabel(selection.size, 'alert')} as seen. It cannot be undone from here.`}
+        onCancel={() => setPendingBulkAction(null)}
+        onConfirm={runBulkAcknowledge}
+        open={pendingBulkAction === 'acknowledge'}
+        title={`Acknowledge ${countLabel(selection.size, 'alert')}`}
+      />
 
       {alerts.length > 0 ? (
         alerts.map((alert) => {
@@ -138,6 +323,13 @@ export function AlertFeedPage() {
           return (
             <Card className="alert-row-card" compact key={alert.id}>
               <div className="triage-row">
+                <input
+                  aria-label={`Select ${alert.title}`}
+                  checked={selection.has(alert.id)}
+                  className="triage-row__select"
+                  onChange={() => setSelectedIds(toggleSelection(selection, alert.id))}
+                  type="checkbox"
+                />
                 {/* One metric, named. The bare numeral was severity-coloured
                     and sized like a risk score, but carried confidence — and
                     the same number appeared again in a bar below (UXA-303). */}
@@ -190,6 +382,7 @@ export function AlertFeedPage() {
                       <button
                         aria-label={`Ask AI for ${alert.entity_label}`}
                         className="page-button page-button--sm page-button--secondary"
+                        title={`Opens RAG Chat with this alert and ${alert.entity_label} attached.`}
                         onClick={() =>
                           navigate(buildRagChatUrl({
                             knowledgeBaseId: alert.knowledge_base_id,
@@ -221,13 +414,22 @@ export function AlertFeedPage() {
                           promoteMutation.mutate(
                             { knowledgeBaseId: alert.knowledge_base_id, alertId: alert.id },
                             {
-                              onSuccess: () => {
+                              onSuccess: (created) => {
                                 setPromotedAlertIds((current) => {
                                   const next = new Set(current)
                                   next.add(alert.id)
                                   return next
                                 })
-                                showToast('success', `Promoted ${alert.entity_label} to a case.`)
+                                // Without the link the case the analyst just
+                                // created was unreachable from here (UXA-405).
+                                showToast(
+                                  'success',
+                                  `Promoted ${alert.entity_label} to a case.`,
+                                  {
+                                    label: 'Open case',
+                                    to: `/cases?kb=${encodeURIComponent(created.case.knowledge_base_id)}&case=${encodeURIComponent(created.case.id)}`,
+                                  },
+                                )
                               },
                               onError: () => showToast('error', 'Could not promote the alert.'),
                             },
