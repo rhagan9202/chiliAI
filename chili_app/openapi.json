@@ -2679,6 +2679,11 @@
             "title": "Confidence",
             "type": "number"
           },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -2715,6 +2720,13 @@
             "title": "Scores",
             "type": "object"
           },
+          "source_documents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Documents",
+            "type": "array"
+          },
           "subgraph_edge_ids": {
             "items": {
               "type": "string"
@@ -2734,7 +2746,8 @@
           "id",
           "alert_id",
           "reasoning",
-          "confidence"
+          "confidence",
+          "created_at"
         ],
         "title": "EvidencePackResponse",
         "type": "object"

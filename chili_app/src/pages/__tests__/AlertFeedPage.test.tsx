@@ -5,6 +5,7 @@ import { BrowserRouter, MemoryRouter, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DomainCapabilities, DomainConfig } from '../../api/contracts'
+import { useToastStore } from '../../components/common/toastStore'
 import { AlertFeedPage } from '../AlertFeedPage'
 
 const mocks = vi.hoisted(() => ({
@@ -195,6 +196,7 @@ describe('AlertFeedPage', () => {
       peer_stats: false,
     }
     mocks.policyItems = []
+    useToastStore.getState().clear()
   })
 
   function renderAlertFeed(initialEntry = '/alerts') {
@@ -215,6 +217,39 @@ describe('AlertFeedPage', () => {
     )
     return locations
   }
+
+  it('links the promote toast to the case it just created', () => {
+    // Promotion succeeded with a well-worded toast that led nowhere, so the
+    // artifact the analyst had just made was unreachable (UXA-405).
+    mocks.promoteAlertToCase.mockImplementation((_payload, options) => {
+      options.onSuccess({ case: { id: 'case-new', knowledge_base_id: 'kb-redwood' } })
+    })
+
+    renderAlertFeed()
+    fireEvent.click(screen.getByRole('button', { name: 'Promote Redwood DME Group to case' }))
+
+    const [toast] = useToastStore.getState().toasts
+    expect(toast?.action).toEqual({
+      label: 'Open case',
+      to: '/cases?kb=kb-redwood&case=case-new',
+    })
+  })
+
+  it('reflects the promotion on the alert and refuses a second one', () => {
+    mocks.promoteAlertToCase.mockImplementation((_payload, options) => {
+      options.onSuccess({ case: { id: 'case-new', knowledge_base_id: 'kb-redwood' } })
+    })
+
+    renderAlertFeed()
+    const promote = screen.getByRole('button', { name: 'Promote Redwood DME Group to case' })
+    fireEvent.click(promote)
+
+    const promoted = screen.getByRole('button', { name: 'Promoted Redwood DME Group to case' })
+    expect(promoted).toBeDisabled()
+
+    fireEvent.click(promoted)
+    expect(mocks.promoteAlertToCase).toHaveBeenCalledTimes(1)
+  })
 
   it('acknowledges a selected set in one action', async () => {
     // Every alert had to be acknowledged one at a time (UXA-406).

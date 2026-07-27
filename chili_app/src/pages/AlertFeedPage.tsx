@@ -414,13 +414,22 @@ export function AlertFeedPage() {
                           promoteMutation.mutate(
                             { knowledgeBaseId: alert.knowledge_base_id, alertId: alert.id },
                             {
-                              onSuccess: () => {
+                              onSuccess: (created) => {
                                 setPromotedAlertIds((current) => {
                                   const next = new Set(current)
                                   next.add(alert.id)
                                   return next
                                 })
-                                showToast('success', `Promoted ${alert.entity_label} to a case.`)
+                                // Without the link the case the analyst just
+                                // created was unreachable from here (UXA-405).
+                                showToast(
+                                  'success',
+                                  `Promoted ${alert.entity_label} to a case.`,
+                                  {
+                                    label: 'Open case',
+                                    to: `/cases?kb=${encodeURIComponent(created.case.knowledge_base_id)}&case=${encodeURIComponent(created.case.id)}`,
+                                  },
+                                )
                               },
                               onError: () => showToast('error', 'Could not promote the alert.'),
                             },

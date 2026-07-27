@@ -1563,3 +1563,11 @@ a.housing-run-link:hover {
   font-size: 15px;
   font-weight: 700;
 }
+
+.evidence-pack__attribution {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}

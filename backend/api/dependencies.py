@@ -461,6 +461,8 @@ def _evidence_pack_to_response(pack: EvidencePack) -> EvidencePackResponse:
             )
             for section in pack.narrative_sections
         ],
+        created_at=pack.created_at,
+        source_documents=list(pack.source_documents),
     )
 
 

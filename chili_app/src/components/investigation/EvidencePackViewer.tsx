@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 
 import type { EvidencePackResponse } from '../../api/contracts'
 import type { Entity, SubgraphResult } from '../../types/api'
+import { absoluteTime, relativeAge } from '../../utils/relativeTime'
 import { AttributionBars } from '../charts/AttributionBars'
 import { Card } from '../ui/Card'
 import { Chip } from '../ui/Chip'
@@ -61,6 +62,7 @@ export function EvidencePackViewer({
   const items = pack.items ?? []
   const policyCitations = pack.policy_citations ?? []
   const narrativeSections = pack.narrative_sections ?? []
+  const sourceDocuments = pack.source_documents ?? []
   const attribution = pack.attribution ?? []
 
   return (
@@ -69,9 +71,16 @@ export function EvidencePackViewer({
         <strong>Evidence pack</strong>
 
         <div className="callout--ai" data-testid="evidence-narrative">
-          <span className="flag-label" style={{ color: 'var(--c-cyan)' }}>
-            ◆ AI NARRATIVE
-          </span>
+          <div className="evidence-pack__attribution">
+            <span className="flag-label" style={{ color: 'var(--c-cyan)' }}>
+              ◆ AI NARRATIVE
+            </span>
+            {/* An explanation with no date and no sources is an unattributed
+                assertion (UXA-405). */}
+            <span className="alert-row-card__age" title={absoluteTime(pack.created_at)}>
+              Generated {relativeAge(pack.created_at)}
+            </span>
+          </div>
           <p className="page-copy-block" style={{ fontSize: '14px' }}>
             {pack.reasoning}
           </p>
@@ -99,6 +108,17 @@ export function EvidencePackViewer({
             />
           ))}
         </div>
+
+        {sourceDocuments.length > 0 ? (
+          <div className="metric-row metric-row--stacked">
+            <strong>Drawn from</strong>
+            <div className="alert-row-card__meta">
+              {sourceDocuments.map((source) => (
+                <Chip key={source} label={source} tone="default" />
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {attribution.length > 0 ? <AttributionBars attribution={attribution} /> : null}
 

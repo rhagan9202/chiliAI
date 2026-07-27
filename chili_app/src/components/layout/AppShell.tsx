@@ -6,6 +6,7 @@ import { useDomainFeatures } from '../../api/config'
 import { useRealtimeWorkspaceStream } from '../../api/realtime'
 import { getDefaultRole, getLandingRoute, isRouteAllowed } from '../../app/access'
 import { readStoredRole, useUiStore } from '../../stores/uiStore'
+import { ToastContainer } from '../common/Toast'
 import { AiAssistantPanel } from './AiAssistantPanel'
 import { RouteNotAvailable } from './RouteNotAvailable'
 import { Sidebar } from './Sidebar'
@@ -97,6 +98,9 @@ export function AppShell() {
           )}
         </main>
       </div>
+      {/* Toasts render inside the router: a toast can carry a link to what it
+          just created (UXA-405), and <Link> needs the router context. */}
+      <ToastContainer />
       {/* One assistant, two surfaces (UXA-407): RAG Chat is the durable
           conversation, the rail is a quick ask that hands off to it. On RAG
           Chat itself the rail would be a second composer for the same job. */}

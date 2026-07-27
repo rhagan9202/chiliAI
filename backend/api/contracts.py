@@ -234,6 +234,11 @@ class EvidencePackResponse(BaseModel):
     narrative_sections: list[NarrativeSectionResponse] = Field(
         default_factory=lambda: cast(list[NarrativeSectionResponse], [])
     )
+    # When the explanation was generated and what it was drawn from. Both are
+    # already on the persisted pack; without them the narrative is an
+    # unattributed, undated assertion (UXA-405).
+    created_at: datetime
+    source_documents: list[str] = Field(default_factory=lambda: cast(list[str], []))
 
 
 class CaseSummaryResponse(BaseModel):

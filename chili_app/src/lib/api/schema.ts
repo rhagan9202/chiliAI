@@ -2496,6 +2496,11 @@ export interface components {
             attribution?: components["schemas"]["FeatureAttributionResponse"][];
             /** Confidence */
             confidence: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Id */
             id: string;
             /** Items */
@@ -2510,6 +2515,8 @@ export interface components {
             scores?: {
                 [key: string]: number;
             };
+            /** Source Documents */
+            source_documents?: string[];
             /** Subgraph Edge Ids */
             subgraph_edge_ids?: string[];
             /** Subgraph Node Ids */

@@ -469,6 +469,19 @@ expressed at all**.
 modelled on the Housing page's FILTER BY STATUS / BRANCH / COMMAND strip, which
 already got this right.
 
+## Toasts can lead somewhere
+
+`showToast(variant, message, action?)` takes an optional `{ label, to }`, so a
+toast can reach what it created — promoting an alert produced a well-worded
+message that led nowhere, leaving the new case unreachable from the feed
+(UXA-405).
+
+**`ToastContainer` is mounted inside `AppShell`, not beside `<App/>` in
+`main.tsx`.** The action is a `<Link>` and needs router context; mounted
+outside `RouterProvider` it throws into the ErrorBoundary and no toast renders
+at all. That failure is invisible to unit tests that assert the store rather
+than the DOM — it took an e2e to catch.
+
 ## Queue Health
 
 `src/utils/queueHealth.ts` answers "is the queue keeping up?" — which counts

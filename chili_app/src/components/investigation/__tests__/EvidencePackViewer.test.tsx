@@ -37,6 +37,8 @@ const basePack: EvidencePackResponse = {
   id: 'ev-1',
   alert_id: 'alert-1',
   reasoning: 'Provider billing is materially above peers.',
+  created_at: '2026-05-12T09:00:00Z',
+  source_documents: ['policy-2026.pdf'],
   confidence: 0.82,
   scores: { overall: 0.82, upcoding: 0.7 },
   subgraph_node_ids: ['provider-1', 'claim-1'],
@@ -67,6 +69,14 @@ describe('EvidencePackViewer', () => {
     // Labeled so it cannot be confused with the alert's own confidence, and
     // score keys are humanized rather than shown raw (UXA-303).
     expect(screen.getByText('Evidence confidence 82%')).toBeInTheDocument()
+    // An explanation with no date and no sources is an unattributed
+    // assertion (UXA-405).
+    expect(screen.getByText(/^Generated /)).toHaveAttribute(
+      'title',
+      'May 12, 2026, 09:00 UTC',
+    )
+    expect(screen.getByText('Drawn from')).toBeInTheDocument()
+    expect(screen.getByText('policy-2026.pdf')).toBeInTheDocument()
     expect(screen.getByText('Upcoding 70%')).toBeInTheDocument()
     expect(screen.getByText('High volume.')).toBeInTheDocument()
     expect(screen.getByText('LCD L1234')).toBeInTheDocument()

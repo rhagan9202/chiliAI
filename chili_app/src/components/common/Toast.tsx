@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { Link } from 'react-router'
 
 import {
   useToastStore,
@@ -50,6 +51,15 @@ function SingleToast({
       }}
     >
       <span>{toast.message}</span>
+      {toast.action ? (
+        <Link
+          onClick={() => onDismiss(toast.id)}
+          style={{ color: colors.fg, fontWeight: 700, whiteSpace: 'nowrap' }}
+          to={toast.action.to}
+        >
+          {toast.action.label}
+        </Link>
+      ) : null}
       <button
         type="button"
         aria-label="Dismiss notification"
