@@ -56,6 +56,10 @@ class AlertListItem(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     evidence_pack_id: str | None = None
     created_at: datetime
+    # Last write to the row. For an acknowledged alert whose only update was
+    # the acknowledgement this is when that happened, which is what lets the
+    # Queue Health tab measure time-to-acknowledge (UXA-402).
+    updated_at: datetime
     tags: list[str] = Field(default_factory=lambda: cast(list[str], []))
 
 

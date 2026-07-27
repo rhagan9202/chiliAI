@@ -543,6 +543,7 @@ def _alert_record_to_list_item(record: AlertHistoryRecord) -> AlertListItem:
         confidence=record.confidence,
         evidence_pack_id=record.evidence_pack_id,
         created_at=record.created_at,
+        updated_at=record.updated_at,
         tags=list(record.tags),
     )
 

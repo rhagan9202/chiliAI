@@ -469,6 +469,26 @@ expressed at all**.
 modelled on the Housing page's FILTER BY STATUS / BRANCH / COMMAND strip, which
 already got this right.
 
+## Queue Health
+
+`src/utils/queueHealth.ts` answers "is the queue keeping up?" — which counts
+alone never did (UXA-402):
+
+- **Waiting on triage**, **oldest still waiting**, **median time to
+  acknowledge** (median, so one stale outlier does not move the typical
+  figure), and **dispositioned in the last 24h**.
+- A **backlog trend** over the 30-day window the page already computed but
+  never surfaced, one bucket per day so the axis is never sparse.
+- Both panels have headings. The rows that merely repeated the KPI band, and
+  the unexplained "Alerts feed [OPEN]" service words, are gone.
+
+Durations are spelled out — `20 min`, `2 days` — because these render inside
+chips that uppercase, and `11M` reads as eleven months.
+
+This needed `updated_at` on `AlertListItem`; the column already existed on
+`alert_history` and `acknowledge()` sets it, so time-to-acknowledge is the gap
+between it and `created_at` for an acknowledged alert.
+
 ## RAG Chat: conversations and starters
 
 The backend persisted conversations per knowledge base and the dev seed created

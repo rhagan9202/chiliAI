@@ -165,6 +165,11 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
           }
         },
         "required": [
@@ -178,7 +183,8 @@
           "title",
           "reasoning",
           "confidence",
-          "created_at"
+          "created_at",
+          "updated_at"
         ],
         "title": "AlertListItem",
         "type": "object"

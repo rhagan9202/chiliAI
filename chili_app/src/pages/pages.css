@@ -1554,3 +1554,12 @@ a.housing-run-link:hover {
   width: 100%;
   padding: 10px 12px;
 }
+
+/* Every Queue Health panel says what it is; neither had a heading (UXA-402). */
+.dashboard-panel__heading {
+  margin: 0;
+  color: var(--c-text);
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+}

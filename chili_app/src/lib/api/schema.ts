@@ -1315,6 +1315,11 @@ export interface components {
             tags?: string[];
             /** Title */
             title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /**
          * AlertListResponse
