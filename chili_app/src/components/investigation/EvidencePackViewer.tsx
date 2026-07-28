@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 
 import type { EvidencePackResponse } from '../../api/contracts'
 import type { Entity, SubgraphResult } from '../../types/api'
@@ -20,6 +20,9 @@ export interface EvidencePackViewerProps {
   /** Resolves an entity's on-canvas name; passed straight to {@link GraphCanvas}
       so the pack subgraph names entities exactly like the dossier (UXA-304). */
   labelFor?: (entity: Entity) => string
+  /** Controls rendered beside the header — export, attach to case (UXA-405).
+      The viewer stays presentational: it does not know what a case is. */
+  actions?: ReactNode
 }
 
 /** `peer_deviation` -> `Peer deviation`: score keys are data, not copy. */
@@ -42,6 +45,7 @@ export function EvidencePackViewer({
   onSelectNode,
   testId = 'evidence-pack-viewer',
   labelFor,
+  actions,
 }: EvidencePackViewerProps) {
   const packSubgraph = useMemo<SubgraphResult>(() => {
     const packNodeIds = new Set(pack.subgraph_node_ids)
@@ -68,7 +72,17 @@ export function EvidencePackViewer({
   return (
     <Card>
       <div className="metric-stack" data-testid={testId}>
-        <strong>Evidence pack</strong>
+        <div className="metric-row">
+          <strong>Evidence pack</strong>
+          {/* Supplied by the page, because what you can do with a pack depends
+              on where you are looking at it: the Alert Feed has an alert to
+              attach, the workbench does not (UXA-405). */}
+          {actions ? (
+            <div className="page-actions-inline" data-testid="evidence-pack-actions">
+              {actions}
+            </div>
+          ) : null}
+        </div>
 
         <div className="callout--ai" data-testid="evidence-narrative">
           <div className="evidence-pack__attribution">

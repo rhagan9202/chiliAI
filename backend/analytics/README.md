@@ -118,6 +118,22 @@ See `backend/README.md` § Analytics Runtime Notes for the full worker/API
 wiring (`run_timeseries_stage`, its controlled-skip semantics, and the
 `DomainConfig.timeseries` config surface).
 
+## Evidence pack export
+
+`analytics/explainability/export.py` renders a persisted `EvidencePack` as
+Markdown for `GET /evidence-packs/{id}/export` (UXA-405). It lives here rather
+than in `api/` because this module owns evidence packs and the gateway holds no
+business logic — and one renderer means the file an analyst downloads cannot
+drift from what any other caller gets.
+
+Rendered on demand, not stored: the pack is already durable and this is a
+deterministic projection of it, so a stored copy would only raise the question
+of whether it is stale. `humanize_score_name` mirrors `humanizeScoreName` in
+`EvidencePackViewer.tsx` on purpose — the export must read like the screen it
+came from — and `tests/analytics/explainability/test_export.py` pins the shared
+cases. Empty collections are omitted rather than rendered as bare headings, and
+scores are sorted so two exports of one pack are byte-identical.
+
 ## Explainability narrative + attribution seams
 
 `analytics/explainability` composes two independently-selectable, config-driven

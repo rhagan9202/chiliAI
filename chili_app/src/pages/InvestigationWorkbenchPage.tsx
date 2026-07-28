@@ -21,6 +21,7 @@ import { EntityDossierHeader } from '../components/investigation/EntityDossierHe
 import { EntityNotHere } from '../components/investigation/EntityNotHere'
 import { EntityPolicyPanel } from '../components/investigation/EntityPolicyPanel'
 import { EmptyKnowledgeBaseNotice } from '../components/knowledgebase/EmptyKnowledgeBaseNotice'
+import { EvidencePackActions } from '../components/investigation/EvidencePackActions'
 import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { GraphCanvas } from '../components/investigation/GraphCanvas'
 import { SignalBand } from '../components/investigation/SignalBand'
@@ -445,6 +446,16 @@ export function InvestigationWorkbenchPage() {
                 <WorkbenchTabPanel key="evidence" tabId="evidence">
                   {evidenceQuery.data ? (
                     <EvidencePackViewer
+                      // Export only: there is no alert in hand here, and
+                      // offering to attach one would mean inventing it.
+                      actions={
+                        activeKnowledgeBaseId ? (
+                          <EvidencePackActions
+                            evidencePackId={evidenceQuery.data.id}
+                            knowledgeBaseId={activeKnowledgeBaseId}
+                          />
+                        ) : null
+                      }
                       entityTypes={domainConfigQuery.data.entities.map((e) => e.name)}
                       labelFor={labelForNode}
                       onSelectNode={navigateToEntity}

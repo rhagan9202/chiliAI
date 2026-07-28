@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from cases.adapters.protocols import CaseRepository
-from cases.exceptions import CaseNotFoundError
+from cases.exceptions import AlertAlreadyAttachedError, CaseNotFoundError
 from cases.models import (
     AnalystFeedback,
     Case,
@@ -129,6 +129,46 @@ class CaseService:
                 update={
                     "feedback_history": [*existing.feedback_history, feedback],
                     "updated_at": utc_now(),
+                }
+            )
+        )
+
+    def attach_alert(
+        self,
+        *,
+        knowledge_base_id: str,
+        case_id: str,
+        alert: Alert,
+        notes: str | None = None,
+    ) -> Case:
+        """Add an alert to a case that already exists (UXA-405).
+
+        The workflow ``promote_from_alert`` cannot express: promote opens a
+        *new* case, and nothing could add to an existing one. ``evidence_pack_id``
+        is deliberately left alone — it records what the case was opened from,
+        and repointing it here would silently rewrite the case's origin. The
+        attached alert's own pack stays reachable through the alert.
+        """
+        existing = self._repository.get(
+            knowledge_base_id=knowledge_base_id, case_id=case_id
+        )
+        if existing is None:
+            raise CaseNotFoundError(knowledge_base_id, case_id)
+        if alert.id in existing.alert_ids:
+            raise AlertAlreadyAttachedError(case_id, alert.id)
+
+        detail = f"{alert.title} ({alert.severity})"
+        if notes:
+            detail = f"{detail} — {notes}"
+        event = CaseTimelineEvent(
+            occurred_at=utc_now(), label="Alert attached", detail=detail
+        )
+        return self._repository.update(
+            existing.model_copy(
+                update={
+                    "alert_ids": [*existing.alert_ids, alert.id],
+                    "timeline": [*existing.timeline, event],
+                    "updated_at": event.occurred_at,
                 }
             )
         )

@@ -9,6 +9,7 @@ from api.contracts import (
     CaseListResponse,
 )
 from api.dependencies import (
+    get_case_attach_alert_payload,
     get_case_create_payload,
     get_case_detail_payload,
     get_case_feedback_payload,
@@ -64,6 +65,22 @@ async def promote_alert_to_case(
     case_detail: CaseDetailResponse = Depends(get_case_promote_payload),
 ) -> CaseDetailResponse:
     """Promote an alert into a new case and return the case detail."""
+    return case_detail
+
+
+@router.post(
+    "/{case_id}/alerts",
+    response_model=CaseDetailResponse,
+    dependencies=[Depends(require_role("analyst"))],
+)
+async def attach_alert_to_case(
+    case_detail: CaseDetailResponse = Depends(get_case_attach_alert_payload),
+) -> CaseDetailResponse:
+    """Attach an alert to an existing case and return the updated detail.
+
+    ``POST /cases/promote`` opens a *new* case; this is the other half — adding
+    to one that already exists (UXA-405).
+    """
     return case_detail
 
 

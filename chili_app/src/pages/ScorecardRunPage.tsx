@@ -16,6 +16,7 @@ import { ErrorState } from '../components/ui/ErrorState'
 import { LoadingState } from '../components/ui/LoadingState'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { ApiError } from '../lib/apiClient'
+import { downloadTextFile, EXPORT_MIME_TYPES } from '../utils/downloadFile'
 import './pages.css'
 
 const HEALTH_TONE: Record<ScorecardRunResponse['overall_health'], 'default' | 'success' | 'warning' | 'danger'> = {
@@ -75,18 +76,6 @@ function formatMetricValue(value: number | null | undefined, unit: string): stri
     ? String(value)
     : value.toLocaleString('en-US', { maximumFractionDigits: 2 })
   return unit ? `${rendered} ${unit}` : rendered
-}
-
-function downloadTextFile(filename: string, content: string, mimeType: string): void {
-  const blob = new Blob([content], { type: mimeType })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-  URL.revokeObjectURL(url)
 }
 
 function MetricRow({ metric }: { metric: ScorecardMetricResponse }) {
@@ -208,8 +197,11 @@ export function ScorecardRunPage() {
     try {
       const payload = await exportScorecardRun(knowledgeBaseId, runId, format)
       const extension = payload.format === 'markdown' ? 'md' : 'json'
-      const mimeType = payload.format === 'markdown' ? 'text/markdown' : 'application/json'
-      downloadTextFile(`scorecard-${payload.run_id}.${extension}`, payload.content, mimeType)
+      downloadTextFile(
+        `scorecard-${payload.run_id}.${extension}`,
+        payload.content,
+        EXPORT_MIME_TYPES[payload.format],
+      )
     } catch {
       showToast('error', 'Could not export the scorecard run.')
     } finally {

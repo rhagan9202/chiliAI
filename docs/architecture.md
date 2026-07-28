@@ -486,7 +486,7 @@ conversations/                  # Durable RAG chat conversations (BL-012)
 > **Sprint 2026-23 additions (evidence/case vertical).**
 > - **`graph.get_subgraph(kb, seed_ids, depth)`** — multi-seed neighborhood union on the graph protocol + in-memory/Neo4j adapters; the traversal primitive behind evidence-pack subgraph extraction.
 > - **Evidence packs (BL-005)** are now generated for real: the worker explainability stage builds an `ExplanationContext` from `graph.get_subgraph` + risk factors/score, `ExplainabilityService` assembles the `EvidencePack`, and it is persisted (best-effort) to an object-store `EvidencePackRepository` under `analytics/explainability/`. `GET /evidence-packs/{id}` reads that repository (KB-scoped), replacing the seeded `ApiState` evidence read model.
-> - **Cases (BL-010)** are durable and KB-scoped via the new `cases/` module; `POST /cases/promote` captures the originating alert + evidence pack + timeline.
+> - **Cases (BL-010)** are durable and KB-scoped via the new `cases/` module; `POST /cases/promote` captures the originating alert + evidence pack + timeline, and `POST /cases/{id}/alerts` adds an alert to a case that already exists (UXA-405) without rewriting the case's origin.
 >
 > **Sprint 2026-24 additions (policy intelligence vertical).**
 > - **Policy Intelligence (BL-011)** is durable and KB-scoped via the new `policy/` module. Domain-configured `PolicyRulePack`s are evaluated against KB entities and metrics in the worker; each hit produces a persisted `PolicyItem`. Analysts triage items (accept/reject/defer/escalate-to-case) through `POST /policy/items/{id}/triage`. The old seeded `/policy/gaps` surface, `PolicyGap*`/`PolicyBrief*` contracts, and `ApiState._seed_policy_gaps` have been removed. See [`policy/README.md`](../backend/policy/README.md).
@@ -1729,7 +1729,7 @@ Adapter selection is driven by environment configuration, not code changes.
 | **Configuration UI wizard** | Sectioned, schema-driven configuration wizard. A first Config Manager page exists (pack switcher + raw YAML editor with dry-run validation and hot-swap apply, §9.3); typed per-section forms, drafts, and a config write path remain. | Medium |
 | **Model training pipeline** | Scheduled/triggered GNN training, embedding fine-tuning. | Medium |
 | **Audit log** | Track all analyst actions (graph queries, alert acks, config changes) for compliance. | Medium |
-| **Export / reporting** | Generate PDF/CSV reports of investigations, evidence packs, risk summaries. | Low — after core workbench is functional |
+| **Export / reporting** | Scheduled/bulk reports across investigations and risk summaries. Single evidence packs already export as JSON/Markdown (`GET /evidence-packs/{id}/export`, UXA-405) and scorecard runs as JSON/Markdown; PDF and CSV remain unbuilt. | Low — after core workbench is functional |
 | **Plugin system** | Allow third-party analytics modules to be added without modifying core. | Low — after architecture stabilizes |
 
 ### 14.3 Current state vs. target
