@@ -19,7 +19,7 @@ export function useEntity(
     queryKey: entityQueryKey(kbId, entityId),
     queryFn: async () => {
       const response = await apiRequest<EntityDetailResponse>(
-        `/investigation/entities/${encodeURIComponent(entityId ?? '')}?kb_id=${encodeURIComponent(kbId ?? '')}`,
+        `/investigation/entities/${encodeURIComponent(entityId ?? '')}?knowledge_base_id=${encodeURIComponent(kbId ?? '')}`,
       )
       return response.entity
     },

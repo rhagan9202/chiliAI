@@ -7260,11 +7260,11 @@
         "parameters": [
           {
             "in": "query",
-            "name": "kb_id",
+            "name": "knowledge_base_id",
             "required": true,
             "schema": {
               "minLength": 1,
-              "title": "Kb Id",
+              "title": "Knowledge Base Id",
               "type": "string"
             }
           }
@@ -7356,11 +7356,11 @@
         "parameters": [
           {
             "in": "query",
-            "name": "kb_id",
+            "name": "knowledge_base_id",
             "required": true,
             "schema": {
               "minLength": 1,
-              "title": "Kb Id",
+              "title": "Knowledge Base Id",
               "type": "string"
             }
           },
@@ -7440,12 +7440,12 @@
           {
             "description": "Knowledge base identifier.",
             "in": "query",
-            "name": "kb_id",
+            "name": "knowledge_base_id",
             "required": true,
             "schema": {
               "description": "Knowledge base identifier.",
               "minLength": 1,
-              "title": "Kb Id",
+              "title": "Knowledge Base Id",
               "type": "string"
             }
           }
@@ -7485,11 +7485,11 @@
         "parameters": [
           {
             "in": "query",
-            "name": "kb_id",
+            "name": "knowledge_base_id",
             "required": true,
             "schema": {
               "minLength": 1,
-              "title": "Kb Id",
+              "title": "Knowledge Base Id",
               "type": "string"
             }
           },
@@ -7571,12 +7571,12 @@
           {
             "description": "Knowledge base identifier.",
             "in": "query",
-            "name": "kb_id",
+            "name": "knowledge_base_id",
             "required": true,
             "schema": {
               "description": "Knowledge base identifier.",
               "minLength": 1,
-              "title": "Kb Id",
+              "title": "Knowledge Base Id",
               "type": "string"
             }
           }
@@ -9308,11 +9308,11 @@
           {
             "description": "Knowledge base identifier.",
             "in": "query",
-            "name": "kb_id",
+            "name": "knowledge_base_id",
             "required": true,
             "schema": {
               "description": "Knowledge base identifier.",
-              "title": "Kb Id",
+              "title": "Knowledge Base Id",
               "type": "string"
             }
           }
@@ -9405,11 +9405,11 @@
           {
             "description": "Knowledge base identifier.",
             "in": "query",
-            "name": "kb_id",
+            "name": "knowledge_base_id",
             "required": true,
             "schema": {
               "description": "Knowledge base identifier.",
-              "title": "Kb Id",
+              "title": "Knowledge Base Id",
               "type": "string"
             }
           },
@@ -9464,11 +9464,11 @@
           {
             "description": "Knowledge base identifier.",
             "in": "query",
-            "name": "kb_id",
+            "name": "knowledge_base_id",
             "required": true,
             "schema": {
               "description": "Knowledge base identifier.",
-              "title": "Kb Id",
+              "title": "Knowledge Base Id",
               "type": "string"
             }
           },

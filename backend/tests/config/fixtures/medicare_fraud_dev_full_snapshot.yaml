@@ -285,5 +285,5 @@ ui:
       permissions: [alerts:read, cases:write, feedback:write]
     supervisor:
       landing_page: dashboard
-      pages: [dashboard, alerts, investigation, cases, policy, knowledge_bases, configuration]
+      pages: [dashboard, alerts, investigation, cases, policy, knowledge_bases, rag_chat, configuration]
       permissions: [alerts:read, cases:assign, feedback:read]

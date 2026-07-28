@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.testclient import TestClient
 
 from analytics.gnn.adapters.in_memory import InMemoryGraphSnapshotSource
@@ -139,7 +139,7 @@ def client() -> TestClient:
 
 
 def test_list_risk_scores_returns_ranked_items(client: TestClient) -> None:
-    response = client.get("/analytics/risk-scores", params={"kb_id": "kb-1"})
+    response = client.get("/analytics/risk-scores", params={"knowledge_base_id": "kb-1"})
 
     assert response.status_code == 200
     payload = response.json()
@@ -152,7 +152,7 @@ def test_list_risk_scores_returns_ranked_items(client: TestClient) -> None:
 def test_list_risk_scores_filters_by_entity_type(client: TestClient) -> None:
     response = client.get(
         "/analytics/risk-scores",
-        params={"kb_id": "kb-1", "entity_type": "claim", "limit": 5},
+        params={"knowledge_base_id": "kb-1", "entity_type": "claim", "limit": 5},
     )
 
     assert response.status_code == 200
@@ -177,7 +177,10 @@ def test_detail_risk_score_is_kb_scoped() -> None:
     app = FastAPI()
     app.include_router(router)
 
-    def risk_payload(entity_id: str, kb_id: str) -> RiskScoreResponse:
+    def risk_payload(
+        entity_id: str,
+        kb_id: str = Query(..., alias="knowledge_base_id"),
+    ) -> RiskScoreResponse:
         assert entity_id == "provider-1"
         assert kb_id == "kb-live"
         return RiskScoreResponse(
@@ -194,7 +197,7 @@ def test_detail_risk_score_is_kb_scoped() -> None:
 
     response = test_client.get(
         "/analytics/risk-scores/provider-1",
-        params={"kb_id": "kb-live"},
+        params={"knowledge_base_id": "kb-live"},
     )
 
     assert response.status_code == 200
@@ -239,7 +242,7 @@ def test_detail_risk_score_served_from_di_risk_service() -> None:
 
     risk_response = test_client.get(
         "/analytics/risk-scores/provider-1",
-        params={"kb_id": "kb-live"},
+        params={"knowledge_base_id": "kb-live"},
     )
 
     assert risk_response.status_code == 200
@@ -265,7 +268,7 @@ def test_detail_risk_score_unavailable_without_registered_signals() -> None:
 
     risk_response = test_client.get(
         "/analytics/risk-scores/provider-1",
-        params={"kb_id": "kb-live"},
+        params={"knowledge_base_id": "kb-live"},
     )
 
     assert risk_response.status_code == 200
@@ -289,7 +292,7 @@ def test_unexpected_risk_errors_are_not_converted_to_unavailable() -> None:
     with pytest.raises(RuntimeError, match="risk backend unavailable"):
         test_client.get(
             "/analytics/risk-scores/provider-1",
-            params={"kb_id": "kb-live"},
+            params={"knowledge_base_id": "kb-live"},
         )
 
 
@@ -297,7 +300,7 @@ def test_query_timeseries_returns_points_in_range(client: TestClient) -> None:
     response = client.get(
         "/analytics/timeseries",
         params={
-            "kb_id": "kb-1",
+            "knowledge_base_id": "kb-1",
             "metric": "claim_volume",
             "start": "2026-04-01T00:00:00+00:00",
             "end": "2026-04-03T00:00:00+00:00",
@@ -314,7 +317,7 @@ def test_query_timeseries_returns_points_in_range(client: TestClient) -> None:
 def test_query_timeseries_requires_required_params(client: TestClient) -> None:
     response = client.get(
         "/analytics/timeseries",
-        params={"kb_id": "kb-1", "metric": "claim_volume"},
+        params={"knowledge_base_id": "kb-1", "metric": "claim_volume"},
     )
 
     assert response.status_code == 422
@@ -324,7 +327,7 @@ def test_query_timeseries_rejects_inverted_range(client: TestClient) -> None:
     response = client.get(
         "/analytics/timeseries",
         params={
-            "kb_id": "kb-1",
+            "knowledge_base_id": "kb-1",
             "metric": "claim_volume",
             "start": "2026-04-05T00:00:00+00:00",
             "end": "2026-04-01T00:00:00+00:00",
@@ -385,7 +388,7 @@ def test_query_timeseries_returns_seeded_postgres_rows() -> None:
         response = test_client.get(
             "/analytics/timeseries",
             params={
-                "kb_id": kb_id,
+                "knowledge_base_id": kb_id,
                 "metric": "entity_count",
                 "start": base.isoformat(),
                 "end": (base + timedelta(minutes=2)).isoformat(),
@@ -420,7 +423,10 @@ def test_detail_timeseries_is_kb_scoped() -> None:
     app = FastAPI()
     app.include_router(router)
 
-    def timeseries_payload(entity_id: str, kb_id: str) -> EntityTimeseriesResponse:
+    def timeseries_payload(
+        entity_id: str,
+        kb_id: str = Query(..., alias="knowledge_base_id"),
+    ) -> EntityTimeseriesResponse:
         assert entity_id == "provider-1"
         assert kb_id == "kb-live"
         return EntityTimeseriesResponse(
@@ -436,7 +442,7 @@ def test_detail_timeseries_is_kb_scoped() -> None:
 
     response = test_client.get(
         "/analytics/timeseries/provider-1",
-        params={"kb_id": "kb-live"},
+        params={"knowledge_base_id": "kb-live"},
     )
 
     assert response.status_code == 200
@@ -531,7 +537,7 @@ def test_entity_timeseries_serves_series_with_persisted_anomalies() -> None:
     app.dependency_overrides[get_timeseries_anomaly_store] = lambda: anomaly_store
     test_client = TestClient(app)
 
-    response = test_client.get("/analytics/timeseries/provider:1", params={"kb_id": "kb-1"})
+    response = test_client.get("/analytics/timeseries/provider:1", params={"knowledge_base_id": "kb-1"})
 
     assert response.status_code == 200
     payload = response.json()
@@ -552,7 +558,7 @@ def test_entity_timeseries_unavailable_when_no_spec_has_data() -> None:
     app.dependency_overrides[get_timeseries_anomaly_store] = lambda: anomaly_store
     test_client = TestClient(app)
 
-    response = test_client.get("/analytics/timeseries/provider:1", params={"kb_id": "kb-1"})
+    response = test_client.get("/analytics/timeseries/provider:1", params={"knowledge_base_id": "kb-1"})
 
     assert response.status_code == 200
     payload = response.json()
@@ -588,11 +594,11 @@ def test_entity_timeseries_infra_error_propagates_instead_of_unavailable() -> No
     test_client = TestClient(app)
 
     with pytest.raises(PeerStatsSourceError, match="record aggregation backend unavailable"):
-        test_client.get("/analytics/timeseries/provider:1", params={"kb_id": "kb-1"})
+        test_client.get("/analytics/timeseries/provider:1", params={"knowledge_base_id": "kb-1"})
 
 
 def test_list_gnn_clusters_returns_clusters_when_enabled(client: TestClient) -> None:
-    response = client.get("/analytics/gnn/clusters", params={"kb_id": "kb-1"})
+    response = client.get("/analytics/gnn/clusters", params={"knowledge_base_id": "kb-1"})
 
     assert response.status_code == 200
     payload = response.json()
@@ -617,7 +623,7 @@ def test_list_gnn_clusters_returns_empty_when_disabled() -> None:
     app.dependency_overrides[get_gnn_service] = lambda: _build_gnn_service(enabled=False)
     test_client = TestClient(app)
 
-    response = test_client.get("/analytics/gnn/clusters", params={"kb_id": "kb-1"})
+    response = test_client.get("/analytics/gnn/clusters", params={"knowledge_base_id": "kb-1"})
 
     assert response.status_code == 200
     payload = response.json()
@@ -683,7 +689,7 @@ def test_default_router_returns_empty_results_with_no_seed_data() -> None:
     test_client = TestClient(app)
 
     risk_response = test_client.get(
-        "/analytics/risk-scores", params={"kb_id": "kb-demo"}
+        "/analytics/risk-scores", params={"knowledge_base_id": "kb-demo"}
     )
     assert risk_response.status_code == 200
     risk_payload = risk_response.json()
@@ -692,7 +698,7 @@ def test_default_router_returns_empty_results_with_no_seed_data() -> None:
     assert risk_payload["total"] == 0
 
     gnn_response = test_client.get(
-        "/analytics/gnn/clusters", params={"kb_id": "kb-demo"}
+        "/analytics/gnn/clusters", params={"knowledge_base_id": "kb-demo"}
     )
     assert gnn_response.status_code == 200
     gnn_payload = gnn_response.json()
@@ -758,7 +764,7 @@ def test_analytics_risk_scores_requires_viewer_when_auth_enabled(monkeypatch: py
 
     with TestClient(app) as client:
         # No cookie -> 401
-        assert client.get("/analytics/risk-scores", params={"kb_id": "kb-demo"}).status_code == 401
+        assert client.get("/analytics/risk-scores", params={"knowledge_base_id": "kb-demo"}).status_code == 401
         # Viewer cookie -> 200
         client.cookies.set("chiliai_session", "sid-viewer")
-        assert client.get("/analytics/risk-scores", params={"kb_id": "kb-demo"}).status_code == 200
+        assert client.get("/analytics/risk-scores", params={"knowledge_base_id": "kb-demo"}).status_code == 200

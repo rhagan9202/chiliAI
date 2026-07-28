@@ -94,11 +94,31 @@ export function isRouteAllowed(
   selectedRole: string | null,
   pathname: string,
 ) {
+  return getRouteBlockReason(domainConfig, features, selectedRole, pathname) === null
+}
+
+/**
+ * Why a path is refused, so `RouteNotAvailable` can tell the user the truth:
+ * - `'role'` — the active pack enables this page, but the current role does not
+ *   include it. Switching roles may unblock it.
+ * - `'pack'` — the active pack does not enable this page at all. No role in
+ *   this pack can open it; the answer is to switch packs or edit the pack.
+ * - `null` — the route is allowed (or nothing we have an opinion on).
+ */
+export type RouteBlockReason = 'role' | 'pack'
+
+export function getRouteBlockReason(
+  domainConfig: DomainConfig | undefined,
+  features: DomainFeatures | undefined,
+  selectedRole: string | null,
+  pathname: string,
+): RouteBlockReason | null {
   if (!features) {
-    return true
+    return null
   }
 
   const navigationPages = domainConfig?.ui?.navigation?.pages ?? []
+  const enabledPages = new Set(features.enabled_pages)
   const allowedPageIds = new Set(getAllowedPageIds(features, selectedRole))
 
   const normalizedPath = normalizePath(pathname)
@@ -107,18 +127,12 @@ export function isRouteAllowed(
     return normalizedPath === route || normalizedPath.startsWith(`${route}/`)
   })
 
-  if (matchedPage) {
-    return allowedPageIds.has(matchedPage.id)
+  const pageId = matchedPage?.id ?? packPageIdForPath(normalizedPath)
+  if (pageId === null) {
+    return null
   }
-
-  // The active pack declares no page for this path. If the SPA nonetheless
-  // implements it as a pack page, the pack has excluded it — refuse rather than
-  // leaking another domain's page. Anything else (auth callbacks, detail routes)
-  // gets no opinion.
-  const knownPageId = packPageIdForPath(normalizedPath)
-  if (knownPageId !== null) {
-    return allowedPageIds.has(knownPageId)
+  if (allowedPageIds.has(pageId)) {
+    return null
   }
-
-  return true
+  return enabledPages.has(pageId) ? 'role' : 'pack'
 }

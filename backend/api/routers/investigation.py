@@ -95,7 +95,7 @@ async def locate_entity(
 )
 async def read_entity(
     entity_id: str,
-    kb_id: str = Query(..., description="Knowledge base identifier."),
+    kb_id: str = Query(..., alias="knowledge_base_id", description="Knowledge base identifier."),
     domain_config: DomainConfig = Depends(get_domain_config),
     kb_repository: KnowledgeBaseExistenceCheck = Depends(get_knowledge_base_repository),
     graph_service: GraphServiceProtocol = Depends(get_graph_service),
@@ -118,7 +118,7 @@ async def read_entity(
 )
 async def read_entity_neighborhood(
     entity_id: str,
-    kb_id: str = Query(..., description="Knowledge base identifier."),
+    kb_id: str = Query(..., alias="knowledge_base_id", description="Knowledge base identifier."),
     depth: int = Query(default=2, ge=1, le=5, description="Traversal depth (1-5)."),
     domain_config: DomainConfig = Depends(get_domain_config),
     kb_repository: KnowledgeBaseExistenceCheck = Depends(get_knowledge_base_repository),
@@ -148,7 +148,7 @@ async def read_entity_neighborhood(
     dependencies=[Depends(require_role("viewer"))],
 )
 async def search_entities(
-    kb_id: str = Query(..., description="Knowledge base identifier."),
+    kb_id: str = Query(..., alias="knowledge_base_id", description="Knowledge base identifier."),
     q: str = Query(..., min_length=1, description="Property substring to match."),
     limit: int = Query(default=20, ge=1, le=500, description="Maximum items returned."),
     offset: int = Query(default=0, ge=0, description="Number of items to skip."),

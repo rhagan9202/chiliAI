@@ -40,7 +40,7 @@ export function searchInvestigationEntities(
   knowledgeBaseId: string,
   query: string,
 ): Promise<InvestigationEntitySearchResponse> {
-  const params = new URLSearchParams({ kb_id: knowledgeBaseId, q: query })
+  const params = new URLSearchParams({ knowledge_base_id: knowledgeBaseId, q: query })
   return apiFetch<InvestigationEntitySearchResponse>(`/investigation/search?${params}`)
 }
 
@@ -48,7 +48,7 @@ export function getInvestigationEntity(
   knowledgeBaseId: string,
   entityId: string,
 ): Promise<InvestigationEntityDetailResponse> {
-  const params = new URLSearchParams({ kb_id: knowledgeBaseId })
+  const params = new URLSearchParams({ knowledge_base_id: knowledgeBaseId })
   return apiFetch<InvestigationEntityDetailResponse>(
     `/investigation/entities/${encodeURIComponent(entityId)}?${params}`,
   )
@@ -60,7 +60,7 @@ export function getInvestigationNeighborhood(
   depth: number,
 ): Promise<InvestigationNeighborhoodResponse> {
   const params = new URLSearchParams({
-    kb_id: knowledgeBaseId,
+    knowledge_base_id: knowledgeBaseId,
     depth: String(depth),
   })
   return apiFetch<InvestigationNeighborhoodResponse>(

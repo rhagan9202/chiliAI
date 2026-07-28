@@ -46,7 +46,7 @@ describe('analytics api helpers', () => {
     await getRiskScores({ knowledgeBaseId: 'kb-1', entityType: 'provider', limit: 5 })
 
     expect(apiFetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/analytics/risk-scores?kb_id=kb-1&entity_type=provider&limit=5'),
+      expect.stringContaining('/analytics/risk-scores?knowledge_base_id=kb-1&entity_type=provider&limit=5'),
     )
   })
 
@@ -64,7 +64,7 @@ describe('analytics api helpers', () => {
       expect.stringContaining('/analytics/timeseries?'),
     )
     expect(apiFetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('kb_id=kb-1'),
+      expect.stringContaining('knowledge_base_id=kb-1'),
     )
     expect(apiFetchMock).toHaveBeenCalledWith(
       expect.stringContaining('metric=claim_volume'),
@@ -83,7 +83,7 @@ describe('analytics api helpers', () => {
     await getGnnClusters('kb-1')
 
     expect(apiFetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/analytics/gnn/clusters?kb_id=kb-1'),
+      expect.stringContaining('/analytics/gnn/clusters?knowledge_base_id=kb-1'),
     )
   })
 })

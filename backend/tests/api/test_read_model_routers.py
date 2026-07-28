@@ -582,7 +582,7 @@ def test_get_risk_score_returns_unavailable_without_registered_signals() -> None
     """
     client = TestClient(create_app())
 
-    response = client.get("/analytics/risk-scores/provider-204", params={"kb_id": "kb-1"})
+    response = client.get("/analytics/risk-scores/provider-204", params={"knowledge_base_id": "kb-1"})
 
     assert response.status_code == 200
     payload = response.json()
@@ -600,7 +600,7 @@ def test_get_timeseries_returns_unavailable_without_configured_data() -> None:
     """
     client = TestClient(create_app())
 
-    response = client.get("/analytics/timeseries/provider-204", params={"kb_id": "kb-1"})
+    response = client.get("/analytics/timeseries/provider-204", params={"knowledge_base_id": "kb-1"})
 
     assert response.status_code == 200
     payload = response.json()

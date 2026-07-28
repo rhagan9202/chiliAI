@@ -4,7 +4,7 @@ import { Outlet, useLocation } from 'react-router'
 import { useDomainConfig } from '../../api/config'
 import { useDomainFeatures } from '../../api/config'
 import { useRealtimeWorkspaceStream } from '../../api/realtime'
-import { getDefaultRole, getLandingRoute, isRouteAllowed } from '../../app/access'
+import { getDefaultRole, getLandingRoute, getRouteBlockReason } from '../../app/access'
 import { readStoredRole, useUiStore } from '../../stores/uiStore'
 import { ToastContainer } from '../common/Toast'
 import { AiAssistantPanel } from './AiAssistantPanel'
@@ -51,12 +51,13 @@ export function AppShell() {
     }
   }, [domainFeaturesQuery.data, selectedRole, effectiveRole, setSelectedRole])
 
-  const routeAllowed = isRouteAllowed(
+  const routeBlockReason = getRouteBlockReason(
     domainConfigQuery.data,
     domainFeaturesQuery.data,
     effectiveRole,
     location.pathname,
   )
+  const routeAllowed = routeBlockReason === null
   const landingRoute = getLandingRoute(
     domainConfigQuery.data,
     domainFeaturesQuery.data,
@@ -91,6 +92,7 @@ export function AppShell() {
             <RouteNotAvailable
               landingLabel={landingLabel}
               landingRoute={landingRoute}
+              reason={routeBlockReason}
               role={effectiveRole}
             />
           ) : (

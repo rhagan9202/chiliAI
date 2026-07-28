@@ -67,7 +67,7 @@ def _seeded_subgraph(
     """Read the seeded neighborhood back and rehydrate shared platform types."""
     neighborhood = client.get(
         f"/investigation/entities/{entity_id}/neighborhood",
-        params={"kb_id": kb_id, "depth": 2},
+        params={"knowledge_base_id": kb_id, "depth": 2},
     )
     assert neighborhood.status_code == 200
     payload = neighborhood.json()
@@ -119,13 +119,13 @@ def test_dev_seed_writes_real_alert_evidence_case_and_kb() -> None:
 
     # The seeded entity + its neighborhood are in the REAL graph (the endpoints
     # the workbench / EvidencePackViewer actually query).
-    detail = client.get(f"/investigation/entities/{ids['entity_id']}", params={"kb_id": kb})
+    detail = client.get(f"/investigation/entities/{ids['entity_id']}", params={"knowledge_base_id": kb})
     assert detail.status_code == 200
     assert detail.json()["entity"]["id"] == ids["entity_id"]
 
     neighborhood = client.get(
         f"/investigation/entities/{ids['entity_id']}/neighborhood",
-        params={"kb_id": kb, "depth": 2},
+        params={"knowledge_base_id": kb, "depth": 2},
     )
     assert neighborhood.status_code == 200
     node_ids = {e["id"] for e in neighborhood.json()["entities"]}

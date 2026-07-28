@@ -138,7 +138,7 @@ def client(graph_service: GraphServiceProtocol) -> Iterator[TestClient]:
 
 
 def test_get_entity_returns_entity_when_found(client: TestClient) -> None:
-    response = client.get("/investigation/entities/entity-1", params={"kb_id": "kb-1"})
+    response = client.get("/investigation/entities/entity-1", params={"knowledge_base_id": "kb-1"})
 
     assert response.status_code == 200
     payload = response.json()
@@ -148,7 +148,7 @@ def test_get_entity_returns_entity_when_found(client: TestClient) -> None:
 
 
 def test_get_entity_returns_404_when_missing(client: TestClient) -> None:
-    response = client.get("/investigation/entities/missing", params={"kb_id": "kb-1"})
+    response = client.get("/investigation/entities/missing", params={"knowledge_base_id": "kb-1"})
 
     assert response.status_code == 404
     assert "missing" in response.json()["detail"]
@@ -162,7 +162,7 @@ def test_get_entity_requires_kb_id(client: TestClient) -> None:
 def test_get_neighborhood_returns_subgraph(client: TestClient) -> None:
     response = client.get(
         "/investigation/entities/entity-1/neighborhood",
-        params={"kb_id": "kb-1", "depth": 1},
+        params={"knowledge_base_id": "kb-1", "depth": 1},
     )
 
     assert response.status_code == 200
@@ -177,7 +177,7 @@ def test_get_neighborhood_returns_subgraph(client: TestClient) -> None:
 def test_get_neighborhood_uses_default_depth_two(client: TestClient) -> None:
     response = client.get(
         "/investigation/entities/entity-1/neighborhood",
-        params={"kb_id": "kb-1"},
+        params={"knowledge_base_id": "kb-1"},
     )
 
     assert response.status_code == 200
@@ -187,7 +187,7 @@ def test_get_neighborhood_uses_default_depth_two(client: TestClient) -> None:
 def test_get_neighborhood_returns_404_when_entity_missing(client: TestClient) -> None:
     response = client.get(
         "/investigation/entities/ghost/neighborhood",
-        params={"kb_id": "kb-1"},
+        params={"knowledge_base_id": "kb-1"},
     )
 
     assert response.status_code == 404
@@ -196,7 +196,7 @@ def test_get_neighborhood_returns_404_when_entity_missing(client: TestClient) ->
 def test_get_neighborhood_rejects_depth_above_max(client: TestClient) -> None:
     response = client.get(
         "/investigation/entities/entity-1/neighborhood",
-        params={"kb_id": "kb-1", "depth": 6},
+        params={"knowledge_base_id": "kb-1", "depth": 6},
     )
 
     assert response.status_code == 422
@@ -205,7 +205,7 @@ def test_get_neighborhood_rejects_depth_above_max(client: TestClient) -> None:
 def test_get_neighborhood_rejects_depth_below_minimum(client: TestClient) -> None:
     response = client.get(
         "/investigation/entities/entity-1/neighborhood",
-        params={"kb_id": "kb-1", "depth": 0},
+        params={"knowledge_base_id": "kb-1", "depth": 0},
     )
 
     assert response.status_code == 422
@@ -214,7 +214,7 @@ def test_get_neighborhood_rejects_depth_below_minimum(client: TestClient) -> Non
 def test_search_returns_matching_entities(client: TestClient) -> None:
     response = client.get(
         "/investigation/search",
-        params={"kb_id": "kb-1", "q": "acme"},
+        params={"knowledge_base_id": "kb-1", "q": "acme"},
     )
 
     assert response.status_code == 200
@@ -227,7 +227,7 @@ def test_search_returns_matching_entities(client: TestClient) -> None:
 def test_search_returns_empty_for_no_match(client: TestClient) -> None:
     response = client.get(
         "/investigation/search",
-        params={"kb_id": "kb-1", "q": "no-such-term"},
+        params={"knowledge_base_id": "kb-1", "q": "no-such-term"},
     )
 
     assert response.status_code == 200
@@ -237,14 +237,14 @@ def test_search_returns_empty_for_no_match(client: TestClient) -> None:
 
 
 def test_search_requires_q_parameter(client: TestClient) -> None:
-    response = client.get("/investigation/search", params={"kb_id": "kb-1"})
+    response = client.get("/investigation/search", params={"knowledge_base_id": "kb-1"})
     assert response.status_code == 422
 
 
 def test_search_requires_q_to_be_non_empty(client: TestClient) -> None:
     response = client.get(
         "/investigation/search",
-        params={"kb_id": "kb-1", "q": ""},
+        params={"knowledge_base_id": "kb-1", "q": ""},
     )
     assert response.status_code == 422
 
@@ -252,7 +252,7 @@ def test_search_requires_q_to_be_non_empty(client: TestClient) -> None:
 def test_search_rejects_configured_query_length(client: TestClient) -> None:
     response = client.get(
         "/investigation/search",
-        params={"kb_id": "kb-1", "q": "x" * 10001},
+        params={"knowledge_base_id": "kb-1", "q": "x" * 10001},
     )
 
     assert response.status_code == 422
@@ -262,7 +262,7 @@ def test_search_rejects_configured_query_length(client: TestClient) -> None:
 def test_search_rejects_limit_above_max(client: TestClient) -> None:
     response = client.get(
         "/investigation/search",
-        params={"kb_id": "kb-1", "q": "acme", "limit": 501},
+        params={"knowledge_base_id": "kb-1", "q": "acme", "limit": 501},
     )
     assert response.status_code == 422
 
@@ -270,7 +270,7 @@ def test_search_rejects_limit_above_max(client: TestClient) -> None:
 def test_search_rejects_negative_offset(client: TestClient) -> None:
     response = client.get(
         "/investigation/search",
-        params={"kb_id": "kb-1", "q": "acme", "offset": -1},
+        params={"knowledge_base_id": "kb-1", "q": "acme", "offset": -1},
     )
     assert response.status_code == 422
 
@@ -278,7 +278,7 @@ def test_search_rejects_negative_offset(client: TestClient) -> None:
 def test_search_respects_limit_and_offset(client: TestClient) -> None:
     response = client.get(
         "/investigation/search",
-        params={"kb_id": "kb-1", "q": "acme", "limit": 1, "offset": 1},
+        params={"knowledge_base_id": "kb-1", "q": "acme", "limit": 1, "offset": 1},
     )
 
     assert response.status_code == 200
@@ -361,14 +361,14 @@ def test_investigation_entity_get_requires_viewer_when_auth_enabled(
         # No cookie -> 401
         assert (
             client.get(
-                "/investigation/entities/no-such-entity", params={"kb_id": "kb-demo"}
+                "/investigation/entities/no-such-entity", params={"knowledge_base_id": "kb-demo"}
             ).status_code
             == 401
         )
         # Viewer cookie -> role check passes (404 is fine — entity may not exist)
         client.cookies.set("chiliai_session", "sid-viewer")
         assert client.get(
-            "/investigation/entities/no-such-entity", params={"kb_id": "kb-demo"}
+            "/investigation/entities/no-such-entity", params={"knowledge_base_id": "kb-demo"}
         ).status_code in {200, 404}
 
 
@@ -433,7 +433,7 @@ def test_read_entity_auto_attaches_reference_kb() -> None:
         # entity-p1 lives in kb-policy, but we request from kb-claims.
         # resolve_kb_scope should auto-attach kb-policy, making entity-p1 visible.
         response = test_client.get(
-            "/investigation/entities/entity-p1", params={"kb_id": "kb-claims"}
+            "/investigation/entities/entity-p1", params={"knowledge_base_id": "kb-claims"}
         )
         assert response.status_code == 200, response.text
         payload = response.json()
@@ -441,7 +441,7 @@ def test_read_entity_auto_attaches_reference_kb() -> None:
 
         # entity-c1 lives in kb-claims and should also be reachable.
         response2 = test_client.get(
-            "/investigation/entities/entity-c1", params={"kb_id": "kb-claims"}
+            "/investigation/entities/entity-c1", params={"knowledge_base_id": "kb-claims"}
         )
         assert response2.status_code == 200, response2.text
         assert response2.json()["entity"]["id"] == "entity-c1"

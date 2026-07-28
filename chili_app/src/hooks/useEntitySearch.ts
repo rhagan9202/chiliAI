@@ -22,7 +22,7 @@ export function useEntitySearch(
     queryKey: entitySearchQueryKey(kbId, normalizedQuery, limit),
     queryFn: () =>
       apiRequest<EntitySearchResponse>(
-        `/investigation/search?kb_id=${encodeURIComponent(kbId ?? '')}&q=${encodeURIComponent(normalizedQuery)}&limit=${limit}`,
+        `/investigation/search?knowledge_base_id=${encodeURIComponent(kbId ?? '')}&q=${encodeURIComponent(normalizedQuery)}&limit=${limit}`,
       ),
     enabled: Boolean(kbId) && normalizedQuery.length > 0,
   })

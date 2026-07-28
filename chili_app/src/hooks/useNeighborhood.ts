@@ -26,7 +26,7 @@ export function useNeighborhood(
     queryKey: neighborhoodQueryKey(kbId, entityId, depth),
     queryFn: async () => {
       const response = await apiRequest<NeighborhoodResponse>(
-        `/investigation/entities/${encodeURIComponent(entityId ?? '')}/neighborhood?kb_id=${encodeURIComponent(kbId ?? '')}&depth=${depth}`,
+        `/investigation/entities/${encodeURIComponent(entityId ?? '')}/neighborhood?knowledge_base_id=${encodeURIComponent(kbId ?? '')}&depth=${depth}`,
       )
       return {
         centerEntityId: response.center_entity_id,

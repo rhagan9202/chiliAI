@@ -4892,7 +4892,7 @@ export interface operations {
     list_gnn_clusters_analytics_gnn_clusters_get: {
         parameters: {
             query: {
-                kb_id: string;
+                knowledge_base_id: string;
             };
             header?: never;
             path?: never;
@@ -4955,7 +4955,7 @@ export interface operations {
     list_risk_scores_analytics_risk_scores_get: {
         parameters: {
             query: {
-                kb_id: string;
+                knowledge_base_id: string;
                 entity_type?: string | null;
                 limit?: number;
             };
@@ -4989,7 +4989,7 @@ export interface operations {
         parameters: {
             query: {
                 /** @description Knowledge base identifier. */
-                kb_id: string;
+                knowledge_base_id: string;
             };
             header?: never;
             path: {
@@ -5023,7 +5023,7 @@ export interface operations {
     query_timeseries_analytics_timeseries_get: {
         parameters: {
             query: {
-                kb_id: string;
+                knowledge_base_id: string;
                 metric: string;
                 start: string;
                 end: string;
@@ -5058,7 +5058,7 @@ export interface operations {
         parameters: {
             query: {
                 /** @description Knowledge base identifier. */
-                kb_id: string;
+                knowledge_base_id: string;
             };
             header?: never;
             path: {
@@ -6130,7 +6130,7 @@ export interface operations {
         parameters: {
             query: {
                 /** @description Knowledge base identifier. */
-                kb_id: string;
+                knowledge_base_id: string;
             };
             header?: never;
             path: {
@@ -6195,7 +6195,7 @@ export interface operations {
         parameters: {
             query: {
                 /** @description Knowledge base identifier. */
-                kb_id: string;
+                knowledge_base_id: string;
                 /** @description Traversal depth (1-5). */
                 depth?: number;
             };
@@ -6231,7 +6231,7 @@ export interface operations {
         parameters: {
             query: {
                 /** @description Knowledge base identifier. */
-                kb_id: string;
+                knowledge_base_id: string;
                 /** @description Property substring to match. */
                 q: string;
                 /** @description Maximum items returned. */

@@ -39,7 +39,7 @@ import {
   getEntityTypeLabel,
 } from '../utils/domainDisplay'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
-import { knowledgeBaseStatusLabel } from '../utils/knowledgeBaseStatus'
+import { knowledgeBaseOptionLabel } from '../utils/knowledgeBaseStatus'
 import { severityTone } from '../utils/severity'
 import { toSubgraphResult } from '../utils/subgraph'
 import { SectionHeader } from '../components/ui/SectionHeader'
@@ -213,7 +213,7 @@ export function InvestigationWorkbenchPage() {
                 >
                   {knowledgeBases.map((knowledgeBase) => (
                     <option key={knowledgeBase.id} value={knowledgeBase.id}>
-                      {knowledgeBase.name} · {knowledgeBaseStatusLabel(knowledgeBase.status)}
+                      {knowledgeBaseOptionLabel(knowledgeBase, knowledgeBases)}
                     </option>
                   ))}
                 </select>

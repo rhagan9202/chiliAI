@@ -24,7 +24,7 @@ import {
   parseRagLaunchContext,
 } from '../lib/ragContext'
 import { countLabel } from '../utils/countLabel'
-import { knowledgeBaseStatusLabel } from '../utils/knowledgeBaseStatus'
+import { knowledgeBaseOptionLabel } from '../utils/knowledgeBaseStatus'
 import { relativeAge } from '../utils/relativeTime'
 import { starterPrompts } from '../utils/starterPrompts'
 import './pages.css'
@@ -199,7 +199,7 @@ export function RagChatPage() {
           >
             {knowledgeBases.map((kb) => (
               <option key={kb.id} value={kb.id}>
-                {kb.name} · {knowledgeBaseStatusLabel(kb.status)}
+                {knowledgeBaseOptionLabel(kb, knowledgeBases)}
               </option>
             ))}
           </select>

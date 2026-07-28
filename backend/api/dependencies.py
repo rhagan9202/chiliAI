@@ -63,6 +63,7 @@ from cases.adapters.protocols import CaseRepository
 from conversations.adapters.in_memory import InMemoryConversationRepository
 from conversations.adapters.postgres import PostgresConversationRepository
 from conversations.adapters.protocols import ConversationRepository
+from conversations.models import ConversationMessage
 from conversations.service import ConversationService, create_conversation_service
 from rag.service_models import RagQueryRequest
 from shared.alerts import normalize_severity
@@ -233,6 +234,7 @@ from rag.service import create_rag_service
 
 __all__ = [
     "CONFIG_CACHE_REGISTRY",
+    "_apply_policy_triage",
     "build_api_state",
     "enforce_production_guardrail",
     "get_config_generation",
@@ -805,15 +807,31 @@ def get_chat_conversation_list_payload(
                 title=conversation.title,
                 knowledge_base_id=conversation.knowledge_base_id,
                 message_count=len(conversation.messages),
-                last_message=(
-                    conversation.messages[-1].content if conversation.messages else None
-                ),
+                last_message=_conversation_preview(conversation.messages),
                 updated_at=conversation.updated_at,
             )
             for conversation in conversations
         ],
         page=PageInfo(page=(offset // limit) + 1, page_size=limit, total_items=total),
     )
+
+
+def _conversation_preview(messages: list[ConversationMessage]) -> str | None:
+    """Pick a compact preview line for a conversation summary.
+
+    Prefers the analyst's most recent question over the assistant's most recent
+    reply because RAG replies interleave citation dumps and, when the LLM
+    adapter falls back to echo mode, are largely context payload — the question
+    is what the analyst remembers the thread by (surfaced in the ChatGPT-style
+    conversation list). Falls back to the final assistant reply for threads
+    that begin with a system or assistant seed.
+    """
+    if not messages:
+        return None
+    for message in reversed(messages):
+        if message.role == "user":
+            return message.content
+    return messages[-1].content
 
 
 def get_chat_conversation_create_payload(
@@ -1405,7 +1423,9 @@ def _normalize_risk_level(
 
 def get_risk_score_payload(
     entity_id: str = Path(..., description="Entity identifier."),
-    kb_id: str = Query(..., min_length=1, description="Knowledge base identifier."),
+    kb_id: str = Query(
+        ..., alias="knowledge_base_id", min_length=1, description="Knowledge base identifier."
+    ),
     risk_service: RiskServiceProtocol = Depends(get_risk_service),
 ) -> RiskScoreResponse:
     """Return a KB-scoped risk-score payload from the DI risk service (B2).
@@ -1490,7 +1510,9 @@ def get_entity_series_source() -> RecordAggregateTimeSeriesSource:
 
 def get_timeseries_payload(
     entity_id: str = Path(..., description="Entity identifier."),
-    kb_id: str = Query(..., min_length=1, description="Knowledge base identifier."),
+    kb_id: str = Query(
+        ..., alias="knowledge_base_id", min_length=1, description="Knowledge base identifier."
+    ),
     source: RecordAggregateTimeSeriesSource = Depends(get_entity_series_source),
     anomaly_store: TimeseriesAnomalyStoreProtocol = Depends(get_timeseries_anomaly_store),
 ) -> EntityTimeseriesResponse:

@@ -56,14 +56,14 @@ export function getAnalyticsOverview(
 }
 
 export function getRiskScores(filters: RiskScoresFilters): Promise<RiskScoreListResponse> {
-  const params = new URLSearchParams({ kb_id: filters.knowledgeBaseId })
+  const params = new URLSearchParams({ knowledge_base_id: filters.knowledgeBaseId })
   if (filters.entityType) params.set('entity_type', filters.entityType)
   if (filters.limit !== undefined) params.set('limit', String(filters.limit))
   return apiFetch<RiskScoreListResponse>(`/analytics/risk-scores?${params}`)
 }
 
 export function getRiskScore(knowledgeBaseId: string, entityId: string): Promise<RiskScoreResponse> {
-  const params = new URLSearchParams({ kb_id: knowledgeBaseId })
+  const params = new URLSearchParams({ knowledge_base_id: knowledgeBaseId })
   return apiFetch<RiskScoreResponse>(`/analytics/risk-scores/${encodeURIComponent(entityId)}?${params}`)
 }
 
@@ -71,7 +71,7 @@ export function getMetricTimeseries(
   filters: MetricTimeseriesFilters,
 ): Promise<MetricTimeseriesResponse> {
   const params = new URLSearchParams({
-    kb_id: filters.knowledgeBaseId,
+    knowledge_base_id: filters.knowledgeBaseId,
     metric: filters.metric,
     start: filters.start,
     end: filters.end,
@@ -80,12 +80,12 @@ export function getMetricTimeseries(
 }
 
 export function getTimeseries(knowledgeBaseId: string, entityId: string): Promise<TimeseriesResponse> {
-  const params = new URLSearchParams({ kb_id: knowledgeBaseId })
+  const params = new URLSearchParams({ knowledge_base_id: knowledgeBaseId })
   return apiFetch<TimeseriesResponse>(`/analytics/timeseries/${encodeURIComponent(entityId)}?${params}`)
 }
 
 export function getGnnClusters(knowledgeBaseId: string): Promise<GnnClusterResponse> {
-  const params = new URLSearchParams({ kb_id: knowledgeBaseId })
+  const params = new URLSearchParams({ knowledge_base_id: knowledgeBaseId })
   return apiFetch<GnnClusterResponse>(`/analytics/gnn/clusters?${params}`)
 }
 

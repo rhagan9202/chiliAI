@@ -33,6 +33,15 @@ const DECIMAL_FORMAT = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 })
+// A number with no pack-declared type still needs presenting. Very small floats
+// (centrality scores, similarity weights) render as scientific notation by
+// default — `4.5211545662558374e-7` on the Investigation dossier — which reads
+// as debug output. Round-tripping through `Number.toLocaleString()` with a
+// significant-digits cap lands on a compact human form for both large numbers
+// (thousands separators) and tiny ones (0.0000005).
+const UNTYPED_NUMBER_FORMAT = new Intl.NumberFormat('en-US', {
+  maximumSignificantDigits: 4,
+})
 
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/
 // Deliberately strict: `new Date()` happily reads "sometime in 2020" as
@@ -72,7 +81,10 @@ export function formatPropertyValue(value: unknown, type: PropertyType | undefin
 
 function stringify(value: unknown): string {
   if (Array.isArray(value)) return value.map((item) => stringify(item)).join(', ')
-  if (typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'object' && value !== null) return JSON.stringify(value)
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return UNTYPED_NUMBER_FORMAT.format(value)
+  }
   return String(value)
 }
 

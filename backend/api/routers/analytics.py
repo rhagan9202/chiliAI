@@ -41,7 +41,7 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
     dependencies=[Depends(require_role("viewer"))],
 )
 def list_risk_scores(
-    kb_id: str = Query(..., min_length=1),
+    kb_id: str = Query(..., alias="knowledge_base_id", min_length=1),
     entity_type: str | None = Query(default=None),
     limit: int = Query(default=20, gt=0, le=500),
     risk_service: RiskServiceProtocol = Depends(get_risk_service),
@@ -61,7 +61,7 @@ def list_risk_scores(
     dependencies=[Depends(require_role("viewer"))],
 )
 def query_timeseries(
-    kb_id: str = Query(..., min_length=1),
+    kb_id: str = Query(..., alias="knowledge_base_id", min_length=1),
     metric: str = Query(..., min_length=1),
     start: datetime = Query(...),
     end: datetime = Query(...),
@@ -85,7 +85,7 @@ def query_timeseries(
     dependencies=[Depends(require_role("viewer"))],
 )
 def list_gnn_clusters(
-    kb_id: str = Query(..., min_length=1),
+    kb_id: str = Query(..., alias="knowledge_base_id", min_length=1),
     gnn_service: GnnServiceProtocol = Depends(get_gnn_service),
 ) -> GnnClusterResponse:
     """Return GNN-derived clusters for a knowledge base.
