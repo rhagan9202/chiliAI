@@ -4,13 +4,14 @@ import { Link, useNavigate, useSearchParams } from 'react-router'
 import { useAcknowledgeAlert, useAlerts } from '../api/alerts'
 import type { RuntimeEntity } from '../api/contracts'
 import type { Entity as ApiEntity } from '../types/api'
-import { useCases, usePromoteAlertToCase } from '../api/cases'
+import { useAttachAlertToCase, useCases, usePromoteAlertToCase } from '../api/cases'
 import { useDomainConfig, useDomainFeatures } from '../api/config'
 import { useEvidencePack } from '../api/evidence'
 import { useInvestigationNeighborhood } from '../api/investigation'
 import { usePolicyItems } from '../api/policy'
 import { ConfirmDialog } from '../components/common/ConfirmDialog'
 import { showToast } from '../components/common/toastStore'
+import { EvidencePackActions } from '../components/investigation/EvidencePackActions'
 import { EvidencePackViewer } from '../components/investigation/EvidencePackViewer'
 import { policyItemsForTarget } from '../components/investigation/policyTargets'
 import { Chip } from '../components/ui/Chip'
@@ -79,6 +80,7 @@ export function AlertFeedPage() {
   const casesQuery = useCases(selectedKnowledgeBaseId)
   const acknowledgeMutation = useAcknowledgeAlert()
   const promoteMutation = usePromoteAlertToCase()
+  const attachMutation = useAttachAlertToCase(selectedKnowledgeBaseId)
   const domainConfigQuery = useDomainConfig()
   const featuresQuery = useDomainFeatures()
   const policyItemsQuery = usePolicyItems(selectedKnowledgeBaseId)
@@ -470,6 +472,32 @@ export function AlertFeedPage() {
           <LoadingState label="Loading evidence pack" />
         ) : evidenceQuery.data ? (
           <EvidencePackViewer
+            actions={
+              selectedKnowledgeBaseId ? (
+                <EvidencePackActions
+                  attach={{
+                    alertId: selectedAlert.id,
+                    cases: casesQuery.data?.items ?? [],
+                    isPending: attachMutation.isPending,
+                    onAttach: (caseId) =>
+                      attachMutation.mutate(
+                        { caseId, payload: { alert_id: selectedAlert.id } },
+                        {
+                          onSuccess: (detail) =>
+                            showToast('success', `Attached to ${detail.case.title}.`, {
+                              label: 'Open case',
+                              to: `/cases?kb=${encodeURIComponent(selectedKnowledgeBaseId)}&case=${encodeURIComponent(detail.case.id)}`,
+                            }),
+                          onError: () =>
+                            showToast('error', 'Could not attach this alert to the case.'),
+                        },
+                      ),
+                  }}
+                  evidencePackId={evidenceQuery.data.id}
+                  knowledgeBaseId={selectedKnowledgeBaseId}
+                />
+              ) : null
+            }
             pack={evidenceQuery.data}
             subgraph={
               neighborhoodQuery.data

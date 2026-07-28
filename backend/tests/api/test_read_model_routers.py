@@ -363,6 +363,89 @@ def test_get_evidence_pack_returns_persisted_pack() -> None:
     assert legacy_payload["narrative_sections"] == []
 
 
+def test_export_evidence_pack_renders_markdown_and_json() -> None:
+    """The pack could not leave the browser before (UXA-405)."""
+    from analytics.explainability.adapters.evidence_in_memory import (
+        InMemoryEvidencePackRepository,
+    )
+    from shared.types import EvidencePack
+
+    app = create_app()
+    repository = InMemoryEvidencePackRepository()
+    repository.put(
+        "kb-1",
+        EvidencePack(
+            id="ev-1",
+            alert_id="al-1",
+            reasoning="Claim volume trails peers.",
+            subgraph_nodes=["provider-1"],
+            subgraph_edges=[],
+            confidence=0.42,
+            scores={"peer_deviation": 0.94},
+            source_documents=["doc-1"],
+        ),
+    )
+    app.state.evidence_pack_repository = repository
+    client = TestClient(app)
+    kb = {"knowledge_base_id": "kb-1"}
+
+    markdown = client.get("/evidence-packs/ev-1/export", params={**kb, "format": "markdown"})
+
+    assert markdown.status_code == 200
+    body = markdown.json()
+    assert body["evidence_pack_id"] == "ev-1"
+    assert body["format"] == "markdown"
+    # Server-chosen so the download name is one decision in one place.
+    assert body["filename"] == "evidence-ev-1.md"
+    assert "# Evidence pack ev-1" in body["content"]
+    assert "**Peer deviation:** 0.94" in body["content"]
+    assert "`doc-1`" in body["content"]
+
+    as_json = client.get("/evidence-packs/ev-1/export", params={**kb, "format": "json"})
+
+    assert as_json.status_code == 200
+    json_body = as_json.json()
+    assert json_body["filename"] == "evidence-ev-1.json"
+    # Machine-readable: the stored pack round-trips.
+    assert json.loads(json_body["content"])["scores"]["peer_deviation"] == 0.94
+
+
+def test_export_evidence_pack_defaults_to_markdown() -> None:
+    from analytics.explainability.adapters.evidence_in_memory import (
+        InMemoryEvidencePackRepository,
+    )
+    from shared.types import EvidencePack
+
+    app = create_app()
+    repository = InMemoryEvidencePackRepository()
+    repository.put(
+        "kb-1",
+        EvidencePack(
+            id="ev-1",
+            alert_id="al-1",
+            reasoning="x",
+            subgraph_nodes=[],
+            subgraph_edges=[],
+            confidence=0.5,
+        ),
+    )
+    app.state.evidence_pack_repository = repository
+
+    response = TestClient(app).get(
+        "/evidence-packs/ev-1/export", params={"knowledge_base_id": "kb-1"}
+    )
+
+    assert response.json()["format"] == "markdown"
+
+
+def test_export_evidence_pack_404s_for_an_unknown_pack() -> None:
+    response = TestClient(create_app()).get(
+        "/evidence-packs/nope/export", params={"knowledge_base_id": "kb-1"}
+    )
+
+    assert response.status_code == 404
+
+
 def test_get_evidence_pack_returns_404_when_not_persisted() -> None:
     # De-seed regression (BL-005): the previously seeded evidence-001 pack is no
     # longer served; the endpoint reads only from the persisted repository.

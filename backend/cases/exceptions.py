@@ -22,7 +22,17 @@ class CaseNotFoundError(CaseError):
         self.case_id = case_id
 
 
+class AlertAlreadyAttachedError(CaseError):
+    """Raised when an alert is attached to a case that already holds it."""
+
+    def __init__(self, case_id: str, alert_id: str) -> None:
+        super().__init__(f"Alert '{alert_id}' is already attached to case '{case_id}'.")
+        self.case_id = case_id
+        self.alert_id = alert_id
+
+
 __all__ = [
+    "AlertAlreadyAttachedError",
     "CaseError",
     "CaseNotFoundError",
     "CasePersistenceError",

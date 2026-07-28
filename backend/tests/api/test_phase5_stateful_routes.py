@@ -39,7 +39,31 @@ from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore
 
 
-def _client_with_alert_history() -> TestClient:
+def _second_alert_record() -> AlertHistoryRecord:
+    """A second durable alert in the same KB, for attach-to-case (UXA-405)."""
+    now = utc_now()
+    return AlertHistoryRecord(
+        knowledge_base_id="kb-1",
+        alert_id="alert-002",
+        entity_id="provider-204",
+        entity_type="provider",
+        severity="high",
+        status="open",
+        title="Repeat billing spike",
+        reasoning="The same provider spiked again the following week.",
+        metric_name="claims_per_week",
+        evidence_pack_id="evidence-002",
+        created_at=now,
+        updated_at=now,
+        entity_label="Redwood DME Group",
+        confidence=0.88,
+        tags=["billing"],
+    )
+
+
+def _client_with_alert_history(
+    extra: list[AlertHistoryRecord] | None = None,
+) -> TestClient:
     """Create a test client with a deterministic durable alert row."""
     app = create_app()
     store = InMemoryAlertHistoryWriter()
@@ -65,6 +89,8 @@ def _client_with_alert_history() -> TestClient:
             )
         ]
     )
+    if extra:
+        store.write_alerts(extra)
     app.dependency_overrides[get_alert_feed_store] = lambda: store
     return TestClient(app)
 
@@ -396,3 +422,68 @@ def test_graph_and_analytics_routes_are_service_backed() -> None:
     # seeded alert's pack is not persisted, so the endpoint reports 404 rather
     # than returning a seeded read model.
     assert evidence.status_code == 404
+
+
+def test_attach_alert_adds_to_an_existing_case_without_moving_its_origin() -> None:
+    """Promote opens a case; attach adds to one that exists (UXA-405)."""
+    client = _client_with_alert_history(extra=[_second_alert_record()])
+    kb = {"knowledge_base_id": "kb-1"}
+    case_id = client.post("/cases/promote", params=kb, json={"alert_id": "alert-001"}).json()[
+        "case"
+    ]["id"]
+
+    attached = client.post(
+        f"/cases/{case_id}/alerts",
+        params=kb,
+        json={"alert_id": "alert-002", "notes": "Same provider, following week."},
+    )
+
+    assert attached.status_code == 200
+    body = attached.json()
+    assert body["case"]["alert_ids"] == ["alert-001", "alert-002"]
+    # The case still records what it was opened from.
+    assert body["case"]["originating_alert_id"] == "alert-001"
+    assert body["case"]["evidence_pack_id"] == "evidence-001"
+    assert {alert["id"] for alert in body["alerts"]} == {"alert-001", "alert-002"}
+    timeline = body["entity_timeline"][-1]
+    assert timeline["label"] == "Alert attached"
+    assert "Same provider, following week." in timeline["detail"]
+
+    # Durable, not just echoed back.
+    detail = client.get(f"/cases/{case_id}", params=kb).json()
+    assert detail["case"]["alert_ids"] == ["alert-001", "alert-002"]
+
+
+def test_attach_alert_rejects_a_duplicate_with_409() -> None:
+    client = _client_with_alert_history()
+    kb = {"knowledge_base_id": "kb-1"}
+    case_id = client.post("/cases/promote", params=kb, json={"alert_id": "alert-001"}).json()[
+        "case"
+    ]["id"]
+
+    again = client.post(f"/cases/{case_id}/alerts", params=kb, json={"alert_id": "alert-001"})
+
+    assert again.status_code == 409
+
+
+def test_attach_alert_404s_for_unknown_case_or_alert() -> None:
+    client = _client_with_alert_history()
+    kb = {"knowledge_base_id": "kb-1"}
+    case_id = client.post("/cases/promote", params=kb, json={"alert_id": "alert-001"}).json()[
+        "case"
+    ]["id"]
+
+    unknown_case = client.post("/cases/ghost/alerts", params=kb, json={"alert_id": "alert-001"})
+    unknown_alert = client.post(
+        f"/cases/{case_id}/alerts", params=kb, json={"alert_id": "nope"}
+    )
+    other_kb = client.post(
+        f"/cases/{case_id}/alerts",
+        params={"knowledge_base_id": "kb-2"},
+        json={"alert_id": "alert-001"},
+    )
+
+    assert unknown_case.status_code == 404
+    assert unknown_alert.status_code == 404
+    # An alert outside the requested KB scope is not reachable either.
+    assert other_kb.status_code == 404

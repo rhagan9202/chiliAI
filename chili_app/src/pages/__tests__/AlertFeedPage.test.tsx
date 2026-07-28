@@ -11,6 +11,7 @@ import { AlertFeedPage } from '../AlertFeedPage'
 const mocks = vi.hoisted(() => ({
   acknowledge: vi.fn(),
   promoteAlertToCase: vi.fn(),
+  attachAlertToCase: vi.fn(),
   useAlerts: vi.fn(),
   useCases: vi.fn(),
   capabilities: {
@@ -64,6 +65,7 @@ vi.mock('../../api/alerts', () => ({
 vi.mock('../../api/cases', () => ({
   useCases: mocks.useCases,
   usePromoteAlertToCase: () => ({ isPending: false, mutate: mocks.promoteAlertToCase }),
+  useAttachAlertToCase: () => ({ isPending: false, mutate: mocks.attachAlertToCase }),
 }))
 
 vi.mock('../../api/config', () => ({

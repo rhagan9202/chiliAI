@@ -286,6 +286,7 @@ not on mutable status, so they are order-independent.
 | `case-mutation.spec.ts` | "Mark in review" persists via the real API |
 | `case-feedback.spec.ts` | Submitting feedback persists and renders in history |
 | `case-promote.spec.ts` | Promoting the seeded alert creates a case (real `/cases/promote`) |
+| `promote-to-case.spec.ts` | The promote toast opens the case it created and the alert refuses a second promotion; the evidence pack is dated and attributed; a real Markdown download from `/evidence-packs/{id}/export`; attaching the alert to an existing case via `POST /cases/{id}/alerts`, asserted against the API afterwards |
 | `rag-chat.spec.ts` | New thread → send → real assistant reply renders |
 | `policy-intelligence.spec.ts` | Rule-generated policy queue renders from the real API; server-side multi-status filtering (`?status=` repeated) unions rather than replaces, survives a reload, and clears |
 | `policy-triage.spec.ts` | Escalating the seeded policy item creates a case via the real triage endpoint |
@@ -655,6 +656,31 @@ message that led nowhere, leaving the new case unreachable from the feed
 outside `RouterProvider` it throws into the ErrorBoundary and no toast renders
 at all. That failure is invisible to unit tests that assert the store rather
 than the DOM — it took an e2e to catch.
+
+## The evidence pack has an outward path
+
+`EvidencePackViewer` takes an optional `actions` region and stays
+presentational — it does not know what a case is. What the pack can do depends
+on where it is being read (UXA-405):
+
+- **Alert Feed** supplies *Attach to case* and both exports.
+- **Investigation Workbench** supplies exports only. There is no alert in hand
+  there, and offering to attach one would mean inventing it.
+
+**Attach adds the alert to a case that already exists** (`POST
+/cases/{id}/alerts`) — the workflow promote cannot express, since promote opens
+a *new* case. The case's `evidence_pack_id` is deliberately untouched: it
+records what the case was opened from. The picker excludes cases whose
+`alert_ids` already contain the alert, so the analyst never sees an option that
+would come back a 409; with none eligible it says which of the two reasons
+applies, and points at promote when there are no cases at all.
+
+**Export is JSON + Markdown**, rendered server-side by
+`analytics/explainability/export.py` and downloaded through
+`src/utils/downloadFile.ts` — lifted out of `ScorecardRunPage.tsx` when this
+became the second consumer. The API chooses the filename so the download name
+is one decision in one place. Print/PDF was considered and dropped: it produces
+nothing machine-readable and the subgraph canvas prints poorly.
 
 ## Queue Health
 

@@ -357,6 +357,29 @@ export interface paths {
         patch: operations["update_case_cases__case_id__patch"];
         trace?: never;
     };
+    "/cases/{case_id}/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach Alert To Case
+         * @description Attach an alert to an existing case and return the updated detail.
+         *
+         *     ``POST /cases/promote`` opens a *new* case; this is the other half — adding
+         *     to one that already exists (UXA-405).
+         */
+        post: operations["attach_alert_to_case_cases__case_id__alerts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cases/{case_id}/feedback": {
         parameters: {
             query?: never;
@@ -701,6 +724,29 @@ export interface paths {
          * @description Return one evidence pack read model.
          */
         get: operations["get_evidence_pack_evidence_packs__evidence_pack_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evidence-packs/{evidence_pack_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Evidence Pack
+         * @description Return a downloadable JSON or Markdown rendering of one evidence pack.
+         *
+         *     Same gate as reading the pack: an export is a projection of what the caller
+         *     can already see, not a new disclosure.
+         */
+        get: operations["export_evidence_pack_evidence_packs__evidence_pack_id__export_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1604,6 +1650,16 @@ export interface components {
              * @default false
              */
             timeseries: boolean;
+        };
+        /**
+         * CaseAttachAlertRequest
+         * @description Payload for attaching an alert to a case that already exists (UXA-405).
+         */
+        CaseAttachAlertRequest: {
+            /** Alert Id */
+            alert_id: string;
+            /** Notes */
+            notes?: string | null;
         };
         /**
          * CaseCreateRequest
@@ -2528,6 +2584,27 @@ export interface components {
             source_id: string;
             /** Source Type */
             source_type: string;
+        };
+        /**
+         * EvidencePackExportResponse
+         * @description A portable rendering of one evidence pack (UXA-405).
+         *
+         *     Mirrors ``ScorecardExportResponse``, the product's only other export, so
+         *     there is one export idiom rather than two. ``filename`` is server-chosen so
+         *     the download name is decided once rather than reconstructed by every caller.
+         */
+        EvidencePackExportResponse: {
+            /** Content */
+            content: string;
+            /** Evidence Pack Id */
+            evidence_pack_id: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "json" | "markdown";
         };
         /**
          * EvidencePackResponse
@@ -5297,6 +5374,45 @@ export interface operations {
             };
         };
     };
+    attach_alert_to_case_cases__case_id__alerts_post: {
+        parameters: {
+            query: {
+                /** @description Knowledge base scope. */
+                knowledge_base_id: string;
+            };
+            header?: never;
+            path: {
+                /** @description Case the alert is attached to. */
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaseAttachAlertRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     add_feedback_cases__case_id__feedback_post: {
         parameters: {
             query: {
@@ -5838,6 +5954,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvidencePackResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_evidence_pack_evidence_packs__evidence_pack_id__export_get: {
+        parameters: {
+            query: {
+                /** @description Knowledge base the evidence pack belongs to. */
+                knowledge_base_id: string;
+                /** @description Rendering to return: machine-readable JSON or readable Markdown. */
+                format?: "json" | "markdown";
+            };
+            header?: never;
+            path: {
+                /** @description Evidence pack identifier. */
+                evidence_pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidencePackExportResponse"];
                 };
             };
             /** @description Validation Error */

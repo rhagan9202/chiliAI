@@ -113,6 +113,23 @@ class PolicyItemSummaryResponse(BaseModel):
     updated_at: datetime
 
 
+EvidenceExportFormat = Literal["json", "markdown"]
+
+
+class EvidencePackExportResponse(BaseModel):
+    """A portable rendering of one evidence pack (UXA-405).
+
+    Mirrors ``ScorecardExportResponse``, the product's only other export, so
+    there is one export idiom rather than two. ``filename`` is server-chosen so
+    the download name is decided once rather than reconstructed by every caller.
+    """
+
+    evidence_pack_id: str
+    format: EvidenceExportFormat
+    filename: str
+    content: str
+
+
 class PolicyItemListResponse(BaseModel):
     """Collection response for KB-scoped policy items."""
 
@@ -830,6 +847,13 @@ class CaseUpdateRequest(BaseModel):
 
 class CasePromoteRequest(BaseModel):
     """Payload for promoting an alert into a new investigation case."""
+
+    alert_id: str
+    notes: str | None = None
+
+
+class CaseAttachAlertRequest(BaseModel):
+    """Payload for attaching an alert to a case that already exists (UXA-405)."""
 
     alert_id: str
     notes: str | None = None

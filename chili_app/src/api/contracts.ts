@@ -193,6 +193,10 @@ export type ApplyPackRequest = Schemas['ApplyPackRequest']
 export type SwitchPackRequest = Schemas['SwitchPackRequest']
 export type ConfigSwapResponse = Schemas['ConfigSwapResponse']
 
+export type CaseAttachAlertRequest = Schemas['CaseAttachAlertRequest']
+export type EvidenceExportFormat = Schemas['EvidencePackExportResponse']['format']
+export type EvidencePackExportResponse = Schemas['EvidencePackExportResponse']
+
 export type RecordPushRequest = Schemas['RecordPushRequest']
 export type RecordIngestReceipt = Schemas['RecordIngestReceipt']
 

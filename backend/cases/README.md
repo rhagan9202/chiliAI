@@ -15,7 +15,7 @@ case read model.
 | `adapters/protocols.py` | `CaseRepository` protocol — `create / get / list / update / delete_by_kb`. |
 | `adapters/in_memory.py` | `InMemoryCaseRepository` (dict keyed by `(kb_id, case_id)`) for tests/dev. |
 | `adapters/postgres.py` | `PostgresCaseRepository` over `database.ConnectionProvider` (psycopg-free); jsonb `alert_ids`/`timeline`/`feedback_history`; idempotent `create` (`ON CONFLICT DO NOTHING`). |
-| `service.py` | `CaseService` — orchestration, durable `add_feedback`, and `promote_from_alert` (severity→priority mapping, timeline capture). |
+| `service.py` | `CaseService` — orchestration, durable `add_feedback`, `promote_from_alert` (severity→priority mapping, timeline capture), and `attach_alert` (adds an alert to an existing case; leaves `evidence_pack_id` alone). |
 | `exceptions.py` | `CaseError`, `CasePersistenceError`, `CaseNotFoundError`. |
 
 ## Contract
@@ -50,7 +50,8 @@ query param:
 - `GET /cases/{id}?knowledge_base_id=` (viewer) — detail (case + linked alert summaries + evidence pack + entity timeline + durable feedback history).
 - `POST /cases?knowledge_base_id=` (analyst) — create.
 - `PATCH /cases/{id}?knowledge_base_id=` (analyst) — partial update.
-- `POST /cases/promote?knowledge_base_id=` (analyst) — promote an alert into a case.
+- `POST /cases/promote?knowledge_base_id=` (analyst) — promote an alert into a **new** case.
+- `POST /cases/{id}/alerts?knowledge_base_id=` (analyst) — attach an alert to a case that **already exists** (UXA-405). 404 for an unknown case or an alert outside the KB scope; 409 when the case already holds the alert. Appends to `alert_ids` and records an `Alert attached` timeline event; `evidence_pack_id` is deliberately untouched — it records what the case was opened from, and repointing it on every attach would silently rewrite the case's origin. Exclusivity across cases is **not** enforced (promote does not enforce it either; the UI filters already-attached alerts out of the picker).
 - `POST /cases/{id}/feedback?knowledge_base_id=` (analyst) — append analyst feedback.
 
 ## Durable detail behavior

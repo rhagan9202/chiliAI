@@ -1,0 +1,9 @@
+
+/* Attach picker: inline beside the export buttons rather than a modal, so the
+   pack the analyst is reading stays on screen while they choose (UXA-405). */
+.evidence-attach {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}

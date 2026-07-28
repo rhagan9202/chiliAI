@@ -22,6 +22,7 @@ from api.contracts import (
     CaseDetailResponse,
     CaseFeedbackCreateRequest,
     CaseListResponse,
+    CaseAttachAlertRequest,
     CasePromoteRequest,
     CaseSummaryResponse,
     CaseTimelineEventResponse,
@@ -33,6 +34,8 @@ from api.contracts import (
     ChatMessageCreateRequest,
     EntityTimeseriesPointResponse,
     EntityTimeseriesResponse,
+    EvidenceExportFormat,
+    EvidencePackExportResponse,
     EvidencePackResponse,
     FeatureAttributionResponse,
     GraphEntityDetailResponse,
@@ -64,7 +67,7 @@ from conversations.service import ConversationService, create_conversation_servi
 from rag.service_models import RagQueryRequest
 from shared.alerts import normalize_severity
 from shared.kb_scope import resolve_kb_scope
-from cases.exceptions import CaseNotFoundError
+from cases.exceptions import AlertAlreadyAttachedError, CaseNotFoundError
 from cases.models import Case, CasePriority, CaseTimelineEvent
 from cases.service import CaseService, create_case_service
 from policy.adapters.in_memory import InMemoryPolicyItemRepository
@@ -204,6 +207,7 @@ from scorecards.service import ScorecardService, create_scorecard_service
 from analytics.explainability.adapters.evidence_object_store import (
     ObjectStoreEvidencePackRepository,
 )
+from analytics.explainability.export import render_evidence_markdown
 from analytics.explainability.repository import EvidencePackRepository
 from records.protocols import RecordsServiceProtocol
 from records.service import create_records_service
@@ -245,6 +249,7 @@ __all__ = [
     "get_case_detail_payload",
     "get_case_feedback_payload",
     "get_case_list_payload",
+    "get_case_attach_alert_payload",
     "get_case_promote_payload",
     "get_case_repository",
     "get_case_service",
@@ -262,6 +267,7 @@ __all__ = [
     "get_domain_config_features_payload",
     "get_domain_config_payload",
     "get_domain_config_schema_payload",
+    "get_evidence_pack_export_payload",
     "get_evidence_pack_payload",
     "get_evidence_pack_repository",
     "get_event_bus",
@@ -430,6 +436,36 @@ def get_evidence_pack_payload(
     if pack is None:
         raise HTTPException(status_code=404, detail="Evidence pack not found.")
     return _evidence_pack_to_response(pack)
+
+
+def get_evidence_pack_export_payload(
+    evidence_pack_id: str = Path(..., description="Evidence pack identifier."),
+    knowledge_base_id: str = Query(
+        ..., min_length=1, description="Knowledge base the evidence pack belongs to."
+    ),
+    export_format: EvidenceExportFormat = Query(
+        default="markdown",
+        alias="format",
+        description="Rendering to return: machine-readable JSON or readable Markdown.",
+    ),
+    repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+) -> EvidencePackExportResponse:
+    """Render one persisted evidence pack for download (UXA-405)."""
+    pack = repository.get(knowledge_base_id, evidence_pack_id)
+    if pack is None:
+        raise HTTPException(status_code=404, detail="Evidence pack not found.")
+    if export_format == "json":
+        content = pack.model_dump_json(indent=2)
+        suffix = "json"
+    else:
+        content = render_evidence_markdown(pack)
+        suffix = "md"
+    return EvidencePackExportResponse(
+        evidence_pack_id=pack.id,
+        format=export_format,
+        filename=f"evidence-{pack.id}.{suffix}",
+        content=content,
+    )
 
 
 def _evidence_pack_to_response(pack: EvidencePack) -> EvidencePackResponse:
@@ -1831,18 +1867,18 @@ def get_analytics_overview_payload(
     )
 
 
-def get_case_promote_payload(
-    payload: CasePromoteRequest,
-    knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
-    service: CaseService = Depends(get_case_service),
-    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
-    evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
-) -> CaseDetailResponse:
-    """Promote an alert into a durable, KB-scoped case capturing its evidence."""
-    record = alert_store.get_alert(payload.alert_id)
+def _resolve_kb_scoped_alert(
+    alert_store: AlertFeedStoreProtocol, alert_id: str, knowledge_base_id: str
+) -> Alert:
+    """Load one alert within a KB scope, or 404.
+
+    Shared by promote and attach so the two paths cannot disagree about what an
+    ``Alert`` built from a feed record looks like.
+    """
+    record = alert_store.get_alert(alert_id)
     if record is None or record.knowledge_base_id != knowledge_base_id:
         raise HTTPException(status_code=404, detail="Alert not found.")
-    alert = Alert(
+    return Alert(
         id=record.alert_id,
         entity_type=record.entity_type,
         entity_id=record.entity_id,
@@ -1858,6 +1894,48 @@ def get_case_promote_payload(
         updated_at=record.updated_at,
         acknowledged=record.status == "acknowledged",
     )
+
+
+def get_case_attach_alert_payload(
+    payload: CaseAttachAlertRequest,
+    case_id: str = Path(..., description="Case the alert is attached to."),
+    knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
+    service: CaseService = Depends(get_case_service),
+    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
+    evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+) -> CaseDetailResponse:
+    """Attach an alert to a case that already exists (UXA-405).
+
+    Distinct from promote, which opens a *new* case: this is "I already have a
+    case, this belongs to it". 409 on a re-attach mirrors the promote-twice
+    guard the alert feed already enforces.
+    """
+    alert = _resolve_kb_scoped_alert(alert_store, payload.alert_id, knowledge_base_id)
+    try:
+        case = service.attach_alert(
+            knowledge_base_id=knowledge_base_id,
+            case_id=case_id,
+            alert=alert,
+            notes=payload.notes,
+        )
+    except CaseNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AlertAlreadyAttachedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _assemble_case_detail(
+        case, evidence_repository=evidence_repository, alert_store=alert_store
+    )
+
+
+def get_case_promote_payload(
+    payload: CasePromoteRequest,
+    knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),
+    service: CaseService = Depends(get_case_service),
+    alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
+    evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+) -> CaseDetailResponse:
+    """Promote an alert into a durable, KB-scoped case capturing its evidence."""
+    alert = _resolve_kb_scoped_alert(alert_store, payload.alert_id, knowledge_base_id)
     timeline = [
         CaseTimelineEvent(
             occurred_at=alert.created_at,

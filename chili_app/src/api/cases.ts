@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiFetch, apiPatch, apiPost } from './client'
 import type {
+  CaseAttachAlertRequest,
   CaseCreateRequest,
   CaseDetailResponse,
   CaseFeedbackCreateRequest,
@@ -70,6 +71,23 @@ export function promoteCase(
 ): Promise<CaseDetailResponse> {
   return apiPost<CaseDetailResponse, CasePromoteRequest>(
     `/cases/promote?${kbQuery(knowledgeBaseId)}`,
+    payload,
+  )
+}
+
+/**
+ * Add an alert to a case that already exists (UXA-405).
+ *
+ * The other half of `promoteCase`: promote opens a *new* case, this adds to one
+ * an analyst already has open.
+ */
+export function attachAlertToCase(
+  knowledgeBaseId: string,
+  caseId: string,
+  payload: CaseAttachAlertRequest,
+): Promise<CaseDetailResponse> {
+  return apiPost<CaseDetailResponse, CaseAttachAlertRequest>(
+    `/cases/${encodeURIComponent(caseId)}/alerts?${kbQuery(knowledgeBaseId)}`,
     payload,
   )
 }
@@ -147,6 +165,24 @@ export function usePromoteCase(knowledgeBaseId: string | null) {
   return useMutation({
     mutationFn: (payload: CasePromoteRequest) => promoteCase(knowledgeBaseId ?? '', payload),
     onSuccess: invalidate,
+  })
+}
+
+export function useAttachAlertToCase(knowledgeBaseId: string | null) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { caseId: string; payload: CaseAttachAlertRequest }) =>
+      attachAlertToCase(knowledgeBaseId ?? '', vars.caseId, vars.payload),
+    onSuccess: (_detail, vars) => {
+      void queryClient.invalidateQueries({
+        queryKey: casesQueryKey(knowledgeBaseId ?? 'missing'),
+      })
+      if (knowledgeBaseId) {
+        void queryClient.invalidateQueries({
+          queryKey: caseDetailQueryKey(knowledgeBaseId, vars.caseId),
+        })
+      }
+    },
   })
 }
 

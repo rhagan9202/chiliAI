@@ -640,6 +640,31 @@
         "title": "CapabilitiesConfig",
         "type": "object"
       },
+      "CaseAttachAlertRequest": {
+        "description": "Payload for attaching an alert to a case that already exists (UXA-405).",
+        "properties": {
+          "alert_id": {
+            "title": "Alert Id",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "required": [
+          "alert_id"
+        ],
+        "title": "CaseAttachAlertRequest",
+        "type": "object"
+      },
       "CaseCreateRequest": {
         "description": "Payload for creating a new case.",
         "properties": {
@@ -2690,6 +2715,39 @@
           "score"
         ],
         "title": "EvidenceItemResponse",
+        "type": "object"
+      },
+      "EvidencePackExportResponse": {
+        "description": "A portable rendering of one evidence pack (UXA-405).\n\nMirrors ``ScorecardExportResponse``, the product's only other export, so\nthere is one export idiom rather than two. ``filename`` is server-chosen so\nthe download name is decided once rather than reconstructed by every caller.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "evidence_pack_id": {
+            "title": "Evidence Pack Id",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "json",
+              "markdown"
+            ],
+            "title": "Format",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_pack_id",
+          "format",
+          "filename",
+          "content"
+        ],
+        "title": "EvidencePackExportResponse",
         "type": "object"
       },
       "EvidencePackResponse": {
@@ -8005,6 +8063,73 @@
         ]
       }
     },
+    "/cases/{case_id}/alerts": {
+      "post": {
+        "description": "Attach an alert to an existing case and return the updated detail.\n\n``POST /cases/promote`` opens a *new* case; this is the other half \u2014 adding\nto one that already exists (UXA-405).",
+        "operationId": "attach_alert_to_case_cases__case_id__alerts_post",
+        "parameters": [
+          {
+            "description": "Case the alert is attached to.",
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "description": "Case the alert is attached to.",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Knowledge base scope.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base scope.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaseAttachAlertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attach Alert To Case",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
     "/cases/{case_id}/feedback": {
       "post": {
         "description": "Append analyst feedback to a case and return the updated detail.",
@@ -8849,6 +8974,79 @@
           }
         },
         "summary": "Get Evidence Pack",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/evidence-packs/{evidence_pack_id}/export": {
+      "get": {
+        "description": "Return a downloadable JSON or Markdown rendering of one evidence pack.\n\nSame gate as reading the pack: an export is a projection of what the caller\ncan already see, not a new disclosure.",
+        "operationId": "export_evidence_pack_evidence_packs__evidence_pack_id__export_get",
+        "parameters": [
+          {
+            "description": "Evidence pack identifier.",
+            "in": "path",
+            "name": "evidence_pack_id",
+            "required": true,
+            "schema": {
+              "description": "Evidence pack identifier.",
+              "title": "Evidence Pack Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Knowledge base the evidence pack belongs to.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base the evidence pack belongs to.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Rendering to return: machine-readable JSON or readable Markdown.",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "markdown",
+              "description": "Rendering to return: machine-readable JSON or readable Markdown.",
+              "enum": [
+                "json",
+                "markdown"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePackExportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Evidence Pack",
         "tags": [
           "evidence"
         ]
