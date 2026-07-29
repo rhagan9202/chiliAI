@@ -130,7 +130,7 @@ Helper: `api/_kb_busy.py` exports `KbBusyError`, `WorkflowBusyTracker` Protocol,
 
 | Method | Path | Response | Auth |
 |--------|------|----------|------|
-| `GET` | `/alerts` | `AlertListResponse` | viewer |
+| `GET` | `/alerts?knowledge_base_id=&status=&limit=&offset=` | `AlertListResponse` | viewer |
 | `GET` | `/alerts/{alert_id}?knowledge_base_id=` | `AlertDetailResponse` | viewer |
 | `POST` | `/alerts/{alert_id}/acknowledge?knowledge_base_id=` | `ApiEnvelope` 200 | analyst |
 
@@ -255,6 +255,7 @@ class GraphEdgeResponse(BaseModel):
 | Method | Path | Request | Response | Auth |
 |--------|------|---------|----------|------|
 | `GET` | `/chat/conversations/{conversation_id}?knowledge_base_id=` | — | `ChatConversationResponse` | viewer |
+| `GET` | `/chat/conversations?knowledge_base_id=&limit=&offset=` | — | `ChatConversationListResponse` | viewer |
 | `POST` | `/chat/conversations` | `ChatConversationCreateRequest` | `ChatConversationResponse` | analyst |
 | `POST` | `/chat/conversations/{conversation_id}/messages?knowledge_base_id=` | `ChatMessageCreateRequest` | `ChatConversationResponse` or `StreamingResponse` | analyst |
 
@@ -342,7 +343,7 @@ class WorkflowRunListResponse(BaseModel):
 | `GET` | `/analytics/risk-scores` | `?kb_id=&entity_type=&limit=` | `RiskScoreListResponse` | viewer |
 | `GET` | `/analytics/timeseries` | `?kb_id=&metric=&start=&end=` | `MetricTimeseriesResponse` | viewer |
 | `GET` | `/analytics/gnn/clusters` | `?kb_id=` | `GnnClusterResponse` | viewer |
-| `GET` | `/analytics/overview` | — | `AnalyticsOverviewResponse` | viewer |
+| `GET` | `/analytics/overview?knowledge_base_id=` | — | `AnalyticsOverviewResponse` | viewer |
 | `GET` | `/analytics/risk-scores/{entity_id}` | `?kb_id=` | `RiskScoreResponse` | viewer |
 | `GET` | `/analytics/timeseries/{entity_id}` | `?kb_id=` | `EntityTimeseriesResponse` | viewer |
 
@@ -570,4 +571,21 @@ ROLE_HIERARCHY = {"viewer": 1, "analyst": 2, "service": 2, "admin": 3}
 - `analyst` — read + write (KB creation, document upload, chat, record push, case management)
 - `service` — machine-to-machine, same level as analyst
 - `admin` — full access including destructive operations (DELETE knowledge base)
-- When `AuthConfig.enabled=False`: anonymous user with `_authdisabled` role bypasses all checks
+- When `AuthConfig.enabled=False`: `require_role` returns the caller before any
+  role comparison, so every check passes — including `admin`-gated routes. There
+  is no `_authdisabled` role; the bypass is the early return itself.
+
+
+## Knowledge-base scope parameter
+
+Every KB-scoped route names the scope `knowledge_base_id`. The three that once
+used a shorter `kb` alias — `GET /alerts`, `GET /analytics/overview` and
+`GET /chat/conversations` — were normalised onto it, so the API now has exactly
+one spelling for one concept. `knowledge_base_id` is optional on `/alerts` and
+`/analytics/overview` (omit for workspace-wide totals) and required on
+`GET /chat/conversations`.
+
+This is distinct from the SPA's own `?kb=` deep-link parameter, which is
+browser URL state read by `useActiveKnowledgeBase` and is deliberately
+unchanged — renaming it would break existing bookmarks without touching the
+API contract.

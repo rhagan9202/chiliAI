@@ -25,7 +25,7 @@ def test_lists_only_the_requested_knowledge_bases_conversations() -> None:
     _create(client, kb="kb-1", title="Second")
     _create(client, kb="kb-2", title="Other")
 
-    payload = client.get("/chat/conversations", params={"kb": "kb-1"}).json()
+    payload = client.get("/chat/conversations", params={"knowledge_base_id": "kb-1"}).json()
 
     assert payload["page"]["total_items"] == 2
     assert {item["title"] for item in payload["items"]} == {"First", "Second"}
@@ -40,7 +40,7 @@ def test_summarizes_each_conversation_without_shipping_every_message() -> None:
         json={"content": "Why is this flagged?"},
     )
 
-    item = client.get("/chat/conversations", params={"kb": "kb-1"}).json()["items"][0]
+    item = client.get("/chat/conversations", params={"knowledge_base_id": "kb-1"}).json()["items"][0]
 
     assert item["id"] == conversation_id
     assert item["title"] == "Redwood review"
@@ -50,7 +50,7 @@ def test_summarizes_each_conversation_without_shipping_every_message() -> None:
 
 
 def test_reports_an_empty_page_for_a_knowledge_base_with_no_conversations() -> None:
-    payload = _client().get("/chat/conversations", params={"kb": "kb-empty"}).json()
+    payload = _client().get("/chat/conversations", params={"knowledge_base_id": "kb-empty"}).json()
 
     assert payload["items"] == []
     assert payload["page"]["total_items"] == 0
@@ -60,3 +60,14 @@ def test_requires_the_knowledge_base_scope() -> None:
     # Listing every conversation in the workspace is not a question the UI
     # asks, and answering it would leak across knowledge bases.
     assert _client().get("/chat/conversations").status_code == 422
+
+
+def test_listing_rejects_the_retired_kb_parameter() -> None:
+    """`kb` was the odd one out: 26 endpoints already took `knowledge_base_id`.
+
+    The rename is deliberate and breaking — an old client sending `kb` must
+    fail loudly rather than silently listing another scope.
+    """
+    response = _client().get("/chat/conversations", params={"kb": "kb-1"})
+
+    assert response.status_code == 422

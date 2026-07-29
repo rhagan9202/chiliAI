@@ -16,7 +16,7 @@ export function getConversations(
   knowledgeBaseId: string,
 ): Promise<ChatConversationListResponse> {
   return apiFetch<ChatConversationListResponse>(
-    `/chat/conversations?kb=${encodeURIComponent(knowledgeBaseId)}`,
+    `/chat/conversations?knowledge_base_id=${encodeURIComponent(knowledgeBaseId)}`,
   )
 }
 

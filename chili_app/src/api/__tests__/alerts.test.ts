@@ -25,7 +25,7 @@ describe('alerts api', () => {
     })
 
     expect(apiFetchMock).toHaveBeenCalledWith(
-      '/alerts?kb=kb-1&status=open&limit=25&offset=50',
+      '/alerts?knowledge_base_id=kb-1&status=open&limit=25&offset=50',
     )
   })
 })

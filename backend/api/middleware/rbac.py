@@ -2,8 +2,13 @@
 
 Defines a small role hierarchy (admin > analyst > viewer) and a
 ``require_role`` factory that returns a FastAPI dependency. RBAC composes
-on top of :func:`get_current_user`. When auth is disabled the anonymous
-user resolves to admin-equivalent access via the ``"_authdisabled"`` role.
+on top of :func:`get_current_user`.
+
+When auth is disabled the dependency returns the caller **before** any role
+comparison, so every role check passes regardless of the anonymous user's
+roles — there is no ``"_authdisabled"`` role, and describing one made the
+bypass sound narrower than it is. It applies to ``admin``-gated routes such as
+``DELETE /knowledgebases/{id}`` and ``POST /config/switch`` too.
 """
 
 from __future__ import annotations

@@ -4801,7 +4801,7 @@ export interface operations {
     list_alerts_alerts_get: {
         parameters: {
             query?: {
-                kb?: string | null;
+                knowledge_base_id?: string | null;
                 status?: string | null;
                 limit?: number;
                 offset?: number;
@@ -4937,7 +4937,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Restrict every figure to one knowledge base. Omit for workspace-wide totals. */
-                kb?: string | null;
+                knowledge_base_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -5469,7 +5469,7 @@ export interface operations {
         parameters: {
             query: {
                 /** @description Knowledge base scope. */
-                kb: string;
+                knowledge_base_id: string;
                 limit?: number;
                 offset?: number;
             };

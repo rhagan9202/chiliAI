@@ -20,7 +20,9 @@ interface Overview {
 }
 
 async function overview(kb?: string): Promise<Overview> {
-  const url = kb ? `${API}/analytics/overview?kb=${encodeURIComponent(kb)}` : `${API}/analytics/overview`
+  const url = kb
+    ? `${API}/analytics/overview?knowledge_base_id=${encodeURIComponent(kb)}`
+    : `${API}/analytics/overview`
   const response = await fetch(url)
   expect(response.ok, `GET ${url} failed with ${response.status}`).toBe(true)
   return (await response.json()) as Overview

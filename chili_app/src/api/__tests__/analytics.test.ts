@@ -23,7 +23,7 @@ describe('analytics api helpers', () => {
 
     await getAnalyticsOverview('kb-1')
 
-    expect(apiFetchMock).toHaveBeenCalledWith('/analytics/overview?kb=kb-1')
+    expect(apiFetchMock).toHaveBeenCalledWith('/analytics/overview?knowledge_base_id=kb-1')
   })
 
   it('omits the scope so the endpoint keeps its workspace-wide behaviour', async () => {

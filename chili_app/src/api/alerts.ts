@@ -23,7 +23,7 @@ export function alertListQueryKey(filters: AlertFeedFilters = {}) {
 export function getAlerts(filters: AlertFeedFilters = {}): Promise<AlertListResponse> {
   const searchParams = new URLSearchParams()
   if (filters.knowledgeBaseId) {
-    searchParams.set('kb', filters.knowledgeBaseId)
+    searchParams.set('knowledge_base_id', filters.knowledgeBaseId)
   }
   if (filters.status) {
     searchParams.set('status', filters.status)
