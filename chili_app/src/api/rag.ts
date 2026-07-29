@@ -20,12 +20,21 @@ export function getConversations(
   )
 }
 
-export function conversationQueryKey(conversationId: string) {
-  return ['conversation', conversationId] as const
+export function conversationQueryKey(conversationId: string, knowledgeBaseId: string) {
+  return ['conversation', knowledgeBaseId, conversationId] as const
 }
 
-export function getConversation(conversationId: string): Promise<ChatConversationResponse> {
-  return apiFetch<ChatConversationResponse>(`/chat/conversations/${conversationId}`)
+// Conversation reads and appends are KB-scoped: a transcript used to be
+// readable, and retrieval drivable, by id alone from outside the owning
+// knowledge base.
+export function getConversation(
+  conversationId: string,
+  knowledgeBaseId: string,
+): Promise<ChatConversationResponse> {
+  const params = new URLSearchParams({ knowledge_base_id: knowledgeBaseId })
+  return apiFetch<ChatConversationResponse>(
+    `/chat/conversations/${encodeURIComponent(conversationId)}?${params}`,
+  )
 }
 
 export function createConversation(
@@ -36,13 +45,18 @@ export function createConversation(
 
 export function addMessage(
   conversationId: string,
+  knowledgeBaseId: string,
   payload: ChatMessageCreateRequest,
 ): Promise<ChatConversationResponse> {
   if (!conversationId) {
     return Promise.reject(new Error('Cannot add message without an active conversation.'))
   }
 
-  return apiPost<ChatConversationResponse, ChatMessageCreateRequest>(`/chat/conversations/${conversationId}/messages`, payload)
+  const params = new URLSearchParams({ knowledge_base_id: knowledgeBaseId })
+  return apiPost<ChatConversationResponse, ChatMessageCreateRequest>(
+    `/chat/conversations/${encodeURIComponent(conversationId)}/messages?${params}`,
+    payload,
+  )
 }
 
 export class StartConversationWithMessageError extends Error {
@@ -75,7 +89,7 @@ export async function startConversationWithMessage(payload: {
   })
 
   try {
-    return await addMessage(created.id, {
+    return await addMessage(created.id, payload.knowledge_base_id, {
       content: payload.content,
       include_graph_context: true,
       filters: payload.filters,
@@ -94,11 +108,14 @@ export function useConversations(knowledgeBaseId: string | null) {
   })
 }
 
-export function useConversation(conversationId: string | null) {
+export function useConversation(
+  conversationId: string | null,
+  knowledgeBaseId: string | null,
+) {
   return useQuery({
-    queryKey: conversationQueryKey(conversationId ?? 'missing'),
-    queryFn: () => getConversation(conversationId ?? ''),
-    enabled: Boolean(conversationId),
+    queryKey: conversationQueryKey(conversationId ?? 'missing', knowledgeBaseId ?? 'missing'),
+    queryFn: () => getConversation(conversationId ?? '', knowledgeBaseId ?? ''),
+    enabled: Boolean(conversationId) && Boolean(knowledgeBaseId),
   })
 }
 
@@ -108,18 +125,28 @@ export function useCreateConversation() {
   return useMutation({
     mutationFn: createConversation,
     onSuccess: (conversation) => {
-      queryClient.setQueryData(conversationQueryKey(conversation.id), conversation)
+      queryClient.setQueryData(
+        conversationQueryKey(conversation.id, conversation.knowledge_base_id),
+        conversation,
+      )
     },
   })
 }
 
-export function useAddMessage(conversationId: string | null) {
+export function useAddMessage(
+  conversationId: string | null,
+  knowledgeBaseId: string | null,
+) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (payload: ChatMessageCreateRequest) => addMessage(conversationId ?? '', payload),
+    mutationFn: (payload: ChatMessageCreateRequest) =>
+      addMessage(conversationId ?? '', knowledgeBaseId ?? '', payload),
     onSuccess: (conversation) => {
-      queryClient.setQueryData(conversationQueryKey(conversation.id), conversation)
+      queryClient.setQueryData(
+        conversationQueryKey(conversation.id, conversation.knowledge_base_id),
+        conversation,
+      )
     },
   })
 }
@@ -132,14 +159,18 @@ export function useStartConversationWithMessage() {
     onError: (error) => {
       if (isStartConversationPartialError(error)) {
         queryClient.setQueryData(
-          conversationQueryKey(error.createdConversation.id),
+          conversationQueryKey(
+            error.createdConversation.id,
+            error.createdConversation.knowledge_base_id,
+          ),
           error.createdConversation,
         )
       }
     },
     onSuccess: (conversation) => {
-      queryClient.setQueryData(conversationQueryKey(conversation.id), conversation)
-      void queryClient.invalidateQueries({ queryKey: conversationQueryKey(conversation.id) })
+      const key = conversationQueryKey(conversation.id, conversation.knowledge_base_id)
+      queryClient.setQueryData(key, conversation)
+      void queryClient.invalidateQueries({ queryKey: key })
     },
   })
 }

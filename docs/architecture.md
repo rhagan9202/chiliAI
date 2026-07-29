@@ -1614,6 +1614,11 @@ Adapter selection is driven by environment configuration, not code changes.
 - **Key metrics**:
   - `http_requests_total` — API request count by method, path, status
   - `http_request_duration_seconds` — API latency histogram
+  - The `path` label is the **route template** (`/alerts/{alert_id}`), never the
+    raw URL, and every unmatched request collapses onto a single `<unmatched>`
+    label. Cardinality is bounded by the route table: a raw-URL label minted one
+    series per entity id, and 404s are served before any auth dependency, so an
+    unauthenticated client could otherwise grow the registry without bound.
   - `pipeline_events_processed_total` — Events consumed by workers, by event type
   - `pipeline_step_duration_seconds` — Duration of each pipeline step (ingestion, embedding, analysis)
   - `graph_query_duration_seconds` — Graph DB query latency

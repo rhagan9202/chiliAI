@@ -8,10 +8,13 @@ import styles from './ChatContainer.module.css'
 
 export interface ChatContainerProps {
   conversationId: string
+  /** The conversation's knowledge base; the message routes are KB-scoped. */
+  knowledgeBaseId: string
 }
 
 export function ChatContainer({
   conversationId,
+  knowledgeBaseId,
 }: ChatContainerProps): React.ReactElement {
   const setActiveConversation = useChatStore((s) => s.setActiveConversation)
   const conversation = useChatStore(
@@ -29,7 +32,7 @@ export function ChatContainer({
   }, [conversationId, setActiveConversation])
 
   const submit = (content: string): void => {
-    void send({ conversationId, content })
+    void send({ conversationId, knowledgeBaseId, content })
   }
 
   return (

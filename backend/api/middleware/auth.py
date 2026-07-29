@@ -73,6 +73,11 @@ class User(BaseModel):
     user_id: str
     roles: list[str] = Field(default_factory=list)
     email: str | None = None
+    # Knowledge bases this principal may reach, when the identity provider
+    # issues the claim. ``None`` means the claim was absent — the principal is
+    # unrestricted, which is the behaviour every deployment has today. An empty
+    # list is a real restriction (entitled to nothing), not "no claim".
+    knowledge_base_ids: list[str] | None = None
 
 
 JwksFetcher = Callable[[str], dict[str, object]]
@@ -345,13 +350,24 @@ def _extract_user(
     claims: dict[str, object],
     *,
     roles_claim: str,
+    knowledge_base_ids_claim: str = "knowledge_base_ids",
 ) -> User:
     raw_user_id = claims.get("sub") or claims.get("user_id") or "unknown"
     user_id = str(raw_user_id)
     roles = coerce_roles(claims.get(roles_claim))
     raw_email = claims.get("email")
     email = str(raw_email) if isinstance(raw_email, str) else None
-    return User(user_id=user_id, roles=roles, email=email)
+    # Absent claim stays None (unrestricted); a present one restricts, even
+    # when empty. `coerce_roles` is reused because the shape is identical: a
+    # list of strings, or a single string for a one-entry claim.
+    raw_kb_ids = claims.get(knowledge_base_ids_claim)
+    knowledge_base_ids = None if raw_kb_ids is None else coerce_roles(raw_kb_ids)
+    return User(
+        user_id=user_id,
+        roles=roles,
+        email=email,
+        knowledge_base_ids=knowledge_base_ids,
+    )
 
 
 def _resolve_auth_config(domain_config: DomainConfig) -> AuthConfig:
@@ -494,7 +510,11 @@ def get_current_user(
         )
 
     claims = decode_token(token, auth_config=auth_config, jwks_cache=_jwks_cache)
-    return _extract_user(claims, roles_claim=auth_config.roles_claim)
+    return _extract_user(
+        claims,
+        roles_claim=auth_config.roles_claim,
+        knowledge_base_ids_claim=auth_config.knowledge_base_ids_claim,
+    )
 
 
 def get_current_websocket_user(
@@ -534,4 +554,8 @@ def get_current_websocket_user(
             code=status.WS_1008_POLICY_VIOLATION,
             reason=str(exc.detail),
         ) from exc
-    return _extract_user(claims, roles_claim=auth_config.roles_claim)
+    return _extract_user(
+        claims,
+        roles_claim=auth_config.roles_claim,
+        knowledge_base_ids_claim=auth_config.knowledge_base_ids_claim,
+    )

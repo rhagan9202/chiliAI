@@ -59,6 +59,24 @@ record either way. `build_dlq_record_store` (`agent/coordinator.py`) selects
 else `InMemoryDlqRecordStore` — the same selection rule as
 `build_document_status_store` (BL-041).
 
+**Second writer: undecodable messages.** `RedisStreamsEventBus` dead-letters a
+message it cannot decode, via the same two surfaces, and acks it. Decoding used
+to happen inline while building the delivery list, so one unregistered
+`event_type` or a body that no longer validated took its whole `XREADGROUP`
+batch down with it: the exception escaped before `run_handler_with_retry`, so
+the retry/DLQ machinery never ran, nothing in the batch was acked, and with
+`reclaim_min_idle_ms` unset (the default) `>` never redelivers. Measured on a
+live stack, one poison message stranded four good events alongside it with
+`/events/dlq` still reporting `total: 0`.
+
+A message that cannot be decoded cannot succeed on redelivery either, so it is
+recorded and acked rather than left pending forever where nothing surfaces it.
+The bus therefore takes an optional `dlq_record_store`; `create_event_bus`
+accepts it and the worker passes one (publish-only callers such as the API do
+not need it, since only consumers decode). `event_type` falls back to
+`"unknown"` and `correlation_id` to the Redis message id, because an
+undecodable body may carry neither.
+
 **Persist semantics.** `DlqRecordStore.persist` is an **upsert keyed on
 `dlq_id`**, not an append — a repeat `persist()` for an id already stored
 replaces the row rather than duplicating it. It also carries a

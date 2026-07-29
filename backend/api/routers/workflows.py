@@ -20,7 +20,7 @@ router = APIRouter(prefix="/workflows", tags=["workflows"])
 
 
 def _can_access_workflow(user: User, knowledge_base_id: str) -> bool:
-    allowed = getattr(user, "knowledge_base_ids", None)
+    allowed = user.knowledge_base_ids
     return allowed is None or knowledge_base_id in allowed or "admin" in user.roles
 
 

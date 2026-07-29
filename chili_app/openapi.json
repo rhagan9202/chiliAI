@@ -516,6 +516,11 @@
             "default": null,
             "title": "Jwks Uri"
           },
+          "knowledge_base_ids_claim": {
+            "default": "knowledge_base_ids",
+            "title": "Knowledge Base Ids Claim",
+            "type": "string"
+          },
           "redirect_uri": {
             "anyOf": [
               {
@@ -6709,6 +6714,20 @@
             ],
             "title": "Email"
           },
+          "knowledge_base_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Base Ids"
+          },
           "roles": {
             "items": {
               "type": "string"
@@ -7178,6 +7197,18 @@
               "title": "Alert Id",
               "type": "string"
             }
+          },
+          {
+            "description": "Knowledge base identifier.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base identifier.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -7221,6 +7252,18 @@
             "schema": {
               "description": "Alert identifier.",
               "title": "Alert Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Knowledge base identifier.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base identifier.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
               "type": "string"
             }
           }
@@ -8321,6 +8364,18 @@
               "title": "Conversation Id",
               "type": "string"
             }
+          },
+          {
+            "description": "Knowledge base identifier.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base identifier.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -8362,6 +8417,18 @@
             "required": true,
             "schema": {
               "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Knowledge base identifier.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base identifier.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
               "type": "string"
             }
           },

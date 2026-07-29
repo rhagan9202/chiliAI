@@ -131,8 +131,13 @@ Helper: `api/_kb_busy.py` exports `KbBusyError`, `WorkflowBusyTracker` Protocol,
 | Method | Path | Response | Auth |
 |--------|------|----------|------|
 | `GET` | `/alerts` | `AlertListResponse` | viewer |
-| `GET` | `/alerts/{alert_id}` | `AlertDetailResponse` | viewer |
-| `POST` | `/alerts/{alert_id}/acknowledge` | `ApiEnvelope` 200 | analyst |
+| `GET` | `/alerts/{alert_id}?knowledge_base_id=` | `AlertDetailResponse` | viewer |
+| `POST` | `/alerts/{alert_id}/acknowledge?knowledge_base_id=` | `ApiEnvelope` 200 | analyst |
+
+`knowledge_base_id` is **required** on both, and a mismatch is a 404 (not 403 —
+a caller outside the KB is not told the alert exists). Without it, an alert id
+alone read and mutated any knowledge base's alert.
+
 
 ```python
 class AlertListResponse(BaseModel):
@@ -249,9 +254,15 @@ class GraphEdgeResponse(BaseModel):
 
 | Method | Path | Request | Response | Auth |
 |--------|------|---------|----------|------|
-| `GET` | `/chat/conversations/{conversation_id}` | — | `ChatConversationResponse` | viewer |
+| `GET` | `/chat/conversations/{conversation_id}?knowledge_base_id=` | — | `ChatConversationResponse` | viewer |
 | `POST` | `/chat/conversations` | `ChatConversationCreateRequest` | `ChatConversationResponse` | analyst |
-| `POST` | `/chat/conversations/{conversation_id}/messages` | `ChatMessageCreateRequest` | `ChatConversationResponse` or `StreamingResponse` | analyst |
+| `POST` | `/chat/conversations/{conversation_id}/messages?knowledge_base_id=` | `ChatMessageCreateRequest` | `ChatConversationResponse` or `StreamingResponse` | analyst |
+
+`knowledge_base_id` is **required** on the conversation detail and message
+routes (both the JSON and `?stream=true` branches), and a mismatch is a 404.
+The listing route has always required a KB scope; these two took none, so a
+transcript was readable — and retrieval drivable — by id alone.
+
 
 `POST .../messages?stream=true` returns SSE stream. Non-final events carry `{"token": str, "done": false}`. The final event carries `{"token": "", "done": true, "sources": list[str], "citations": list[ChatStreamCitationResponse]}`.
 

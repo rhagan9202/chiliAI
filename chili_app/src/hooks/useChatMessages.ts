@@ -6,6 +6,8 @@ import { useChatStore } from '../stores/chatStore'
 
 export interface SendMessageArgs {
   conversationId: string
+  /** The conversation's knowledge base; the stream route is KB-scoped. */
+  knowledgeBaseId: string
   content: string
 }
 
@@ -57,7 +59,7 @@ export function useChatMessages(): UseChatMessagesResult {
   }, [])
 
   const send = useCallback(
-    async ({ conversationId, content }: SendMessageArgs): Promise<void> => {
+    async ({ conversationId, knowledgeBaseId, content }: SendMessageArgs): Promise<void> => {
       if (content.trim().length === 0) return
 
       const userMessage: ChatMessage = {
@@ -86,7 +88,11 @@ export function useChatMessages(): UseChatMessagesResult {
       const controller = new AbortController()
       abortRef.current = controller
 
-      const url = `${API_BASE_URL}/chat/conversations/${encodeURIComponent(conversationId)}/messages?stream=true`
+      const streamParams = new URLSearchParams({
+        knowledge_base_id: knowledgeBaseId,
+        stream: 'true',
+      })
+      const url = `${API_BASE_URL}/chat/conversations/${encodeURIComponent(conversationId)}/messages?${streamParams}`
 
       try {
         const response = await fetch(url, {

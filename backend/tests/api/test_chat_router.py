@@ -115,6 +115,7 @@ def test_send_message_returns_full_conversation() -> None:
 
     response = client.post(
         f"/chat/conversations/{conversation_id}/messages",
+        params={"knowledge_base_id": "kb-1"},
         json={"content": "Why was claim 42 denied?"},
     )
 
@@ -132,6 +133,7 @@ def test_send_message_rejects_configured_question_length() -> None:
 
     response = client.post(
         f"/chat/conversations/{conversation_id}/messages",
+        params={"knowledge_base_id": "kb-1"},
         json={"content": "x" * 5001},
     )
 
@@ -145,6 +147,7 @@ def test_send_message_404_for_unknown_conversation() -> None:
 
     response = client.post(
         "/chat/conversations/does-not-exist/messages",
+        params={"knowledge_base_id": "kb-1"},
         json={"content": "anything"},
     )
 
@@ -162,6 +165,7 @@ def test_viewer_cannot_create_or_add_chat_messages_when_auth_enabled() -> None:
         )
         message_response = client.post(
             "/chat/conversations/conv-1/messages",
+            params={"knowledge_base_id": "kb-1"},
             json={"content": "Can I mutate this thread?"},
         )
 
@@ -181,6 +185,7 @@ def test_analyst_can_add_chat_message_when_auth_enabled() -> None:
         conversation_id = created.json()["id"]
         updated = client.post(
             f"/chat/conversations/{conversation_id}/messages",
+            params={"knowledge_base_id": "kb-1"},
             json={"content": "Why is this claim risky?"},
         )
 
@@ -200,7 +205,10 @@ def test_viewer_can_read_chat_conversation_when_auth_enabled() -> None:
         conversation_id = created.json()["id"]
 
         client.cookies.set("chiliai_session", "sid-viewer")
-        read_response = client.get(f"/chat/conversations/{conversation_id}")
+        read_response = client.get(
+            f"/chat/conversations/{conversation_id}",
+            params={"knowledge_base_id": "kb-1"},
+        )
 
     assert read_response.status_code == 200
     assert read_response.json()["id"] == conversation_id
@@ -214,7 +222,7 @@ def test_stream_message_returns_sse_with_done_sentinel() -> None:
     with client.stream(
         "POST",
         f"/chat/conversations/{conversation_id}/messages",
-        params={"stream": "true"},
+        params={"knowledge_base_id": "kb-1", "stream": "true"},
         json={"content": "Tell me more"},
     ) as response:
         assert response.status_code == 200
@@ -242,7 +250,7 @@ def test_stream_message_final_event_citations_match_contract() -> None:
     with client.stream(
         "POST",
         f"/chat/conversations/{conversation_id}/messages",
-        params={"stream": "true"},
+        params={"knowledge_base_id": "kb-1", "stream": "true"},
         json={"content": "Tell me more"},
     ) as response:
         assert response.status_code == 200
@@ -276,7 +284,7 @@ def test_stream_message_404_for_unknown_conversation() -> None:
 
     response = client.post(
         "/chat/conversations/missing/messages",
-        params={"stream": "true"},
+        params={"knowledge_base_id": "kb-1", "stream": "true"},
         json={"content": "anything"},
     )
 
@@ -291,3 +299,62 @@ def _parse_sse_events(body: str) -> list[dict[str, object]]:
             continue
         events.append(json.loads(line[len("data: ") :]))
     return events
+
+
+def test_conversation_read_refuses_another_knowledge_base() -> None:
+    """A conversation transcript must not be readable from outside its KB.
+
+    ``GET /chat/conversations`` already requires a KB scope; the detail route
+    accepted none at all, so any caller could read a full transcript by id.
+    """
+    client = TestClient(create_app())
+    conversation_id = _new_conversation_id(client)
+
+    response = client.get(
+        f"/chat/conversations/{conversation_id}",
+        params={"knowledge_base_id": "kb-someone-else"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_conversation_read_allows_its_own_knowledge_base() -> None:
+    client = TestClient(create_app())
+    conversation_id = _new_conversation_id(client)
+
+    response = client.get(
+        f"/chat/conversations/{conversation_id}",
+        params={"knowledge_base_id": "kb-1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == conversation_id
+
+
+def test_append_message_refuses_another_knowledge_base() -> None:
+    """Appending runs a RAG query scoped to the conversation's KB, so an
+    out-of-scope caller could drive retrieval over data it cannot name."""
+    client = TestClient(create_app())
+    conversation_id = _new_conversation_id(client)
+
+    response = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        params={"knowledge_base_id": "kb-someone-else"},
+        json={"content": "Why was claim 42 denied?"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_conversation_routes_require_a_knowledge_base() -> None:
+    client = TestClient(create_app())
+    conversation_id = _new_conversation_id(client)
+
+    assert client.get(f"/chat/conversations/{conversation_id}").status_code == 422
+    assert (
+        client.post(
+            f"/chat/conversations/{conversation_id}/messages",
+            json={"content": "hello"},
+        ).status_code
+        == 422
+    )

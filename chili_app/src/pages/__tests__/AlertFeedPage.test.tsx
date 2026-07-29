@@ -411,7 +411,12 @@ describe('AlertFeedPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Acknowledge' }))
 
-    expect(mocks.acknowledge).toHaveBeenCalledWith('alert-1')
+    // Acknowledging is KB-scoped, and the KB comes from the alert row itself
+    // so the feed stays correct even when it spans knowledge bases.
+    expect(mocks.acknowledge).toHaveBeenCalledWith({
+      alertId: 'alert-1',
+      knowledgeBaseId: 'kb-redwood',
+    })
   })
 
   it('promotes the selected alert row to a case', () => {

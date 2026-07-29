@@ -212,6 +212,7 @@ class AuthConfig(BaseModel):
     audience: str | None = None
     jwks_uri: str | None = None
     roles_claim: str = "roles"
+    knowledge_base_ids_claim: str = "knowledge_base_ids"
     jwks_cache_seconds: int = 3600          # > 0
     client_id: str | None = None
     client_secret_env_var: str | None = None

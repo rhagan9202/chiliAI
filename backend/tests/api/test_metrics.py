@@ -128,3 +128,45 @@ class TestMetricsMiddlewareRecordsCounts:
 
         asyncio.run(middleware({"type": "lifespan"}, _receive, _send))
         assert called == ["ok"]
+
+
+class TestMetricsPathLabel:
+    """The ``path`` label must be bounded by the route table, not the URL.
+
+    ``_resolve_path`` ran before ``await self._app(...)``, and the router only
+    populates ``scope["route"]`` during that call — so the label was always the
+    raw URL. Every parameterised route therefore minted one metric series per
+    entity id, and unauthenticated 404s could mint them without limit
+    (a 404 is served before any auth dependency).
+    """
+
+    def _app_with_parameterised_route(self) -> FastAPI:
+        app = FastAPI()
+        register_metrics(app)
+
+        @app.get("/items/{item_id}")
+        def read_item(item_id: str) -> dict[str, str]:  # pyright: ignore[reportUnusedFunction]
+            return {"item_id": item_id}
+
+        return app
+
+    def test_parameterised_route_records_the_template_not_the_id(self) -> None:
+        client = TestClient(self._app_with_parameterised_route())
+
+        client.get("/items/abc-123")
+        client.get("/items/def-456")
+
+        body = client.get("/metrics").text
+        assert 'path="/items/{item_id}"' in body
+        assert "abc-123" not in body
+        assert "def-456" not in body
+
+    def test_unmatched_path_is_collapsed_to_a_single_label(self) -> None:
+        client = TestClient(self._app_with_parameterised_route())
+
+        client.get("/nope-one")
+        client.get("/nope-two")
+
+        body = client.get("/metrics").text
+        assert "nope-one" not in body
+        assert "nope-two" not in body

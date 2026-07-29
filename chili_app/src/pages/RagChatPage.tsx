@@ -109,12 +109,12 @@ export function RagChatPage() {
     : hasContextualLaunch
       ? null
       : activeKnowledgeBaseId
-  const conversationQuery = useConversation(conversationId)
+  const conversationQuery = useConversation(conversationId, selectedKnowledgeBaseId)
   const conversationsQuery = useConversations(selectedKnowledgeBaseId)
   const domainConfigQuery = useDomainConfig()
   const createConversationMutation = useCreateConversation()
   const startContextualThreadMutation = useStartConversationWithMessage()
-  const addMessageMutation = useAddMessage(conversationId)
+  const addMessageMutation = useAddMessage(conversationId, selectedKnowledgeBaseId)
   const draft = draftState.launchQuestion === launchQuestion ? draftState.value : launchQuestion
   const setDraftForLaunchQuestion = (value: string) => setDraftState({ launchQuestion, value })
   const contextQuestion = launchQuestion.trim()
