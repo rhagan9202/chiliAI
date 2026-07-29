@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { getAllowedPageIds, getDefaultRole, getLandingRoute, isRouteAllowed } from '../access'
+import {
+  getAllowedPageIds,
+  getDefaultRole,
+  getLandingRoute,
+  getRouteBlockReason,
+  isRouteAllowed,
+} from '../access'
 import type { DomainConfig, DomainFeatures } from '../../api/contracts'
 
 const features: DomainFeatures = {
@@ -65,16 +71,22 @@ describe('getAllowedPageIds', () => {
     expect(getAllowedPageIds(undefined, 'analyst')).toEqual([])
   })
 
-  it('returns enabled_pages when no role selected', () => {
+  it('acts as the default role when no role is selected', () => {
+    // No explicit selection means the workspace is acting as `default_role`
+    // (analyst), so it must get analyst's pages — not every enabled page.
     expect(getAllowedPageIds(features, null).sort()).toEqual(
-      ['alerts', 'cases', 'configuration', 'dashboard', 'investigation'],
+      ['alerts', 'cases', 'dashboard', 'investigation'],
     )
   })
 
-  it('returns enabled_pages when selected role unknown', () => {
+  it('falls back to the default role when the selected role is not in this pack', () => {
+    // A role remembered from a different pack must never out-grant a real role
+    // here. Failing open to every enabled page handed an unrecognised role the
+    // configuration page that the default analyst role is denied.
     expect(getAllowedPageIds(features, 'janitor').sort()).toEqual(
-      ['alerts', 'cases', 'configuration', 'dashboard', 'investigation'],
+      ['alerts', 'cases', 'dashboard', 'investigation'],
     )
+    expect(getAllowedPageIds(features, 'janitor')).not.toContain('configuration')
   })
 
   it('returns intersection of role.pages and enabled_pages for viewer', () => {
@@ -177,5 +189,13 @@ describe('isRouteAllowed', () => {
     // Scorecard runs are reached from the housing dashboard and never appear in
     // navigation, so they must not be gated as if they were a pack page.
     expect(isRouteAllowed(domainConfig, features, 'analyst', '/scorecards/run-1')).toBe(true)
+  })
+
+  it('refuses a restricted page to a role this pack does not define', () => {
+    // The stale-role path: a role carried over from another pack collapsed
+    // gating to pack level, so /configuration opened for a role that does not
+    // exist while the real analyst role is refused it.
+    expect(isRouteAllowed(domainConfig, features, 'janitor', '/configuration')).toBe(false)
+    expect(getRouteBlockReason(domainConfig, features, 'janitor', '/configuration')).toBe('role')
   })
 })

@@ -4,6 +4,7 @@ import type { ReactElement } from 'react'
 import { AuthGuard } from '../components/AuthGuard'
 import { ErrorBoundary } from '../components/common/ErrorBoundary'
 import { AppShell } from '../components/layout/AppShell'
+import { LandingRedirect } from '../components/layout/LandingRedirect'
 import { AlertFeedPage } from '../pages/AlertFeedPage'
 import { CaseManagementPage } from '../pages/CaseManagementPage'
 import { ConfigurationPage } from '../pages/ConfigurationPage'
@@ -31,7 +32,7 @@ export const router = createBrowserRouter([
       </AuthGuard>
     ),
     children: [
-      { index: true, element: <Navigate to="/dashboard" replace /> },
+      { index: true, element: <LandingRedirect /> },
       { path: 'dashboard', element: withPageBoundary(<DashboardPage />) },
       { path: 'housing', element: withPageBoundary(<HousingExecutivePage />) },
       { path: 'scorecards/:runId', element: withPageBoundary(<ScorecardRunPage />) },

@@ -190,4 +190,26 @@ describe('formatPropertyValue', () => {
   it('falls back to a readable string when the type is unknown', () => {
     expect(formatPropertyValue(42, undefined)).toBe('42')
   })
+
+  it('keeps an undeclared number exact instead of rounding it', () => {
+    // A property the pack does not declare is still a real figure. Rounding to
+    // four significant digits turned 1234567.89 into "1,235,000" on the
+    // dossier — a wrong number, with nothing on screen saying it was rounded.
+    expect(formatPropertyValue(1234567.89, undefined)).toBe('1234567.89')
+    expect(formatPropertyValue(12345, undefined)).toBe('12345')
+    expect(formatPropertyValue(987654321, undefined)).toBe('987654321')
+  })
+
+  it('does not punctuate an undeclared integer that is really an identifier', () => {
+    // Undeclared means we cannot tell a quantity from an NPI or a year, so the
+    // digits are reproduced as written rather than grouped.
+    expect(formatPropertyValue(2026, undefined)).toBe('2026')
+    expect(formatPropertyValue(1234567893, undefined)).toBe('1234567893')
+  })
+
+  it('collapses scientific notation on a tiny undeclared float', () => {
+    // Centrality and similarity scores arrive as 4.5211545662558374e-7, which
+    // reads as debug output next to the rest of the dossier.
+    expect(formatPropertyValue(4.5211545662558374e-7, undefined)).toBe('0.0000004521')
+  })
 })
