@@ -165,7 +165,17 @@ export function AlertFeedPage() {
   const allVisibleSelected = visibleIds.length > 0 && selection.size === visibleIds.length
 
   const runBulkAcknowledge = () => {
-    for (const alertId of selection) acknowledgeMutation.mutate(alertId)
+    // Each alert carries its own KB, so a bulk action stays correctly scoped
+    // even when the feed spans knowledge bases.
+    const byId = new Map(alertItems.map((alert) => [alert.id, alert]))
+    for (const alertId of selection) {
+      const alert = byId.get(alertId)
+      if (!alert) continue
+      acknowledgeMutation.mutate({
+        alertId,
+        knowledgeBaseId: alert.knowledge_base_id,
+      })
+    }
     showToast('success', `${describeSelection(selection.size)} — acknowledged.`)
     setSelectedIds(clearSelection())
     setPendingBulkAction(null)
@@ -445,7 +455,12 @@ export function AlertFeedPage() {
                         aria-label={alert.status === 'acknowledged' ? 'Acknowledged' : 'Acknowledge'}
                         className="page-button page-button--sm"
                         disabled={alert.status === 'acknowledged' || acknowledgeMutation.isPending}
-                        onClick={() => acknowledgeMutation.mutate(alert.id)}
+                        onClick={() =>
+                          acknowledgeMutation.mutate({
+                            alertId: alert.id,
+                            knowledgeBaseId: alert.knowledge_base_id,
+                          })
+                        }
                         type="button"
                       >
                         {alert.status === 'acknowledged' ? 'Acknowledged' : 'Acknowledge'}

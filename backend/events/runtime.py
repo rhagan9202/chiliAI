@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from events.adapters.in_memory import InMemoryEventBus
 from events.adapters.redis_streams import RedisStreamsEventBus
-from events.protocols import EventBus
+from events.protocols import DlqRecordStore, EventBus
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,8 +59,17 @@ def _optional_positive_int_from_env(name: str) -> int | None:
     return value if value > 0 else None
 
 
-def create_event_bus(settings: EventBusSettings | None = None) -> EventBus:
-    """Create an event bus adapter for the configured runtime."""
+def create_event_bus(
+    settings: EventBusSettings | None = None,
+    *,
+    dlq_record_store: DlqRecordStore | None = None,
+) -> EventBus:
+    """Create an event bus adapter for the configured runtime.
+
+    ``dlq_record_store`` is used only by consumers: it gives the transport
+    somewhere durable to record a message it cannot decode, which is what
+    ``/events/dlq`` reads. Publish-only callers can leave it unset.
+    """
     # TODO(production): Add connection health check (PING) on startup. Support
     # TLS/auth for Redis connections (rediss:// URIs, password, client certs).
     # Add connection pool configuration (max_connections, socket_timeout,
@@ -71,6 +80,7 @@ def create_event_bus(settings: EventBusSettings | None = None) -> EventBus:
             redis_url=resolved.redis_url,
             stream_name_resolver=resolved.stream_name,
             stream_maxlen=resolved.stream_maxlen,
+            dlq_record_store=dlq_record_store,
         )
     return InMemoryEventBus()
 

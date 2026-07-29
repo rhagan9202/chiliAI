@@ -36,6 +36,7 @@ def test_summarizes_each_conversation_without_shipping_every_message() -> None:
     conversation_id = _create(client, kb="kb-1", title="Redwood review")
     client.post(
         f"/chat/conversations/{conversation_id}/messages",
+        params={"knowledge_base_id": "kb-1"},
         json={"content": "Why is this flagged?"},
     )
 

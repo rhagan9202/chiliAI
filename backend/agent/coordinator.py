@@ -1086,8 +1086,12 @@ def build_worker_dependencies() -> WorkerDependencies:
     """
 
     config = _load_worker_config()
+    # Built before the bus so the transport has somewhere durable to record a
+    # message it cannot decode; both depend only on `config`.
+    connection_provider = build_connection_provider(config)
+    dlq_record_store = build_dlq_record_store(connection_provider)
     event_settings = _resolve_worker_event_bus_settings(config)
-    event_bus = create_event_bus(event_settings)
+    event_bus = create_event_bus(event_settings, dlq_record_store=dlq_record_store)
     workflow_run_store = create_workflow_run_store_from_env()
     workflow_tracker = WorkflowEventTracker(workflow_run_store)
 
@@ -1135,7 +1139,6 @@ def build_worker_dependencies() -> WorkerDependencies:
         cache=embedding_cache,
         cache_namespace=embedding_cache_ns,
     )
-    connection_provider = build_connection_provider(config)
     risk_service = create_risk_service(
         build_risk_signal_source(connection_provider),
         event_bus=event_bus,
@@ -1170,7 +1173,6 @@ def build_worker_dependencies() -> WorkerDependencies:
     )
     raw_record_store = build_raw_record_store(connection_provider)
     document_status_store = build_document_status_store(connection_provider)
-    dlq_record_store = build_dlq_record_store(connection_provider)
     derived_signal_store = build_derived_signal_writer(connection_provider)
     observation_writer = build_observation_writer(connection_provider)
     policy_service = build_policy_service(connection_provider)

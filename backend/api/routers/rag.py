@@ -13,7 +13,7 @@ import json
 from collections.abc import AsyncIterator
 from typing import Union
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from knowledgebases.protocols import KnowledgeBaseRepository
@@ -31,6 +31,7 @@ from api.dependencies import (
     get_conversation_service,
     get_domain_config,
     get_knowledge_base_repository,
+    require_kb_scoped_conversation,
 )
 from api.middleware.rbac import require_role
 from api.state import ApiState
@@ -101,6 +102,9 @@ async def create_conversation(
 async def add_message(
     conversation_id: str,
     payload: ChatMessageCreateRequest,
+    knowledge_base_id: str = Query(
+        ..., min_length=1, description="Knowledge base identifier."
+    ),
     stream: bool = False,
     state: ApiState = Depends(get_api_state),
     domain_config: DomainConfig = Depends(get_domain_config),
@@ -124,21 +128,25 @@ async def add_message(
 
     if not stream:
         # Non-streaming append + persistence is owned by the durable-repo
-        # dependency, which already 404s on unknown conversation ids.
+        # dependency, which 404s on an unknown id or one outside this KB.
+        # `knowledge_base_id` is threaded through explicitly because this is a
+        # direct call, not a `Depends` — FastAPI does not resolve the
+        # dependency's own query parameters on this path.
         return get_chat_message_payload(
             payload,
             conversation_id=conversation_id,
+            knowledge_base_id=knowledge_base_id,
             state=state,
             service=conversation_service,
             config=domain_config,
         )
 
-    conversation = conversation_service.get(conversation_id)
-    if conversation is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Conversation '{conversation_id}' not found.",
-        )
+    # The streaming branch reads the conversation itself, so it needs the same
+    # KB guard: without it, retrieval could be driven over a knowledge base the
+    # caller never named.
+    conversation = require_kb_scoped_conversation(
+        conversation_service, conversation_id, knowledge_base_id
+    )
 
     kb_ids = resolve_kb_scope(conversation.knowledge_base_id, domain_config, kb_repository)
     return StreamingResponse(

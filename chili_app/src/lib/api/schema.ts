@@ -1576,6 +1576,11 @@ export interface components {
              */
             jwks_uri: string | null;
             /**
+             * Knowledge Base Ids Claim
+             * @default knowledge_base_ids
+             */
+            knowledge_base_ids_claim: string;
+            /**
              * Redirect Uri
              * @default null
              */
@@ -4594,6 +4599,8 @@ export interface components {
         User: {
             /** Email */
             email?: string | null;
+            /** Knowledge Base Ids */
+            knowledge_base_ids?: string[] | null;
             /** Roles */
             roles?: string[];
             /** User Id */
@@ -4827,7 +4834,10 @@ export interface operations {
     };
     get_alert_alerts__alert_id__get: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Knowledge base identifier. */
+                knowledge_base_id: string;
+            };
             header?: never;
             path: {
                 /** @description Alert identifier. */
@@ -4859,7 +4869,10 @@ export interface operations {
     };
     acknowledge_alert_alerts__alert_id__acknowledge_post: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Knowledge base identifier. */
+                knowledge_base_id: string;
+            };
             header?: never;
             path: {
                 /** @description Alert identifier. */
@@ -5521,7 +5534,10 @@ export interface operations {
     };
     get_conversation_chat_conversations__conversation_id__get: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Knowledge base identifier. */
+                knowledge_base_id: string;
+            };
             header?: never;
             path: {
                 /** @description Conversation identifier. */
@@ -5553,7 +5569,9 @@ export interface operations {
     };
     add_message_chat_conversations__conversation_id__messages_post: {
         parameters: {
-            query?: {
+            query: {
+                /** @description Knowledge base identifier. */
+                knowledge_base_id: string;
                 stream?: boolean;
             };
             header?: never;

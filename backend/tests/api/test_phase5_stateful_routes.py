@@ -100,11 +100,12 @@ def test_alert_acknowledgement_changes_status() -> None:
 
     alerts = client.get("/alerts").json()["items"]
     alert_id = alerts[0]["id"]
+    kb = {"knowledge_base_id": alerts[0]["knowledge_base_id"]}
 
-    response = client.post(f"/alerts/{alert_id}/acknowledge")
+    response = client.post(f"/alerts/{alert_id}/acknowledge", params=kb)
 
     assert response.status_code == 200
-    updated = client.get(f"/alerts/{alert_id}").json()
+    updated = client.get(f"/alerts/{alert_id}", params=kb).json()
     assert updated["alert"]["status"] == "acknowledged"
 
 
@@ -233,6 +234,7 @@ def test_create_conversation_and_add_message() -> None:
 
     updated = client.post(
         f"/chat/conversations/{conversation_id}/messages",
+        params={"knowledge_base_id": "kb-1"},
         json={"content": "Why is provider-204 risky?", "include_graph_context": True, "filters": {}},
     )
 

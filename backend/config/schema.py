@@ -279,6 +279,10 @@ class AuthConfig(BaseModel):
     audience: str | None = None
     jwks_uri: str | None = None
     roles_claim: str = "roles"
+    # Claim naming the knowledge bases a principal may reach. When the token
+    # carries no such claim the principal is unrestricted, which is how every
+    # deployment behaves today.
+    knowledge_base_ids_claim: str = "knowledge_base_ids"
     jwks_cache_seconds: int = Field(default=3600, gt=0)
 
     # OIDC client (used by the BFF auth router)

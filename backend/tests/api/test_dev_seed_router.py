@@ -151,7 +151,10 @@ def test_dev_seed_creates_a_conversation() -> None:
     conversation_id = body["conversation_id"]
     assert conversation_id
 
-    conversation = client.get(f"/chat/conversations/{conversation_id}")
+    conversation = client.get(
+        f"/chat/conversations/{conversation_id}",
+        params={"knowledge_base_id": body["knowledge_base_id"]},
+    )
     assert conversation.status_code == 200
     payload = conversation.json()
     assert payload["knowledge_base_id"] == body["knowledge_base_id"]

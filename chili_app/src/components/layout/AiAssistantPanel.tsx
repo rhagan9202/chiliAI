@@ -105,7 +105,10 @@ export function AiAssistantPanel() {
   // These reads hit the same query keys the page behind the panel already
   // populated, so attaching a name costs a cache lookup, not a request.
   const domainConfigQuery = useDomainConfig()
-  const alertQuery = useAlert(context?.source === 'alert' ? context.alertId ?? null : null)
+  const alertQuery = useAlert(
+    context?.source === 'alert' ? context.alertId ?? null : null,
+    context?.knowledgeBaseId ?? null,
+  )
   const caseQuery = useCase(
     context?.knowledgeBaseId ?? null,
     context?.source === 'case' ? context.caseId ?? null : null,

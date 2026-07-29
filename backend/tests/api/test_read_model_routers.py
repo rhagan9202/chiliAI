@@ -179,7 +179,7 @@ def test_list_alerts_route_passes_knowledge_base_filter() -> None:
 def test_get_alert_detail_returns_related_context() -> None:
     client = _client_with_alerts()
 
-    response = client.get("/alerts/alert-001")
+    response = client.get("/alerts/alert-001", params={"knowledge_base_id": "kb-1"})
 
     assert response.status_code == 200
     payload = response.json()
@@ -193,10 +193,45 @@ def test_get_alert_detail_returns_related_context() -> None:
 def test_acknowledge_alert_returns_scaffold_status() -> None:
     client = _client_with_alerts()
 
-    response = client.post("/alerts/alert-001/acknowledge")
+    response = client.post(
+        "/alerts/alert-001/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
 
     assert response.status_code == 200
     assert response.json()["status"] == "accepted"
+
+
+def test_get_alert_detail_refuses_an_alert_from_another_knowledge_base() -> None:
+    """Reading an alert by id must not cross a KB boundary.
+
+    ``/cases/{id}`` and ``/evidence-packs/{id}`` already 404 on a KB mismatch;
+    the alert detail route accepted no KB at all, so any caller could read
+    another knowledge base's alert body in full.
+    """
+    client = _client_with_alerts()
+
+    response = client.get("/alerts/alert-002", params={"knowledge_base_id": "kb-1"})
+
+    assert response.status_code == 404
+
+
+def test_acknowledge_refuses_an_alert_from_another_knowledge_base() -> None:
+    """The same boundary applies to mutation, not just reads."""
+    client = _client_with_alerts()
+
+    response = client.post(
+        "/alerts/alert-002/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
+
+    assert response.status_code == 404
+
+
+def test_alert_detail_requires_a_knowledge_base() -> None:
+    """An omitted KB must be rejected, not silently treated as workspace-wide."""
+    client = _client_with_alerts()
+
+    assert client.get("/alerts/alert-001").status_code == 422
+    assert client.post("/alerts/alert-001/acknowledge").status_code == 422
 
 
 def _seeded_graph_service() -> GraphServiceProtocol:
@@ -524,11 +559,15 @@ def test_get_chat_conversation_returns_messages() -> None:
     conversation_id = created.json()["id"]
     sent = client.post(
         f"/chat/conversations/{conversation_id}/messages",
+        params={"knowledge_base_id": "kb-1"},
         json={"content": "Why is provider-204 risky?"},
     )
     assert sent.status_code == 200
 
-    response = client.get(f"/chat/conversations/{conversation_id}")
+    response = client.get(
+        f"/chat/conversations/{conversation_id}",
+        params={"knowledge_base_id": "kb-1"},
+    )
 
     assert response.status_code == 200
     payload = response.json()
@@ -683,7 +722,9 @@ def test_alert_routes_are_durable_against_postgres() -> None:
         assert list_payload["items"][0]["confidence"] == 0.96
         assert list_payload["items"][0]["tags"] == ["billing", "peer-deviation"]
 
-        ack_response = client.post(f"/alerts/{alert_id}/acknowledge")
+        ack_response = client.post(
+            f"/alerts/{alert_id}/acknowledge", params={"knowledge_base_id": kb_id}
+        )
         assert ack_response.status_code == 200
         assert ack_response.json()["status"] == "accepted"
 

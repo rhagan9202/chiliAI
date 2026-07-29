@@ -63,7 +63,7 @@ from cases.adapters.protocols import CaseRepository
 from conversations.adapters.in_memory import InMemoryConversationRepository
 from conversations.adapters.postgres import PostgresConversationRepository
 from conversations.adapters.protocols import ConversationRepository
-from conversations.models import ConversationMessage
+from conversations.models import Conversation, ConversationMessage
 from conversations.service import ConversationService, create_conversation_service
 from rag.service_models import RagQueryRequest
 from shared.alerts import normalize_severity
@@ -239,6 +239,7 @@ __all__ = [
     "enforce_production_guardrail",
     "get_config_generation",
     "load_chili_environment",
+    "require_kb_scoped_conversation",
     "reset_domain_config_caches",
     "get_api_state",
     "get_alert_acknowledge_payload",
@@ -777,14 +778,32 @@ def get_conversation_service(
     return create_conversation_service(repository)
 
 
+def require_kb_scoped_conversation(
+    service: ConversationService, conversation_id: str, knowledge_base_id: str
+) -> Conversation:
+    """Load one conversation within a KB scope, or 404.
+
+    The listing route has always required a KB scope, but the detail and
+    message-append routes took none — so a full transcript was readable, and
+    retrieval drivable, by id alone from outside the owning knowledge base.
+    """
+    conversation = service.get(conversation_id)
+    if conversation is None or conversation.knowledge_base_id != knowledge_base_id:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    return conversation
+
+
 def get_chat_conversation_payload(
     conversation_id: str = Path(..., description="Conversation identifier."),
+    knowledge_base_id: str = Query(
+        ..., min_length=1, description="Knowledge base identifier."
+    ),
     service: ConversationService = Depends(get_conversation_service),
 ) -> ChatConversationResponse:
     """Return a chat conversation read model from the durable repository."""
-    conversation = service.get(conversation_id)
-    if conversation is None:
-        raise HTTPException(status_code=404, detail="Conversation not found.")
+    conversation = require_kb_scoped_conversation(
+        service, conversation_id, knowledge_base_id
+    )
     return project_conversation(conversation)
 
 
@@ -848,15 +867,18 @@ def get_chat_conversation_create_payload(
 def get_chat_message_payload(
     payload: ChatMessageCreateRequest,
     conversation_id: str = Path(..., description="Conversation identifier."),
+    knowledge_base_id: str = Query(
+        ..., min_length=1, description="Knowledge base identifier."
+    ),
     state: ApiState = Depends(get_api_state),
     service: ConversationService = Depends(get_conversation_service),
     config: DomainConfig | None = None,
 ) -> ChatConversationResponse:
     """Append a user message + generated assistant reply to a durable conversation."""
     resolved_config = config if config is not None else get_domain_config()
-    conversation = service.get(conversation_id)
-    if conversation is None:
-        raise HTTPException(status_code=404, detail="Conversation not found.")
+    conversation = require_kb_scoped_conversation(
+        service, conversation_id, knowledge_base_id
+    )
 
     kb_ids = resolve_kb_scope(
         conversation.knowledge_base_id, resolved_config, get_knowledge_base_repository()
@@ -2003,8 +2025,33 @@ def get_alert_list_payload(
     )
 
 
+def _require_kb_scoped_alert_record(
+    store: AlertFeedStoreProtocol, alert_id: str, knowledge_base_id: str
+) -> AlertHistoryRecord:
+    """Load one alert row within a KB scope, or 404.
+
+    ``alert_id`` is a globally unique UUID, so an id-only lookup is never
+    *ambiguous* — but that is an argument about lookup, not about
+    authorisation. Without this check the detail and acknowledge routes served
+    and mutated any knowledge base's alert to any caller, while their siblings
+    ``/cases/{id}`` and ``/evidence-packs/{id}`` already 404 on a mismatch.
+
+    The 404 (rather than 403) matches those siblings: a caller outside the KB
+    is not told the alert exists.
+    """
+    record = store.get_alert(alert_id)
+    if record is None or record.knowledge_base_id != knowledge_base_id:
+        raise HTTPException(
+            status_code=404, detail=f"Alert '{alert_id}' was not found."
+        )
+    return record
+
+
 def get_alert_detail_payload(
     alert_id: str = Path(..., description="Alert identifier."),
+    knowledge_base_id: str = Query(
+        ..., min_length=1, description="Knowledge base identifier."
+    ),
     store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
 ) -> AlertDetailResponse:
     """Return one alert detail with related entities and policy citations.
@@ -2013,11 +2060,7 @@ def get_alert_detail_payload(
     (BL-005/BL-012 keep those on the evidence pack / policy item read models),
     so this defaults to the alert's own entity and an empty citation list.
     """
-    record = store.get_alert(alert_id)
-    if record is None:
-        raise HTTPException(
-            status_code=404, detail=f"Alert '{alert_id}' was not found."
-        )
+    record = _require_kb_scoped_alert_record(store, alert_id, knowledge_base_id)
     return AlertDetailResponse(
         alert=_alert_record_to_list_item(record),
         related_entity_ids=[record.entity_id],
@@ -2027,9 +2070,15 @@ def get_alert_detail_payload(
 
 def get_alert_acknowledge_payload(
     alert_id: str = Path(..., description="Alert identifier."),
+    knowledge_base_id: str = Query(
+        ..., min_length=1, description="Knowledge base identifier."
+    ),
     store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
 ) -> ApiEnvelope:
     """Acknowledge an alert in the durable store; returns a status receipt."""
+    # Ownership is settled before the mutation: an alert never changes KB, so
+    # the checked record cannot drift out from under the update.
+    _require_kb_scoped_alert_record(store, alert_id, knowledge_base_id)
     updated = store.acknowledge(alert_id)
     if updated is None:
         raise HTTPException(

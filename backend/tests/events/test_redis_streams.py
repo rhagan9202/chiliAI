@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pytest
 
+from events.adapters.dlq_in_memory import InMemoryDlqRecordStore
 from events.adapters.redis_streams import RedisStreamsEventBus
+from events.codec import encode_event
 from events.protocols import DlqErrorInfo
 from events.runtime import create_event_bus, load_event_bus_settings
 from events.types import (
@@ -279,3 +281,128 @@ def test_redis_streams_event_bus_reclaim_stale_pending_caps_limit_across_streams
     assert client.xautoclaim_calls == [
         ("chili.documents.uploaded", "workers", "worker-1", 30_000, "0-0", 1)
     ]
+
+
+def _uploaded_event(kb_id: str) -> DocumentsUploadedEvent:
+    return DocumentsUploadedEvent(
+        documents=[DocumentReference(knowledge_base_id=kb_id, source_document_id="doc-1")]
+    )
+
+
+def _poison_payload() -> dict[str, str]:
+    """A transport message whose body no longer validates against its model."""
+    return {
+        "event_type": "documents.uploaded",
+        "event_body": '{"event_type": "documents.uploaded", "BROKEN": true}',
+    }
+
+
+def test_consume_isolates_an_undecodable_message_from_the_rest_of_its_batch() -> None:
+    """One poison message must not strand the good events sharing its batch.
+
+    Decoding inside the delivery loop let a single ValidationError escape
+    before the caller's retry/DLQ machinery, so the whole XREADGROUP batch
+    stayed unacked in the PEL — silently lost, because `>` never redelivers.
+    """
+    client = FakeRedis()
+    event_bus = RedisStreamsEventBus(
+        redis_url="redis://unused",
+        stream_name_resolver=lambda event_type: f"chili.{event_type}",
+        client=client,  # pyright: ignore[reportArgumentType]
+    )
+    event_bus.ensure_consumer_group(["documents.uploaded"], consumer_group="workers")
+    client.xadd("chili.documents.uploaded", _poison_payload())
+    event_bus.publish(_uploaded_event("kb-good-1"))
+    event_bus.publish(_uploaded_event("kb-good-2"))
+
+    deliveries = event_bus.consume(
+        ["documents.uploaded"],
+        consumer_group="workers",
+        consumer_name="worker-1",
+        limit=10,
+    )
+
+    assert [
+        delivery.event.documents[0].knowledge_base_id  # pyright: ignore[reportAttributeAccessIssue]
+        for delivery in deliveries
+    ] == ["kb-good-1", "kb-good-2"]
+
+
+def test_consume_acks_an_undecodable_message_so_it_leaves_the_pending_list() -> None:
+    """An undecodable message can never succeed on redelivery.
+
+    Leaving it pending strands it forever with no operator surface, so it is
+    dead-lettered and acked instead.
+    """
+    client = FakeRedis()
+    event_bus = RedisStreamsEventBus(
+        redis_url="redis://unused",
+        stream_name_resolver=lambda event_type: f"chili.{event_type}",
+        client=client,  # pyright: ignore[reportArgumentType]
+    )
+    event_bus.ensure_consumer_group(["documents.uploaded"], consumer_group="workers")
+    client.xadd("chili.documents.uploaded", _poison_payload())
+
+    event_bus.consume(
+        ["documents.uploaded"],
+        consumer_group="workers",
+        consumer_name="worker-1",
+        limit=10,
+    )
+
+    assert client.acks == [("chili.documents.uploaded", "workers", ("1-0",))]
+    dlq_messages = client.streams["chili.documents.uploaded.dlq"]
+    assert len(dlq_messages) == 1
+    assert "error_message" in dlq_messages[0][1]
+
+
+def test_consume_records_an_undecodable_message_for_operator_visibility() -> None:
+    """`/events/dlq` reads the durable store, not the Redis DLQ stream."""
+    client = FakeRedis()
+    dlq_store = InMemoryDlqRecordStore()
+    event_bus = RedisStreamsEventBus(
+        redis_url="redis://unused",
+        stream_name_resolver=lambda event_type: f"chili.{event_type}",
+        client=client,  # pyright: ignore[reportArgumentType]
+        dlq_record_store=dlq_store,
+    )
+    event_bus.ensure_consumer_group(["documents.uploaded"], consumer_group="workers")
+    client.xadd("chili.documents.uploaded", _poison_payload())
+
+    event_bus.consume(
+        ["documents.uploaded"],
+        consumer_group="workers",
+        consumer_name="worker-1",
+        limit=10,
+    )
+
+    records, total = dlq_store.list()
+    assert total == 1
+    assert records[0].event_type == "documents.uploaded"
+    assert records[0].payload == _poison_payload()
+
+
+def test_reclaim_stale_pending_isolates_an_undecodable_message() -> None:
+    """The reclaim path decodes too, so it strands batches the same way."""
+    client = FakeRedis()
+    event_bus = RedisStreamsEventBus(
+        redis_url="redis://unused",
+        stream_name_resolver=lambda event_type: f"chili.{event_type}",
+        client=client,  # pyright: ignore[reportArgumentType]
+    )
+    good = _uploaded_event("kb-reclaimed")
+    client.autoclaim_responses["chili.documents.uploaded"] = (
+        "0-0",
+        [("1-0", _poison_payload()), ("2-0", dict(encode_event(good)))],
+    )
+
+    deliveries = event_bus.reclaim_stale_pending(
+        ["documents.uploaded"],
+        consumer_group="workers",
+        consumer_name="worker-1",
+        min_idle_ms=1000,
+        limit=10,
+    )
+
+    assert len(deliveries) == 1
+    assert deliveries[0].event == good

@@ -65,12 +65,17 @@ describe('useChatMessages', () => {
     await act(async () => {
       await handle.current?.send({
         conversationId: 'conversation-1',
+        knowledgeBaseId: 'kb-1',
         content: 'Find unusual claims',
       })
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [, init] = fetchMock.mock.calls[0]
+    const [url, init] = fetchMock.mock.calls[0]
+    // The knowledge base scopes the route, so it belongs in the query string —
+    // the body stays the message contract alone.
+    expect(String(url)).toContain('knowledge_base_id=kb-1')
+    expect(String(url)).toContain('stream=true')
     expect(JSON.parse(String(init?.body))).toEqual({ content: 'Find unusual claims' })
     handle.unmount()
   })

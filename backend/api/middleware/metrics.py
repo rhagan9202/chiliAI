@@ -56,7 +56,6 @@ class MetricsMiddleware:
             return
 
         method = str(scope.get("method", "GET"))
-        path = _resolve_path(scope)
         start = perf_counter()
         status_code = 500
 
@@ -72,20 +71,35 @@ class MetricsMiddleware:
             await self._app(scope, receive, _send_wrapper)
         finally:
             elapsed = perf_counter() - start
+            # Resolved here, not before the call: the router populates
+            # `scope["route"]` while handling the request, so reading it any
+            # earlier always fell through to the raw URL.
+            path = _resolve_path(scope)
             http_request_duration_seconds.labels(method=method, path=path).observe(elapsed)
             http_requests_total.labels(
                 method=method, path=path, status=str(status_code)
             ).inc()
 
 
+UNMATCHED_PATH_LABEL = "<unmatched>"
+
+
 def _resolve_path(scope: dict[str, object]) -> str:
+    """Return the route template for a request, or a single shared label.
+
+    The raw URL must never become a label value. Every parameterised route
+    would mint one time series per entity id, and an unmatched path is
+    attacker-chosen — 404s are served before any auth dependency, so an
+    unauthenticated client looping over URLs could grow the registry (and the
+    process) without bound. Collapsing every unmatched request onto one label
+    keeps cardinality bounded by the route table.
+    """
     route = scope.get("route")
     if route is not None:
         path = getattr(route, "path", None)
         if isinstance(path, str):
             return path
-    raw_path = scope.get("path", "/")
-    return raw_path if isinstance(raw_path, str) else "/"
+    return UNMATCHED_PATH_LABEL
 
 
 def build_metrics_router(

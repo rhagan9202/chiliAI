@@ -20,6 +20,7 @@ class AuthConfig(BaseModel):
     audience: str | None = None
     jwks_uri: str | None = None
     roles_claim: str = "roles"
+    knowledge_base_ids_claim: str = "knowledge_base_ids"
     jwks_cache_seconds: int = Field(default=3600, gt=0)
 
     # OIDC client (used by the BFF auth router)
@@ -102,6 +103,15 @@ callback lives there, not on the SPA origin).
    configures (`"roles"` above). `coerce_roles()` (`api/middleware/auth.py`)
    accepts either a list of strings or a single string claim value once it
    is a top-level key.
+4b. **(Optional) Per-principal knowledge-base entitlement.** If the IdP emits a
+   top-level claim named by `knowledge_base_ids_claim`, `/workflows` and the
+   `/events` SSE snapshot restrict that principal to the knowledge bases it
+   lists (`admin` still bypasses). The same flat-claim and `coerce_roles()`
+   shape rules apply. **Omitting the claim leaves the principal
+   unrestricted** — which is what every deployment does today, and why the
+   guard was previously dead code: `User` never carried the field, so the
+   lookup was always `None` and the check always passed. An empty list is a
+   real restriction (entitled to nothing), not "no claim".
 5. **Key rotation posture.** When Keycloak rotates its realm signing keys
    (scheduled rotation or an admin-triggered "Rotate keys" action), tokens
    signed by the new key carry a `kid` chiliAI's cached JWKS document does not
