@@ -4,7 +4,7 @@ import { Outlet, useLocation } from 'react-router'
 import { useDomainConfig } from '../../api/config'
 import { useDomainFeatures } from '../../api/config'
 import { useRealtimeWorkspaceStream } from '../../api/realtime'
-import { getDefaultRole, getLandingRoute, getRouteBlockReason } from '../../app/access'
+import { getLandingRoute, getRouteBlockReason, resolveRole } from '../../app/access'
 import { readStoredRole, useUiStore } from '../../stores/uiStore'
 import { ToastContainer } from '../common/Toast'
 import { AiAssistantPanel } from './AiAssistantPanel'
@@ -32,21 +32,20 @@ export function AppShell() {
   // "cannot access" banner on every hard reload).
   // A role remembered from a previous session outranks the pack default:
   // falling back to `default_role` on reload silently demotes the user and then
-  // bounces them off whatever page that role cannot open (UXA-102).
+  // bounces them off whatever page that role cannot open (UXA-102). It only
+  // outranks it while this pack still defines the role — `resolveRole` drops a
+  // role left behind by a pack switch, which would otherwise collapse role
+  // gating to pack level and leave the role control naming a role that is gone.
   const storedRole = readStoredRole()
-  const effectiveRole =
-    selectedRole ??
-    (domainFeaturesQuery.data
-      ? (storedRole !== null && domainFeaturesQuery.data.roles[storedRole]
-          ? storedRole
-          : getDefaultRole(domainFeaturesQuery.data))
-      : null)
+  const effectiveRole = resolveRole(domainFeaturesQuery.data, selectedRole ?? storedRole)
 
   useEffect(() => {
     if (!domainFeaturesQuery.data) {
       return
     }
-    if (!selectedRole || !domainFeaturesQuery.data.roles[selectedRole]) {
+    // Persist the resolved role, so a stale value is actually replaced rather
+    // than written back unchanged.
+    if (selectedRole !== effectiveRole) {
       setSelectedRole(effectiveRole)
     }
   }, [domainFeaturesQuery.data, selectedRole, effectiveRole, setSelectedRole])
@@ -78,7 +77,9 @@ export function AppShell() {
 
   return (
     <div className={aiPanelOpen && !railSuppressed ? 'app-shell' : 'app-shell app-shell--ai-closed'}>
-      <Sidebar domainConfig={domainConfigQuery.data} domainFeatures={domainFeaturesQuery.data} selectedRole={selectedRole} />
+      {/* The gate below reads `effectiveRole`; the nav must be built from the
+          same role or it briefly offers links that are then refused. */}
+      <Sidebar domainConfig={domainConfigQuery.data} domainFeatures={domainFeaturesQuery.data} selectedRole={effectiveRole} />
       <div className="app-shell__workspace">
         <TopBar
           domainConfig={domainConfigQuery.data}

@@ -85,6 +85,7 @@ under the wrong domain.
 | Route | View |
 |------|------|
 | `/login` | Sign-in landing page (no auth required) |
+| `/` | `LandingRedirect` — resolves the active pack + role's landing page via `getLandingRoute`; never a fixed target (see "Active role" below) |
 | `/dashboard` | Dashboard with KPI cards and recent activity |
 | `/alerts` | Alert feed with filters, bulk actions, and realtime status |
 | `/investigation`, `/investigation/:entityId` | Graph workbench |
@@ -448,6 +449,14 @@ ordered, formatted rows (UXA-302):
   and a deliberately strict ISO parse so `"sometime in 2020"` is never silently
   rendered as 1 Jan), decimals to two places, integers grouped, booleans as
   Yes/No.
+- A number the pack does **not** declare a type for keeps its exact digits: it
+  may be a dollar amount, an NPI or a year, and we cannot tell which, so it is
+  neither grouped nor rounded. Capping significant digits across the board
+  presented `1234567.89` as `1,235,000` and `2026` as `2,026` — wrong figures
+  with nothing on screen admitting they had been altered. The one exception is
+  scientific notation: centrality and similarity scores arrive as
+  `4.5211545662558374e-7`, which reads as debug output, so sub-unit magnitudes
+  collapse to four significant digits (`0.0000004521`).
 - Everything past the leading fields sits behind one **Show all N properties**
   control instead of being silently truncated, and rows render as a `<dl>` —
   chip styling made non-interactive facts look like filters you could click.
@@ -947,6 +956,25 @@ on a supervisor-only page silently demoted the user to the pack's
 `default_role` and bounced them to that role's landing page. A role remembered
 from a previous session outranks `default_role`; an unknown or removed role
 falls back to it.
+
+That fallback is `access.resolveRole`, and it governs the **gate**, not just the
+displayed role. Resolving it in only one place matters: while `AppShell` alone
+validated the stored role, a role left behind by a pack switch reached
+`getAllowedPageIds`, which treated an unrecognised role as "no role" and
+returned every enabled page — so a role that no longer existed out-ranked every
+real restricted role, and the reconciliation effect wrote the stale value back
+unchanged so it never healed. `resolveRole` now backs `getAllowedPageIds`,
+`AppShell`, and `LandingRedirect`, and `AppShell` persists the resolved role so
+the role control cannot display a role the pack does not define. The nav is
+built from the same resolved role as the gate, so it never offers a link that is
+then refused.
+
+Because a pack need not declare a `dashboard` page — the Air Force housing pack
+enables only `housing`, `knowledge_bases`, `rag_chat` and `configuration` — the
+post-login redirect to `/` must resolve the landing page from config.
+`LandingRedirect` waits for `/config/domain` and `/config/features` before
+deciding; a fixed `/dashboard` target put every housing sign-in on
+"Page not available".
 
 When the active role may not open the current route, `AppShell` renders
 `RouteNotAvailable` **in place** rather than redirecting. Redirecting discarded

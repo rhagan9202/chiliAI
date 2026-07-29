@@ -47,6 +47,28 @@ export function getDefaultRole(features?: DomainFeatures) {
   return features.default_role ?? Object.keys(features.roles)[0] ?? null
 }
 
+/**
+ * The role the workspace should act as.
+ *
+ * A role remembered from a previous session outranks the pack default, but only
+ * if the active pack actually defines it. Switching packs leaves the previous
+ * pack's role behind, and treating that as "no role" used to collapse gating to
+ * pack level — so a role that did not exist out-ranked every real restricted
+ * role. Anything unrecognised resolves to the pack default instead.
+ */
+export function resolveRole(
+  features: DomainFeatures | undefined,
+  requestedRole: string | null,
+): string | null {
+  if (!features) {
+    return null
+  }
+  if (requestedRole !== null && features.roles[requestedRole]) {
+    return requestedRole
+  }
+  return getDefaultRole(features)
+}
+
 export function getAllowedPageIds(
   features: DomainFeatures | undefined,
   selectedRole: string | null,
@@ -56,11 +78,14 @@ export function getAllowedPageIds(
   }
 
   const enabledPages = new Set(features.enabled_pages)
-  if (!selectedRole || !features.roles[selectedRole]) {
+  const roleId = resolveRole(features, selectedRole)
+  const role = roleId !== null ? features.roles[roleId] : undefined
+  // Only a pack that declares no roles at all falls back to every enabled page.
+  if (!role) {
     return [...enabledPages]
   }
 
-  return features.roles[selectedRole].pages.filter((pageId) => enabledPages.has(pageId))
+  return role.pages.filter((pageId) => enabledPages.has(pageId))
 }
 
 export function getLandingRoute(

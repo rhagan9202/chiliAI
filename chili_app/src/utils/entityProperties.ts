@@ -33,15 +33,33 @@ const DECIMAL_FORMAT = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 })
-// A number with no pack-declared type still needs presenting. Very small floats
-// (centrality scores, similarity weights) render as scientific notation by
-// default — `4.5211545662558374e-7` on the Investigation dossier — which reads
-// as debug output. Round-tripping through `Number.toLocaleString()` with a
-// significant-digits cap lands on a compact human form for both large numbers
-// (thousands separators) and tiny ones (0.0000005).
-const UNTYPED_NUMBER_FORMAT = new Intl.NumberFormat('en-US', {
+// Used only for a number the pack does not describe, where we cannot tell a
+// quantity from an identifier or a year. Capping significant digits across the
+// board rounded real figures — 1234567.89 presented as "1,235,000" — so exact
+// digits win, and this format is reserved for the one genuinely unreadable
+// case below.
+const SMALL_FLOAT_FORMAT = new Intl.NumberFormat('en-US', {
   maximumSignificantDigits: 4,
 })
+
+/**
+ * Presents a number the active pack declares no type for.
+ *
+ * The digits are reproduced exactly: an undeclared value may be a dollar
+ * amount, an NPI or a year, and grouping or rounding any of those misreads it.
+ * The single exception is scientific notation — centrality and similarity
+ * scores arrive as `4.5211545662558374e-7`, which reads as debug output on a
+ * dossier — so sub-unit magnitudes collapse to a few significant digits.
+ */
+function formatUntypedNumber(value: number): string {
+  const exact = String(value)
+  if (!exact.includes('e')) {
+    return exact
+  }
+  // A huge exponent has no compact decimal form worth showing, so it keeps its
+  // exact representation rather than becoming a wall of zeroes.
+  return Math.abs(value) < 1 ? SMALL_FLOAT_FORMAT.format(value) : exact
+}
 
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/
 // Deliberately strict: `new Date()` happily reads "sometime in 2020" as
@@ -83,7 +101,7 @@ function stringify(value: unknown): string {
   if (Array.isArray(value)) return value.map((item) => stringify(item)).join(', ')
   if (typeof value === 'object' && value !== null) return JSON.stringify(value)
   if (typeof value === 'number' && Number.isFinite(value)) {
-    return UNTYPED_NUMBER_FORMAT.format(value)
+    return formatUntypedNumber(value)
   }
   return String(value)
 }

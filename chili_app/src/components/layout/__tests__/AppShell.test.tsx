@@ -130,6 +130,33 @@ describe('AppShell route access', () => {
 
     expect(screen.getByText('Configuration page body')).toBeInTheDocument()
   })
+
+  it('refuses a restricted page to a role carried over from another pack', () => {
+    // Switching packs leaves the previous pack's role in the store. Treating an
+    // unrecognised role as "no role" collapsed gating to pack level, so this
+    // page opened for a role that does not exist here while the real analyst
+    // role is refused it.
+    window.localStorage.setItem('chiliai.selectedRole', 'ghost')
+    useUiStore.setState({ selectedRole: 'ghost' })
+
+    renderShell('/configuration')
+
+    expect(screen.getByRole('heading', { name: /not available/i })).toBeInTheDocument()
+    expect(screen.queryByText('Configuration page body')).not.toBeInTheDocument()
+  })
+
+  it('reconciles a role carried over from another pack to the pack default', () => {
+    // The stale value must actually be replaced, otherwise the role control
+    // keeps displaying a role the pack does not have and the next reload is
+    // refused all over again.
+    window.localStorage.setItem('chiliai.selectedRole', 'ghost')
+    useUiStore.setState({ selectedRole: 'ghost' })
+
+    renderShell('/alerts')
+
+    expect(useUiStore.getState().selectedRole).toBe('analyst')
+    expect(window.localStorage.getItem('chiliai.selectedRole')).toBe('analyst')
+  })
   it('does not hold the rail open on the page that is the assistant', () => {
     // RAG Chat has its own composer; showing the rail's too presented two
     // composers for the same job with nothing distinguishing them (UXA-407).
