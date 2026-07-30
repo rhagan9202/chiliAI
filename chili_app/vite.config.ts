@@ -8,6 +8,10 @@ const wsProxyTarget = process.env.VITE_WS_PROXY_TARGET ?? 'ws://localhost:8000'
 export default defineConfig({
   plugins: [react()],
   server: {
+    allowedHosts: [
+	    "5173--main--hopes-and-dreams--rhagan.coder.sand.uskgc.com"
+    ],
+
     proxy: {
       '/api': {
         target: apiProxyTarget,
