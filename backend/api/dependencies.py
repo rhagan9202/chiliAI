@@ -809,7 +809,7 @@ def get_chat_conversation_payload(
 
 def get_chat_conversation_list_payload(
     knowledge_base_id: str = Query(
-        ..., alias="kb", min_length=1, description="Knowledge base scope."
+        ..., min_length=1, description="Knowledge base scope."
     ),
     limit: int = Query(default=25, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -1891,7 +1891,6 @@ def get_graph_entity_detail_payload(
 def get_analytics_overview_payload(
     knowledge_base_id: str | None = Query(
         default=None,
-        alias="kb",
         description="Restrict every figure to one knowledge base. Omit for workspace-wide totals.",
     ),
     alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
@@ -1999,7 +1998,7 @@ def get_case_promote_payload(
 
 
 def get_alert_list_payload(
-    knowledge_base_id: str | None = Query(default=None, alias="kb"),
+    knowledge_base_id: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),

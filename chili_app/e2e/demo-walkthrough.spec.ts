@@ -110,7 +110,7 @@ async function discoverTnKb(): Promise<DiscoveredTnKb | null> {
   }
 
   for (const candidate of candidates) {
-    const alerts = await fetchJson<AlertListResponse>(`/alerts?kb=${candidate.id}&limit=1`)
+    const alerts = await fetchJson<AlertListResponse>(`/alerts?knowledge_base_id=${candidate.id}&limit=1`)
     if (alerts.items.length > 0) {
       return {
         kb: candidate,
@@ -204,7 +204,7 @@ test.describe('Demo walkthrough — live mode (TN demo KB)', () => {
   test('has at least one alert with non-empty factor tags for the TN KB', async ({ page }) => {
     const kb = requireTnKb()
 
-    const alerts = await fetchJson<AlertListResponse>(`/alerts?kb=${kb.id}&limit=500`)
+    const alerts = await fetchJson<AlertListResponse>(`/alerts?knowledge_base_id=${kb.id}&limit=500`)
     test.skip(alerts.items.length === 0, `TN KB ${kb.id} has no alerts yet.`)
     const tagged = alerts.items.filter((item) => item.tags.length > 0)
     expect(
@@ -232,7 +232,7 @@ test.describe('Demo walkthrough — live mode (TN demo KB)', () => {
   test('workbench NETWORK tab shows the cluster membership panel', async ({ page }) => {
     const kb = requireTnKb()
 
-    const alerts = await fetchJson<AlertListResponse>(`/alerts?kb=${kb.id}&limit=1`)
+    const alerts = await fetchJson<AlertListResponse>(`/alerts?knowledge_base_id=${kb.id}&limit=1`)
     test.skip(alerts.items.length === 0, `TN KB ${kb.id} has no alerts yet.`)
     const entityId = alerts.items[0].entity_id
 
@@ -249,7 +249,7 @@ test.describe('Demo walkthrough — live mode (TN demo KB)', () => {
     // feed's own order. Mirror that exactly: consider only each entity's
     // first-listed alert, otherwise this test can pick a pack the page never
     // shows and assert bars that legitimately don't render.
-    const alerts = await fetchJson<AlertListResponse>(`/alerts?kb=${kb.id}&limit=500`)
+    const alerts = await fetchJson<AlertListResponse>(`/alerts?knowledge_base_id=${kb.id}&limit=500`)
     const firstAlertByEntity = new Map<string, AlertListItem>()
     for (const alert of alerts.items) {
       if (!firstAlertByEntity.has(alert.entity_id)) {

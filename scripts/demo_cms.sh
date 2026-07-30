@@ -233,7 +233,7 @@ probe_alerts_live() {
   log "Probe (b): durable alert feed for KB $KB_ID..."
   local attempt body total
   for attempt in $(seq 1 "$PROBE_MAX_ATTEMPTS_ANALYTICS"); do
-    body=$(curl -fsS --max-time 10 "$API/alerts?kb=$KB_ID&limit=100") || body=""
+    body=$(curl -fsS --max-time 10 "$API/alerts?knowledge_base_id=$KB_ID&limit=100") || body=""
     total=$(printf '%s' "$body" | python3 -c "
 import json, sys
 try:
@@ -298,7 +298,7 @@ probe_evidence_narrative() {
   log "Probe (d): evidence pack narrative for the first alert..."
   local attempt body evidence_id evidence_body narrative_count
   for attempt in $(seq 1 "$PROBE_MAX_ATTEMPTS_ANALYTICS"); do
-    body=$(curl -fsS --max-time 10 "$API/alerts?kb=$KB_ID&limit=1") || body=""
+    body=$(curl -fsS --max-time 10 "$API/alerts?knowledge_base_id=$KB_ID&limit=1") || body=""
     evidence_id=$(printf '%s' "$body" | python3 -c "
 import json, sys
 try:

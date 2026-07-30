@@ -50,8 +50,10 @@ export function gnnClustersQueryKey(knowledgeBaseId: string | null) {
 export function getAnalyticsOverview(
   knowledgeBaseId: string | null,
 ): Promise<AnalyticsOverviewResponse> {
-  // Omitting `kb` keeps the endpoint's workspace-wide behaviour (UXA-408).
-  const query = knowledgeBaseId ? `?kb=${encodeURIComponent(knowledgeBaseId)}` : ''
+  // Omitting the scope keeps the endpoint's workspace-wide behaviour (UXA-408).
+  const query = knowledgeBaseId
+    ? `?knowledge_base_id=${encodeURIComponent(knowledgeBaseId)}`
+    : ''
   return apiFetch<AnalyticsOverviewResponse>(`/analytics/overview${query}`)
 }
 

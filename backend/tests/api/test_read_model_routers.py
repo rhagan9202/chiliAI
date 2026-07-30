@@ -167,7 +167,9 @@ def test_list_alerts_route_passes_knowledge_base_filter() -> None:
     app.dependency_overrides[get_alert_feed_store] = lambda: store
     client = TestClient(app)
 
-    response = client.get("/alerts", params={"kb": "kb-2", "limit": 1, "offset": 0})
+    response = client.get(
+        "/alerts", params={"knowledge_base_id": "kb-2", "limit": 1, "offset": 0}
+    )
 
     assert response.status_code == 200
     payload = response.json()
@@ -714,7 +716,7 @@ def test_alert_routes_are_durable_against_postgres() -> None:
         app.dependency_overrides[get_alert_feed_store] = lambda: store
         client = TestClient(app)
 
-        list_response = client.get("/alerts", params={"kb": kb_id})
+        list_response = client.get("/alerts", params={"knowledge_base_id": kb_id})
         assert list_response.status_code == 200
         list_payload = list_response.json()
         assert [item["id"] for item in list_payload["items"]] == [alert_id]
