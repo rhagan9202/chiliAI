@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable
 from datetime import datetime
+from typing import cast
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import JSONResponse, Response
@@ -26,6 +27,7 @@ from api.dependencies import (
     get_agent_service,
     get_document_status_store,
     get_event_bus,
+    get_feature_catalog_service,
     get_domain_config,
     get_graph_service,
     get_ingestion_service,
@@ -34,11 +36,26 @@ from api.dependencies import (
     get_vector_service,
     get_workflow_tracker,
 )
+from api.contracts import (
+    EntityFeatureValueListResponse,
+    EntityFeatureValueResponse,
+    FeatureCatalogResponse,
+    FeatureDefinitionResponse,
+    FeatureSourceMappingResponse,
+    FraudTypologyResponse,
+)
 from api.middleware.rbac import require_role
 from agent.protocols import AgentServiceProtocol
 from agent.service_models import WorkflowSubmissionRequest
 from agent.workflow_tracking import default_steps_for_trigger
-from config.schema import DomainConfig, ValidationConfig
+from analytics.features.service import FeatureCatalogService
+from config.schema import (
+    DomainConfig,
+    FeatureDefinitionConfig,
+    FeatureSourceMappingConfig,
+    FraudTypologyConfig,
+    ValidationConfig,
+)
 from events.protocols import EventBus
 from events.types import KnowledgeBaseCreatedEvent, KnowledgeBaseDeletedEvent
 from graph.protocols import GraphServiceProtocol
@@ -240,6 +257,120 @@ async def list_knowledge_bases(
             for item in items
         ],
         total=total,
+    )
+
+
+def _require_knowledge_base(
+    repository: KnowledgeBaseRepository,
+    knowledge_base_id: str,
+) -> KnowledgeBase:
+    knowledge_base = repository.get(knowledge_base_id)
+    if knowledge_base is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Knowledge base '{knowledge_base_id}' not found.",
+        )
+    return knowledge_base
+
+
+def _feature_source_mapping_response(
+    mapping: FeatureSourceMappingConfig,
+) -> FeatureSourceMappingResponse:
+    return FeatureSourceMappingResponse(
+        source_type=mapping.source_type,
+        source_ref=mapping.source_ref,
+        raw_fields=list(mapping.raw_fields),
+    )
+
+
+def _feature_definition_response(
+    feature: FeatureDefinitionConfig,
+) -> FeatureDefinitionResponse:
+    return FeatureDefinitionResponse(
+        id=feature.id,
+        label=feature.label,
+        description=feature.description,
+        value_type=feature.value_type,
+        entity_types=list(feature.entity_types),
+        source_mappings=[
+            _feature_source_mapping_response(mapping)
+            for mapping in feature.source_mappings
+        ],
+        peer_dimensions=list(feature.peer_dimensions),
+        threshold_hints=dict(feature.threshold_hints),
+        transformation_version=feature.transformation_version,
+        typology_ids=list(feature.typology_ids),
+    )
+
+
+def _fraud_typology_response(typology: FraudTypologyConfig) -> FraudTypologyResponse:
+    return FraudTypologyResponse(
+        id=typology.id,
+        label=typology.label,
+        description=typology.description,
+        entity_types=list(typology.entity_types),
+        severity_hint=typology.severity_hint,
+        feature_ids=list(typology.feature_ids),
+        policy_rule_ids=list(typology.policy_rule_ids),
+        playbook_ids=list(typology.playbook_ids),
+    )
+
+
+@router.get(
+    "/{knowledge_base_id}/features/catalog",
+    response_model=FeatureCatalogResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
+async def get_feature_catalog(
+    knowledge_base_id: str,
+    repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
+    feature_service: FeatureCatalogService = Depends(get_feature_catalog_service),
+) -> FeatureCatalogResponse:
+    """Return the active domain's feature catalog for an existing knowledge base."""
+
+    _require_knowledge_base(repository, knowledge_base_id)
+    catalog = feature_service.get_catalog()
+    return FeatureCatalogResponse(
+        knowledge_base_id=knowledge_base_id,
+        catalog_version=catalog.version,
+        typologies=[
+            _fraud_typology_response(typology)
+            for typology in feature_service.list_typologies()
+        ],
+        features=[
+            _feature_definition_response(feature)
+            for feature in catalog.features
+        ],
+    )
+
+
+@router.get(
+    "/{knowledge_base_id}/entities/{entity_type}/{entity_id}/features",
+    response_model=EntityFeatureValueListResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
+async def list_entity_feature_values(
+    knowledge_base_id: str,
+    entity_type: str,
+    entity_id: str,
+    repository: KnowledgeBaseRepository = Depends(get_knowledge_base_repository),
+    feature_service: FeatureCatalogService = Depends(get_feature_catalog_service),
+) -> EntityFeatureValueListResponse:
+    """Return normalized feature values for one entity in an existing knowledge base."""
+
+    _require_knowledge_base(repository, knowledge_base_id)
+    return EntityFeatureValueListResponse(
+        knowledge_base_id=knowledge_base_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        items=cast(
+            list[EntityFeatureValueResponse],
+            feature_service.list_entity_values(
+                knowledge_base_id=knowledge_base_id,
+                entity_type=entity_type,
+                entity_id=entity_id,
+            ),
+        ),
     )
 
 

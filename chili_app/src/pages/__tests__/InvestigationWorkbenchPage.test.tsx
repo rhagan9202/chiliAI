@@ -9,6 +9,8 @@ import type {
   ClusterResult,
   DomainCapabilities,
   DomainConfig,
+  EntityFeatureValueResponse,
+  FeatureCatalogResponse,
   RiskFactorResponse,
   RuntimeEntity,
 } from '../../api/contracts'
@@ -54,6 +56,8 @@ const mocks = vi.hoisted(() => ({
   riskOverallScore: 0,
   riskLevel: 'low' as 'low' | 'medium' | 'high' | 'critical',
   riskFactors: [] as RiskFactorResponse[],
+  featureCatalog: null as FeatureCatalogResponse | null,
+  featureValues: [] as EntityFeatureValueResponse[],
   clusters: [] as ClusterResult[],
   capabilities: { timeseries: true, gnn: true, risk_scoring: true, rag_chat: true, explainability: true, peer_stats: false } as DomainCapabilities,
   policyItems: [] as Array<{
@@ -71,6 +75,8 @@ const mocks = vi.hoisted(() => ({
 const analyticsCalls = vi.hoisted(() => ({
   risk: [] as Array<[string | null, string | null]>,
   timeseries: [] as Array<[string | null, string | null]>,
+  featureCatalog: [] as Array<[string | null]>,
+  featureValues: [] as Array<[string | null, string | null, string | null]>,
 }))
 
 const domainConfig: DomainConfig = {
@@ -222,6 +228,34 @@ vi.mock('../../api/analytics', () => ({
   }),
 }))
 
+vi.mock('../../api/features', () => ({
+  useFeatureCatalog: (knowledgeBaseId: string | null) => {
+    analyticsCalls.featureCatalog.push([knowledgeBaseId])
+    return {
+      isLoading: false,
+      isError: false,
+      data: mocks.featureCatalog ?? undefined,
+    }
+  },
+  useEntityFeatureValues: (
+    knowledgeBaseId: string | null,
+    entityType: string | null,
+    entityId: string | null,
+  ) => {
+    analyticsCalls.featureValues.push([knowledgeBaseId, entityType, entityId])
+    return {
+      isLoading: false,
+      isError: false,
+      data: {
+        knowledge_base_id: knowledgeBaseId ?? '',
+        entity_type: entityType ?? '',
+        entity_id: entityId ?? '',
+        items: mocks.featureValues,
+      },
+    }
+  },
+}))
+
 vi.mock('../../api/evidence', () => ({
   useEvidencePack: () => ({ isLoading: false, isError: false, data: undefined }),
 }))
@@ -304,11 +338,15 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.riskOverallScore = 0
     mocks.riskLevel = 'low'
     mocks.riskFactors = []
+    mocks.featureCatalog = null
+    mocks.featureValues = []
     mocks.clusters = []
     mocks.capabilities = { ...FULL_CAPABILITIES }
     mocks.policyItems = []
     analyticsCalls.risk = []
     analyticsCalls.timeseries = []
+    analyticsCalls.featureCatalog = []
+    analyticsCalls.featureValues = []
   })
 
   it('renders a live no-KB state instead of seeded graph data', () => {
@@ -674,6 +712,72 @@ describe('InvestigationWorkbenchPage', () => {
     const band = screen.getByTestId('signal-band')
     expect(within(band).getByText(/AI ANALYSIS · 1 RISK SIGNAL\b/)).toBeInTheDocument()
     expect(within(band).getByText('weekly carrier billing self')).toBeInTheDocument()
+  })
+
+  it('shows catalog feature labels and typologies in the Signals tab', () => {
+    selectLiveProvider()
+    mocks.riskAvailable = true
+    mocks.riskFactors = [
+      {
+        factor_name: 'weekly_provider_billing_zscore',
+        contribution: 0.42,
+        rationale: 'self-history anomaly z=4.5',
+      },
+    ]
+    mocks.featureCatalog = {
+      knowledge_base_id: 'kb-live',
+      catalog_version: 'cms-fraud-features-v1',
+      typologies: [
+        {
+          id: 'billing_spike',
+          label: 'Billing spike',
+          description: 'Unexpected billing acceleration.',
+          entity_types: ['provider'],
+          feature_ids: ['weekly_provider_billing_zscore'],
+          policy_rule_ids: [],
+          playbook_ids: [],
+          severity_hint: 'high',
+        },
+      ],
+      features: [
+        {
+          id: 'weekly_provider_billing_zscore',
+          label: 'Weekly provider billing z-score',
+          description: 'Provider billing deviation from baseline.',
+          entity_types: ['provider'],
+          typology_ids: ['billing_spike'],
+          value_type: 'decimal',
+          transformation_version: 'peerstats-zscore-v1',
+          source_mappings: [],
+          peer_dimensions: ['specialty'],
+          threshold_hints: { high: 0.8 },
+        },
+      ],
+    }
+    mocks.featureValues = [
+      {
+        entity_type: 'provider',
+        entity_id: 'provider-204',
+        feature_id: 'weekly_provider_billing_zscore',
+        value: 4.2,
+        normalized_value: 0.84,
+        catalog_version: 'cms-fraud-features-v1',
+        transformation_version: 'peerstats-zscore-v1',
+        source_refs: ['entity_derived_signals.weekly_provider_billing'],
+        observed_at: '2026-08-02T12:00:00Z',
+        score_run_id: 'score-run-1',
+      },
+    ]
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
+
+    expect(analyticsCalls.featureCatalog.at(-1)).toEqual(['kb-live'])
+    expect(analyticsCalls.featureValues.at(-1)).toEqual(['kb-live', 'provider', 'provider-204'])
+    expect(screen.getByText('Feature values')).toBeInTheDocument()
+    expect(screen.getByText('Weekly provider billing z-score')).toBeInTheDocument()
+    expect(screen.getByText('Billing spike')).toBeInTheDocument()
+    expect(screen.getByText('84%')).toBeInTheDocument()
+    expect(screen.getByText('entity_derived_signals.weekly_provider_billing')).toBeInTheDocument()
   })
 
   it('hides the signal band when risk is unavailable, even with factors on the raw payload', () => {

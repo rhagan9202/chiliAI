@@ -2089,6 +2089,9 @@
             ],
             "default": null
           },
+          "feature_catalog": {
+            "$ref": "#/components/schemas/FeatureCatalogConfig"
+          },
           "gnn": {
             "anyOf": [
               {
@@ -2212,6 +2215,13 @@
               }
             ],
             "default": null
+          },
+          "typologies": {
+            "items": {
+              "$ref": "#/components/schemas/FraudTypologyConfig"
+            },
+            "title": "Typologies",
+            "type": "array"
           },
           "ui": {
             "anyOf": [
@@ -2489,6 +2499,134 @@
           "entity"
         ],
         "title": "EntityDetailResponse",
+        "type": "object"
+      },
+      "EntityFeatureValueListResponse": {
+        "description": "Feature values for one entity in a knowledge base.",
+        "properties": {
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EntityFeatureValueResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "entity_type",
+          "entity_id"
+        ],
+        "title": "EntityFeatureValueListResponse",
+        "type": "object"
+      },
+      "EntityFeatureValueResponse": {
+        "description": "One normalized feature value for an entity.",
+        "properties": {
+          "catalog_version": {
+            "title": "Catalog Version",
+            "type": "string"
+          },
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "feature_id": {
+            "title": "Feature Id",
+            "type": "string"
+          },
+          "normalized_value": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Value"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "score_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Run Id"
+          },
+          "source_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "transformation_version": {
+            "title": "Transformation Version",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "feature_id",
+          "entity_type",
+          "entity_id",
+          "catalog_version",
+          "transformation_version"
+        ],
+        "title": "EntityFeatureValueResponse",
         "type": "object"
       },
       "EntityLocationListResponse": {
@@ -2870,6 +3008,409 @@
           "contribution"
         ],
         "title": "FeatureAttributionResponse",
+        "type": "object"
+      },
+      "FeatureCatalogConfig": {
+        "description": "Versioned collection of feature definitions for a domain.",
+        "properties": {
+          "features": {
+            "items": {
+              "$ref": "#/components/schemas/FeatureDefinitionConfig"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "version": {
+            "default": "v1",
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "title": "FeatureCatalogConfig",
+        "type": "object"
+      },
+      "FeatureCatalogResponse": {
+        "description": "Feature catalog metadata scoped to a knowledge base.",
+        "properties": {
+          "catalog_version": {
+            "title": "Catalog Version",
+            "type": "string"
+          },
+          "features": {
+            "items": {
+              "$ref": "#/components/schemas/FeatureDefinitionResponse"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "typologies": {
+            "items": {
+              "$ref": "#/components/schemas/FraudTypologyResponse"
+            },
+            "title": "Typologies",
+            "type": "array"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "catalog_version"
+        ],
+        "title": "FeatureCatalogResponse",
+        "type": "object"
+      },
+      "FeatureDefinitionConfig": {
+        "description": "A reusable, domain-neutral feature definition.",
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "entity_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entity Types",
+            "type": "array"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "peer_dimensions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Peer Dimensions",
+            "type": "array"
+          },
+          "source_mappings": {
+            "items": {
+              "$ref": "#/components/schemas/FeatureSourceMappingConfig"
+            },
+            "title": "Source Mappings",
+            "type": "array"
+          },
+          "threshold_hints": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Threshold Hints",
+            "type": "object"
+          },
+          "transformation_version": {
+            "default": "v1",
+            "minLength": 1,
+            "title": "Transformation Version",
+            "type": "string"
+          },
+          "typology_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Typology Ids",
+            "type": "array"
+          },
+          "value_type": {
+            "default": "decimal",
+            "enum": [
+              "boolean",
+              "integer",
+              "decimal",
+              "string",
+              "categorical"
+            ],
+            "title": "Value Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "FeatureDefinitionConfig",
+        "type": "object"
+      },
+      "FeatureDefinitionResponse": {
+        "description": "A reusable, domain-neutral feature definition.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "entity_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entity Types",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "peer_dimensions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Peer Dimensions",
+            "type": "array"
+          },
+          "source_mappings": {
+            "items": {
+              "$ref": "#/components/schemas/FeatureSourceMappingResponse"
+            },
+            "title": "Source Mappings",
+            "type": "array"
+          },
+          "threshold_hints": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Threshold Hints",
+            "type": "object"
+          },
+          "transformation_version": {
+            "title": "Transformation Version",
+            "type": "string"
+          },
+          "typology_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Typology Ids",
+            "type": "array"
+          },
+          "value_type": {
+            "enum": [
+              "boolean",
+              "integer",
+              "decimal",
+              "string",
+              "categorical"
+            ],
+            "title": "Value Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "description",
+          "value_type",
+          "transformation_version"
+        ],
+        "title": "FeatureDefinitionResponse",
+        "type": "object"
+      },
+      "FeatureSourceMappingConfig": {
+        "description": "A source path used to derive a normalized feature value.",
+        "properties": {
+          "raw_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Raw Fields",
+            "type": "array"
+          },
+          "source_ref": {
+            "minLength": 1,
+            "title": "Source Ref",
+            "type": "string"
+          },
+          "source_type": {
+            "minLength": 1,
+            "title": "Source Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_type",
+          "source_ref"
+        ],
+        "title": "FeatureSourceMappingConfig",
+        "type": "object"
+      },
+      "FeatureSourceMappingResponse": {
+        "description": "A source path used to derive a normalized feature value.",
+        "properties": {
+          "raw_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Raw Fields",
+            "type": "array"
+          },
+          "source_ref": {
+            "title": "Source Ref",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_type",
+          "source_ref"
+        ],
+        "title": "FeatureSourceMappingResponse",
+        "type": "object"
+      },
+      "FraudTypologyConfig": {
+        "description": "A versioned fraud-pattern label described by a domain pack.",
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "entity_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entity Types",
+            "type": "array"
+          },
+          "feature_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Feature Ids",
+            "type": "array"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "playbook_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Playbook Ids",
+            "type": "array"
+          },
+          "policy_rule_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Policy Rule Ids",
+            "type": "array"
+          },
+          "severity_hint": {
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "critical"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Severity Hint"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "FraudTypologyConfig",
+        "type": "object"
+      },
+      "FraudTypologyResponse": {
+        "description": "A versioned fraud-pattern label described by a domain pack.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "entity_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entity Types",
+            "type": "array"
+          },
+          "feature_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Feature Ids",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "playbook_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Playbook Ids",
+            "type": "array"
+          },
+          "policy_rule_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Policy Rule Ids",
+            "type": "array"
+          },
+          "severity_hint": {
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "critical"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity Hint"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "description"
+        ],
+        "title": "FraudTypologyResponse",
         "type": "object"
       },
       "GnnClusterResponse": {
@@ -10035,6 +10576,110 @@
           }
         },
         "summary": "Preview Knowledge Base Document",
+        "tags": [
+          "knowledge-bases"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/entities/{entity_type}/{entity_id}/features": {
+      "get": {
+        "description": "Return normalized feature values for one entity in an existing knowledge base.",
+        "operationId": "list_entity_feature_values_knowledgebases__knowledge_base_id__entities__entity_type___entity_id__features_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entity_type",
+            "required": true,
+            "schema": {
+              "title": "Entity Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityFeatureValueListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Entity Feature Values",
+        "tags": [
+          "knowledge-bases"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/features/catalog": {
+      "get": {
+        "description": "Return the active domain's feature catalog for an existing knowledge base.",
+        "operationId": "get_feature_catalog_knowledgebases__knowledge_base_id__features_catalog_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeatureCatalogResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Feature Catalog",
         "tags": [
           "knowledge-bases"
         ]

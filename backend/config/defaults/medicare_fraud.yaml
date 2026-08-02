@@ -184,6 +184,334 @@ policy_rules:
           value:
             config_ref: max_entities
 
+typologies:
+  - id: dmepos_overutilization
+    label: "DMEPOS overutilization"
+    description: "Provider, claim, or beneficiary patterns indicating unusually dense DMEPOS billing."
+    entity_types: [provider, claim, beneficiary]
+    severity_hint: high
+    feature_ids:
+      - dmepos_code_exposure
+      - beneficiary_high_utilization_count
+      - repeated_procedure_code_density
+      - weekly_provider_claim_count_zscore
+  - id: billing_spike
+    label: "Billing spike"
+    description: "Provider billing volume or amount increased beyond peer and historical norms."
+    entity_types: [provider, claim]
+    severity_hint: high
+    feature_ids:
+      - weekly_provider_billing_zscore
+      - weekly_provider_claim_count_zscore
+      - service_date_burstiness
+      - anomalous_claim_score
+    policy_rule_ids:
+      - billing_thresholds.claim_over_billed
+  - id: peer_outlier
+    label: "Peer outlier"
+    description: "Provider or facility behavior sits outside expected specialty or facility peer groups."
+    entity_types: [provider, facility]
+    severity_hint: medium
+    feature_ids:
+      - specialty_peer_group_outlier
+      - facility_concentration_ratio
+      - weekly_provider_billing_zscore
+  - id: referral_ring_exposure
+    label: "Referral ring exposure"
+    description: "Referral graph structure suggests concentrated or reciprocal provider activity."
+    entity_types: [provider, beneficiary]
+    severity_hint: high
+    feature_ids:
+      - provider_referral_outdegree
+      - provider_referral_indegree
+      - shared_beneficiary_density
+  - id: geographic_anomaly
+    label: "Geographic anomaly"
+    description: "Billing or service patterns are unusual for the provider state or service geography."
+    entity_types: [provider, claim, facility]
+    severity_hint: medium
+    feature_ids:
+      - geographic_state_outlier
+      - facility_concentration_ratio
+      - service_date_burstiness
+  - id: enrollment_risk
+    label: "Enrollment risk"
+    description: "Provider enrollment recency or age patterns elevate fraud-screening concern."
+    entity_types: [provider]
+    severity_hint: medium
+    feature_ids:
+      - enrollment_age_risk
+      - specialty_peer_group_outlier
+      - evidence_pack_confidence
+  - id: never_provided_service
+    label: "Never provided service"
+    description: "Evidence indicates a billed service was not provided or lacks supporting documentation."
+    entity_types: [claim, provider, beneficiary]
+    severity_hint: critical
+    feature_ids:
+      - never_provided_service_signal
+      - cross_kb_policy_citation_count
+      - evidence_pack_confidence
+  - id: policy_threshold_exposure
+    label: "Policy threshold exposure"
+    description: "Claim or provider activity triggers configured CMS policy thresholds."
+    entity_types: [claim, provider]
+    severity_hint: high
+    feature_ids:
+      - claim_amount_threshold_exposure
+      - policy_billing_threshold_hits
+      - cross_kb_policy_citation_count
+    policy_rule_ids:
+      - billing_thresholds.claim_over_billed
+
+feature_catalog:
+  version: cms-fraud-features-v1
+  features:
+    - id: weekly_provider_billing_zscore
+      label: "Weekly provider billing z-score"
+      description: "Peer-normalized weekly billed amount for a provider."
+      value_type: decimal
+      entity_types: [provider]
+      source_mappings:
+        - source_type: peer_metric
+          source_ref: peer_stats.weekly_provider_billing
+          raw_fields: [billed_amount, service_date, provider_npi]
+      peer_dimensions: [provider]
+      threshold_hints: { high: 2.0, critical: 3.0 }
+      transformation_version: peerstats-zscore-v1
+      typology_ids: [billing_spike, peer_outlier]
+    - id: weekly_provider_claim_count_zscore
+      label: "Weekly provider claim-count z-score"
+      description: "Peer-normalized weekly claim count for a provider."
+      value_type: decimal
+      entity_types: [provider]
+      source_mappings:
+        - source_type: peer_metric
+          source_ref: peer_stats.weekly_provider_claim_count
+          raw_fields: [claim_id, service_date, provider_npi]
+      peer_dimensions: [provider]
+      threshold_hints: { high: 2.0, critical: 3.0 }
+      transformation_version: peerstats-zscore-v1
+      typology_ids: [dmepos_overutilization, billing_spike]
+    - id: claim_amount_threshold_exposure
+      label: "Claim amount threshold exposure"
+      description: "Claim billed amount compared with the configured policy threshold."
+      value_type: decimal
+      entity_types: [claim]
+      source_mappings:
+        - source_type: policy_rule
+          source_ref: policy_rules.billing_thresholds.claim_over_billed
+          raw_fields: [claim_id, billed_amount]
+      threshold_hints: { high: 5000.0 }
+      transformation_version: policy-threshold-v1
+      typology_ids: [policy_threshold_exposure]
+    - id: anomalous_claim_score
+      label: "Anomalous claim score"
+      description: "Normalized anomaly score supplied by the structured claims feed."
+      value_type: decimal
+      entity_types: [claim]
+      source_mappings:
+        - source_type: records_feed
+          source_ref: records.claims_feed.observations.claim_anomaly
+          raw_fields: [claim_id, anomaly_score]
+      threshold_hints: { high: 0.75, critical: 0.9 }
+      transformation_version: claim-anomaly-v1
+      typology_ids: [billing_spike]
+    - id: provider_referral_outdegree
+      label: "Provider referral outdegree"
+      description: "Count of outgoing provider-to-provider referral relationships."
+      value_type: integer
+      entity_types: [provider]
+      source_mappings:
+        - source_type: graph_metric
+          source_ref: relationships.referred_by.outdegree
+          raw_fields: [source_provider_npi, target_provider_npi]
+      threshold_hints: { high: 20.0, critical: 50.0 }
+      transformation_version: graph-degree-v1
+      typology_ids: [referral_ring_exposure]
+    - id: provider_referral_indegree
+      label: "Provider referral indegree"
+      description: "Count of incoming provider-to-provider referral relationships."
+      value_type: integer
+      entity_types: [provider]
+      source_mappings:
+        - source_type: graph_metric
+          source_ref: relationships.referred_by.indegree
+          raw_fields: [source_provider_npi, target_provider_npi]
+      threshold_hints: { high: 20.0, critical: 50.0 }
+      transformation_version: graph-degree-v1
+      typology_ids: [referral_ring_exposure]
+    - id: shared_beneficiary_density
+      label: "Shared beneficiary density"
+      description: "Density of beneficiaries shared across connected providers."
+      value_type: decimal
+      entity_types: [provider, beneficiary]
+      source_mappings:
+        - source_type: graph_metric
+          source_ref: relationships.billed_for.shared_beneficiaries
+          raw_fields: [provider_npi, hic_number, claim_id]
+      threshold_hints: { high: 0.4, critical: 0.65 }
+      transformation_version: shared-beneficiary-density-v1
+      typology_ids: [referral_ring_exposure]
+    - id: geographic_state_outlier
+      label: "Geographic state outlier"
+      description: "Provider or claim behavior outside expected state-level patterns."
+      value_type: decimal
+      entity_types: [provider, claim, facility]
+      source_mappings:
+        - source_type: derived_signal
+          source_ref: entity_derived_signals.geographic_state_outlier
+          raw_fields: [state, claim_id, facility_id]
+      peer_dimensions: [state]
+      threshold_hints: { high: 2.0, critical: 3.0 }
+      transformation_version: geo-outlier-v1
+      typology_ids: [geographic_anomaly]
+    - id: specialty_peer_group_outlier
+      label: "Specialty peer group outlier"
+      description: "Provider score relative to peers in the same specialty."
+      value_type: decimal
+      entity_types: [provider]
+      source_mappings:
+        - source_type: derived_signal
+          source_ref: entity_derived_signals.specialty_peer_group_outlier
+          raw_fields: [provider_npi, specialty, billed_amount]
+      peer_dimensions: [specialty]
+      threshold_hints: { high: 2.0, critical: 3.0 }
+      transformation_version: specialty-peer-v1
+      typology_ids: [peer_outlier, enrollment_risk]
+    - id: beneficiary_chronic_condition_complexity
+      label: "Beneficiary chronic condition complexity"
+      description: "Count or normalized complexity of beneficiary chronic conditions."
+      value_type: decimal
+      entity_types: [beneficiary]
+      source_mappings:
+        - source_type: records_feed
+          source_ref: entities.beneficiary.properties.chronic_conditions
+          raw_fields: [hic_number, chronic_conditions]
+      threshold_hints: { high: 6.0, critical: 10.0 }
+      transformation_version: chronic-condition-complexity-v1
+      typology_ids: [dmepos_overutilization]
+    - id: beneficiary_high_utilization_count
+      label: "Beneficiary high-utilization count"
+      description: "Count of high-utilization claim events associated with a beneficiary."
+      value_type: integer
+      entity_types: [beneficiary]
+      source_mappings:
+        - source_type: graph_metric
+          source_ref: relationships.billed_for.claim_count
+          raw_fields: [hic_number, claim_id, service_date]
+      threshold_hints: { high: 12.0, critical: 24.0 }
+      transformation_version: beneficiary-utilization-v1
+      typology_ids: [dmepos_overutilization]
+    - id: facility_concentration_ratio
+      label: "Facility concentration ratio"
+      description: "Share of provider or claim activity concentrated at a facility."
+      value_type: decimal
+      entity_types: [facility, provider, claim]
+      source_mappings:
+        - source_type: graph_metric
+          source_ref: relationships.performed_at.concentration
+          raw_fields: [facility_id, provider_npi, claim_id]
+      threshold_hints: { high: 0.5, critical: 0.8 }
+      transformation_version: facility-concentration-v1
+      typology_ids: [peer_outlier, geographic_anomaly]
+    - id: repeated_procedure_code_density
+      label: "Repeated procedure-code density"
+      description: "Density of repeated procedure codes across a provider or beneficiary."
+      value_type: decimal
+      entity_types: [provider, beneficiary, claim]
+      source_mappings:
+        - source_type: records_feed
+          source_ref: records.claims_feed.procedure_code_density
+          raw_fields: [claim_id, provider_npi, procedure_codes]
+      threshold_hints: { high: 0.35, critical: 0.6 }
+      transformation_version: procedure-density-v1
+      typology_ids: [dmepos_overutilization]
+    - id: service_date_burstiness
+      label: "Service-date burstiness"
+      description: "Concentration of services in short date windows."
+      value_type: decimal
+      entity_types: [provider, claim]
+      source_mappings:
+        - source_type: timeseries_metric
+          source_ref: timeseries.service_date_burstiness
+          raw_fields: [provider_npi, claim_id, service_date]
+      threshold_hints: { high: 2.0, critical: 3.0 }
+      transformation_version: service-date-burst-v1
+      typology_ids: [billing_spike, geographic_anomaly]
+    - id: policy_billing_threshold_hits
+      label: "Policy billing threshold hits"
+      description: "Count of claims matching configured billing threshold rules."
+      value_type: integer
+      entity_types: [claim, provider]
+      source_mappings:
+        - source_type: policy_rule
+          source_ref: policy_rules.billing_thresholds
+          raw_fields: [claim_id, billed_amount]
+      threshold_hints: { high: 1.0, critical: 3.0 }
+      transformation_version: policy-hit-count-v1
+      typology_ids: [policy_threshold_exposure]
+    - id: enrollment_age_risk
+      label: "Enrollment age risk"
+      description: "Risk signal based on provider enrollment age or recency."
+      value_type: decimal
+      entity_types: [provider]
+      source_mappings:
+        - source_type: derived_signal
+          source_ref: entity_derived_signals.enrollment_age_risk
+          raw_fields: [provider_npi, enrollment_date]
+      threshold_hints: { high: 0.7, critical: 0.9 }
+      transformation_version: enrollment-age-v1
+      typology_ids: [enrollment_risk]
+    - id: never_provided_service_signal
+      label: "Never-provided service signal"
+      description: "Evidence-backed indicator that a billed service was not provided."
+      value_type: boolean
+      entity_types: [claim, provider, beneficiary]
+      source_mappings:
+        - source_type: evidence_pack
+          source_ref: evidence.never_provided_service
+          raw_fields: [claim_id, provider_npi, hic_number]
+      threshold_hints: { high: 1.0, critical: 1.0 }
+      transformation_version: never-provided-service-v1
+      typology_ids: [never_provided_service]
+    - id: dmepos_code_exposure
+      label: "DMEPOS code exposure"
+      description: "Share or count of DMEPOS-related procedure codes in claims."
+      value_type: decimal
+      entity_types: [provider, claim, beneficiary]
+      source_mappings:
+        - source_type: records_feed
+          source_ref: records.claims_feed.dmepos_code_exposure
+          raw_fields: [claim_id, provider_npi, procedure_codes]
+      threshold_hints: { high: 0.4, critical: 0.7 }
+      transformation_version: dmepos-code-exposure-v1
+      typology_ids: [dmepos_overutilization]
+    - id: cross_kb_policy_citation_count
+      label: "Cross-KB policy citation count"
+      description: "Count of relevant policy citations found across attached knowledge bases."
+      value_type: integer
+      entity_types: [claim, provider]
+      source_mappings:
+        - source_type: rag_evidence
+          source_ref: knowledgebases.policy_graph.citations
+          raw_fields: [claim_id, provider_npi, citation_id]
+      threshold_hints: { high: 2.0, critical: 5.0 }
+      transformation_version: cross-kb-citation-v1
+      typology_ids: [never_provided_service, policy_threshold_exposure]
+    - id: evidence_pack_confidence
+      label: "Evidence pack confidence"
+      description: "Normalized confidence score for the assembled investigator evidence pack."
+      value_type: decimal
+      entity_types: [provider, claim]
+      source_mappings:
+        - source_type: evidence_pack
+          source_ref: evidence.packs.confidence
+          raw_fields: [entity_id, claim_id, citation_id]
+      threshold_hints: { high: 0.75, critical: 0.9 }
+      transformation_version: evidence-pack-confidence-v1
+      typology_ids: [enrollment_risk, never_provided_service]
+
 # graph:
 #   backend: in_memory  # use neo4j for external graph databases
 #   uri: null

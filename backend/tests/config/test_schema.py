@@ -380,6 +380,170 @@ class TestDomainConfigValid:
         assert cfg.ui.navigation.pages[0].route == "/dashboard"
 
 
+def test_typologies_and_feature_catalog_round_trip() -> None:
+    payload = _make_config(entities=[_minimal_entity("provider")]).model_dump(
+        mode="json"
+    )
+    payload["policy_rules"] = [
+        {
+            "id": "billing_thresholds",
+            "name": "Billing thresholds",
+            "thresholds": {"max_billed_amount": 5000},
+            "rules": [
+                {
+                    "id": "claim_over_billed",
+                    "title_template": "Claim {target_ref} exceeds threshold",
+                    "severity": "high",
+                    "target_kind": "entity",
+                    "target_selector": {"entity_type": "provider"},
+                    "predicate": {
+                        "field": "properties.amount",
+                        "op": "gt",
+                        "value": {"config_ref": "max_billed_amount"},
+                    },
+                    "citations": [],
+                }
+            ],
+        }
+    ]
+    payload["typologies"] = [
+        {
+            "id": "billing_spike",
+            "label": "Billing spike",
+            "description": "Provider billing volume increased beyond peer norms.",
+            "entity_types": ["provider"],
+            "severity_hint": "high",
+            "feature_ids": ["weekly_provider_billing_zscore"],
+            "policy_rule_ids": ["billing_thresholds.claim_over_billed"],
+        }
+    ]
+    payload["feature_catalog"] = {
+        "version": "cms-fraud-features-v1",
+        "features": [
+            {
+                "id": "weekly_provider_billing_zscore",
+                "label": "Weekly provider billing z-score",
+                "description": "Peer-normalized weekly billed amount.",
+                "value_type": "decimal",
+                "entity_types": ["provider"],
+                "source_mappings": [
+                    {
+                        "source_type": "derived_signal",
+                        "source_ref": "entity_derived_signals.weekly_provider_billing",
+                        "raw_fields": [
+                            "billed_amount",
+                            "service_date",
+                            "provider_npi",
+                        ],
+                    }
+                ],
+                "peer_dimensions": ["provider"],
+                "threshold_hints": {"high": 2.0, "critical": 3.0},
+                "transformation_version": "peerstats-zscore-v1",
+                "typology_ids": ["billing_spike"],
+            }
+        ],
+    }
+
+    config = DomainConfig.model_validate(payload)
+
+    assert config.typologies[0].id == "billing_spike"
+    assert config.feature_catalog.version == "cms-fraud-features-v1"
+    assert config.feature_catalog.features[0].source_mappings[0].raw_fields == [
+        "billed_amount",
+        "service_date",
+        "provider_npi",
+    ]
+
+
+def test_typology_rejects_unknown_feature_reference() -> None:
+    payload = _make_config().model_dump(mode="json")
+    payload["typologies"] = [
+        {
+            "id": "billing_spike",
+            "label": "Billing spike",
+            "description": "Provider billing volume increased beyond peer norms.",
+            "entity_types": ["alpha"],
+            "feature_ids": ["missing_feature"],
+        }
+    ]
+    payload["feature_catalog"] = {"version": "v1", "features": []}
+
+    with pytest.raises(
+        ValidationError,
+        match=(
+            "Typology 'billing_spike' references unknown feature_id "
+            "'missing_feature'"
+        ),
+    ):
+        DomainConfig.model_validate(payload)
+
+
+def test_feature_catalog_rejects_duplicate_feature_ids() -> None:
+    payload = _make_config(entities=[_minimal_entity("provider")]).model_dump(
+        mode="json"
+    )
+    feature = {
+        "id": "weekly_provider_billing_zscore",
+        "label": "Weekly provider billing z-score",
+        "description": "Peer-normalized weekly billed amount.",
+        "value_type": "decimal",
+        "entity_types": ["provider"],
+        "source_mappings": [
+            {
+                "source_type": "derived_signal",
+                "source_ref": "entity_derived_signals.weekly_provider_billing",
+                "raw_fields": ["billed_amount"],
+            }
+        ],
+        "transformation_version": "peerstats-zscore-v1",
+        "typology_ids": [],
+    }
+    payload["feature_catalog"] = {
+        "version": "cms-fraud-features-v1",
+        "features": [feature, feature],
+    }
+
+    with pytest.raises(ValidationError, match="feature ids must be unique"):
+        DomainConfig.model_validate(payload)
+
+
+def test_typologies_reject_duplicate_ids() -> None:
+    payload = _make_config().model_dump(mode="json")
+    typology = {
+        "id": "billing_spike",
+        "label": "Billing spike",
+        "entity_types": ["alpha"],
+        "feature_ids": [],
+    }
+    payload["typologies"] = [typology, typology]
+
+    with pytest.raises(ValidationError, match="Typology ids must be unique"):
+        DomainConfig.model_validate(payload)
+
+
+def test_typology_rejects_unknown_policy_rule_reference() -> None:
+    payload = _make_config().model_dump(mode="json")
+    payload["typologies"] = [
+        {
+            "id": "billing_spike",
+            "label": "Billing spike",
+            "entity_types": ["alpha"],
+            "feature_ids": [],
+            "policy_rule_ids": ["billing_thresholds.missing_rule"],
+        }
+    ]
+
+    with pytest.raises(
+        ValidationError,
+        match=(
+            "Typology 'billing_spike' references unknown policy_rule_id "
+            "'billing_thresholds.missing_rule'"
+        ),
+    ):
+        DomainConfig.model_validate(payload)
+
+
 # ---------------------------------------------------------------------------
 # Cross-field validation failures
 # ---------------------------------------------------------------------------

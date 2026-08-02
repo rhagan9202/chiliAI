@@ -230,6 +230,23 @@ def test_policy_rules_default_to_empty_when_block_absent(tmp_path: Path) -> None
     assert cfg.policy_rules == []
 
 
+def test_medicare_fraud_pack_declares_typologies_and_features() -> None:
+    cfg = _load_default("medicare_fraud")
+
+    assert len(cfg.typologies) >= 8
+    assert len(cfg.feature_catalog.features) >= 20
+    assert {typology.id for typology in cfg.typologies} >= {
+        "dmepos_overutilization",
+        "billing_spike",
+        "peer_outlier",
+        "referral_ring_exposure",
+        "geographic_anomaly",
+        "enrollment_risk",
+        "never_provided_service",
+        "policy_threshold_exposure",
+    }
+
+
 # ---------------------------------------------------------------------------
 # CHILI_CONFIG_OVERLAY_PATH env overlay wiring (BL-044, config.04)
 # ---------------------------------------------------------------------------

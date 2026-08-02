@@ -255,3 +255,37 @@ export type MetricTimeseriesResponse = Schemas['MetricTimeseriesResponse']
 export type ClusterResult = Schemas['ClusterResult']
 export type GnnClusterResponse = Schemas['GnnClusterResponse']
 export type AnalyticsOverviewResponse = Schemas['AnalyticsOverviewResponse']
+export type FeatureSourceMappingResponse = RequireFields<
+  Schemas['FeatureSourceMappingResponse'],
+  'raw_fields'
+>
+export type FeatureDefinitionResponse = Omit<
+  RequireFields<
+    Schemas['FeatureDefinitionResponse'],
+    'entity_types' | 'peer_dimensions' | 'source_mappings' | 'typology_ids'
+  >,
+  'source_mappings'
+> & {
+  source_mappings: FeatureSourceMappingResponse[]
+}
+export type FraudTypologyResponse = RequireFields<
+  Schemas['FraudTypologyResponse'],
+  'entity_types' | 'feature_ids' | 'playbook_ids' | 'policy_rule_ids'
+>
+export type FeatureCatalogResponse = Omit<
+  RequireFields<Schemas['FeatureCatalogResponse'], 'features' | 'typologies'>,
+  'features' | 'typologies'
+> & {
+  features: FeatureDefinitionResponse[]
+  typologies: FraudTypologyResponse[]
+}
+export type EntityFeatureValueResponse = RequireFields<
+  Schemas['EntityFeatureValueResponse'],
+  'source_refs'
+>
+export type EntityFeatureValueListResponse = Omit<
+  RequireFields<Schemas['EntityFeatureValueListResponse'], 'items'>,
+  'items'
+> & {
+  items: EntityFeatureValueResponse[]
+}

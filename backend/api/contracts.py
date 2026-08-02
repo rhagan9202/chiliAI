@@ -234,6 +234,83 @@ class FeatureAttributionResponse(BaseModel):
     rationale: str = ""
 
 
+class FeatureSourceMappingResponse(BaseModel):
+    """A source path used to derive a normalized feature value."""
+
+    source_type: str
+    source_ref: str
+    raw_fields: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class FeatureDefinitionResponse(BaseModel):
+    """A reusable, domain-neutral feature definition."""
+
+    id: str
+    label: str
+    description: str
+    value_type: Literal["boolean", "integer", "decimal", "string", "categorical"]
+    entity_types: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    source_mappings: list[FeatureSourceMappingResponse] = Field(
+        default_factory=lambda: cast(list[FeatureSourceMappingResponse], [])
+    )
+    peer_dimensions: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    threshold_hints: dict[str, float] = Field(default_factory=dict)
+    transformation_version: str
+    typology_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class FraudTypologyResponse(BaseModel):
+    """A versioned fraud-pattern label described by a domain pack."""
+
+    id: str
+    label: str
+    description: str
+    entity_types: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    severity_hint: Literal["low", "medium", "high", "critical"] | None = None
+    feature_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    policy_rule_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    playbook_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+
+
+class FeatureCatalogResponse(BaseModel):
+    """Feature catalog metadata scoped to a knowledge base."""
+
+    knowledge_base_id: str
+    catalog_version: str
+    typologies: list[FraudTypologyResponse] = Field(
+        default_factory=lambda: cast(list[FraudTypologyResponse], [])
+    )
+    features: list[FeatureDefinitionResponse] = Field(
+        default_factory=lambda: cast(list[FeatureDefinitionResponse], [])
+    )
+
+
+class EntityFeatureValueResponse(BaseModel):
+    """One normalized feature value for an entity."""
+
+    feature_id: str
+    entity_type: str
+    entity_id: str
+    value: str | int | float | bool | None = None
+    normalized_value: float | None = Field(default=None, ge=0.0, le=1.0)
+    catalog_version: str
+    transformation_version: str
+    source_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    observed_at: datetime | None = None
+    score_run_id: str | None = None
+
+
+class EntityFeatureValueListResponse(BaseModel):
+    """Feature values for one entity in a knowledge base."""
+
+    knowledge_base_id: str
+    entity_type: str
+    entity_id: str
+    items: list[EntityFeatureValueResponse] = Field(
+        default_factory=lambda: cast(list[EntityFeatureValueResponse], [])
+    )
+
+
 class NarrativeSectionResponse(BaseModel):
     """A titled prose section of a generated evidence narrative."""
 
@@ -906,8 +983,14 @@ __all__ = [
     "DomainFeaturesResponse",
     "EvidenceItemResponse",
     "EvidencePackResponse",
+    "EntityFeatureValueListResponse",
+    "EntityFeatureValueResponse",
     "EntityTimeseriesPointResponse",
     "EntityTimeseriesResponse",
+    "FeatureCatalogResponse",
+    "FeatureDefinitionResponse",
+    "FeatureSourceMappingResponse",
+    "FraudTypologyResponse",
     "GraphEdgeResponse",
     "GraphEntityDetailResponse",
     "GraphNodeResponse",

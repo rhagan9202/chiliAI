@@ -9,12 +9,14 @@ import { useAlerts } from '../api/alerts'
 import { useGnnClusters, useRiskScore, useTimeseries } from '../api/analytics'
 import { useDomainConfig, useDomainFeatures } from '../api/config'
 import { useEvidencePack } from '../api/evidence'
+import { useEntityFeatureValues, useFeatureCatalog } from '../api/features'
 import {
   useEntityLocations,
   useInvestigationEntity,
   useInvestigationEntitySearch,
   useInvestigationNeighborhood,
 } from '../api/investigation'
+import { FeatureList } from '../components/analytics/FeatureList'
 import { AnomalyTrendPanel } from '../components/investigation/AnomalyTrendPanel'
 import { ClusterMembershipPanel } from '../components/investigation/ClusterMembershipPanel'
 import { EntityDossierHeader } from '../components/investigation/EntityDossierHeader'
@@ -83,6 +85,12 @@ export function InvestigationWorkbenchPage() {
   const riskQuery = useRiskScore(activeKnowledgeBaseId, selectedEntityId)
   const timeseriesQuery = useTimeseries(activeKnowledgeBaseId, selectedEntityId)
   const gnnClustersQuery = useGnnClusters(activeKnowledgeBaseId)
+  const featureCatalogQuery = useFeatureCatalog(activeKnowledgeBaseId)
+  const featureValuesQuery = useEntityFeatureValues(
+    activeKnowledgeBaseId,
+    entityQuery.data?.entity?.type ?? null,
+    selectedEntityId,
+  )
 
   const selectedAlert = useMemo(
     () => alertsQuery.data?.items.find((alert) => alert.entity_id === selectedEntityId) ?? null,
@@ -367,6 +375,22 @@ export function InvestigationWorkbenchPage() {
                             }
                             description="Risk factors appear once analytics have scored this entity."
                             title="No risk factors"
+                          />
+                        )}
+                      </div>
+                    </Card>
+
+                    <Card>
+                      <div className="metric-stack">
+                        <strong>Feature values</strong>
+                        {featureValuesQuery.isError || featureCatalogQuery.isError ? (
+                          <ErrorState description="Feature values could not be loaded for this entity." />
+                        ) : featureValuesQuery.isLoading || featureCatalogQuery.isLoading ? (
+                          <LoadingState label="Loading feature values" />
+                        ) : (
+                          <FeatureList
+                            catalog={featureCatalogQuery.data ?? null}
+                            values={featureValuesQuery.data?.items ?? []}
                           />
                         )}
                       </div>

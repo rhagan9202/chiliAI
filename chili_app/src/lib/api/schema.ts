@@ -1041,6 +1041,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/knowledgebases/{knowledge_base_id}/entities/{entity_type}/{entity_id}/features": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Entity Feature Values
+         * @description Return normalized feature values for one entity in an existing knowledge base.
+         */
+        get: operations["list_entity_feature_values_knowledgebases__knowledge_base_id__entities__entity_type___entity_id__features_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/features/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Feature Catalog
+         * @description Return the active domain's feature catalog for an existing knowledge base.
+         */
+        get: operations["get_feature_catalog_knowledgebases__knowledge_base_id__features_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/metrics": {
         parameters: {
             query?: never;
@@ -2307,6 +2347,7 @@ export interface components {
             entities: components["schemas"]["EntityDefinition"][];
             /** @default null */
             events: components["schemas"]["EventBusConfig"] | null;
+            feature_catalog?: components["schemas"]["FeatureCatalogConfig"];
             /** @default null */
             gnn: components["schemas"]["GnnConfig"] | null;
             /** @default null */
@@ -2336,6 +2377,8 @@ export interface components {
             storage: components["schemas"]["ObjectStoreConfig"] | null;
             /** @default null */
             timeseries: components["schemas"]["TimeseriesAnalyticsConfig"] | null;
+            /** Typologies */
+            typologies?: components["schemas"]["FraudTypologyConfig"][];
             /** @default null */
             ui: components["schemas"]["UiConfig"] | null;
             /** @default null */
@@ -2468,6 +2511,46 @@ export interface components {
          */
         EntityDetailResponse: {
             entity: components["schemas"]["Entity"];
+        };
+        /**
+         * EntityFeatureValueListResponse
+         * @description Feature values for one entity in a knowledge base.
+         */
+        EntityFeatureValueListResponse: {
+            /** Entity Id */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Items */
+            items?: components["schemas"]["EntityFeatureValueResponse"][];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+        };
+        /**
+         * EntityFeatureValueResponse
+         * @description One normalized feature value for an entity.
+         */
+        EntityFeatureValueResponse: {
+            /** Catalog Version */
+            catalog_version: string;
+            /** Entity Id */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Feature Id */
+            feature_id: string;
+            /** Normalized Value */
+            normalized_value?: number | null;
+            /** Observed At */
+            observed_at?: string | null;
+            /** Score Run Id */
+            score_run_id?: string | null;
+            /** Source Refs */
+            source_refs?: string[];
+            /** Transformation Version */
+            transformation_version: string;
+            /** Value */
+            value?: string | number | boolean | null;
         };
         /**
          * EntityLocationListResponse
@@ -2662,6 +2745,176 @@ export interface components {
              * @default
              */
             rationale: string;
+        };
+        /**
+         * FeatureCatalogConfig
+         * @description Versioned collection of feature definitions for a domain.
+         */
+        FeatureCatalogConfig: {
+            /** Features */
+            features?: components["schemas"]["FeatureDefinitionConfig"][];
+            /**
+             * Version
+             * @default v1
+             */
+            version: string;
+        };
+        /**
+         * FeatureCatalogResponse
+         * @description Feature catalog metadata scoped to a knowledge base.
+         */
+        FeatureCatalogResponse: {
+            /** Catalog Version */
+            catalog_version: string;
+            /** Features */
+            features?: components["schemas"]["FeatureDefinitionResponse"][];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Typologies */
+            typologies?: components["schemas"]["FraudTypologyResponse"][];
+        };
+        /**
+         * FeatureDefinitionConfig
+         * @description A reusable, domain-neutral feature definition.
+         */
+        FeatureDefinitionConfig: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Entity Types */
+            entity_types?: string[];
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Peer Dimensions */
+            peer_dimensions?: string[];
+            /** Source Mappings */
+            source_mappings?: components["schemas"]["FeatureSourceMappingConfig"][];
+            /** Threshold Hints */
+            threshold_hints?: {
+                [key: string]: number;
+            };
+            /**
+             * Transformation Version
+             * @default v1
+             */
+            transformation_version: string;
+            /** Typology Ids */
+            typology_ids?: string[];
+            /**
+             * Value Type
+             * @default decimal
+             * @enum {string}
+             */
+            value_type: "boolean" | "integer" | "decimal" | "string" | "categorical";
+        };
+        /**
+         * FeatureDefinitionResponse
+         * @description A reusable, domain-neutral feature definition.
+         */
+        FeatureDefinitionResponse: {
+            /** Description */
+            description: string;
+            /** Entity Types */
+            entity_types?: string[];
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Peer Dimensions */
+            peer_dimensions?: string[];
+            /** Source Mappings */
+            source_mappings?: components["schemas"]["FeatureSourceMappingResponse"][];
+            /** Threshold Hints */
+            threshold_hints?: {
+                [key: string]: number;
+            };
+            /** Transformation Version */
+            transformation_version: string;
+            /** Typology Ids */
+            typology_ids?: string[];
+            /**
+             * Value Type
+             * @enum {string}
+             */
+            value_type: "boolean" | "integer" | "decimal" | "string" | "categorical";
+        };
+        /**
+         * FeatureSourceMappingConfig
+         * @description A source path used to derive a normalized feature value.
+         */
+        FeatureSourceMappingConfig: {
+            /** Raw Fields */
+            raw_fields?: string[];
+            /** Source Ref */
+            source_ref: string;
+            /** Source Type */
+            source_type: string;
+        };
+        /**
+         * FeatureSourceMappingResponse
+         * @description A source path used to derive a normalized feature value.
+         */
+        FeatureSourceMappingResponse: {
+            /** Raw Fields */
+            raw_fields?: string[];
+            /** Source Ref */
+            source_ref: string;
+            /** Source Type */
+            source_type: string;
+        };
+        /**
+         * FraudTypologyConfig
+         * @description A versioned fraud-pattern label described by a domain pack.
+         */
+        FraudTypologyConfig: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Entity Types */
+            entity_types?: string[];
+            /** Feature Ids */
+            feature_ids?: string[];
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Playbook Ids */
+            playbook_ids?: string[];
+            /** Policy Rule Ids */
+            policy_rule_ids?: string[];
+            /**
+             * Severity Hint
+             * @default null
+             */
+            severity_hint: ("low" | "medium" | "high" | "critical") | null;
+        };
+        /**
+         * FraudTypologyResponse
+         * @description A versioned fraud-pattern label described by a domain pack.
+         */
+        FraudTypologyResponse: {
+            /** Description */
+            description: string;
+            /** Entity Types */
+            entity_types?: string[];
+            /** Feature Ids */
+            feature_ids?: string[];
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Playbook Ids */
+            playbook_ids?: string[];
+            /** Policy Rule Ids */
+            policy_rule_ids?: string[];
+            /** Severity Hint */
+            severity_hint?: ("low" | "medium" | "high" | "critical") | null;
         };
         /**
          * GnnClusterResponse
@@ -6532,6 +6785,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_entity_feature_values_knowledgebases__knowledge_base_id__entities__entity_type___entity_id__features_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                entity_type: string;
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityFeatureValueListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_feature_catalog_knowledgebases__knowledge_base_id__features_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeatureCatalogResponse"];
                 };
             };
             /** @description Validation Error */

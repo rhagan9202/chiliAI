@@ -99,6 +99,10 @@ from config.schema import (
     RecordsConfig,
     VectorStoreConfig,
 )
+from analytics.features.service import (
+    FeatureCatalogService,
+    create_feature_catalog_service,
+)
 from analytics.gnn.adapters.cluster_store import ObjectStoreClusterSummaryStore
 from analytics.gnn.adapters.graph_repository_source import GraphRepositorySnapshotSource
 from analytics.gnn.adapters.protocols import GraphSnapshotSourceProtocol
@@ -275,6 +279,7 @@ __all__ = [
     "get_evidence_pack_repository",
     "get_event_bus",
     "get_event_bus_settings",
+    "get_feature_catalog_service",
     "get_graph_entity_detail_payload",
     "get_ingestion_recovery_store",
     "get_ingestion_service",
@@ -1112,6 +1117,14 @@ def get_domain_config_features_payload(
         "enabled_pages": enabled_pages,
         "roles": config.ui.roles if config.ui else {},
     }
+
+
+def get_feature_catalog_service(
+    config: DomainConfig = Depends(get_domain_config),
+) -> FeatureCatalogService:
+    """Return the feature catalog service for the active domain config."""
+
+    return create_feature_catalog_service(config)
 
 
 def get_domain_config_schema_payload(

@@ -881,9 +881,14 @@ Before implementation starts, create or update:
 
 ## 17. Immediate Next Steps
 
-- [ ] Confirm whether Sprint 1 starts from current branch or a dedicated surge branch/worktree.
-- [ ] Create backlog rows for `SAFE-CMS-001` through `SAFE-CMS-020`.
-- [ ] Draft PI 1 implementation specs for Sprints 1-4.
+- [x] Confirm whether Sprint 1 starts from current branch or a dedicated surge branch/worktree.
+  - Formalization happened on `fix/normalize-kb-query-param` on 2026-08-02. Sprint 1 implementation should
+    start from a dedicated surge branch/worktree after the read-only inventory, for example
+    `feat/safe-cms-pi1-foundation`.
+- [x] Create backlog rows for `SAFE-CMS-001` through `SAFE-CMS-020`.
+  - Added to `docs/project/planning/backlog.md` on 2026-08-02.
+- [x] Draft PI 1 implementation specs for Sprints 1-4.
+  - Added `docs/superpowers/specs/2026-08-02-safe-cms-pi1-analytics-foundation-design.md`.
 - [ ] Run a fresh route/API/component inventory before Sprint 1 implementation.
 - [ ] Select demo KB/data subset and expected CMS fraud scenarios.
 - [ ] Assign owner/reviewer/QA roles for PI 1.

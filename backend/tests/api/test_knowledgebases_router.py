@@ -28,12 +28,17 @@ from api.dependencies import (
 )
 from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter
 from monitoring.models import AlertHistoryRecord
+from analytics.features.service import FeatureCatalogService
 from config.schema import (
     AlertsConfig,
     AuthConfig,
     CapabilitiesConfig,
     DomainConfig,
     DomainInfo,
+    FeatureCatalogConfig,
+    FeatureDefinitionConfig,
+    FeatureSourceMappingConfig,
+    FraudTypologyConfig,
     IngestionConfig,
     ValidationConfig,
 )
@@ -54,6 +59,7 @@ from graph.models import GraphDeleteByProvenance, GraphMetrics
 from shared.types import KnowledgeBase
 from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore
+from api.routers import knowledgebases as knowledgebases_router
 from api.routers.knowledgebases import read_upload_file_with_limit
 from vectorstore.service_models import VectorDeleteResponse
 
@@ -71,6 +77,56 @@ def _build_config() -> DomainConfig:
             allowed_content_types=["text/plain", "application/json"],
         ),
         alerts=AlertsConfig(thresholds={}),
+    )
+
+
+def _build_feature_catalog_config() -> DomainConfig:
+    return DomainConfig(
+        domain=DomainInfo(name="test", display_name="Test", description="Test"),
+        entities=[],
+        relationships=[],
+        capabilities=CapabilitiesConfig(),
+        ingestion=IngestionConfig(sources=[]),
+        auth=AuthConfig(enabled=False),
+        validation=ValidationConfig(
+            max_file_size_mb=1,
+            allowed_content_types=["text/plain", "application/json"],
+        ),
+        alerts=AlertsConfig(thresholds={}),
+        typologies=[
+            FraudTypologyConfig(
+                id="billing_spike",
+                label="Billing spike",
+                description="Provider billing volume increased beyond peer norms.",
+                severity_hint="high",
+                feature_ids=["weekly_provider_billing_zscore"],
+            )
+        ],
+        feature_catalog=FeatureCatalogConfig(
+            version="cms-fraud-features-v1",
+            features=[
+                FeatureDefinitionConfig(
+                    id="weekly_provider_billing_zscore",
+                    label="Weekly provider billing z-score",
+                    description="Peer-normalized weekly billed amount.",
+                    value_type="decimal",
+                    source_mappings=[
+                        FeatureSourceMappingConfig(
+                            source_type="derived_signal",
+                            source_ref="entity_derived_signals.weekly_provider_billing",
+                            raw_fields=[
+                                "billed_amount",
+                                "service_date",
+                                "provider_npi",
+                            ],
+                        )
+                    ],
+                    threshold_hints={"high": 2.0, "critical": 3.0},
+                    transformation_version="peerstats-zscore-v1",
+                    typology_ids=["billing_spike"],
+                )
+            ],
+        ),
     )
 
 
@@ -204,6 +260,76 @@ def test_create_knowledge_base_allows_duplicate_names(
     assert first.status_code == 201
     assert second.status_code == 201
     assert first.json()["id"] != second.json()["id"]
+
+
+def test_feature_catalog_returns_404_for_missing_kb() -> None:
+    repository = InMemoryKnowledgeBaseRepository()
+
+    with pytest.raises(HTTPException) as exc_info:
+        anyio.run(
+            knowledgebases_router.get_feature_catalog,
+            "missing",
+            repository,
+            FeatureCatalogService(_build_feature_catalog_config()),
+        )
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Knowledge base 'missing' not found."
+
+
+def test_feature_catalog_returns_domain_config_typologies_and_features() -> None:
+    repository = InMemoryKnowledgeBaseRepository()
+    repository.create(
+        KnowledgeBase(
+            id="kb-feature",
+            name="Feature KB",
+            description="Feature catalog test",
+            created_at=utc_now(),
+        )
+    )
+
+    payload = anyio.run(
+        knowledgebases_router.get_feature_catalog,
+        "kb-feature",
+        repository,
+        FeatureCatalogService(_build_feature_catalog_config()),
+    )
+
+    assert payload.knowledge_base_id == "kb-feature"
+    assert payload.catalog_version == "cms-fraud-features-v1"
+    assert payload.typologies[0].id == "billing_spike"
+    assert payload.features[0].id == "weekly_provider_billing_zscore"
+    assert payload.features[0].source_mappings[0].raw_fields == [
+        "billed_amount",
+        "service_date",
+        "provider_npi",
+    ]
+
+
+def test_entity_feature_values_return_empty_list_for_existing_kb() -> None:
+    repository = InMemoryKnowledgeBaseRepository()
+    repository.create(
+        KnowledgeBase(
+            id="kb-feature",
+            name="Feature KB",
+            description="Feature catalog test",
+            created_at=utc_now(),
+        )
+    )
+
+    payload = anyio.run(
+        knowledgebases_router.list_entity_feature_values,
+        "kb-feature",
+        "provider",
+        "provider-204",
+        repository,
+        FeatureCatalogService(_build_feature_catalog_config()),
+    )
+
+    assert payload.knowledge_base_id == "kb-feature"
+    assert payload.entity_type == "provider"
+    assert payload.entity_id == "provider-204"
+    assert payload.items == []
 
 
 def test_list_knowledge_bases_paginates_results(
