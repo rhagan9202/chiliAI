@@ -35,6 +35,7 @@ from events.types import (
     RagCompletionReference,
     RiskScoredEvent,
     RiskScoredReference,
+    ScoreRunStatusChangedEvent,
     TimeseriesAnalyzedEvent,
     TimeseriesAnalyzedReference,
     ValidatedDocumentReference,
@@ -423,6 +424,26 @@ def test_event_codec_round_trips_explainability_generated_event() -> None:
 
     assert decoded == event
     assert decoded.event_type == "explainability.generated"
+
+
+def test_event_codec_round_trips_score_run_status_changed_event() -> None:
+    event = ScoreRunStatusChangedEvent(
+        knowledge_base_id="kb-1",
+        run_id="score-run-1",
+        status="queued",
+        total_entities=3,
+        scored_entities=0,
+        failed_entities=0,
+        model_version="risk-linear-v1",
+        catalog_version="cms-fraud-features-v1",
+        replay_of_run_id=None,
+    )
+
+    encoded = encode_event(event)
+    decoded = decode_event(encoded)
+
+    assert decoded == event
+    assert decoded.event_type == "score_run.status_changed"
 
 
 # ---------------------------------------------------------------------------

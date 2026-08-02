@@ -311,6 +311,85 @@ class EntityFeatureValueListResponse(BaseModel):
     )
 
 
+ScoreRunStatusValue = Literal["queued", "running", "completed", "failed", "canceled", "replayed"]
+ScoreBatchStatusValue = Literal["queued", "running", "completed", "failed", "canceled", "replayed"]
+
+
+class ScoreRunStartRequest(BaseModel):
+    """Payload for starting a KB-scoped score-all run."""
+
+    entity_ids: list[str] | None = Field(default=None, min_length=1)
+    requested_by: str | None = None
+    model_version: str
+    catalog_version: str
+    idempotency_key: str | None = None
+    batch_size: int = Field(default=100, gt=0, le=1000)
+
+
+class ScoreRunReplayRequest(BaseModel):
+    """Payload for replaying failed score batches."""
+
+    requested_by: str | None = None
+    idempotency_key: str | None = None
+
+
+class ScoreBatchResponse(BaseModel):
+    """Score-all batch state."""
+
+    id: str
+    run_id: str
+    knowledge_base_id: str
+    batch_number: int = Field(ge=0)
+    status: ScoreBatchStatusValue
+    entity_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    attempts: int = Field(ge=0)
+    error_summary: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class ScoreRunResponse(BaseModel):
+    """Score-all run state."""
+
+    id: str
+    knowledge_base_id: str
+    status: ScoreRunStatusValue
+    requested_by: str | None = None
+    idempotency_key: str | None = None
+    model_version: str
+    catalog_version: str
+    replay_of_run_id: str | None = None
+    total_entities: int = Field(ge=0)
+    scored_entities: int = Field(ge=0)
+    failed_entities: int = Field(ge=0)
+    error_summary: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class ScoreRunDetailResponse(BaseModel):
+    """Score run plus current batches."""
+
+    run: ScoreRunResponse
+    batches: list[ScoreBatchResponse] = Field(
+        default_factory=lambda: cast(list[ScoreBatchResponse], [])
+    )
+    created: bool = False
+
+
+class ScoreRunListResponse(BaseModel):
+    """Page of score-all runs for one knowledge base."""
+
+    items: list[ScoreRunResponse] = Field(default_factory=lambda: cast(list[ScoreRunResponse], []))
+    total: int = Field(ge=0)
+    limit: int = Field(ge=0)
+    offset: int = Field(ge=0)
+
+
 class NarrativeSectionResponse(BaseModel):
     """A titled prose section of a generated evidence narrative."""
 
@@ -1011,6 +1090,7 @@ __all__ = [
     "RealtimeSnapshotResponse",
     "RiskFactorResponse",
     "RiskScoreResponse",
+    "ScoreBatchResponse",
     "ScorecardCitationResponse",
     "ScorecardExportFormatValue",
     "ScorecardExportResponse",
@@ -1021,6 +1101,11 @@ __all__ = [
     "ScorecardSectionResponse",
     "ScorecardTemplateListResponse",
     "ScorecardTemplateResponse",
+    "ScoreRunDetailResponse",
+    "ScoreRunListResponse",
+    "ScoreRunReplayRequest",
+    "ScoreRunResponse",
+    "ScoreRunStartRequest",
     "WorkflowRunListResponse",
     "WorkflowRunResponse",
 ]

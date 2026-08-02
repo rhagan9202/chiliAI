@@ -8,6 +8,8 @@ from datetime import datetime
 
 from analytics.score_runs.models import ScoreBatch, ScoreRun
 from analytics.score_runs.protocols import ScoreRunRepositoryProtocol
+from events.protocols import EventBus
+from events.types import ScoreRunStatusChangedEvent
 from shared.utils import generate_id, utc_now
 
 __all__ = ["ScoreRunStartResult", "ScoreRunService", "create_score_run_service"]
@@ -29,9 +31,11 @@ class ScoreRunService:
         self,
         repository: ScoreRunRepositoryProtocol,
         *,
+        event_bus: EventBus | None = None,
         clock: Callable[[], datetime] = utc_now,
     ) -> None:
         self.repository = repository
+        self._event_bus = event_bus
         self._clock = clock
 
     def start_score_all(
@@ -81,6 +85,7 @@ class ScoreRunService:
             batch_size=batch_size,
             now=now,
         )
+        self._publish_status(run)
         return ScoreRunStartResult(run=run, batches=batches, created=True)
 
     def cancel_run(self, run_id: str) -> ScoreRun:
@@ -105,6 +110,7 @@ class ScoreRunService:
                         }
                     )
                 )
+        self._publish_status(canceled)
         return canceled
 
     def replay_failed_batches(
@@ -135,7 +141,7 @@ class ScoreRunService:
             ScoreRun(
                 id=generate_id(),
                 knowledge_base_id=original.knowledge_base_id,
-                status="replayed",
+                status="queued",
                 requested_by=requested_by,
                 idempotency_key=idempotency_key,
                 model_version=original.model_version,
@@ -162,10 +168,27 @@ class ScoreRunService:
             )
             for index, batch in enumerate(failed_batches)
         ]
+        self._publish_status(run)
         return ScoreRunStartResult(run=run, batches=replay_batches, created=True)
 
     def list_batches(self, *, run_id: str) -> list[ScoreBatch]:
         return self.repository.list_batches(run_id=run_id)
+
+    def list_runs(
+        self,
+        *,
+        knowledge_base_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ):
+        return self.repository.list_runs(
+            knowledge_base_id=knowledge_base_id,
+            limit=limit,
+            offset=offset,
+        )
+
+    def get_run(self, run_id: str) -> ScoreRun:
+        return self._require_run(run_id)
 
     def score_request_id(self, *, run_id: str, batch_number: int, entity_id: str) -> str:
         return f"risk:{run_id}:batch-{batch_number}:{entity_id}"
@@ -202,15 +225,33 @@ class ScoreRunService:
     def _now(self) -> datetime:
         return self._clock()
 
+    def _publish_status(self, run: ScoreRun) -> None:
+        if self._event_bus is None:
+            return
+        self._event_bus.publish(
+            ScoreRunStatusChangedEvent(
+                knowledge_base_id=run.knowledge_base_id,
+                run_id=run.id,
+                status=run.status,
+                total_entities=run.total_entities,
+                scored_entities=run.scored_entities,
+                failed_entities=run.failed_entities,
+                model_version=run.model_version,
+                catalog_version=run.catalog_version,
+                replay_of_run_id=run.replay_of_run_id,
+            )
+        )
+
 
 def create_score_run_service(
     repository: ScoreRunRepositoryProtocol,
     *,
+    event_bus: EventBus | None = None,
     clock: Callable[[], datetime] = utc_now,
 ) -> ScoreRunService:
     """Create the default score-run service."""
 
-    return ScoreRunService(repository, clock=clock)
+    return ScoreRunService(repository, event_bus=event_bus, clock=clock)
 
 
 def _validated_entity_ids(entity_ids: Sequence[str]) -> list[str]:

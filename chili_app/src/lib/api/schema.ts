@@ -1081,6 +1081,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/knowledgebases/{knowledge_base_id}/score-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Score Runs
+         * @description Return recent score-all runs for a knowledge base.
+         */
+        get: operations["list_score_runs_knowledgebases__knowledge_base_id__score_runs_get"];
+        put?: never;
+        /**
+         * Start Score Run
+         * @description Start or return an idempotent KB-scoped score-all run.
+         */
+        post: operations["start_score_run_knowledgebases__knowledge_base_id__score_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/score-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Score Run
+         * @description Return one score-all run plus current batch state.
+         */
+        get: operations["get_score_run_knowledgebases__knowledge_base_id__score_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/score-runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Score Run
+         * @description Request cooperative cancellation of a queued or running score-all run.
+         */
+        post: operations["cancel_score_run_knowledgebases__knowledge_base_id__score_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/score-runs/{run_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay Score Run
+         * @description Create or return a replay run for failed score batches.
+         */
+        post: operations["replay_score_run_knowledgebases__knowledge_base_id__score_runs__run_id__replay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/metrics": {
         parameters: {
             query?: never;
@@ -4271,6 +4355,151 @@ export interface components {
             unavailable_reason?: string | null;
         };
         /**
+         * ScoreBatchResponse
+         * @description Score-all batch state.
+         */
+        ScoreBatchResponse: {
+            /** Attempts */
+            attempts: number;
+            /** Batch Number */
+            batch_number: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Entity Ids */
+            entity_ids?: string[];
+            /** Error Summary */
+            error_summary?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Run Id */
+            run_id: string;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "completed" | "failed" | "canceled" | "replayed";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ScoreRunDetailResponse
+         * @description Score run plus current batches.
+         */
+        ScoreRunDetailResponse: {
+            /** Batches */
+            batches?: components["schemas"]["ScoreBatchResponse"][];
+            /**
+             * Created
+             * @default false
+             */
+            created: boolean;
+            run: components["schemas"]["ScoreRunResponse"];
+        };
+        /**
+         * ScoreRunListResponse
+         * @description Page of score-all runs for one knowledge base.
+         */
+        ScoreRunListResponse: {
+            /** Items */
+            items?: components["schemas"]["ScoreRunResponse"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * ScoreRunReplayRequest
+         * @description Payload for replaying failed score batches.
+         */
+        ScoreRunReplayRequest: {
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+            /** Requested By */
+            requested_by?: string | null;
+        };
+        /**
+         * ScoreRunResponse
+         * @description Score-all run state.
+         */
+        ScoreRunResponse: {
+            /** Catalog Version */
+            catalog_version: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error Summary */
+            error_summary?: string | null;
+            /** Failed Entities */
+            failed_entities: number;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id: string;
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Model Version */
+            model_version: string;
+            /** Replay Of Run Id */
+            replay_of_run_id?: string | null;
+            /** Requested By */
+            requested_by?: string | null;
+            /** Scored Entities */
+            scored_entities: number;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "completed" | "failed" | "canceled" | "replayed";
+            /** Total Entities */
+            total_entities: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ScoreRunStartRequest
+         * @description Payload for starting a KB-scoped score-all run.
+         */
+        ScoreRunStartRequest: {
+            /**
+             * Batch Size
+             * @default 100
+             */
+            batch_size: number;
+            /** Catalog Version */
+            catalog_version: string;
+            /** Entity Ids */
+            entity_ids?: string[] | null;
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+            /** Model Version */
+            model_version: string;
+            /** Requested By */
+            requested_by?: string | null;
+        };
+        /**
          * ScorecardCitationResponse
          * @description Source reference attached to one scorecard metric.
          */
@@ -6849,6 +7078,175 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeatureCatalogResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_score_runs_knowledgebases__knowledge_base_id__score_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreRunListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_score_run_knowledgebases__knowledge_base_id__score_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScoreRunStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_score_run_knowledgebases__knowledge_base_id__score_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_score_run_knowledgebases__knowledge_base_id__score_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replay_score_run_knowledgebases__knowledge_base_id__score_runs__run_id__replay_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScoreRunReplayRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoreRunDetailResponse"];
                 };
             };
             /** @description Validation Error */

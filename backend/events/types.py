@@ -463,6 +463,21 @@ class RecordsIngestedEvent(EventBase):
     record_count: int = Field(ge=0)
 
 
+class ScoreRunStatusChangedEvent(EventBase):
+    """Published when score-all run state changes for operators/workers."""
+
+    event_type: Literal["score_run.status_changed"] = "score_run.status_changed"
+    knowledge_base_id: str
+    run_id: str
+    status: Literal["queued", "running", "completed", "failed", "canceled", "replayed"]
+    total_entities: int = Field(ge=0)
+    scored_entities: int = Field(ge=0)
+    failed_entities: int = Field(ge=0)
+    model_version: str
+    catalog_version: str
+    replay_of_run_id: str | None = None
+
+
 AnyEvent = (
     KnowledgeBaseCreatedEvent
     | KnowledgeBaseDeletedEvent
@@ -494,6 +509,7 @@ AnyEvent = (
     | ClaimsIngestedEvent
     | ConfigUpdatedEvent
     | RecordsIngestedEvent
+    | ScoreRunStatusChangedEvent
 )
 
 
@@ -542,6 +558,7 @@ __all__ = [
     "RagCompletedEvent",
     "RagCompletionReference",
     "RecordsIngestedEvent",
+    "ScoreRunStatusChangedEvent",
     "RiskFactorReference",
     "RiskScoredEvent",
     "RiskScoredReference",

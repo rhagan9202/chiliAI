@@ -124,6 +124,9 @@ from analytics.risk.exceptions import RiskConfigurationError, RiskInsufficientSi
 from analytics.risk.protocols import RiskServiceProtocol
 from analytics.risk.service import create_risk_service
 from analytics.risk.service_models import RiskAssessmentRequest
+from analytics.score_runs.adapters.in_memory import InMemoryScoreRunRepository
+from analytics.score_runs.protocols import ScoreRunRepositoryProtocol
+from analytics.score_runs.service import ScoreRunService, create_score_run_service
 from analytics.timeseries.adapters.in_memory import (
     InMemoryTimeSeriesHistorySource,
     InMemoryTimeseriesAnomalyStore,
@@ -288,6 +291,8 @@ __all__ = [
     "get_connection_provider",
     "get_raw_record_store",
     "get_records_service",
+    "get_score_run_repository",
+    "get_score_run_service",
     "get_scorecard_run_repository",
     "get_scorecard_service",
     "get_source_record_loader",
@@ -1743,6 +1748,26 @@ def get_scorecard_run_repository(request: Request) -> ScorecardRunRepository:
         build,
         guard=lambda value: isinstance(value, ScorecardRunRepository),
     )
+
+
+def get_score_run_repository(request: Request) -> ScoreRunRepositoryProtocol:
+    """Return the score-run repository for score-all workflow state."""
+
+    return _memoize_config_derived(
+        request.app,
+        "score_run_repository",
+        lambda: InMemoryScoreRunRepository(),
+        guard=lambda value: isinstance(value, ScoreRunRepositoryProtocol),
+    )
+
+
+def get_score_run_service(
+    repository: ScoreRunRepositoryProtocol = Depends(get_score_run_repository),
+    event_bus: EventBus = Depends(get_event_bus),
+) -> ScoreRunService:
+    """Return the score-run service for KB-scoped score-all operations."""
+
+    return create_score_run_service(repository, event_bus=event_bus)
 
 
 class RecordFeedSourceLoader:

@@ -203,6 +203,19 @@ export type RecordIngestReceipt = Schemas['RecordIngestReceipt']
 export type WorkflowRunResponse = Schemas['WorkflowRunResponse']
 export type WorkflowRunListResponse = RequireFields<Schemas['WorkflowRunListResponse'], 'items'>
 
+export type ScoreBatchResponse = RequireFields<Schemas['ScoreBatchResponse'], 'entity_ids'>
+export type ScoreRunStatus = Schemas['ScoreRunResponse']['status']
+export type ScoreRunStartRequest = Schemas['ScoreRunStartRequest']
+export type ScoreRunReplayRequest = Schemas['ScoreRunReplayRequest']
+export type ScoreRunResponse = Schemas['ScoreRunResponse']
+export type ScoreRunListResponse = RequireFields<Schemas['ScoreRunListResponse'], 'items'>
+export type ScoreRunDetailResponse = Omit<
+  RequireFields<Schemas['ScoreRunDetailResponse'], 'batches'>,
+  'batches'
+> & {
+  batches: ScoreBatchResponse[]
+}
+
 export type ScorecardRunStatus = Schemas['ScorecardRunResponse']['status']
 export type ScorecardExportFormat = Schemas['ScorecardExportResponse']['format']
 export type ScorecardTemplateResponse = Schemas['ScorecardTemplateResponse']

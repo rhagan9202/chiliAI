@@ -73,8 +73,8 @@ Task 2 review notes:
 - `start_score_all` is idempotent by KB-scoped key, creates queued batches, and leaves scoring execution for later
   workers.
 - `cancel_run` cancels queued/running runs and unfinished batches while preserving completed batch state.
-- `replay_failed_batches` creates a new `replayed` run linked through `replay_of_run_id` and only requeues failed
-  batch entity ids.
+- `replay_failed_batches` creates a new queued run linked through `replay_of_run_id` and only requeues failed
+  batch entity ids, so replay work remains pollable/cancelable like any other active run.
 - Deterministic risk request ids use `risk:{run_id}:batch-{batch_number}:{entity_id}` for downstream
   risk-history idempotency.
 - Post-implementation verification: `backend/tests/analytics/score_runs/test_service.py -q` passed with 7 tests;
@@ -90,17 +90,30 @@ Task 2 review notes:
 - Create or modify: score-run API router/dependencies
 - Test: focused event/API tests
 
-- [ ] **Step 1: Add score-run event contract tests**
+- [x] **Step 1: Add score-run event contract tests**
 
 Events should carry KB id, run id, status, counts, model/catalog versions, and replay lineage.
 
-- [ ] **Step 2: Add start/status/cancel/replay API tests**
+- [x] **Step 2: Add start/status/cancel/replay API tests**
 
 Use direct route-function coverage if existing `TestClient` behavior hangs in this environment.
 
-- [ ] **Step 3: Implement routes and event publication**
+- [x] **Step 3: Implement routes and event publication**
 
 Keep controls on KB operations/readiness surfaces, not investigator screens.
+
+Task 3 review notes:
+
+- Event codec test validates `score_run.status_changed` round trip with KB id, run id, status, counts,
+  model/catalog versions, and replay lineage.
+- Added optional score-run service event publication for start, cancel, and replay. Idempotent start retries
+  return the existing run without publishing duplicate status events.
+- Added KB-scoped routes under `/knowledgebases/{knowledge_base_id}/score-runs` for start, status, cancel,
+  and replay, plus app registration and OpenAPI path/tag expectations.
+- `TestClient` app/OpenAPI verification hangs in this environment, matching the earlier KB router limitation.
+  Route registration was verified through direct router import.
+- Focused verification passed: event/service/router command passed with 16 tests; targeted route-table import,
+  `compileall`, and `git diff --check` passed.
 
 ## Task 4: Frontend Operations Status Slice
 
@@ -108,14 +121,31 @@ Keep controls on KB operations/readiness surfaces, not investigator screens.
 - Regenerate OpenAPI/frontend types.
 - Add frontend API wrapper and focused KB operations UI test.
 
-- [ ] **Step 1: Add focused UI/API wrapper tests**
-- [ ] **Step 2: Implement minimal controls and run status display**
-- [ ] **Step 3: Run focused frontend tests and build**
+- [x] **Step 1: Add focused UI/API wrapper tests**
+- [x] **Step 2: Implement minimal controls and run status display**
+- [x] **Step 3: Run focused frontend tests and build**
+
+Task 4 review notes:
+
+- Regenerated backend OpenAPI and frontend schema after adding score-run API contracts.
+- Added `chili_app/src/api/scoreRuns.ts` with KB-scoped list, detail, start, cancel, and replay wrappers plus
+  React Query hooks.
+- Added `ScoreRunStatusPanel` for score-all status, counts, model/catalog versions, replay lineage, batch state,
+  and start/cancel/replay controls in the KB operations context rail.
+- Initial review found Start was unreachable without a prior run and existing runs were undiscoverable after
+  refresh. Fixed by allowing backend start requests to omit `entity_ids`, resolving the KB entity scope from the
+  graph repository, adding `GET /knowledgebases/{knowledge_base_id}/score-runs`, and hydrating the UI from the
+  latest durable run.
+- Follow-up review found replay-created runs had queued batches but `replayed` run status, which would stop
+  polling and block cancellation. Fixed replay-created runs to enter `queued` while preserving
+  `replay_of_run_id`.
+- Focused verification passed: backend score-run/event suite passed with 26 tests; frontend score-run/page suite
+  passed with 47 tests; `pnpm build`, `git diff --check`, and backlog consistency passed.
 
 ## Task 5: Verification And Closeout
 
-- [ ] Backend focused tests.
-- [ ] Frontend focused tests/build if contracts changed.
-- [ ] `git diff --check`
-- [ ] `python3 scripts/backlog_consistency.py --check`
-- [ ] Update backlog and this plan with verification evidence.
+- [x] Backend focused tests.
+- [x] Frontend focused tests/build if contracts changed.
+- [x] `git diff --check`
+- [x] `python3 scripts/backlog_consistency.py --check`
+- [x] Update backlog and this plan with verification evidence.

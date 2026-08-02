@@ -112,6 +112,25 @@ type MockKnowledgeBase = {
   domain: string | null
 }
 
+type MockScoreRun = {
+  catalog_version: string
+  created_at: string
+  error_summary: string | null
+  failed_entities: number
+  finished_at: string | null
+  id: string
+  idempotency_key: string | null
+  knowledge_base_id: string
+  model_version: string
+  replay_of_run_id: string | null
+  requested_by: string | null
+  scored_entities: number
+  started_at: string | null
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'canceled' | 'replayed'
+  total_entities: number
+  updated_at: string
+}
+
 /** In-scope KB for the mocked active domain (medicare_fraud). */
 const medicareKb: MockKnowledgeBase = {
   id: 'kb-1',
@@ -254,6 +273,7 @@ function installFetchMock({
   kbDomain = null,
   kbItems,
   emptyInventory = false,
+  scoreRunItems = [],
 }: {
   documentFail?: boolean
   recordsFail?: boolean
@@ -267,8 +287,13 @@ function installFetchMock({
   kbItems?: MockKnowledgeBase[]
   /** kb-1 has landed nothing yet — the brand-new knowledge base case. */
   emptyInventory?: boolean
+  scoreRunItems?: MockScoreRun[]
 } = {}) {
-  const knowledgeBaseItems = kbItems ?? [{ ...medicareKb, domain: kbDomain }]
+  const knowledgeBaseItems = (kbItems ?? [{ ...medicareKb, domain: kbDomain }]).map((item) => (
+    emptyInventory && item.id === 'kb-1'
+      ? { ...item, document_count: 0, entity_count: 0, relationship_count: 0 }
+      : item
+  ))
   installXhrMock({ documentFail, recordsFail })
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()
@@ -285,6 +310,75 @@ function installFetchMock({
         status: 200,
         headers: { 'content-type': 'application/json' },
       })
+    }
+
+    if (url.includes('/knowledgebases/kb-1/score-runs') && init?.method === 'POST') {
+      const body = typeof init.body === 'string' ? JSON.parse(init.body) as Record<string, unknown> : {}
+      const run = {
+        catalog_version: String(body.catalog_version ?? 'cms-fraud-features-v1'),
+        created_at: '2026-08-02T10:00:00Z',
+        error_summary: null,
+        failed_entities: 0,
+        finished_at: null,
+        id: 'score-run-started',
+        idempotency_key: null,
+        knowledge_base_id: 'kb-1',
+        model_version: String(body.model_version ?? 'risk-linear-v1'),
+        replay_of_run_id: null,
+        requested_by: null,
+        scored_entities: 0,
+        started_at: null,
+        status: 'queued',
+        total_entities: 2,
+        updated_at: '2026-08-02T10:00:00Z',
+      }
+      return new Response(JSON.stringify({ run, batches: [], created: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+
+    const scoreRunDetailMatch = url.match(/\/knowledgebases\/kb-1\/score-runs\/([^/?]+)$/)
+    if (scoreRunDetailMatch) {
+      const run = scoreRunItems.find((item) => item.id === scoreRunDetailMatch[1])
+        ?? (scoreRunDetailMatch[1] === 'score-run-started'
+          ? {
+              catalog_version: 'cms-fraud-features-v1',
+              created_at: '2026-08-02T10:00:00Z',
+              error_summary: null,
+              failed_entities: 0,
+              finished_at: null,
+              id: 'score-run-started',
+              idempotency_key: null,
+              knowledge_base_id: 'kb-1',
+              model_version: 'risk-linear-v1',
+              replay_of_run_id: null,
+              requested_by: null,
+              scored_entities: 0,
+              started_at: null,
+              status: 'queued',
+              total_entities: 2,
+              updated_at: '2026-08-02T10:00:00Z',
+            } satisfies MockScoreRun
+          : null)
+      if (run) {
+        return new Response(JSON.stringify({ run, batches: [], created: false }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+    }
+
+    if (url.includes('/knowledgebases/kb-1/score-runs')) {
+      return new Response(
+        JSON.stringify({
+          items: scoreRunItems,
+          total: scoreRunItems.length,
+          limit: 1,
+          offset: 0,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
     }
 
     if (url.endsWith('/knowledgebases')) {
@@ -709,6 +803,60 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     expect(screen.getByText('No runs yet')).toBeInTheDocument()
     expect(screen.getByText('Document preview')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Watch runs' })).toBeEnabled()
+  })
+
+  it('starts score-all without requiring client-side entity ids', async () => {
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    await screen.findByText('existing-policy.txt')
+    await userEvent.click(screen.getByRole('button', { name: 'Start score-all' }))
+
+    await screen.findByText('score-run-started')
+    const startCall = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.find((call) => {
+        const url = String(call[0])
+        const init = call[1]
+        return url.endsWith('/knowledgebases/kb-1/score-runs') && init?.method === 'POST'
+      })
+    expect(startCall).toBeDefined()
+    const body = JSON.parse(String(startCall?.[1]?.body)) as Record<string, unknown>
+    expect(body).toMatchObject({
+      batch_size: 100,
+      catalog_version: 'cms-fraud-features-v1',
+      model_version: 'risk-linear-v1',
+    })
+    expect(body).not.toHaveProperty('entity_ids')
+    expect(body).not.toHaveProperty('idempotency_key')
+  })
+
+  it('hydrates the score-run panel from the latest durable run', async () => {
+    installFetchMock({
+      scoreRunItems: [
+        {
+          catalog_version: 'cms-fraud-features-v1',
+          created_at: '2026-08-02T09:00:00Z',
+          error_summary: null,
+          failed_entities: 0,
+          finished_at: null,
+          id: 'score-run-latest',
+          idempotency_key: null,
+          knowledge_base_id: 'kb-1',
+          model_version: 'risk-linear-v1',
+          replay_of_run_id: null,
+          requested_by: 'operator-1',
+          scored_entities: 2,
+          started_at: '2026-08-02T09:00:00Z',
+          status: 'running',
+          total_entities: 4,
+          updated_at: '2026-08-02T09:01:00Z',
+        },
+      ],
+    })
+    renderWithClient(<KnowledgeBaseManagerPage />)
+
+    expect(await screen.findByText('score-run-latest')).toBeInTheDocument()
+    expect(screen.getByText('2 / 4')).toBeInTheDocument()
   })
 
   it('renders document preview content for the selected inventory document', async () => {
