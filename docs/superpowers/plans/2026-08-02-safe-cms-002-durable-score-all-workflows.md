@@ -52,19 +52,34 @@ Task 1 review notes:
 - Create: `backend/analytics/score_runs/service.py`
 - Test: `backend/tests/analytics/score_runs/test_service.py`
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Cover idempotent start, queued batch creation, cancel, replay-from-failed batches, and deterministic
 per-entity request ids.
 
-- [ ] **Step 2: Implement minimal score-all service**
+- [x] **Step 2: Implement minimal score-all service**
 
 Do not execute heavy scoring in the API request. This slice should produce durable state and deterministic
 work items.
 
-- [ ] **Step 3: Run focused service tests**
+- [x] **Step 3: Run focused service tests**
 
 Expected: service tests pass.
+
+Task 2 review notes:
+
+- Service tests first failed with `ModuleNotFoundError` for the missing `analytics.score_runs.service` module.
+- Added `ScoreRunService` plus `create_score_run_service` and `ScoreRunStartResult`.
+- `start_score_all` is idempotent by KB-scoped key, creates queued batches, and leaves scoring execution for later
+  workers.
+- `cancel_run` cancels queued/running runs and unfinished batches while preserving completed batch state.
+- `replay_failed_batches` creates a new `replayed` run linked through `replay_of_run_id` and only requeues failed
+  batch entity ids.
+- Deterministic risk request ids use `risk:{run_id}:batch-{batch_number}:{entity_id}` for downstream
+  risk-history idempotency.
+- Post-implementation verification: `backend/tests/analytics/score_runs/test_service.py -q` passed with 7 tests;
+  combined score-run repository/service tests passed with 15 tests; `compileall backend/analytics/score_runs` and
+  `git diff --check` passed.
 
 ## Task 3: Event And API Surface
 
