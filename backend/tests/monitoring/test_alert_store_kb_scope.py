@@ -18,20 +18,26 @@ def _record(
     alert_id: str,
     *,
     knowledge_base_id: str = "kb-1",
+    severity: str = "high",
     status: str = "open",
     day: int = 16,
+    evidence_pack_id: str | None = None,
+    tags: list[str] | None = None,
 ) -> AlertHistoryRecord:
     return AlertHistoryRecord(
         knowledge_base_id=knowledge_base_id,
         alert_id=alert_id,
         entity_id="claim:c1",
         entity_type="claim",
-        severity="high",
+        severity=severity,
         status=status,
         title="Anomalous claim",
         reasoning="score exceeded threshold",
         metric_name="claim_anomaly",
         created_at=datetime(2026, 5, day, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 5, day, tzinfo=timezone.utc),
+        evidence_pack_id=evidence_pack_id,
+        tags=tags or [],
     )
 
 
@@ -90,3 +96,47 @@ def test_returns_nothing_for_an_unknown_knowledge_base() -> None:
     records, total = _store().list_alerts(knowledge_base_id="kb-ghost", limit=10, offset=0)
 
     assert (records, total) == ([], 0)
+
+
+def test_combines_queue_predicates_and_filtered_total() -> None:
+    store = InMemoryAlertHistoryWriter()
+    store.write_alerts(
+        [
+            _record(
+                "a-critical-billing",
+                severity="critical",
+                evidence_pack_id="evidence-1",
+                tags=["billing"],
+                day=18,
+            ),
+            _record(
+                "a-critical-network",
+                severity="critical",
+                evidence_pack_id="evidence-2",
+                tags=["network"],
+                day=18,
+            ),
+            _record(
+                "a-stale-billing",
+                severity="critical",
+                evidence_pack_id="evidence-3",
+                tags=["billing"],
+                day=1,
+            ),
+        ]
+    )
+
+    records, total = store.list_alerts(
+        statuses=["open"],
+        severities=["critical"],
+        tags=["billing"],
+        created_from="2026-05-18",
+        created_to="2026-05-18",
+        evidence="with_evidence",
+        freshness="stale",
+        limit=1,
+        offset=0,
+    )
+
+    assert total == 1
+    assert [record.alert_id for record in records] == ["a-critical-billing"]

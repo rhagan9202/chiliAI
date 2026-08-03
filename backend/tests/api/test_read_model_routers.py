@@ -21,6 +21,7 @@ from api.app import create_app
 from api.dependencies import (
     get_agent_service,
     get_alert_feed_store,
+    get_alert_list_payload,
     get_graph_service,
     get_knowledge_base_repository,
     get_risk_service,
@@ -176,6 +177,28 @@ def test_list_alerts_route_passes_knowledge_base_filter() -> None:
     assert payload["page"]["total_items"] == 1
     assert payload["page"]["page_size"] == 1
     assert [item["id"] for item in payload["items"]] == ["alert-002"]
+
+
+def test_alert_list_payload_passes_queue_filters_to_store() -> None:
+    store = _seed_alert_store()
+
+    today = utc_now().date().isoformat()
+    payload = get_alert_list_payload(
+        knowledge_base_id=None,
+        status_filter=["open", "acknowledged"],
+        severity_filter=["critical"],
+        typology_filter=["billing"],
+        created_from=today,
+        created_to=today,
+        evidence="with_evidence",
+        freshness="fresh",
+        limit=10,
+        offset=0,
+        store=store,
+    )
+
+    assert payload.page.total_items == 1
+    assert [item.id for item in payload.items] == ["alert-001"]
 
 
 def test_get_alert_detail_returns_related_context() -> None:

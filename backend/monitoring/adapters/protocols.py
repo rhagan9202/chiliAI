@@ -79,6 +79,12 @@ class AlertFeedStoreProtocol(Protocol):
         *,
         knowledge_base_id: str | None = None,
         statuses: list[str] | None = None,
+        severities: list[str] | None = None,
+        tags: list[str] | None = None,
+        created_from: str | None = None,
+        created_to: str | None = None,
+        evidence: str | None = None,
+        freshness: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[AlertHistoryRecord], int]:

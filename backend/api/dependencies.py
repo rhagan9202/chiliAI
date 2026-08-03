@@ -2171,20 +2171,31 @@ def get_case_promote_payload(
 
 def get_alert_list_payload(
     knowledge_base_id: str | None = Query(default=None),
-    status_filter: str | None = Query(default=None, alias="status"),
+    status_filter: list[str] | None = Query(default=None, alias="status"),
+    severity_filter: list[str] | None = Query(default=None, alias="severity"),
+    typology_filter: list[str] | None = Query(default=None, alias="typology"),
+    created_from: str | None = Query(default=None, alias="from"),
+    created_to: str | None = Query(default=None, alias="to"),
+    evidence: str | None = Query(default=None),
+    freshness: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
 ) -> AlertListResponse:
     """Return the paginated alert feed from the durable ``alert_history`` store."""
-    statuses = [status_filter] if status_filter is not None else None
     # The store owns the predicate (UXA-408). This used to fetch a first page
     # to learn the total, re-fetch the *entire* alert_history table, then
     # filter and paginate in Python — so reading one KB's queue cost grew with
     # every other KB's alert volume.
     records, total = store.list_alerts(
         knowledge_base_id=knowledge_base_id,
-        statuses=statuses,
+        statuses=status_filter,
+        severities=severity_filter,
+        tags=typology_filter,
+        created_from=created_from,
+        created_to=created_to,
+        evidence=evidence,
+        freshness=freshness,
         limit=limit,
         offset=offset,
     )

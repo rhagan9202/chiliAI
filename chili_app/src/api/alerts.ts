@@ -8,6 +8,13 @@ export const alertsQueryKey = ['alerts'] as const
 export type AlertFeedFilters = {
   knowledgeBaseId?: string
   status?: string
+  statuses?: string[]
+  severities?: string[]
+  typologies?: string[]
+  createdFrom?: string
+  createdTo?: string
+  evidence?: string
+  freshness?: string
   limit?: number
   offset?: number
 }
@@ -27,6 +34,27 @@ export function getAlerts(filters: AlertFeedFilters = {}): Promise<AlertListResp
   }
   if (filters.status) {
     searchParams.set('status', filters.status)
+  }
+  for (const status of filters.statuses ?? []) {
+    searchParams.append('status', status)
+  }
+  for (const severity of filters.severities ?? []) {
+    searchParams.append('severity', severity)
+  }
+  for (const typology of filters.typologies ?? []) {
+    searchParams.append('typology', typology)
+  }
+  if (filters.createdFrom) {
+    searchParams.set('from', filters.createdFrom)
+  }
+  if (filters.createdTo) {
+    searchParams.set('to', filters.createdTo)
+  }
+  if (filters.evidence) {
+    searchParams.set('evidence', filters.evidence)
+  }
+  if (filters.freshness) {
+    searchParams.set('freshness', filters.freshness)
   }
   if (filters.limit !== undefined) {
     searchParams.set('limit', String(filters.limit))

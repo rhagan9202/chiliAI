@@ -81,11 +81,43 @@ Task 1 notes:
 - Test: alert store adapter tests
 - Test: `chili_app/src/api/__tests__/alerts.test.ts`
 
-- [ ] Add queue query parameters for multi-status, severity, typology/tag, date range,
+- [x] Add queue query parameters for multi-status, severity, typology/tag, date range,
   evidence availability, and score freshness where the store can predicate efficiently.
-- [ ] Keep pagination totals scoped to the filtered query.
-- [ ] Preserve existing `status=` behavior for current callers.
-- [ ] Regenerate the OpenAPI/frontend contract after backend schema changes.
+- [x] Keep pagination totals scoped to the filtered query.
+- [x] Preserve existing `status=` behavior for current callers.
+- [x] Regenerate the OpenAPI/frontend contract after backend schema changes.
+
+Task 2 notes:
+
+- Extended `AlertFeedStoreProtocol`, in-memory alert history, and Postgres alert history
+  with store-backed filters for repeated `status`, repeated `severity`, repeated
+  `typology`/tag, inclusive `from`/`to` created-date bounds, evidence availability, and
+  14-day score freshness from `updated_at`.
+- `get_alert_list_payload` now passes those API query params directly into the store, so
+  filtered totals remain owned by the persistence layer.
+- `getAlerts` serializes the same queue params and `AlertFeedPage` sends store-backed
+  filters to `/alerts`; assignee and case-state filtering remain client-derived until
+  Task 3 adds durable assignment/status operations.
+- Regenerated `chili_app/openapi.json` and `chili_app/src/lib/api/schema.ts`.
+- Focused red/green verification:
+  - Initial store test failed with `unexpected keyword argument 'severities'`.
+  - Initial frontend API test failed because `getAlerts` omitted the new query params.
+  - After implementation, backend store/API dependency tests and frontend API/page/filter
+    tests passed.
+- Final verification passed:
+  - `backend/.venv/bin/python -m pytest backend/tests/api/test_read_model_routers.py::test_alert_list_payload_passes_queue_filters_to_store backend/tests/monitoring/test_alert_store_kb_scope.py`: 8 passed.
+  - `backend/.venv/bin/ruff check backend/api/dependencies.py backend/monitoring/adapters/protocols.py backend/monitoring/adapters/in_memory.py backend/monitoring/adapters/postgres.py backend/tests/api/test_read_model_routers.py backend/tests/monitoring/test_alert_store_kb_scope.py`: passed.
+  - `backend/.venv/bin/pyright --project backend backend/api/dependencies.py backend/monitoring/adapters/protocols.py backend/monitoring/adapters/in_memory.py backend/monitoring/adapters/postgres.py`: 0 errors.
+  - `pnpm exec vitest run src/api/__tests__/alerts.test.ts src/pages/__tests__/AlertFeedPage.test.tsx src/utils/__tests__/alertFilters.test.ts`: 57 passed.
+  - `pnpm exec eslint src/api/alerts.ts src/api/__tests__/alerts.test.ts src/pages/AlertFeedPage.tsx src/pages/__tests__/AlertFeedPage.test.tsx src/utils/alertFilters.ts src/utils/__tests__/alertFilters.test.ts`: passed.
+  - `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json`: passed.
+  - `npm run codegen:api`: passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
+  - `git diff --check`: passed.
+  - `backend/.venv/bin/python scripts/backlog_consistency.py --check`: passed.
+- Local caveat: the existing `backend/tests/api/test_read_model_routers.py` route harness
+  timed out even for pre-existing route tests in this environment, so Task 2 API coverage
+  uses the direct `get_alert_list_payload` dependency test plus store tests here.
 
 ## Task 3: Assignment And Status Operations
 

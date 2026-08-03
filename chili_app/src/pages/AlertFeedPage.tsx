@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
-import { useAcknowledgeAlert, useAlerts } from '../api/alerts'
+import { useAcknowledgeAlert, useAlerts, type AlertFeedFilters } from '../api/alerts'
 import type { AlertListItem, CaseSummaryResponse, RuntimeEntity } from '../api/contracts'
 import type { Entity as ApiEntity } from '../types/api'
 import { useAttachAlertToCase, useCases, usePromoteAlertToCase } from '../api/cases'
@@ -165,6 +165,26 @@ function enrichQueueAlerts(
   })
 }
 
+function backendAlertFilters(
+  knowledgeBaseId: string | null,
+  filters: AlertFilterState,
+): AlertFeedFilters {
+  return {
+    ...(knowledgeBaseId ? { knowledgeBaseId } : {}),
+    ...(filters.statuses.length > 0 ? { statuses: filters.statuses } : {}),
+    ...(filters.severities.length > 0 ? { severities: filters.severities } : {}),
+    ...(filters.typologies.length > 0 ? { typologies: filters.typologies } : {}),
+    ...(filters.from ? { createdFrom: filters.from } : {}),
+    ...(filters.to ? { createdTo: filters.to } : {}),
+    ...(filters.evidenceAvailability.length > 0
+      ? { evidence: filters.evidenceAvailability[0] }
+      : {}),
+    ...(filters.scoreFreshnesses.length > 0
+      ? { freshness: filters.scoreFreshnesses[0] }
+      : {}),
+  }
+}
+
 export function AlertFeedPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -173,9 +193,8 @@ export function AlertFeedPage() {
   const [pendingBulkAction, setPendingBulkAction] = useState<'acknowledge' | null>(null)
   const selectedKnowledgeBaseId = searchParams.get('kb')
   const requestedAlertId = searchParams.get('alert')
-  const alertsQuery = useAlerts({
-    knowledgeBaseId: selectedKnowledgeBaseId ?? undefined,
-  })
+  const filters = parseAlertFilters(searchParams)
+  const alertsQuery = useAlerts(backendAlertFilters(selectedKnowledgeBaseId, filters))
   const casesQuery = useCases(selectedKnowledgeBaseId)
   const acknowledgeMutation = useAcknowledgeAlert()
   const promoteMutation = usePromoteAlertToCase()
@@ -206,7 +225,6 @@ export function AlertFeedPage() {
   // Filter state lives in the URL (UXA-401): shareable, and it survives a
   // reload. Only the parameters the model owns are rewritten, so `?kb=` and
   // `?alert=` are preserved.
-  const filters = parseAlertFilters(searchParams)
   const setFilters = (next: AlertFilterState) => {
     const params = new URLSearchParams(searchParams)
     for (const key of [

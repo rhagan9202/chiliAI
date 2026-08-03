@@ -5499,7 +5499,13 @@ export interface operations {
         parameters: {
             query?: {
                 knowledge_base_id?: string | null;
-                status?: string | null;
+                status?: string[] | null;
+                severity?: string[] | null;
+                typology?: string[] | null;
+                from?: string | null;
+                to?: string | null;
+                evidence?: string | null;
+                freshness?: string | null;
                 limit?: number;
                 offset?: number;
             };

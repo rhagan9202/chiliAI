@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from monitoring.models import AlertHistoryRecord, MonitoringBatch
 from shared.types import Alert
 from shared.utils import utc_now
@@ -112,14 +114,49 @@ class InMemoryAlertHistoryWriter:
         *,
         knowledge_base_id: str | None = None,
         statuses: list[str] | None = None,
+        severities: list[str] | None = None,
+        tags: list[str] | None = None,
+        created_from: str | None = None,
+        created_to: str | None = None,
+        evidence: str | None = None,
+        freshness: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[AlertHistoryRecord], int]:
         status_set = set(statuses) if statuses else None
+        severity_set = set(severities) if severities else None
+        tag_set = set(tags) if tags else None
+        fresh_cutoff = utc_now() - timedelta(days=14)
         filtered = [
             record
             for record in self._records.values()
             if (status_set is None or record.status in status_set)
+            and (severity_set is None or record.severity in severity_set)
+            and (tag_set is None or bool(tag_set.intersection(record.tags)))
+            and (
+                created_from is None
+                or record.created_at.date().isoformat() >= created_from
+            )
+            and (
+                created_to is None
+                or record.created_at.date().isoformat() <= created_to
+            )
+            and (
+                evidence is None
+                or (
+                    evidence == "with_evidence"
+                    and record.evidence_pack_id is not None
+                )
+                or (
+                    evidence == "without_evidence"
+                    and record.evidence_pack_id is None
+                )
+            )
+            and (
+                freshness is None
+                or (freshness == "fresh" and record.updated_at >= fresh_cutoff)
+                or (freshness == "stale" and record.updated_at < fresh_cutoff)
+            )
             and (
                 knowledge_base_id is None
                 or record.knowledge_base_id == knowledge_base_id

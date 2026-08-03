@@ -230,6 +230,12 @@ class PostgresAlertHistoryStore:
         *,
         knowledge_base_id: str | None = None,
         statuses: list[str] | None = None,
+        severities: list[str] | None = None,
+        tags: list[str] | None = None,
+        created_from: str | None = None,
+        created_to: str | None = None,
+        evidence: str | None = None,
+        freshness: str | None = None,
         limit: int,
         offset: int,
     ) -> tuple[list[AlertHistoryRecord], int]:
@@ -238,6 +244,29 @@ class PostgresAlertHistoryStore:
         if statuses:
             clauses.append("status = ANY(%s)")
             params.append(list(statuses))
+        if severities:
+            clauses.append("severity = ANY(%s)")
+            params.append(list(severities))
+        if tags:
+            clauses.append(
+                "EXISTS (SELECT 1 FROM jsonb_array_elements_text(tags) AS tag(value) "
+                "WHERE tag.value = ANY(%s))"
+            )
+            params.append(list(tags))
+        if created_from is not None:
+            clauses.append("created_at::date >= %s")
+            params.append(created_from)
+        if created_to is not None:
+            clauses.append("created_at::date <= %s")
+            params.append(created_to)
+        if evidence == "with_evidence":
+            clauses.append("evidence_pack_id IS NOT NULL")
+        elif evidence == "without_evidence":
+            clauses.append("evidence_pack_id IS NULL")
+        if freshness == "fresh":
+            clauses.append("updated_at >= now() - interval '14 days'")
+        elif freshness == "stale":
+            clauses.append("updated_at < now() - interval '14 days'")
         if knowledge_base_id is not None:
             clauses.append("knowledge_base_id = %s")
             params.append(knowledge_base_id)
