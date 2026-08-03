@@ -372,6 +372,8 @@ def test_case_dossier_export_renders_markdown_and_json() -> None:
     assert "Outlier billing concentration" in markdown_payload["content"]
     assert "Originating alert evidence." in markdown_payload["content"]
     assert "Origin claim source" in markdown_payload["content"]
+    assert "evidence-001#source:0" in markdown_payload["content"]
+    assert "/knowledgebases/kb-1/documents/source-doc/preview" in markdown_payload["content"]
     assert "Evidence is ready for supervisor review." in markdown_payload["content"]
 
     exported_json = client.get(

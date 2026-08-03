@@ -819,6 +819,23 @@ def _assemble_case_dossier(
     )
 
 
+def _format_case_dossier_provenance(
+    reference: EvidenceProvenanceReferenceResponse,
+) -> str:
+    details = [f"id: {reference.reference_id}"]
+    if reference.route_target:
+        details.append(f"route: {reference.route_target}")
+    if reference.source_system:
+        source = reference.source_system
+        if reference.source_version:
+            source = f"{source}@{reference.source_version}"
+        details.append(f"source: {source}")
+    if reference.transformation_version:
+        details.append(f"transform: {reference.transformation_version}")
+
+    return f"- {reference.label} ({reference.reference_type}; {'; '.join(details)})"
+
+
 def _render_case_dossier_markdown(dossier: CaseDossierResponse) -> str:
     lines = [
         f"# {dossier.case.title}",
@@ -853,7 +870,7 @@ def _render_case_dossier_markdown(dossier: CaseDossierResponse) -> str:
                 lines.append("")
                 lines.append("Provenance:")
                 for reference in pack.provenance:
-                    lines.append(f"- {reference.label} ({reference.reference_type})")
+                    lines.append(_format_case_dossier_provenance(reference))
     else:
         lines.append("- None")
 

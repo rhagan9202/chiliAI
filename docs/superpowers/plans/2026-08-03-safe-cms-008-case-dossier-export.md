@@ -133,8 +133,27 @@ Task 2 notes:
 - Create/modify: `chili_app/e2e/case-dossier.spec.ts`
 - Modify: `docs/superpowers/plans/2026-08-03-safe-cms-008-case-dossier-export.md`
 
-- [ ] Seed the real dev stack, promote an alert, open the selected case dossier, export it, and verify cited evidence/provenance is present.
-- [ ] Run focused Playwright and full story checks.
+- [x] Seed the real dev stack, promote an alert, open the selected case dossier, export it, and verify cited evidence/provenance is present.
+- [x] Run focused Playwright and full story checks.
+
+**Notes:**
+- Added `chili_app/e2e/case-dossier.spec.ts` for the seeded alert-to-case-to-dossier browser flow.
+- RED: focused Playwright exposed that Markdown exports preserved provenance labels/types but omitted source identifiers (`dev-seed-source`).
+- Fixed `_render_case_dossier_markdown` through a bounded provenance formatter that includes `reference_id`, route target, source/version, and transform version.
+- GREEN:
+  - `uv run --project backend pytest backend/tests/api/test_phase5_stateful_routes.py::test_case_dossier_export_renders_markdown_and_json -q`: passed.
+  - `pnpm exec playwright test e2e/case-dossier.spec.ts`: passed against the rebuilt dev stack.
+  - `uv run --project backend pytest backend/tests/api/test_phase5_stateful_routes.py::test_case_dossier_includes_evidence_feedback_and_export_metadata backend/tests/api/test_phase5_stateful_routes.py::test_case_dossier_export_renders_markdown_and_json -q`: passed.
+  - `pnpm exec vitest run src/api/__tests__/cases.test.ts src/pages/__tests__/CaseManagementPage.test.tsx`: 22 passed.
+  - `pnpm exec eslint src/api/cases.ts src/api/contracts.ts src/api/__tests__/cases.test.ts src/pages/CaseManagementPage.tsx src/pages/__tests__/CaseManagementPage.test.tsx e2e/case-dossier.spec.ts`: passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
+  - `backend/.venv/bin/python scripts/backlog_consistency.py --check`: passed.
+  - `git diff --check`: passed.
+- Final local review found no blocking issues. Backlog status remains unchanged pending the next explicit closeout decision because evidence removal/reason-code chronology is documented as a DoD residual/follow-up item.
+
+## Deferred Follow-Up
+
+- `SAFE-CMS-008-FU-001`: add explicit analyst-driven evidence add/remove actions with reason codes and case chronology entries. Current SAFE-CMS-008 implementation preserves originating and attached-alert evidence chronology; explicit evidence removal remains out of this surge slice.
 
 ## Review Gates
 
