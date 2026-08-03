@@ -795,6 +795,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/evidence-packs/{evidence_pack_id}/provenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Evidence Pack Provenance
+         * @description Return structured provenance references for one evidence pack.
+         */
+        get: operations["get_evidence_pack_provenance_evidence_packs__evidence_pack_id__provenance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/graph/entities/{entity_id}": {
         parameters: {
             query?: never;
@@ -1093,6 +1113,26 @@ export interface paths {
          * @description Return normalized feature values for one entity in an existing knowledge base.
          */
         get: operations["list_entity_feature_values_knowledgebases__knowledge_base_id__entities__entity_type___entity_id__features_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledgebases/{knowledge_base_id}/evidence-packs/{evidence_pack_id}/provenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Kb Evidence Pack Provenance
+         * @description Return structured provenance references for one KB-scoped evidence pack.
+         */
+        get: operations["get_kb_evidence_pack_provenance_knowledgebases__knowledge_base_id__evidence_packs__evidence_pack_id__provenance_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2856,6 +2896,18 @@ export interface components {
             subgraph_edge_ids?: string[];
             /** Subgraph Node Ids */
             subgraph_node_ids?: string[];
+        };
+        /**
+         * EvidenceProvenanceListResponse
+         * @description Structured provenance references for one evidence pack.
+         */
+        EvidenceProvenanceListResponse: {
+            /** Evidence Pack Id */
+            evidence_pack_id: string;
+            /** Items */
+            items?: components["schemas"]["EvidenceProvenanceReferenceResponse"][];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
         };
         /**
          * EvidenceProvenanceReferenceResponse
@@ -6739,6 +6791,41 @@ export interface operations {
             };
         };
     };
+    get_evidence_pack_provenance_evidence_packs__evidence_pack_id__provenance_get: {
+        parameters: {
+            query: {
+                /** @description Knowledge base the evidence pack belongs to. */
+                knowledge_base_id: string;
+            };
+            header?: never;
+            path: {
+                /** @description Evidence pack identifier. */
+                evidence_pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceProvenanceListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_entity_detail_graph_entities__entity_id__get: {
         parameters: {
             query?: never;
@@ -7282,6 +7369,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityFeatureValueListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_kb_evidence_pack_provenance_knowledgebases__knowledge_base_id__evidence_packs__evidence_pack_id__provenance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                knowledge_base_id: string;
+                /** @description Evidence pack identifier. */
+                evidence_pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceProvenanceListResponse"];
                 };
             };
             /** @description Validation Error */

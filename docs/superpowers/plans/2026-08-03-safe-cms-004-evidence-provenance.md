@@ -71,6 +71,7 @@ Task 1 notes:
   - `backend/tests/shared/test_types.py backend/tests/api/test_evidence_payloads.py -q`: 64 passed.
   - `compileall backend/shared backend/api`: passed.
   - `git diff --check`: passed.
+  - `backend/.venv/bin/python scripts/backlog_consistency.py --check`: passed.
   - `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json`: passed.
   - `npm run codegen:api`: passed.
   - `pnpm build`: passed with the existing Vite large-chunk warning.
@@ -82,9 +83,30 @@ Task 1 notes:
 - Create: migration for queryable provenance rows if object-store fields are insufficient
 - Test: repository and migration tests
 
-- [ ] Add a repository protocol for KB/evidence-pack scoped provenance references.
-- [ ] Implement durable storage or a documented object-store-backed first slice.
-- [ ] Ensure KB deletion purges provenance rows or embedded pack refs.
+- [x] Add a repository protocol for KB/evidence-pack scoped provenance references.
+- [x] Implement durable storage or a documented object-store-backed first slice.
+- [x] Ensure KB deletion purges provenance rows or embedded pack refs.
+
+Task 2 notes:
+
+- Added `analytics.explainability.provenance.EvidenceProvenanceRepository` and
+  `EvidencePackProvenanceRepository`, backed by the durable evidence-pack repository.
+- Added `EvidenceProvenanceListResponse`, a pure response builder, DI wiring, the existing
+  `/evidence-packs/{evidence_pack_id}/provenance` route, and the PI-spec route
+  `/knowledgebases/{knowledge_base_id}/evidence-packs/{evidence_pack_id}/provenance`.
+- Kept the provenance dependency as a lightweight per-request wrapper around the current
+  evidence-pack repository so app-state swaps cannot retain stale repository instances.
+- No new SQL migration was added in this slice: provenance is persisted inside the existing
+  object-store evidence-pack artifact, and KB deletion already purges embedded provenance by
+  deleting evidence packs. A later adapter can replace the seam with normalized SQL rows if
+  high-volume querying requires it.
+- Verification passed:
+  - `backend/tests/analytics/explainability/test_evidence_repository.py backend/tests/analytics/explainability/test_evidence_provenance_repository.py backend/tests/api/test_evidence_payloads.py -q`: 14 passed.
+  - `compileall backend/analytics/explainability backend/api`: passed.
+  - `git diff --check`: passed.
+  - `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json`: passed.
+  - `npm run codegen:api`: passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
 
 ## Task 3: Generation-Time Provenance Enrichment
 

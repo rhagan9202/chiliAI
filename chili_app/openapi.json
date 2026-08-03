@@ -2993,6 +2993,32 @@
         "title": "EvidencePackResponse",
         "type": "object"
       },
+      "EvidenceProvenanceListResponse": {
+        "description": "Structured provenance references for one evidence pack.",
+        "properties": {
+          "evidence_pack_id": {
+            "title": "Evidence Pack Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceProvenanceReferenceResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "evidence_pack_id"
+        ],
+        "title": "EvidenceProvenanceListResponse",
+        "type": "object"
+      },
       "EvidenceProvenanceReferenceResponse": {
         "description": "A normalized source reference supporting an evidence pack assertion.",
         "properties": {
@@ -10582,6 +10608,63 @@
         ]
       }
     },
+    "/evidence-packs/{evidence_pack_id}/provenance": {
+      "get": {
+        "description": "Return structured provenance references for one evidence pack.",
+        "operationId": "get_evidence_pack_provenance_evidence_packs__evidence_pack_id__provenance_get",
+        "parameters": [
+          {
+            "description": "Evidence pack identifier.",
+            "in": "path",
+            "name": "evidence_pack_id",
+            "required": true,
+            "schema": {
+              "description": "Evidence pack identifier.",
+              "title": "Evidence Pack Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Knowledge base the evidence pack belongs to.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base the evidence pack belongs to.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceProvenanceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Evidence Pack Provenance",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
     "/graph/entities/{entity_id}": {
       "get": {
         "description": "Return investigation detail for one entity.",
@@ -11561,6 +11644,61 @@
         "summary": "List Entity Feature Values",
         "tags": [
           "knowledge-bases"
+        ]
+      }
+    },
+    "/knowledgebases/{knowledge_base_id}/evidence-packs/{evidence_pack_id}/provenance": {
+      "get": {
+        "description": "Return structured provenance references for one KB-scoped evidence pack.",
+        "operationId": "get_kb_evidence_pack_provenance_knowledgebases__knowledge_base_id__evidence_packs__evidence_pack_id__provenance_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Evidence pack identifier.",
+            "in": "path",
+            "name": "evidence_pack_id",
+            "required": true,
+            "schema": {
+              "description": "Evidence pack identifier.",
+              "title": "Evidence Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceProvenanceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Kb Evidence Pack Provenance",
+        "tags": [
+          "evidence"
         ]
       }
     },

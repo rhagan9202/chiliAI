@@ -440,6 +440,16 @@ class EvidencePackResponse(BaseModel):
     source_documents: list[str] = Field(default_factory=lambda: cast(list[str], []))
 
 
+class EvidenceProvenanceListResponse(BaseModel):
+    """Structured provenance references for one evidence pack."""
+
+    knowledge_base_id: str
+    evidence_pack_id: str
+    items: list[EvidenceProvenanceReferenceResponse] = Field(
+        default_factory=lambda: cast(list[EvidenceProvenanceReferenceResponse], [])
+    )
+
+
 class EntityLocationResponse(BaseModel):
     """One knowledge base that holds a given entity (UXA-104)."""
 
@@ -1132,6 +1142,7 @@ __all__ = [
     "DomainFeaturesResponse",
     "EvidenceItemResponse",
     "EvidencePackResponse",
+    "EvidenceProvenanceListResponse",
     "EvidenceProvenanceReferenceResponse",
     "EntityFeatureValueListResponse",
     "EntityFeatureValueResponse",

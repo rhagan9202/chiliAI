@@ -22,6 +22,7 @@ from api.routers.auth import router as auth_router
 from api.routers.cases import router as cases_router
 from api.routers.config import router as config_router
 from api.routers.dev_seed import router as dev_seed_router
+from api.routers.evidence import kb_router as evidence_kb_router
 from api.routers.evidence import router as evidence_router
 from api.routers.events import router as events_router
 from api.routers.graph import router as graph_router
@@ -117,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(alerts_router)
     app.include_router(graph_router)
     app.include_router(evidence_router)
+    app.include_router(evidence_kb_router)
     app.include_router(cases_router)
     app.include_router(rag_router)
     app.include_router(records_router)

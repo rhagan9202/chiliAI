@@ -37,6 +37,7 @@ from api.contracts import (
     EvidenceExportFormat,
     EvidencePackExportResponse,
     EvidencePackResponse,
+    EvidenceProvenanceListResponse,
     EvidenceProvenanceReferenceResponse,
     FeatureAttributionResponse,
     GraphEntityDetailResponse,
@@ -228,6 +229,10 @@ from analytics.explainability.adapters.evidence_object_store import (
 )
 from analytics.explainability.export import render_evidence_markdown
 from analytics.explainability.repository import EvidencePackRepository
+from analytics.explainability.provenance import (
+    EvidencePackProvenanceRepository,
+    EvidenceProvenanceRepository,
+)
 from records.protocols import RecordsServiceProtocol
 from records.service import create_records_service
 from shared.exceptions import ConfigurationError
@@ -291,6 +296,8 @@ __all__ = [
     "get_evidence_pack_export_payload",
     "get_evidence_pack_payload",
     "get_evidence_pack_repository",
+    "get_evidence_provenance_payload",
+    "get_evidence_provenance_repository",
     "get_event_bus",
     "get_event_bus_settings",
     "get_feature_catalog_service",
@@ -451,6 +458,14 @@ def get_evidence_pack_repository(request: Request) -> EvidencePackRepository:
     )
 
 
+def get_evidence_provenance_repository(
+    request: Request,
+) -> EvidenceProvenanceRepository:
+    """Return the provenance query seam backed by persisted evidence packs."""
+
+    return EvidencePackProvenanceRepository(get_evidence_pack_repository(request))
+
+
 def get_evidence_pack_payload(
     evidence_pack_id: str = Path(..., description="Evidence pack identifier."),
     knowledge_base_id: str = Query(
@@ -463,6 +478,24 @@ def get_evidence_pack_payload(
     if pack is None:
         raise HTTPException(status_code=404, detail="Evidence pack not found.")
     return _evidence_pack_to_response(pack)
+
+
+def get_evidence_provenance_payload(
+    evidence_pack_id: str = Path(..., description="Evidence pack identifier."),
+    knowledge_base_id: str = Query(
+        ..., min_length=1, description="Knowledge base the evidence pack belongs to."
+    ),
+    repository: EvidenceProvenanceRepository = Depends(
+        get_evidence_provenance_repository
+    ),
+) -> EvidenceProvenanceListResponse:
+    """Return structured provenance references for one evidence pack."""
+
+    return build_evidence_provenance_response(
+        knowledge_base_id=knowledge_base_id,
+        evidence_pack_id=evidence_pack_id,
+        repository=repository,
+    )
 
 
 def get_evidence_pack_export_payload(
@@ -492,6 +525,35 @@ def get_evidence_pack_export_payload(
         format=export_format,
         filename=f"evidence-{pack.id}.{suffix}",
         content=content,
+    )
+
+
+def build_evidence_provenance_response(
+    *,
+    knowledge_base_id: str,
+    evidence_pack_id: str,
+    repository: EvidenceProvenanceRepository,
+) -> EvidenceProvenanceListResponse:
+    refs = repository.list_for_evidence_pack(knowledge_base_id, evidence_pack_id)
+    if refs is None:
+        raise HTTPException(status_code=404, detail="Evidence pack not found.")
+    return EvidenceProvenanceListResponse(
+        knowledge_base_id=knowledge_base_id,
+        evidence_pack_id=evidence_pack_id,
+        items=[
+            EvidenceProvenanceReferenceResponse(
+                reference_type=reference.reference_type,
+                reference_id=reference.reference_id,
+                label=reference.label,
+                source_system=reference.source_system,
+                source_version=reference.source_version,
+                transformation_version=reference.transformation_version,
+                confidence=reference.confidence,
+                route_target=reference.route_target,
+                metadata=dict(reference.metadata),
+            )
+            for reference in refs
+        ],
     )
 
 
