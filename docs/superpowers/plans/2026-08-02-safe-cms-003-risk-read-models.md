@@ -190,7 +190,20 @@ Task 4 review notes:
 - [x] Frontend focused tests/build if contracts changed.
 - [x] `git diff --check`
 - [x] `python3 scripts/backlog_consistency.py --check`
-- [ ] Update backlog and this plan with verification evidence.
+- [x] Update backlog and this plan with verification evidence.
+
+Task 5 closeout notes:
+
+- Backlog updated in `docs/project/planning/backlog.md`: `SAFE-CMS-002` marked done and
+  `SAFE-CMS-003` marked in progress with the landed projection domain/service/API/dashboard
+  slice and the remaining durable projection adapter/rebuild source production gap.
+- Branch commits pushed for this slice: `235a6fc` projection writer service, `87bd91d`
+  risk projection API, and `627dd6f` dashboard migration to risk projections.
+- Final verified branch sync after Task 4: `git rev-list --left-right --count
+  HEAD...origin/fix/normalize-kb-query-param` returned `0 0`.
+- Remaining SAFE-CMS-003 production DoD: choose and implement durable risk projection storage
+  and an authoritative rebuild source so `/analytics/risk-projections/rebuild` can execute
+  rather than returning the intentional 503 guard.
 
 ## Review Gates
 
