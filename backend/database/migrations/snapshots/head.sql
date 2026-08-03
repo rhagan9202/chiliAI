@@ -130,6 +130,23 @@ CREATE TABLE public.record_submissions (
     correlation_id text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
+CREATE TABLE public.risk_projections (
+    knowledge_base_id text NOT NULL,
+    entity_id text NOT NULL,
+    entity_type text NOT NULL,
+    overall_score double precision NOT NULL,
+    risk_level text NOT NULL,
+    top_typology_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    alert_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    case_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    evidence_pack_ids jsonb DEFAULT '[]'::jsonb NOT NULL,
+    score_run_id text,
+    model_version text NOT NULL,
+    catalog_version text NOT NULL,
+    scored_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    status text NOT NULL
+);
 CREATE TABLE public.risk_score_history (
     knowledge_base_id text NOT NULL,
     entity_id text NOT NULL,
@@ -203,6 +220,8 @@ ALTER TABLE ONLY public.raw_records
     ADD CONSTRAINT raw_records_pkey PRIMARY KEY (knowledge_base_id, record_type, record_id);
 ALTER TABLE ONLY public.record_submissions
     ADD CONSTRAINT record_submissions_pkey PRIMARY KEY (knowledge_base_id, submission_hash);
+ALTER TABLE ONLY public.risk_projections
+    ADD CONSTRAINT risk_projections_pkey PRIMARY KEY (knowledge_base_id, entity_id);
 ALTER TABLE ONLY public.risk_score_history
     ADD CONSTRAINT risk_score_history_pkey PRIMARY KEY (request_id);
 ALTER TABLE ONLY public.scorecard_runs
@@ -224,6 +243,8 @@ CREATE INDEX ix_observations_batch ON public.observations USING btree (knowledge
 CREATE INDEX ix_policy_items_status ON public.policy_items USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX ix_raw_records_correlation ON public.raw_records USING btree (knowledge_base_id, correlation_id);
 CREATE INDEX ix_raw_records_payload ON public.raw_records USING gin (payload);
+CREATE INDEX ix_risk_projections_kb_score ON public.risk_projections USING btree (knowledge_base_id, overall_score DESC, scored_at DESC);
+CREATE INDEX ix_risk_projections_kb_status ON public.risk_projections USING btree (knowledge_base_id, status, risk_level);
 CREATE INDEX ix_risk_score_history_entity ON public.risk_score_history USING btree (knowledge_base_id, entity_id, assessed_at DESC);
 CREATE INDEX ix_scorecard_runs_kb_template ON public.scorecard_runs USING btree (knowledge_base_id, template_id);
 CREATE INDEX ix_source_document_status_kb_status ON public.source_document_status USING btree (knowledge_base_id, current_status);

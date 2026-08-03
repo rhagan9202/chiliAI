@@ -41,8 +41,9 @@ metric_name, observed_at)`, BL-047 — see
 DEFAULT ''`, `confidence double precision NOT NULL DEFAULT 0`, and `tags
 jsonb NOT NULL DEFAULT '[]'::jsonb` (alerts.36 — `GET /alerts` has been
 served from `alert_history` since this branch, replacing the retired
-projection blob `api/_alert_store.py`, not seeded `ApiState`). Head is
-`0012` — 15 tables total (column-only addition, no new table).
+projection blob `api/_alert_store.py`, not seeded `ApiState`). Migration 0013
+adds `risk_projections` for persisted SAFE-CMS-003 risk read models. Head is
+`0013` — 16 tables total.
 
 ## Commands
 

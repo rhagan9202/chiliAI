@@ -117,6 +117,8 @@ from analytics.risk.adapters.in_memory import (
 )
 from analytics.risk.adapters.postgres import (
     PostgresRiskHistoryStore,
+    PostgresRiskProjectionRebuildSource,
+    PostgresRiskProjectionRepository,
     PostgresRiskSignalSource,
 )
 from analytics.risk.adapters.protocols import RiskHistoryWriter, RiskSignalSourceProtocol
@@ -1782,17 +1784,18 @@ def get_score_run_service(
 
 
 def get_risk_projection_repository(request: Request) -> RiskProjectionRepositoryProtocol:
-    """Return the risk projection repository.
+    """Return the configured risk projection repository."""
 
-    The current implementation is in-memory until a durable projection adapter
-    lands. Operator rebuilds are therefore gated behind an explicit rebuild
-    source instead of pretending process-local rows are authoritative.
-    """
+    def build() -> RiskProjectionRepositoryProtocol:
+        provider = get_connection_provider()
+        if provider is None:
+            return InMemoryRiskProjectionRepository()
+        return PostgresRiskProjectionRepository(provider)
 
     return _memoize_config_derived(
         request.app,
         "risk_projection_repository",
-        lambda: InMemoryRiskProjectionRepository(),
+        build,
         guard=lambda value: isinstance(value, RiskProjectionRepositoryProtocol),
     )
 
@@ -1800,7 +1803,20 @@ def get_risk_projection_repository(request: Request) -> RiskProjectionRepository
 def get_risk_projection_rebuild_source() -> RiskProjectionRebuildSourceProtocol | None:
     """Return the authoritative source for rebuilding risk projections, if configured."""
 
-    return None
+    provider = get_connection_provider()
+    if provider is None:
+        return None
+    return PostgresRiskProjectionRebuildSource(
+        provider,
+        feature_typology_index=_feature_typology_index(get_domain_config()),
+    )
+
+
+def _feature_typology_index(config: DomainConfig) -> dict[str, list[str]]:
+    return {
+        feature.id: list(feature.typology_ids)
+        for feature in config.feature_catalog.features
+    }
 
 
 def get_risk_projection_service(

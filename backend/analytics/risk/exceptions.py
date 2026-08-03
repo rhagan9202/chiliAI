@@ -23,10 +23,15 @@ class RiskHistoryError(RiskError):
     """Raised when the risk-history store cannot read or write assessments."""
 
 
+class RiskProjectionError(RiskError):
+    """Raised when the risk projection read model cannot be persisted or loaded."""
+
+
 __all__ = [
     "RiskConfigurationError",
     "RiskError",
     "RiskHistoryError",
     "RiskInsufficientSignalsError",
+    "RiskProjectionError",
     "RiskSourceError",
 ]

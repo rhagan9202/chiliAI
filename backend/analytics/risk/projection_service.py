@@ -74,6 +74,19 @@ class RiskProjectionService:
 
         row = _row_from_request(request)
         existing = self._repository.get(row.knowledge_base_id, row.entity_id)
+        if existing is not None and existing.scored_at > row.scored_at:
+            return RiskProjectionWriteResult(row=existing, changed=False, created=False)
+        if (
+            existing is not None
+            and existing.score_run_id is not None
+            and existing.score_run_id == row.score_run_id
+        ):
+            row = row.model_copy(
+                update={
+                    "scored_at": existing.scored_at,
+                    "updated_at": existing.updated_at,
+                }
+            )
         if existing == row:
             return RiskProjectionWriteResult(row=existing, changed=False, created=False)
         stored = self._repository.upsert(row)
@@ -102,13 +115,14 @@ class RiskProjectionService:
         if existing == incoming:
             return RiskProjectionRebuildResult(changed=False, deleted=0, upserted=0)
 
-        deleted = self._repository.delete_by_kb(knowledge_base_id)
-        for row in incoming.values():
-            self._repository.upsert(row)
+        deleted, upserted = self._repository.replace_knowledge_base(
+            knowledge_base_id,
+            list(incoming.values()),
+        )
         return RiskProjectionRebuildResult(
             changed=True,
             deleted=deleted,
-            upserted=len(incoming),
+            upserted=upserted,
         )
 
 
@@ -147,6 +161,8 @@ def _typology_ids_for_entity(
 ) -> list[str]:
     typology_ids: set[str] = set()
     scored_feature_names = {factor.factor_name for factor in assessment.factors}
+    for feature_id in scored_feature_names:
+        typology_ids.update(feature_typology_index.get(feature_id, ()))
     for value in feature_values:
         if (
             value.knowledge_base_id != assessment.knowledge_base_id

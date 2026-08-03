@@ -205,6 +205,62 @@ Task 5 closeout notes:
   and an authoritative rebuild source so `/analytics/risk-projections/rebuild` can execute
   rather than returning the intentional 503 guard.
 
+## Task 6: Durable Projection Storage And Runtime Writer
+
+**Files:**
+- Create: `backend/database/migrations/versions/0013_risk_projections.py`
+- Modify: `backend/analytics/risk/adapters/postgres.py`
+- Modify: `backend/api/dependencies.py`
+- Modify: `backend/agent/coordinator.py`
+- Modify: KB-delete cleanup wiring/tests
+- Test: focused Postgres projection adapter, migration-shape, API rebuild, Flow 3, and cleanup tests
+
+- [x] **Step 1: Add durable projection table shape**
+
+Created the `risk_projections` Alembic migration with natural-key upsert support on
+`(knowledge_base_id, entity_id)`, JSONB reference arrays, score/model/catalog metadata,
+status, and KB/status plus KB/score indexes.
+
+- [x] **Step 2: Implement Postgres projection repository and rebuild source**
+
+Added `PostgresRiskProjectionRepository` and `PostgresRiskProjectionRebuildSource`.
+The repository persists/list/deletes projection rows and reuses the in-memory query
+implementation after loading KB-scoped rows so sort/filter semantics stay identical.
+The rebuild source projects the latest `risk_score_history` row per entity with alert refs
+from `alert_history`.
+
+- [x] **Step 3: Wire production DI, KB cleanup, and live worker writes**
+
+`get_risk_projection_repository` and worker dependency construction now select Postgres
+when a connection provider exists. `/analytics/risk-projections/rebuild` can execute
+when a provider-backed rebuild source is configured. KB deletion purges projection rows.
+`risk.scored` handling writes the risk history row, live projection row, and graph snapshot
+from the same event.
+
+- [x] **Step 4: Verify and record residuals**
+
+Focused verification passed for the risk projection repository/service/API rebuild
+seam, KB cleanup purge, Flow 3 live projection write, and migration-shape tests.
+Local stack validation brought up the dev Postgres container and validated the projection
+DDL inside the container with `psql`; host-side psycopg connections to the mapped port
+failed in this environment, so DB-dependent pytest integration was not used as the
+acceptance gate.
+
+Task 6 closeout notes:
+
+- Durable projection storage, rebuild source, API DI, worker write path, and KB cleanup
+  cascade landed on 2026-08-03.
+- The projection read contract and dashboard consumer remain backward-compatible with
+  the legacy `/analytics/risk-scores` route.
+- Residual follow-up for later SAFE-CMS stories: richer alert/case/evidence refs should
+  be refreshed by event fan-in as those lifecycle events become projection producers;
+  the rebuild source already hydrates alert refs from durable history.
+- Verification evidence for this slice:
+  - `backend/tests/analytics/risk -m "not integration" -q`: 58 passed, 2 deselected.
+  - `backend/tests/api/test_kb_cleanup.py backend/tests/database/test_risk_projection_migration.py backend/tests/agent/test_coordinator.py::test_dispatch_runs_kb_cleanup_when_wired_and_guards_when_not -q`: 5 passed.
+  - `backend/tests/agent/test_risk_scored_graph_flow.py::test_risk_scored_event_projects_live_risk_read_model -q`: 1 passed.
+  - `compileall backend/analytics/risk backend/api backend/agent backend/knowledgebases backend/database/migrations/versions`: passed.
+
 ## Review Gates
 
 - Review after Task 1 before API changes.

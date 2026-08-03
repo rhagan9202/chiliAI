@@ -43,7 +43,7 @@
 | BL-052 | Trained GNN (BL-030 pulled forward as stretch): PyTorch Geometric behind existing protocols | REQ-ANALYTICS (GNN) | stretch (sprint 2026-28) | stretch — strictly after BL-051 demo-ready | 8 SP |
 | SAFE-CMS-001 | CMS fraud typology and feature layer | SAFE-CMS-SURGE | P1 (PI 1 Sprint 1) | done — backend/frontend implementation review-gated 2026-08-02; feature values persistence remains the SAFE-CMS-002 write path | 0 SP |
 | SAFE-CMS-002 | Durable score-all workflows | SAFE-CMS-SURGE | P1 (PI 1 Sprint 2) | done — score-run API/events/frontend operations landed 2026-08-03 (`41efb7e`) | 0 SP |
-| SAFE-CMS-003 | Production risk read models | SAFE-CMS-SURGE | P1 (PI 1 Sprint 3) | in progress — projection domain/service/API/dashboard slice landed 2026-08-03 (`235a6fc`, `87bd91d`, `627dd6f`); durable projection adapter/rebuild source remains before production DoD | 1 sprint |
+| SAFE-CMS-003 | Production risk read models | SAFE-CMS-SURGE | P1 (PI 1 Sprint 3) | done — projection domain/service/API/dashboard slice landed 2026-08-03 (`235a6fc`, `87bd91d`, `627dd6f`); durable Postgres projection storage, rebuild source, KB cleanup purge, and live `risk.scored` writer landed 2026-08-03 | 0 SP |
 | SAFE-CMS-004 | Persist full evidence provenance | SAFE-CMS-SURGE | P1 (PI 1 Sprint 4) | planned — PI 1 spec drafted 2026-08-02 | 1 sprint |
 | SAFE-CMS-005 | Unified Fraud Investigation Cockpit | SAFE-CMS-SURGE | P1 (PI 2 Sprint 5) | planned — depends on PI 1 foundation | 1 sprint |
 | SAFE-CMS-006 | Analyst queue and triage operations | SAFE-CMS-SURGE | P1 (PI 2 Sprint 6) | planned — depends on risk read models and cockpit shell | 1 sprint |
@@ -81,7 +81,7 @@ drafted at each PI planning gate before implementation starts.
 |----|-----------|-----------------|-------------------|----------------------|
 | SAFE-CMS-001 | PI 1 / Sprint 1 | Versioned typology and reusable feature catalog with source lineage. | Fresh CMS route/API/component inventory. | Ready for Sprint 1 planning via PI 1 spec. |
 | SAFE-CMS-002 | PI 1 / Sprint 2 | Durable, replayable, observable score-all workflow. | SAFE-CMS-001 feature/version metadata. | Implemented and pushed 2026-08-03 (`41efb7e`). |
-| SAFE-CMS-003 | PI 1 / Sprint 3 | Queryable risk read models for alerts, dashboards, entities, and cohorts. | SAFE-CMS-001, SAFE-CMS-002. | Projection domain/service/API/dashboard slice implemented and pushed 2026-08-03; durable adapter/rebuild source remains for production DoD. |
+| SAFE-CMS-003 | PI 1 / Sprint 3 | Queryable risk read models for alerts, dashboards, entities, and cohorts. | SAFE-CMS-001, SAFE-CMS-002. | Projection domain/service/API/dashboard slice implemented and pushed 2026-08-03; durable Postgres storage, rebuild source, KB cleanup purge, and live `risk.scored` writer implemented 2026-08-03. |
 | SAFE-CMS-004 | PI 1 / Sprint 4 | Structured evidence provenance across scores, features, records, graph, policy, prompts, and workflows. | SAFE-CMS-001, SAFE-CMS-002, SAFE-CMS-003. | Ready for Sprint 4 planning via PI 1 spec. |
 | SAFE-CMS-005 | PI 2 / Sprint 5 | Unified Fraud Investigation Cockpit. | SAFE-CMS-003, SAFE-CMS-004. | Needs PI 2 design spec. |
 | SAFE-CMS-006 | PI 2 / Sprint 6 | Analyst queue, assignment, triage, and operational filters. | SAFE-CMS-003, SAFE-CMS-005. | Needs PI 2 design spec. |

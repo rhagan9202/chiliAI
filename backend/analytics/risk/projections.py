@@ -83,6 +83,12 @@ class RiskProjectionRepositoryProtocol(Protocol):
 
     def delete_by_kb(self, knowledge_base_id: str) -> int: ...
 
+    def replace_knowledge_base(
+        self,
+        knowledge_base_id: str,
+        rows: list[RiskProjectionRow],
+    ) -> tuple[int, int]: ...
+
 
 class InMemoryRiskProjectionRepository:
     """In-memory projection repository for tests and local development."""
@@ -135,6 +141,29 @@ class InMemoryRiskProjectionRepository:
         for key in keys:
             del self._rows[key]
         return len(keys)
+
+    def replace_knowledge_base(
+        self,
+        knowledge_base_id: str,
+        rows: list[RiskProjectionRow],
+    ) -> tuple[int, int]:
+        incoming = [
+            row.model_copy(deep=True)
+            for row in rows
+            if row.knowledge_base_id == knowledge_base_id
+        ]
+        keys = [
+            key
+            for key in self._rows
+            if key[0] == knowledge_base_id
+        ]
+        next_rows = dict(self._rows)
+        for key in keys:
+            del next_rows[key]
+        for row in incoming:
+            next_rows[(row.knowledge_base_id, row.entity_id)] = row
+        self._rows = next_rows
+        return len(keys), len(incoming)
 
 
 def _matches(row: RiskProjectionRow, query: RiskProjectionQuery) -> bool:

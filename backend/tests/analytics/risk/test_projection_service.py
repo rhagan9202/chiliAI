@@ -128,6 +128,72 @@ def test_project_assessment_ignores_feature_values_from_other_entities() -> None
     assert result.row.top_typology_ids == ["upcoding"]
 
 
+def test_project_assessment_maps_scored_factors_to_typologies_without_feature_values() -> None:
+    repository = InMemoryRiskProjectionRepository()
+    service = RiskProjectionService(repository)
+    request = _request().model_copy(
+        update={
+            "feature_values": [],
+            "feature_typology_index": {
+                "billing_outlier": ["upcoding"],
+                "unscored_feature": ["volume"],
+            },
+        },
+        deep=True,
+    )
+
+    result = service.project_assessment(request)
+
+    assert result.row.top_typology_ids == ["upcoding"]
+
+
+def test_project_assessment_does_not_overwrite_newer_projection_with_stale_score() -> None:
+    repository = InMemoryRiskProjectionRepository()
+    service = RiskProjectionService(repository)
+    newer = _request().model_copy(
+        update={"scored_at": datetime(2026, 8, 3, 10, 0, tzinfo=timezone.utc)},
+        deep=True,
+    )
+    older = _request().model_copy(
+        update={
+            "scored_at": BASE_TIME,
+            "assessment": _assessment().model_copy(
+                update={"request_id": "risk:older", "overall_score": 0.12, "risk_level": "low"}
+            ),
+        },
+        deep=True,
+    )
+
+    first = service.project_assessment(newer)
+    stale = service.project_assessment(older)
+
+    assert first.changed is True
+    assert stale.changed is False
+    assert stale.row == first.row
+    assert repository.get("kb-1", "provider:123") == first.row
+
+
+def test_project_assessment_preserves_timestamp_for_same_score_run_republish() -> None:
+    repository = InMemoryRiskProjectionRepository()
+    service = RiskProjectionService(repository)
+    first = service.project_assessment(_request()).row
+    republished = _request().model_copy(
+        update={
+            "scored_at": datetime(2026, 8, 3, 11, 0, tzinfo=timezone.utc),
+            "alert_ids": ["alert-2"],
+        },
+        deep=True,
+    )
+
+    result = service.project_assessment(republished)
+
+    assert result.changed is True
+    assert result.row.score_run_id == first.score_run_id
+    assert result.row.scored_at == first.scored_at
+    assert result.row.updated_at == first.updated_at
+    assert result.row.alert_ids == ["alert-2"]
+
+
 def test_project_assessment_ignores_feature_values_with_wrong_entity_type_or_unscored_feature() -> None:
     repository = InMemoryRiskProjectionRepository()
     service = RiskProjectionService(repository)
