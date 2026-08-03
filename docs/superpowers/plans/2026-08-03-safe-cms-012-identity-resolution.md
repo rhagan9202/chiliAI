@@ -68,6 +68,18 @@ Resolve fragmented source identities into canonical graph entities with explaina
 - [ ] Support manual merge/split decisions.
 - [ ] Publish durable audit/event hooks for material decisions.
 
+**Task 3a Notes:**
+- Added `IdentityLinkRecord`, `IdentityLinkRepository` protocol, `InMemoryIdentityLinkRepository`, and `IdentityDecisionService`.
+- In-memory persistence is KB scoped and defensive-copy safe.
+- Steward decisions append decision history and transition links to `merged`, `rejected`, or `split`.
+- Postgres persistence, migrations, and durable audit/event hooks remain open for the next Task 3 slice.
+- RED:
+  - `uv run --project backend pytest backend/tests/analytics/test_identity_resolution_repository.py -q` failed with `ImportError: cannot import name 'IdentityDecisionService'`.
+- GREEN:
+  - `uv run --project backend pytest backend/tests/analytics/test_identity_resolution_service.py backend/tests/analytics/test_identity_resolution_repository.py -q`: 5 passed.
+  - `uv run --project backend ruff check backend/analytics/identity_resolution backend/tests/analytics/test_identity_resolution_service.py backend/tests/analytics/test_identity_resolution_repository.py`: passed.
+  - `uv run --project backend pyright backend/analytics/identity_resolution backend/tests/analytics/test_identity_resolution_service.py backend/tests/analytics/test_identity_resolution_repository.py`: 0 errors.
+
 ## Task 4: API Contract
 
 **Files:**

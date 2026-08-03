@@ -3,6 +3,13 @@
 from analytics.identity_resolution.models import (
     IdentityCandidateEntity,
     IdentityCandidateScore,
+    IdentityLinkDecision,
+    IdentityLinkDecisionRecord,
+    IdentityLinkDecisionRequest,
+    IdentityLinkPage,
+    IdentityLinkRecord,
+    IdentityLinkRepositoryQuery,
+    IdentityLinkReviewState,
     IdentityMatchConfidence,
     IdentityMatchReason,
     IdentityRelationshipProjectionRequest,
@@ -10,11 +17,25 @@ from analytics.identity_resolution.models import (
     IdentityResolutionResult,
     IdentityReviewState,
 )
+from analytics.identity_resolution.repository import (
+    IdentityDecisionService,
+    IdentityLinkRepository,
+    InMemoryIdentityLinkRepository,
+)
 from analytics.identity_resolution.service import IdentityResolutionService
 
 __all__ = [
+    "IdentityDecisionService",
     "IdentityCandidateEntity",
     "IdentityCandidateScore",
+    "IdentityLinkDecision",
+    "IdentityLinkDecisionRecord",
+    "IdentityLinkDecisionRequest",
+    "IdentityLinkPage",
+    "IdentityLinkRecord",
+    "IdentityLinkRepository",
+    "IdentityLinkRepositoryQuery",
+    "IdentityLinkReviewState",
     "IdentityMatchConfidence",
     "IdentityMatchReason",
     "IdentityRelationshipProjectionRequest",
@@ -22,4 +43,5 @@ __all__ = [
     "IdentityResolutionResult",
     "IdentityResolutionService",
     "IdentityReviewState",
+    "InMemoryIdentityLinkRepository",
 ]

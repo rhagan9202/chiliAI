@@ -2,14 +2,25 @@
 
 from __future__ import annotations
 
-from typing import Literal, cast
+from datetime import datetime
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field, field_validator
 
 from shared.types import Entity
+from shared.utils import utc_now
 
 IdentityMatchConfidence = Literal["high", "medium", "low"]
 IdentityReviewState = Literal["auto_linkable", "steward_review", "needs_review"]
+IdentityLinkReviewState = Literal[
+    "auto_linkable",
+    "steward_review",
+    "needs_review",
+    "merged",
+    "rejected",
+    "split",
+]
+IdentityLinkDecision = Literal["approve_merge", "reject_merge", "split_identity"]
 
 
 class IdentityCandidateEntity(BaseModel):
@@ -94,9 +105,80 @@ class IdentityRelationshipProjectionRequest(BaseModel):
         return value.strip()
 
 
+class IdentityLinkDecisionRecord(BaseModel):
+    """One steward decision recorded against an identity link."""
+
+    decision: IdentityLinkDecision
+    actor_user_id: str = Field(min_length=1)
+    comment: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class IdentityLinkRecord(BaseModel):
+    """Stored identity link between a canonical entity and source identity."""
+
+    id: str = Field(min_length=1)
+    knowledge_base_id: str = Field(min_length=1)
+    canonical_entity_id: str = Field(min_length=1)
+    source_entity_id: str = Field(min_length=1)
+    relationship_type: str = Field(min_length=1)
+    confidence: IdentityMatchConfidence
+    score: float = Field(ge=0.0, le=1.0)
+    review_state: IdentityLinkReviewState
+    decision_source: str = Field(min_length=1)
+    source_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    match_reasons: list[dict[str, Any]] = Field(
+        default_factory=lambda: cast(list[dict[str, Any]], [])
+    )
+    decision_history: list[IdentityLinkDecisionRecord] = Field(
+        default_factory=lambda: cast(list[IdentityLinkDecisionRecord], [])
+    )
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class IdentityLinkRepositoryQuery(BaseModel):
+    """Filters for listing stored identity links."""
+
+    knowledge_base_id: str = Field(min_length=1)
+    canonical_entity_id: str | None = None
+    source_entity_id: str | None = None
+    review_state: IdentityLinkReviewState | None = None
+    limit: int = Field(default=50, ge=1, le=200)
+    offset: int = Field(default=0, ge=0)
+
+
+class IdentityLinkPage(BaseModel):
+    """A page of stored identity links."""
+
+    items: list[IdentityLinkRecord] = Field(
+        default_factory=lambda: cast(list[IdentityLinkRecord], [])
+    )
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    offset: int = Field(ge=0)
+
+
+class IdentityLinkDecisionRequest(BaseModel):
+    """Request to record a steward decision against an identity link."""
+
+    knowledge_base_id: str = Field(min_length=1)
+    link_id: str = Field(min_length=1)
+    decision: IdentityLinkDecision
+    actor_user_id: str = Field(min_length=1)
+    comment: str | None = None
+
+
 __all__ = [
     "IdentityCandidateEntity",
     "IdentityCandidateScore",
+    "IdentityLinkDecision",
+    "IdentityLinkDecisionRecord",
+    "IdentityLinkDecisionRequest",
+    "IdentityLinkPage",
+    "IdentityLinkRecord",
+    "IdentityLinkRepositoryQuery",
+    "IdentityLinkReviewState",
     "IdentityMatchConfidence",
     "IdentityMatchReason",
     "IdentityRelationshipProjectionRequest",
