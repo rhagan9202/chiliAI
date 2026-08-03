@@ -65,7 +65,7 @@ from api.contracts import (
 )
 from auditlog.adapters.in_memory import InMemoryAuditLogRepository
 from auditlog.adapters.postgres import PostgresAuditLogRepository
-from auditlog.models import AuditEvent, AuditEventQuery
+from auditlog.models import AuditEvent, AuditEventCreate, AuditEventQuery, JsonSummary
 from auditlog.service import AuditLogService
 from api._analytics_overview import build_analytics_overview
 from api._graph_entity_payload import build_graph_entity_detail
@@ -1024,6 +1024,39 @@ def get_case_dossier_payload(
         raise HTTPException(status_code=404, detail="Case not found.")
     return _assemble_case_dossier(
         case, evidence_repository=evidence_repository, alert_store=alert_store
+    )
+
+
+def record_case_audit_event(
+    audit_service: AuditLogService,
+    *,
+    knowledge_base_id: str,
+    actor_user_id: str,
+    actor_email: str | None,
+    actor_roles: list[str],
+    action: str,
+    case_id: str,
+    before: JsonSummary | None,
+    after: JsonSummary | None,
+    metadata: JsonSummary | None = None,
+) -> None:
+    """Append a summarized case audit event without exposing raw analyst text."""
+
+    audit_service.record(
+        AuditEventCreate(
+            tenant_id=knowledge_base_id,
+            knowledge_base_id=knowledge_base_id,
+            actor_user_id=actor_user_id,
+            actor_email=actor_email,
+            actor_roles=list(actor_roles),
+            action=action,
+            resource_type="case",
+            resource_id=case_id,
+            before=before,
+            after=after,
+            correlation_id=f"cases:{knowledge_base_id}:{action}:{case_id}",
+            metadata={"source": "api.cases", **dict(metadata or {})},
+        )
     )
 
 

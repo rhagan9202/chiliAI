@@ -30,6 +30,10 @@ from api.dependencies import (
     get_risk_service,
     get_timeseries_anomaly_store,
 )
+from api.middleware.auth import User, get_current_user
+from auditlog.adapters.in_memory import InMemoryAuditLogRepository
+from auditlog.models import AuditEvent, AuditEventQuery
+from auditlog.service import AuditLogService
 from config.schema import TimeseriesMetricSpec
 from events.adapters.in_memory import InMemoryEventBus
 from graph.adapters.in_memory import InMemoryGraphRepository
@@ -42,6 +46,11 @@ from monitoring.models import AlertHistoryRecord
 from shared.types import Entity, EvidencePack, EvidenceProvenanceReference, KnowledgeBase
 from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore
+
+
+class _FailingAuditRepository(InMemoryAuditLogRepository):
+    def append(self, event: AuditEvent) -> None:
+        raise RuntimeError("audit sink unavailable")
 
 
 def _second_alert_record() -> AlertHistoryRecord:
@@ -197,6 +206,141 @@ def test_create_and_update_case_and_append_feedback() -> None:
     assert saved_feedback["evidence_adequacy"] == "low"
     assert saved_feedback["missing_evidence"] == ["prior authorization records"]
     assert saved_feedback["notes"] == "Need authorization records before escalation."
+
+
+def test_case_create_update_and_feedback_record_audit_events() -> None:
+    client = _client_with_alert_history()
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    cast(FastAPI, client.app).state.audit_log_service = audit_service
+    cast(FastAPI, client.app).dependency_overrides[get_current_user] = lambda: User(
+        user_id="analyst-42",
+        roles=["analyst"],
+        email="analyst42@example.test",
+    )
+
+    alert_id = client.get("/alerts").json()["items"][0]["id"]
+    kb = {"knowledge_base_id": "kb-1"}
+    created = client.post(
+        "/cases",
+        params=kb,
+        json={
+            "title": "Audited escalation",
+            "priority": "medium",
+            "assignee": "J. Chen",
+            "alert_ids": [alert_id],
+        },
+    )
+    assert created.status_code == 200
+    case_id = created.json()["case"]["id"]
+
+    updated = client.patch(
+        f"/cases/{case_id}",
+        params=kb,
+        json={"status": "in_review", "priority": "high"},
+    )
+    assert updated.status_code == 200
+    feedback = client.post(
+        f"/cases/{case_id}/feedback",
+        params=kb,
+        json={
+            "label": "insufficient_evidence",
+            "evidence_adequacy": "low",
+            "missing_evidence": ["prior authorization records"],
+            "notes": "Need authorization records before escalation.",
+        },
+    )
+    assert feedback.status_code == 200
+
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id="kb-1", knowledge_base_id="kb-1")
+    )
+    assert [event.action for event in page.items] == [
+        "case.feedback.create",
+        "case.update",
+        "case.create",
+    ]
+    assert {event.actor_user_id for event in page.items} == {"analyst-42"}
+    assert page.items[0].resource_id == case_id
+    assert page.items[0].before == {"feedback_count": 0}
+    assert page.items[0].after == {
+        "feedback_count": 1,
+        "label": "insufficient_evidence",
+        "evidence_adequacy": "low",
+        "missing_evidence_count": 1,
+    }
+    assert page.items[1].before == {"status": "open", "priority": "medium"}
+    assert page.items[1].after == {"status": "in_review", "priority": "high"}
+    assert page.items[2].before is None
+    assert page.items[2].after == {
+        "status": "open",
+        "priority": "medium",
+        "alert_count": 1,
+    }
+
+
+def test_case_promote_and_attach_record_audit_events() -> None:
+    client = _client_with_alert_history(extra=[_second_alert_record()])
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    cast(FastAPI, client.app).state.audit_log_service = audit_service
+    cast(FastAPI, client.app).dependency_overrides[get_current_user] = lambda: User(
+        user_id="analyst-42",
+        roles=["analyst"],
+        email="analyst42@example.test",
+    )
+    kb = {"knowledge_base_id": "kb-1"}
+
+    promoted = client.post("/cases/promote", params=kb, json={"alert_id": "alert-001"})
+    assert promoted.status_code == 200
+    case_id = promoted.json()["case"]["id"]
+    attached = client.post(
+        f"/cases/{case_id}/alerts",
+        params=kb,
+        json={"alert_id": "alert-002", "notes": "Same provider, following week."},
+    )
+    assert attached.status_code == 200
+
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id="kb-1", knowledge_base_id="kb-1")
+    )
+    assert [event.action for event in page.items] == [
+        "case.alert.attach",
+        "case.promote",
+    ]
+    assert page.items[0].resource_id == case_id
+    assert page.items[0].before == {"alert_count": 1, "alert_ids": ["alert-001"]}
+    assert page.items[0].after == {
+        "alert_count": 2,
+        "alert_ids": ["alert-001", "alert-002"],
+        "attached_alert_id": "alert-002",
+    }
+    assert page.items[1].before is None
+    assert page.items[1].after == {
+        "status": "open",
+        "priority": "critical",
+        "originating_alert_id": "alert-001",
+        "evidence_pack_id": "evidence-001",
+    }
+
+
+def test_case_mutation_still_succeeds_when_audit_sink_fails() -> None:
+    client = _client_with_alert_history()
+    audit_service = AuditLogService(_FailingAuditRepository())
+    cast(FastAPI, client.app).state.audit_log_service = audit_service
+    kb = {"knowledge_base_id": "kb-1"}
+
+    response = client.post(
+        "/cases",
+        params=kb,
+        json={"title": "Audit failure tolerated", "priority": "medium"},
+    )
+
+    assert response.status_code == 200
+    assert audit_service.failed_write_count == 1
+    detail = client.get(
+        f"/cases/{response.json()['case']['id']}",
+        params=kb,
+    )
+    assert detail.status_code == 200
 
 
 def test_promote_alert_to_case_captures_origin_and_evidence() -> None:

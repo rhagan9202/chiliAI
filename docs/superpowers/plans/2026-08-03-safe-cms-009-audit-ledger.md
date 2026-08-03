@@ -103,6 +103,17 @@ SAFE-CMS-009 adds an immutable audit ledger for material analyst, system, and ag
 - [ ] Record audit events for alert acknowledgement, case create/promote/update/feedback/attach, KB delete, auth login/logout/callback outcomes, and evidence mutations where current endpoints exist.
 - [ ] Preserve primary response behavior when audit recording fails; expose failure counters/buffer status.
 
+**Notes:**
+- Partial case-mutation slice complete: create, update, feedback, promote, and attach-alert routes now emit summarized `case.*` audit events with actor, KB scope, before/after summaries, and no raw analyst notes.
+- Audit failures remain non-blocking for case mutations through `AuditLogService.record()` failure capture.
+- RED: `uv run --project backend pytest backend/tests/api/test_phase5_stateful_routes.py::test_case_create_update_and_feedback_record_audit_events backend/tests/api/test_phase5_stateful_routes.py::test_case_promote_and_attach_record_audit_events backend/tests/api/test_phase5_stateful_routes.py::test_case_mutation_still_succeeds_when_audit_sink_fails` failed with empty audit event pages and zero failed-write count.
+- GREEN:
+  - `uv run --project backend pytest backend/tests/api/test_phase5_stateful_routes.py::test_case_create_update_and_feedback_record_audit_events backend/tests/api/test_phase5_stateful_routes.py::test_case_promote_and_attach_record_audit_events backend/tests/api/test_phase5_stateful_routes.py::test_case_mutation_still_succeeds_when_audit_sink_fails`: 3 passed.
+  - `uv run --project backend pytest backend/tests/api/test_phase5_stateful_routes.py backend/tests/api/test_policy_registry.py backend/tests/api/test_audit_router.py`: 24 passed.
+  - `uv run --project backend ruff check backend/api/routers/cases.py backend/api/dependencies.py backend/tests/api/test_phase5_stateful_routes.py`: passed.
+  - `uv run --project backend pyright backend/api/routers/cases.py backend/api/dependencies.py backend/tests/api/test_phase5_stateful_routes.py`: 0 errors.
+  - `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json`: passed with no tracked OpenAPI diff.
+
 ## Task 5: Dossier/Cockpit Audit Timeline And Export
 
 **Files:**
