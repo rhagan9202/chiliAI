@@ -257,8 +257,10 @@ from analytics.peerstats.adapters.postgres import (
 )
 from analytics.peerstats.adapters.protocols import (
     DerivedRiskSignalWriterProtocol,
+    PeerSignalReaderProtocol,
     RecordColumnSourceProtocol,
 )
+from analytics.peerstats.peer_analysis import PeerAnalysisService
 from records.adapters.in_memory import InMemoryRawRecordStore
 from records.adapters.postgres import PostgresRawRecordStore
 from records.adapters.protocols import RawRecordStore
@@ -372,6 +374,7 @@ __all__ = [
     "get_object_store",
     "get_parser_orchestrator",
     "get_parser_registry",
+    "get_peer_analysis_service",
     "get_policy_item_detail_payload",
     "get_policy_item_list_payload",
     "get_policy_repository",
@@ -2543,6 +2546,13 @@ def get_derived_signal_store() -> DerivedRiskSignalWriterProtocol:
     return PostgresDerivedRiskSignalWriter(provider)
 
 
+@lru_cache(maxsize=1)
+def get_peer_analysis_service() -> PeerAnalysisService:
+    """Return the peer-analysis read service over derived peer signals."""
+
+    return PeerAnalysisService(cast(PeerSignalReaderProtocol, get_derived_signal_store()))
+
+
 # Analytics/monitoring write stores — used by the KB-delete cascade to purge the
 # per-consumer durable tables (Postgres when a DB is configured, else in-memory).
 
@@ -3268,6 +3278,7 @@ CONFIG_CACHE_REGISTRY: dict[str, _ClearableCache] = {
     "get_document_status_store": get_document_status_store,
     "get_dlq_record_store": get_dlq_record_store,
     "get_derived_signal_store": get_derived_signal_store,
+    "get_peer_analysis_service": get_peer_analysis_service,
     "get_risk_history_writer": get_risk_history_writer,
     "get_observation_writer": get_observation_writer,
     "get_alert_history_writer": get_alert_history_writer,

@@ -189,6 +189,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/analytics/peer-analysis/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Peer Analysis
+         * @description Return latest peer-comparison context for one entity.
+         */
+        get: operations["get_peer_analysis_analytics_peer_analysis__entity_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/analytics/risk-projections": {
         parameters: {
             query?: never;
@@ -4312,6 +4332,59 @@ export interface components {
             total_items: number;
         };
         /**
+         * PeerAnalysisResponse
+         * @description Peer-analysis context for one entity.
+         */
+        PeerAnalysisResponse: {
+            /** Entity Id */
+            entity_id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Metrics */
+            metrics?: components["schemas"]["PeerMetricComparisonResponse"][];
+        };
+        /**
+         * PeerMetricComparisonResponse
+         * @description One peer-metric comparison for an entity.
+         */
+        PeerMetricComparisonResponse: {
+            /** Cohort Size */
+            cohort_size: number;
+            /**
+             * Confidence
+             * @default normal
+             * @enum {string}
+             */
+            confidence: "normal" | "low";
+            /** Confidence Reason */
+            confidence_reason?: string | null;
+            /** Entity Type */
+            entity_type: string;
+            /** Entity Value */
+            entity_value: number;
+            /**
+             * Interval Start
+             * Format: date-time
+             */
+            interval_start: string;
+            /** Metric Name */
+            metric_name: string;
+            /** Peer Group Key */
+            peer_group_key: string;
+            /** Peer Mean */
+            peer_mean: number;
+            /** Peer Std */
+            peer_std: number;
+            /** Percentile */
+            percentile: number;
+            /** Rationale */
+            rationale: string;
+            /** Signal Value */
+            signal_value: number;
+            /** Z Score */
+            z_score: number;
+        };
+        /**
          * PeerMetricSpec
          * @description One cross-sectional peer-group z-score metric derived from a record column.
          */
@@ -6276,6 +6349,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalyticsOverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_peer_analysis_analytics_peer_analysis__entity_id__get: {
+        parameters: {
+            query: {
+                knowledge_base_id: string;
+                metric?: string | null;
+            };
+            header?: never;
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeerAnalysisResponse"];
                 };
             };
             /** @description Validation Error */

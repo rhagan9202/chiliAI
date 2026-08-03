@@ -8,6 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from analytics.gnn.protocols import GnnServiceProtocol
 from analytics.gnn.service_models import GnnClusterRequest, GnnClusterResponse
+from analytics.peerstats.peer_analysis import (
+    PeerAnalysisResponse as PeerAnalysisDomainResponse,
+    PeerAnalysisService,
+)
 from analytics.risk.projection_service import (
     RiskProjectionRebuildSourceProtocol,
     RiskProjectionService,
@@ -27,6 +31,8 @@ from analytics.timeseries.service_models import (
 from api.contracts import (
     AnalyticsOverviewResponse,
     EntityTimeseriesResponse,
+    PeerAnalysisResponse,
+    PeerMetricComparisonResponse,
     RiskProjectionItemResponse,
     RiskProjectionLevelValue,
     RiskProjectionListResponse,
@@ -38,6 +44,7 @@ from api.contracts import (
 from api.dependencies import (
     get_analytics_overview_payload,
     get_gnn_service,
+    get_peer_analysis_service,
     get_risk_projection_repository,
     get_risk_projection_rebuild_source,
     get_risk_projection_service,
@@ -140,6 +147,28 @@ def rebuild_risk_projections(
         deleted=result.deleted,
         upserted=result.upserted,
         status="completed",
+    )
+
+
+@router.get(
+    "/peer-analysis/{entity_id}",
+    response_model=PeerAnalysisResponse,
+    dependencies=[Depends(require_role("viewer"))],
+)
+def get_peer_analysis(
+    entity_id: str,
+    kb_id: str = Query(..., alias="knowledge_base_id", min_length=1),
+    metric: str | None = Query(default=None, min_length=1),
+    service: PeerAnalysisService = Depends(get_peer_analysis_service),
+) -> PeerAnalysisResponse:
+    """Return latest peer-comparison context for one entity."""
+
+    return _peer_analysis_response(
+        service.compare_entity(
+            knowledge_base_id=kb_id,
+            entity_id=entity_id,
+            metric_name=metric,
+        )
     )
 
 
@@ -247,4 +276,32 @@ def _risk_projection_response(row: RiskProjectionRow) -> RiskProjectionItemRespo
         scored_at=row.scored_at,
         updated_at=row.updated_at,
         status=row.status,
+    )
+
+
+def _peer_analysis_response(
+    result: PeerAnalysisDomainResponse,
+) -> PeerAnalysisResponse:
+    return PeerAnalysisResponse(
+        knowledge_base_id=result.knowledge_base_id,
+        entity_id=result.entity_id,
+        metrics=[
+            PeerMetricComparisonResponse(
+                metric_name=metric.metric_name,
+                entity_type=metric.entity_type,
+                interval_start=metric.interval_start,
+                peer_group_key=metric.peer_group_key,
+                entity_value=metric.entity_value,
+                peer_mean=metric.peer_mean,
+                peer_std=metric.peer_std,
+                z_score=metric.z_score,
+                signal_value=metric.signal_value,
+                cohort_size=metric.cohort_size,
+                percentile=metric.percentile,
+                rationale=metric.rationale,
+                confidence=metric.confidence,
+                confidence_reason=metric.confidence_reason,
+            )
+            for metric in result.metrics
+        ],
     )

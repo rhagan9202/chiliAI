@@ -62,6 +62,31 @@ UPSERT_SQL = """
 
 _DELETE_BY_KB_SQL = "DELETE FROM entity_derived_signals WHERE knowledge_base_id = %s"
 
+_LATEST_SIGNALS_SQL = """
+    SELECT DISTINCT ON (metric_name)
+        knowledge_base_id, entity_id, entity_type, metric_name, interval_start,
+        peer_group_key, aggregate_value, peer_mean, peer_std, z_score,
+        signal_value, weight, rationale, correlation_id
+    FROM entity_derived_signals
+    WHERE knowledge_base_id = %s
+      AND entity_id = %s
+      AND (%s IS NULL OR metric_name = %s)
+    ORDER BY metric_name, interval_start DESC, computed_at DESC
+"""
+
+_PEER_GROUP_SIGNALS_SQL = """
+    SELECT
+        knowledge_base_id, entity_id, entity_type, metric_name, interval_start,
+        peer_group_key, aggregate_value, peer_mean, peer_std, z_score,
+        signal_value, weight, rationale, correlation_id
+    FROM entity_derived_signals
+    WHERE knowledge_base_id = %s
+      AND metric_name = %s
+      AND interval_start = %s
+      AND peer_group_key = %s
+    ORDER BY entity_id ASC
+"""
+
 
 def build_agg_sql(spec: PeerMetricSpec) -> str:
     """Build the per-entity, per-interval aggregation SQL (positional %s)."""
@@ -217,7 +242,7 @@ class PostgresRecordColumnSource:
 
 
 class PostgresDerivedRiskSignalWriter:
-    """Upsert derived risk signals into entity_derived_signals."""
+    """Upsert and read derived risk signals in ``entity_derived_signals``."""
 
     def __init__(self, provider: ConnectionProvider) -> None:
         self._provider = provider
@@ -250,6 +275,70 @@ class PostgresDerivedRiskSignalWriter:
             raise PeerStatsSourceError(
                 "Failed to delete derived risk signals."
             ) from exc
+
+    def latest_signals(
+        self,
+        *,
+        knowledge_base_id: str,
+        entity_id: str,
+        metric_name: str | None = None,
+    ) -> list[DerivedRiskSignal]:
+        """Return latest derived peer signal per metric for one entity."""
+
+        try:
+            with self._provider.connection() as conn:
+                rows = conn.execute(
+                    _LATEST_SIGNALS_SQL,
+                    (knowledge_base_id, entity_id, metric_name, metric_name),
+                ).fetchall()
+        except Exception as exc:
+            raise PeerStatsSourceError("Failed to read latest peer signals.") from exc
+        return [_signal_from_row(row) for row in rows]
+
+    def peer_group_signals(
+        self,
+        *,
+        knowledge_base_id: str,
+        metric_name: str,
+        interval_start: datetime,
+        peer_group_key: str,
+    ) -> list[DerivedRiskSignal]:
+        """Return peer signals for one metric/group/interval."""
+
+        try:
+            with self._provider.connection() as conn:
+                rows = conn.execute(
+                    _PEER_GROUP_SIGNALS_SQL,
+                    (
+                        knowledge_base_id,
+                        metric_name,
+                        interval_start,
+                        peer_group_key,
+                    ),
+                ).fetchall()
+        except Exception as exc:
+            raise PeerStatsSourceError("Failed to read peer group signals.") from exc
+        return [_signal_from_row(row) for row in rows]
+
+
+def _signal_from_row(row: object) -> DerivedRiskSignal:
+    values = cast(tuple[object, ...], row)
+    return DerivedRiskSignal(
+        knowledge_base_id=str(values[0]),
+        entity_id=str(values[1]),
+        entity_type=str(values[2]),
+        metric_name=str(values[3]),
+        interval_start=cast(datetime, values[4]),
+        peer_group_key=str(values[5]),
+        aggregate_value=float(cast(float, values[6])),
+        peer_mean=float(cast(float, values[7])),
+        peer_std=float(cast(float, values[8])),
+        z_score=float(cast(float, values[9])),
+        signal_value=float(cast(float, values[10])),
+        weight=float(cast(float, values[11])),
+        rationale=str(values[12]),
+        correlation_id=str(values[13]),
+    )
 
 
 __all__ = [

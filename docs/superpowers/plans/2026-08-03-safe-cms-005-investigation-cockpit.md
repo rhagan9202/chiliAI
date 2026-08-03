@@ -95,11 +95,11 @@ Task 1 notes:
 - Create/modify: cockpit-presentational components only if duplication becomes real
 - Test: workbench component tests
 
-- [ ] Promote the first viewport from tab-first investigation to a cockpit shell:
+- [x] Promote the first viewport from tab-first investigation to a cockpit shell:
   entity dossier, risk summary, current alert/case/evidence state, graph/evidence region,
   RAG launch, and case actions.
-- [ ] Keep layout dense and operational across desktop, tablet, and mobile.
-- [ ] Include empty states for missing graph, evidence, policy, peer context, and case.
+- [x] Keep layout dense and operational across desktop, tablet, and mobile.
+- [x] Include empty states for missing graph, evidence, policy, peer context, and case.
 
 Task 2 notes:
 
@@ -126,9 +126,9 @@ Task 2 notes:
 - Reuse: `FeatureList`, `SignalBand`, policy panel, GNN/cluster panels
 - Test: workbench component tests
 
-- [ ] Make typologies and feature values visible as cockpit context, not only tab detail.
-- [ ] Surface peer-context availability with domain-neutral labels.
-- [ ] Keep non-CMS domains using `DomainConfig` labels and empty states.
+- [x] Make typologies and feature values visible as cockpit context, not only tab detail.
+- [x] Surface peer-context availability with domain-neutral labels.
+- [x] Keep non-CMS domains using `DomainConfig` labels and empty states.
 
 Task 3 notes:
 

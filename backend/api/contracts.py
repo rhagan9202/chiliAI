@@ -950,6 +950,38 @@ class RiskProjectionRebuildResponse(BaseModel):
     status: RiskProjectionRebuildStatusValue = "completed"
 
 
+PeerAnalysisConfidenceValue = Literal["normal", "low"]
+
+
+class PeerMetricComparisonResponse(BaseModel):
+    """One peer-metric comparison for an entity."""
+
+    metric_name: str
+    entity_type: str
+    interval_start: datetime
+    peer_group_key: str
+    entity_value: float
+    peer_mean: float
+    peer_std: float = Field(ge=0.0)
+    z_score: float
+    signal_value: float = Field(ge=0.0, le=1.0)
+    cohort_size: int = Field(ge=0)
+    percentile: float = Field(ge=0.0, le=100.0)
+    rationale: str
+    confidence: PeerAnalysisConfidenceValue = "normal"
+    confidence_reason: str | None = None
+
+
+class PeerAnalysisResponse(BaseModel):
+    """Peer-analysis context for one entity."""
+
+    knowledge_base_id: str
+    entity_id: str
+    metrics: list[PeerMetricComparisonResponse] = Field(
+        default_factory=lambda: cast(list[PeerMetricComparisonResponse], [])
+    )
+
+
 class EntityTimeseriesPointResponse(BaseModel):
     """One point in an entity timeseries chart."""
 
@@ -1437,6 +1469,9 @@ __all__ = [
     "PolicyCitation",
     "PolicyCitationResponse",
     "PolicyDispositionResponse",
+    "PeerAnalysisConfidenceValue",
+    "PeerAnalysisResponse",
+    "PeerMetricComparisonResponse",
     "PolicyItemDetailResponse",
     "PolicyItemListResponse",
     "PolicyItemSummaryResponse",

@@ -5763,6 +5763,128 @@
         "title": "PageInfo",
         "type": "object"
       },
+      "PeerAnalysisResponse": {
+        "description": "Peer-analysis context for one entity.",
+        "properties": {
+          "entity_id": {
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/PeerMetricComparisonResponse"
+            },
+            "title": "Metrics",
+            "type": "array"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "entity_id"
+        ],
+        "title": "PeerAnalysisResponse",
+        "type": "object"
+      },
+      "PeerMetricComparisonResponse": {
+        "description": "One peer-metric comparison for an entity.",
+        "properties": {
+          "cohort_size": {
+            "minimum": 0.0,
+            "title": "Cohort Size",
+            "type": "integer"
+          },
+          "confidence": {
+            "default": "normal",
+            "enum": [
+              "normal",
+              "low"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "confidence_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence Reason"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "entity_value": {
+            "title": "Entity Value",
+            "type": "number"
+          },
+          "interval_start": {
+            "format": "date-time",
+            "title": "Interval Start",
+            "type": "string"
+          },
+          "metric_name": {
+            "title": "Metric Name",
+            "type": "string"
+          },
+          "peer_group_key": {
+            "title": "Peer Group Key",
+            "type": "string"
+          },
+          "peer_mean": {
+            "title": "Peer Mean",
+            "type": "number"
+          },
+          "peer_std": {
+            "minimum": 0.0,
+            "title": "Peer Std",
+            "type": "number"
+          },
+          "percentile": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Percentile",
+            "type": "number"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "signal_value": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Signal Value",
+            "type": "number"
+          },
+          "z_score": {
+            "title": "Z Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "metric_name",
+          "entity_type",
+          "interval_start",
+          "peer_group_key",
+          "entity_value",
+          "peer_mean",
+          "peer_std",
+          "z_score",
+          "signal_value",
+          "cohort_size",
+          "percentile",
+          "rationale"
+        ],
+        "title": "PeerMetricComparisonResponse",
+        "type": "object"
+      },
       "PeerMetricSpec": {
         "description": "One cross-sectional peer-group z-score metric derived from a record column.",
         "properties": {
@@ -9814,6 +9936,76 @@
           }
         },
         "summary": "Get Analytics Overview",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/analytics/peer-analysis/{entity_id}": {
+      "get": {
+        "description": "Return latest peer-comparison context for one entity.",
+        "operationId": "get_peer_analysis_analytics_peer_analysis__entity_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metric",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Metric"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeerAnalysisResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Peer Analysis",
         "tags": [
           "analytics"
         ]

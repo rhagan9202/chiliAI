@@ -15,8 +15,10 @@ from analytics.gnn.protocols import GnnServiceProtocol
 from analytics.gnn.service import create_gnn_service
 from analytics.metrics.adapters.postgres import PostgresEntityMetricRepository
 from analytics.metrics.models import EntityMetricSample
+from analytics.peerstats.adapters.in_memory import InMemoryDerivedRiskSignalWriter
 from analytics.peerstats.exceptions import PeerStatsSourceError
-from analytics.peerstats.models import PeerAggregate
+from analytics.peerstats.models import DerivedRiskSignal, PeerAggregate
+from analytics.peerstats.peer_analysis import PeerAnalysisService
 from analytics.risk.adapters.in_memory import InMemoryRiskSignalSource
 from analytics.risk.models import RankedRiskEntry, RiskProfile, RiskSignal
 from analytics.risk.projection_service import RiskProjectionService
@@ -42,6 +44,7 @@ from api.dependencies import (
     get_analytics_overview_payload,
     get_entity_series_source,
     get_gnn_service,
+    get_peer_analysis_service,
     get_risk_projection_repository,
     get_risk_projection_service,
     get_risk_score_payload,
@@ -188,6 +191,38 @@ def _build_projection_repository() -> InMemoryRiskProjectionRepository:
     )
 
 
+def _build_peer_analysis_service() -> PeerAnalysisService:
+    writer = InMemoryDerivedRiskSignalWriter()
+    interval = datetime(2026, 1, 12, tzinfo=timezone.utc)
+    for entity_id, value in (
+        ("provider:target", 100.0),
+        ("provider:a", 10.0),
+        ("provider:b", 50.0),
+        ("provider:c", 75.0),
+    ):
+        writer.write_signals(
+            [
+                DerivedRiskSignal(
+                    knowledge_base_id="kb-1",
+                    entity_id=entity_id,
+                    entity_type="provider",
+                    metric_name="weekly_billing",
+                    interval_start=interval,
+                    peer_group_key="provider|cardiology",
+                    aggregate_value=value,
+                    peer_mean=50.0,
+                    peer_std=20.0,
+                    z_score=(value - 50.0) / 20.0,
+                    signal_value=min(max(value / 100.0, 0.0), 1.0),
+                    weight=1.0,
+                    rationale="weekly billing compared to specialty peers",
+                    correlation_id="corr-1",
+                )
+            ]
+        )
+    return PeerAnalysisService(writer, min_cohort_size=4)
+
+
 class _StaticRiskProjectionRebuildSource:
     def __init__(self, rows: list[RiskProjectionRow]) -> None:
         self._rows = rows
@@ -212,6 +247,7 @@ def client() -> TestClient:
     )
     app.dependency_overrides[get_timeseries_service] = _build_timeseries_service
     app.dependency_overrides[get_gnn_service] = lambda: _build_gnn_service(enabled=True)
+    app.dependency_overrides[get_peer_analysis_service] = _build_peer_analysis_service
     return TestClient(app)
 
 
@@ -356,6 +392,63 @@ def test_list_risk_projections_openapi_declares_query_contract() -> None:
         operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
         == "#/components/schemas/RiskProjectionListResponse"
     )
+
+
+def test_get_peer_analysis_returns_cohort_context(client: TestClient) -> None:
+    response = client.get(
+        "/analytics/peer-analysis/provider:target",
+        params={"knowledge_base_id": "kb-1"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["knowledge_base_id"] == "kb-1"
+    assert payload["entity_id"] == "provider:target"
+    assert payload["metrics"][0]["metric_name"] == "weekly_billing"
+    assert payload["metrics"][0]["entity_value"] == 100.0
+    assert payload["metrics"][0]["peer_mean"] == 50.0
+    assert payload["metrics"][0]["peer_std"] == 20.0
+    assert payload["metrics"][0]["z_score"] == 2.5
+    assert payload["metrics"][0]["cohort_size"] == 4
+    assert payload["metrics"][0]["percentile"] == 100.0
+    assert payload["metrics"][0]["confidence"] == "normal"
+
+
+def test_get_peer_analysis_filters_metric(client: TestClient) -> None:
+    response = client.get(
+        "/analytics/peer-analysis/provider:target",
+        params={"knowledge_base_id": "kb-1", "metric": "missing_metric"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["metrics"] == []
+
+
+def test_peer_analysis_openapi_declares_query_contract_and_role_guard() -> None:
+    app = FastAPI()
+    app.include_router(router)
+
+    operation = app.openapi()["paths"]["/analytics/peer-analysis/{entity_id}"]["get"]
+    parameters = {param["name"]: param for param in operation["parameters"]}
+    assert parameters["knowledge_base_id"]["required"] is True
+    assert parameters["metric"]["required"] is False
+    assert (
+        operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+        == "#/components/schemas/PeerAnalysisResponse"
+    )
+
+    roles_by_path: dict[str, set[str]] = {}
+    for route_obj in router.routes:
+        path = getattr(route_obj, "path", "")
+        roles: set[str] = set()
+        for dependency in getattr(route_obj, "dependencies", []):
+            required = getattr(dependency.dependency, "_chiliai_required_role", None)
+            if isinstance(required, str):
+                roles.add(required)
+        roles_by_path[path] = roles
+
+    assert roles_by_path["/analytics/peer-analysis/{entity_id}"] == {"viewer"}
 
 
 def test_list_risk_projections_rejects_naive_as_of() -> None:
