@@ -21,7 +21,6 @@ from api.app import create_app
 from api.dependencies import (
     get_agent_service,
     get_alert_feed_store,
-    get_alert_list_payload,
     get_graph_service,
     get_knowledge_base_repository,
     get_risk_service,
@@ -179,26 +178,32 @@ def test_list_alerts_route_passes_knowledge_base_filter() -> None:
     assert [item["id"] for item in payload["items"]] == ["alert-002"]
 
 
-def test_alert_list_payload_passes_queue_filters_to_store() -> None:
+def test_list_alerts_route_passes_queue_filters_to_store() -> None:
+    app = create_app()
     store = _seed_alert_store()
+    app.dependency_overrides[get_alert_feed_store] = lambda: store
+    client = TestClient(app)
 
     today = utc_now().date().isoformat()
-    payload = get_alert_list_payload(
-        knowledge_base_id=None,
-        status_filter=["open", "acknowledged"],
-        severity_filter=["critical"],
-        typology_filter=["billing"],
-        created_from=today,
-        created_to=today,
-        evidence="with_evidence",
-        freshness="fresh",
-        limit=10,
-        offset=0,
-        store=store,
+    response = client.get(
+        "/alerts",
+        params={
+            "status": ["open", "acknowledged"],
+            "severity": "critical",
+            "typology": "billing",
+            "from": today,
+            "to": today,
+            "evidence": "with_evidence",
+            "freshness": "fresh",
+            "limit": 10,
+            "offset": 0,
+        },
     )
 
-    assert payload.page.total_items == 1
-    assert [item.id for item in payload.items] == ["alert-001"]
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["page"]["total_items"] == 1
+    assert [item["id"] for item in payload["items"]] == ["alert-001"]
 
 
 def test_get_alert_detail_returns_related_context() -> None:

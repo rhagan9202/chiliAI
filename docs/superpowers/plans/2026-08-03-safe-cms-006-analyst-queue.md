@@ -105,7 +105,7 @@ Task 2 notes:
   - After implementation, backend store/API dependency tests and frontend API/page/filter
     tests passed.
 - Final verification passed:
-  - `backend/.venv/bin/python -m pytest backend/tests/api/test_read_model_routers.py::test_alert_list_payload_passes_queue_filters_to_store backend/tests/monitoring/test_alert_store_kb_scope.py`: 8 passed.
+  - `backend/.venv/bin/python -m pytest backend/tests/api/test_read_model_routers.py::test_list_alerts_route_passes_queue_filters_to_store backend/tests/monitoring/test_alert_store_kb_scope.py`: passed when run outside the command sandbox.
   - `backend/.venv/bin/ruff check backend/api/dependencies.py backend/monitoring/adapters/protocols.py backend/monitoring/adapters/in_memory.py backend/monitoring/adapters/postgres.py backend/tests/api/test_read_model_routers.py backend/tests/monitoring/test_alert_store_kb_scope.py`: passed.
   - `backend/.venv/bin/pyright --project backend backend/api/dependencies.py backend/monitoring/adapters/protocols.py backend/monitoring/adapters/in_memory.py backend/monitoring/adapters/postgres.py`: 0 errors.
   - `pnpm exec vitest run src/api/__tests__/alerts.test.ts src/pages/__tests__/AlertFeedPage.test.tsx src/utils/__tests__/alertFilters.test.ts`: 57 passed.
@@ -115,9 +115,12 @@ Task 2 notes:
   - `pnpm build`: passed with the existing Vite large-chunk warning.
   - `git diff --check`: passed.
   - `backend/.venv/bin/python scripts/backlog_consistency.py --check`: passed.
-- Local caveat: the existing `backend/tests/api/test_read_model_routers.py` route harness
-  timed out even for pre-existing route tests in this environment, so Task 2 API coverage
-  uses the direct `get_alert_list_payload` dependency test plus store tests here.
+- Root-cause follow-up (2026-08-03): sandboxed route tests were timing out because
+  Starlette `TestClient` depends on AnyIO/asyncio cross-thread event-loop wakeups; a
+  minimal plain FastAPI `TestClient` and direct `loop.call_soon_threadsafe` reproduction
+  both hung in the sandbox, while the same plain `TestClient` passed outside it. The
+  `SAFE-CMS-006` queue route test remains route-level coverage and must be run with
+  sandbox escalation in this environment, not replaced with a direct dependency call.
 
 ## Task 3: Assignment And Status Operations
 
