@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 
 import { useAlerts } from '../api/alerts'
-import { useAnalyticsOverview, useGnnClusters, useMetricTimeseries, useRiskScores } from '../api/analytics'
+import { useAnalyticsOverview, useGnnClusters, useMetricTimeseries, useRiskProjections } from '../api/analytics'
 import { useDomainFeatures } from '../api/config'
 import { useWorkflows } from '../api/workflows'
 import { TrendBars } from '../components/charts/TrendBars'
@@ -46,6 +46,36 @@ function formatEntityType(entityType: string) {
 
 function formatRiskEntityLabel(entityType: string, entityId: string) {
   return `${formatEntityType(entityType) || 'Entity'} ${entityId}`
+}
+
+function formatProjectionStatus(status: string) {
+  return status
+    .split(/[_-]/g)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function formatRiskProjectionLabel({
+  entityType,
+  entityId,
+  status,
+  scoredAt,
+  typologyIds,
+}: {
+  entityType: string
+  entityId: string
+  status: string
+  scoredAt: string
+  typologyIds?: string[]
+}) {
+  const parts = [
+    formatRiskEntityLabel(entityType, entityId),
+    formatProjectionStatus(status),
+    typologyIds?.[0],
+    `Scored ${new Date(scoredAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`,
+  ].filter(Boolean)
+  return parts.join(' · ')
 }
 
 function DashboardTabPanel({
@@ -97,14 +127,14 @@ export function DashboardPage() {
   // resolver, so every page agrees on which knowledge base is being read.
   // The workspace may legitimately point at a knowledge base that is still
   // building — you can still browse its cases and alerts. The analytics panels
-  // below cannot: risk scores, clusters and timeseries only exist once ingestion
+  // below cannot: risk projections, clusters and timeseries only exist once ingestion
   // has finished, so they stay empty until the active KB is ready.
   const workspaceKnowledgeBase =
     knowledgeBases.find((kb) => kb.id === activeKnowledgeBaseId) ?? null
   const activeKnowledgeBase =
     workspaceKnowledgeBase?.status === 'ready' ? workspaceKnowledgeBase : null
-  const riskScoresQuery = useRiskScores(
-    activeKnowledgeBase ? { knowledgeBaseId: activeKnowledgeBase.id, limit: 5 } : null,
+  const riskProjectionsQuery = useRiskProjections(
+    activeKnowledgeBase ? { knowledgeBaseId: activeKnowledgeBase.id, limit: 5, offset: 0 } : null,
   )
   const gnnClustersQuery = useGnnClusters(activeKnowledgeBase?.id ?? null)
   const metricTimeseriesQuery = useMetricTimeseries(
@@ -139,17 +169,17 @@ export function DashboardPage() {
     failed: workflows.filter((workflow) => workflow.status === 'failed').length,
     completed: workflows.filter((workflow) => workflow.status === 'completed').length,
   }
-  const riskScores = riskScoresQuery.data?.items ?? []
+  const riskProjections = riskProjectionsQuery.data?.items ?? []
   const clusters = gnnClustersQuery.data?.clusters ?? []
   const metricTrend = (metricTimeseriesQuery.data?.points ?? []).map((point) => ({
     label: new Date(point.observed_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
     value: point.value,
   }))
   const policySignalsLoading = Boolean(activeKnowledgeBase) && (
-    riskScoresQuery.isLoading || gnnClustersQuery.isLoading || metricTimeseriesQuery.isLoading
+    riskProjectionsQuery.isLoading || gnnClustersQuery.isLoading || metricTimeseriesQuery.isLoading
   )
   const policySignalsError = Boolean(activeKnowledgeBase) && (
-    riskScoresQuery.isError || gnnClustersQuery.isError || metricTimeseriesQuery.isError
+    riskProjectionsQuery.isError || gnnClustersQuery.isError || metricTimeseriesQuery.isError
   )
   const health = queueHealth(alerts)
   const trend = backlogTrend(alerts, new Date(), TREND_DAYS)
@@ -356,16 +386,24 @@ export function DashboardPage() {
                   <strong>Top risk entities</strong>
                   <span className="metric-row__label">{activeKnowledgeBase.name}</span>
                 </div>
-                {riskScores.map((riskScore) => (
-                  <div className="dashboard-summary-row" key={riskScore.entity_id}>
+                {riskProjections.map((riskProjection) => (
+                  <div className="dashboard-summary-row" key={riskProjection.entity_id}>
                     <span>
-                      <strong>{riskScore.entity_id}</strong>
-                      <span className="metric-row__label">{formatRiskEntityLabel(riskScore.entity_type, riskScore.entity_id)}</span>
+                      <strong>{riskProjection.entity_id}</strong>
+                      <span className="metric-row__label">
+                        {formatRiskProjectionLabel({
+                          entityType: riskProjection.entity_type,
+                          entityId: riskProjection.entity_id,
+                          status: riskProjection.status,
+                          scoredAt: riskProjection.scored_at,
+                          typologyIds: riskProjection.top_typology_ids,
+                        })}
+                      </span>
                     </span>
-                    <RiskBadge score={Math.round(riskScore.overall_score * 100)} />
+                    <RiskBadge score={Math.round(riskProjection.overall_score * 100)} />
                   </div>
                 ))}
-                {riskScores.length === 0 ? <EmptyState description="No ranked risk entities are available for this knowledge base." title="No risk scores" /> : null}
+                {riskProjections.length === 0 ? <EmptyState description="No ranked risk entities are available for this knowledge base." title="No risk projections" /> : null}
               </div>
             </Card>
 

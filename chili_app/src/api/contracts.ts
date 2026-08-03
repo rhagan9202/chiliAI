@@ -260,6 +260,11 @@ export type HousingInstallationsResponse = RequireFields<
 >
 
 export type RiskFactorResponse = Schemas['RiskFactorResponse']
+export type RiskProjectionItemResponse = Schemas['RiskProjectionItemResponse']
+export type RiskProjectionListResponse = RequireFields<
+  Schemas['RiskProjectionListResponse'],
+  'items'
+>
 export type RiskScoreResponse = RequireFields<Schemas['RiskScoreResponse'], 'factors'>
 export type RiskScoreListResponse = Schemas['RiskScoreListResponse']
 export type TimeseriesPointResponse = Schemas['EntityTimeseriesPointResponse']

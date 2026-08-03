@@ -4,7 +4,9 @@ import {
   getAnalyticsOverview,
   getGnnClusters,
   getMetricTimeseries,
+  getRiskProjections,
   getRiskScores,
+  riskProjectionsQueryKey,
 } from '../analytics'
 
 vi.mock('../client', () => ({
@@ -48,6 +50,101 @@ describe('analytics api helpers', () => {
     expect(apiFetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/analytics/risk-scores?knowledge_base_id=kb-1&entity_type=provider&limit=5'),
     )
+  })
+
+  it('serializes risk projection filters', async () => {
+    apiFetchMock.mockResolvedValue({ items: [] })
+
+    await getRiskProjections({
+      knowledgeBaseId: 'kb-1',
+      entityType: 'provider',
+      riskLevel: 'high',
+      typologyId: 'upcoding',
+      status: 'case_open',
+      maxScoreAgeHours: 48,
+      asOf: '2026-08-03T12:00:00.000Z',
+      limit: 5,
+      offset: 10,
+    })
+
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/analytics/risk-projections?'),
+    )
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('knowledge_base_id=kb-1'),
+    )
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('entity_type=provider'),
+    )
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('risk_level=high'),
+    )
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('typology_id=upcoding'),
+    )
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('status=case_open'),
+    )
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('max_score_age_hours=48'),
+    )
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('as_of=2026-08-03T12%3A00%3A00.000Z'),
+    )
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('limit=5'),
+    )
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('offset=10'),
+    )
+  })
+
+  it('keys risk projections by collection filters', () => {
+    const base = riskProjectionsQueryKey({
+      knowledgeBaseId: 'kb-1',
+      entityType: 'provider',
+      riskLevel: 'high',
+      typologyId: 'upcoding',
+      status: 'case_open',
+      maxScoreAgeHours: 48,
+      asOf: '2026-08-03T12:00:00.000Z',
+      limit: 5,
+      offset: 0,
+    })
+
+    expect(base).not.toEqual(riskProjectionsQueryKey({
+      knowledgeBaseId: 'kb-1',
+      entityType: 'claim',
+      riskLevel: 'high',
+      typologyId: 'upcoding',
+      status: 'case_open',
+      maxScoreAgeHours: 48,
+      asOf: '2026-08-03T12:00:00.000Z',
+      limit: 5,
+      offset: 0,
+    }))
+    expect(base).not.toEqual(riskProjectionsQueryKey({
+      knowledgeBaseId: 'kb-1',
+      entityType: 'provider',
+      riskLevel: 'high',
+      typologyId: 'upcoding',
+      status: 'case_open',
+      maxScoreAgeHours: 24,
+      asOf: '2026-08-03T12:00:00.000Z',
+      limit: 5,
+      offset: 0,
+    }))
+    expect(base).not.toEqual(riskProjectionsQueryKey({
+      knowledgeBaseId: 'kb-1',
+      entityType: 'provider',
+      riskLevel: 'high',
+      typologyId: 'upcoding',
+      status: 'case_open',
+      maxScoreAgeHours: 48,
+      asOf: '2026-08-03T12:00:00.000Z',
+      limit: 5,
+      offset: 10,
+    }))
   })
 
   it('serializes metric timeseries filters', async () => {

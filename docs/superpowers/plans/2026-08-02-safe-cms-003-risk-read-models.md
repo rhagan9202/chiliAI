@@ -158,24 +158,38 @@ Task 3 review notes:
 - Modify: dashboard/alert/entity consumers as needed.
 - Test: focused API hook and page/component tests.
 
-- [ ] **Step 1: Add frontend API wrapper tests**
+- [x] **Step 1: Add frontend API wrapper tests**
 
 Cover serialized filters, pagination, and score freshness fields.
 
-- [ ] **Step 2: Migrate first consumer to projection-backed risk rows**
+- [x] **Step 2: Migrate first consumer to projection-backed risk rows**
 
 Start with dashboard risk ranking because it already uses `/analytics/risk-scores`.
 
-- [ ] **Step 3: Run frontend tests and build**
+- [x] **Step 3: Run frontend tests and build**
 
 Expected: focused frontend tests and `pnpm build` pass.
 
+Task 4 review notes:
+
+- Added frontend risk projection contract aliases, filter type, query key, fetcher, and hook.
+- Projection wrapper tests cover camelCase-to-query serialization for entity type, risk level,
+  typology, status, max score age, `as_of`, limit, and offset, plus collection cache keys.
+- Migrated the dashboard Top risk entities panel from `useRiskScores` to `useRiskProjections`
+  with `{ knowledgeBaseId, limit: 5, offset: 0 }`.
+- Dashboard rows now render projection metadata: status, top typology, scored date, and score.
+- Review found no blocking frontend API or dashboard migration issues. Low review gaps were
+  closed by expanding the query-key test and adding a ready-KB empty projection state test.
+- Focused verification passed: `npm run test:run -- src/api/__tests__/analytics.test.ts
+  src/pages/__tests__/DashboardPage.test.tsx` with 29 tests, `pnpm build`, `git diff --check`,
+  and `python3 scripts/backlog_consistency.py --check`.
+
 ## Task 5: Verification And Closeout
 
-- [ ] Backend focused tests.
-- [ ] Frontend focused tests/build if contracts changed.
-- [ ] `git diff --check`
-- [ ] `python3 scripts/backlog_consistency.py --check`
+- [x] Backend focused tests.
+- [x] Frontend focused tests/build if contracts changed.
+- [x] `git diff --check`
+- [x] `python3 scripts/backlog_consistency.py --check`
 - [ ] Update backlog and this plan with verification evidence.
 
 ## Review Gates

@@ -5,6 +5,8 @@ import type {
   AnalyticsOverviewResponse,
   GnnClusterResponse,
   MetricTimeseriesResponse,
+  RiskProjectionItemResponse,
+  RiskProjectionListResponse,
   RiskScoreListResponse,
   RiskScoreResponse,
   TimeseriesResponse,
@@ -20,6 +22,18 @@ export type RiskScoresFilters = {
   limit?: number
 }
 
+export type RiskProjectionFilters = {
+  knowledgeBaseId: string
+  entityType?: string
+  riskLevel?: RiskProjectionItemResponse['risk_level']
+  typologyId?: string
+  status?: RiskProjectionItemResponse['status']
+  maxScoreAgeHours?: number
+  asOf?: string
+  limit?: number
+  offset?: number
+}
+
 export type MetricTimeseriesFilters = {
   knowledgeBaseId: string
   metric: string
@@ -33,6 +47,10 @@ export function riskScoreQueryKey(knowledgeBaseId: string | null, entityId: stri
 
 export function riskScoresQueryKey(filters: RiskScoresFilters | null) {
   return ['analytics', 'risk-scores', filters] as const
+}
+
+export function riskProjectionsQueryKey(filters: RiskProjectionFilters | null) {
+  return ['analytics', 'risk-projections', filters] as const
 }
 
 export function timeseriesQueryKey(knowledgeBaseId: string | null, entityId: string | null) {
@@ -62,6 +80,21 @@ export function getRiskScores(filters: RiskScoresFilters): Promise<RiskScoreList
   if (filters.entityType) params.set('entity_type', filters.entityType)
   if (filters.limit !== undefined) params.set('limit', String(filters.limit))
   return apiFetch<RiskScoreListResponse>(`/analytics/risk-scores?${params}`)
+}
+
+export function getRiskProjections(filters: RiskProjectionFilters): Promise<RiskProjectionListResponse> {
+  const params = new URLSearchParams({ knowledge_base_id: filters.knowledgeBaseId })
+  if (filters.entityType) params.set('entity_type', filters.entityType)
+  if (filters.riskLevel) params.set('risk_level', filters.riskLevel)
+  if (filters.typologyId) params.set('typology_id', filters.typologyId)
+  if (filters.status) params.set('status', filters.status)
+  if (filters.maxScoreAgeHours !== undefined) {
+    params.set('max_score_age_hours', String(filters.maxScoreAgeHours))
+  }
+  if (filters.asOf) params.set('as_of', filters.asOf)
+  if (filters.limit !== undefined) params.set('limit', String(filters.limit))
+  if (filters.offset !== undefined) params.set('offset', String(filters.offset))
+  return apiFetch<RiskProjectionListResponse>(`/analytics/risk-projections?${params}`)
 }
 
 export function getRiskScore(knowledgeBaseId: string, entityId: string): Promise<RiskScoreResponse> {
@@ -102,6 +135,14 @@ export function useRiskScores(filters: RiskScoresFilters | null) {
   return useQuery({
     queryKey: riskScoresQueryKey(filters),
     queryFn: () => getRiskScores(filters ?? { knowledgeBaseId: '' }),
+    enabled: Boolean(filters?.knowledgeBaseId),
+  })
+}
+
+export function useRiskProjections(filters: RiskProjectionFilters | null) {
+  return useQuery({
+    queryKey: riskProjectionsQueryKey(filters),
+    queryFn: () => getRiskProjections(filters ?? { knowledgeBaseId: '' }),
     enabled: Boolean(filters?.knowledgeBaseId),
   })
 }
