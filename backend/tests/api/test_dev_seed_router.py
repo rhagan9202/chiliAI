@@ -104,7 +104,20 @@ def test_dev_seed_writes_real_alert_evidence_case_and_kb() -> None:
         f"/evidence-packs/{ids['evidence_pack_id']}", params={"knowledge_base_id": kb}
     )
     assert ev.status_code == 200
-    assert ev.json()["subgraph_node_ids"]
+    evidence_payload = ev.json()
+    assert evidence_payload["subgraph_node_ids"]
+    document_refs = [
+        ref for ref in evidence_payload["provenance"] if ref["reference_type"] == "document"
+    ]
+    assert document_refs
+    assert document_refs[0]["route_target"].endswith("/documents/dev-seed-source/preview")
+
+    documents = client.get(f"/knowledgebases/{kb}/documents")
+    assert documents.status_code == 200
+    assert any(item["id"] == "dev-seed-source" for item in documents.json()["items"])
+    preview = client.get(f"/knowledgebases/{kb}/documents/dev-seed-source/preview")
+    assert preview.status_code == 200
+    assert "Redwood DME Group" in preview.json()["preview_text"]
 
     # The case is served from the real repository (KB-scoped). It is independent
     # of the seeded alert so that alert stays promotable in the promote spec.

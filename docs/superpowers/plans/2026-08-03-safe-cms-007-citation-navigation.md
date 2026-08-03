@@ -259,6 +259,8 @@ Task 3 notes:
 - Modify/create: `chili_app/e2e/citation-navigation.spec.ts`
 - Modify: `chili_app/src/pages/KnowledgeBaseManagerPage.tsx`
 - Test: `chili_app/src/pages/__tests__/KnowledgeBaseManagerPage.test.tsx`
+- Modify: `backend/api/routers/dev_seed.py`
+- Test: `backend/tests/api/test_dev_seed_router.py`
 - Modify: `docs/superpowers/plans/2026-08-03-safe-cms-007-citation-navigation.md`
 
 Task 4 preparation notes:
@@ -280,11 +282,11 @@ Task 4 preparation notes:
   - `backend/.venv/bin/python scripts/backlog_consistency.py --check`: passed.
   - `git diff --check`: passed.
 
-- [ ] **Step 1: Write failing Playwright coverage**
+- [x] **Step 1: Write failing full-stack coverage**
 
 Create a full-stack test that seeds an alert/evidence pack with document provenance, opens the cockpit evidence panel, clicks the citation, and verifies the document preview panel opens with the selected KB and document.
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 Bring up the dev stack if needed, then run:
 
@@ -295,11 +297,11 @@ pnpm exec playwright test e2e/citation-navigation.spec.ts
 
 Expected: fail until evidence provenance renders as a supported link.
 
-- [ ] **Step 3: Harden UI route handling**
+- [x] **Step 3: Harden route and seed handling**
 
 Add only the route/query handling needed for the browser test. Do not introduce a new backend resolver endpoint unless the frontend contract cannot safely build the target.
 
-- [ ] **Step 4: Run full focused verification**
+- [x] **Step 4: Run full focused verification**
 
 Run:
 
@@ -316,9 +318,33 @@ git diff --check
 
 Expected: all focused checks pass; any known Vite large-chunk warning is unchanged.
 
-- [ ] **Step 5: Final commit and push**
+- [x] **Step 5: Final commit and push**
 
 Update backlog status if the whole story is complete, commit the final slice, and push `fix/normalize-kb-query-param`.
+
+Task 4 notes:
+
+- Added deterministic dev-seed source document storage and a document provenance
+  reference on the seeded evidence pack so full-stack browser coverage can click
+  a real citation, not a synthetic route.
+- Extended the dev-seed router test to prove the evidence pack exposes document
+  provenance and the referenced document preview route returns the seeded source text.
+- Added `chili_app/e2e/citation-navigation.spec.ts` to open cockpit evidence,
+  follow the document citation to `/knowledge-bases?kb=...&document=...`, and
+  verify the selected source preview content.
+- Red verification:
+  - `uv run --project backend pytest backend/tests/api/test_dev_seed_router.py::test_dev_seed_writes_real_alert_evidence_case_and_kb -q` first failed because seeded evidence had no document provenance.
+  - `pnpm exec playwright test e2e/citation-navigation.spec.ts` first reached the document page but failed on an ambiguous `Document preview` locator; the assertion was narrowed to the exact panel title.
+- Green verification passed:
+  - `uv run --project backend pytest backend/tests/api/test_dev_seed_router.py::test_dev_seed_writes_real_alert_evidence_case_and_kb -q`: 1 passed.
+  - `pnpm exec playwright test e2e/citation-navigation.spec.ts`: 1 passed.
+- Final Task 4 verification passed:
+  - `pnpm exec vitest run src/lib/__tests__/citationTargets.test.ts src/lib/__tests__/ragContext.test.ts src/components/investigation/__tests__/EvidencePackViewer.test.tsx src/pages/__tests__/RagChatPage.test.tsx src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/pages/__tests__/AlertFeedPage.test.tsx src/pages/__tests__/KnowledgeBaseManagerPage.test.tsx`: 174 passed.
+  - `pnpm exec eslint src/lib/citationTargets.ts src/lib/ragContext.ts src/pages/RagChatPage.tsx src/components/investigation/EvidencePackViewer.tsx src/pages/KnowledgeBaseManagerPage.tsx src/lib/__tests__/citationTargets.test.ts src/lib/__tests__/ragContext.test.ts src/pages/__tests__/RagChatPage.test.tsx src/components/investigation/__tests__/EvidencePackViewer.test.tsx src/pages/__tests__/KnowledgeBaseManagerPage.test.tsx e2e/citation-navigation.spec.ts`: passed.
+  - `uv run --project backend pytest backend/tests/api/test_dev_seed_router.py -q`: 19 passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
+  - `backend/.venv/bin/python scripts/backlog_consistency.py --check`: passed.
+  - `git diff --check`: passed.
 
 ## Review Gates
 

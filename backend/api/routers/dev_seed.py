@@ -43,6 +43,7 @@ This router is registered ONLY when ``CHILI_ENV != production`` (see
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 
@@ -57,6 +58,7 @@ from api.dependencies import (
     get_evidence_pack_repository,
     get_graph_repository,
     get_knowledge_base_repository,
+    get_object_store,
     get_policy_repository,
 )
 from api.middleware.rbac import require_role
@@ -72,10 +74,12 @@ from cases.models import Case
 from conversations.adapters.protocols import ConversationRepository
 from conversations.models import Conversation, ConversationMessage
 from graph.adapters.protocols import GraphRepository
+from knowledgebases.models import DocumentRecord
 from knowledgebases.protocols import KnowledgeBaseRepository
 from shared.types import (
     Entity,
     EntityDefinition,
+    EvidenceProvenanceReference,
     EvidencePack,
     KnowledgeBase,
     PropertyDefinition,
@@ -86,6 +90,7 @@ from shared.types import (
     validate_relationship,
 )
 from shared.utils import generate_id, utc_now
+from storage.protocols import ObjectStore
 
 __all__ = ["router"]
 
@@ -444,6 +449,7 @@ async def dev_seed(
     graph_repository: GraphRepository = Depends(get_graph_repository),
     alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+    object_store: ObjectStore = Depends(get_object_store),
     case_repository: CaseRepository = Depends(get_case_repository),
     policy_repository: PolicyItemRepository = Depends(get_policy_repository),
     conversation_repository: ConversationRepository = Depends(get_conversation_repository),
@@ -588,6 +594,33 @@ async def dev_seed(
         )
     )
 
+    source_document_id = "dev-seed-source"
+    source_document_text = (
+        "Redwood DME Group claim review\n"
+        "Provider billed repeated high-intensity claims above peer baseline.\n"
+        "Evidence supports the seeded alert and provenance click-through test.\n"
+    )
+    source_document_bytes = source_document_text.encode("utf-8")
+    source_document_key = f"knowledgebases/{kb_id}/documents/{source_document_id}/source.txt"
+    object_store.put_bytes(
+        source_document_key,
+        source_document_bytes,
+        media_type="text/plain",
+        metadata={"knowledge_base_id": kb_id, "source_document_id": source_document_id},
+    )
+    kb_repository.add_document(
+        DocumentRecord(
+            id=source_document_id,
+            knowledge_base_id=kb_id,
+            filename="dev-seed-source.txt",
+            content_type="text/plain",
+            size_bytes=len(source_document_bytes),
+            status="validated",
+            storage_key=source_document_key,
+            content_hash=hashlib.sha256(source_document_bytes).hexdigest(),
+        )
+    )
+
     # --- graph subgraph -----------------------------------------------------
     graph_repository.upsert_entities(kb_id, graph_entities)
     graph_repository.upsert_relationships(kb_id, relationships)
@@ -605,6 +638,26 @@ async def dev_seed(
             subgraph_edges=[relationship.id for relationship in relationships],
             confidence=0.82,
             scores={"overall": 0.82, "peer_deviation": 0.94},
+            source_documents=[source_document_id],
+            provenance=[
+                EvidenceProvenanceReference(
+                    reference_type="document",
+                    reference_id=f"{source_document_id}#evidence:0",
+                    label="Seed source document",
+                    source_system="dev-seed",
+                    source_version="2026-08",
+                    transformation_version="dev-seed-v1",
+                    confidence=0.82,
+                    route_target=(
+                        f"/knowledgebases/{kb_id}/documents/"
+                        f"{source_document_id}/preview"
+                    ),
+                    metadata={
+                        "document_id": source_document_id,
+                        "entity_id": anchor_entity.id,
+                    },
+                )
+            ],
         ),
     )
 
