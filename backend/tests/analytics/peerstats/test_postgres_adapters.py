@@ -114,3 +114,25 @@ def test_upsert_placeholder_count_matches_signal_params() -> None:
     # The INSERT column list has 14 columns / 14 placeholders in the VALUES clause.
     assert UPSERT_SQL.count("%s") == len(params)
     assert len(params) == 14
+
+
+def test_peer_group_signal_query_placeholder_count_matches_params() -> None:
+    from datetime import datetime, timezone
+
+    from analytics.peerstats.adapters.postgres import (
+        PEER_GROUP_SIGNALS_SQL,
+        peer_group_signals_params,
+    )
+
+    params = peer_group_signals_params(
+        knowledge_base_id="kb1",
+        metric_name="weekly_billing",
+        interval_start=datetime(2026, 1, 5, tzinfo=timezone.utc),
+        peer_group_key="provider|cardiology",
+    )
+
+    assert PEER_GROUP_SIGNALS_SQL.count("%s") == len(params)
+    assert "knowledge_base_id = %s" in PEER_GROUP_SIGNALS_SQL
+    assert "metric_name = %s" in PEER_GROUP_SIGNALS_SQL
+    assert "interval_start = %s" in PEER_GROUP_SIGNALS_SQL
+    assert "peer_group_key = %s" in PEER_GROUP_SIGNALS_SQL

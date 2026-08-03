@@ -74,7 +74,7 @@ _LATEST_SIGNALS_SQL = """
     ORDER BY metric_name, interval_start DESC, computed_at DESC
 """
 
-_PEER_GROUP_SIGNALS_SQL = """
+PEER_GROUP_SIGNALS_SQL = """
     SELECT
         knowledge_base_id, entity_id, entity_type, metric_name, interval_start,
         peer_group_key, aggregate_value, peer_mean, peer_std, z_score,
@@ -193,6 +193,18 @@ def signal_params(signal: DerivedRiskSignal) -> tuple[object, ...]:
     )
 
 
+def peer_group_signals_params(
+    *,
+    knowledge_base_id: str,
+    metric_name: str,
+    interval_start: datetime,
+    peer_group_key: str,
+) -> tuple[object, ...]:
+    """Positional params for ``PEER_GROUP_SIGNALS_SQL``."""
+
+    return (knowledge_base_id, metric_name, interval_start, peer_group_key)
+
+
 class PostgresRecordColumnSource:
     """Aggregate raw_records JSONB columns per entity per interval in SQL."""
 
@@ -308,12 +320,12 @@ class PostgresDerivedRiskSignalWriter:
         try:
             with self._provider.connection() as conn:
                 rows = conn.execute(
-                    _PEER_GROUP_SIGNALS_SQL,
-                    (
-                        knowledge_base_id,
-                        metric_name,
-                        interval_start,
-                        peer_group_key,
+                    PEER_GROUP_SIGNALS_SQL,
+                    peer_group_signals_params(
+                        knowledge_base_id=knowledge_base_id,
+                        metric_name=metric_name,
+                        interval_start=interval_start,
+                        peer_group_key=peer_group_key,
                     ),
                 ).fetchall()
         except Exception as exc:
@@ -345,7 +357,9 @@ __all__ = [
     "UPSERT_SQL",
     "PostgresDerivedRiskSignalWriter",
     "PostgresRecordColumnSource",
+    "PEER_GROUP_SIGNALS_SQL",
     "build_agg_params",
     "build_agg_sql",
+    "peer_group_signals_params",
     "signal_params",
 ]

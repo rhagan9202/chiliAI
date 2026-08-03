@@ -4344,10 +4344,117 @@ export interface components {
             metrics?: components["schemas"]["PeerMetricComparisonResponse"][];
         };
         /**
+         * PeerCohortContextResponse
+         * @description Cohort definition and membership context for one comparison.
+         */
+        PeerCohortContextResponse: {
+            /** Entity Type */
+            entity_type: string;
+            /** Exclusions */
+            exclusions?: components["schemas"]["PeerCohortExclusionResponse"][];
+            /** Group By */
+            group_by?: string[];
+            /** Group Values */
+            group_values?: {
+                [key: string]: string;
+            };
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Member Count */
+            member_count: number;
+            /** Member Entity Ids */
+            member_entity_ids?: string[];
+            /** Peer Metric */
+            peer_metric: string;
+            /** Version */
+            version: string;
+        };
+        /**
+         * PeerCohortDefinitionConfig
+         * @description Versioned peer cohort definition for analyst-facing comparisons.
+         */
+        PeerCohortDefinitionConfig: {
+            /** Entity Type */
+            entity_type: string;
+            /** Exclusions */
+            exclusions?: components["schemas"]["PeerCohortExclusionConfig"][];
+            /** Group By */
+            group_by?: string[];
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Min Cohort Size
+             * @default 5
+             */
+            min_cohort_size: number;
+            /** Peer Metric */
+            peer_metric: string;
+            /**
+             * Version
+             * @default v1
+             */
+            version: string;
+        };
+        /**
+         * PeerCohortExclusionConfig
+         * @description One exclusion rule documented for a cohort definition.
+         */
+        PeerCohortExclusionConfig: {
+            /** Field */
+            field: string;
+            /**
+             * Operator
+             * @enum {string}
+             */
+            operator: "equals" | "not_equals" | "in" | "not_in" | "exists" | "missing";
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Values */
+            values?: string[];
+        };
+        /**
+         * PeerCohortExclusionResponse
+         * @description Configured cohort exclusion rule.
+         */
+        PeerCohortExclusionResponse: {
+            /** Field */
+            field: string;
+            /** Operator */
+            operator: string;
+            /** Reason */
+            reason: string;
+            /** Values */
+            values?: string[];
+        };
+        /**
+         * PeerDistributionSummaryResponse
+         * @description Metric distribution summary for one peer group.
+         */
+        PeerDistributionSummaryResponse: {
+            /** Count */
+            count: number;
+            /** Maximum */
+            maximum: number;
+            /** Minimum */
+            minimum: number;
+            /** P50 */
+            p50: number;
+            /** P90 */
+            p90: number;
+        };
+        /**
          * PeerMetricComparisonResponse
          * @description One peer-metric comparison for an entity.
          */
         PeerMetricComparisonResponse: {
+            cohort?: components["schemas"]["PeerCohortContextResponse"] | null;
             /** Cohort Size */
             cohort_size: number;
             /**
@@ -4358,6 +4465,7 @@ export interface components {
             confidence: "normal" | "low";
             /** Confidence Reason */
             confidence_reason?: string | null;
+            distribution?: components["schemas"]["PeerDistributionSummaryResponse"] | null;
             /** Entity Type */
             entity_type: string;
             /** Entity Value */
@@ -4448,6 +4556,8 @@ export interface components {
          * @description Collection of peer-group z-score metric specs for a domain.
          */
         PeerStatsConfig: {
+            /** Cohorts */
+            cohorts?: components["schemas"]["PeerCohortDefinitionConfig"][];
             /** Metrics */
             metrics?: components["schemas"]["PeerMetricSpec"][];
         };

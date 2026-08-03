@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from analytics.peerstats.adapters.in_memory import InMemoryDerivedRiskSignalWriter
 from analytics.peerstats.models import DerivedRiskSignal
 from analytics.peerstats.peer_analysis import PeerAnalysisService
+from config.schema import PeerCohortDefinitionConfig
 
 
 def _signal(
@@ -129,3 +130,51 @@ def test_peer_analysis_marks_small_or_degenerate_cohort_low_confidence() -> None
     assert response.metrics[0].cohort_size == 2
     assert response.metrics[0].confidence == "low"
     assert response.metrics[0].confidence_reason == "small_or_degenerate_cohort"
+
+
+def test_peer_analysis_includes_cohort_membership_and_distribution() -> None:
+    writer = InMemoryDerivedRiskSignalWriter()
+    interval = datetime(2026, 1, 12, tzinfo=timezone.utc)
+    writer.write_signals(
+        [
+            _signal("provider:target", value=100.0, interval_start=interval),
+            _signal("provider:a", value=10.0, interval_start=interval),
+            _signal("provider:b", value=50.0, interval_start=interval),
+            _signal("provider:c", value=75.0, interval_start=interval),
+        ]
+    )
+
+    response = PeerAnalysisService(
+        writer,
+        min_cohort_size=4,
+        cohort_definitions=[
+            PeerCohortDefinitionConfig(
+                id="provider_specialty_billing",
+                label="Provider specialty billing",
+                entity_type="provider",
+                peer_metric="weekly_billing",
+                group_by=["specialty"],
+                version="v1",
+            )
+        ],
+    ).compare_entity(
+        knowledge_base_id="kb1",
+        entity_id="provider:target",
+    )
+
+    metric = response.metrics[0]
+    assert metric.distribution is not None
+    assert metric.distribution.count == 4
+    assert metric.distribution.p50 == 62.5
+    assert metric.distribution.p90 == 92.5
+    assert metric.cohort is not None
+    assert metric.cohort.id == "provider_specialty_billing"
+    assert metric.cohort.version == "v1"
+    assert metric.cohort.group_values == {"specialty": "cardiology"}
+    assert metric.cohort.member_entity_ids == [
+        "provider:a",
+        "provider:b",
+        "provider:c",
+        "provider:target",
+    ]
+    assert metric.cohort.exclusions == []

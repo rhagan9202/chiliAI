@@ -31,6 +31,9 @@ from analytics.timeseries.service_models import (
 from api.contracts import (
     AnalyticsOverviewResponse,
     EntityTimeseriesResponse,
+    PeerCohortContextResponse,
+    PeerCohortExclusionResponse,
+    PeerDistributionSummaryResponse,
     PeerAnalysisResponse,
     PeerMetricComparisonResponse,
     RiskProjectionItemResponse,
@@ -301,6 +304,41 @@ def _peer_analysis_response(
                 rationale=metric.rationale,
                 confidence=metric.confidence,
                 confidence_reason=metric.confidence_reason,
+                distribution=(
+                    None
+                    if metric.distribution is None
+                    else PeerDistributionSummaryResponse(
+                        count=metric.distribution.count,
+                        minimum=metric.distribution.minimum,
+                        p50=metric.distribution.p50,
+                        p90=metric.distribution.p90,
+                        maximum=metric.distribution.maximum,
+                    )
+                ),
+                cohort=(
+                    None
+                    if metric.cohort is None
+                    else PeerCohortContextResponse(
+                        id=metric.cohort.id,
+                        label=metric.cohort.label,
+                        version=metric.cohort.version,
+                        entity_type=metric.cohort.entity_type,
+                        peer_metric=metric.cohort.peer_metric,
+                        group_by=list(metric.cohort.group_by),
+                        group_values=dict(metric.cohort.group_values),
+                        exclusions=[
+                            PeerCohortExclusionResponse(
+                                field=exclusion.field,
+                                operator=exclusion.operator,
+                                values=list(exclusion.values),
+                                reason=exclusion.reason,
+                            )
+                            for exclusion in metric.cohort.exclusions
+                        ],
+                        member_entity_ids=list(metric.cohort.member_entity_ids),
+                        member_count=metric.cohort.member_count,
+                    )
+                ),
             )
             for metric in result.metrics
         ],

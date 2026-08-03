@@ -953,6 +953,42 @@ class RiskProjectionRebuildResponse(BaseModel):
 PeerAnalysisConfidenceValue = Literal["normal", "low"]
 
 
+class PeerDistributionSummaryResponse(BaseModel):
+    """Metric distribution summary for one peer group."""
+
+    count: int = Field(ge=0)
+    minimum: float
+    p50: float
+    p90: float
+    maximum: float
+
+
+class PeerCohortExclusionResponse(BaseModel):
+    """Configured cohort exclusion rule."""
+
+    field: str
+    operator: str
+    values: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    reason: str
+
+
+class PeerCohortContextResponse(BaseModel):
+    """Cohort definition and membership context for one comparison."""
+
+    id: str
+    label: str
+    version: str
+    entity_type: str
+    peer_metric: str
+    group_by: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    group_values: dict[str, str] = Field(default_factory=dict[str, str])
+    exclusions: list[PeerCohortExclusionResponse] = Field(
+        default_factory=lambda: cast(list[PeerCohortExclusionResponse], [])
+    )
+    member_entity_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    member_count: int = Field(ge=0)
+
+
 class PeerMetricComparisonResponse(BaseModel):
     """One peer-metric comparison for an entity."""
 
@@ -970,6 +1006,8 @@ class PeerMetricComparisonResponse(BaseModel):
     rationale: str
     confidence: PeerAnalysisConfidenceValue = "normal"
     confidence_reason: str | None = None
+    distribution: PeerDistributionSummaryResponse | None = None
+    cohort: PeerCohortContextResponse | None = None
 
 
 class PeerAnalysisResponse(BaseModel):
@@ -1471,6 +1509,9 @@ __all__ = [
     "PolicyDispositionResponse",
     "PeerAnalysisConfidenceValue",
     "PeerAnalysisResponse",
+    "PeerCohortContextResponse",
+    "PeerCohortExclusionResponse",
+    "PeerDistributionSummaryResponse",
     "PeerMetricComparisonResponse",
     "PolicyItemDetailResponse",
     "PolicyItemListResponse",

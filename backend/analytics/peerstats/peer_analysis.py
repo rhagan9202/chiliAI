@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from analytics.peerstats.adapters.protocols import PeerSignalReaderProtocol
 from analytics.peerstats.models import DerivedRiskSignal
+from config.schema import PeerCohortDefinitionConfig, PeerCohortExclusionConfig
 
 PeerAnalysisConfidence = Literal["normal", "low"]
 
@@ -30,6 +31,44 @@ class PeerMetricComparison(BaseModel):
     rationale: str
     confidence: PeerAnalysisConfidence = "normal"
     confidence_reason: str | None = None
+    distribution: "PeerDistributionSummary | None" = None
+    cohort: "PeerCohortContext | None" = None
+
+
+class PeerDistributionSummary(BaseModel):
+    """Metric distribution for the matching peer group."""
+
+    count: int = Field(ge=0)
+    minimum: float
+    p50: float
+    p90: float
+    maximum: float
+
+
+class PeerCohortExclusionSummary(BaseModel):
+    """Configured exclusion rule exposed with the cohort definition."""
+
+    field: str
+    operator: str
+    values: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    reason: str
+
+
+class PeerCohortContext(BaseModel):
+    """Cohort definition and membership context for one metric comparison."""
+
+    id: str
+    label: str
+    version: str
+    entity_type: str
+    peer_metric: str
+    group_by: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    group_values: dict[str, str] = Field(default_factory=dict[str, str])
+    exclusions: list[PeerCohortExclusionSummary] = Field(
+        default_factory=lambda: cast(list[PeerCohortExclusionSummary], [])
+    )
+    member_entity_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    member_count: int = Field(ge=0)
 
 
 class PeerAnalysisResponse(BaseModel):
@@ -50,9 +89,11 @@ class PeerAnalysisService:
         reader: PeerSignalReaderProtocol,
         *,
         min_cohort_size: int = 5,
+        cohort_definitions: list[PeerCohortDefinitionConfig] | None = None,
     ) -> None:
         self._reader = reader
         self._min_cohort_size = min_cohort_size
+        self._cohort_definitions = list(cohort_definitions or [])
 
     def compare_entity(
         self,
@@ -114,7 +155,49 @@ class PeerAnalysisService:
             rationale=signal.rationale,
             confidence=confidence,
             confidence_reason=confidence_reason,
+            distribution=_distribution_summary(cohort_values),
+            cohort=self._cohort_context(signal, cohort_signals),
         )
+
+    def _cohort_context(
+        self,
+        signal: DerivedRiskSignal,
+        cohort_signals: list[DerivedRiskSignal],
+    ) -> PeerCohortContext | None:
+        definition = self._cohort_definition_for(signal)
+        if definition is None:
+            return None
+        return PeerCohortContext(
+            id=definition.id,
+            label=definition.label,
+            version=definition.version,
+            entity_type=definition.entity_type,
+            peer_metric=definition.peer_metric,
+            group_by=list(definition.group_by),
+            group_values=_group_values(
+                signal.peer_group_key,
+                entity_type=signal.entity_type,
+                group_by=definition.group_by,
+            ),
+            exclusions=[
+                _exclusion_summary(exclusion)
+                for exclusion in definition.exclusions
+            ],
+            member_entity_ids=sorted(item.entity_id for item in cohort_signals),
+            member_count=len(cohort_signals),
+        )
+
+    def _cohort_definition_for(
+        self,
+        signal: DerivedRiskSignal,
+    ) -> PeerCohortDefinitionConfig | None:
+        for definition in self._cohort_definitions:
+            if (
+                definition.peer_metric == signal.metric_name
+                and definition.entity_type == signal.entity_type
+            ):
+                return definition
+        return None
 
 
 def _percentile_rank(value: float, cohort_values: list[float]) -> float:
@@ -124,9 +207,64 @@ def _percentile_rank(value: float, cohort_values: list[float]) -> float:
     return round((less_or_equal / len(cohort_values)) * 100.0, 2)
 
 
+def _distribution_summary(cohort_values: list[float]) -> PeerDistributionSummary | None:
+    if not cohort_values:
+        return None
+    sorted_values = sorted(cohort_values)
+    return PeerDistributionSummary(
+        count=len(sorted_values),
+        minimum=sorted_values[0],
+        p50=_quantile(sorted_values, 0.5),
+        p90=_quantile(sorted_values, 0.9),
+        maximum=sorted_values[-1],
+    )
+
+
+def _quantile(sorted_values: list[float], q: float) -> float:
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+    position = (len(sorted_values) - 1) * q
+    lower_index = int(position)
+    upper_index = min(lower_index + 1, len(sorted_values) - 1)
+    fraction = position - lower_index
+    lower = sorted_values[lower_index]
+    upper = sorted_values[upper_index]
+    return round(lower + (upper - lower) * fraction, 2)
+
+
+def _group_values(
+    peer_group_key: str,
+    *,
+    entity_type: str,
+    group_by: list[str],
+) -> dict[str, str]:
+    parts = peer_group_key.split("|")
+    if parts and parts[0] == entity_type:
+        parts = parts[1:]
+    return {
+        field_name: parts[index]
+        for index, field_name in enumerate(group_by)
+        if index < len(parts)
+    }
+
+
+def _exclusion_summary(
+    exclusion: PeerCohortExclusionConfig,
+) -> PeerCohortExclusionSummary:
+    return PeerCohortExclusionSummary(
+        field=exclusion.field,
+        operator=exclusion.operator,
+        values=list(exclusion.values),
+        reason=exclusion.reason,
+    )
+
+
 __all__ = [
     "PeerAnalysisConfidence",
+    "PeerCohortContext",
+    "PeerCohortExclusionSummary",
     "PeerAnalysisResponse",
+    "PeerDistributionSummary",
     "PeerAnalysisService",
     "PeerMetricComparison",
 ]

@@ -2550,7 +2550,12 @@ def get_derived_signal_store() -> DerivedRiskSignalWriterProtocol:
 def get_peer_analysis_service() -> PeerAnalysisService:
     """Return the peer-analysis read service over derived peer signals."""
 
-    return PeerAnalysisService(cast(PeerSignalReaderProtocol, get_derived_signal_store()))
+    config = get_domain_config()
+    cohorts = list(config.peer_stats.cohorts) if config.peer_stats is not None else []
+    return PeerAnalysisService(
+        cast(PeerSignalReaderProtocol, get_derived_signal_store()),
+        cohort_definitions=cohorts,
+    )
 
 
 # Analytics/monitoring write stores — used by the KB-delete cascade to purge the

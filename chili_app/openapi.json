@@ -5789,9 +5789,251 @@
         "title": "PeerAnalysisResponse",
         "type": "object"
       },
+      "PeerCohortContextResponse": {
+        "description": "Cohort definition and membership context for one comparison.",
+        "properties": {
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "exclusions": {
+            "items": {
+              "$ref": "#/components/schemas/PeerCohortExclusionResponse"
+            },
+            "title": "Exclusions",
+            "type": "array"
+          },
+          "group_by": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Group By",
+            "type": "array"
+          },
+          "group_values": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Group Values",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "member_count": {
+            "minimum": 0.0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "member_entity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Member Entity Ids",
+            "type": "array"
+          },
+          "peer_metric": {
+            "title": "Peer Metric",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "version",
+          "entity_type",
+          "peer_metric",
+          "member_count"
+        ],
+        "title": "PeerCohortContextResponse",
+        "type": "object"
+      },
+      "PeerCohortDefinitionConfig": {
+        "description": "Versioned peer cohort definition for analyst-facing comparisons.",
+        "properties": {
+          "entity_type": {
+            "minLength": 1,
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "exclusions": {
+            "items": {
+              "$ref": "#/components/schemas/PeerCohortExclusionConfig"
+            },
+            "title": "Exclusions",
+            "type": "array"
+          },
+          "group_by": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Group By",
+            "type": "array"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "min_cohort_size": {
+            "default": 5,
+            "minimum": 2,
+            "title": "Min Cohort Size",
+            "type": "integer"
+          },
+          "peer_metric": {
+            "minLength": 1,
+            "title": "Peer Metric",
+            "type": "string"
+          },
+          "version": {
+            "default": "v1",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "entity_type",
+          "peer_metric"
+        ],
+        "title": "PeerCohortDefinitionConfig",
+        "type": "object"
+      },
+      "PeerCohortExclusionConfig": {
+        "description": "One exclusion rule documented for a cohort definition.",
+        "properties": {
+          "field": {
+            "minLength": 1,
+            "title": "Field",
+            "type": "string"
+          },
+          "operator": {
+            "enum": [
+              "equals",
+              "not_equals",
+              "in",
+              "not_in",
+              "exists",
+              "missing"
+            ],
+            "title": "Operator",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "field",
+          "operator"
+        ],
+        "title": "PeerCohortExclusionConfig",
+        "type": "object"
+      },
+      "PeerCohortExclusionResponse": {
+        "description": "Configured cohort exclusion rule.",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "operator": {
+            "title": "Operator",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "field",
+          "operator",
+          "reason"
+        ],
+        "title": "PeerCohortExclusionResponse",
+        "type": "object"
+      },
+      "PeerDistributionSummaryResponse": {
+        "description": "Metric distribution summary for one peer group.",
+        "properties": {
+          "count": {
+            "minimum": 0.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "maximum": {
+            "title": "Maximum",
+            "type": "number"
+          },
+          "minimum": {
+            "title": "Minimum",
+            "type": "number"
+          },
+          "p50": {
+            "title": "P50",
+            "type": "number"
+          },
+          "p90": {
+            "title": "P90",
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "minimum",
+          "p50",
+          "p90",
+          "maximum"
+        ],
+        "title": "PeerDistributionSummaryResponse",
+        "type": "object"
+      },
       "PeerMetricComparisonResponse": {
         "description": "One peer-metric comparison for an entity.",
         "properties": {
+          "cohort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeerCohortContextResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "cohort_size": {
             "minimum": 0.0,
             "title": "Cohort Size",
@@ -5816,6 +6058,16 @@
               }
             ],
             "title": "Confidence Reason"
+          },
+          "distribution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeerDistributionSummaryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "entity_type": {
             "title": "Entity Type",
@@ -5996,6 +6248,13 @@
       "PeerStatsConfig": {
         "description": "Collection of peer-group z-score metric specs for a domain.",
         "properties": {
+          "cohorts": {
+            "items": {
+              "$ref": "#/components/schemas/PeerCohortDefinitionConfig"
+            },
+            "title": "Cohorts",
+            "type": "array"
+          },
           "metrics": {
             "items": {
               "$ref": "#/components/schemas/PeerMetricSpec"

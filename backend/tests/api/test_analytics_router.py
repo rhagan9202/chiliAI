@@ -56,6 +56,7 @@ from api.dependencies import (
 from api.routers import analytics as analytics_router
 from api.routers.analytics import router
 from config.schema import DatabaseConfig, TimeseriesMetricSpec
+from config.schema import PeerCohortDefinitionConfig
 from database.runtime import create_connection_provider
 from events.adapters.in_memory import InMemoryEventBus
 
@@ -220,7 +221,20 @@ def _build_peer_analysis_service() -> PeerAnalysisService:
                 )
             ]
         )
-    return PeerAnalysisService(writer, min_cohort_size=4)
+    return PeerAnalysisService(
+        writer,
+        min_cohort_size=4,
+        cohort_definitions=[
+            PeerCohortDefinitionConfig(
+                id="provider_specialty_billing",
+                label="Provider specialty billing",
+                entity_type="provider",
+                peer_metric="weekly_billing",
+                group_by=["specialty"],
+                version="v1",
+            )
+        ],
+    )
 
 
 class _StaticRiskProjectionRebuildSource:
@@ -412,6 +426,23 @@ def test_get_peer_analysis_returns_cohort_context(client: TestClient) -> None:
     assert payload["metrics"][0]["cohort_size"] == 4
     assert payload["metrics"][0]["percentile"] == 100.0
     assert payload["metrics"][0]["confidence"] == "normal"
+    assert payload["metrics"][0]["distribution"] == {
+        "count": 4,
+        "minimum": 10.0,
+        "p50": 62.5,
+        "p90": 92.5,
+        "maximum": 100.0,
+    }
+    assert payload["metrics"][0]["cohort"]["id"] == "provider_specialty_billing"
+    assert payload["metrics"][0]["cohort"]["group_values"] == {
+        "specialty": "cardiology"
+    }
+    assert payload["metrics"][0]["cohort"]["member_entity_ids"] == [
+        "provider:a",
+        "provider:b",
+        "provider:c",
+        "provider:target",
+    ]
 
 
 def test_get_peer_analysis_filters_metric(client: TestClient) -> None:
