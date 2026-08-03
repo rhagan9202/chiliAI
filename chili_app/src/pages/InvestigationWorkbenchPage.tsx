@@ -12,7 +12,7 @@ import type { Entity as ApiEntity } from '../types/api'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { useAlerts } from '../api/alerts'
-import { useGnnClusters, useRiskScore, useTimeseries } from '../api/analytics'
+import { useGnnClusters, usePeerAnalysis, useRiskScore, useTimeseries } from '../api/analytics'
 import { useCase, useCaseDossier } from '../api/cases'
 import { useDomainConfig, useDomainFeatures } from '../api/config'
 import { useEvidencePack } from '../api/evidence'
@@ -24,6 +24,7 @@ import {
   useInvestigationNeighborhood,
 } from '../api/investigation'
 import { FeatureList } from '../components/analytics/FeatureList'
+import { PeerComparisonPanel } from '../components/analytics/PeerComparisonPanel'
 import { AnomalyTrendPanel } from '../components/investigation/AnomalyTrendPanel'
 import { ClusterMembershipPanel } from '../components/investigation/ClusterMembershipPanel'
 import { EntityDossierHeader } from '../components/investigation/EntityDossierHeader'
@@ -346,6 +347,24 @@ function typologyContextLabel(count: number): string {
   if (count === 0) return 'No mapped feature typology'
   if (count === 1) return 'Matched feature typology'
   return `${count} matched typologies`
+}
+
+function CockpitPeerComparisons({
+  entityId,
+  knowledgeBaseId,
+}: {
+  entityId: string | null
+  knowledgeBaseId: string | null
+}) {
+  const peerAnalysisQuery = usePeerAnalysis(knowledgeBaseId, entityId)
+
+  return (
+    <PeerComparisonPanel
+      analysis={peerAnalysisQuery.data ?? null}
+      isError={peerAnalysisQuery.isError}
+      isLoading={peerAnalysisQuery.isLoading}
+    />
+  )
 }
 
 export function InvestigationWorkbenchPage() {
@@ -688,6 +707,13 @@ export function InvestigationWorkbenchPage() {
               />
 
               <CockpitContextPanel summary={cockpitFeatureContext} />
+
+              {capabilities?.peer_stats ? (
+                <CockpitPeerComparisons
+                  entityId={selectedEntityId}
+                  knowledgeBaseId={activeKnowledgeBaseId}
+                />
+              ) : null}
 
               <EntityDossierHeader
                 config={domainConfigQuery.data}

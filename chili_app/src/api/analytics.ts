@@ -5,6 +5,7 @@ import type {
   AnalyticsOverviewResponse,
   GnnClusterResponse,
   MetricTimeseriesResponse,
+  PeerAnalysisResponse,
   RiskProjectionItemResponse,
   RiskProjectionListResponse,
   RiskScoreListResponse,
@@ -41,6 +42,12 @@ export type MetricTimeseriesFilters = {
   end: string
 }
 
+export type PeerAnalysisFilters = {
+  knowledgeBaseId: string
+  entityId: string
+  metric?: string | null
+}
+
 export function riskScoreQueryKey(knowledgeBaseId: string | null, entityId: string | null) {
   return ['analytics', 'risk-score', knowledgeBaseId, entityId] as const
 }
@@ -63,6 +70,10 @@ export function metricTimeseriesQueryKey(filters: MetricTimeseriesFilters | null
 
 export function gnnClustersQueryKey(knowledgeBaseId: string | null) {
   return ['analytics', 'gnn-clusters', knowledgeBaseId] as const
+}
+
+export function peerAnalysisQueryKey(filters: PeerAnalysisFilters | null) {
+  return ['analytics', 'peer-analysis', filters] as const
 }
 
 export function getAnalyticsOverview(
@@ -124,6 +135,14 @@ export function getGnnClusters(knowledgeBaseId: string): Promise<GnnClusterRespo
   return apiFetch<GnnClusterResponse>(`/analytics/gnn/clusters?${params}`)
 }
 
+export function getPeerAnalysis(filters: PeerAnalysisFilters): Promise<PeerAnalysisResponse> {
+  const params = new URLSearchParams({ knowledge_base_id: filters.knowledgeBaseId })
+  if (filters.metric) params.set('metric', filters.metric)
+  return apiFetch<PeerAnalysisResponse>(
+    `/analytics/peer-analysis/${encodeURIComponent(filters.entityId)}?${params}`,
+  )
+}
+
 export function useAnalyticsOverview(knowledgeBaseId: string | null) {
   return useQuery({
     queryKey: analyticsOverviewQueryKey(knowledgeBaseId),
@@ -178,5 +197,18 @@ export function useGnnClusters(knowledgeBaseId: string | null) {
     queryKey: gnnClustersQueryKey(knowledgeBaseId),
     queryFn: () => getGnnClusters(knowledgeBaseId ?? ''),
     enabled: Boolean(knowledgeBaseId),
+  })
+}
+
+export function usePeerAnalysis(
+  knowledgeBaseId: string | null,
+  entityId: string | null,
+  metric: string | null = null,
+) {
+  const filters = knowledgeBaseId && entityId ? { knowledgeBaseId, entityId, metric } : null
+  return useQuery({
+    queryKey: peerAnalysisQueryKey(filters),
+    queryFn: () => getPeerAnalysis(filters ?? { knowledgeBaseId: '', entityId: '' }),
+    enabled: Boolean(filters?.knowledgeBaseId && filters.entityId),
   })
 }

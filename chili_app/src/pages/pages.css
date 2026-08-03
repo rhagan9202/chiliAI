@@ -590,25 +590,17 @@
   flex-wrap: wrap;
 }
 
-@container workspace (min-width: 720px) {
-  .alert-row-card__header {
-    flex-wrap: nowrap;
-  }
-}
-
 .alert-row-card__header-info {
   min-width: 0;
-  /* The action cluster cannot shrink below its five buttons, so give the title
-     column a basis wide enough that the actions wrap to their own line instead
-     of starving it (they squeezed it to 92px, clipping the tag chips). Raised
-     from 260px when the headline became the alert title, which is prose. */
+  /* The title column needs a real basis so the action cluster wraps to its own
+     line before it starves alert prose or tag chips. Raised from 260px when
+     the headline became the alert title, which is prose. */
   flex: 1 1 340px;
 }
 
-/* Five action buttons need ~515px and cannot shrink. Where the workspace
-   cannot afford them beside a prose headline, they take their own row rather
-   than starving the title to 84px (UXA-303/406 regression, caught at 1366px
-   by e2e/layout-overflow.spec.ts). */
+/* Where the workspace cannot afford actions beside a prose headline, they take
+   their own row rather than starving the title to 84px (UXA-303/406 regression,
+   caught by e2e/layout-overflow.spec.ts). */
 @container workspace (max-width: 900px) {
   .alert-row-card__header {
     flex-direction: column;
@@ -637,7 +629,9 @@
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
-  flex-shrink: 0;
+  flex: 1 1 420px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .alert-row-card__triage-controls {

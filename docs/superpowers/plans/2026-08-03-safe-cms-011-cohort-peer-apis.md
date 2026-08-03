@@ -136,10 +136,27 @@
 - Modify: cockpit, queue preview, and dashboard drilldown surfaces
 - Add component/Vitest/Playwright coverage
 
-- [ ] Render peer-comparison widgets with entity value, peer median/p90, z-score, percentile, and confidence.
-- [ ] Omit or degrade cleanly for domains without peerstats capability/data.
-- [ ] Preserve KB and entity route state.
-- [ ] Verify no mobile/desktop text overlap.
+- [x] Render peer-comparison widgets with entity value, peer median/p90, z-score, percentile, and confidence.
+- [x] Omit or degrade cleanly for domains without peerstats capability/data.
+- [x] Preserve KB and entity route state.
+- [x] Verify no mobile/desktop text overlap.
+
+**Notes:**
+- Added a generated-contract-backed frontend peer-analysis API helper/query key and `usePeerAnalysis` hook.
+- Added `PeerComparisonPanel` for cockpit rendering of entity value, peer median, p90, z-score, percentile, cohort size, confidence, cohort label, and cohort basis.
+- Gated cockpit peer comparisons behind `DomainCapabilities.peer_stats`; domains without peerstats do not issue the peer-analysis query.
+- Preserved existing KB/entity/alert/evidence route state by rendering the widget inside the investigation cockpit reached from queue and dashboard drilldowns.
+- Browser overflow verification exposed an Alert Feed header overflow at 1600px; fixed the root flex/container-query constraint so action controls wrap inside the card instead of forcing row clipping.
+- RED:
+  - `pnpm test:run src/api/__tests__/analytics.test.ts -t "peer analysis|peer-analysis"` failed with `TypeError: getPeerAnalysis is not a function` and `TypeError: peerAnalysisQueryKey is not a function`.
+  - `pnpm test:run src/pages/__tests__/InvestigationWorkbenchPage.test.tsx -t "peer comparison|peer comparisons"` failed because `analyticsCalls.peerAnalysis.at(-1)` was `undefined`.
+- GREEN:
+  - `pnpm test:run src/api/__tests__/analytics.test.ts -t "peer analysis|peer-analysis"`: 2 passed, 8 skipped.
+  - `pnpm test:run src/pages/__tests__/InvestigationWorkbenchPage.test.tsx -t "peer comparison|peer comparisons"`: 2 passed, 36 skipped.
+  - `pnpm test:run src/api/__tests__/analytics.test.ts src/pages/__tests__/InvestigationWorkbenchPage.test.tsx`: 48 passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
+  - `pnpm exec eslint src/api/analytics.ts src/api/contracts.ts src/api/__tests__/analytics.test.ts src/components/analytics/PeerComparisonPanel.tsx src/pages/InvestigationWorkbenchPage.tsx src/pages/__tests__/InvestigationWorkbenchPage.test.tsx`: passed.
+  - `pnpm test:e2e e2e/layout-overflow.spec.ts`: initially failed at 1600px on Alert Feed header overflow; after CSS fix, 5 passed.
 
 ## Review Gates
 

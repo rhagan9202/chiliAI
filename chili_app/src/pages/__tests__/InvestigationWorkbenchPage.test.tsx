@@ -12,6 +12,7 @@ import type {
   EntityFeatureValueResponse,
   EvidencePackResponse,
   FeatureCatalogResponse,
+  PeerAnalysisResponse,
   RiskFactorResponse,
   RuntimeEntity,
   CaseDossierResponse,
@@ -61,6 +62,8 @@ const mocks = vi.hoisted(() => ({
   riskOverallScore: 0,
   riskLevel: 'low' as 'low' | 'medium' | 'high' | 'critical',
   riskFactors: [] as RiskFactorResponse[],
+  peerAnalysis: null as PeerAnalysisResponse | null,
+  peerAnalysisError: false,
   featureCatalog: null as FeatureCatalogResponse | null,
   featureValues: [] as EntityFeatureValueResponse[],
   clusters: [] as ClusterResult[],
@@ -80,6 +83,7 @@ const mocks = vi.hoisted(() => ({
 const analyticsCalls = vi.hoisted(() => ({
   risk: [] as Array<[string | null, string | null]>,
   timeseries: [] as Array<[string | null, string | null]>,
+  peerAnalysis: [] as Array<[string | null, string | null, string | null]>,
   featureCatalog: [] as Array<[string | null]>,
   featureValues: [] as Array<[string | null, string | null, string | null]>,
 }))
@@ -236,6 +240,18 @@ vi.mock('../../api/analytics', () => ({
     isError: false,
     data: { knowledge_base_id: knowledgeBaseId ?? '', clusters: mocks.clusters },
   }),
+  usePeerAnalysis: (
+    knowledgeBaseId: string | null,
+    entityId: string | null,
+    metric: string | null = null,
+  ) => {
+    analyticsCalls.peerAnalysis.push([knowledgeBaseId, entityId, metric])
+    return {
+      isLoading: false,
+      isError: mocks.peerAnalysisError,
+      data: mocks.peerAnalysis ?? undefined,
+    }
+  },
 }))
 
 vi.mock('../../api/features', () => ({
@@ -453,6 +469,8 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.riskOverallScore = 0
     mocks.riskLevel = 'low'
     mocks.riskFactors = []
+    mocks.peerAnalysis = null
+    mocks.peerAnalysisError = false
     mocks.featureCatalog = null
     mocks.featureValues = []
     mocks.clusters = []
@@ -460,6 +478,7 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.policyItems = []
     analyticsCalls.risk = []
     analyticsCalls.timeseries = []
+    analyticsCalls.peerAnalysis = []
     analyticsCalls.featureCatalog = []
     analyticsCalls.featureValues = []
   })
@@ -1316,6 +1335,106 @@ describe('InvestigationWorkbenchPage', () => {
     expect(within(context).getByText('Weekly provider billing z-score')).toBeInTheDocument()
     expect(within(context).getByText('84%')).toBeInTheDocument()
     expect(within(context).getByText('Specialty')).toBeInTheDocument()
+  })
+
+  it('renders peer comparison medians, p90, z-score, percentile, and cohort confidence in the cockpit', () => {
+    selectLiveProvider()
+    mocks.capabilities = { ...mocks.capabilities, peer_stats: true }
+    mocks.peerAnalysis = {
+      entity_id: 'provider-204',
+      knowledge_base_id: 'kb-live',
+      metrics: [
+        {
+          metric_name: 'weekly_provider_billing',
+          entity_type: 'provider',
+          interval_start: '2026-08-02T00:00:00Z',
+          peer_group_key: 'provider|Pain Management',
+          entity_value: 100,
+          peer_mean: 48.25,
+          peer_std: 12.5,
+          z_score: 4.14,
+          signal_value: 4.14,
+          percentile: 99.2,
+          cohort_size: 18,
+          rationale: 'Provider weekly billing is materially above its peers.',
+          confidence: 'normal',
+          confidence_reason: null,
+          distribution: {
+            count: 18,
+            minimum: 12,
+            p50: 44,
+            p90: 82,
+            maximum: 100,
+          },
+          cohort: {
+            id: 'provider_specialty_billing',
+            label: 'Provider specialty billing',
+            version: 'v1',
+            entity_type: 'provider',
+            peer_metric: 'weekly_provider_billing',
+            group_by: ['specialty'],
+            group_values: { specialty: 'Pain Management' },
+            exclusions: [],
+            member_entity_ids: ['provider-204', 'provider-301'],
+            member_count: 18,
+          },
+        },
+      ],
+    }
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
+
+    expect(analyticsCalls.peerAnalysis.at(-1)).toEqual(['kb-live', 'provider-204', null])
+    const peerPanel = screen.getByRole('group', { name: 'Peer comparisons' })
+    expect(within(peerPanel).getByText('weekly provider billing')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('Entity 100')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('Peer median 44')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('Peer p90 82')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('z-score 4.14')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('99.2 percentile')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('18 peers · normal confidence')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('Provider specialty billing')).toBeInTheDocument()
+    expect(within(peerPanel).getByText('specialty: Pain Management')).toBeInTheDocument()
+  })
+
+  it('omits peer comparisons when the active domain does not expose peer stats', () => {
+    selectLiveProvider()
+    mocks.capabilities = { ...mocks.capabilities, peer_stats: false }
+    mocks.peerAnalysis = {
+      entity_id: 'provider-204',
+      knowledge_base_id: 'kb-live',
+      metrics: [
+        {
+          metric_name: 'weekly_provider_billing',
+          entity_type: 'provider',
+          interval_start: '2026-08-02T00:00:00Z',
+          peer_group_key: 'provider|Pain Management',
+          entity_value: 100,
+          peer_mean: 48.25,
+          peer_std: 12.5,
+          z_score: 4.14,
+          signal_value: 4.14,
+          percentile: 99.2,
+          cohort_size: 18,
+          rationale: 'Provider weekly billing is materially above its peers.',
+          confidence: 'normal',
+          confidence_reason: null,
+          distribution: {
+            count: 18,
+            minimum: 12,
+            p50: 44,
+            p90: 82,
+            maximum: 100,
+          },
+          cohort: null,
+        },
+      ],
+    }
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live')
+
+    expect(analyticsCalls.peerAnalysis).toEqual([])
+    expect(screen.queryByRole('group', { name: 'Peer comparisons' })).not.toBeInTheDocument()
   })
 
   it('shows domain-neutral cockpit context empty states when feature values are missing', () => {

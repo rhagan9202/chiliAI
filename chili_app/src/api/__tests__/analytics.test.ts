@@ -4,8 +4,10 @@ import {
   getAnalyticsOverview,
   getGnnClusters,
   getMetricTimeseries,
+  getPeerAnalysis,
   getRiskProjections,
   getRiskScores,
+  peerAnalysisQueryKey,
   riskProjectionsQueryKey,
 } from '../analytics'
 
@@ -182,5 +184,43 @@ describe('analytics api helpers', () => {
     expect(apiFetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/analytics/gnn/clusters?knowledge_base_id=kb-1'),
     )
+  })
+
+  it('serializes peer-analysis knowledge base and metric filters', async () => {
+    apiFetchMock.mockResolvedValue({ entity_id: 'provider-204', metrics: [] })
+
+    await getPeerAnalysis({
+      knowledgeBaseId: 'kb-1',
+      entityId: 'provider-204',
+      metric: 'weekly_provider_billing',
+    })
+
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      '/analytics/peer-analysis/provider-204?knowledge_base_id=kb-1&metric=weekly_provider_billing',
+    )
+  })
+
+  it('keys peer analysis by KB, entity, and metric so route changes refetch', () => {
+    const base = peerAnalysisQueryKey({
+      knowledgeBaseId: 'kb-1',
+      entityId: 'provider-204',
+      metric: 'weekly_provider_billing',
+    })
+
+    expect(base).not.toEqual(peerAnalysisQueryKey({
+      knowledgeBaseId: 'kb-2',
+      entityId: 'provider-204',
+      metric: 'weekly_provider_billing',
+    }))
+    expect(base).not.toEqual(peerAnalysisQueryKey({
+      knowledgeBaseId: 'kb-1',
+      entityId: 'provider-999',
+      metric: 'weekly_provider_billing',
+    }))
+    expect(base).not.toEqual(peerAnalysisQueryKey({
+      knowledgeBaseId: 'kb-1',
+      entityId: 'provider-204',
+      metric: null,
+    }))
   })
 })

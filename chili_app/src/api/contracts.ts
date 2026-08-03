@@ -294,6 +294,10 @@ export type MetricTimeseriesResponse = Schemas['MetricTimeseriesResponse']
 export type ClusterResult = Schemas['ClusterResult']
 export type GnnClusterResponse = Schemas['GnnClusterResponse']
 export type AnalyticsOverviewResponse = Schemas['AnalyticsOverviewResponse']
+export type PeerDistributionSummaryResponse = Schemas['PeerDistributionSummaryResponse']
+export type PeerCohortContextResponse = Schemas['PeerCohortContextResponse']
+export type PeerMetricComparisonResponse = Schemas['PeerMetricComparisonResponse']
+export type PeerAnalysisResponse = RequireFields<Schemas['PeerAnalysisResponse'], 'metrics'>
 export type FeatureSourceMappingResponse = RequireFields<
   Schemas['FeatureSourceMappingResponse'],
   'raw_fields'
