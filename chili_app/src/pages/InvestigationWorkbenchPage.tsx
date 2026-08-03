@@ -140,6 +140,51 @@ function CockpitActionRail({
   )
 }
 
+function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`
+}
+
+function CockpitOverview({
+  caseTitle,
+  evidencePackId,
+  graphSummary,
+  riskLabel,
+  riskValue,
+}: {
+  caseTitle: string | null
+  evidencePackId: string | null
+  graphSummary: string
+  riskLabel: string
+  riskValue: string
+}) {
+  return (
+    <Card compact>
+      <div aria-label="Cockpit overview" className="dashboard-kpis" role="group">
+        <div className="metric-row metric-row--stacked">
+          <span className="metric-row__label">Risk</span>
+          <strong>{riskValue}</strong>
+          <span className="metric-row__label">{riskLabel}</span>
+        </div>
+        <div className="metric-row metric-row--stacked">
+          <span className="metric-row__label">Graph</span>
+          <strong>{graphSummary}</strong>
+          <span className="metric-row__label">Loaded neighborhood</span>
+        </div>
+        <div className="metric-row metric-row--stacked">
+          <span className="metric-row__label">Case</span>
+          <strong>{caseTitle ?? 'No case selected'}</strong>
+          <span className="metric-row__label">Current review state</span>
+        </div>
+        <div className="metric-row metric-row--stacked">
+          <span className="metric-row__label">Evidence</span>
+          <strong>{evidencePackId ?? 'No evidence selected'}</strong>
+          <span className="metric-row__label">Selected evidence pack</span>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 export function InvestigationWorkbenchPage() {
   const { entityId } = useParams()
   const navigate = useNavigate()
@@ -295,6 +340,15 @@ export function InvestigationWorkbenchPage() {
     ...(capabilities?.explainability ? [{ id: 'policy', label: 'Policy' }, { id: 'evidence', label: 'Evidence' }] : []),
   ]
   const resolvedActiveTabId = tabs.some((tab) => tab.id === activeTabId) ? activeTabId : tabs[0].id
+  const cockpitRiskValue = riskScore && !riskAvailability.unavailable
+    ? String(Math.round(riskScore.overall_score * 100))
+    : 'Pending'
+  const cockpitRiskLabel = riskScore && !riskAvailability.unavailable
+    ? `${riskScore.risk_level} risk`
+    : 'Risk score unavailable'
+  const cockpitGraphSummary = neighborhood
+    ? `${pluralize(neighborhood.entities.length, 'entity')} · ${pluralize(neighborhood.relationships.length, 'relationship')}`
+    : 'No graph loaded'
 
   // Distinct subjects the queue has already flagged, newest first, as opening
   // moves for an analyst who does not know the corpus yet.
@@ -346,14 +400,14 @@ export function InvestigationWorkbenchPage() {
                 <select
                   className="page-input"
                   id="investigation-kb-select"
-                onChange={(event) => {
-                  const nextSearch = new URLSearchParams(searchParams)
-                  nextSearch.set('kb', event.target.value)
-                  nextSearch.delete('alert')
-                  nextSearch.delete('case')
-                  nextSearch.delete('evidence')
-                  navigate({ pathname: '/investigation', search: nextSearch.toString() })
-                }}
+                  onChange={(event) => {
+                    const nextSearch = new URLSearchParams(searchParams)
+                    nextSearch.set('kb', event.target.value)
+                    nextSearch.delete('alert')
+                    nextSearch.delete('case')
+                    nextSearch.delete('evidence')
+                    navigate({ pathname: '/investigation', search: nextSearch.toString() })
+                  }}
                   value={activeKnowledgeBaseId ?? ''}
                 >
                   {knowledgeBases.map((knowledgeBase) => (
@@ -465,8 +519,16 @@ export function InvestigationWorkbenchPage() {
 
               <SignalBand factors={riskAvailability.unavailable ? [] : riskScore?.factors ?? []} />
 
+              <CockpitOverview
+                caseTitle={ragCaseId ? caseQuery.data?.case.title ?? ragCaseId : null}
+                evidencePackId={selectedEvidencePackId}
+                graphSummary={cockpitGraphSummary}
+                riskLabel={cockpitRiskLabel}
+                riskValue={cockpitRiskValue}
+              />
+
               <Card compact>
-                <div aria-label="Cockpit state" className="metric-stack">
+                <div aria-label="Cockpit state" className="metric-stack" role="group">
                   <div className="metric-row">
                     <strong>Cockpit state</strong>
                     <span className="metric-row__label">Shareable investigation URL</span>

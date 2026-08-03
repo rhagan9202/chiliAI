@@ -107,10 +107,13 @@ Task 2 notes:
   context: open selected alert, open selected case, and jump to the selected evidence pack.
 - The actions receive only validated alert/case/evidence IDs from Task 1, so invalid URL
   context remains visible as unavailable but is not offered as an operational handoff.
+- Added a compact first-viewport cockpit overview for risk, graph neighborhood size,
+  case state, and selected evidence pack, all composed from existing workbench queries.
 - Focused red/green verification:
   - `pnpm exec vitest run src/pages/__tests__/InvestigationWorkbenchPage.test.tsx`: 32 passed.
+  - `pnpm exec vitest run src/pages/__tests__/InvestigationWorkbenchPage.test.tsx`: 33 passed.
 - Final verification passed:
-  - `pnpm exec vitest run src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/pages/__tests__/AlertFeedPage.test.tsx`: 64 passed.
+  - `pnpm exec vitest run src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/pages/__tests__/AlertFeedPage.test.tsx`: 65 passed.
   - `pnpm exec eslint src/pages/InvestigationWorkbenchPage.tsx src/pages/AlertFeedPage.tsx src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/pages/__tests__/AlertFeedPage.test.tsx`: passed.
   - `pnpm build`: passed with the existing Vite large-chunk warning.
   - `git diff --check`: passed.

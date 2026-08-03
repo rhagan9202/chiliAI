@@ -715,10 +715,11 @@ describe('InvestigationWorkbenchPage', () => {
     )
 
     expect(mocks.useCase).toHaveBeenCalledWith('kb-live', 'case-1')
-    expect(screen.getByText('Cockpit state')).toBeInTheDocument()
-    expect(screen.getByText('alert-live')).toBeInTheDocument()
-    expect(screen.getByText('Case #1')).toBeInTheDocument()
-    expect(screen.getByText('evidence-live')).toBeInTheDocument()
+    const state = screen.getByRole('group', { name: 'Cockpit state' })
+    expect(within(state).getByText('Cockpit state')).toBeInTheDocument()
+    expect(within(state).getByText('alert-live')).toBeInTheDocument()
+    expect(within(state).getByText('Case #1')).toBeInTheDocument()
+    expect(within(state).getByText('evidence-live')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('tab', { name: 'Evidence' }))
 
@@ -778,6 +779,57 @@ describe('InvestigationWorkbenchPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'View cockpit evidence' }))
 
     expect(screen.getByText('Action rail evidence.')).toBeInTheDocument()
+  })
+
+  it('summarizes risk, graph, case, and evidence in the first-viewport cockpit overview', () => {
+    selectLiveProvider()
+    mocks.riskAvailable = true
+    mocks.riskOverallScore = 0.82
+    mocks.riskLevel = 'high'
+    mocks.alerts = [
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: 'evidence-live',
+      },
+    ]
+    mocks.evidencePacks = {
+      'evidence-live': evidencePack('evidence-live', 'alert-live', 'Overview evidence.'),
+    }
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: {
+          id: 'case-1',
+          knowledge_base_id: 'kb-live',
+          title: 'Case #1',
+          status: 'open',
+          priority: 'high',
+          assignee: null,
+          alert_ids: ['alert-live'],
+          evidence_pack_id: 'evidence-live',
+          updated_at: '2026-08-02T12:00:00Z',
+        },
+        alerts: [],
+        entity_timeline: [],
+        feedback_history: [],
+        evidence_pack: null,
+      },
+    })
+
+    renderInvestigationWorkbench(
+      '/investigation/provider-204?kb=kb-live&alert=alert-live&case=case-1&evidence=evidence-live',
+    )
+
+    const overview = screen.getByRole('group', { name: 'Cockpit overview' })
+    expect(within(overview).getByText('82')).toBeInTheDocument()
+    expect(within(overview).getByText('high risk')).toBeInTheDocument()
+    expect(within(overview).getByText('1 entity · 0 relationships')).toBeInTheDocument()
+    expect(within(overview).getByText('Case #1')).toBeInTheDocument()
+    expect(within(overview).getByText('evidence-live')).toBeInTheDocument()
   })
 
   it('launches Ask AI with explicit cockpit state instead of the fallback entity alert', async () => {
