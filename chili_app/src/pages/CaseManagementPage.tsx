@@ -2,8 +2,21 @@ import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { useAlerts } from '../api/alerts'
-import { useAddCaseFeedback, useCase, useCases, usePromoteCase, useUpdateCase } from '../api/cases'
-import type { CaseDetailResponse, CaseFeedbackCreateRequest } from '../api/contracts'
+import {
+  exportCaseDossier,
+  useAddCaseFeedback,
+  useCase,
+  useCaseDossier,
+  useCases,
+  usePromoteCase,
+  useUpdateCase,
+} from '../api/cases'
+import type {
+  CaseDetailResponse,
+  CaseDossierResponse,
+  CaseFeedbackCreateRequest,
+  EvidenceExportFormat,
+} from '../api/contracts'
 import { showToast } from '../components/common/toastStore'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -15,6 +28,7 @@ import { SectionHeader } from '../components/ui/SectionHeader'
 import { useActiveKnowledgeBase } from '../hooks/useActiveKnowledgeBase'
 import { useUrlSearchDraft } from '../hooks/useUrlSearchDraft'
 import { buildRagChatUrl, DEFAULT_RISK_QUESTION } from '../lib/ragContext'
+import { downloadTextFile, EXPORT_MIME_TYPES } from '../utils/downloadFile'
 import {
   applyCaseFilters,
   EMPTY_CASE_FILTERS,
@@ -33,6 +47,8 @@ const STATUS_OPTIONS = [
   { id: 'in_review', label: 'In review' },
   { id: 'closed', label: 'Closed' },
 ]
+
+const DOSSIER_EXPORT_FORMATS: EvidenceExportFormat[] = ['markdown', 'json']
 
 const appendIfPresent = (params: URLSearchParams, key: string, value: string | null | undefined) => {
   if (typeof value === 'string' && value.length > 0) {
@@ -66,6 +82,72 @@ function buildCaseCockpitUrl(detail: CaseDetailResponse, knowledgeBaseId: string
 
   const query = params.toString()
   return `/investigation/${encodeURIComponent(entityId)}${query ? `?${query}` : ''}`
+}
+
+function exportFormatLabel(format: EvidenceExportFormat): string {
+  return format === 'markdown' ? 'Markdown' : 'JSON'
+}
+
+function humanizeCaseLabel(label: string): string {
+  return label.replace(/_/g, ' ')
+}
+
+function CaseDossierSummary({ dossier }: { dossier: CaseDossierResponse }) {
+  return (
+    <>
+      <div className="metric-stack">
+        <strong>Evidence bundle</strong>
+        {dossier.evidence_packs.length > 0 ? (
+          dossier.evidence_packs.map((pack) => (
+            <div className="metric-row metric-row--stacked" key={pack.id}>
+              <strong>{pack.id}</strong>
+              <span className="metric-row__label">{pack.reasoning}</span>
+              {pack.provenance.length > 0 ? (
+                <ul className="metric-row__label">
+                  {pack.provenance.map((reference) => (
+                    <li key={`${reference.reference_type}-${reference.reference_id}`}>
+                      {reference.label}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ))
+        ) : (
+          <EmptyState description="No evidence packs are attached to this case." title="No evidence" />
+        )}
+      </div>
+
+      <div className="metric-stack">
+        <strong>Chronology</strong>
+        {dossier.entity_timeline.length > 0 ? (
+          dossier.entity_timeline.map((event) => (
+            <div className="metric-row metric-row--stacked" key={`${event.label}-${event.occurred_at}`}>
+              <strong>{humanizeCaseLabel(event.label)}</strong>
+              <span className="metric-row__label">{event.detail}</span>
+            </div>
+          ))
+        ) : (
+          <EmptyState description="No chronology has been captured for this case." title="No chronology" />
+        )}
+      </div>
+
+      <div className="metric-stack">
+        <strong>Decisions</strong>
+        {dossier.feedback_history.length > 0 ? (
+          dossier.feedback_history.map((feedback) => (
+            <div className="metric-row metric-row--stacked" key={feedback.submitted_at}>
+              <strong>{humanizeCaseLabel(feedback.label)}</strong>
+              <span className="metric-row__label">Evidence adequacy: {feedback.evidence_adequacy}</span>
+              <span className="metric-row__label">{feedback.notes}</span>
+            </div>
+          ))
+        ) : (
+          <EmptyState description="No analyst decisions are attached to this dossier." title="No decisions" />
+        )}
+      </div>
+    </>
+  )
 }
 
 export function CaseManagementPage() {
@@ -108,8 +190,10 @@ export function CaseManagementPage() {
     ? requestedCaseId
     : selectedCaseId ?? casesQuery.data?.items[0]?.id ?? null
   const caseQuery = useCase(knowledgeBaseId, activeCaseId)
+  const dossierQuery = useCaseDossier(knowledgeBaseId, activeCaseId)
   const updateCaseMutation = useUpdateCase(knowledgeBaseId, activeCaseId)
   const feedbackMutation = useAddCaseFeedback(knowledgeBaseId, activeCaseId)
+  const [dossierExporting, setDossierExporting] = useState<EvidenceExportFormat | null>(null)
   const [feedbackLabel, setFeedbackLabel] = useState<CaseFeedbackCreateRequest['label']>('suspicious')
   const [evidenceAdequacy, setEvidenceAdequacy] =
     useState<CaseFeedbackCreateRequest['evidence_adequacy']>('high')
@@ -171,6 +255,21 @@ export function CaseManagementPage() {
         onError: () => showToast('error', 'Could not update the case.'),
       },
     )
+  }
+
+  const handleDossierExport = async (format: EvidenceExportFormat) => {
+    if (!knowledgeBaseId || !activeCaseId) {
+      return
+    }
+    setDossierExporting(format)
+    try {
+      const payload = await exportCaseDossier(knowledgeBaseId, activeCaseId, format)
+      downloadTextFile(payload.filename, payload.content, EXPORT_MIME_TYPES[payload.format])
+    } catch {
+      showToast('error', 'Could not export the case dossier.')
+    } finally {
+      setDossierExporting(null)
+    }
   }
 
   return (
@@ -353,6 +452,33 @@ export function CaseManagementPage() {
                   <span className="metric-row__label">{caseQuery.data.evidence_pack.reasoning}</span>
                 </div>
               ) : null}
+              <section aria-label="Case dossier" className="metric-stack">
+                <div className="page-actions-inline">
+                  <strong>Case dossier</strong>
+                  {(dossierQuery.data?.export.formats ?? DOSSIER_EXPORT_FORMATS).map((format) => (
+                    <button
+                      className={format === 'markdown' ? 'page-button' : 'page-button page-button--secondary'}
+                      disabled={dossierExporting !== null}
+                      key={format}
+                      onClick={() => void handleDossierExport(format)}
+                      type="button"
+                    >
+                      {dossierExporting === format
+                        ? 'Exporting...'
+                        : `Export dossier ${exportFormatLabel(format)}`}
+                    </button>
+                  ))}
+                </div>
+                {dossierQuery.isLoading ? (
+                  <span className="metric-row__label">Loading case dossier</span>
+                ) : dossierQuery.isError ? (
+                  <span className="metric-row__label">Case dossier could not be loaded.</span>
+                ) : dossierQuery.data ? (
+                  <CaseDossierSummary dossier={dossierQuery.data} />
+                ) : (
+                  <span className="metric-row__label">Case dossier is not available.</span>
+                )}
+              </section>
               <div className="metric-stack">
                 <strong>Timeline</strong>
                 {caseQuery.data.entity_timeline.length > 0 ? (

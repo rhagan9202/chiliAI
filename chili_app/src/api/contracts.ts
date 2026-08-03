@@ -92,6 +92,11 @@ export type CaseDetailResponse = RequireFields<
   Schemas['CaseDetailResponse'],
   'alerts' | 'entity_timeline' | 'feedback_history'
 >
+export type CaseDossierResponse = RequireFields<
+  Schemas['CaseDossierResponse'],
+  'alerts' | 'evidence_packs' | 'entity_timeline' | 'feedback_history'
+>
+export type CaseDossierExportResponse = Schemas['CaseDossierExportResponse']
 export type CaseCreateRequest = Schemas['CaseCreateRequest']
 export type CaseUpdateRequest = Schemas['CaseUpdateRequest']
 export type CaseFeedbackCreateRequest = Schemas['CaseFeedbackCreateRequest']

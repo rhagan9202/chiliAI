@@ -1,11 +1,14 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   addCaseFeedback,
   caseDetailQueryKey,
+  caseDossierQueryKey,
   casesQueryKey,
   createCase,
+  exportCaseDossier,
   getCase,
+  getCaseDossier,
   getCases,
   promoteAlertToCase,
   promoteCase,
@@ -30,9 +33,21 @@ const apiPatchMock = vi.mocked(apiPatch)
 const apiPostMock = vi.mocked(apiPost)
 
 describe('cases API', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset()
+    apiPatchMock.mockReset()
+    apiPostMock.mockReset()
+  })
+
   it('exposes stable KB-scoped query keys', () => {
     expect(casesQueryKey('kb-1')).toEqual(['cases', 'kb-1'])
     expect(caseDetailQueryKey('kb-1', 'case-1')).toEqual(['cases', 'kb-1', 'case-1'])
+    expect(caseDossierQueryKey('kb-1', 'case-1')).toEqual([
+      'cases',
+      'kb-1',
+      'case-1',
+      'dossier',
+    ])
   })
 
   it('fetches case lists and details scoped by knowledge base', async () => {
@@ -44,6 +59,29 @@ describe('cases API', () => {
 
     expect(apiFetchMock).toHaveBeenNthCalledWith(1, '/cases?knowledge_base_id=kb-1')
     expect(apiFetchMock).toHaveBeenNthCalledWith(2, '/cases/case-1?knowledge_base_id=kb-1')
+  })
+
+  it('fetches and exports case dossiers scoped by knowledge base', async () => {
+    apiFetchMock.mockResolvedValueOnce({ case: { id: 'case-1' }, export: { default_filename: 'case-case-1.md' } })
+    apiFetchMock.mockResolvedValueOnce({
+      case_id: 'case-1',
+      knowledge_base_id: 'kb-1',
+      format: 'markdown',
+      filename: 'case-case-1.md',
+      content: '# Case',
+    })
+
+    await getCaseDossier('kb-1', 'case-1')
+    await exportCaseDossier('kb-1', 'case-1', 'markdown')
+
+    expect(apiFetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/cases/case-1/dossier?knowledge_base_id=kb-1',
+    )
+    expect(apiFetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/cases/case-1/dossier/export?knowledge_base_id=kb-1&format=markdown',
+    )
   })
 
   it('creates, updates, promotes, and appends feedback scoped by knowledge base', async () => {

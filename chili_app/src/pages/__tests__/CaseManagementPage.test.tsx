@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -7,10 +7,13 @@ import { CaseManagementPage } from '../CaseManagementPage'
 
 const mocks = vi.hoisted(() => ({
   addFeedback: vi.fn(),
+  downloadTextFile: vi.fn(),
+  exportCaseDossier: vi.fn(),
   promote: vi.fn(),
   updateCase: vi.fn(),
   useAlerts: vi.fn(),
   useCase: vi.fn(),
+  useCaseDossier: vi.fn(),
   useCases: vi.fn(),
   useKnowledgeBases: vi.fn(),
   useDomainConfig: vi.fn(),
@@ -31,10 +34,19 @@ vi.mock('../../api/config', () => ({
 vi.mock('../../api/cases', () => ({
   useAddCaseFeedback: () => ({ mutate: mocks.addFeedback }),
   useCase: mocks.useCase,
+  useCaseDossier: mocks.useCaseDossier,
   useCases: mocks.useCases,
+  exportCaseDossier: mocks.exportCaseDossier,
   usePromoteCase: () => ({ mutate: mocks.promote, isPending: false }),
   useUpdateCase: () => ({ mutate: mocks.updateCase }),
 }))
+
+vi.mock('../../utils/downloadFile', async () => {
+  const actual = await vi.importActual<typeof import('../../utils/downloadFile')>(
+    '../../utils/downloadFile',
+  )
+  return { ...actual, downloadTextFile: mocks.downloadTextFile }
+})
 
 const caseSummary = {
   id: 'case-1',
@@ -113,6 +125,8 @@ function renderPageWithLocationProbe(initialEntry = '/cases?kb=kb-1&case=case-1'
 describe('CaseManagementPage', () => {
   beforeEach(() => {
     mocks.addFeedback.mockReset()
+    mocks.downloadTextFile.mockReset()
+    mocks.exportCaseDossier.mockReset()
     mocks.promote.mockReset()
     mocks.updateCase.mockReset()
     // Query mocks keep their implementation but must forget prior calls, or a
@@ -160,6 +174,56 @@ describe('CaseManagementPage', () => {
             submitted_at: '2026-05-12T00:00:00Z',
           },
         ],
+      },
+    })
+    mocks.useCaseDossier.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: caseSummary,
+        alerts: [alert],
+        evidence_packs: [
+          {
+            id: 'evidence-1',
+            alert_id: 'alert-1',
+            reasoning: 'Originating alert evidence.',
+            confidence: 0.91,
+            scores: {},
+            subgraph_node_ids: ['provider-204'],
+            subgraph_edge_ids: [],
+            attribution: [],
+            narrative_sections: [],
+            provenance: [
+              {
+                reference_type: 'document',
+                reference_id: 'source-doc#0',
+                label: 'Origin claim source',
+                source_system: 'cms-claims',
+                source_version: '2026-08-demo',
+                transformation_version: 'safe-cms-008-test',
+                confidence: 0.91,
+                route_target: '/knowledgebases/kb-1/documents/source-doc/preview',
+                metadata: { document_id: 'source-doc' },
+              },
+            ],
+            created_at: '2026-05-12T00:00:00Z',
+            source_documents: ['source-doc'],
+          },
+        ],
+        entity_timeline: [
+          { occurred_at: '2026-05-12T00:00:00Z', label: 'alert_raised', detail: 'Outlier billing concentration' },
+        ],
+        feedback_history: [
+          {
+            case_id: 'case-1',
+            label: 'insufficient_evidence',
+            evidence_adequacy: 'medium',
+            missing_evidence: ['claims history'],
+            notes: 'Need more claims history.',
+            submitted_at: '2026-05-12T00:00:00Z',
+          },
+        ],
+        export: { formats: ['markdown', 'json'], default_filename: 'case-case-1.md' },
       },
     })
   })
@@ -307,11 +371,47 @@ describe('CaseManagementPage', () => {
   it('renders complete feedback history fields', () => {
     renderPage()
 
-    expect(screen.getByText('insufficient evidence')).toBeInTheDocument()
-    expect(screen.getByText('Evidence adequacy: medium')).toBeInTheDocument()
-    expect(screen.getByText('Need more claims history.')).toBeInTheDocument()
+    expect(screen.getAllByText('insufficient evidence').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Evidence adequacy: medium').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Need more claims history.').length).toBeGreaterThan(0)
     expect(screen.getByText('claims history')).toBeInTheDocument()
     expect(screen.getByText('prior auth')).toBeInTheDocument()
+  })
+
+  it('renders a case dossier with evidence, chronology, decisions, and export actions', () => {
+    renderPage()
+
+    expect(mocks.useCaseDossier).toHaveBeenCalledWith('kb-1', 'case-1')
+    const dossier = screen.getByRole('region', { name: 'Case dossier' })
+    expect(within(dossier).getByText('Evidence bundle')).toBeInTheDocument()
+    expect(within(dossier).getByText('Originating alert evidence.')).toBeInTheDocument()
+    expect(within(dossier).getByText('Origin claim source')).toBeInTheDocument()
+    expect(within(dossier).getByText('Chronology')).toBeInTheDocument()
+    expect(within(dossier).getByText('Decisions')).toBeInTheDocument()
+    expect(within(dossier).getByRole('button', { name: 'Export dossier Markdown' })).toBeInTheDocument()
+    expect(within(dossier).getByRole('button', { name: 'Export dossier JSON' })).toBeInTheDocument()
+  })
+
+  it('downloads case dossier exports through the case export endpoint', async () => {
+    mocks.exportCaseDossier.mockResolvedValue({
+      case_id: 'case-1',
+      knowledge_base_id: 'kb-1',
+      format: 'markdown',
+      filename: 'case-case-1.md',
+      content: '# Redwood DME escalation',
+    })
+
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Export dossier Markdown' }))
+
+    await waitFor(() => {
+      expect(mocks.exportCaseDossier).toHaveBeenCalledWith('kb-1', 'case-1', 'markdown')
+    })
+    expect(mocks.downloadTextFile).toHaveBeenCalledWith(
+      'case-case-1.md',
+      '# Redwood DME escalation',
+      'text/markdown',
+    )
   })
 
   it('expresses "open or in review" in one view', () => {

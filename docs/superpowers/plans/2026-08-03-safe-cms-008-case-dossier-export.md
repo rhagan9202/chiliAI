@@ -95,10 +95,37 @@ Task 1 notes:
 - Test: `chili_app/src/pages/__tests__/CaseManagementPage.test.tsx`
 - Modify: `docs/superpowers/plans/2026-08-03-safe-cms-008-case-dossier-export.md`
 
-- [ ] Add React Query hooks for case dossier and export.
-- [ ] Render a dossier section that separates chronology, evidence bundle, decisions, and export actions.
-- [ ] Keep the existing compact case detail usable while making export a clear case-level action.
-- [ ] Verify with focused Vitest, ESLint, build, OpenAPI/codegen, and backlog consistency.
+- [x] Add React Query hooks for case dossier and export.
+- [x] Render a dossier section that separates chronology, evidence bundle, decisions, and export actions.
+- [x] Keep the existing compact case detail usable while making export a clear case-level action.
+- [x] Verify with focused Vitest, ESLint, build, OpenAPI/codegen, and backlog consistency.
+
+Task 2 notes:
+
+- Added typed frontend aliases for `CaseDossierResponse` and
+  `CaseDossierExportResponse`.
+- Added `caseDossierQueryKey`, `getCaseDossier`, `exportCaseDossier`, and
+  `useCaseDossier` in `chili_app/src/api/cases.ts`.
+- Case mutations that can affect dossier content now invalidate the dossier
+  query alongside the case list/detail queries.
+- `CaseManagementPage` now renders a route-backed Case dossier region with
+  evidence bundle, chronology, decisions, and case-level Markdown/JSON export
+  controls that use the existing browser download utility.
+- Red verification failed on missing dossier API helpers, missing
+  `useCaseDossier` usage, and missing export buttons:
+  - `pnpm exec vitest run src/api/__tests__/cases.test.ts src/pages/__tests__/CaseManagementPage.test.tsx`
+- Green verification passed:
+  - `pnpm exec vitest run src/api/__tests__/cases.test.ts src/pages/__tests__/CaseManagementPage.test.tsx`: 22 passed.
+  - `pnpm exec vitest run src/api/__tests__/cases.test.ts src/pages/__tests__/CaseManagementPage.test.tsx src/components/investigation/__tests__/EvidencePackActions.test.tsx`: 30 passed.
+  - `pnpm exec eslint src/api/cases.ts src/api/contracts.ts src/api/__tests__/cases.test.ts src/pages/CaseManagementPage.tsx src/pages/__tests__/CaseManagementPage.test.tsx`: passed.
+  - `uv run --project backend pytest backend/tests/api/test_phase5_stateful_routes.py::test_case_dossier_includes_evidence_feedback_and_export_metadata backend/tests/api/test_phase5_stateful_routes.py::test_case_dossier_export_renders_markdown_and_json -q`: 2 passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
+  - `backend/.venv/bin/python scripts/backlog_consistency.py --check`: passed.
+  - `git diff --check`: passed.
+- Review note: two review subagents were spawned for Task 2, but this tool
+  surface only exposed spawn/close and both were shut down before returning
+  findings. Local review caught and fixed stale dossier invalidation before
+  final verification.
 
 ## Task 3: Browser Alert-To-Case-To-Dossier Flow
 
