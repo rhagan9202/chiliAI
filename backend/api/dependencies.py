@@ -1060,6 +1060,45 @@ def record_case_audit_event(
     )
 
 
+def record_alert_audit_event(
+    audit_service: AuditLogService,
+    *,
+    knowledge_base_id: str,
+    actor_user_id: str,
+    actor_email: str | None,
+    actor_roles: list[str],
+    action: str,
+    alert_id: str,
+    before: JsonSummary | None,
+    after: JsonSummary | None,
+    alert: AlertListItem | AlertHistoryRecord,
+    metadata: JsonSummary | None = None,
+) -> None:
+    """Append a summarized alert audit event without raw alert reasoning."""
+
+    audit_service.record(
+        AuditEventCreate(
+            tenant_id=knowledge_base_id,
+            knowledge_base_id=knowledge_base_id,
+            actor_user_id=actor_user_id,
+            actor_email=actor_email,
+            actor_roles=list(actor_roles),
+            action=action,
+            resource_type="alert",
+            resource_id=alert_id,
+            before=before,
+            after=after,
+            correlation_id=f"alerts:{knowledge_base_id}:{action}:{alert_id}",
+            metadata={
+                "source": "api.alerts",
+                "entity_id": alert.entity_id,
+                "severity": alert.severity,
+                **dict(metadata or {}),
+            },
+        )
+    )
+
+
 def get_case_dossier_export_payload(
     case_id: str = Path(..., description="Case identifier."),
     knowledge_base_id: str = Query(..., min_length=1, description="Knowledge base scope."),

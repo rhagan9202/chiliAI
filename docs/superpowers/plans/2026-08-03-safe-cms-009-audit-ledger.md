@@ -113,6 +113,15 @@ SAFE-CMS-009 adds an immutable audit ledger for material analyst, system, and ag
   - `uv run --project backend ruff check backend/api/routers/cases.py backend/api/dependencies.py backend/tests/api/test_phase5_stateful_routes.py`: passed.
   - `uv run --project backend pyright backend/api/routers/cases.py backend/api/dependencies.py backend/tests/api/test_phase5_stateful_routes.py`: 0 errors.
   - `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json`: passed with no tracked OpenAPI diff.
+- Partial alert-mutation slice complete: acknowledge, assignment, single status update, and bulk status update routes now emit summarized `alert.*` audit events for successful mutations only; skipped/invalid bulk rows do not emit ledger events.
+- Alert audit summaries avoid raw alert reasoning and raw operator reason text; metadata stores entity id, severity, and reason-present/bulk flags.
+- RED: `uv run --project backend pytest backend/tests/api/test_read_model_routers.py::test_acknowledge_alert_records_audit_ledger_event backend/tests/api/test_read_model_routers.py::test_assign_and_status_update_record_audit_ledger_events backend/tests/api/test_read_model_routers.py::test_bulk_alert_status_records_audit_only_for_updated_alerts backend/tests/api/test_read_model_routers.py::test_alert_mutation_still_succeeds_when_audit_sink_fails` failed with empty audit pages and zero failed-write count.
+- GREEN:
+  - `uv run --project backend pytest backend/tests/api/test_read_model_routers.py::test_acknowledge_alert_records_audit_ledger_event backend/tests/api/test_read_model_routers.py::test_assign_and_status_update_record_audit_ledger_events backend/tests/api/test_read_model_routers.py::test_bulk_alert_status_records_audit_only_for_updated_alerts backend/tests/api/test_read_model_routers.py::test_alert_mutation_still_succeeds_when_audit_sink_fails`: 4 passed.
+  - `uv run --project backend pytest backend/tests/api/test_read_model_routers.py backend/tests/api/test_policy_registry.py backend/tests/api/test_audit_router.py`: 44 passed after starting dev Postgres for the route integration test.
+  - `uv run --project backend ruff check backend/api/routers/alerts.py backend/api/dependencies.py backend/tests/api/test_read_model_routers.py`: passed.
+  - `uv run --project backend pyright backend/api/routers/alerts.py backend/api/dependencies.py backend/tests/api/test_read_model_routers.py`: 0 errors.
+  - `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json`: passed with no tracked OpenAPI diff.
 
 ## Task 5: Dossier/Cockpit Audit Timeline And Export
 

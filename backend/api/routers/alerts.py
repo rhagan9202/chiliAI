@@ -25,10 +25,13 @@ from api.dependencies import (
     build_alert_status_update_payload,
     get_alert_detail_payload,
     get_alert_feed_store,
+    get_audit_log_service,
     get_alert_list_payload,
+    record_alert_audit_event,
 )
 from api.middleware.auth import User
 from api.middleware.rbac import require_role
+from auditlog.service import AuditLogService
 from monitoring.adapters.protocols import AlertFeedStoreProtocol
 
 __all__ = ["router"]
@@ -71,15 +74,30 @@ async def acknowledge_alert(
         ..., min_length=1, description="Knowledge base identifier."
     ),
     store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
     user: User = Depends(require_role("analyst")),
 ) -> AlertOperationResponse:
     """Acknowledge an alert; returns the updated row and audit receipt."""
-    return build_alert_acknowledge_payload(
+    before_record = store.get_alert(alert_id)
+    response = build_alert_acknowledge_payload(
         alert_id=alert_id,
         knowledge_base_id=knowledge_base_id,
         store=store,
         actor=user.user_id,
     )
+    record_alert_audit_event(
+        audit_service,
+        knowledge_base_id=knowledge_base_id,
+        actor_user_id=user.user_id,
+        actor_email=user.email,
+        actor_roles=user.roles,
+        action="alert.acknowledge",
+        alert_id=alert_id,
+        before={"status": before_record.status} if before_record is not None else None,
+        after={"status": response.alert.status},
+        alert=response.alert,
+    )
+    return response
 
 
 @router.patch(
@@ -91,15 +109,32 @@ async def assign_alert(
     payload: AlertAssignmentRequest,
     alert_id: str = Path(..., description="Alert identifier."),
     store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
     user: User = Depends(require_role("analyst")),
 ) -> AlertOperationResponse:
     """Assign or clear one KB-scoped alert and return an audit receipt."""
-    return build_alert_assignment_payload(
+    before_record = store.get_alert(alert_id)
+    response = build_alert_assignment_payload(
         alert_id=alert_id,
         payload=payload,
         store=store,
         actor=user.user_id,
     )
+    record_alert_audit_event(
+        audit_service,
+        knowledge_base_id=payload.knowledge_base_id,
+        actor_user_id=user.user_id,
+        actor_email=user.email,
+        actor_roles=user.roles,
+        action="alert.assignment.update",
+        alert_id=alert_id,
+        before={
+            "assignee": before_record.assignee if before_record is not None else None
+        },
+        after={"assignee": response.alert.assignee},
+        alert=response.alert,
+    )
+    return response
 
 
 @router.patch(
@@ -111,15 +146,31 @@ async def update_alert_status(
     payload: AlertStatusUpdateRequest,
     alert_id: str = Path(..., description="Alert identifier."),
     store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
     user: User = Depends(require_role("analyst")),
 ) -> AlertOperationResponse:
     """Transition one KB-scoped alert and return an audit receipt."""
-    return build_alert_status_update_payload(
+    before_record = store.get_alert(alert_id)
+    response = build_alert_status_update_payload(
         alert_id=alert_id,
         payload=payload,
         store=store,
         actor=user.user_id,
     )
+    record_alert_audit_event(
+        audit_service,
+        knowledge_base_id=payload.knowledge_base_id,
+        actor_user_id=user.user_id,
+        actor_email=user.email,
+        actor_roles=user.roles,
+        action="alert.status.update",
+        alert_id=alert_id,
+        before={"status": before_record.status} if before_record is not None else None,
+        after={"status": response.alert.status},
+        alert=response.alert,
+        metadata={"reason_present": payload.reason is not None},
+    )
+    return response
 
 
 @router.post(
@@ -130,11 +181,35 @@ async def update_alert_status(
 async def update_alert_status_bulk(
     payload: AlertBulkStatusUpdateRequest,
     store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
     user: User = Depends(require_role("analyst")),
 ) -> AlertBulkStatusUpdateResponse:
     """Transition selected KB-scoped alerts and report skipped rows."""
-    return build_alert_bulk_status_update_payload(
+    before_records = {
+        alert_id: record
+        for alert_id in payload.alert_ids
+        if (record := store.get_alert(alert_id)) is not None
+    }
+    response = build_alert_bulk_status_update_payload(
         payload=payload,
         store=store,
         actor=user.user_id,
     )
+    for alert in response.updated_alerts:
+        before_record = before_records.get(alert.id)
+        record_alert_audit_event(
+            audit_service,
+            knowledge_base_id=payload.knowledge_base_id,
+            actor_user_id=user.user_id,
+            actor_email=user.email,
+            actor_roles=user.roles,
+            action="alert.status.update",
+            alert_id=alert.id,
+            before=(
+                {"status": before_record.status} if before_record is not None else None
+            ),
+            after={"status": alert.status},
+            alert=alert,
+            metadata={"bulk": True, "reason_present": payload.reason is not None},
+        )
+    return response

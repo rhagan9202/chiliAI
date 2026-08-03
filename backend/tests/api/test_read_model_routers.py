@@ -25,6 +25,10 @@ from api.dependencies import (
     get_knowledge_base_repository,
     get_risk_service,
 )
+from api.middleware.auth import User, get_current_user
+from auditlog.adapters.in_memory import InMemoryAuditLogRepository
+from auditlog.models import AuditEvent, AuditEventQuery
+from auditlog.service import AuditLogService
 from events.adapters.in_memory import InMemoryEventBus
 from graph.adapters.in_memory import InMemoryGraphRepository
 from graph.service import create_graph_service
@@ -40,6 +44,11 @@ from monitoring.models import AlertHistoryRecord
 from shared.types import Entity, KnowledgeBase, Relationship
 from shared.utils import utc_now
 from storage.adapters.in_memory import InMemoryObjectStore
+
+
+class _FailingAuditRepository(InMemoryAuditLogRepository):
+    def append(self, event: AuditEvent) -> None:
+        raise RuntimeError("audit sink unavailable")
 
 
 def _seed_alert_store() -> AlertFeedStoreProtocol:
@@ -103,6 +112,21 @@ def _client_with_alerts() -> TestClient:
     app = create_app()
     store = _seed_alert_store()
     app.dependency_overrides[get_alert_feed_store] = lambda: store
+    return TestClient(app)
+
+
+def _client_with_alerts_and_audit(
+    audit_service: AuditLogService,
+) -> TestClient:
+    app = create_app()
+    store = _seed_alert_store()
+    app.dependency_overrides[get_alert_feed_store] = lambda: store
+    app.dependency_overrides[get_current_user] = lambda: User(
+        user_id="analyst-42",
+        roles=["analyst"],
+        email="analyst42@example.test",
+    )
+    app.state.audit_log_service = audit_service
     return TestClient(app)
 
 
@@ -254,6 +278,32 @@ def test_acknowledge_alert_returns_scaffold_status() -> None:
     assert payload["audit_event"]["to_status"] == "acknowledged"
 
 
+def test_acknowledge_alert_records_audit_ledger_event() -> None:
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    client = _client_with_alerts_and_audit(audit_service)
+
+    response = client.post(
+        "/alerts/alert-001/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
+
+    assert response.status_code == 200
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id="kb-1", knowledge_base_id="kb-1")
+    )
+    assert [event.action for event in page.items] == ["alert.acknowledge"]
+    event = page.items[0]
+    assert event.actor_user_id == "analyst-42"
+    assert event.resource_type == "alert"
+    assert event.resource_id == "alert-001"
+    assert event.before == {"status": "open"}
+    assert event.after == {"status": "acknowledged"}
+    assert event.metadata == {
+        "source": "api.alerts",
+        "entity_id": "provider-204",
+        "severity": "critical",
+    }
+
+
 def test_assign_alert_route_returns_updated_alert_and_audit_event() -> None:
     client = _client_with_alerts()
 
@@ -270,6 +320,44 @@ def test_assign_alert_route_returns_updated_alert_and_audit_event() -> None:
     assert payload["audit_event"]["event_type"] == "assigned"
     assert payload["audit_event"]["actor"] == "anonymous"
     assert payload["audit_event"]["assignee"] == "maya.patel@example.com"
+
+
+def test_assign_and_status_update_record_audit_ledger_events() -> None:
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    client = _client_with_alerts_and_audit(audit_service)
+
+    assigned = client.patch(
+        "/alerts/alert-001/assignment",
+        json={"knowledge_base_id": "kb-1", "assignee": "maya.patel@example.com"},
+    )
+    assert assigned.status_code == 200
+    acknowledged = client.post(
+        "/alerts/alert-001/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
+    assert acknowledged.status_code == 200
+    transitioned = client.patch(
+        "/alerts/alert-001/status",
+        json={
+            "knowledge_base_id": "kb-1",
+            "status": "investigating",
+            "reason": "Confirmed peer deviation.",
+        },
+    )
+    assert transitioned.status_code == 200
+
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id="kb-1", knowledge_base_id="kb-1")
+    )
+    assert [event.action for event in page.items] == [
+        "alert.status.update",
+        "alert.acknowledge",
+        "alert.assignment.update",
+    ]
+    assert page.items[0].before == {"status": "acknowledged"}
+    assert page.items[0].after == {"status": "investigating"}
+    assert page.items[0].metadata["reason_present"] is True
+    assert page.items[2].before == {"assignee": None}
+    assert page.items[2].after == {"assignee": "maya.patel@example.com"}
 
 
 def test_update_alert_status_route_enforces_valid_transitions() -> None:
@@ -368,6 +456,52 @@ def test_bulk_alert_status_route_updates_only_valid_scoped_transitions() -> None
     assert payload["rejected_alerts"] == [
         {"alert_id": "alert-002", "reason": "not_found"}
     ]
+
+
+def test_bulk_alert_status_records_audit_only_for_updated_alerts() -> None:
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    client = _client_with_alerts_and_audit(audit_service)
+    ack = client.post(
+        "/alerts/alert-001/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
+    assert ack.status_code == 200
+
+    response = client.post(
+        "/alerts/bulk/status",
+        json={
+            "knowledge_base_id": "kb-1",
+            "alert_ids": ["alert-001", "alert-002"],
+            "status": "investigating",
+            "reason": "Supervisor triage.",
+        },
+    )
+
+    assert response.status_code == 200
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id="kb-1", knowledge_base_id="kb-1")
+    )
+    assert [event.action for event in page.items] == [
+        "alert.status.update",
+        "alert.acknowledge",
+    ]
+    assert page.items[0].resource_id == "alert-001"
+    assert page.items[0].before == {"status": "acknowledged"}
+    assert page.items[0].after == {"status": "investigating"}
+    assert page.items[0].metadata["bulk"] is True
+    assert page.items[0].metadata["reason_present"] is True
+
+
+def test_alert_mutation_still_succeeds_when_audit_sink_fails() -> None:
+    audit_service = AuditLogService(_FailingAuditRepository())
+    client = _client_with_alerts_and_audit(audit_service)
+
+    response = client.post(
+        "/alerts/alert-001/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["alert"]["status"] == "acknowledged"
+    assert audit_service.failed_write_count == 1
 
 
 def test_bulk_alert_status_route_reports_invalid_transition_without_audit_event() -> None:
