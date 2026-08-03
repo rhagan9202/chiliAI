@@ -140,6 +140,17 @@ const alertResponse = {
       updated_at: '2026-08-01T12:00:00Z',
       tags: ['billing', 'peer-deviation'],
       assignee: null,
+      generation_metadata: {
+        suppression: {
+          decision: 'retained',
+          reason: 'No active suppression rule matched provider and claims_per_week.',
+        },
+        deduplication: {
+          decision: 'retained',
+          reason: 'No existing alert inside the dedup window.',
+          window_seconds: 900,
+        },
+      },
     },
     {
       id: 'alert-2',
@@ -549,6 +560,19 @@ describe('AlertFeedPage', () => {
     // card also mapped every tag to a chip, so "BILLING" appeared twice.
     expect(screen.queryByText('peer deviation')).not.toBeInTheDocument()
     expect(screen.getAllByText('BILLING · PEER-DEVIATION')).toHaveLength(1)
+  })
+
+  it('shows compact suppression and dedup generation decisions for review', () => {
+    renderAlertFeed()
+
+    expect(screen.getByText('Suppression retained')).toHaveAttribute(
+      'title',
+      'No active suppression rule matched provider and claims_per_week.',
+    )
+    expect(screen.getByText('Dedup retained')).toHaveAttribute(
+      'title',
+      'No existing alert inside the dedup window. Window: 900s.',
+    )
   })
 
   it('makes one action primary and demotes the rest', () => {

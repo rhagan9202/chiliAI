@@ -661,6 +661,24 @@
   font-size: 13px;
 }
 
+.alert-row-card__generation-decisions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.alert-row-card__generation-decision {
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--c-bg-2) 84%, var(--c-cyan) 16%);
+  color: var(--c-text);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
+  padding: 3px 7px;
+}
+
 .alert-row-card__evidence-preview {
   width: fit-content;
   color: var(--c-cyan);

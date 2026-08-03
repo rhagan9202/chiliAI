@@ -167,6 +167,44 @@ function nextStatusOptions(status: AlertStatus): AlertStatus[] {
   return [status, ...(ALERT_STATUS_TRANSITIONS[status] ?? [])]
 }
 
+type GenerationDecisionSummary = {
+  id: string
+  label: string
+  title: string
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function decisionSummary(
+  metadata: AlertListRow['generation_metadata'],
+  key: 'suppression' | 'deduplication',
+  label: string,
+): GenerationDecisionSummary | null {
+  const entry = objectValue(objectValue(metadata)?.[key])
+  if (!entry) return null
+  const decision = typeof entry.decision === 'string' ? entry.decision : 'recorded'
+  const reason = typeof entry.reason === 'string' ? entry.reason : `${label} decision recorded.`
+  const windowSeconds = typeof entry.window_seconds === 'number'
+    ? ` Window: ${entry.window_seconds}s.`
+    : ''
+  return {
+    id: key,
+    label: `${label} ${decision.toLowerCase()}`,
+    title: `${reason}${windowSeconds}`,
+  }
+}
+
+function generationDecisionSummaries(alert: AlertListRow): GenerationDecisionSummary[] {
+  return [
+    decisionSummary(alert.generation_metadata, 'suppression', 'Suppression'),
+    decisionSummary(alert.generation_metadata, 'deduplication', 'Dedup'),
+  ].filter((summary): summary is GenerationDecisionSummary => summary !== null)
+}
+
 function enrichQueueAlerts(
   alerts: readonly AlertListRow[],
   cases: readonly CaseListRow[],
@@ -649,6 +687,7 @@ export function AlertFeedPage() {
         alerts.map((alert) => {
           const isPromoted =
             promotedAlertIds.has(alert.id) || durablePromotedAlertIds.has(alert.id)
+          const generationDecisions = generationDecisionSummaries(alert)
 
           const hasPolicySignal =
             policyItemsForTarget(policyItems, 'alert', alert.id).length +
@@ -851,6 +890,19 @@ export function AlertFeedPage() {
                   >
                     {alert.reasoning}
                   </div>
+                  {generationDecisions.length > 0 ? (
+                    <div className="alert-row-card__generation-decisions">
+                      {generationDecisions.map((decision) => (
+                        <span
+                          className="alert-row-card__generation-decision"
+                          key={decision.id}
+                          title={decision.title}
+                        >
+                          {decision.label}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   {showEvidenceAction ? (
                     <Link
                       aria-label={`Preview evidence for ${alert.entity_label}`}

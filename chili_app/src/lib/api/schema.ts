@@ -1690,6 +1690,10 @@ export interface components {
             entity_type: string;
             /** Evidence Pack Id */
             evidence_pack_id?: string | null;
+            /** Generation Metadata */
+            generation_metadata?: {
+                [key: string]: unknown;
+            };
             /** Id */
             id: string;
             /** Knowledge Base Id */

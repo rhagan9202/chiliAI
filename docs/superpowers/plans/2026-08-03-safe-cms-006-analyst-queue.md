@@ -191,12 +191,46 @@ Task 3 notes:
 - Modify: `AlertFeedPage.tsx` and focused e2e tests.
 - Test: monitoring service tests, alert feed tests, and Playwright triage flow.
 
-- [ ] Preserve suppression/dedup reason metadata from alert generation into the queue.
-- [ ] Show reviewer-readable suppression/dedup decisions without crowding the row.
-- [ ] Add keyboard navigation and browser flow coverage for filtering, previewing evidence,
+- [x] Preserve suppression/dedup reason metadata from alert generation into the queue.
+- [x] Show reviewer-readable suppression/dedup decisions without crowding the row.
+- [x] Add keyboard navigation and browser flow coverage for filtering, previewing evidence,
   bulk action confirmation, and cockpit handoff.
-- [ ] Run focused frontend/backend checks, build, `git diff --check`, and backlog
+- [x] Run focused frontend/backend checks, build, `git diff --check`, and backlog
   consistency before completion.
+
+Task 4 notes:
+
+- Added alert `generation_metadata` from monitoring evaluation through
+  `AlertsCreatedEvent`, Flow 4 alert-history persistence, Postgres storage, and
+  `/alerts` list/detail response models. The metadata records retained suppression and
+  dedup decisions with reviewer-readable reasons and dedup window seconds.
+- Added migration `0015_alert_generation_metadata` and refreshed the clean-install
+  schema snapshot. `scripts/ci_migration_check.sh`: passed; migration replay matched
+  `backend/database/migrations/snapshots/head.sql`.
+- Regenerated `chili_app/openapi.json` and `chili_app/src/lib/api/schema.ts`.
+- `AlertFeedPage` now renders compact suppression/dedup decision cues with full
+  reasons in tooltips, below the alert reasoning so rows remain scannable.
+- Extended full-stack Playwright coverage for keyboard filtering, evidence preview,
+  bulk status confirmation, and cockpit handoff; corrected the existing bulk triage
+  API poll to use the KB-scoped alert detail route.
+- Focused red/green verification:
+  - Initial backend metadata test failed with
+    `AttributeError: 'AlertCreatedReference' object has no attribute 'generation_metadata'`.
+  - Initial frontend row-display test failed because `Suppression retained` was absent.
+  - After implementation, focused backend, frontend, route, Postgres, and browser checks
+    passed.
+- Verification passed:
+  - `backend/.venv/bin/python -m pytest backend/tests/monitoring/test_service.py backend/tests/monitoring/test_alert_history_writer.py backend/tests/agent/test_alerts_created_graph_flow.py -q`: 63 passed.
+  - `backend/.venv/bin/python -m pytest backend/tests/api/test_read_model_routers.py -q`: 31 passed outside the command sandbox.
+  - `backend/.venv/bin/python -m pytest backend/tests/monitoring/test_postgres_alert_history.py -q`: 7 passed against local Docker Postgres.
+  - `scripts/ci_migration_check.sh`: passed.
+  - `backend/.venv/bin/ruff check ...`: passed on touched backend files.
+  - `backend/.venv/bin/pyright --project backend ...`: 0 errors.
+  - `pnpm exec vitest run src/pages/__tests__/AlertFeedPage.test.tsx src/api/__tests__/alerts.test.ts src/utils/__tests__/alertFilters.test.ts`: 67 passed.
+  - `pnpm exec eslint ...`: passed on touched frontend files.
+  - `pnpm exec tsc -b --pretty false`: passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
+  - `pnpm exec playwright test e2e/alert-bulk-triage.spec.ts`: 4 passed against the full dev stack.
 
 ## Definition Of Done
 
