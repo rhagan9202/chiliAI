@@ -11,7 +11,7 @@ from api.app import create_app
 from api.dependencies import get_domain_config
 from api.middleware.auth import User, get_current_user
 from auditlog.adapters.in_memory import InMemoryAuditLogRepository
-from auditlog.models import AuditEventCreate
+from auditlog.models import AuditEvent, AuditEventCreate
 from auditlog.service import AuditLogService
 from config.loader import load_config
 from config.schema import AuthConfig, DomainConfig
@@ -51,6 +51,11 @@ def _event(
 def _auth_enabled_config() -> DomainConfig:
     base = load_config(MEDICARE_YAML)
     return base.model_copy(update={"auth": AuthConfig(enabled=True)})
+
+
+class _FailingAuditRepository(InMemoryAuditLogRepository):
+    def append(self, event: AuditEvent) -> None:
+        raise RuntimeError("audit sink unavailable")
 
 
 def test_audit_events_route_returns_empty_page() -> None:
@@ -125,3 +130,29 @@ def test_audit_events_requires_admin_when_auth_enabled() -> None:
         response = client.get("/audit/events", params={"tenant_id": "tenant-1"})
 
     assert response.status_code == 403
+
+
+def test_audit_status_exposes_write_failure_buffer() -> None:
+    app = create_app()
+    service = AuditLogService(_FailingAuditRepository())
+    service.record(
+        _event(
+            "case.update",
+            occurred_at=datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc),
+        )
+    )
+    app.state.audit_log_service = service
+
+    with TestClient(app) as client:
+        response = client.get("/audit/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["failed_write_count"] == 1
+    assert len(payload["recent_write_failures"]) == 1
+    failure = payload["recent_write_failures"][0]
+    assert failure["action"] == "case.update"
+    assert failure["resource_type"] == "case"
+    assert failure["resource_id"] == "case-1"
+    assert failure["error_class"] == "RuntimeError"
+    assert failure["error_message"] == "audit sink unavailable"

@@ -50,6 +50,26 @@ class AuditEventListResponse(BaseModel):
     page: PageInfo
 
 
+class AuditWriteFailureResponse(BaseModel):
+    """One captured audit sink write failure."""
+
+    occurred_at: datetime
+    action: str
+    resource_type: str
+    resource_id: str
+    error_class: str
+    error_message: str
+
+
+class AuditStatusResponse(BaseModel):
+    """Operational audit ledger write-failure status."""
+
+    failed_write_count: int = Field(ge=0)
+    recent_write_failures: list[AuditWriteFailureResponse] = Field(
+        default_factory=lambda: cast(list[AuditWriteFailureResponse], [])
+    )
+
+
 class DomainFeaturesResponse(BaseModel):
     """Feature flags and role/navigation metadata derived from DomainConfig."""
 
@@ -1248,6 +1268,8 @@ class ChatMessageCreateRequest(BaseModel):
 __all__ = [
     "AuditEventListResponse",
     "AuditEventResponse",
+    "AuditStatusResponse",
+    "AuditWriteFailureResponse",
     "AlertAssignmentRequest",
     "AlertBulkRejection",
     "AlertBulkStatusUpdateRequest",

@@ -329,6 +329,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/audit/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Audit Status
+         * @description Return audit ledger write-failure status.
+         */
+        get: operations["get_audit_status_audit_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/callback": {
         parameters: {
             query?: never;
@@ -2007,6 +2027,37 @@ export interface components {
             tenant_id: string;
             /** User Agent */
             user_agent?: string | null;
+        };
+        /**
+         * AuditStatusResponse
+         * @description Operational audit ledger write-failure status.
+         */
+        AuditStatusResponse: {
+            /** Failed Write Count */
+            failed_write_count: number;
+            /** Recent Write Failures */
+            recent_write_failures?: components["schemas"]["AuditWriteFailureResponse"][];
+        };
+        /**
+         * AuditWriteFailureResponse
+         * @description One captured audit sink write failure.
+         */
+        AuditWriteFailureResponse: {
+            /** Action */
+            action: string;
+            /** Error Class */
+            error_class: string;
+            /** Error Message */
+            error_message: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Resource Id */
+            resource_id: string;
+            /** Resource Type */
+            resource_type: string;
         };
         /**
          * AuthConfig
@@ -6353,6 +6404,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_audit_status_audit_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditStatusResponse"];
                 };
             };
         };

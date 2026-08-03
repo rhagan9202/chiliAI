@@ -26,6 +26,8 @@ from api.contracts import (
     AlertTriageEventResponse,
     AuditEventListResponse,
     AuditEventResponse,
+    AuditStatusResponse,
+    AuditWriteFailureResponse,
     CaseCreateRequest,
     CaseDossierExportMetadataResponse,
     CaseDossierExportResponse,
@@ -740,6 +742,27 @@ def get_audit_event_list_payload(
             page_size=page.limit,
             total_items=page.total_items,
         ),
+    )
+
+
+def get_audit_status_payload(
+    service: AuditLogService = Depends(get_audit_log_service),
+) -> AuditStatusResponse:
+    """Return operational status for non-blocking audit write failures."""
+
+    return AuditStatusResponse(
+        failed_write_count=service.failed_write_count,
+        recent_write_failures=[
+            AuditWriteFailureResponse(
+                occurred_at=failure.occurred_at,
+                action=failure.action,
+                resource_type=failure.resource_type,
+                resource_id=failure.resource_id,
+                error_class=failure.error_class,
+                error_message=failure.error_message,
+            )
+            for failure in service.write_failures
+        ],
     )
 
 

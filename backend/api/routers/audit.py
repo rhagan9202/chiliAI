@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from api.contracts import AuditEventListResponse
-from api.dependencies import get_audit_event_list_payload
+from api.contracts import AuditEventListResponse, AuditStatusResponse
+from api.dependencies import get_audit_event_list_payload, get_audit_status_payload
 from api.middleware.rbac import require_role
 
 __all__ = ["router"]
@@ -23,3 +23,15 @@ async def list_audit_events(
 ) -> AuditEventListResponse:
     """Return a filtered page of immutable audit ledger events."""
     return events
+
+
+@router.get(
+    "/status",
+    response_model=AuditStatusResponse,
+    dependencies=[Depends(require_role("admin"))],
+)
+async def get_audit_status(
+    status_payload: AuditStatusResponse = Depends(get_audit_status_payload),
+) -> AuditStatusResponse:
+    """Return audit ledger write-failure status."""
+    return status_payload

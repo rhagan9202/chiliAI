@@ -100,10 +100,18 @@ SAFE-CMS-009 adds an immutable audit ledger for material analyst, system, and ag
 - Modify: `backend/api/routers/evidence.py`
 - Create/modify focused API tests.
 
-- [ ] Record audit events for alert acknowledgement, case create/promote/update/feedback/attach, KB delete, auth login/logout/callback outcomes, and evidence mutations where current endpoints exist.
-- [ ] Preserve primary response behavior when audit recording fails; expose failure counters/buffer status.
+- [x] Record audit events for alert acknowledgement, case create/promote/update/feedback/attach, KB delete, auth login/logout/callback outcomes, and evidence mutations where current endpoints exist.
+- [x] Preserve primary response behavior when audit recording fails; expose failure counters/buffer status.
 
 **Notes:**
+- Audit status slice complete: added admin-gated `GET /audit/status` with `failed_write_count` and bounded recent write-failure descriptors from `AuditLogService.write_failures`.
+- RED: `uv run --project backend pytest backend/tests/api/test_audit_router.py::test_audit_status_exposes_write_failure_buffer` failed with 404.
+- GREEN:
+  - `uv run --project backend pytest backend/tests/api/test_audit_router.py::test_audit_status_exposes_write_failure_buffer`: 1 passed.
+  - `uv run --project backend pytest backend/tests/api/test_audit_router.py backend/tests/api/test_dependencies.py::test_get_audit_log_service_returns_in_memory_when_provider_is_none backend/tests/api/test_policy_registry.py`: 11 passed.
+  - `uv run --project backend ruff check backend/api/contracts.py backend/api/dependencies.py backend/api/routers/audit.py backend/tests/api/test_audit_router.py`: passed.
+  - `uv run --project backend pyright backend/api/contracts.py backend/api/dependencies.py backend/api/routers/audit.py backend/tests/api/test_audit_router.py`: 0 errors.
+  - `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json`: passed and updated the tracked OpenAPI contract for `/audit/status`.
 - Partial auth-outcome slice complete: login start, callback success/failure, and logout now emit sanitized `auth.*` audit events under tenant `platform`; events capture actor when known and omit OIDC code/state, tokens, and raw session ids.
 - Auth audit failures remain non-blocking through `AuditLogService.record()` failure capture.
 - RED: `uv run --project backend pytest backend/tests/api/test_auth_router.py::test_login_records_audit_event backend/tests/api/test_auth_router.py::test_auth_login_still_redirects_when_audit_sink_fails backend/tests/api/test_auth_router.py::test_callback_exchanges_code_and_creates_session_cookie backend/tests/api/test_auth_router.py::test_callback_rejects_unknown_state backend/tests/api/test_auth_router.py::test_logout_clears_cookie_and_session` failed with empty audit event pages and zero failed-write count.

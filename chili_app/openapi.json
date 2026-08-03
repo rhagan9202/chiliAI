@@ -854,6 +854,68 @@
         "title": "AuditEventResponse",
         "type": "object"
       },
+      "AuditStatusResponse": {
+        "description": "Operational audit ledger write-failure status.",
+        "properties": {
+          "failed_write_count": {
+            "minimum": 0.0,
+            "title": "Failed Write Count",
+            "type": "integer"
+          },
+          "recent_write_failures": {
+            "items": {
+              "$ref": "#/components/schemas/AuditWriteFailureResponse"
+            },
+            "title": "Recent Write Failures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "failed_write_count"
+        ],
+        "title": "AuditStatusResponse",
+        "type": "object"
+      },
+      "AuditWriteFailureResponse": {
+        "description": "One captured audit sink write failure.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "error_class": {
+            "title": "Error Class",
+            "type": "string"
+          },
+          "error_message": {
+            "title": "Error Message",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "resource_type": {
+            "title": "Resource Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "occurred_at",
+          "action",
+          "resource_type",
+          "resource_id",
+          "error_class",
+          "error_message"
+        ],
+        "title": "AuditWriteFailureResponse",
+        "type": "object"
+      },
       "AuthConfig": {
         "description": "JWT/OIDC authentication configuration (E10-S06).",
         "properties": {
@@ -10160,6 +10222,28 @@
           }
         },
         "summary": "List Audit Events",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/audit/status": {
+      "get": {
+        "description": "Return audit ledger write-failure status.",
+        "operationId": "get_audit_status_audit_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Audit Status",
         "tags": [
           "audit"
         ]
