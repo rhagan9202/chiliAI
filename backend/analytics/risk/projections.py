@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -69,6 +69,21 @@ class RiskProjectionPage(BaseModel):
     offset: int = Field(ge=0)
 
 
+@runtime_checkable
+class RiskProjectionRepositoryProtocol(Protocol):
+    """Persistence protocol for risk projection read models."""
+
+    def upsert(self, row: RiskProjectionRow) -> RiskProjectionRow: ...
+
+    def get(self, knowledge_base_id: str, entity_id: str) -> RiskProjectionRow | None: ...
+
+    def list(self, query: RiskProjectionQuery) -> RiskProjectionPage: ...
+
+    def list_all(self, knowledge_base_id: str) -> list[RiskProjectionRow]: ...
+
+    def delete_by_kb(self, knowledge_base_id: str) -> int: ...
+
+
 class InMemoryRiskProjectionRepository:
     """In-memory projection repository for tests and local development."""
 
@@ -101,6 +116,15 @@ class InMemoryRiskProjectionRepository:
             limit=query.limit,
             offset=query.offset,
         )
+
+    def list_all(self, knowledge_base_id: str) -> list[RiskProjectionRow]:
+        rows = [
+            row
+            for row in self._rows.values()
+            if row.knowledge_base_id == knowledge_base_id
+        ]
+        rows.sort(key=lambda row: (-row.overall_score, -row.scored_at.timestamp(), row.entity_id))
+        return [row.model_copy(deep=True) for row in rows]
 
     def delete_by_kb(self, knowledge_base_id: str) -> int:
         keys = [
@@ -136,6 +160,7 @@ __all__ = [
     "RiskProjectionLevel",
     "RiskProjectionPage",
     "RiskProjectionQuery",
+    "RiskProjectionRepositoryProtocol",
     "RiskProjectionRow",
     "RiskProjectionStatus",
 ]

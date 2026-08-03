@@ -71,19 +71,35 @@ Task 1 review notes:
 - Modify/create: `backend/analytics/risk/projection_service.py`
 - Test: focused service tests
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Cover idempotent projection upsert from risk assessments, feature values/typologies, score-run metadata, alert
 refs, case refs, and evidence refs. Cover rebuild by KB and no-op behavior for unchanged rows.
 
-- [ ] **Step 2: Implement writer/rebuild service**
+- [x] **Step 2: Implement writer/rebuild service**
 
 Keep the first rebuild in-process and repository-backed. Worker/event fan-in can follow after the projection
 contract is stable.
 
-- [ ] **Step 3: Run focused service tests**
+- [x] **Step 3: Run focused service tests**
 
 Expected: projection writer/rebuild tests pass and existing risk tests still pass.
+
+Task 2 review notes:
+
+- Added `RiskProjectionService`, `RiskProjectionWriteRequest`, write/rebuild result models, and
+  `RiskProjectionRepositoryProtocol`.
+- `project_assessment` writes one projection row from `RiskScoredReference`, feature values, feature-to-typology
+  mapping, score-run/model/catalog versions, alert/case/evidence refs, and status.
+- Projection writes are no-ops when the computed row is unchanged.
+- Rebuild replaces KB-scoped projection rows and preserves other KBs.
+- Review found rebuild compared only the first 500 rows and could falsely no-op; fixed with repository
+  `list_all(knowledge_base_id)` and regression coverage over 501 rows.
+- Review found typology projection over-included unrelated feature values; fixed by requiring same KB, same entity,
+  same entity type, and feature ids present in scored factors.
+- Focused verification passed: projection repository/service tests passed with 15 tests; non-integration
+  `backend/tests/analytics/risk -m "not integration" -q` passed with 53 tests and 2 integration tests deselected;
+  `compileall backend/analytics/risk` and `git diff --check` passed.
 
 ## Task 3: API Contract Expansion
 
