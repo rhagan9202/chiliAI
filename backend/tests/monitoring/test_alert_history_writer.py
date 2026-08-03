@@ -241,10 +241,14 @@ def test_acknowledge_persists_and_returns_updated_record() -> None:
     writer = InMemoryAlertHistoryWriter()
     writer.write_alerts([_record("a-1", status="open")])
 
-    updated = writer.acknowledge("a-1")
+    updated = writer.acknowledge("a-1", actor="analyst@example.com")
 
     assert updated is not None
     assert updated.status == "acknowledged"
+    assert updated.triage_history[-1].event_type == "status_changed"
+    assert updated.triage_history[-1].actor == "analyst@example.com"
+    assert updated.triage_history[-1].from_status == "open"
+    assert updated.triage_history[-1].to_status == "acknowledged"
     assert writer.get_alert("a-1") is not None
     assert writer.get_alert("a-1").status == "acknowledged"  # type: ignore[union-attr]
 

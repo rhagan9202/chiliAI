@@ -24,7 +24,6 @@ from api.contracts import (
     AlertOperationResponse,
     AlertStatusUpdateRequest,
     AlertTriageEventResponse,
-    ApiEnvelope,
     CaseCreateRequest,
     CaseDetailResponse,
     CaseFeedbackCreateRequest,
@@ -267,13 +266,16 @@ __all__ = [
     "CONFIG_CACHE_REGISTRY",
     "_apply_policy_triage",
     "build_api_state",
+    "build_alert_acknowledge_payload",
+    "build_alert_assignment_payload",
+    "build_alert_bulk_status_update_payload",
+    "build_alert_status_update_payload",
     "enforce_production_guardrail",
     "get_config_generation",
     "load_chili_environment",
     "require_kb_scoped_conversation",
     "reset_domain_config_caches",
     "get_api_state",
-    "get_alert_acknowledge_payload",
     "get_alert_detail_payload",
     "get_alert_feed_store",
     "get_alert_list_payload",
@@ -2273,25 +2275,33 @@ def get_alert_detail_payload(
     )
 
 
-def get_alert_acknowledge_payload(
-    alert_id: str = Path(..., description="Alert identifier."),
-    knowledge_base_id: str = Query(
-        ..., min_length=1, description="Knowledge base identifier."
-    ),
-    store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
-) -> ApiEnvelope:
-    """Acknowledge an alert in the durable store; returns a status receipt."""
-    # Ownership is settled before the mutation: an alert never changes KB, so
-    # the checked record cannot drift out from under the update.
+def build_alert_acknowledge_payload(
+    *,
+    alert_id: str,
+    knowledge_base_id: str,
+    store: AlertFeedStoreProtocol,
+    actor: str,
+) -> AlertOperationResponse:
+    """Acknowledge one scoped alert and return its audit receipt."""
     _require_kb_scoped_alert_record(store, alert_id, knowledge_base_id)
-    updated = store.acknowledge(alert_id)
+    try:
+        updated = store.acknowledge(
+            alert_id,
+            knowledge_base_id=knowledge_base_id,
+            actor=actor,
+        )
+    except AlertLifecycleError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if updated is None:
         raise HTTPException(
             status_code=404, detail=f"Alert '{alert_id}' was not found."
         )
-    return ApiEnvelope(
+    event = _latest_alert_triage_event(updated)
+    return AlertOperationResponse(
         status="accepted",
         message=f"Alert '{updated.alert_id}' is now {updated.status}.",
+        alert=_alert_record_to_list_item(updated),
+        audit_event=_alert_triage_event_to_response(event),
     )
 
 

@@ -172,6 +172,17 @@ Task 3 notes:
   - `npm run codegen:api` from `chili_app/`: passed.
   - `scripts/ci_migration_check.sh`: passed outside the command sandbox; migration replay clean and schema matched `backend/database/migrations/snapshots/head.sql`.
   - `pnpm build`: passed with the existing Vite large-chunk warning.
+- Post-review correction (2026-08-03):
+  - The existing `POST /alerts/{id}/acknowledge` path now uses the same audited
+    status-transition machinery and returns `AlertOperationResponse` with the updated
+    alert plus `audit_event`, so analyst-visible acknowledgement is no longer a
+    parallel unaudited mutation path.
+  - Frontend alert mutation functions now expose generated response shapes:
+    `AlertOperationResponse` for single-alert acknowledge/assign/status and
+    `AlertBulkStatusUpdateResponse` for bulk status updates, including
+    `rejected_alerts`.
+  - Added route/store coverage for acknowledged audit events and bulk
+    `invalid_transition` skips without writing audit history to rejected rows.
 
 ## Task 4: Suppression, Dedup, And Final Browser Flow
 

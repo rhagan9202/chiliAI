@@ -250,13 +250,22 @@ def test_get_and_acknowledge_alert(database_url: str) -> None:
 
         assert store.get_alert("missing-alert-id") is None
 
-        updated = store.acknowledge("a-ack-1")
+        updated = store.acknowledge(
+            "a-ack-1",
+            knowledge_base_id=kb_id,
+            actor="analyst@example.com",
+        )
         assert updated is not None
         assert updated.status == "acknowledged"
+        assert updated.triage_history[-1].event_type == "status_changed"
+        assert updated.triage_history[-1].actor == "analyst@example.com"
+        assert updated.triage_history[-1].from_status == "open"
+        assert updated.triage_history[-1].to_status == "acknowledged"
 
         refetched = store.get_alert("a-ack-1")
         assert refetched is not None
         assert refetched.status == "acknowledged"
+        assert refetched.triage_history[-1].to_status == "acknowledged"
 
         assert store.acknowledge("missing-alert-id") is None
     finally:

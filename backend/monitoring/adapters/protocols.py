@@ -105,8 +105,14 @@ class AlertFeedStoreProtocol(Protocol):
         """Return one alert by id, or ``None`` when it does not exist."""
         ...
 
-    def acknowledge(self, alert_id: str) -> AlertHistoryRecord | None:
-        """Mark an alert acknowledged and return the updated record; ``None`` if unknown."""
+    def acknowledge(
+        self,
+        alert_id: str,
+        *,
+        knowledge_base_id: str | None = None,
+        actor: str = "system",
+    ) -> AlertHistoryRecord | None:
+        """Mark an alert acknowledged with an audit event; ``None`` if unknown."""
         ...
 
     def assign(

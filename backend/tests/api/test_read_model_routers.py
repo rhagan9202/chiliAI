@@ -228,7 +228,14 @@ def test_acknowledge_alert_returns_scaffold_status() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["status"] == "accepted"
+    payload = response.json()
+    assert payload["status"] == "accepted"
+    assert payload["alert"]["id"] == "alert-001"
+    assert payload["alert"]["status"] == "acknowledged"
+    assert payload["audit_event"]["event_type"] == "status_changed"
+    assert payload["audit_event"]["actor"] == "anonymous"
+    assert payload["audit_event"]["from_status"] == "open"
+    assert payload["audit_event"]["to_status"] == "acknowledged"
 
 
 def test_assign_alert_route_returns_updated_alert_and_audit_event() -> None:
@@ -345,6 +352,58 @@ def test_bulk_alert_status_route_updates_only_valid_scoped_transitions() -> None
     assert payload["rejected_alerts"] == [
         {"alert_id": "alert-002", "reason": "not_found"}
     ]
+
+
+def test_bulk_alert_status_route_reports_invalid_transition_without_audit_event() -> None:
+    app = create_app()
+    store = _seed_alert_store()
+    created_at = utc_now()
+    store.write_alerts(
+        [
+            AlertHistoryRecord(
+                knowledge_base_id="kb-1",
+                alert_id="alert-003",
+                entity_id="provider-777",
+                entity_type="provider",
+                severity="high",
+                status="open",
+                title="Open invalid transition candidate",
+                reasoning="Open alerts cannot move directly to investigating.",
+                metric_name="claims_per_week",
+                created_at=created_at,
+                updated_at=created_at,
+            )
+        ]
+    )
+    app.dependency_overrides[get_alert_feed_store] = lambda: store
+    client = TestClient(app)
+    ack = client.post(
+        "/alerts/alert-001/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
+    assert ack.status_code == 200
+
+    response = client.post(
+        "/alerts/bulk/status",
+        json={
+            "knowledge_base_id": "kb-1",
+            "alert_ids": ["alert-001", "alert-003"],
+            "status": "investigating",
+            "reason": "Supervisor triage.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["id"] for item in payload["updated_alerts"]] == ["alert-001"]
+    assert payload["rejected_alerts"] == [
+        {"alert_id": "alert-003", "reason": "invalid_transition"}
+    ]
+    valid = store.get_alert("alert-001")
+    rejected = store.get_alert("alert-003")
+    assert valid is not None
+    assert valid.triage_history[-1].to_status == "investigating"
+    assert rejected is not None
+    assert rejected.triage_history == []
 
 
 def test_get_alert_detail_refuses_an_alert_from_another_knowledge_base() -> None:

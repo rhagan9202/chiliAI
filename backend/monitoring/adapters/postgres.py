@@ -74,8 +74,15 @@ _ALERT_GET_SCOPED_SQL = f"""
 
 _ALERT_ACK_SQL = f"""
     UPDATE alert_history
-    SET status = 'acknowledged', updated_at = now()
+    SET status = 'acknowledged', updated_at = %s, triage_history = triage_history || %s::jsonb
     WHERE alert_id = %s
+    RETURNING {_ALERT_COLUMNS}
+"""
+
+_ALERT_ACK_SCOPED_SQL = f"""
+    UPDATE alert_history
+    SET status = 'acknowledged', updated_at = %s, triage_history = triage_history || %s::jsonb
+    WHERE knowledge_base_id = %s AND alert_id = %s
     RETURNING {_ALERT_COLUMNS}
 """
 
@@ -321,11 +328,53 @@ class PostgresAlertHistoryStore:
             raise MonitoringSourceError("Failed to read alert history.") from exc
         return None if row is None else _row_to_alert_record(row)
 
-    def acknowledge(self, alert_id: str) -> AlertHistoryRecord | None:
+    def acknowledge(
+        self,
+        alert_id: str,
+        *,
+        knowledge_base_id: str | None = None,
+        actor: str = "system",
+    ) -> AlertHistoryRecord | None:
         try:
             with self._provider.connection() as conn:
-                row = conn.execute(_ALERT_ACK_SQL, (alert_id,)).fetchone()
+                existing = conn.execute(
+                    _ALERT_GET_SCOPED_SQL
+                    if knowledge_base_id is not None
+                    else _ALERT_GET_SQL,
+                    (knowledge_base_id, alert_id)
+                    if knowledge_base_id is not None
+                    else (alert_id,),
+                ).fetchone()
+                if existing is None:
+                    return None
+                record = _row_to_alert_record(existing)
+                validate_alert_transition(record.status, "acknowledged")
+                event = AlertTriageEvent(
+                    event_type="status_changed",
+                    actor=actor,
+                    from_status=record.status,
+                    to_status="acknowledged",
+                )
+                row = conn.execute(
+                    _ALERT_ACK_SCOPED_SQL
+                    if knowledge_base_id is not None
+                    else _ALERT_ACK_SQL,
+                    (
+                        event.occurred_at,
+                        _encode_triage_history([event]),
+                        knowledge_base_id,
+                        alert_id,
+                    )
+                    if knowledge_base_id is not None
+                    else (
+                        event.occurred_at,
+                        _encode_triage_history([event]),
+                        alert_id,
+                    ),
+                ).fetchone()
                 conn.commit()
+        except AlertLifecycleError:
+            raise
         except Exception as exc:
             raise MonitoringSourceError("Failed to acknowledge alert.") from exc
         return None if row is None else _row_to_alert_record(row)

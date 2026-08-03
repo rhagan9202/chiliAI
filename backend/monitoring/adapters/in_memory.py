@@ -178,11 +178,32 @@ class InMemoryAlertHistoryWriter:
                 return record
         return None
 
-    def acknowledge(self, alert_id: str) -> AlertHistoryRecord | None:
+    def acknowledge(
+        self,
+        alert_id: str,
+        *,
+        knowledge_base_id: str | None = None,
+        actor: str = "system",
+    ) -> AlertHistoryRecord | None:
         for key, record in self._records.items():
-            if record.alert_id == alert_id:
+            if record.alert_id == alert_id and (
+                knowledge_base_id is None or record.knowledge_base_id == knowledge_base_id
+            ):
+                validate_alert_transition(record.status, "acknowledged")
+                now = utc_now()
+                event = AlertTriageEvent(
+                    event_type="status_changed",
+                    actor=actor,
+                    occurred_at=now,
+                    from_status=record.status,
+                    to_status="acknowledged",
+                )
                 updated = record.model_copy(
-                    update={"status": "acknowledged", "updated_at": utc_now()}
+                    update={
+                        "status": "acknowledged",
+                        "updated_at": now,
+                        "triage_history": [*record.triage_history, event],
+                    }
                 )
                 self._records[key] = updated
                 return updated

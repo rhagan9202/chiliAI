@@ -98,7 +98,7 @@ export interface paths {
         put?: never;
         /**
          * Acknowledge Alert
-         * @description Acknowledge an alert; returns an ApiEnvelope status receipt.
+         * @description Acknowledge an alert; returns the updated row and audit receipt.
          */
         post: operations["acknowledge_alert_alerts__alert_id__acknowledge_post"];
         delete?: never;
@@ -1866,19 +1866,6 @@ export interface components {
             high_risk_entities: number;
             /** Open Cases */
             open_cases: number;
-        };
-        /**
-         * ApiEnvelope
-         * @description Common status envelope for simple mutation responses.
-         */
-        ApiEnvelope: {
-            /** Message */
-            message: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "accepted" | "ok";
         };
         /**
          * ApplyPackRequest
@@ -5799,7 +5786,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiEnvelope"];
+                    "application/json": components["schemas"]["AlertOperationResponse"];
                 };
             };
             /** @description Validation Error */

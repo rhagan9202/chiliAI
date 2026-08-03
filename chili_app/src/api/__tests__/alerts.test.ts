@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { apiFetch, apiPatch, apiPost } from '../client'
 import {
+  acknowledgeAlert,
   alertDetailQueryKey,
   alertListQueryKey,
   alertsQueryKey,
@@ -16,6 +17,7 @@ import {
   useBulkUpdateAlertStatus,
   useUpdateAlertStatus,
 } from '../alerts'
+import type { AlertBulkStatusUpdateResponse, AlertOperationResponse } from '../contracts'
 
 vi.mock('../client', () => ({
   apiFetch: vi.fn(),
@@ -77,10 +79,24 @@ describe('alerts api', () => {
   })
 
   it('serializes assignment and status mutation payloads', async () => {
-    apiPatchMock.mockResolvedValue({ status: 'accepted' })
+    const operationResponse = {
+      status: 'accepted',
+      alert: { id: 'alert-1' },
+      audit_event: { event_type: 'status_changed' },
+    } as AlertOperationResponse
+    apiPatchMock.mockResolvedValue(operationResponse)
 
-    await assignAlert('alert-1', 'kb-1', 'maya.patel@example.com')
-    await updateAlertStatus('alert-1', 'kb-1', 'investigating', 'Confirmed.')
+    const assignment: AlertOperationResponse = await assignAlert(
+      'alert-1',
+      'kb-1',
+      'maya.patel@example.com',
+    )
+    const transition: AlertOperationResponse = await updateAlertStatus(
+      'alert-1',
+      'kb-1',
+      'investigating',
+      'Confirmed.',
+    )
 
     expect(apiPatchMock).toHaveBeenNthCalledWith(1, '/alerts/alert-1/assignment', {
       knowledge_base_id: 'kb-1',
@@ -91,12 +107,24 @@ describe('alerts api', () => {
       status: 'investigating',
       reason: 'Confirmed.',
     })
+    expect(assignment.audit_event).toEqual({ event_type: 'status_changed' })
+    expect(transition.audit_event).toEqual({ event_type: 'status_changed' })
   })
 
   it('serializes bulk status mutation payloads', async () => {
-    apiPostMock.mockResolvedValue({ status: 'accepted' })
+    const bulkResponse = {
+      status: 'accepted',
+      updated_alerts: [{ id: 'alert-1' }],
+      rejected_alerts: [{ alert_id: 'alert-2', reason: 'invalid_transition' }],
+    } as AlertBulkStatusUpdateResponse
+    apiPostMock.mockResolvedValue(bulkResponse)
 
-    await bulkUpdateAlertStatus('kb-1', ['alert-1', 'alert-2'], 'dismissed', 'Duplicate.')
+    const response: AlertBulkStatusUpdateResponse = await bulkUpdateAlertStatus(
+      'kb-1',
+      ['alert-1', 'alert-2'],
+      'dismissed',
+      'Duplicate.',
+    )
 
     expect(apiPostMock).toHaveBeenCalledWith('/alerts/bulk/status', {
       knowledge_base_id: 'kb-1',
@@ -104,6 +132,28 @@ describe('alerts api', () => {
       status: 'dismissed',
       reason: 'Duplicate.',
     })
+    expect(response.rejected_alerts).toEqual([
+      { alert_id: 'alert-2', reason: 'invalid_transition' },
+    ])
+  })
+
+  it('exposes acknowledge audit receipts from the legacy route', async () => {
+    const operationResponse = {
+      status: 'accepted',
+      alert: { id: 'alert-1' },
+      audit_event: {
+        event_type: 'status_changed',
+        actor: 'anonymous',
+        from_status: 'open',
+        to_status: 'acknowledged',
+      },
+    } as AlertOperationResponse
+    apiPostMock.mockResolvedValue(operationResponse)
+
+    const response: AlertOperationResponse = await acknowledgeAlert('alert-1', 'kb-1')
+
+    expect(apiPostMock).toHaveBeenCalledWith('/alerts/alert-1/acknowledge?knowledge_base_id=kb-1', {})
+    expect(response.audit_event.to_status).toBe('acknowledged')
   })
 
   it('invalidates every alert query family after triage mutations', async () => {

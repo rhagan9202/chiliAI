@@ -639,29 +639,6 @@
         "title": "AnalyticsOverviewResponse",
         "type": "object"
       },
-      "ApiEnvelope": {
-        "description": "Common status envelope for simple mutation responses.",
-        "properties": {
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "accepted",
-              "ok"
-            ],
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status",
-          "message"
-        ],
-        "title": "ApiEnvelope",
-        "type": "object"
-      },
       "ApplyPackRequest": {
         "description": "Input for ``POST /config/apply``.\n\nOmit ``pack`` (or send ``{}``) to re-apply the currently active pack \u2014\nthe re-validate-and-swap path after editing the active pack in place.",
         "properties": {
@@ -8937,7 +8914,7 @@
     },
     "/alerts/{alert_id}/acknowledge": {
       "post": {
-        "description": "Acknowledge an alert; returns an ApiEnvelope status receipt.",
+        "description": "Acknowledge an alert; returns the updated row and audit receipt.",
         "operationId": "acknowledge_alert_alerts__alert_id__acknowledge_post",
         "parameters": [
           {
@@ -8969,7 +8946,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiEnvelope"
+                  "$ref": "#/components/schemas/AlertOperationResponse"
                 }
               }
             },

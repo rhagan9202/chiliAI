@@ -6,7 +6,6 @@ type RequireFields<T, K extends keyof T> = T & {
 }
 type OptionalFields<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
 
-export type ApiEnvelope = Schemas['ApiEnvelope']
 export type PageInfo = Schemas['PageInfo']
 
 export type AlertSeverity = Schemas['AlertListItem']['severity']
@@ -16,6 +15,11 @@ export type AlertListResponse = RequireFields<Schemas['AlertListResponse'], 'ite
 export type AlertDetailResponse = RequireFields<
   Schemas['AlertDetailResponse'],
   'policy_citations' | 'related_entity_ids'
+>
+export type AlertOperationResponse = Schemas['AlertOperationResponse']
+export type AlertBulkStatusUpdateResponse = RequireFields<
+  Schemas['AlertBulkStatusUpdateResponse'],
+  'rejected_alerts' | 'updated_alerts'
 >
 
 export type PolicyCitation = Schemas['PolicyCitation']

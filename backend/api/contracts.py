@@ -10,13 +10,6 @@ from pydantic import BaseModel, Field
 from config.schema import CapabilitiesConfig, UiRoleConfig
 
 
-class ApiEnvelope(BaseModel):
-    """Common status envelope for simple mutation responses."""
-
-    status: Literal["accepted", "ok"]
-    message: str
-
-
 class PageInfo(BaseModel):
     """Pagination metadata for collection responses."""
 
@@ -1198,7 +1191,6 @@ __all__ = [
     "AlertTriageEventResponse",
     "AnalystFeedbackResponse",
     "AnalyticsOverviewResponse",
-    "ApiEnvelope",
     "CaseCreateRequest",
     "CaseDetailResponse",
     "CaseFeedbackCreateRequest",

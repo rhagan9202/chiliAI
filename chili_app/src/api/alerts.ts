@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiFetch, apiPatch, apiPost } from './client'
-import type { AlertDetailResponse, AlertListResponse, AlertStatus, ApiEnvelope } from './contracts'
+import type {
+  AlertBulkStatusUpdateResponse,
+  AlertDetailResponse,
+  AlertListResponse,
+  AlertOperationResponse,
+  AlertStatus,
+} from './contracts'
 
 export const alertsQueryKey = ['alerts'] as const
 
@@ -78,9 +84,9 @@ export function getAlert(alertId: string, knowledgeBaseId: string): Promise<Aler
 export function acknowledgeAlert(
   alertId: string,
   knowledgeBaseId: string,
-): Promise<ApiEnvelope> {
+): Promise<AlertOperationResponse> {
   const params = new URLSearchParams({ knowledge_base_id: knowledgeBaseId })
-  return apiPost<ApiEnvelope, Record<string, never>>(
+  return apiPost<AlertOperationResponse, Record<string, never>>(
     `/alerts/${encodeURIComponent(alertId)}/acknowledge?${params}`,
     {},
   )
@@ -90,8 +96,8 @@ export function assignAlert(
   alertId: string,
   knowledgeBaseId: string,
   assignee: string | null,
-): Promise<ApiEnvelope> {
-  return apiPatch<ApiEnvelope, { knowledge_base_id: string; assignee: string | null }>(
+): Promise<AlertOperationResponse> {
+  return apiPatch<AlertOperationResponse, { knowledge_base_id: string; assignee: string | null }>(
     `/alerts/${encodeURIComponent(alertId)}/assignment`,
     { knowledge_base_id: knowledgeBaseId, assignee },
   )
@@ -102,8 +108,8 @@ export function updateAlertStatus(
   knowledgeBaseId: string,
   status: AlertStatus,
   reason?: string,
-): Promise<ApiEnvelope> {
-  return apiPatch<ApiEnvelope, { knowledge_base_id: string; status: AlertStatus; reason?: string }>(
+): Promise<AlertOperationResponse> {
+  return apiPatch<AlertOperationResponse, { knowledge_base_id: string; status: AlertStatus; reason?: string }>(
     `/alerts/${encodeURIComponent(alertId)}/status`,
     { knowledge_base_id: knowledgeBaseId, status, ...(reason ? { reason } : {}) },
   )
@@ -114,8 +120,8 @@ export function bulkUpdateAlertStatus(
   alertIds: string[],
   status: AlertStatus,
   reason?: string,
-): Promise<ApiEnvelope> {
-  return apiPost<ApiEnvelope, {
+): Promise<AlertBulkStatusUpdateResponse> {
+  return apiPost<AlertBulkStatusUpdateResponse, {
     knowledge_base_id: string
     alert_ids: string[]
     status: AlertStatus
