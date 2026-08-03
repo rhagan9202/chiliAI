@@ -428,6 +428,13 @@ def test_case_dossier_includes_evidence_feedback_and_export_metadata() -> None:
         extra=[_second_alert_record()],
         evidence_repository=evidence_repository,
     )
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    cast(FastAPI, client.app).state.audit_log_service = audit_service
+    cast(FastAPI, client.app).dependency_overrides[get_current_user] = lambda: User(
+        user_id="analyst-42",
+        roles=["analyst"],
+        email="analyst42@example.test",
+    )
     kb = {"knowledge_base_id": "kb-1"}
     promoted = client.post("/cases/promote", params=kb, json={"alert_id": "alert-001"})
     assert promoted.status_code == 200
@@ -464,6 +471,17 @@ def test_case_dossier_includes_evidence_feedback_and_export_metadata() -> None:
     assert payload["entity_timeline"][0]["label"] == "alert_raised"
     assert payload["entity_timeline"][-1]["label"] == "Alert attached"
     assert payload["feedback_history"][0]["notes"] == "Need invoice before referral."
+    assert [event["action"] for event in payload["audit_events"]] == [
+        "case.feedback.create",
+        "case.alert.attach",
+        "case.promote",
+    ]
+    assert {event["actor_user_id"] for event in payload["audit_events"]} == {
+        "analyst-42"
+    }
+    assert payload["audit_events"][0]["resource_type"] == "case"
+    assert payload["audit_events"][0]["resource_id"] == case_id
+    assert "Need invoice before referral." not in json.dumps(payload["audit_events"])
     assert payload["export"]["formats"] == ["markdown", "json"]
     assert payload["export"]["default_filename"] == f"case-{case_id}.md"
 
@@ -485,6 +503,13 @@ def test_case_dossier_export_renders_markdown_and_json() -> None:
         ),
     )
     client = _client_with_alert_history(evidence_repository=evidence_repository)
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    cast(FastAPI, client.app).state.audit_log_service = audit_service
+    cast(FastAPI, client.app).dependency_overrides[get_current_user] = lambda: User(
+        user_id="analyst-42",
+        roles=["analyst"],
+        email="analyst42@example.test",
+    )
     kb = {"knowledge_base_id": "kb-1"}
     promoted = client.post("/cases/promote", params=kb, json={"alert_id": "alert-001"})
     assert promoted.status_code == 200
@@ -519,6 +544,9 @@ def test_case_dossier_export_renders_markdown_and_json() -> None:
     assert "evidence-001#source:0" in markdown_payload["content"]
     assert "/knowledgebases/kb-1/documents/source-doc/preview" in markdown_payload["content"]
     assert "Evidence is ready for supervisor review." in markdown_payload["content"]
+    assert "## Audit Trail" in markdown_payload["content"]
+    assert "case.feedback.create" in markdown_payload["content"]
+    assert "case.promote" in markdown_payload["content"]
 
     exported_json = client.get(
         f"/cases/{case_id}/dossier/export",
@@ -531,6 +559,13 @@ def test_case_dossier_export_renders_markdown_and_json() -> None:
     assert exported_content["case"]["id"] == case_id
     assert exported_content["evidence_packs"][0]["provenance"][0]["label"] == (
         "Origin claim source"
+    )
+    assert [event["action"] for event in exported_content["audit_events"]] == [
+        "case.feedback.create",
+        "case.promote",
+    ]
+    assert "Evidence is ready for supervisor review." not in json.dumps(
+        exported_content["audit_events"]
     )
 
 

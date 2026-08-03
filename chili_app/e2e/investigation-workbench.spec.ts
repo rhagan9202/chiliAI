@@ -96,15 +96,17 @@ test.describe('Investigation workbench', () => {
     const dossier = page.getByTestId('entity-dossier-header')
     await expect(dossier).toBeVisible()
 
-    // `entity_type_code: { display: "Entity Type Code" }` in the active pack.
-    // `organization_name` is deliberately absent: it is the configured title,
-    // so the header renders it and the property list does not repeat it.
-    await expect(dossier.getByText('Entity Type Code', { exact: true })).toBeVisible()
+    // `state: { display: "State" }` in the active pack. `name` and `specialty`
+    // are deliberately absent from the property list because they render as
+    // the configured title/subtitle in the header.
+    await expect(dossier.getByText('State', { exact: true })).toBeVisible()
+    await expect(dossier.getByText('Redwood DME Group', { exact: true })).toBeVisible()
+    await expect(dossier.getByText('Provider · specialty-1', { exact: true })).toBeVisible()
 
     // Everything past the leading fields waits behind one control, rather than
     // being silently truncated to four alphabetical keys.
     await page.getByRole('button', { name: /^Show all \d+ properties$/ }).click()
-    await expect(dossier.getByText('Primary Taxonomy', { exact: true })).toBeVisible()
+    await expect(dossier.getByText('NPI', { exact: true })).toBeVisible()
 
     // No raw key survives anywhere in the dossier, and `date` properties are
     // formatted rather than echoed as ISO strings.

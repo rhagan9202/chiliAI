@@ -158,9 +158,27 @@ SAFE-CMS-009 adds an immutable audit ledger for material analyst, system, and ag
 - Modify: investigation cockpit page/components as needed.
 - Create/modify Vitest and Playwright coverage.
 
-- [ ] Add compact audit timeline panels in the case dossier and cockpit.
-- [ ] Include audit slices in exports without leaking secrets.
-- [ ] Verify browser flow and frontend build.
+- [x] Add compact audit timeline panels in the case dossier and cockpit.
+- [x] Include audit slices in exports without leaking secrets.
+- [x] Verify browser flow and frontend build.
+
+**Notes:**
+- Dossier/export slice complete: case dossier payloads now include the latest case-scoped audit events, Markdown/JSON exports include audit provenance, and audit serialization exposes action/actor/outcome metadata without raw analyst notes.
+- Case Management and Investigation Workbench now render compact audit trail panels from the dossier projection; the cockpit panel is gated by validated explicit case context.
+- RED:
+  - `uv run --project backend pytest backend/tests/api/test_phase5_stateful_routes.py::test_case_dossier_includes_evidence_feedback_and_export_metadata backend/tests/api/test_phase5_stateful_routes.py::test_case_dossier_export_renders_markdown_and_json`: failed with missing `audit_events` and missing Markdown `## Audit Trail`.
+  - `npx vitest run src/pages/__tests__/CaseManagementPage.test.tsx -t "renders a case dossier with evidence, chronology, decisions, and export actions"`: failed because the dossier UI did not render `Audit trail`.
+  - `npx vitest run src/pages/__tests__/InvestigationWorkbenchPage.test.tsx -t "renders a compact redacted audit trail for the explicit cockpit case"`: failed because the workbench never called `useCaseDossier`.
+- Browser verification initially exposed stale e2e drift: `e2e/investigation-workbench.spec.ts` still asserted retired `entity_type_code`/`Primary Taxonomy` labels even though the active `medicare_fraud.yaml` provider shape is `NPI`, `Provider Name`, `Specialty`, and `State`; the spec now asserts the current live config labels.
+- GREEN:
+  - `uv run --project backend pytest backend/tests/api/test_phase5_stateful_routes.py::test_case_dossier_includes_evidence_feedback_and_export_metadata backend/tests/api/test_phase5_stateful_routes.py::test_case_dossier_export_renders_markdown_and_json backend/tests/api/test_audit_router.py`: 6 passed.
+  - `uv run --project backend ruff check backend/api/contracts.py backend/api/dependencies.py backend/tests/api/test_phase5_stateful_routes.py`: passed.
+  - `uv run --project backend pyright backend/api/contracts.py backend/api/dependencies.py backend/tests/api/test_phase5_stateful_routes.py`: 0 errors.
+  - `npx vitest run src/pages/__tests__/CaseManagementPage.test.tsx src/pages/__tests__/InvestigationWorkbenchPage.test.tsx`: 53 passed.
+  - `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json`: passed.
+  - `npm run codegen:api`: passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
+  - `pnpm exec playwright test e2e/case-dossier.spec.ts e2e/investigation-workbench.spec.ts`: 9 passed against the real dev stack; e2e teardown deleted its seeded KB, then the temporary compose stack and volumes were stopped/removed.
 
 ## Review Gates
 

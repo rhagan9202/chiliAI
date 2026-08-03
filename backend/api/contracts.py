@@ -651,6 +651,9 @@ class CaseDossierResponse(BaseModel):
         default_factory=lambda: cast(list[CaseTimelineEventResponse], [])
     )
     feedback_history: list[AnalystFeedbackResponse] = Field(default_factory=lambda: cast(list[AnalystFeedbackResponse], []))
+    audit_events: list[AuditEventResponse] = Field(
+        default_factory=lambda: cast(list[AuditEventResponse], [])
+    )
     export: CaseDossierExportMetadataResponse
 
 

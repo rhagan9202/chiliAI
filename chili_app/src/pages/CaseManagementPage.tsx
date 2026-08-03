@@ -89,7 +89,7 @@ function exportFormatLabel(format: EvidenceExportFormat): string {
 }
 
 function humanizeCaseLabel(label: string): string {
-  return label.replace(/_/g, ' ')
+  return label.replace(/[._]/g, ' ')
 }
 
 function CaseDossierSummary({ dossier }: { dossier: CaseDossierResponse }) {
@@ -144,6 +144,23 @@ function CaseDossierSummary({ dossier }: { dossier: CaseDossierResponse }) {
           ))
         ) : (
           <EmptyState description="No analyst decisions are attached to this dossier." title="No decisions" />
+        )}
+      </div>
+
+      <div className="metric-stack">
+        <strong>Audit trail</strong>
+        {dossier.audit_events.length > 0 ? (
+          dossier.audit_events.map((event) => (
+            <div className="metric-row metric-row--stacked" key={event.event_id}>
+              <strong>{humanizeCaseLabel(event.action)}</strong>
+              <span className="metric-row__label">{event.actor_email ?? event.actor_user_id}</span>
+              <span className="metric-row__label">
+                {new Date(event.occurred_at).toLocaleString()} · {event.outcome}
+              </span>
+            </div>
+          ))
+        ) : (
+          <EmptyState description="No audit events are attached to this dossier." title="No audit events" />
         )}
       </div>
     </>

@@ -2277,6 +2277,8 @@ export interface components {
         CaseDossierResponse: {
             /** Alerts */
             alerts?: components["schemas"]["AlertListItem"][];
+            /** Audit Events */
+            audit_events?: components["schemas"]["AuditEventResponse"][];
             case: components["schemas"]["CaseSummaryResponse"];
             /** Entity Timeline */
             entity_timeline?: components["schemas"]["CaseTimelineEventResponse"][];

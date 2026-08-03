@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useCallback, useMemo, useState } from 'react'
 
 import type {
+  AuditEventResponse,
   DomainConfig,
   EntityFeatureValueResponse,
   FeatureCatalogResponse,
@@ -12,7 +13,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { useAlerts } from '../api/alerts'
 import { useGnnClusters, useRiskScore, useTimeseries } from '../api/analytics'
-import { useCase } from '../api/cases'
+import { useCase, useCaseDossier } from '../api/cases'
 import { useDomainConfig, useDomainFeatures } from '../api/config'
 import { useEvidencePack } from '../api/evidence'
 import { useEntityFeatureValues, useFeatureCatalog } from '../api/features'
@@ -195,6 +196,58 @@ function CockpitOverview({
   )
 }
 
+function formatAuditAction(action: string): string {
+  return action.replace(/[._]/g, ' ')
+}
+
+function auditActorLabel(event: AuditEventResponse): string {
+  return event.actor_email ?? event.actor_user_id
+}
+
+function CockpitAuditTrail({
+  caseId,
+  events,
+  isError,
+  isLoading,
+}: {
+  caseId: string | null
+  events: AuditEventResponse[]
+  isError: boolean
+  isLoading: boolean
+}) {
+  if (!caseId) {
+    return null
+  }
+
+  return (
+    <Card compact>
+      <div aria-label="Cockpit audit trail" className="metric-stack" role="group">
+        <div className="metric-row">
+          <strong>Audit trail</strong>
+          <span className="metric-row__label">Case ledger</span>
+        </div>
+        {isLoading ? <LoadingState label="Loading case audit trail" /> : null}
+        {isError ? <ErrorState description="The case audit trail could not be loaded." /> : null}
+        {!isLoading && !isError && events.length === 0 ? (
+          <EmptyState description="No case audit events have been recorded yet." title="No audit events" />
+        ) : null}
+        {!isLoading && !isError && events.length > 0 ? (
+          <div className="knowledge-base-documents">
+            {events.slice(0, 5).map((event) => (
+              <div className="metric-row metric-row--stacked" key={event.event_id}>
+                <strong>{formatAuditAction(event.action)}</strong>
+                <span className="metric-row__label">{auditActorLabel(event)}</span>
+                <span className="metric-row__label">{new Date(event.occurred_at).toLocaleString()}</span>
+                <span className="metric-row__label">{event.outcome}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </Card>
+  )
+}
+
 type CockpitContextSummary = {
   featureLabel: string | null
   normalizedValue: string | null
@@ -318,6 +371,7 @@ export function InvestigationWorkbenchPage() {
 
   const alertsQuery = useAlerts({ knowledgeBaseId: activeKnowledgeBaseId ?? undefined })
   const caseQuery = useCase(activeKnowledgeBaseId, requestedCaseId)
+  const caseDossierQuery = useCaseDossier(activeKnowledgeBaseId, requestedCaseId)
   const searchQuery = useInvestigationEntitySearch(activeKnowledgeBaseId, searchTerm)
   const entityQuery = useInvestigationEntity(activeKnowledgeBaseId, selectedEntityId)
   const neighborhoodQuery = useInvestigationNeighborhood(activeKnowledgeBaseId, selectedEntityId, depth)
@@ -696,6 +750,13 @@ export function InvestigationWorkbenchPage() {
                   </div>
                 </div>
               </Card>
+
+              <CockpitAuditTrail
+                caseId={ragCaseId}
+                events={caseDossierQuery.data?.audit_events ?? []}
+                isError={caseDossierQuery.isError}
+                isLoading={caseDossierQuery.isLoading}
+              />
 
               {tabs.length > 1 ? (
                 <div className="page-toolbar">

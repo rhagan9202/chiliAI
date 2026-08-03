@@ -918,6 +918,7 @@ def _assemble_case_dossier(
     *,
     evidence_repository: EvidencePackRepository,
     alert_store: AlertFeedStoreProtocol,
+    audit_service: AuditLogService,
 ) -> CaseDossierResponse:
     alerts = _linked_case_alerts(case, alert_store=alert_store)
     evidence_packs: list[EvidencePackResponse] = []
@@ -925,12 +926,23 @@ def _assemble_case_dossier(
         pack = evidence_repository.get(case.knowledge_base_id, evidence_pack_id)
         if pack is not None:
             evidence_packs.append(_evidence_pack_to_response(pack))
+    audit_page = audit_service.list_events(
+        AuditEventQuery(
+            tenant_id=case.knowledge_base_id,
+            knowledge_base_id=case.knowledge_base_id,
+            resource_type="case",
+            resource_id=case.id,
+            limit=25,
+            offset=0,
+        )
+    )
     return CaseDossierResponse(
         case=_case_to_summary(case),
         alerts=alerts,
         evidence_packs=evidence_packs,
         entity_timeline=_case_timeline_to_response(case),
         feedback_history=_case_feedback_to_response(case),
+        audit_events=[_audit_event_to_response(event) for event in audit_page.items],
         export=CaseDossierExportMetadataResponse(
             default_filename=f"case-{case.id}.md"
         ),
@@ -1001,6 +1013,17 @@ def _render_case_dossier_markdown(dossier: CaseDossierResponse) -> str:
     else:
         lines.append("- None")
 
+    lines.extend(["", "## Audit Trail"])
+    if dossier.audit_events:
+        for event in dossier.audit_events:
+            actor = event.actor_email or event.actor_user_id
+            lines.append(
+                f"- {event.occurred_at.isoformat()} - {event.action} by {actor} "
+                f"({event.outcome})"
+            )
+    else:
+        lines.append("- None")
+
     return "\n".join(lines).strip() + "\n"
 
 
@@ -1046,13 +1069,17 @@ def get_case_dossier_payload(
     service: CaseService = Depends(get_case_service),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
     alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
 ) -> CaseDossierResponse:
     """Return the KB-scoped case dossier projection."""
     case = service.get(knowledge_base_id=knowledge_base_id, case_id=case_id)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found.")
     return _assemble_case_dossier(
-        case, evidence_repository=evidence_repository, alert_store=alert_store
+        case,
+        evidence_repository=evidence_repository,
+        alert_store=alert_store,
+        audit_service=audit_service,
     )
 
 
@@ -1215,13 +1242,17 @@ def get_case_dossier_export_payload(
     service: CaseService = Depends(get_case_service),
     evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
     alert_store: AlertFeedStoreProtocol = Depends(get_alert_feed_store),
+    audit_service: AuditLogService = Depends(get_audit_log_service),
 ) -> CaseDossierExportResponse:
     """Return a portable case dossier rendering."""
     case = service.get(knowledge_base_id=knowledge_base_id, case_id=case_id)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found.")
     dossier = _assemble_case_dossier(
-        case, evidence_repository=evidence_repository, alert_store=alert_store
+        case,
+        evidence_repository=evidence_repository,
+        alert_store=alert_store,
+        audit_service=audit_service,
     )
     if export_format == "json":
         content = dossier.model_dump_json(indent=2)

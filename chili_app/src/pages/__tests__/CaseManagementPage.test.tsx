@@ -223,6 +223,42 @@ describe('CaseManagementPage', () => {
             submitted_at: '2026-05-12T00:00:00Z',
           },
         ],
+        audit_events: [
+          {
+            event_id: 'audit-feedback',
+            occurred_at: '2026-05-12T00:03:00Z',
+            tenant_id: 'kb-1',
+            knowledge_base_id: 'kb-1',
+            actor_user_id: 'analyst-42',
+            actor_email: 'analyst42@example.test',
+            actor_roles: ['analyst'],
+            action: 'case.feedback.create',
+            resource_type: 'case',
+            resource_id: 'case-1',
+            before: { feedback_count: 0 },
+            after: { feedback_count: 1, label: 'insufficient_evidence' },
+            correlation_id: 'cases:kb-1:case.feedback.create:case-1',
+            outcome: 'success',
+            metadata: { source: 'api.cases' },
+          },
+          {
+            event_id: 'audit-promote',
+            occurred_at: '2026-05-12T00:01:00Z',
+            tenant_id: 'kb-1',
+            knowledge_base_id: 'kb-1',
+            actor_user_id: 'analyst-42',
+            actor_email: 'analyst42@example.test',
+            actor_roles: ['analyst'],
+            action: 'case.promote',
+            resource_type: 'case',
+            resource_id: 'case-1',
+            before: null,
+            after: { status: 'open', priority: 'critical' },
+            correlation_id: 'cases:kb-1:case.promote:case-1',
+            outcome: 'success',
+            metadata: { source: 'api.cases' },
+          },
+        ],
         export: { formats: ['markdown', 'json'], default_filename: 'case-case-1.md' },
       },
     })
@@ -388,6 +424,10 @@ describe('CaseManagementPage', () => {
     expect(within(dossier).getByText('Origin claim source')).toBeInTheDocument()
     expect(within(dossier).getByText('Chronology')).toBeInTheDocument()
     expect(within(dossier).getByText('Decisions')).toBeInTheDocument()
+    expect(within(dossier).getByText('Audit trail')).toBeInTheDocument()
+    expect(within(dossier).getByText('case feedback create')).toBeInTheDocument()
+    expect(within(dossier).getByText('case promote')).toBeInTheDocument()
+    expect(within(dossier).getAllByText('analyst42@example.test')).toHaveLength(2)
     expect(within(dossier).getByRole('button', { name: 'Export dossier Markdown' })).toBeInTheDocument()
     expect(within(dossier).getByRole('button', { name: 'Export dossier JSON' })).toBeInTheDocument()
   })

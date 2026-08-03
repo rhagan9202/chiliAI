@@ -1345,6 +1345,13 @@
             "title": "Alerts",
             "type": "array"
           },
+          "audit_events": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEventResponse"
+            },
+            "title": "Audit Events",
+            "type": "array"
+          },
           "case": {
             "$ref": "#/components/schemas/CaseSummaryResponse"
           },

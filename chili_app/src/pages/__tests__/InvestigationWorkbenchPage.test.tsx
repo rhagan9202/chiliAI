@@ -14,6 +14,7 @@ import type {
   FeatureCatalogResponse,
   RiskFactorResponse,
   RuntimeEntity,
+  CaseDossierResponse,
 } from '../../api/contracts'
 import { InvestigationWorkbenchPage } from '../InvestigationWorkbenchPage'
 
@@ -47,6 +48,7 @@ const mocks = vi.hoisted(() => ({
   }>,
   useAlerts: vi.fn(),
   useCase: vi.fn(),
+  useCaseDossier: vi.fn(),
   evidencePacks: {} as Record<string, EvidencePackResponse>,
   searchItems: [] as RuntimeEntity[],
   selectedEntity: null as RuntimeEntity | null,
@@ -196,6 +198,7 @@ vi.mock('../../api/alerts', () => ({
 
 vi.mock('../../api/cases', () => ({
   useCase: mocks.useCase,
+  useCaseDossier: mocks.useCaseDossier,
 }))
 
 vi.mock('../../api/analytics', () => ({
@@ -335,6 +338,63 @@ function evidencePack(id: string, alertId: string, reasoning: string): EvidenceP
   }
 }
 
+function cockpitCaseDossier(): CaseDossierResponse {
+  return {
+    case: {
+      id: 'case-1',
+      knowledge_base_id: 'kb-live',
+      title: 'Case #1',
+      status: 'open',
+      priority: 'high',
+      assignee: null,
+      alert_ids: ['alert-live'],
+      evidence_pack_id: 'evidence-live',
+      updated_at: '2026-08-02T12:00:00Z',
+    },
+    alerts: [],
+    entity_timeline: [],
+    feedback_history: [],
+    evidence_packs: [],
+    audit_events: [
+      {
+        event_id: 'audit-feedback',
+        occurred_at: '2026-08-02T12:10:00Z',
+        tenant_id: 'kb-live',
+        knowledge_base_id: 'kb-live',
+        actor_user_id: 'analyst-42',
+        actor_email: 'analyst42@example.test',
+        actor_roles: ['analyst'],
+        action: 'case.feedback.create',
+        resource_type: 'case',
+        resource_id: 'case-1',
+        before: { feedback_count: 0 },
+        after: { feedback_count: 1, notes: 'Escalation note with sensitive detail.' },
+        correlation_id: 'cases:kb-live:case.feedback.create:case-1',
+        outcome: 'success',
+        metadata: { source: 'api.cases' },
+      },
+      {
+        event_id: 'audit-promote',
+        occurred_at: '2026-08-02T12:00:00Z',
+        tenant_id: 'kb-live',
+        knowledge_base_id: 'kb-live',
+        actor_user_id: 'analyst-42',
+        actor_email: 'analyst42@example.test',
+        actor_roles: ['analyst'],
+        action: 'case.promote',
+        resource_type: 'case',
+        resource_id: 'case-1',
+        before: null,
+        after: { status: 'open', priority: 'high' },
+        correlation_id: 'cases:kb-live:case.promote:case-1',
+        outcome: 'success',
+        metadata: { source: 'api.cases' },
+      },
+    ],
+    export: { formats: ['markdown', 'json'], default_filename: 'case-case-1.md' },
+  }
+}
+
 describe('InvestigationWorkbenchPage', () => {
   beforeEach(() => {
     // The active knowledge base is remembered across pages; reset it so one
@@ -345,6 +405,7 @@ describe('InvestigationWorkbenchPage', () => {
     mocks.alerts = []
     mocks.useAlerts.mockReset()
     mocks.useCase.mockReset()
+    mocks.useCaseDossier.mockReset()
     mocks.evidencePacks = {}
     mocks.useAlerts.mockImplementation((filters?: { knowledgeBaseId?: string }) => {
       const items = filters?.knowledgeBaseId
@@ -357,6 +418,11 @@ describe('InvestigationWorkbenchPage', () => {
       }
     })
     mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: undefined,
+    })
+    mocks.useCaseDossier.mockReturnValue({
       isLoading: false,
       isError: false,
       data: undefined,
@@ -725,6 +791,46 @@ describe('InvestigationWorkbenchPage', () => {
 
     expect(screen.getByText('Explicit cockpit evidence.')).toBeInTheDocument()
     expect(screen.queryByText('Fallback evidence.')).not.toBeInTheDocument()
+  })
+
+  it('renders a compact redacted audit trail for the explicit cockpit case', () => {
+    selectLiveProvider()
+    mocks.alerts = [
+      {
+        id: 'alert-live',
+        entity_id: 'provider-204',
+        knowledge_base_id: 'kb-live',
+        severity: 'high',
+        evidence_pack_id: 'evidence-live',
+      },
+    ]
+    mocks.useCase.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        case: cockpitCaseDossier().case,
+        alerts: [],
+        entity_timeline: [],
+        feedback_history: [],
+        evidence_pack: null,
+      },
+    })
+    mocks.useCaseDossier.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: cockpitCaseDossier(),
+    })
+
+    renderInvestigationWorkbench('/investigation/provider-204?kb=kb-live&alert=alert-live&case=case-1')
+
+    expect(mocks.useCaseDossier).toHaveBeenCalledWith('kb-live', 'case-1')
+    const auditTrail = screen.getByRole('group', { name: 'Cockpit audit trail' })
+    expect(within(auditTrail).getByText('Audit trail')).toBeInTheDocument()
+    expect(within(auditTrail).getByText('case feedback create')).toBeInTheDocument()
+    expect(within(auditTrail).getByText('case promote')).toBeInTheDocument()
+    expect(within(auditTrail).getAllByText('analyst42@example.test')).toHaveLength(2)
+    expect(within(auditTrail).getAllByText('success')).toHaveLength(2)
+    expect(screen.queryByText('Escalation note with sensitive detail.')).not.toBeInTheDocument()
   })
 
   it('renders cockpit actions only for validated alert, case, and evidence context', async () => {

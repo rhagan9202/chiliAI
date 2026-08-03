@@ -84,6 +84,7 @@ export type EvidenceAdequacy = Schemas['AnalystFeedbackResponse']['evidence_adeq
 export type CaseSummaryResponse = RequireFields<Schemas['CaseSummaryResponse'], 'alert_ids'>
 export type CaseListResponse = RequireFields<Schemas['CaseListResponse'], 'items'>
 export type CaseTimelineEventResponse = Schemas['CaseTimelineEventResponse']
+export type AuditEventResponse = Schemas['AuditEventResponse']
 export type AnalystFeedbackResponse = RequireFields<
   Schemas['AnalystFeedbackResponse'],
   'missing_evidence'
@@ -94,7 +95,7 @@ export type CaseDetailResponse = RequireFields<
 >
 export type CaseDossierResponse = RequireFields<
   Schemas['CaseDossierResponse'],
-  'alerts' | 'evidence_packs' | 'entity_timeline' | 'feedback_history'
+  'alerts' | 'audit_events' | 'evidence_packs' | 'entity_timeline' | 'feedback_history'
 >
 export type CaseDossierExportResponse = Schemas['CaseDossierExportResponse']
 export type CaseCreateRequest = Schemas['CaseCreateRequest']
