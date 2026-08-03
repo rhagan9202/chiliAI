@@ -158,11 +158,38 @@
   - `pnpm exec eslint src/api/analytics.ts src/api/contracts.ts src/api/__tests__/analytics.test.ts src/components/analytics/PeerComparisonPanel.tsx src/pages/InvestigationWorkbenchPage.tsx src/pages/__tests__/InvestigationWorkbenchPage.test.tsx`: passed.
   - `pnpm test:e2e e2e/layout-overflow.spec.ts`: initially failed at 1600px on Alert Feed header overflow; after CSS fix, 5 passed.
 
+## Task 6: Workflow Capability Integration
+
+**Files:**
+- Create: `backend/analytics/peerstats/capability.py`
+- Modify: `backend/analytics/peerstats/__init__.py`
+- Add capability tests
+
+- [x] Expose peer analysis behind a stable workflow capability id.
+- [x] Validate KB/entity/metric inputs through a service-boundary model.
+- [x] Gate execution on `DomainConfig.capabilities.peer_stats`.
+- [x] Keep the adapter domain-neutral and callable without CMS-specific imports.
+
+**Notes:**
+- Added `analytics.peer_analysis` as a peer-analysis capability adapter around `PeerAnalysisService`.
+- Capability metadata exposes the required domain capability (`peer_stats`) and input/output model names for later registry/workflow tooling.
+- `PeerAnalysisCapabilityRegistry.execute(...)` accepts validated model input or mapping payloads and returns the existing `PeerAnalysisResponse`.
+- Domains without peerstats get `PeerAnalysisCapabilityDisabledError` before any analysis call.
+- RED:
+  - `uv run --project backend pytest backend/tests/analytics/peerstats/test_peer_analysis_capability.py -q` failed with `ModuleNotFoundError: No module named 'analytics.peerstats.capability'`.
+  - Package-boundary export test failed with `ImportError: cannot import name 'create_peer_analysis_capability_registry' from 'analytics.peerstats'`.
+- GREEN:
+  - `uv run --project backend pytest backend/tests/analytics/peerstats/test_peer_analysis_capability.py -q`: 3 passed.
+  - `uv run --project backend pytest backend/tests/analytics/peerstats/test_peer_analysis.py backend/tests/analytics/peerstats/test_peer_analysis_capability.py backend/tests/analytics/peerstats/test_in_memory_adapters.py backend/tests/analytics/peerstats/test_postgres_adapters.py -q`: 19 passed.
+  - `uv run --project backend ruff check backend/analytics/peerstats/__init__.py backend/analytics/peerstats/capability.py backend/tests/analytics/peerstats/test_peer_analysis_capability.py`: passed.
+  - `uv run --project backend pyright backend/analytics/peerstats/__init__.py backend/analytics/peerstats/capability.py backend/tests/analytics/peerstats/test_peer_analysis_capability.py`: 0 errors.
+
 ## Review Gates
 
 - Review after Task 2 before adding domain-pack cohort definitions.
 - Review after Task 4 before frontend widgets.
 - Review after Task 5 before backlog closeout.
+- Review after Task 6 before SAFE-CMS-011 closeout.
 
 ## Definition Of Done
 
