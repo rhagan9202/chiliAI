@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -89,6 +90,18 @@ class AlertGroup(BaseModel):
     correlation_reason: str
 
 
+class AlertTriageEvent(BaseModel):
+    """Auditable event appended when an alert's queue state changes."""
+
+    event_type: Literal["assigned", "status_changed"]
+    actor: str
+    occurred_at: datetime = Field(default_factory=utc_now)
+    assignee: str | None = None
+    from_status: str | None = None
+    to_status: str | None = None
+    reason: str | None = None
+
+
 class AlertHistoryRecord(BaseModel):
     """A row in ``alert_history`` — the sole backing store for ``/alerts`` (alerts.36)."""
 
@@ -107,12 +120,17 @@ class AlertHistoryRecord(BaseModel):
     entity_label: str = ""
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     tags: list[str] = Field(default_factory=lambda: list[str]())
+    assignee: str | None = None
+    triage_history: list[AlertTriageEvent] = Field(
+        default_factory=lambda: list[AlertTriageEvent]()
+    )
 
 
 __all__ = [
     "AlertCandidate",
     "AlertGroup",
     "AlertHistoryRecord",
+    "AlertTriageEvent",
     "MonitoringBatch",
     "MonitoringObservation",
     "SuppressionRule",

@@ -14,9 +14,16 @@ from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
 from api.contracts import (
     AnalystFeedbackResponse,
     AnalyticsOverviewResponse,
+    AlertAssignmentRequest,
+    AlertBulkRejection,
+    AlertBulkStatusUpdateRequest,
+    AlertBulkStatusUpdateResponse,
     AlertDetailResponse,
     AlertListItem,
     AlertListResponse,
+    AlertOperationResponse,
+    AlertStatusUpdateRequest,
+    AlertTriageEventResponse,
     ApiEnvelope,
     CaseCreateRequest,
     CaseDetailResponse,
@@ -199,7 +206,8 @@ from monitoring.adapters.protocols import (
     ObservationSourceProtocol,
     ObservationWriter,
 )
-from monitoring.models import AlertHistoryRecord
+from monitoring.exceptions import AlertLifecycleError
+from monitoring.models import AlertHistoryRecord, AlertTriageEvent
 from monitoring.protocols import MonitoringServiceProtocol
 from monitoring.service import create_monitoring_service
 from database.protocols import ConnectionProvider
@@ -687,6 +695,21 @@ def _alert_record_to_list_item(record: AlertHistoryRecord) -> AlertListItem:
         created_at=record.created_at,
         updated_at=record.updated_at,
         tags=list(record.tags),
+        assignee=record.assignee,
+    )
+
+
+def _alert_triage_event_to_response(
+    event: AlertTriageEvent,
+) -> AlertTriageEventResponse:
+    return AlertTriageEventResponse(
+        event_type=event.event_type,
+        actor=event.actor,
+        occurred_at=event.occurred_at,
+        assignee=event.assignee,
+        from_status=event.from_status,
+        to_status=event.to_status,
+        reason=event.reason,
     )
 
 
@@ -2269,6 +2292,121 @@ def get_alert_acknowledge_payload(
     return ApiEnvelope(
         status="accepted",
         message=f"Alert '{updated.alert_id}' is now {updated.status}.",
+    )
+
+
+def _latest_alert_triage_event(record: AlertHistoryRecord) -> AlertTriageEvent:
+    if not record.triage_history:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Alert '{record.alert_id}' mutation did not record an audit event.",
+        )
+    return record.triage_history[-1]
+
+
+def build_alert_assignment_payload(
+    *,
+    alert_id: str,
+    payload: AlertAssignmentRequest,
+    store: AlertFeedStoreProtocol,
+    actor: str,
+) -> AlertOperationResponse:
+    """Assign one scoped alert and return its updated row plus audit receipt."""
+    _require_kb_scoped_alert_record(store, alert_id, payload.knowledge_base_id)
+    updated = store.assign(
+        alert_id,
+        knowledge_base_id=payload.knowledge_base_id,
+        assignee=payload.assignee,
+        actor=actor,
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=404, detail=f"Alert '{alert_id}' was not found."
+        )
+    event = _latest_alert_triage_event(updated)
+    return AlertOperationResponse(
+        status="accepted",
+        message=f"Alert '{updated.alert_id}' is assigned.",
+        alert=_alert_record_to_list_item(updated),
+        audit_event=_alert_triage_event_to_response(event),
+    )
+
+
+def build_alert_status_update_payload(
+    *,
+    alert_id: str,
+    payload: AlertStatusUpdateRequest,
+    store: AlertFeedStoreProtocol,
+    actor: str,
+) -> AlertOperationResponse:
+    """Transition one scoped alert and return its updated row plus audit receipt."""
+    _require_kb_scoped_alert_record(store, alert_id, payload.knowledge_base_id)
+    try:
+        updated = store.transition_status(
+            alert_id,
+            knowledge_base_id=payload.knowledge_base_id,
+            status=payload.status,
+            actor=actor,
+            reason=payload.reason,
+        )
+    except AlertLifecycleError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if updated is None:
+        raise HTTPException(
+            status_code=404, detail=f"Alert '{alert_id}' was not found."
+        )
+    event = _latest_alert_triage_event(updated)
+    return AlertOperationResponse(
+        status="accepted",
+        message=f"Alert '{updated.alert_id}' is now {updated.status}.",
+        alert=_alert_record_to_list_item(updated),
+        audit_event=_alert_triage_event_to_response(event),
+    )
+
+
+def build_alert_bulk_status_update_payload(
+    *,
+    payload: AlertBulkStatusUpdateRequest,
+    store: AlertFeedStoreProtocol,
+    actor: str,
+) -> AlertBulkStatusUpdateResponse:
+    """Transition each selected scoped alert where the lifecycle allows it."""
+    updated_alerts: list[AlertListItem] = []
+    rejected_alerts: list[AlertBulkRejection] = []
+    for alert_id in payload.alert_ids:
+        record = store.get_alert(alert_id)
+        if record is None or record.knowledge_base_id != payload.knowledge_base_id:
+            rejected_alerts.append(
+                AlertBulkRejection(alert_id=alert_id, reason="not_found")
+            )
+            continue
+        try:
+            updated = store.transition_status(
+                alert_id,
+                knowledge_base_id=payload.knowledge_base_id,
+                status=payload.status,
+                actor=actor,
+                reason=payload.reason,
+            )
+        except AlertLifecycleError:
+            rejected_alerts.append(
+                AlertBulkRejection(alert_id=alert_id, reason="invalid_transition")
+            )
+            continue
+        if updated is None:
+            rejected_alerts.append(
+                AlertBulkRejection(alert_id=alert_id, reason="not_found")
+            )
+            continue
+        updated_alerts.append(_alert_record_to_list_item(updated))
+    return AlertBulkStatusUpdateResponse(
+        status="accepted",
+        message=(
+            f"Updated {len(updated_alerts)} alert"
+            f"{'' if len(updated_alerts) == 1 else 's'}."
+        ),
+        updated_alerts=updated_alerts,
+        rejected_alerts=rejected_alerts,
     )
 
 

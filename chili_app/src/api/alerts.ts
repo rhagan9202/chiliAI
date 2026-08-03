@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { apiFetch, apiPost } from './client'
-import type { AlertDetailResponse, AlertListResponse, ApiEnvelope } from './contracts'
+import { apiFetch, apiPatch, apiPost } from './client'
+import type { AlertDetailResponse, AlertListResponse, AlertStatus, ApiEnvelope } from './contracts'
 
 export const alertsQueryKey = ['alerts'] as const
 
@@ -86,6 +86,48 @@ export function acknowledgeAlert(
   )
 }
 
+export function assignAlert(
+  alertId: string,
+  knowledgeBaseId: string,
+  assignee: string | null,
+): Promise<ApiEnvelope> {
+  return apiPatch<ApiEnvelope, { knowledge_base_id: string; assignee: string | null }>(
+    `/alerts/${encodeURIComponent(alertId)}/assignment`,
+    { knowledge_base_id: knowledgeBaseId, assignee },
+  )
+}
+
+export function updateAlertStatus(
+  alertId: string,
+  knowledgeBaseId: string,
+  status: AlertStatus,
+  reason?: string,
+): Promise<ApiEnvelope> {
+  return apiPatch<ApiEnvelope, { knowledge_base_id: string; status: AlertStatus; reason?: string }>(
+    `/alerts/${encodeURIComponent(alertId)}/status`,
+    { knowledge_base_id: knowledgeBaseId, status, ...(reason ? { reason } : {}) },
+  )
+}
+
+export function bulkUpdateAlertStatus(
+  knowledgeBaseId: string,
+  alertIds: string[],
+  status: AlertStatus,
+  reason?: string,
+): Promise<ApiEnvelope> {
+  return apiPost<ApiEnvelope, {
+    knowledge_base_id: string
+    alert_ids: string[]
+    status: AlertStatus
+    reason?: string
+  }>('/alerts/bulk/status', {
+    knowledge_base_id: knowledgeBaseId,
+    alert_ids: alertIds,
+    status,
+    ...(reason ? { reason } : {}),
+  })
+}
+
 export function useAlerts(filters: AlertFeedFilters = {}) {
   return useQuery({
     queryKey: alertListQueryKey(filters),
@@ -112,6 +154,67 @@ export function useAcknowledgeAlert() {
       alertId: string
       knowledgeBaseId: string
     }) => acknowledgeAlert(alertId, knowledgeBaseId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: alertsQueryKey })
+    },
+  })
+}
+
+export function useAssignAlert() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      alertId,
+      knowledgeBaseId,
+      assignee,
+    }: {
+      alertId: string
+      knowledgeBaseId: string
+      assignee: string | null
+    }) => assignAlert(alertId, knowledgeBaseId, assignee),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: alertsQueryKey })
+    },
+  })
+}
+
+export function useUpdateAlertStatus() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      alertId,
+      knowledgeBaseId,
+      status,
+      reason,
+    }: {
+      alertId: string
+      knowledgeBaseId: string
+      status: AlertStatus
+      reason?: string
+    }) => updateAlertStatus(alertId, knowledgeBaseId, status, reason),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: alertsQueryKey })
+    },
+  })
+}
+
+export function useBulkUpdateAlertStatus() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      knowledgeBaseId,
+      alertIds,
+      status,
+      reason,
+    }: {
+      knowledgeBaseId: string
+      alertIds: string[]
+      status: AlertStatus
+      reason?: string
+    }) => bulkUpdateAlertStatus(knowledgeBaseId, alertIds, status, reason),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: alertsQueryKey })
     },

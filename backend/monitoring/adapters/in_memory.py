@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from monitoring.lifecycle import validate_alert_transition
 from monitoring.models import AlertHistoryRecord, MonitoringBatch
+from monitoring.models import AlertTriageEvent
 from shared.types import Alert
 from shared.utils import utc_now
 
@@ -185,6 +187,68 @@ class InMemoryAlertHistoryWriter:
                 self._records[key] = updated
                 return updated
         return None
+
+    def assign(
+        self,
+        alert_id: str,
+        *,
+        knowledge_base_id: str,
+        assignee: str | None,
+        actor: str,
+    ) -> AlertHistoryRecord | None:
+        key = (knowledge_base_id, alert_id)
+        record = self._records.get(key)
+        if record is None:
+            return None
+        now = utc_now()
+        event = AlertTriageEvent(
+            event_type="assigned",
+            actor=actor,
+            occurred_at=now,
+            assignee=assignee,
+        )
+        updated = record.model_copy(
+            update={
+                "assignee": assignee,
+                "updated_at": now,
+                "triage_history": [*record.triage_history, event],
+            }
+        )
+        self._records[key] = updated
+        return updated
+
+    def transition_status(
+        self,
+        alert_id: str,
+        *,
+        knowledge_base_id: str,
+        status: str,
+        actor: str,
+        reason: str | None = None,
+    ) -> AlertHistoryRecord | None:
+        key = (knowledge_base_id, alert_id)
+        record = self._records.get(key)
+        if record is None:
+            return None
+        validate_alert_transition(record.status, status)
+        now = utc_now()
+        event = AlertTriageEvent(
+            event_type="status_changed",
+            actor=actor,
+            occurred_at=now,
+            from_status=record.status,
+            to_status=status,
+            reason=reason,
+        )
+        updated = record.model_copy(
+            update={
+                "status": status,
+                "updated_at": now,
+                "triage_history": [*record.triage_history, event],
+            }
+        )
+        self._records[key] = updated
+        return updated
 
     def count_by_statuses(self, statuses: set[str]) -> int:
         return sum(

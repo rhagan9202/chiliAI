@@ -109,6 +109,29 @@ class AlertFeedStoreProtocol(Protocol):
         """Mark an alert acknowledged and return the updated record; ``None`` if unknown."""
         ...
 
+    def assign(
+        self,
+        alert_id: str,
+        *,
+        knowledge_base_id: str,
+        assignee: str | None,
+        actor: str,
+    ) -> AlertHistoryRecord | None:
+        """Assign an alert within a KB scope; ``None`` when the scoped alert is unknown."""
+        ...
+
+    def transition_status(
+        self,
+        alert_id: str,
+        *,
+        knowledge_base_id: str,
+        status: str,
+        actor: str,
+        reason: str | None = None,
+    ) -> AlertHistoryRecord | None:
+        """Apply a valid lifecycle transition within a KB scope."""
+        ...
+
     def count_by_statuses(self, statuses: set[str]) -> int:
         """Return how many alerts (across all knowledge bases) match one of ``statuses``."""
         ...

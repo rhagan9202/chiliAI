@@ -231,6 +231,122 @@ def test_acknowledge_alert_returns_scaffold_status() -> None:
     assert response.json()["status"] == "accepted"
 
 
+def test_assign_alert_route_returns_updated_alert_and_audit_event() -> None:
+    client = _client_with_alerts()
+
+    response = client.patch(
+        "/alerts/alert-001/assignment",
+        json={"knowledge_base_id": "kb-1", "assignee": "maya.patel@example.com"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "accepted"
+    assert payload["alert"]["id"] == "alert-001"
+    assert payload["alert"]["assignee"] == "maya.patel@example.com"
+    assert payload["audit_event"]["event_type"] == "assigned"
+    assert payload["audit_event"]["actor"] == "anonymous"
+    assert payload["audit_event"]["assignee"] == "maya.patel@example.com"
+
+
+def test_update_alert_status_route_enforces_valid_transitions() -> None:
+    client = _client_with_alerts()
+
+    response = client.patch(
+        "/alerts/alert-001/status",
+        json={
+            "knowledge_base_id": "kb-1",
+            "status": "resolved",
+            "reason": "Skipping investigation is invalid.",
+        },
+    )
+
+    assert response.status_code == 409
+
+
+def test_update_alert_status_route_returns_updated_alert_and_audit_event() -> None:
+    client = _client_with_alerts()
+    ack = client.post(
+        "/alerts/alert-001/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
+    assert ack.status_code == 200
+
+    response = client.patch(
+        "/alerts/alert-001/status",
+        json={
+            "knowledge_base_id": "kb-1",
+            "status": "investigating",
+            "reason": "Confirmed peer deviation.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["alert"]["status"] == "investigating"
+    assert payload["audit_event"]["event_type"] == "status_changed"
+    assert payload["audit_event"]["actor"] == "anonymous"
+    assert payload["audit_event"]["from_status"] == "acknowledged"
+    assert payload["audit_event"]["to_status"] == "investigating"
+    assert payload["audit_event"]["reason"] == "Confirmed peer deviation."
+
+
+def test_alert_triage_mutations_require_knowledge_base_scope() -> None:
+    client = _client_with_alerts()
+
+    assign = client.patch(
+        "/alerts/alert-001/assignment",
+        json={"assignee": "maya.patel@example.com"},
+    )
+    transition = client.patch(
+        "/alerts/alert-001/status",
+        json={"status": "dismissed"},
+    )
+
+    assert assign.status_code == 422
+    assert transition.status_code == 422
+
+
+def test_alert_triage_mutations_refuse_an_alert_from_another_knowledge_base() -> None:
+    client = _client_with_alerts()
+
+    assign = client.patch(
+        "/alerts/alert-002/assignment",
+        json={"knowledge_base_id": "kb-1", "assignee": "maya.patel@example.com"},
+    )
+    transition = client.patch(
+        "/alerts/alert-002/status",
+        json={"knowledge_base_id": "kb-1", "status": "dismissed"},
+    )
+
+    assert assign.status_code == 404
+    assert transition.status_code == 404
+
+
+def test_bulk_alert_status_route_updates_only_valid_scoped_transitions() -> None:
+    client = _client_with_alerts()
+    ack = client.post(
+        "/alerts/alert-001/acknowledge", params={"knowledge_base_id": "kb-1"}
+    )
+    assert ack.status_code == 200
+
+    response = client.post(
+        "/alerts/bulk/status",
+        json={
+            "knowledge_base_id": "kb-1",
+            "alert_ids": ["alert-001", "alert-002"],
+            "status": "investigating",
+            "reason": "Supervisor triage.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["id"] for item in payload["updated_alerts"]] == ["alert-001"]
+    assert payload["rejected_alerts"] == [
+        {"alert_id": "alert-002", "reason": "not_found"}
+    ]
+
+
 def test_get_alert_detail_refuses_an_alert_from_another_knowledge_base() -> None:
     """Reading an alert by id must not cross a KB boundary.
 

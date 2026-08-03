@@ -268,6 +268,66 @@ def test_get_and_acknowledge_alert(database_url: str) -> None:
         provider.close()
 
 
+def test_assign_and_transition_alert_status(database_url: str) -> None:
+    kb_id = "kb-alert-triage-test"
+    provider = create_connection_provider(DatabaseConfig(backend="postgres"))
+    assert provider is not None
+    store = PostgresAlertHistoryStore(provider)
+    try:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+
+        record = AlertHistoryRecord(
+            knowledge_base_id=kb_id,
+            alert_id="a-triage-1",
+            entity_id="claim:c1",
+            entity_type="claim",
+            severity="high",
+            status="acknowledged",
+            title="Anomalous claim",
+            reasoning="score exceeded threshold",
+            metric_name="claim_anomaly",
+        )
+        store.write_alerts([record])
+
+        assigned = store.assign(
+            "a-triage-1",
+            knowledge_base_id=kb_id,
+            assignee="maya.patel@example.com",
+            actor="supervisor@example.com",
+        )
+        assert assigned is not None
+        assert assigned.assignee == "maya.patel@example.com"
+        assert assigned.triage_history[-1].event_type == "assigned"
+
+        transitioned = store.transition_status(
+            "a-triage-1",
+            knowledge_base_id=kb_id,
+            status="investigating",
+            actor="analyst@example.com",
+            reason="Confirmed peer deviation.",
+        )
+        assert transitioned is not None
+        assert transitioned.status == "investigating"
+        assert transitioned.assignee == "maya.patel@example.com"
+        assert [event.event_type for event in transitioned.triage_history] == [
+            "assigned",
+            "status_changed",
+        ]
+        assert transitioned.triage_history[-1].from_status == "acknowledged"
+        assert transitioned.triage_history[-1].to_status == "investigating"
+    finally:
+        with provider.connection() as conn:
+            conn.execute(
+                "DELETE FROM alert_history WHERE knowledge_base_id = %s", (kb_id,)
+            )
+            conn.commit()
+        provider.close()
+
+
 def test_count_by_statuses(database_url: str) -> None:
     kb_id = "kb-alert-count-test"
     provider = create_connection_provider(DatabaseConfig(backend="postgres"))

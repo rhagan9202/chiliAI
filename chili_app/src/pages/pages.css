@@ -640,6 +640,19 @@
   flex-shrink: 0;
 }
 
+.alert-row-card__triage-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  max-width: 360px;
+}
+
+.alert-row-card__triage-controls .page-input--inline {
+  min-width: 112px;
+  max-width: 180px;
+}
+
 .alert-row-card__reasoning {
   overflow: hidden;
   text-overflow: ellipsis;

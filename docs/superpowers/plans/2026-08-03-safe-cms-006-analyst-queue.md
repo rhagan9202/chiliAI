@@ -128,10 +128,50 @@ Task 2 notes:
 - Modify: alert history model/store/router and frontend mutations.
 - Test: backend route/store tests and alert feed mutation tests.
 
-- [ ] Add auditable single-alert assignment and status transition operations.
-- [ ] Add confirmed bulk status changes beyond acknowledge only where transitions are valid.
-- [ ] Show assignee and aging/SLA risk in the queue for supervisors.
-- [ ] Invalidate the same alert query families used by realtime updates.
+- [x] Add auditable single-alert assignment and status transition operations.
+- [x] Add confirmed bulk status changes beyond acknowledge only where transitions are valid.
+- [x] Show assignee and aging/SLA risk in the queue for supervisors.
+- [x] Invalidate the same alert query families used by realtime updates.
+
+Task 3 notes:
+
+- Added durable alert assignment and triage audit fields to `AlertHistoryRecord`,
+  the Postgres migration chain, and the clean-install schema snapshot.
+- Centralized alert lifecycle validation in `monitoring.lifecycle` so the existing
+  monitoring service and new alert-history mutations share one transition table.
+- Added KB-scoped store operations for assignment and status transitions. In-memory
+  and Postgres adapters update by `(knowledge_base_id, alert_id)` for new mutation
+  paths, append typed audit events with server-derived actors, and reject invalid
+  lifecycle transitions without writing partial single-alert changes.
+- Added `PATCH /alerts/{id}/assignment`, `PATCH /alerts/{id}/status`, and
+  `POST /alerts/bulk/status`, with route coverage for audit receipts, missing KB
+  validation, wrong-KB refusal, invalid-transition `409`, and bulk skipped-row
+  reporting.
+- Added frontend alert mutations and hooks for assignment, single status, and bulk
+  status updates. Each invalidates `alertsQueryKey`, matching realtime and
+  acknowledge cache refresh behavior.
+- `AlertFeedPage` now prefers durable alert-level assignee over case-derived fallback,
+  shows row assignment controls, gates single-row status options to valid next
+  transitions, and confirms bulk status updates grouped by alert KB.
+- Focused red/green verification:
+  - Initial store tests failed on missing `assign` and `transition_status` methods.
+  - Initial route tests failed with `404` for missing assignment/status/bulk routes.
+  - Initial frontend API/page tests failed on missing mutation functions, hooks, and
+    row/bulk controls.
+  - After implementation, focused backend store/API/Postgres and frontend API/page
+    tests passed.
+- Verification passed:
+  - `backend/.venv/bin/python -m pytest backend/tests/monitoring/test_alert_history_writer.py backend/tests/monitoring/test_service.py::test_transition_allows_valid_transitions backend/tests/monitoring/test_service.py::test_transition_to_resolved_records_actor_and_notes -q`: 29 passed.
+  - `backend/.venv/bin/python -m pytest backend/tests/monitoring/test_postgres_alert_history.py -q`: 7 passed against local Docker Postgres after `docker compose -f docker-compose.dev.yaml up -d --wait postgres` and Alembic upgrade.
+  - `backend/.venv/bin/python -m pytest backend/tests/api/test_read_model_routers.py::test_assign_alert_route_returns_updated_alert_and_audit_event backend/tests/api/test_read_model_routers.py::test_update_alert_status_route_enforces_valid_transitions backend/tests/api/test_read_model_routers.py::test_update_alert_status_route_returns_updated_alert_and_audit_event backend/tests/api/test_read_model_routers.py::test_alert_triage_mutations_require_knowledge_base_scope backend/tests/api/test_read_model_routers.py::test_alert_triage_mutations_refuse_an_alert_from_another_knowledge_base backend/tests/api/test_read_model_routers.py::test_bulk_alert_status_route_updates_only_valid_scoped_transitions -q`: 6 passed outside the command sandbox.
+  - `backend/.venv/bin/ruff check ...`: passed on touched backend files.
+  - `backend/.venv/bin/pyright --project backend ...`: 0 errors.
+  - `pnpm exec vitest run src/api/__tests__/alerts.test.ts src/pages/__tests__/AlertFeedPage.test.tsx src/utils/__tests__/alertFilters.test.ts`: 65 passed.
+  - `pnpm exec eslint ...`: passed on touched frontend files.
+  - `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json`: passed.
+  - `npm run codegen:api` from `chili_app/`: passed.
+  - `scripts/ci_migration_check.sh`: passed outside the command sandbox; migration replay clean and schema matched `backend/database/migrations/snapshots/head.sql`.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
 
 ## Task 4: Suppression, Dedup, And Final Browser Flow
 

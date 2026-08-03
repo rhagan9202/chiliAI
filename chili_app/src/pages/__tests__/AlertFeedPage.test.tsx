@@ -10,7 +10,10 @@ import { AlertFeedPage } from '../AlertFeedPage'
 
 const mocks = vi.hoisted(() => ({
   acknowledge: vi.fn(),
+  assign: vi.fn(),
+  bulkStatus: vi.fn(),
   promoteAlertToCase: vi.fn(),
+  updateStatus: vi.fn(),
   attachAlertToCase: vi.fn(),
   useAlerts: vi.fn(),
   useCases: vi.fn(),
@@ -59,7 +62,10 @@ const domainConfig: DomainConfig = {
 
 vi.mock('../../api/alerts', () => ({
   useAcknowledgeAlert: () => ({ isPending: false, mutate: mocks.acknowledge }),
+  useAssignAlert: () => ({ isPending: false, mutate: mocks.assign }),
   useAlerts: mocks.useAlerts,
+  useBulkUpdateAlertStatus: () => ({ isPending: false, mutate: mocks.bulkStatus }),
+  useUpdateAlertStatus: () => ({ isPending: false, mutate: mocks.updateStatus }),
 }))
 
 vi.mock('../../api/cases', () => ({
@@ -133,6 +139,7 @@ const alertResponse = {
       created_at: '2026-05-12T00:00:00Z',
       updated_at: '2026-08-01T12:00:00Z',
       tags: ['billing', 'peer-deviation'],
+      assignee: null,
     },
     {
       id: 'alert-2',
@@ -149,6 +156,7 @@ const alertResponse = {
       created_at: '2026-05-12T00:00:00Z',
       updated_at: '2026-06-01T12:00:00Z',
       tags: ['network'],
+      assignee: null,
     },
   ],
   page: { page: 1, page_size: 2, total_items: 2 },
@@ -176,7 +184,10 @@ function LocationProbe({ onChange }: { onChange: (location: string) => void }) {
 describe('AlertFeedPage', () => {
   beforeEach(() => {
     mocks.acknowledge.mockReset()
+    mocks.assign.mockReset()
+    mocks.bulkStatus.mockReset()
     mocks.promoteAlertToCase.mockReset()
+    mocks.updateStatus.mockReset()
     mocks.useAlerts.mockReset()
     mocks.useCases.mockReset()
     mocks.useAlerts.mockImplementation(
@@ -388,6 +399,96 @@ describe('AlertFeedPage', () => {
     expect(screen.getByText('Maya Patel')).toBeInTheDocument()
     expect(screen.getByText('Case investigating')).toBeInTheDocument()
     expect(screen.getByText('Fresh score')).toBeInTheDocument()
+  })
+
+  it('prefers durable alert assignee over case-derived assignment', () => {
+    mocks.useAlerts.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        ...alertResponse,
+        items: [
+          {
+            ...alertResponse.items[0],
+            assignee: 'Durable Analyst',
+          },
+        ],
+        page: { page: 1, page_size: 1, total_items: 1 },
+      },
+    })
+    mocks.useCases.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        items: [
+          {
+            id: 'case-redwood',
+            knowledge_base_id: 'kb-redwood',
+            title: 'Redwood DME Group escalation',
+            status: 'investigating',
+            priority: 'critical',
+            assignee: 'Maya Patel',
+            alert_ids: ['alert-1'],
+            updated_at: '2026-08-01T12:00:00Z',
+          },
+        ],
+        page: { page: 1, page_size: 1, total_items: 1 },
+      },
+    })
+
+    renderAlertFeed()
+
+    expect(screen.getByText('Durable Analyst')).toBeInTheDocument()
+    expect(screen.queryByText('Maya Patel')).not.toBeInTheDocument()
+  })
+
+  it('assigns a row from the persisted queue controls', () => {
+    renderAlertFeed()
+
+    fireEvent.change(screen.getByLabelText('Assignee for Redwood DME Group'), {
+      target: { value: 'maya.patel@example.com' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Assign Redwood DME Group' }))
+
+    expect(mocks.assign).toHaveBeenCalledWith({
+      alertId: 'alert-1',
+      knowledgeBaseId: 'kb-redwood',
+      assignee: 'maya.patel@example.com',
+    })
+  })
+
+  it('transitions a row only through a valid next status option', () => {
+    renderAlertFeed()
+
+    const statusSelect = screen.getByLabelText('Status for North Harbor Imaging')
+    expect(within(statusSelect).queryByRole('option', { name: 'Resolved' })).not.toBeInTheDocument()
+
+    fireEvent.change(statusSelect, { target: { value: 'investigating' } })
+
+    expect(mocks.updateStatus).toHaveBeenCalledWith({
+      alertId: 'alert-2',
+      knowledgeBaseId: 'kb-harbor',
+      status: 'investigating',
+      reason: 'Queue status update.',
+    })
+  })
+
+  it('confirms a selected bulk status transition and sends visible alerts by knowledge base', async () => {
+    renderAlertFeed()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Outlier billing concentration' }))
+    fireEvent.change(screen.getByLabelText('Bulk status'), { target: { value: 'dismissed' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Update 1 alert' }))
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Update status' }),
+    )
+
+    expect(mocks.bulkStatus).toHaveBeenCalledWith({
+      knowledgeBaseId: 'kb-redwood',
+      alertIds: ['alert-1'],
+      status: 'dismissed',
+      reason: 'Bulk queue update.',
+    })
   })
 
   it('links an evidence preview directly to the cockpit evidence state', () => {

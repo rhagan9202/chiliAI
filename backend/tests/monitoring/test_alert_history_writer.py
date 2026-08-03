@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+
+from monitoring.exceptions import AlertLifecycleError
 from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter
 from monitoring.adapters.protocols import AlertHistoryWriter
 from monitoring.models import AlertHistoryRecord
@@ -250,6 +253,75 @@ def test_acknowledge_unknown_alert_returns_none() -> None:
     writer = InMemoryAlertHistoryWriter()
 
     assert writer.acknowledge("missing") is None
+
+
+def test_assign_alert_persists_assignee_and_audit_event() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    writer.write_alerts([_record("a-1", status="open")])
+
+    updated = writer.assign(
+        "a-1",
+        knowledge_base_id="kb-1",
+        assignee="maya.patel@example.com",
+        actor="supervisor@example.com",
+    )
+
+    assert updated is not None
+    assert updated.assignee == "maya.patel@example.com"
+    assert updated.triage_history[-1].event_type == "assigned"
+    assert updated.triage_history[-1].actor == "supervisor@example.com"
+    assert updated.triage_history[-1].assignee == "maya.patel@example.com"
+    assert writer.get_alert("a-1").assignee == "maya.patel@example.com"  # type: ignore[union-attr]
+
+
+def test_assign_alert_is_knowledge_base_scoped() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    writer.write_alerts([_record_for_kb("a-1", knowledge_base_id="kb-2")])
+
+    assert (
+        writer.assign(
+            "a-1",
+            knowledge_base_id="kb-1",
+            assignee="maya.patel@example.com",
+            actor="supervisor@example.com",
+        )
+        is None
+    )
+    assert writer.get_alert("a-1").assignee is None  # type: ignore[union-attr]
+
+
+def test_transition_alert_status_persists_valid_transition_and_audit_event() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    writer.write_alerts([_record("a-1", status="acknowledged")])
+
+    updated = writer.transition_status(
+        "a-1",
+        knowledge_base_id="kb-1",
+        status="investigating",
+        actor="analyst@example.com",
+        reason="Ready for review.",
+    )
+
+    assert updated is not None
+    assert updated.status == "investigating"
+    assert updated.triage_history[-1].event_type == "status_changed"
+    assert updated.triage_history[-1].actor == "analyst@example.com"
+    assert updated.triage_history[-1].from_status == "acknowledged"
+    assert updated.triage_history[-1].to_status == "investigating"
+    assert updated.triage_history[-1].reason == "Ready for review."
+
+
+def test_transition_alert_status_rejects_invalid_transition() -> None:
+    writer = InMemoryAlertHistoryWriter()
+    writer.write_alerts([_record("a-1", status="open")])
+
+    with pytest.raises(AlertLifecycleError):
+        writer.transition_status(
+            "a-1",
+            knowledge_base_id="kb-1",
+            status="resolved",
+            actor="analyst@example.com",
+        )
 
 
 def test_count_by_statuses() -> None:

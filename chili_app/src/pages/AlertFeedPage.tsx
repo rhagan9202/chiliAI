@@ -1,8 +1,15 @@
 import { useCallback, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
-import { useAcknowledgeAlert, useAlerts, type AlertFeedFilters } from '../api/alerts'
-import type { AlertListItem, CaseSummaryResponse, RuntimeEntity } from '../api/contracts'
+import {
+  useAcknowledgeAlert,
+  useAlerts,
+  useAssignAlert,
+  useBulkUpdateAlertStatus,
+  useUpdateAlertStatus,
+  type AlertFeedFilters,
+} from '../api/alerts'
+import type { AlertListItem, AlertStatus, CaseSummaryResponse, RuntimeEntity } from '../api/contracts'
 import type { Entity as ApiEntity } from '../types/api'
 import { useAttachAlertToCase, useCases, usePromoteAlertToCase } from '../api/cases'
 import { useDomainConfig, useDomainFeatures } from '../api/config'
@@ -77,8 +84,17 @@ const EVIDENCE_OPTIONS = [
   { id: 'without_evidence', label: 'Without evidence' },
 ]
 
+const ALERT_STATUS_TRANSITIONS: Record<AlertStatus, AlertStatus[]> = {
+  open: ['acknowledged', 'dismissed'],
+  acknowledged: ['investigating', 'open'],
+  investigating: ['resolved', 'dismissed', 'open'],
+  resolved: ['open'],
+  dismissed: ['open'],
+}
+
 type AlertListRow = Omit<AlertListItem, 'tags'> & {
   tags?: string[]
+  assignee?: string | null
 }
 
 type CaseListRow = Omit<CaseSummaryResponse, 'alert_ids'> & {
@@ -147,6 +163,10 @@ function slaLabel(createdAt: string): string {
   return 'SLA current'
 }
 
+function nextStatusOptions(status: AlertStatus): AlertStatus[] {
+  return [status, ...(ALERT_STATUS_TRANSITIONS[status] ?? [])]
+}
+
 function enrichQueueAlerts(
   alerts: readonly AlertListRow[],
   cases: readonly CaseListRow[],
@@ -157,7 +177,7 @@ function enrichQueueAlerts(
     return {
       ...alert,
       tags: alert.tags ?? [],
-      assignee: caseItem?.assignee ?? null,
+      assignee: alert.assignee ?? caseItem?.assignee ?? null,
       case_id: caseItem?.id ?? null,
       case_state: caseItem?.status ?? null,
       score_freshness: scoreFreshness(alert.updated_at, alert.created_at),
@@ -188,15 +208,20 @@ function backendAlertFilters(
 export function AlertFeedPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const [assignmentDrafts, setAssignmentDrafts] = useState<Record<string, string>>({})
   const [promotedAlertIds, setPromotedAlertIds] = useState<Set<string>>(() => new Set())
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
-  const [pendingBulkAction, setPendingBulkAction] = useState<'acknowledge' | null>(null)
+  const [pendingBulkAction, setPendingBulkAction] = useState<'acknowledge' | 'status' | null>(null)
+  const [bulkStatus, setBulkStatus] = useState<AlertStatus | ''>('')
   const selectedKnowledgeBaseId = searchParams.get('kb')
   const requestedAlertId = searchParams.get('alert')
   const filters = parseAlertFilters(searchParams)
   const alertsQuery = useAlerts(backendAlertFilters(selectedKnowledgeBaseId, filters))
   const casesQuery = useCases(selectedKnowledgeBaseId)
   const acknowledgeMutation = useAcknowledgeAlert()
+  const assignMutation = useAssignAlert()
+  const bulkStatusMutation = useBulkUpdateAlertStatus()
+  const statusMutation = useUpdateAlertStatus()
   const promoteMutation = usePromoteAlertToCase()
   const attachMutation = useAttachAlertToCase(selectedKnowledgeBaseId)
   const domainConfigQuery = useDomainConfig()
@@ -277,6 +302,21 @@ export function AlertFeedPage() {
     setSearchParams(nextSearchParams, { preventScrollReset: true })
   }
 
+  const assignDraftValue = (alert: QueueAlert) =>
+    assignmentDrafts[alert.id] ?? alert.assignee ?? ''
+
+  const setAssignmentDraft = (alertId: string, value: string) =>
+    setAssignmentDrafts((current) => ({ ...current, [alertId]: value }))
+
+  const assignQueueAlert = (alert: QueueAlert) => {
+    const assignee = assignDraftValue(alert).trim()
+    assignMutation.mutate({
+      alertId: alert.id,
+      knowledgeBaseId: alert.knowledge_base_id,
+      assignee: assignee || null,
+    })
+  }
+
   if (alertsQuery.isLoading) {
     return <LoadingState label="Loading alert feed" />
   }
@@ -330,6 +370,31 @@ export function AlertFeedPage() {
       })
     }
     showToast('success', `${describeSelection(selection.size)} — acknowledged.`)
+    setSelectedIds(clearSelection())
+    setPendingBulkAction(null)
+  }
+
+  const runBulkStatusUpdate = () => {
+    if (!bulkStatus) return
+    const byKnowledgeBase = new Map<string, string[]>()
+    const visibleById = new Map(alerts.map((alert) => [alert.id, alert]))
+    for (const alertId of selection) {
+      const alert = visibleById.get(alertId)
+      if (!alert) continue
+      const group = byKnowledgeBase.get(alert.knowledge_base_id) ?? []
+      group.push(alert.id)
+      byKnowledgeBase.set(alert.knowledge_base_id, group)
+    }
+    for (const [knowledgeBaseId, alertIds] of byKnowledgeBase) {
+      bulkStatusMutation.mutate({
+        knowledgeBaseId,
+        alertIds,
+        status: bulkStatus,
+        reason: 'Bulk queue update.',
+      })
+    }
+    showToast('success', `${describeSelection(selection.size)} — status update queued.`)
+    setBulkStatus('')
     setSelectedIds(clearSelection())
     setPendingBulkAction(null)
   }
@@ -529,6 +594,27 @@ export function AlertFeedPage() {
             >
               {`Acknowledge ${countLabel(selection.size, 'alert')}`}
             </button>
+            <select
+              aria-label="Bulk status"
+              className="page-input--inline"
+              onChange={(event) => setBulkStatus(event.target.value as AlertStatus | '')}
+              value={bulkStatus}
+            >
+              <option value="">Bulk status</option>
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <button
+              className="page-button page-button--sm page-button--secondary"
+              disabled={!bulkStatus || bulkStatusMutation.isPending}
+              onClick={() => setPendingBulkAction('status')}
+              type="button"
+            >
+              {`Update ${countLabel(selection.size, 'alert')}`}
+            </button>
             <button
               className="page-button page-button--sm page-button--secondary"
               onClick={() => setSelectedIds(clearSelection())}
@@ -548,6 +634,15 @@ export function AlertFeedPage() {
         onConfirm={runBulkAcknowledge}
         open={pendingBulkAction === 'acknowledge'}
         title={`Acknowledge ${countLabel(selection.size, 'alert')}`}
+      />
+      <ConfirmDialog
+        cancelLabel="Cancel"
+        confirmLabel="Update status"
+        message={`This requests a ${bulkStatus ? queueValueLabel(bulkStatus) : 'status'} transition for ${countLabel(selection.size, 'alert')}. Invalid transitions are skipped by the server.`}
+        onCancel={() => setPendingBulkAction(null)}
+        onConfirm={runBulkStatusUpdate}
+        open={pendingBulkAction === 'status'}
+        title={`Update ${countLabel(selection.size, 'alert')}`}
       />
 
       {alerts.length > 0 ? (
@@ -626,6 +721,47 @@ export function AlertFeedPage() {
                       </div>
                     </div>
                     <div className="alert-row-card__header-actions">
+                      <div className="alert-row-card__triage-controls">
+                        <input
+                          aria-label={`Assignee for ${alert.entity_label}`}
+                          className="page-input--inline"
+                          onChange={(event) => setAssignmentDraft(alert.id, event.target.value)}
+                          placeholder="Assign"
+                          type="text"
+                          value={assignDraftValue(alert)}
+                        />
+                        <button
+                          className="page-button page-button--sm page-button--secondary"
+                          disabled={assignMutation.isPending}
+                          onClick={() => assignQueueAlert(alert)}
+                          type="button"
+                        >
+                          {`Assign ${alert.entity_label}`}
+                        </button>
+                        <select
+                          aria-label={`Status for ${alert.entity_label}`}
+                          className="page-input--inline"
+                          disabled={statusMutation.isPending}
+                          onChange={(event) => {
+                            const status = event.target.value as AlertStatus
+                            if (status !== alert.status) {
+                              statusMutation.mutate({
+                                alertId: alert.id,
+                                knowledgeBaseId: alert.knowledge_base_id,
+                                status,
+                                reason: 'Queue status update.',
+                              })
+                            }
+                          }}
+                          value={alert.status}
+                        >
+                          {nextStatusOptions(alert.status).map((status) => (
+                            <option key={status} value={status}>
+                              {queueValueLabel(status)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                       <Link
                         aria-label={`Investigate ${alert.entity_label}`}
                         className="page-button page-button--sm page-button--primary"

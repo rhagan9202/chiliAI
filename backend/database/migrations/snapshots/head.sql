@@ -15,7 +15,9 @@ CREATE TABLE public.alert_history (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     entity_label text DEFAULT ''::text NOT NULL,
     confidence double precision DEFAULT 0 NOT NULL,
-    tags jsonb DEFAULT '[]'::jsonb NOT NULL
+    tags jsonb DEFAULT '[]'::jsonb NOT NULL,
+    assignee text,
+    triage_history jsonb DEFAULT '[]'::jsonb NOT NULL
 );
 CREATE TABLE public.cases (
     knowledge_base_id text NOT NULL,
@@ -234,6 +236,7 @@ ALTER TABLE ONLY public.timeseries_anomalies
     ADD CONSTRAINT timeseries_anomalies_pkey PRIMARY KEY (knowledge_base_id, entity_id, metric_name, observed_at);
 CREATE INDEX entity_metric_history_observed_at_idx ON public.entity_metric_history USING btree (observed_at DESC);
 CREATE INDEX ix_alert_history_entity ON public.alert_history USING btree (knowledge_base_id, entity_id, created_at DESC);
+CREATE INDEX ix_alert_history_kb_assignee ON public.alert_history USING btree (knowledge_base_id, assignee, updated_at DESC);
 CREATE INDEX ix_cases_status ON public.cases USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX ix_conversations_kb ON public.conversations USING btree (knowledge_base_id, updated_at DESC);
 CREATE INDEX ix_entity_derived_signals_latest ON public.entity_derived_signals USING btree (knowledge_base_id, entity_id, metric_name, computed_at DESC);

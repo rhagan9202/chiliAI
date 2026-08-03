@@ -58,6 +58,136 @@
         "title": "ActivePackState",
         "type": "object"
       },
+      "AlertAssignmentRequest": {
+        "description": "Assign or clear assignment for one KB-scoped alert.",
+        "properties": {
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "knowledge_base_id": {
+            "minLength": 1,
+            "title": "Knowledge Base Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id"
+        ],
+        "title": "AlertAssignmentRequest",
+        "type": "object"
+      },
+      "AlertBulkRejection": {
+        "description": "One alert skipped by a bulk lifecycle mutation.",
+        "properties": {
+          "alert_id": {
+            "title": "Alert Id",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "not_found",
+              "invalid_transition"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alert_id",
+          "reason"
+        ],
+        "title": "AlertBulkRejection",
+        "type": "object"
+      },
+      "AlertBulkStatusUpdateRequest": {
+        "description": "Transition a selected group of KB-scoped alerts where transitions are valid.",
+        "properties": {
+          "alert_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Alert Ids",
+            "type": "array"
+          },
+          "knowledge_base_id": {
+            "minLength": 1,
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "acknowledged",
+              "investigating",
+              "resolved",
+              "dismissed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "alert_ids",
+          "status"
+        ],
+        "title": "AlertBulkStatusUpdateRequest",
+        "type": "object"
+      },
+      "AlertBulkStatusUpdateResponse": {
+        "description": "Response for a bulk alert lifecycle mutation.",
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "rejected_alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertBulkRejection"
+            },
+            "title": "Rejected Alerts",
+            "type": "array"
+          },
+          "status": {
+            "const": "accepted",
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertListItem"
+            },
+            "title": "Updated Alerts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "AlertBulkStatusUpdateResponse",
+        "type": "object"
+      },
       "AlertDetailResponse": {
         "description": "Expanded alert record used by alert and investigation views.",
         "properties": {
@@ -88,6 +218,17 @@
       "AlertListItem": {
         "description": "Summary alert row consumed by the analyst feed.",
         "properties": {
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
           "confidence": {
             "maximum": 1.0,
             "minimum": 0.0,
@@ -207,6 +348,145 @@
           "page"
         ],
         "title": "AlertListResponse",
+        "type": "object"
+      },
+      "AlertOperationResponse": {
+        "description": "Response for one alert queue mutation.",
+        "properties": {
+          "alert": {
+            "$ref": "#/components/schemas/AlertListItem"
+          },
+          "audit_event": {
+            "$ref": "#/components/schemas/AlertTriageEventResponse"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "const": "accepted",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message",
+          "alert",
+          "audit_event"
+        ],
+        "title": "AlertOperationResponse",
+        "type": "object"
+      },
+      "AlertStatusUpdateRequest": {
+        "description": "Transition one KB-scoped alert to a new lifecycle status.",
+        "properties": {
+          "knowledge_base_id": {
+            "minLength": 1,
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "acknowledged",
+              "investigating",
+              "resolved",
+              "dismissed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "status"
+        ],
+        "title": "AlertStatusUpdateRequest",
+        "type": "object"
+      },
+      "AlertTriageEventResponse": {
+        "description": "Audit receipt for an alert assignment or lifecycle transition.",
+        "properties": {
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "event_type": {
+            "enum": [
+              "assigned",
+              "status_changed"
+            ],
+            "title": "Event Type",
+            "type": "string"
+          },
+          "from_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Status"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "to_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Status"
+          }
+        },
+        "required": [
+          "event_type",
+          "actor",
+          "occurred_at"
+        ],
+        "title": "AlertTriageEventResponse",
         "type": "object"
       },
       "AlertsConfig": {
@@ -8556,6 +8836,48 @@
         ]
       }
     },
+    "/alerts/bulk/status": {
+      "post": {
+        "description": "Transition selected KB-scoped alerts and report skipped rows.",
+        "operationId": "update_alert_status_bulk_alerts_bulk_status_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertBulkStatusUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertBulkStatusUpdateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Alert Status Bulk",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
     "/alerts/{alert_id}": {
       "get": {
         "description": "Return one alert detail with related entities and policy citations.",
@@ -8665,6 +8987,116 @@
           }
         },
         "summary": "Acknowledge Alert",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/alerts/{alert_id}/assignment": {
+      "patch": {
+        "description": "Assign or clear one KB-scoped alert and return an audit receipt.",
+        "operationId": "assign_alert_alerts__alert_id__assignment_patch",
+        "parameters": [
+          {
+            "description": "Alert identifier.",
+            "in": "path",
+            "name": "alert_id",
+            "required": true,
+            "schema": {
+              "description": "Alert identifier.",
+              "title": "Alert Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertOperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assign Alert",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/alerts/{alert_id}/status": {
+      "patch": {
+        "description": "Transition one KB-scoped alert and return an audit receipt.",
+        "operationId": "update_alert_status_alerts__alert_id__status_patch",
+        "parameters": [
+          {
+            "description": "Alert identifier.",
+            "in": "path",
+            "name": "alert_id",
+            "required": true,
+            "schema": {
+              "description": "Alert identifier.",
+              "title": "Alert Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertStatusUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertOperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Alert Status",
         "tags": [
           "alerts"
         ]

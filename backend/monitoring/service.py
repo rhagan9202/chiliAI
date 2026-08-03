@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Literal, get_args
-
 from monitoring.adapters.protocols import AlertRepositoryProtocol, ObservationSourceProtocol
 from monitoring.exceptions import (
     AlertAlreadyResolvedError,
@@ -13,6 +11,7 @@ from monitoring.exceptions import (
     MonitoringConfigurationError,
     MonitoringSourceError,
 )
+from monitoring.lifecycle import ALERT_TRANSITIONS, VALID_ALERT_STATUSES
 from monitoring.models import (
     AlertCandidate,
     AlertGroup,
@@ -32,11 +31,6 @@ from shared.types import Alert
 from shared.utils import generate_id, utc_now
 
 
-_AlertStatus = Literal[
-    "open", "acknowledged", "investigating", "resolved", "dismissed"
-]
-_VALID_ALERT_STATUSES: frozenset[str] = frozenset(get_args(_AlertStatus))
-
 # Severity ordering used for rate-limit prioritization (highest first).
 _SEVERITY_ORDER: dict[str, int] = {
     "critical": 4,
@@ -44,16 +38,6 @@ _SEVERITY_ORDER: dict[str, int] = {
     "medium": 2,
     "low": 1,
 }
-
-# Lifecycle state machine — additional "any -> open" reopen edge enforced separately.
-ALERT_TRANSITIONS: dict[str, frozenset[str]] = {
-    "open": frozenset({"acknowledged", "dismissed"}),
-    "acknowledged": frozenset({"investigating", "open"}),
-    "investigating": frozenset({"resolved", "dismissed", "open"}),
-    "resolved": frozenset({"open"}),
-    "dismissed": frozenset({"open"}),
-}
-
 
 class MonitoringService:
     """Coordinate monitoring batch loading, threshold evaluation, and alert publication."""
@@ -296,7 +280,7 @@ def transition_alert_status(
 ) -> Alert:
     """Return a copy of ``alert`` after applying a valid lifecycle transition."""
 
-    if new_status not in _VALID_ALERT_STATUSES:
+    if new_status not in VALID_ALERT_STATUSES:
         raise AlertLifecycleError(alert.status, new_status)
 
     current = alert.status

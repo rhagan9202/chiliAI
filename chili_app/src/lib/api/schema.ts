@@ -47,6 +47,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/alerts/bulk/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update Alert Status Bulk
+         * @description Transition selected KB-scoped alerts and report skipped rows.
+         */
+        post: operations["update_alert_status_bulk_alerts_bulk_status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/alerts/{alert_id}": {
         parameters: {
             query?: never;
@@ -85,6 +105,46 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/alerts/{alert_id}/assignment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Assign Alert
+         * @description Assign or clear one KB-scoped alert and return an audit receipt.
+         */
+        patch: operations["assign_alert_alerts__alert_id__assignment_patch"];
+        trace?: never;
+    };
+    "/alerts/{alert_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Alert Status
+         * @description Transition one KB-scoped alert and return an audit receipt.
+         */
+        patch: operations["update_alert_status_alerts__alert_id__status_patch"];
         trace?: never;
     };
     "/analytics/gnn/clusters": {
@@ -1541,6 +1601,63 @@ export interface components {
             updated_at?: string | null;
         };
         /**
+         * AlertAssignmentRequest
+         * @description Assign or clear assignment for one KB-scoped alert.
+         */
+        AlertAssignmentRequest: {
+            /** Assignee */
+            assignee?: string | null;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+        };
+        /**
+         * AlertBulkRejection
+         * @description One alert skipped by a bulk lifecycle mutation.
+         */
+        AlertBulkRejection: {
+            /** Alert Id */
+            alert_id: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "not_found" | "invalid_transition";
+        };
+        /**
+         * AlertBulkStatusUpdateRequest
+         * @description Transition a selected group of KB-scoped alerts where transitions are valid.
+         */
+        AlertBulkStatusUpdateRequest: {
+            /** Alert Ids */
+            alert_ids: string[];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "acknowledged" | "investigating" | "resolved" | "dismissed";
+        };
+        /**
+         * AlertBulkStatusUpdateResponse
+         * @description Response for a bulk alert lifecycle mutation.
+         */
+        AlertBulkStatusUpdateResponse: {
+            /** Message */
+            message: string;
+            /** Rejected Alerts */
+            rejected_alerts?: components["schemas"]["AlertBulkRejection"][];
+            /**
+             * Status
+             * @constant
+             */
+            status: "accepted";
+            /** Updated Alerts */
+            updated_alerts?: components["schemas"]["AlertListItem"][];
+        };
+        /**
          * AlertDetailResponse
          * @description Expanded alert record used by alert and investigation views.
          */
@@ -1556,6 +1673,8 @@ export interface components {
          * @description Summary alert row consumed by the analyst feed.
          */
         AlertListItem: {
+            /** Assignee */
+            assignee?: string | null;
             /** Confidence */
             confidence: number;
             /**
@@ -1605,6 +1724,62 @@ export interface components {
             /** Items */
             items?: components["schemas"]["AlertListItem"][];
             page: components["schemas"]["PageInfo"];
+        };
+        /**
+         * AlertOperationResponse
+         * @description Response for one alert queue mutation.
+         */
+        AlertOperationResponse: {
+            alert: components["schemas"]["AlertListItem"];
+            audit_event: components["schemas"]["AlertTriageEventResponse"];
+            /** Message */
+            message: string;
+            /**
+             * Status
+             * @constant
+             */
+            status: "accepted";
+        };
+        /**
+         * AlertStatusUpdateRequest
+         * @description Transition one KB-scoped alert to a new lifecycle status.
+         */
+        AlertStatusUpdateRequest: {
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "acknowledged" | "investigating" | "resolved" | "dismissed";
+        };
+        /**
+         * AlertTriageEventResponse
+         * @description Audit receipt for an alert assignment or lifecycle transition.
+         */
+        AlertTriageEventResponse: {
+            /** Actor */
+            actor: string;
+            /** Assignee */
+            assignee?: string | null;
+            /**
+             * Event Type
+             * @enum {string}
+             */
+            event_type: "assigned" | "status_changed";
+            /** From Status */
+            from_status?: string | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Reason */
+            reason?: string | null;
+            /** To Status */
+            to_status?: string | null;
         };
         /**
          * AlertsConfig
@@ -5535,6 +5710,39 @@ export interface operations {
             };
         };
     };
+    update_alert_status_bulk_alerts_bulk_status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertBulkStatusUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertBulkStatusUpdateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_alert_alerts__alert_id__get: {
         parameters: {
             query: {
@@ -5592,6 +5800,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_alert_alerts__alert_id__assignment_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Alert identifier. */
+                alert_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertAssignmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertOperationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_alert_status_alerts__alert_id__status_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Alert identifier. */
+                alert_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertStatusUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertOperationResponse"];
                 };
             };
             /** @description Validation Error */

@@ -61,6 +61,7 @@ class AlertListItem(BaseModel):
     # Queue Health tab measure time-to-acknowledge (UXA-402).
     updated_at: datetime
     tags: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    assignee: str | None = None
 
 
 class AlertListResponse(BaseModel):
@@ -68,6 +69,71 @@ class AlertListResponse(BaseModel):
 
     items: list[AlertListItem] = Field(default_factory=lambda: cast(list[AlertListItem], []))
     page: PageInfo
+
+
+class AlertAssignmentRequest(BaseModel):
+    """Assign or clear assignment for one KB-scoped alert."""
+
+    knowledge_base_id: str = Field(min_length=1)
+    assignee: str | None = None
+
+
+class AlertStatusUpdateRequest(BaseModel):
+    """Transition one KB-scoped alert to a new lifecycle status."""
+
+    knowledge_base_id: str = Field(min_length=1)
+    status: Literal["open", "acknowledged", "investigating", "resolved", "dismissed"]
+    reason: str | None = None
+
+
+class AlertBulkStatusUpdateRequest(BaseModel):
+    """Transition a selected group of KB-scoped alerts where transitions are valid."""
+
+    knowledge_base_id: str = Field(min_length=1)
+    alert_ids: list[str] = Field(min_length=1)
+    status: Literal["open", "acknowledged", "investigating", "resolved", "dismissed"]
+    reason: str | None = None
+
+
+class AlertTriageEventResponse(BaseModel):
+    """Audit receipt for an alert assignment or lifecycle transition."""
+
+    event_type: Literal["assigned", "status_changed"]
+    actor: str
+    occurred_at: datetime
+    assignee: str | None = None
+    from_status: str | None = None
+    to_status: str | None = None
+    reason: str | None = None
+
+
+class AlertOperationResponse(BaseModel):
+    """Response for one alert queue mutation."""
+
+    status: Literal["accepted"]
+    message: str
+    alert: AlertListItem
+    audit_event: AlertTriageEventResponse
+
+
+class AlertBulkRejection(BaseModel):
+    """One alert skipped by a bulk lifecycle mutation."""
+
+    alert_id: str
+    reason: Literal["not_found", "invalid_transition"]
+
+
+class AlertBulkStatusUpdateResponse(BaseModel):
+    """Response for a bulk alert lifecycle mutation."""
+
+    status: Literal["accepted"]
+    message: str
+    updated_alerts: list[AlertListItem] = Field(
+        default_factory=lambda: cast(list[AlertListItem], [])
+    )
+    rejected_alerts: list[AlertBulkRejection] = Field(
+        default_factory=lambda: cast(list[AlertBulkRejection], [])
+    )
 
 
 class PolicyCitation(BaseModel):
@@ -1120,9 +1186,16 @@ class ChatMessageCreateRequest(BaseModel):
 
 
 __all__ = [
+    "AlertAssignmentRequest",
+    "AlertBulkRejection",
+    "AlertBulkStatusUpdateRequest",
+    "AlertBulkStatusUpdateResponse",
     "AlertDetailResponse",
     "AlertListItem",
     "AlertListResponse",
+    "AlertOperationResponse",
+    "AlertStatusUpdateRequest",
+    "AlertTriageEventResponse",
     "AnalystFeedbackResponse",
     "AnalyticsOverviewResponse",
     "ApiEnvelope",
