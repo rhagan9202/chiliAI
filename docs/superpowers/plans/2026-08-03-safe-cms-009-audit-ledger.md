@@ -73,9 +73,21 @@ SAFE-CMS-009 adds an immutable audit ledger for material analyst, system, and ag
 - Modify: `backend/database/migrations/snapshots/head.sql`
 - Create: `backend/tests/auditlog/test_postgres_store.py`
 
-- [ ] Add `audit_log` table and indexes on `(tenant_id, occurred_at DESC)`, `(knowledge_base_id, occurred_at DESC)`, and `(actor_user_id, occurred_at DESC)`.
-- [ ] Store `before`, `after`, and `metadata` as JSON payload summaries.
-- [ ] Verify persistence and query ordering through the Postgres adapter tests.
+- [x] Add `audit_log` table and indexes on `(tenant_id, occurred_at DESC)`, `(knowledge_base_id, occurred_at DESC)`, and `(actor_user_id, occurred_at DESC)`.
+- [x] Store `before`, `after`, and `metadata` as JSON payload summaries.
+- [x] Verify persistence and query ordering through the Postgres adapter tests.
+
+**Notes:**
+- RED: `uv run --project backend pytest backend/tests/auditlog/test_postgres_store.py` failed during collection with `ModuleNotFoundError: No module named 'auditlog.adapters.postgres'`.
+- Added append-only `PostgresAuditLogRepository`, `AuditLogPersistenceError`, migration `0016_audit_log`, regenerated `backend/database/migrations/snapshots/head.sql`, and switched `get_audit_log_service` to choose Postgres when a connection provider is configured.
+- Added `audit_log_service` to the config-derived app-state purge list so domain/database-backend swaps cannot retain a stale audit repository.
+- GREEN:
+  - `uv run --project backend pytest backend/tests/auditlog/test_postgres_store.py`: 3 passed after starting the dev Postgres service.
+  - `scripts/ci_migration_check.sh --update-snapshot`: passed and rewrote `head.sql`.
+  - `scripts/ci_migration_check.sh`: passed; migration replay clean and schema matched `head.sql`.
+  - `uv run --project backend pytest backend/tests/auditlog/test_postgres_store.py backend/tests/api/test_audit_router.py backend/tests/api/test_dependencies.py::test_get_audit_log_service_uses_postgres_when_provider_non_null backend/tests/api/test_dependencies.py::test_get_audit_log_service_returns_in_memory_when_provider_is_none backend/tests/api/test_dependency_swap.py::test_reset_with_app_purges_config_derived_state_and_rebuilds_api_state backend/tests/api/test_dependency_swap.py::test_reset_clears_every_registered_singleton`: 10 passed.
+  - `uv run --project backend ruff check backend/auditlog backend/api/dependencies.py backend/tests/auditlog/test_postgres_store.py backend/tests/api/test_dependencies.py backend/tests/api/test_dependency_swap.py backend/database/migrations/versions/0016_audit_log.py`: passed.
+  - `uv run --project backend pyright backend/auditlog backend/api/dependencies.py backend/tests/auditlog/test_postgres_store.py backend/tests/api/test_dependencies.py backend/tests/api/test_dependency_swap.py`: 0 errors.
 
 ## Task 4: Mutation Source Hooks
 

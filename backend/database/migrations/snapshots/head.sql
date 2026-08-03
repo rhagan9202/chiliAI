@@ -20,6 +20,27 @@ CREATE TABLE public.alert_history (
     triage_history jsonb DEFAULT '[]'::jsonb NOT NULL,
     generation_metadata jsonb DEFAULT '{}'::jsonb NOT NULL
 );
+CREATE TABLE public.audit_log (
+    event_id text NOT NULL,
+    occurred_at timestamp with time zone NOT NULL,
+    tenant_id text NOT NULL,
+    knowledge_base_id text,
+    actor_user_id text NOT NULL,
+    actor_email text,
+    actor_roles jsonb DEFAULT '[]'::jsonb NOT NULL,
+    action text NOT NULL,
+    resource_type text NOT NULL,
+    resource_id text NOT NULL,
+    before jsonb,
+    after jsonb,
+    correlation_id text NOT NULL,
+    client_ip text,
+    user_agent text,
+    outcome text NOT NULL,
+    failure_reason text,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT ck_audit_log_outcome CHECK ((outcome = ANY (ARRAY['success'::text, 'failure'::text])))
+);
 CREATE TABLE public.cases (
     knowledge_base_id text NOT NULL,
     case_id text NOT NULL,
@@ -203,6 +224,8 @@ CREATE TABLE public.timeseries_anomalies (
 );
 ALTER TABLE ONLY public.alert_history
     ADD CONSTRAINT alert_history_pkey PRIMARY KEY (knowledge_base_id, alert_id);
+ALTER TABLE ONLY public.audit_log
+    ADD CONSTRAINT audit_log_pkey PRIMARY KEY (event_id);
 ALTER TABLE ONLY public.cases
     ADD CONSTRAINT cases_pkey PRIMARY KEY (knowledge_base_id, case_id);
 ALTER TABLE ONLY public.conversations
@@ -238,6 +261,9 @@ ALTER TABLE ONLY public.timeseries_anomalies
 CREATE INDEX entity_metric_history_observed_at_idx ON public.entity_metric_history USING btree (observed_at DESC);
 CREATE INDEX ix_alert_history_entity ON public.alert_history USING btree (knowledge_base_id, entity_id, created_at DESC);
 CREATE INDEX ix_alert_history_kb_assignee ON public.alert_history USING btree (knowledge_base_id, assignee, updated_at DESC);
+CREATE INDEX ix_audit_log_actor_occurred_at ON public.audit_log USING btree (actor_user_id, occurred_at DESC);
+CREATE INDEX ix_audit_log_kb_occurred_at ON public.audit_log USING btree (knowledge_base_id, occurred_at DESC);
+CREATE INDEX ix_audit_log_tenant_occurred_at ON public.audit_log USING btree (tenant_id, occurred_at DESC);
 CREATE INDEX ix_cases_status ON public.cases USING btree (knowledge_base_id, status, updated_at DESC);
 CREATE INDEX ix_conversations_kb ON public.conversations USING btree (knowledge_base_id, updated_at DESC);
 CREATE INDEX ix_entity_derived_signals_latest ON public.entity_derived_signals USING btree (knowledge_base_id, entity_id, metric_name, computed_at DESC);

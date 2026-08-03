@@ -7,7 +7,7 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from functools import lru_cache
-from typing import Literal, NoReturn, Protocol, TypeVar, cast
+from typing import Any, Literal, NoReturn, Protocol, TypeVar, cast
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
 
@@ -64,6 +64,7 @@ from api.contracts import (
     RiskScoreResponse,
 )
 from auditlog.adapters.in_memory import InMemoryAuditLogRepository
+from auditlog.adapters.postgres import PostgresAuditLogRepository
 from auditlog.models import AuditEvent, AuditEventQuery
 from auditlog.service import AuditLogService
 from api._analytics_overview import build_analytics_overview
@@ -656,12 +657,21 @@ def get_case_service(
 def get_audit_log_service(request: Request) -> AuditLogService:
     """Return the per-app audit ledger service."""
 
-    service = getattr(request.app.state, "audit_log_service", None)
-    if isinstance(service, AuditLogService):
-        return service
-    service = AuditLogService(InMemoryAuditLogRepository())
-    request.app.state.audit_log_service = service
-    return service
+    def build() -> AuditLogService:
+        provider = get_connection_provider()
+        repository = (
+            InMemoryAuditLogRepository()
+            if provider is None
+            else PostgresAuditLogRepository(provider)
+        )
+        return AuditLogService(repository)
+
+    return _memoize_config_derived(
+        request.app,
+        "audit_log_service",
+        build,
+        guard=lambda value: isinstance(value, AuditLogService),
+    )
 
 
 def _audit_event_to_response(event: AuditEvent) -> AuditEventResponse:
@@ -2738,6 +2748,8 @@ def get_rag_service() -> RagServiceProtocol:
 class _ClearableCache(Protocol):
     """Structural type for an ``functools.lru_cache`` wrapper we can clear."""
 
+    def cache_info(self) -> Any: ...
+
     def cache_clear(self) -> None: ...
 
 
@@ -2794,6 +2806,7 @@ _CONFIG_DERIVED_APP_STATE_ATTRS: tuple[str, ...] = (
     "api_state",
     "evidence_pack_repository",
     "case_repository",
+    "audit_log_service",
     "conversation_repository",
     "policy_repository",
     "scorecard_run_repository",

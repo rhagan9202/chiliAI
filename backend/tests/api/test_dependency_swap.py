@@ -245,6 +245,7 @@ def test_reset_with_app_purges_config_derived_state_and_rebuilds_api_state() -> 
         "api_state": object(),
         "evidence_pack_repository": object(),
         "case_repository": object(),
+        "audit_log_service": object(),
         "conversation_repository": object(),
         "policy_repository": object(),
     }
