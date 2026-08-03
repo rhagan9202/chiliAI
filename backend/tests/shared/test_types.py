@@ -14,6 +14,7 @@ from shared.types import (
     EntityDefinition,
     EvidenceNarrativeSection,
     EvidencePack,
+    EvidenceProvenanceReference,
     FeatureAttribution,
     KnowledgeBase,
     PropertyDefinition,
@@ -308,6 +309,7 @@ class TestEvidencePackEnrichment:
         )
         assert pack.attribution == []
         assert pack.narrative_sections == []
+        assert pack.provenance == []
 
     def test_round_trips_attribution_and_sections(self) -> None:
         pack = EvidencePack(
@@ -315,11 +317,34 @@ class TestEvidencePackEnrichment:
             subgraph_edges=[], confidence=0.5,
             attribution=[FeatureAttribution(feature_name="claim_volume_z", contribution=-0.12)],
             narrative_sections=[EvidenceNarrativeSection(heading="Risk Factor", body="b", evidence_refs=["e1"])],
+            provenance=[
+                EvidenceProvenanceReference(
+                    reference_type="feature_value",
+                    reference_id="feature:claim_volume_z:provider:123",
+                    label="Claim volume z-score",
+                    source_system="cms-claims",
+                    source_version="2026-08-demo",
+                    transformation_version="peerstats-zscore-v1",
+                    confidence=0.91,
+                    route_target="/knowledgebases/kb-1/entities/provider:123",
+                    metadata={"score_run_id": "score-run-1"},
+                )
+            ],
         )
         restored = EvidencePack.model_validate(pack.model_dump())
         assert restored.attribution[0].feature_name == "claim_volume_z"
         assert restored.attribution[0].contribution == -0.12
         assert restored.narrative_sections[0].heading == "Risk Factor"
+        assert restored.provenance[0].reference_type == "feature_value"
+        assert restored.provenance[0].metadata == {"score_run_id": "score-run-1"}
+
+    def test_provenance_metadata_rejects_non_json_values(self) -> None:
+        with pytest.raises(ValidationError):
+            EvidenceProvenanceReference(
+                reference_type="feature_value",
+                reference_id="feature:claim_volume_z:provider:123",
+                metadata={"bad": object()},
+            )
 
 
 class TestKnowledgeBase:

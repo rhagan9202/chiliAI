@@ -398,6 +398,20 @@ class NarrativeSectionResponse(BaseModel):
     evidence_refs: list[str] = Field(default_factory=lambda: cast(list[str], []))
 
 
+class EvidenceProvenanceReferenceResponse(BaseModel):
+    """A normalized source reference supporting an evidence pack assertion."""
+
+    reference_type: str = Field(min_length=1)
+    reference_id: str = Field(min_length=1)
+    label: str = ""
+    source_system: str | None = None
+    source_version: str | None = None
+    transformation_version: str | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    route_target: str | None = None
+    metadata: dict[str, object | None] = Field(default_factory=dict)
+
+
 class EvidencePackResponse(BaseModel):
     """Frontend-oriented evidence pack detail payload."""
 
@@ -415,6 +429,9 @@ class EvidencePackResponse(BaseModel):
     )
     narrative_sections: list[NarrativeSectionResponse] = Field(
         default_factory=lambda: cast(list[NarrativeSectionResponse], [])
+    )
+    provenance: list[EvidenceProvenanceReferenceResponse] = Field(
+        default_factory=lambda: cast(list[EvidenceProvenanceReferenceResponse], [])
     )
     # When the explanation was generated and what it was drawn from. Both are
     # already on the persisted pack; without them the narrative is an
@@ -1115,6 +1132,7 @@ __all__ = [
     "DomainFeaturesResponse",
     "EvidenceItemResponse",
     "EvidencePackResponse",
+    "EvidenceProvenanceReferenceResponse",
     "EntityFeatureValueListResponse",
     "EntityFeatureValueResponse",
     "EntityTimeseriesPointResponse",

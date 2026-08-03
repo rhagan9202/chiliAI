@@ -15,7 +15,7 @@ from datetime import date, datetime
 import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from shared.utils import utc_now
 
@@ -147,6 +147,42 @@ class EvidenceNarrativeSection(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
 
 
+class EvidenceProvenanceReference(BaseModel):
+    """A normalized source reference supporting an evidence pack assertion."""
+
+    reference_type: str = Field(min_length=1)
+    reference_id: str = Field(min_length=1)
+    label: str = ""
+    source_system: str | None = None
+    source_version: str | None = None
+    transformation_version: str | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    route_target: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("metadata")
+    @classmethod
+    def _metadata_must_be_json_safe(cls, value: dict[str, Any]) -> dict[str, Any]:
+        _assert_json_safe(value)
+        return value
+
+
+def _assert_json_safe(value: Any) -> None:
+    if value is None or isinstance(value, str | int | float | bool):
+        return
+    if isinstance(value, list):
+        for item in value:
+            _assert_json_safe(item)
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError("Evidence provenance metadata keys must be strings.")
+            _assert_json_safe(item)
+        return
+    raise ValueError("Evidence provenance metadata must contain only JSON-safe values.")
+
+
 class EvidencePack(BaseModel):
     """Supporting evidence bundle attached to an alert."""
 
@@ -161,6 +197,7 @@ class EvidencePack(BaseModel):
     source_documents: list[str] = Field(default_factory=list)
     attribution: list[FeatureAttribution] = Field(default_factory=list)
     narrative_sections: list[EvidenceNarrativeSection] = Field(default_factory=list)
+    provenance: list[EvidenceProvenanceReference] = Field(default_factory=list)
     # TODO(production): Enrich EvidencePack with structured fields:
     # - timeline_events: list[TimelineEntry] for temporal evidence ordering
     # - visual_layout: dict for pre-computed graph visualization coordinates
@@ -399,6 +436,7 @@ __all__ = [
     "EntityDefinition",
     "EvidenceNarrativeSection",
     "EvidencePack",
+    "EvidenceProvenanceReference",
     "FeatureAttribution",
     "KnowledgeBase",
     "MonitoringObservation",

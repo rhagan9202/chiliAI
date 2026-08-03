@@ -37,6 +37,7 @@ from api.contracts import (
     EvidenceExportFormat,
     EvidencePackExportResponse,
     EvidencePackResponse,
+    EvidenceProvenanceReferenceResponse,
     FeatureAttributionResponse,
     GraphEntityDetailResponse,
     NarrativeSectionResponse,
@@ -523,6 +524,20 @@ def _evidence_pack_to_response(pack: EvidencePack) -> EvidencePackResponse:
                 evidence_refs=list(section.evidence_refs),
             )
             for section in pack.narrative_sections
+        ],
+        provenance=[
+            EvidenceProvenanceReferenceResponse(
+                reference_type=reference.reference_type,
+                reference_id=reference.reference_id,
+                label=reference.label,
+                source_system=reference.source_system,
+                source_version=reference.source_version,
+                transformation_version=reference.transformation_version,
+                confidence=reference.confidence,
+                route_target=reference.route_target,
+                metadata=dict(reference.metadata),
+            )
+            for reference in pack.provenance
         ],
         created_at=pack.created_at,
         source_documents=list(pack.source_documents),

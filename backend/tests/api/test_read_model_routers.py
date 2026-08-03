@@ -336,7 +336,12 @@ def test_get_evidence_pack_returns_persisted_pack() -> None:
     from analytics.explainability.adapters.evidence_in_memory import (
         InMemoryEvidencePackRepository,
     )
-    from shared.types import EvidenceNarrativeSection, EvidencePack, FeatureAttribution
+    from shared.types import (
+        EvidenceNarrativeSection,
+        EvidencePack,
+        EvidenceProvenanceReference,
+        FeatureAttribution,
+    )
 
     app = create_app()
     repository = InMemoryEvidencePackRepository()
@@ -358,6 +363,19 @@ def test_get_evidence_pack_returns_persisted_pack() -> None:
             narrative_sections=[
                 EvidenceNarrativeSection(
                     heading="Risk Factor", body="Claim volume trails peers.", evidence_refs=["claim-1"]
+                )
+            ],
+            provenance=[
+                EvidenceProvenanceReference(
+                    reference_type="feature_value",
+                    reference_id="feature:claim_volume_z:provider-1",
+                    label="Claim volume z-score",
+                    source_system="cms-claims",
+                    source_version="2026-08-demo",
+                    transformation_version="peerstats-zscore-v1",
+                    confidence=0.8,
+                    route_target="/knowledgebases/kb-1/entities/provider-1",
+                    metadata={"score_run_id": "score-run-1"},
                 )
             ],
         ),
@@ -389,6 +407,19 @@ def test_get_evidence_pack_returns_persisted_pack() -> None:
     assert payload["narrative_sections"] == [
         {"heading": "Risk Factor", "body": "Claim volume trails peers.", "evidence_refs": ["claim-1"]}
     ]
+    assert payload["provenance"] == [
+        {
+            "reference_type": "feature_value",
+            "reference_id": "feature:claim_volume_z:provider-1",
+            "label": "Claim volume z-score",
+            "source_system": "cms-claims",
+            "source_version": "2026-08-demo",
+            "transformation_version": "peerstats-zscore-v1",
+            "confidence": 0.8,
+            "route_target": "/knowledgebases/kb-1/entities/provider-1",
+            "metadata": {"score_run_id": "score-run-1"},
+        }
+    ]
 
     legacy_response = client.get(
         "/evidence-packs/ev-legacy", params={"knowledge_base_id": "kb-1"}
@@ -398,6 +429,7 @@ def test_get_evidence_pack_returns_persisted_pack() -> None:
     legacy_payload = legacy_response.json()
     assert legacy_payload["attribution"] == []
     assert legacy_payload["narrative_sections"] == []
+    assert legacy_payload["provenance"] == []
 
 
 def test_export_evidence_pack_renders_markdown_and_json() -> None:

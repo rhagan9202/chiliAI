@@ -2943,6 +2943,13 @@
             "title": "Policy Citations",
             "type": "array"
           },
+          "provenance": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceProvenanceReferenceResponse"
+            },
+            "title": "Provenance",
+            "type": "array"
+          },
           "reasoning": {
             "title": "Reasoning",
             "type": "string"
@@ -2984,6 +2991,101 @@
           "created_at"
         ],
         "title": "EvidencePackResponse",
+        "type": "object"
+      },
+      "EvidenceProvenanceReferenceResponse": {
+        "description": "A normalized source reference supporting an evidence pack assertion.",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Metadata",
+            "type": "object"
+          },
+          "reference_id": {
+            "minLength": 1,
+            "title": "Reference Id",
+            "type": "string"
+          },
+          "reference_type": {
+            "minLength": 1,
+            "title": "Reference Type",
+            "type": "string"
+          },
+          "route_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Target"
+          },
+          "source_system": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source System"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          },
+          "transformation_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transformation Version"
+          }
+        },
+        "required": [
+          "reference_type",
+          "reference_id"
+        ],
+        "title": "EvidenceProvenanceReferenceResponse",
         "type": "object"
       },
       "FeatureAttributionResponse": {

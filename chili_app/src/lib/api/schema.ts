@@ -2842,6 +2842,8 @@ export interface components {
             narrative_sections?: components["schemas"]["NarrativeSectionResponse"][];
             /** Policy Citations */
             policy_citations?: components["schemas"]["PolicyCitation"][];
+            /** Provenance */
+            provenance?: components["schemas"]["EvidenceProvenanceReferenceResponse"][];
             /** Reasoning */
             reasoning: string;
             /** Scores */
@@ -2854,6 +2856,35 @@ export interface components {
             subgraph_edge_ids?: string[];
             /** Subgraph Node Ids */
             subgraph_node_ids?: string[];
+        };
+        /**
+         * EvidenceProvenanceReferenceResponse
+         * @description A normalized source reference supporting an evidence pack assertion.
+         */
+        EvidenceProvenanceReferenceResponse: {
+            /** Confidence */
+            confidence?: number | null;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown | null;
+            };
+            /** Reference Id */
+            reference_id: string;
+            /** Reference Type */
+            reference_type: string;
+            /** Route Target */
+            route_target?: string | null;
+            /** Source System */
+            source_system?: string | null;
+            /** Source Version */
+            source_version?: string | null;
+            /** Transformation Version */
+            transformation_version?: string | null;
         };
         /**
          * FeatureAttributionResponse
