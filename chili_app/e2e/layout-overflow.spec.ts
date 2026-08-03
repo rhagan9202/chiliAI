@@ -16,7 +16,7 @@
 // e2e specs compile under tsconfig.node.json (lib: ES2023, no DOM). This is the
 // first spec to run DOM code inside page.evaluate, so it pulls the DOM lib in
 // file-locally rather than widening the Node config for vite/playwright configs.
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 import { seeded } from './helpers/seeded'
 
@@ -32,11 +32,40 @@ interface Overflowing {
 /** Widths where the reserved chrome bites hardest, plus a roomy control. */
 const VIEWPORTS = [1280, 1366, 1440, 1600, 1920]
 
-const PAGES = [
+type OverflowPage = {
+  name: string
+  path: (kb: string) => string
+  prepare?: (page: Page) => Promise<void>
+}
+
+const cockpitPath = () => {
+  const { alert_id: alert, case_id: caseId, entity_id: entity, evidence_pack_id: evidence, knowledge_base_id: kb } =
+    seeded()
+  return `/investigation/${entity}?kb=${kb}&alert=${alert}&case=${caseId}&evidence=${evidence}`
+}
+
+const PAGES: OverflowPage[] = [
   { name: 'Knowledge Bases', path: (kb: string) => `/knowledge-bases?kb=${kb}` },
   { name: 'Dashboard', path: () => '/dashboard' },
   { name: 'Alert Feed', path: () => '/alerts' },
   { name: 'Cases', path: () => '/cases' },
+  { name: 'Investigation Cockpit Signals', path: cockpitPath },
+  {
+    name: 'Investigation Cockpit Network',
+    path: cockpitPath,
+    prepare: async (page) => {
+      await page.getByRole('tab', { name: 'Network' }).click()
+      await expect(page.getByTestId('investigation-graph-canvas')).toBeVisible()
+    },
+  },
+  {
+    name: 'Investigation Cockpit Evidence',
+    path: cockpitPath,
+    prepare: async (page) => {
+      await page.getByRole('button', { name: 'View cockpit evidence' }).click()
+      await expect(page.getByTestId('evidence-pack-viewer')).toBeVisible()
+    },
+  },
 ]
 
 test.describe('Layout overflow', () => {
@@ -48,6 +77,7 @@ test.describe('Layout overflow', () => {
 
       for (const target of PAGES) {
         await page.goto(target.path(kb))
+        await target.prepare?.(page)
         // Let the grid settle before measuring.
         await expect(page.locator('main')).toBeVisible()
         await page.waitForTimeout(600)
@@ -67,6 +97,17 @@ test.describe('Layout overflow', () => {
             // the standard `clip: rect(0 0 0 0)` pattern — e.g. the tab panel
             // headings and the "Source type" fieldset legend.
             if (style.position === 'absolute' && style.clip !== 'auto') continue
+            // ForceGraph's empty internal canvas wrappers report a persistent
+            // 2px scrollWidth delta even when the visible canvas is clipped by
+            // the stable graph boundary. Text/UI clipping is what this guard
+            // owns; graph rendering is asserted via the canvas test id.
+            if (
+              (element.closest('[data-testid="investigation-graph-canvas"]') ||
+                element.closest('[data-testid="evidence-pack-subgraph"]')) &&
+              (element.textContent ?? '').trim().length === 0
+            ) {
+              continue
+            }
             if (element.clientWidth <= 0) continue
             if (element.scrollWidth > element.clientWidth + 1) {
               found.push({

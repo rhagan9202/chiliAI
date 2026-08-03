@@ -115,7 +115,7 @@ function CockpitActionRail({
   }
 
   return (
-    <div aria-label="Cockpit actions" className="page-actions-inline">
+    <div aria-label="Cockpit actions" className="page-actions-inline" role="group">
       {alertId ? (
         <Link
           className="page-button page-button--sm page-button--secondary"
@@ -150,12 +150,14 @@ function pluralize(count: number, singular: string, plural = `${singular}s`): st
 }
 
 function CockpitOverview({
+  actions,
   caseTitle,
   evidencePackId,
   graphSummary,
   riskLabel,
   riskValue,
 }: {
+  actions?: ReactNode
   caseTitle: string | null
   evidencePackId: string | null
   graphSummary: string
@@ -163,27 +165,30 @@ function CockpitOverview({
   riskValue: string
 }) {
   return (
-    <Card compact>
-      <div aria-label="Cockpit overview" className="dashboard-kpis" role="group">
-        <div className="metric-row metric-row--stacked">
-          <span className="metric-row__label">Risk</span>
-          <strong>{riskValue}</strong>
-          <span className="metric-row__label">{riskLabel}</span>
-        </div>
-        <div className="metric-row metric-row--stacked">
-          <span className="metric-row__label">Graph</span>
-          <strong>{graphSummary}</strong>
-          <span className="metric-row__label">Loaded neighborhood</span>
-        </div>
-        <div className="metric-row metric-row--stacked">
-          <span className="metric-row__label">Case</span>
-          <strong>{caseTitle ?? 'No case selected'}</strong>
-          <span className="metric-row__label">Current review state</span>
-        </div>
-        <div className="metric-row metric-row--stacked">
-          <span className="metric-row__label">Evidence</span>
-          <strong>{evidencePackId ?? 'No evidence selected'}</strong>
-          <span className="metric-row__label">Selected evidence pack</span>
+    <Card className="cockpit-overview-card" compact>
+      <div className="metric-stack">
+        {actions}
+        <div aria-label="Cockpit overview" className="dashboard-kpis" role="group">
+          <div className="metric-row metric-row--stacked">
+            <span className="metric-row__label">Risk</span>
+            <strong>{riskValue}</strong>
+            <span className="metric-row__label">{riskLabel}</span>
+          </div>
+          <div className="metric-row metric-row--stacked">
+            <span className="metric-row__label">Graph</span>
+            <strong>{graphSummary}</strong>
+            <span className="metric-row__label">Loaded neighborhood</span>
+          </div>
+          <div className="metric-row metric-row--stacked">
+            <span className="metric-row__label">Case</span>
+            <strong>{caseTitle ?? 'No case selected'}</strong>
+            <span className="metric-row__label">Current review state</span>
+          </div>
+          <div className="metric-row metric-row--stacked">
+            <span className="metric-row__label">Evidence</span>
+            <strong>{evidencePackId ?? 'No evidence selected'}</strong>
+            <span className="metric-row__label">Selected evidence pack</span>
+          </div>
         </div>
       </div>
     </Card>
@@ -595,7 +600,7 @@ export function InvestigationWorkbenchPage() {
           </Card>
         </div>
 
-        <div className="metric-stack">
+        <div className="metric-stack workbench-main">
           {entityQuery.isLoading || neighborhoodQuery.isLoading ? <LoadingState label="Loading selected entity graph" /> : null}
           {/* "It is somewhere else" and "it does not exist" are different
               answers; the old generic frame gave neither (UXA-104). */}
@@ -609,6 +614,27 @@ export function InvestigationWorkbenchPage() {
 
           {entity ? (
             <>
+              <CockpitOverview
+                actions={
+                  <CockpitActionRail
+                    alertId={selectedAlert?.id ?? null}
+                    canViewEvidence={Boolean(
+                      selectedEvidencePackId && tabs.some((tab) => tab.id === 'evidence'),
+                    )}
+                    caseId={ragCaseId}
+                    knowledgeBaseId={activeKnowledgeBaseId}
+                    onViewEvidence={() => setActiveTabId('evidence')}
+                  />
+                }
+                caseTitle={ragCaseId ? caseQuery.data?.case.title ?? ragCaseId : null}
+                evidencePackId={selectedEvidencePackId}
+                graphSummary={cockpitGraphSummary}
+                riskLabel={cockpitRiskLabel}
+                riskValue={cockpitRiskValue}
+              />
+
+              <CockpitContextPanel summary={cockpitFeatureContext} />
+
               <EntityDossierHeader
                 config={domainConfigQuery.data}
                 entity={entity}
@@ -629,16 +655,6 @@ export function InvestigationWorkbenchPage() {
               />
 
               <SignalBand factors={riskAvailability.unavailable ? [] : riskScore?.factors ?? []} />
-
-              <CockpitOverview
-                caseTitle={ragCaseId ? caseQuery.data?.case.title ?? ragCaseId : null}
-                evidencePackId={selectedEvidencePackId}
-                graphSummary={cockpitGraphSummary}
-                riskLabel={cockpitRiskLabel}
-                riskValue={cockpitRiskValue}
-              />
-
-              <CockpitContextPanel summary={cockpitFeatureContext} />
 
               <Card compact>
                 <div aria-label="Cockpit state" className="metric-stack" role="group">
@@ -678,15 +694,6 @@ export function InvestigationWorkbenchPage() {
                       unavailable={requestedEvidenceInvalid}
                     />
                   </div>
-                  <CockpitActionRail
-                    alertId={selectedAlert?.id ?? null}
-                    canViewEvidence={Boolean(
-                      selectedEvidencePackId && tabs.some((tab) => tab.id === 'evidence'),
-                    )}
-                    caseId={ragCaseId}
-                    knowledgeBaseId={activeKnowledgeBaseId}
-                    onViewEvidence={() => setActiveTabId('evidence')}
-                  />
                 </div>
               </Card>
 

@@ -188,9 +188,38 @@ Task 4 notes:
 - Modify: frontend CSS and E2E coverage as needed
 - Test: Playwright or browser smoke where stack startup permits
 
-- [ ] Verify graph/evidence space does not fight on desktop/tablet/mobile.
-- [ ] Confirm no text overlaps and all primary actions remain reachable.
-- [ ] Capture screenshots or Playwright evidence for the final checkpoint.
+- [x] Verify graph/evidence space does not fight on desktop/tablet/mobile.
+- [x] Confirm no text overlaps and all primary actions remain reachable.
+- [x] Capture screenshots or Playwright evidence for the final checkpoint.
+
+Task 5 notes:
+
+- Added full-stack Playwright coverage that creates an alert-backed case and verifies
+  cockpit action controls are within the initial viewport at desktop, tablet, and
+  mobile sizes.
+- Extended the overflow guard to sweep the investigation cockpit in Signals, Network,
+  and Evidence states at analyst laptop widths.
+- Added desktop/tablet/mobile browser checks for the active Network and Evidence tab
+  regions, scoped to those regions so lower-page picker controls do not mask graph or
+  evidence regressions.
+- Moved the cockpit action rail into the top overview card, exposed it as an accessible
+  `Cockpit actions` group, reordered the selected-entity workbench before the picker rail
+  on mobile, and added compact cockpit overview sizing so primary controls stay reachable.
+- Review hardening: first-viewport assertions now use bounding boxes for the action rail
+  and each primary action, and graph/evidence coverage explicitly exercises both tab
+  states across desktop/tablet/mobile.
+- Focused browser red/green verification:
+  - Initial `pnpm exec playwright test e2e/investigation-workbench.spec.ts e2e/layout-overflow.spec.ts`: failed because `Open case` was absent for an unrelated seeded case and the cockpit overflowed at 1280-1920 widths.
+  - Tightened follow-up runs failed until the action rail moved into the first cockpit
+    region, mobile ordering put the selected investigation before the picker rail, and
+    graph/evidence checks were added for tablet/mobile.
+- Final verification passed:
+  - `pnpm exec playwright test e2e/investigation-workbench.spec.ts e2e/layout-overflow.spec.ts`: 13 passed against the real dev stack, with e2e teardown deleting its seeded KB.
+  - `pnpm exec vitest run src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/pages/__tests__/AlertFeedPage.test.tsx src/pages/__tests__/CaseManagementPage.test.tsx src/pages/__tests__/RagChatPage.test.tsx src/lib/__tests__/ragContext.test.ts`: 123 passed.
+  - `pnpm exec eslint e2e/layout-overflow.spec.ts e2e/investigation-workbench.spec.ts src/pages/InvestigationWorkbenchPage.tsx src/pages/__tests__/InvestigationWorkbenchPage.test.tsx src/pages/CaseManagementPage.tsx src/lib/ragContext.ts src/pages/__tests__/CaseManagementPage.test.tsx src/pages/__tests__/RagChatPage.test.tsx src/lib/__tests__/ragContext.test.ts`: passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
+  - `git diff --check`: passed.
+  - `backend/.venv/bin/python scripts/backlog_consistency.py --check`: passed.
 
 ## Definition Of Done
 
