@@ -560,7 +560,7 @@ describe('RagChatPage', () => {
     )
   })
 
-  it('keeps document-only alert citations inert when no exact source route exists', () => {
+  it('links document-only alert citations to document preview context', () => {
     mocks.knowledgeBases = [KB_ONE]
     mocks.searchParams = new URLSearchParams('kb=kb-1&source=alert&alert=alert-1')
     mocks.conversation = {
@@ -590,11 +590,17 @@ describe('RagChatPage', () => {
 
     render(<RagChatPage />)
 
-    expect(screen.queryByRole('link', { name: /open citation context/i })).not.toBeInTheDocument()
-    expect(screen.getByText('Document preview selection is not routable yet.')).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', {
+        name: /open citation context.*alerts\.csv.*chunk-18/i,
+      }),
+    ).toHaveAttribute(
+      'href',
+      '/knowledge-bases?kb=kb-1&document=alerts.csv&chunk=1',
+    )
   })
 
-  it('keeps document-only case citations inert when no exact source route exists', () => {
+  it('links document-only case citations to document preview context', () => {
     mocks.knowledgeBases = [KB_ONE]
     mocks.searchParams = new URLSearchParams('kb=kb-1&source=case&case=case-1')
     mocks.conversation = {
@@ -624,8 +630,14 @@ describe('RagChatPage', () => {
 
     render(<RagChatPage />)
 
-    expect(screen.queryByRole('link', { name: /open citation context/i })).not.toBeInTheDocument()
-    expect(screen.getByText('Document preview selection is not routable yet.')).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', {
+        name: /open citation context.*case-notes\.md.*chunk-19/i,
+      }),
+    ).toHaveAttribute(
+      'href',
+      '/knowledge-bases?kb=kb-1&document=case-notes.md&chunk=2',
+    )
   })
 
   it('renders conversations that omit messages as an empty thread', () => {
@@ -642,7 +654,7 @@ describe('RagChatPage', () => {
     expect(screen.getByRole('button', { name: /^send$/i })).toBeDisabled()
   })
 
-  it('keeps duplicate-content citations as distinct inert instances without key collisions', () => {
+  it('keeps duplicate-content citations as distinct document links without key collisions', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     mocks.knowledgeBases = [KB_ONE]
     mocks.searchParams = new URLSearchParams('kb=kb-1&source=alert&alert=alert-1')
@@ -682,8 +694,16 @@ describe('RagChatPage', () => {
     try {
       render(<RagChatPage />)
 
-      expect(screen.queryByRole('link', { name: /open citation context/i })).not.toBeInTheDocument()
-      expect(screen.getAllByText('Document preview selection is not routable yet.')).toHaveLength(2)
+      expect(
+        screen.getByRole('link', {
+          name: /open citation context.*claims\.csv.*chunk-shared.*record-1.*chunk 1/i,
+        }),
+      ).toHaveAttribute('href', '/knowledge-bases?kb=kb-1&document=claims.csv&chunk=1')
+      expect(
+        screen.getByRole('link', {
+          name: /open citation context.*claims\.csv.*chunk-shared.*record-2.*chunk 2/i,
+        }),
+      ).toHaveAttribute('href', '/knowledge-bases?kb=kb-1&document=claims.csv&chunk=2')
       expect(
         consoleError.mock.calls.some((call) =>
           call.some(
@@ -718,8 +738,6 @@ describe('RagChatPage', () => {
               content_id: 'chunk-20',
               score: 0.64,
               snippet: 'General policy guidance applies.',
-              document_id: 'policy.md',
-              chunk_index: 5,
             },
           ],
         },
@@ -729,11 +747,10 @@ describe('RagChatPage', () => {
     render(<RagChatPage />)
 
     expect(screen.queryByRole('link', { name: /open citation context/i })).not.toBeInTheDocument()
-    expect(screen.getByText('policy.md')).toBeInTheDocument()
-    expect(screen.getByText('Document preview selection is not routable yet.')).toBeInTheDocument()
+    expect(screen.getByText('record-3')).toBeInTheDocument()
     expect(screen.getByText('64%')).toBeInTheDocument()
     expect(screen.getByText('General policy guidance applies.')).toBeInTheDocument()
-    expect(screen.getByText('chunk-20 · chunk 5')).toBeInTheDocument()
+    expect(screen.getByText('chunk-20')).toBeInTheDocument()
   })
 
   it('keeps manual send on the existing add-message path', async () => {

@@ -171,6 +171,10 @@ describe('EvidencePackViewer', () => {
     expect(screen.getByText('3 references')).toBeInTheDocument()
     expect(screen.getByText('Claim volume spike')).toBeInTheDocument()
     expect(screen.getByText('Provider risk profile')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /open citation source claim volume spike/i })).toHaveAttribute(
+      'href',
+      '/knowledge-bases?kb=kb-1&document=doc-1',
+    )
     expect(screen.getByRole('link', { name: /open citation source provider risk profile/i })).toHaveAttribute(
       'href',
       '/investigation/provider-1?kb=kb-1',
@@ -178,7 +182,6 @@ describe('EvidencePackViewer', () => {
     expect(screen.getByText('Confidence 82%')).toBeInTheDocument()
     expect(container.querySelector('a[href="/knowledgebases/kb-1/documents/doc-1/preview"]')).toBeNull()
     expect(screen.getByText('/knowledgebases/kb-1/documents/doc-1/preview')).toBeInTheDocument()
-    expect(screen.getByText('Document preview selection is not routable yet.')).toBeInTheDocument()
     expect(screen.getByText('rationale_snippet')).toBeInTheDocument()
     expect(screen.getByText('High-volume support')).toBeInTheDocument()
     expect(screen.getByText('evidence_refs')).toBeInTheDocument()

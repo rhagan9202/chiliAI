@@ -111,6 +111,18 @@ const entityIdFromReference = (reference: EvidenceCitationReference, routeTarget
   return reference.reference_id || null
 }
 
+const documentIdFromReference = (reference: EvidenceCitationReference, routeTarget: string | null) => {
+  const fromRoute = routeTarget?.match(/^\/knowledgebases\/[^/?#]+\/documents\/([^/?#]+)\/preview/)
+  if (fromRoute) return decodeURIComponent(fromRoute[1])
+
+  const metadataDocumentId = reference.metadata?.document_id
+  if (typeof metadataDocumentId === 'string' && metadataDocumentId.length > 0) {
+    return metadataDocumentId
+  }
+
+  return reference.reference_id.split('#')[0] || null
+}
+
 const isRouteMismatch = (knowledgeBaseId: string, routeTarget: string | null) => {
   const targetKb = routeTarget ? routeKb(routeTarget) : null
   return targetKb !== null && targetKb !== knowledgeBaseId
@@ -145,7 +157,20 @@ export function resolveEvidenceCitationTarget({
   }
 
   if (sourceType === 'document') {
-    return unsupported(label, sourceType, 'Document preview selection is not routable yet.')
+    const documentId = documentIdFromReference(reference, routeTarget)
+    if (!documentId) {
+      return unsupported(label, sourceType, 'Document citation is missing a document id.')
+    }
+    return {
+      kind: 'link',
+      label,
+      sourceType,
+      to: `/knowledge-bases${query([
+        ['kb', knowledgeBaseId],
+        ['document', documentId],
+      ])}`,
+      preview: 'Document preview',
+    }
   }
 
   if (
@@ -210,7 +235,17 @@ export function resolveRagCitationTarget({
     if (!knowledgeBaseId) {
       return unsupported(citation.document_id, 'document', 'Citation target requires an active knowledge base.')
     }
-    return unsupported(citation.document_id, 'document', 'Document preview selection is not routable yet.')
+    return {
+      kind: 'link',
+      label: citation.document_id,
+      sourceType: 'document',
+      to: `/knowledge-bases${query([
+        ['kb', knowledgeBaseId],
+        ['document', citation.document_id],
+        ['chunk', citation.chunk_index],
+      ])}`,
+      preview: 'Document preview',
+    }
   }
 
   return unsupported(

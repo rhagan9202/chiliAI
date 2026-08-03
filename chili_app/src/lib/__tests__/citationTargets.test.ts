@@ -18,17 +18,18 @@ function reference(overrides: Partial<EvidenceCitationReference>): EvidenceCitat
 }
 
 describe('citationTargets', () => {
-  it('keeps document provenance inert until the document preview route consumes document params', () => {
+  it('resolves KB-scoped document provenance to the document inventory preview', () => {
     expect(
       resolveEvidenceCitationTarget({
         knowledgeBaseId: 'kb-1',
         reference: reference({}),
       }),
     ).toEqual({
-      kind: 'unsupported',
+      kind: 'link',
       label: 'Claim note',
       sourceType: 'document',
-      reason: 'Document preview selection is not routable yet.',
+      to: '/knowledge-bases?kb=kb-1&document=doc-1',
+      preview: 'Document preview',
     })
   })
 
@@ -243,7 +244,7 @@ describe('citationTargets', () => {
     })
   })
 
-  it('keeps document RAG citations inert until document preview selection is routable', () => {
+  it('resolves document RAG citations with active KB scope', () => {
     expect(
       resolveRagCitationTarget({
         citation: {
@@ -255,10 +256,11 @@ describe('citationTargets', () => {
         context: { knowledgeBaseId: 'kb-1', source: 'alert', alertId: 'alert-1' },
       }),
     ).toEqual({
-      kind: 'unsupported',
+      kind: 'link',
       label: 'doc-1',
       sourceType: 'document',
-      reason: 'Document preview selection is not routable yet.',
+      to: '/knowledge-bases?kb=kb-1&document=doc-1&chunk=3',
+      preview: 'Document preview',
     })
   })
 })

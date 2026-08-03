@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 
 import { useDomainConfig } from '../api/config'
@@ -69,20 +69,21 @@ export function KnowledgeBaseManagerPage() {
   // Honor a ?kb= deep-link as the initial selection, matching the convention on
   // AlertFeedPage / PolicyIntelligencePage / InvestigationWorkbenchPage. If the
   // requested KB isn't in the visible list, the auto-select fallback below wins.
-  // Initializer-only: a client-side navigation that changes ?kb= without
-  // remounting this page will not rebind selection — no in-app link carries
-  // ?kb= here today; revisit if one is added.
   const [searchParams] = useSearchParams()
+  const requestedKnowledgeBaseId = searchParams.get('kb')
+  const requestedDocumentId = searchParams.get('document')
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState<string | null>(
-    () => searchParams.get('kb'),
+    () => requestedKnowledgeBaseId,
   )
-  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(
+    () => requestedDocumentId,
+  )
   const [knowledgeBaseName, setKnowledgeBaseName] = useState('')
   const [knowledgeBaseDescription, setKnowledgeBaseDescription] = useState('')
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle')
   const [uploadPercent, setUploadPercent] = useState(0)
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [activeScoreRunId, setActiveScoreRunId] = useState<string | null>(null)
+  const [selectedScoreRunId, setActiveScoreRunId] = useState<string | null>(null)
   // Holds the last upload invocation so the Retry button can re-run it verbatim.
   const [retryUpload, setRetryUpload] = useState<(() => void) | null>(null)
   const [showAllDomains, setShowAllDomains] = useState(false)
@@ -115,6 +116,8 @@ export function KnowledgeBaseManagerPage() {
   const knowledgeBaseDetailQuery = useKnowledgeBase(activeKnowledgeBaseId)
   const documentsQuery = useKnowledgeBaseDocuments(activeKnowledgeBaseId)
   const scoreRunsQuery = useScoreRuns(activeKnowledgeBaseId, { limit: 1 })
+  const scoreRuns = scoreRunsQuery.data?.items ?? []
+  const activeScoreRunId = selectedScoreRunId ?? scoreRuns[0]?.id ?? null
   const scoreRunQuery = useScoreRun(activeKnowledgeBaseId, activeScoreRunId)
   const documents = documentsQuery.data?.items ?? []
   const workflows = workflowsQuery.data?.items ?? []
@@ -142,12 +145,6 @@ export function KnowledgeBaseManagerPage() {
   const startScoreRunMutation = useStartScoreRun(activeKnowledgeBaseId)
   const cancelScoreRunMutation = useCancelScoreRun(activeKnowledgeBaseId, activeScoreRunId)
   const replayScoreRunMutation = useReplayScoreRun(activeKnowledgeBaseId, activeScoreRunId)
-
-  useEffect(() => {
-    if (!activeScoreRunId) {
-      setActiveScoreRunId(scoreRunsQuery.data?.items[0]?.id ?? null)
-    }
-  }, [activeScoreRunId, scoreRunsQuery.data])
 
   const feeds = domainConfigQuery.data?.records?.feeds ?? []
   const selectedFeed = feeds.find((feed) => feed.name === studio.selectedFeedName) ?? null

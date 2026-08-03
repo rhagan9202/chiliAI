@@ -131,6 +131,33 @@ type MockScoreRun = {
   updated_at: string
 }
 
+type MockDocumentSummary = {
+  id: string
+  knowledge_base_id: string
+  filename: string
+  content_type: string
+  size_bytes: number
+  status: string
+  created_at: string
+  warning_count: number
+  warning_reasons: string[]
+}
+
+const existingDocument: MockDocumentSummary = {
+  id: 'doc-existing',
+  knowledge_base_id: 'kb-1',
+  filename: 'existing-policy.txt',
+  content_type: 'text/plain',
+  size_bytes: 1024,
+  status: 'validated',
+  created_at: '2026-05-11T00:00:00Z',
+  warning_count: 2,
+  warning_reasons: [
+    'csv.ragged_row: Row has 4 field(s) but the header declares 3',
+    'entity claim-1: normalization_failed: amount',
+  ],
+}
+
 /** In-scope KB for the mocked active domain (medicare_fraud). */
 const medicareKb: MockKnowledgeBase = {
   id: 'kb-1',
@@ -269,9 +296,11 @@ function installFetchMock({
   structuredRecordsFail = false,
   previewFail = false,
   previewText = 'Section 1\nSection 2\nSection 3',
+  previewTextByDocument = {},
   previewDelayMs = 0,
   kbDomain = null,
   kbItems,
+  documentItems,
   emptyInventory = false,
   scoreRunItems = [],
 }: {
@@ -280,11 +309,14 @@ function installFetchMock({
   structuredRecordsFail?: boolean
   previewFail?: boolean
   previewText?: string
+  previewTextByDocument?: Record<string, string>
   previewDelayMs?: number
   /** `domain` stamped on the mocked knowledge base (null = legacy/unknown). */
   kbDomain?: string | null
   /** Full KB list override; defaults to the single kb-1 stamped with `kbDomain`. */
   kbItems?: MockKnowledgeBase[]
+  /** Full document inventory override for kb-1. */
+  documentItems?: MockDocumentSummary[]
   /** kb-1 has landed nothing yet — the brand-new knowledge base case. */
   emptyInventory?: boolean
   scoreRunItems?: MockScoreRun[]
@@ -294,6 +326,7 @@ function installFetchMock({
       ? { ...item, document_count: 0, entity_count: 0, relationship_count: 0 }
       : item
   ))
+  const inventoryItems = emptyInventory ? [] : documentItems ?? [existingDocument]
   installXhrMock({ documentFail, recordsFail })
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()
@@ -436,29 +469,15 @@ function installFetchMock({
 
       return new Response(
         JSON.stringify({
-          items: [
-            {
-              id: 'doc-existing',
-              knowledge_base_id: 'kb-1',
-              filename: 'existing-policy.txt',
-              content_type: 'text/plain',
-              size_bytes: 1024,
-              status: 'validated',
-              created_at: '2026-05-11T00:00:00Z',
-              warning_count: 2,
-              warning_reasons: [
-                'csv.ragged_row: Row has 4 field(s) but the header declares 3',
-                'entity claim-1: normalization_failed: amount',
-              ],
-            },
-          ],
-          total: 1,
+          items: inventoryItems,
+          total: inventoryItems.length,
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }
 
-    if (url.endsWith('/knowledgebases/kb-1/documents/doc-existing/preview')) {
+    const previewMatch = url.match(/\/knowledgebases\/kb-1\/documents\/([^/]+)\/preview$/)
+    if (previewMatch) {
       if (previewDelayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, previewDelayMs))
       }
@@ -468,15 +487,24 @@ function installFetchMock({
           headers: { 'content-type': 'application/json' },
         })
       }
+      const documentId = decodeURIComponent(previewMatch[1])
+      const document = inventoryItems.find((item) => item.id === documentId)
+      if (!document) {
+        return new Response(JSON.stringify({ detail: 'Document not found' }), {
+          status: 404,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      const selectedPreviewText = previewTextByDocument[documentId] ?? previewText
 
       return new Response(
         JSON.stringify({
           knowledge_base_id: 'kb-1',
-          document_id: 'doc-existing',
-          filename: 'existing-policy.txt',
+          document_id: documentId,
+          filename: document.filename,
           content_type: 'text/plain',
-          preview_text: previewText,
-          line_count: previewText.length === 0 ? 0 : previewText.split('\n').length,
+          preview_text: selectedPreviewText,
+          line_count: selectedPreviewText.length === 0 ? 0 : selectedPreviewText.split('\n').length,
           truncated: false,
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
@@ -865,6 +893,46 @@ describe('KnowledgeBaseManagerPage ingestion', () => {
     expect(await screen.findByText('Document preview')).toBeInTheDocument()
     expect(await screen.findByText(/Section 1/)).toBeInTheDocument()
     expect(screen.getByText(/3 lines from existing-policy\.txt/)).toBeInTheDocument()
+  })
+
+  it('honors a ?document= deep-link for document preview selection', async () => {
+    installFetchMock({
+      documentItems: [
+        existingDocument,
+        {
+          ...existingDocument,
+          id: 'doc-selected',
+          filename: 'selected-claim.txt',
+          warning_count: 0,
+          warning_reasons: [],
+        },
+      ],
+      previewTextByDocument: {
+        'doc-selected': 'Selected claim chunk\nLine two',
+      },
+    })
+
+    renderWithClient(
+      <KnowledgeBaseManagerPage />,
+      ['/knowledge-bases?kb=kb-1&document=doc-selected&chunk=7'],
+    )
+
+    expect(await screen.findByText(/Selected claim chunk/)).toBeInTheDocument()
+    expect(screen.getByText(/2 lines from selected-claim\.txt/)).toBeInTheDocument()
+
+    const requestedUrls = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.map((call) => String(call[0]))
+    expect(
+      requestedUrls.some((requestedUrl) =>
+        requestedUrl.endsWith('/knowledgebases/kb-1/documents/doc-selected/preview'),
+      ),
+    ).toBe(true)
+    expect(
+      requestedUrls.some((requestedUrl) =>
+        requestedUrl.endsWith('/knowledgebases/kb-1/documents/doc-existing/preview'),
+      ),
+    ).toBe(false)
   })
 
   it('renders document preview empty state when preview text is blank', async () => {

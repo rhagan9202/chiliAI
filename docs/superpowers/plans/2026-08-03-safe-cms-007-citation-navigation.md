@@ -257,7 +257,28 @@ Task 3 notes:
 
 **Files:**
 - Modify/create: `chili_app/e2e/citation-navigation.spec.ts`
+- Modify: `chili_app/src/pages/KnowledgeBaseManagerPage.tsx`
+- Test: `chili_app/src/pages/__tests__/KnowledgeBaseManagerPage.test.tsx`
 - Modify: `docs/superpowers/plans/2026-08-03-safe-cms-007-citation-navigation.md`
+
+Task 4 preparation notes:
+
+- Added query-selected document preview support for `/knowledge-bases?kb=...&document=...&chunk=...`.
+- Re-enabled document provenance and RAG document citation links only after the
+  Knowledge Base page consumed `document` selection.
+- Replaced a pre-existing synchronous score-run selection effect in the touched
+  Knowledge Base page with derived selection so focused lint can pass without
+  suppressions.
+- Red verification failed on unsupported document resolver results, null RAG
+  navigation targets, missing document links, and Knowledge Base Manager selecting
+  the first document instead of `?document=doc-selected`.
+- Green verification passed:
+  - `pnpm exec vitest run src/lib/__tests__/citationTargets.test.ts src/lib/__tests__/ragContext.test.ts src/components/investigation/__tests__/EvidencePackViewer.test.tsx src/pages/__tests__/RagChatPage.test.tsx src/pages/__tests__/KnowledgeBaseManagerPage.test.tsx`: 99 passed.
+- Final route-support verification passed:
+  - `pnpm exec eslint src/lib/citationTargets.ts src/lib/ragContext.ts src/lib/__tests__/citationTargets.test.ts src/lib/__tests__/ragContext.test.ts src/components/investigation/EvidencePackViewer.tsx src/components/investigation/__tests__/EvidencePackViewer.test.tsx src/pages/RagChatPage.tsx src/pages/__tests__/RagChatPage.test.tsx src/pages/KnowledgeBaseManagerPage.tsx src/pages/__tests__/KnowledgeBaseManagerPage.test.tsx`: passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
+  - `backend/.venv/bin/python scripts/backlog_consistency.py --check`: passed.
+  - `git diff --check`: passed.
 
 - [ ] **Step 1: Write failing Playwright coverage**
 

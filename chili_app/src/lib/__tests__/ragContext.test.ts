@@ -145,31 +145,31 @@ describe('ragContext', () => {
     })
   })
 
-  it('keeps document-only alert citations inert instead of falling back to alert context', () => {
+  it('resolves document-only alert citations to document preview context', () => {
     expect(
       citationNavigationTarget(
         { entity_id: null, content_id: 'chunk-1', document_id: 'claims.csv', chunk_index: 1 },
         { knowledgeBaseId: 'kb-1', source: 'alert', alertId: 'alert-1' },
       ),
-    ).toBeNull()
+    ).toEqual({ pathname: '/knowledge-bases', search: 'kb=kb-1&document=claims.csv&chunk=1' })
   })
 
-  it('keeps document-only case citations inert instead of falling back to case context', () => {
+  it('resolves document-only case citations to document preview context', () => {
     expect(
       citationNavigationTarget(
         { content_id: 'chunk-1', document_id: 'case-notes.md', chunk_index: 2 },
         { knowledgeBaseId: 'kb-1', source: 'case', caseId: 'case-1' },
       ),
-    ).toBeNull()
+    ).toEqual({ pathname: '/knowledge-bases', search: 'kb=kb-1&document=case-notes.md&chunk=2' })
   })
 
-  it('keeps document-only housing citations inert instead of falling back to housing context', () => {
+  it('resolves document-only housing citations to document preview context', () => {
     expect(
       citationNavigationTarget(
         { content_id: 'chunk-1', document_id: 'housing.pdf', chunk_index: 3 },
         { knowledgeBaseId: 'kb-1', source: 'housing', installationId: 'edwards' },
       ),
-    ).toBeNull()
+    ).toEqual({ pathname: '/knowledge-bases', search: 'kb=kb-1&document=housing.pdf&chunk=3' })
   })
 
   it('returns null when no citation or context navigation target exists', () => {
