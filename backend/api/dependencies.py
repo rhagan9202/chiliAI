@@ -52,6 +52,10 @@ from api.contracts import (
     EvidencePackResponse,
     EvidenceProvenanceListResponse,
     EvidenceProvenanceReferenceResponse,
+    ExplanationReviewCreateRequest,
+    ExplanationReviewListResponse,
+    ExplanationReviewResponse,
+    ExplanationReviewTargetResponse,
     FeatureAttributionResponse,
     GraphEntityDetailResponse,
     NarrativeSectionResponse,
@@ -127,6 +131,17 @@ from config.schema import (
 from analytics.features.service import (
     FeatureCatalogService,
     create_feature_catalog_service,
+)
+from analytics.explainability.reviews import (
+    ExplanationReviewCreate,
+    ExplanationReviewPage,
+    ExplanationReviewQuery,
+    ExplanationReviewRecord,
+    ExplanationReviewService,
+    ExplanationReviewState,
+    ExplanationReviewTarget,
+    ExplanationReviewTargetType,
+    InMemoryExplanationReviewRepository,
 )
 from analytics.gnn.adapters.cluster_store import ObjectStoreClusterSummaryStore
 from analytics.gnn.adapters.graph_repository_source import GraphRepositorySnapshotSource
@@ -327,6 +342,8 @@ __all__ = [
     "get_evidence_pack_repository",
     "get_evidence_provenance_payload",
     "get_evidence_provenance_repository",
+    "get_evidence_review_list_payload",
+    "get_explanation_review_service",
     "get_event_bus",
     "get_event_bus_settings",
     "get_feature_catalog_service",
@@ -495,6 +512,21 @@ def get_evidence_provenance_repository(
     return EvidencePackProvenanceRepository(get_evidence_pack_repository(request))
 
 
+def get_explanation_review_service(request: Request) -> ExplanationReviewService:
+    """Return the per-app explanation review service.
+
+    Task 2 uses the in-memory repository. Task 3 replaces this build function
+    with the Postgres-backed adapter when a connection provider is configured.
+    """
+
+    return _memoize_config_derived(
+        request.app,
+        "explanation_review_service",
+        lambda: ExplanationReviewService(InMemoryExplanationReviewRepository()),
+        guard=lambda value: isinstance(value, ExplanationReviewService),
+    )
+
+
 def get_evidence_pack_payload(
     evidence_pack_id: str = Path(..., description="Evidence pack identifier."),
     knowledge_base_id: str = Query(
@@ -555,6 +587,139 @@ def get_evidence_pack_export_payload(
         filename=f"evidence-{pack.id}.{suffix}",
         content=content,
     )
+
+
+def _require_evidence_pack_exists(
+    *,
+    knowledge_base_id: str,
+    evidence_pack_id: str,
+    repository: EvidencePackRepository,
+) -> None:
+    if repository.get(knowledge_base_id, evidence_pack_id) is None:
+        raise HTTPException(status_code=404, detail="Evidence pack not found.")
+
+
+def _explanation_review_to_response(
+    review: ExplanationReviewRecord,
+) -> ExplanationReviewResponse:
+    return ExplanationReviewResponse(
+        id=review.id,
+        knowledge_base_id=review.knowledge_base_id,
+        evidence_pack_id=review.evidence_pack_id,
+        target=ExplanationReviewTargetResponse(
+            target_type=review.target.target_type,
+            target_id=review.target.target_id,
+        ),
+        state=review.state,
+        reasons=list(review.reasons),
+        comment=review.comment,
+        actor_user_id=review.actor_user_id,
+        actor_email=review.actor_email,
+        created_at=review.created_at,
+        updated_at=review.updated_at,
+        update_count=review.update_count,
+    )
+
+
+def _explanation_review_list_to_response(
+    page: ExplanationReviewPage,
+    *,
+    knowledge_base_id: str,
+    evidence_pack_id: str,
+) -> ExplanationReviewListResponse:
+    return ExplanationReviewListResponse(
+        knowledge_base_id=knowledge_base_id,
+        evidence_pack_id=evidence_pack_id,
+        items=[_explanation_review_to_response(review) for review in page.items],
+        page=PageInfo(
+            page=(page.offset // page.limit) + 1,
+            page_size=page.limit,
+            total_items=page.total,
+        ),
+    )
+
+
+def get_evidence_review_list_payload(
+    evidence_pack_id: str = Path(..., description="Evidence pack identifier."),
+    knowledge_base_id: str = Query(
+        ..., min_length=1, description="Knowledge base the evidence pack belongs to."
+    ),
+    state: ExplanationReviewState | None = Query(default=None),
+    target_type: ExplanationReviewTargetType | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    evidence_repository: EvidencePackRepository = Depends(get_evidence_pack_repository),
+    review_service: ExplanationReviewService = Depends(get_explanation_review_service),
+) -> ExplanationReviewListResponse:
+    """Return review state for one KB-scoped evidence pack."""
+
+    _require_evidence_pack_exists(
+        knowledge_base_id=knowledge_base_id,
+        evidence_pack_id=evidence_pack_id,
+        repository=evidence_repository,
+    )
+    page = review_service.list_reviews(
+        ExplanationReviewQuery(
+            knowledge_base_id=knowledge_base_id,
+            evidence_pack_id=evidence_pack_id,
+            state=state,
+            target_type=target_type,
+            limit=limit,
+            offset=offset,
+        )
+    )
+    return _explanation_review_list_to_response(
+        page,
+        knowledge_base_id=knowledge_base_id,
+        evidence_pack_id=evidence_pack_id,
+    )
+
+
+def create_evidence_review_payload(
+    *,
+    evidence_pack_id: str,
+    knowledge_base_id: str,
+    payload: ExplanationReviewCreateRequest,
+    actor_user_id: str,
+    actor_email: str | None,
+    evidence_repository: EvidencePackRepository,
+    review_service: ExplanationReviewService,
+) -> tuple[ExplanationReviewResponse, bool]:
+    """Create or update one review after proving the evidence pack is in scope."""
+
+    _require_evidence_pack_exists(
+        knowledge_base_id=knowledge_base_id,
+        evidence_pack_id=evidence_pack_id,
+        repository=evidence_repository,
+    )
+    existing = review_service.list_reviews(
+        ExplanationReviewQuery(
+            knowledge_base_id=knowledge_base_id,
+            evidence_pack_id=evidence_pack_id,
+            target_type=payload.target.target_type,
+        )
+    )
+    was_update = any(
+        review.target.target_type == payload.target.target_type
+        and review.target.target_id == payload.target.target_id
+        for review in existing.items
+    )
+    review = review_service.record_review(
+        ExplanationReviewCreate(
+            knowledge_base_id=knowledge_base_id,
+            evidence_pack_id=evidence_pack_id,
+            target=ExplanationReviewTarget(
+                target_type=payload.target.target_type,
+                target_id=payload.target.target_id,
+            ),
+            state=payload.state,
+            actor_user_id=actor_user_id,
+            actor_email=actor_email,
+            reasons=list(payload.reasons),
+            comment=payload.comment,
+        )
+    )
+    return _explanation_review_to_response(review), was_update
 
 
 def build_evidence_provenance_response(
@@ -1150,6 +1315,48 @@ def record_alert_audit_event(
                 "entity_id": alert.entity_id,
                 "severity": alert.severity,
                 **dict(metadata or {}),
+            },
+        )
+    )
+
+
+def record_explanation_review_audit_event(
+    audit_service: AuditLogService,
+    *,
+    knowledge_base_id: str,
+    actor_user_id: str,
+    actor_email: str | None,
+    actor_roles: list[str],
+    action: str,
+    evidence_pack_id: str,
+    review: ExplanationReviewResponse,
+) -> None:
+    """Append a sanitized explanation-review audit event without raw comments."""
+
+    summary: JsonSummary = {
+        "state": review.state,
+        "target_type": review.target.target_type,
+        "target_id": review.target.target_id,
+        "reason_count": len(review.reasons),
+        "comment_present": review.comment is not None,
+    }
+    audit_service.record(
+        AuditEventCreate(
+            tenant_id=knowledge_base_id,
+            knowledge_base_id=knowledge_base_id,
+            actor_user_id=actor_user_id,
+            actor_email=actor_email,
+            actor_roles=list(actor_roles),
+            action=action,
+            resource_type="evidence_pack",
+            resource_id=evidence_pack_id,
+            before=None,
+            after=summary,
+            correlation_id=f"evidence:{knowledge_base_id}:{action}:{evidence_pack_id}",
+            metadata={
+                "source": "api.evidence",
+                "review_id": review.id,
+                "update_count": review.update_count,
             },
         )
     )
@@ -3015,6 +3222,7 @@ _CONFIG_DERIVED_APP_STATE_ATTRS: tuple[str, ...] = (
     "evidence_pack_repository",
     "case_repository",
     "audit_log_service",
+    "explanation_review_service",
     "conversation_repository",
     "policy_repository",
     "scorecard_run_repository",

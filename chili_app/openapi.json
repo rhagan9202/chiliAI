@@ -3744,6 +3744,221 @@
         "title": "EvidenceProvenanceReferenceResponse",
         "type": "object"
       },
+      "ExplanationReviewCreateRequest": {
+        "description": "Create or update one analyst review of an explanation target.",
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "reasons": {
+            "items": {
+              "enum": [
+                "missing_source",
+                "wrong_peer_group",
+                "stale_data",
+                "unsupported_claim",
+                "contradicts_evidence",
+                "unclear_rationale",
+                "other"
+              ],
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "useful",
+              "incomplete",
+              "misleading",
+              "unsupported",
+              "approved",
+              "rejected",
+              "regeneration_requested"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/ExplanationReviewTargetResponse"
+          }
+        },
+        "required": [
+          "target",
+          "state"
+        ],
+        "title": "ExplanationReviewCreateRequest",
+        "type": "object"
+      },
+      "ExplanationReviewListResponse": {
+        "description": "Page of review state for one evidence pack.",
+        "properties": {
+          "evidence_pack_id": {
+            "title": "Evidence Pack Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExplanationReviewResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "evidence_pack_id",
+          "page"
+        ],
+        "title": "ExplanationReviewListResponse",
+        "type": "object"
+      },
+      "ExplanationReviewResponse": {
+        "description": "Stored analyst review state for one explanation target.",
+        "properties": {
+          "actor_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Email"
+          },
+          "actor_user_id": {
+            "title": "Actor User Id",
+            "type": "string"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "evidence_pack_id": {
+            "title": "Evidence Pack Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "enum": [
+                "missing_source",
+                "wrong_peer_group",
+                "stale_data",
+                "unsupported_claim",
+                "contradicts_evidence",
+                "unclear_rationale",
+                "other"
+              ],
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "useful",
+              "incomplete",
+              "misleading",
+              "unsupported",
+              "approved",
+              "rejected",
+              "regeneration_requested"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/ExplanationReviewTargetResponse"
+          },
+          "update_count": {
+            "minimum": 0.0,
+            "title": "Update Count",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "knowledge_base_id",
+          "evidence_pack_id",
+          "target",
+          "state",
+          "actor_user_id",
+          "created_at",
+          "updated_at",
+          "update_count"
+        ],
+        "title": "ExplanationReviewResponse",
+        "type": "object"
+      },
+      "ExplanationReviewTargetResponse": {
+        "description": "One reviewable subtarget inside an evidence pack.",
+        "properties": {
+          "target_id": {
+            "minLength": 1,
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "enum": [
+              "narrative",
+              "narrative_section",
+              "feature_attribution",
+              "evidence_item",
+              "provenance_reference"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_id"
+        ],
+        "title": "ExplanationReviewTargetResponse",
+        "type": "object"
+      },
       "FeatureAttributionResponse": {
         "description": "A single feature's signed contribution to a risk score or alert.",
         "properties": {
@@ -11905,6 +12120,194 @@
           }
         },
         "summary": "Get Evidence Pack Provenance",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/evidence-packs/{evidence_pack_id}/reviews": {
+      "get": {
+        "description": "Return analyst review state for one evidence pack.",
+        "operationId": "list_evidence_pack_reviews_evidence_packs__evidence_pack_id__reviews_get",
+        "parameters": [
+          {
+            "description": "Evidence pack identifier.",
+            "in": "path",
+            "name": "evidence_pack_id",
+            "required": true,
+            "schema": {
+              "description": "Evidence pack identifier.",
+              "title": "Evidence Pack Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Knowledge base the evidence pack belongs to.",
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "description": "Knowledge base the evidence pack belongs to.",
+              "minLength": 1,
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "useful",
+                    "incomplete",
+                    "misleading",
+                    "unsupported",
+                    "approved",
+                    "rejected",
+                    "regeneration_requested"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "narrative",
+                    "narrative_section",
+                    "feature_attribution",
+                    "evidence_item",
+                    "provenance_reference"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplanationReviewListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Evidence Pack Reviews",
+        "tags": [
+          "evidence"
+        ]
+      },
+      "post": {
+        "description": "Create or update one analyst review of an explanation target.",
+        "operationId": "create_evidence_pack_review_evidence_packs__evidence_pack_id__reviews_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_pack_id",
+            "required": true,
+            "schema": {
+              "title": "Evidence Pack Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "knowledge_base_id",
+            "required": true,
+            "schema": {
+              "title": "Knowledge Base Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExplanationReviewCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplanationReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Evidence Pack Review",
         "tags": [
           "evidence"
         ]

@@ -955,6 +955,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/evidence-packs/{evidence_pack_id}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Evidence Pack Reviews
+         * @description Return analyst review state for one evidence pack.
+         */
+        get: operations["list_evidence_pack_reviews_evidence_packs__evidence_pack_id__reviews_get"];
+        put?: never;
+        /**
+         * Create Evidence Pack Review
+         * @description Create or update one analyst review of an explanation target.
+         */
+        post: operations["create_evidence_pack_review_evidence_packs__evidence_pack_id__reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/graph/entities/{entity_id}": {
         parameters: {
             query?: never;
@@ -3324,6 +3348,86 @@ export interface components {
             source_version?: string | null;
             /** Transformation Version */
             transformation_version?: string | null;
+        };
+        /**
+         * ExplanationReviewCreateRequest
+         * @description Create or update one analyst review of an explanation target.
+         */
+        ExplanationReviewCreateRequest: {
+            /** Comment */
+            comment?: string | null;
+            /** Reasons */
+            reasons?: ("missing_source" | "wrong_peer_group" | "stale_data" | "unsupported_claim" | "contradicts_evidence" | "unclear_rationale" | "other")[];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "useful" | "incomplete" | "misleading" | "unsupported" | "approved" | "rejected" | "regeneration_requested";
+            target: components["schemas"]["ExplanationReviewTargetResponse"];
+        };
+        /**
+         * ExplanationReviewListResponse
+         * @description Page of review state for one evidence pack.
+         */
+        ExplanationReviewListResponse: {
+            /** Evidence Pack Id */
+            evidence_pack_id: string;
+            /** Items */
+            items?: components["schemas"]["ExplanationReviewResponse"][];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            page: components["schemas"]["PageInfo"];
+        };
+        /**
+         * ExplanationReviewResponse
+         * @description Stored analyst review state for one explanation target.
+         */
+        ExplanationReviewResponse: {
+            /** Actor Email */
+            actor_email?: string | null;
+            /** Actor User Id */
+            actor_user_id: string;
+            /** Comment */
+            comment?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Evidence Pack Id */
+            evidence_pack_id: string;
+            /** Id */
+            id: string;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Reasons */
+            reasons?: ("missing_source" | "wrong_peer_group" | "stale_data" | "unsupported_claim" | "contradicts_evidence" | "unclear_rationale" | "other")[];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "useful" | "incomplete" | "misleading" | "unsupported" | "approved" | "rejected" | "regeneration_requested";
+            target: components["schemas"]["ExplanationReviewTargetResponse"];
+            /** Update Count */
+            update_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ExplanationReviewTargetResponse
+         * @description One reviewable subtarget inside an evidence pack.
+         */
+        ExplanationReviewTargetResponse: {
+            /** Target Id */
+            target_id: string;
+            /**
+             * Target Type
+             * @enum {string}
+             */
+            target_type: "narrative" | "narrative_section" | "feature_attribution" | "evidence_item" | "provenance_reference";
         };
         /**
          * FeatureAttributionResponse
@@ -7444,6 +7548,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvidenceProvenanceListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_evidence_pack_reviews_evidence_packs__evidence_pack_id__reviews_get: {
+        parameters: {
+            query: {
+                /** @description Knowledge base the evidence pack belongs to. */
+                knowledge_base_id: string;
+                state?: ("useful" | "incomplete" | "misleading" | "unsupported" | "approved" | "rejected" | "regeneration_requested") | null;
+                target_type?: ("narrative" | "narrative_section" | "feature_attribution" | "evidence_item" | "provenance_reference") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Evidence pack identifier. */
+                evidence_pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplanationReviewListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_evidence_pack_review_evidence_packs__evidence_pack_id__reviews_post: {
+        parameters: {
+            query: {
+                knowledge_base_id: string;
+            };
+            header?: never;
+            path: {
+                evidence_pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExplanationReviewCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplanationReviewResponse"];
                 };
             };
             /** @description Validation Error */

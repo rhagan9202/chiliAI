@@ -206,6 +206,12 @@ export type ConfigSwapResponse = Schemas['ConfigSwapResponse']
 export type CaseAttachAlertRequest = Schemas['CaseAttachAlertRequest']
 export type EvidenceExportFormat = Schemas['EvidencePackExportResponse']['format']
 export type EvidencePackExportResponse = Schemas['EvidencePackExportResponse']
+export type ExplanationReviewCreateRequest = Schemas['ExplanationReviewCreateRequest']
+export type ExplanationReviewResponse = Schemas['ExplanationReviewResponse']
+export type ExplanationReviewListResponse = RequireFields<
+  Schemas['ExplanationReviewListResponse'],
+  'items'
+>
 
 export type RecordPushRequest = Schemas['RecordPushRequest']
 export type RecordIngestReceipt = Schemas['RecordIngestReceipt']

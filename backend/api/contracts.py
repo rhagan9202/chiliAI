@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Literal, cast
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from config.schema import CapabilitiesConfig, UiRoleConfig
 
@@ -560,6 +560,94 @@ class EvidenceProvenanceListResponse(BaseModel):
     items: list[EvidenceProvenanceReferenceResponse] = Field(
         default_factory=lambda: cast(list[EvidenceProvenanceReferenceResponse], [])
     )
+
+
+ExplanationReviewTargetType = Literal[
+    "narrative",
+    "narrative_section",
+    "feature_attribution",
+    "evidence_item",
+    "provenance_reference",
+]
+ExplanationReviewState = Literal[
+    "useful",
+    "incomplete",
+    "misleading",
+    "unsupported",
+    "approved",
+    "rejected",
+    "regeneration_requested",
+]
+ExplanationReviewReason = Literal[
+    "missing_source",
+    "wrong_peer_group",
+    "stale_data",
+    "unsupported_claim",
+    "contradicts_evidence",
+    "unclear_rationale",
+    "other",
+]
+_EXPLANATION_REVIEW_REASON_REQUIRED_STATES: set[ExplanationReviewState] = {
+    "incomplete",
+    "misleading",
+    "unsupported",
+    "rejected",
+    "regeneration_requested",
+}
+
+
+class ExplanationReviewTargetResponse(BaseModel):
+    """One reviewable subtarget inside an evidence pack."""
+
+    target_type: ExplanationReviewTargetType
+    target_id: str = Field(min_length=1)
+
+
+class ExplanationReviewCreateRequest(BaseModel):
+    """Create or update one analyst review of an explanation target."""
+
+    target: ExplanationReviewTargetResponse
+    state: ExplanationReviewState
+    reasons: list[ExplanationReviewReason] = Field(
+        default_factory=lambda: cast(list[ExplanationReviewReason], [])
+    )
+    comment: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def _validate_reason_codes(self) -> ExplanationReviewCreateRequest:
+        if self.state in _EXPLANATION_REVIEW_REASON_REQUIRED_STATES and not self.reasons:
+            raise ValueError(f"Review state '{self.state}' requires at least one reason.")
+        return self
+
+
+class ExplanationReviewResponse(BaseModel):
+    """Stored analyst review state for one explanation target."""
+
+    id: str
+    knowledge_base_id: str
+    evidence_pack_id: str
+    target: ExplanationReviewTargetResponse
+    state: ExplanationReviewState
+    reasons: list[ExplanationReviewReason] = Field(
+        default_factory=lambda: cast(list[ExplanationReviewReason], [])
+    )
+    comment: str | None = None
+    actor_user_id: str
+    actor_email: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    update_count: int = Field(ge=0)
+
+
+class ExplanationReviewListResponse(BaseModel):
+    """Page of review state for one evidence pack."""
+
+    knowledge_base_id: str
+    evidence_pack_id: str
+    items: list[ExplanationReviewResponse] = Field(
+        default_factory=lambda: cast(list[ExplanationReviewResponse], [])
+    )
+    page: PageInfo
 
 
 class EntityLocationResponse(BaseModel):
@@ -1306,6 +1394,13 @@ __all__ = [
     "EvidencePackResponse",
     "EvidenceProvenanceListResponse",
     "EvidenceProvenanceReferenceResponse",
+    "ExplanationReviewCreateRequest",
+    "ExplanationReviewListResponse",
+    "ExplanationReviewReason",
+    "ExplanationReviewResponse",
+    "ExplanationReviewState",
+    "ExplanationReviewTargetResponse",
+    "ExplanationReviewTargetType",
     "EntityFeatureValueListResponse",
     "EntityFeatureValueResponse",
     "EntityTimeseriesPointResponse",

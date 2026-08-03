@@ -72,11 +72,11 @@
 - Modify: `chili_app/src/lib/api/schema.ts`
 - Modify: `chili_app/src/api/contracts.ts`
 
-- [ ] Register `GET /evidence-packs/{evidence_pack_id}/reviews` and `POST /evidence-packs/{evidence_pack_id}/reviews`.
-- [ ] Require `viewer` for reads and `analyst` for creates/updates.
-- [ ] Reject missing evidence packs and cross-KB writes.
-- [ ] Emit `explanation.review.create` or `explanation.review.update` audit events with target, state, reason count, and comment-present metadata only.
-- [ ] Export OpenAPI and regenerate frontend contracts.
+- [x] Register `GET /evidence-packs/{evidence_pack_id}/reviews` and `POST /evidence-packs/{evidence_pack_id}/reviews`.
+- [x] Require `viewer` for reads and `analyst` for creates/updates.
+- [x] Reject missing evidence packs and cross-KB writes.
+- [x] Emit `explanation.review.create` or `explanation.review.update` audit events with target, state, reason count, and comment-present metadata only.
+- [x] Export OpenAPI and regenerate frontend contracts.
 
 **Steps:**
 
@@ -90,6 +90,20 @@
    - `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json`
    - `cd chili_app && npm run codegen:api`
 5. Commit: `git commit -m "Add SAFE-CMS-010 evidence review API"`.
+
+**Notes:**
+- Added evidence-pack review request/list/response contracts and generated frontend schema aliases.
+- Added `GET /evidence-packs/{evidence_pack_id}/reviews` and `POST /evidence-packs/{evidence_pack_id}/reviews`; reads are viewer-gated and writes are analyst-gated.
+- Evidence review writes prove the evidence pack exists in the requested KB before recording review state, so same-id evidence packs in another KB do not leak reviews.
+- Review create/update emits sanitized `explanation.review.*` audit events with target, state, reason count, comment-present flag, review id, and update count; raw comments are omitted from audit before/after/metadata.
+- RED: `uv run --project backend pytest backend/tests/api/test_evidence_reviews.py -q` failed with 404s for the missing `/evidence-packs/{evidence_pack_id}/reviews` routes.
+- GREEN:
+  - `uv run --project backend pytest backend/tests/api/test_evidence_reviews.py backend/tests/api/test_audit_router.py -q`: 10 passed.
+  - `uv run --project backend ruff check backend/api/contracts.py backend/api/dependencies.py backend/api/routers/evidence.py backend/tests/api/test_evidence_reviews.py`: passed.
+  - `uv run --project backend pyright backend/api/contracts.py backend/api/dependencies.py backend/api/routers/evidence.py backend/tests/api/test_evidence_reviews.py`: 0 errors.
+  - `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json`: passed.
+  - `cd chili_app && npm run codegen:api`: passed.
+  - `cd chili_app && pnpm build`: passed with the existing Vite large-chunk warning.
 
 ## Task 3: Durable Review Persistence
 
