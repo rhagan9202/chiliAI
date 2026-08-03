@@ -79,10 +79,21 @@
 - Modify: CMS domain pack(s)
 - Modify: config tests
 
-- [ ] Add versioned cohort definitions that can reference entity type, peer metric, grouping dimensions, exclusions, and minimum cohort size.
-- [ ] Keep definitions KB/domain scoped through `DomainConfig`.
-- [ ] Reject invalid cohort definitions through config validation.
-- [ ] Add CMS examples for specialty/geography/service-mix comparisons.
+- [x] Add versioned cohort definitions that can reference entity type, peer metric, grouping dimensions, exclusions, and minimum cohort size.
+- [x] Keep definitions KB/domain scoped through `DomainConfig`.
+- [x] Reject invalid cohort definitions through config validation.
+- [x] Add CMS examples for specialty/geography/service-mix comparisons.
+
+**Notes:**
+- Added `PeerCohortDefinitionConfig` and `PeerCohortExclusionConfig` under `PeerStatsConfig.cohorts`.
+- Domain cross-reference validation now rejects duplicate cohort ids, unknown peer metrics, cohort/metric entity-type mismatches, and group/exclusion fields missing from the referenced peer metric's record schema.
+- Added optional cohort grouping fields and CMS examples for specialty, geography, and service-mix comparisons in the Medicare fraud packs.
+- RED: `uv run --project backend pytest backend/tests/config/test_peer_stats_config.py backend/tests/config/test_schema.py -q -k "peer_cohort or peer_stats_config_defaults_empty or cms_pack_declares_peerstats"` failed during collection with `ImportError: cannot import name 'PeerCohortDefinitionConfig'`.
+- GREEN:
+  - `uv run --project backend pytest backend/tests/config/test_peer_stats_config.py backend/tests/config/test_schema.py backend/tests/config/test_loader.py -q -k "peer_cohort or peer_stats_config_defaults_empty or cms_pack_declares_peerstats"`: 8 passed, 136 deselected.
+  - `uv run --project backend pytest backend/tests/config/test_peer_stats_config.py backend/tests/config/test_schema.py backend/tests/config/test_loader.py -q`: 144 passed.
+  - `uv run --project backend ruff check backend/config/schema.py backend/tests/config/test_peer_stats_config.py backend/tests/config/test_schema.py backend/tests/config/test_loader.py`: passed.
+  - `uv run --project backend pyright backend/config/schema.py backend/tests/config/test_peer_stats_config.py backend/tests/config/test_schema.py backend/tests/config/test_loader.py`: 0 errors.
 
 ## Task 4: Cohort Membership And Distribution API
 

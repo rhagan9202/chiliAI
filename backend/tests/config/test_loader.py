@@ -319,6 +319,11 @@ def test_cms_pack_declares_peerstats_and_timeseries() -> None:
     config = _load_default("medicare_fraud_cms_desynpuf")
     assert config.capabilities.peer_stats is True
     assert config.peer_stats is not None and len(config.peer_stats.metrics) == 2
+    assert {cohort.id for cohort in config.peer_stats.cohorts} == {
+        "provider_specialty_carrier_billing",
+        "provider_geography_carrier_billing",
+        "provider_service_mix_inpatient_billing",
+    }
     assert config.timeseries is not None
     names = [spec.name for spec in config.timeseries.metrics]
     assert names == ["weekly_carrier_billing_self", "monthly_inpatient_billing_self"]

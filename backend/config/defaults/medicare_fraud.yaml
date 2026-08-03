@@ -93,6 +93,9 @@ records:
       record_schema:
         claim_id: { type: string, display: "Claim ID", required: true }
         provider_npi: { type: string, display: "Provider NPI", required: true, pattern: "^[0-9]{10}$" }
+        provider_specialty: { type: string, display: "Provider Specialty" }
+        provider_state: { type: string, display: "Provider State" }
+        service_category: { type: string, display: "Service Category" }
         billed_amount: { type: decimal, display: "Billed Amount", required: true, min_value: 0 }
         service_date: { type: date, display: "Date of Service", required: true }
         anomaly_score: { type: decimal, display: "Anomaly Score", required: true, min_value: 0, max_value: 1 }
@@ -143,6 +146,28 @@ peer_stats:
       z_cap: 4.0
       weight: 1.0
       min_peers: 5
+  cohorts:
+    - id: provider_specialty_billing
+      label: "Provider specialty billing peers"
+      entity_type: provider
+      peer_metric: weekly_provider_billing
+      group_by: [provider_specialty]
+      min_cohort_size: 5
+      version: v1
+    - id: provider_geography_billing
+      label: "Provider geography billing peers"
+      entity_type: provider
+      peer_metric: weekly_provider_billing
+      group_by: [provider_state]
+      min_cohort_size: 5
+      version: v1
+    - id: provider_service_mix_claim_count
+      label: "Provider service-mix claim-count peers"
+      entity_type: provider
+      peer_metric: weekly_provider_claim_count
+      group_by: [service_category]
+      min_cohort_size: 5
+      version: v1
 
 policy_rules:
   - id: billing_thresholds

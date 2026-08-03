@@ -51,7 +51,7 @@
 | SAFE-CMS-008 | Case dossier and export workflow | SAFE-CMS-SURGE | P1 (PI 2 Sprint 8) | done — dossier API, UI, and browser export flow landed 2026-08-03 (`5f05bd7`..`13e6e35`) | 0 SP |
 | SAFE-CMS-009 | Immutable audit ledger for analyst and agent actions | SAFE-CMS-SURGE | P1 (PI 3 Sprint 9) | done — audit domain/API/Postgres/hooks/status/dossier timeline landed 2026-08-03 (`9b811d8`..`cd083bb`) | 0 SP |
 | SAFE-CMS-010 | Contestable explainability and human feedback | SAFE-CMS-SURGE | P1 (PI 3 Sprint 10) | done — explanation review domain/API/Postgres/UI/dossier persistence landed 2026-08-03 (`cb73e56`..`9a79cb1`) | 0 SP |
-| SAFE-CMS-011 | Cohort and peer analytics API | SAFE-CMS-SURGE | P1 (PI 3 Sprint 11) | in-progress — peer-analysis read model and `GET /analytics/peer-analysis/{entity_id}` first slice implemented 2026-08-03 | 1 sprint |
+| SAFE-CMS-011 | Cohort and peer analytics API | SAFE-CMS-SURGE | P1 (PI 3 Sprint 11) | in-progress — peer-analysis API and domain-pack cohort definitions implemented 2026-08-03 | 1 sprint |
 | SAFE-CMS-012 | Entity identity resolution and relationship scoring | SAFE-CMS-SURGE | P1 (PI 3 Sprint 12) | planned — depends on feature catalog and risk projections | 1 sprint |
 | SAFE-CMS-013 | Versioned fraud playbooks | SAFE-CMS-SURGE | P1 (PI 4 Sprint 13) | planned — depends on typology and provenance models | 1 sprint |
 | SAFE-CMS-014 | User-authored workflow builder | SAFE-CMS-SURGE | P1 (PI 4 Sprint 14) | planned — gated by workflow ADR and playbooks | 1 sprint |
@@ -89,7 +89,7 @@ drafted at each PI planning gate before implementation starts.
 | SAFE-CMS-008 | PI 2 / Sprint 8 | Case dossier and export workflow. | SAFE-CMS-004, SAFE-CMS-005, SAFE-CMS-006, SAFE-CMS-007. | Implemented and pushed 2026-08-03 (`5f05bd7`..`13e6e35`). |
 | SAFE-CMS-009 | PI 3 / Sprint 9 | Immutable audit ledger for analyst, system, and agent actions. | SAFE-CMS-004, SAFE-CMS-007. | Implemented and pushed 2026-08-03 (`9b811d8`..`cd083bb`). |
 | SAFE-CMS-010 | PI 3 / Sprint 10 | Contestable explainability and human feedback loop. | SAFE-CMS-004, SAFE-CMS-009. | Implemented and pushed 2026-08-03 (`cb73e56`..`9a79cb1`). |
-| SAFE-CMS-011 | PI 3 / Sprint 11 | Cohort and peer analytics APIs. | SAFE-CMS-003, SAFE-CMS-006. | Plan drafted; peer-analysis domain/API first slice implemented 2026-08-03. |
+| SAFE-CMS-011 | PI 3 / Sprint 11 | Cohort and peer analytics APIs. | SAFE-CMS-003, SAFE-CMS-006. | Plan drafted; peer-analysis domain/API and domain-pack cohort definition slices implemented 2026-08-03. |
 | SAFE-CMS-012 | PI 3 / Sprint 12 | Entity identity resolution and relationship scoring. | SAFE-CMS-001, SAFE-CMS-003. | Needs PI 3 design spec. |
 | SAFE-CMS-013 | PI 4 / Sprint 13 | Versioned fraud playbooks. | SAFE-CMS-001, SAFE-CMS-004. | Needs PI 4 workflow/playbook ADR. |
 | SAFE-CMS-014 | PI 4 / Sprint 14 | Permissioned user-authored workflow builder. | SAFE-CMS-002, SAFE-CMS-004, SAFE-CMS-013. | Needs PI 4 workflow architecture ADR. |

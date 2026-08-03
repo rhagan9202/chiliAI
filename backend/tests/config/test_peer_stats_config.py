@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from config.schema import CapabilitiesConfig, PeerMetricSpec, PeerStatsConfig
+from config.schema import (
+    CapabilitiesConfig,
+    PeerCohortDefinitionConfig,
+    PeerMetricSpec,
+    PeerStatsConfig,
+)
 
 
 def test_peer_metric_spec_defaults() -> None:
@@ -70,7 +75,23 @@ def test_peer_metric_spec_rejects_min_peers_below_two() -> None:
 
 def test_peer_stats_config_defaults_empty() -> None:
     assert PeerStatsConfig().metrics == []
+    assert PeerStatsConfig().cohorts == []
 
 
 def test_capabilities_peer_stats_defaults_false() -> None:
     assert CapabilitiesConfig().peer_stats is False
+
+
+def test_peer_cohort_definition_defaults() -> None:
+    cohort = PeerCohortDefinitionConfig(
+        id="specialty_peer_billing",
+        label="Specialty peer billing",
+        entity_type="provider",
+        peer_metric="weekly_billing",
+        group_by=["specialty"],
+    )
+
+    assert cohort.version == "v1"
+    assert cohort.group_by == ["specialty"]
+    assert cohort.exclusions == []
+    assert cohort.min_cohort_size == 5

@@ -751,10 +751,33 @@ class PeerMetricSpec(BaseModel):
     rationale_template: str = "{name}: z={z:.2f} vs {peer_group} peers"
 
 
+class PeerCohortExclusionConfig(BaseModel):
+    """One exclusion rule documented for a cohort definition."""
+
+    field: str = Field(min_length=1)
+    operator: Literal["equals", "not_equals", "in", "not_in", "exists", "missing"]
+    values: list[str] = Field(default_factory=lambda: [])
+    reason: str = ""
+
+
+class PeerCohortDefinitionConfig(BaseModel):
+    """Versioned peer cohort definition for analyst-facing comparisons."""
+
+    id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    entity_type: str = Field(min_length=1)
+    peer_metric: str = Field(min_length=1)
+    version: str = "v1"
+    group_by: list[str] = Field(default_factory=lambda: [])
+    exclusions: list[PeerCohortExclusionConfig] = Field(default_factory=lambda: [])
+    min_cohort_size: int = Field(default=5, ge=2)
+
+
 class PeerStatsConfig(BaseModel):
     """Collection of peer-group z-score metric specs for a domain."""
 
     metrics: list[PeerMetricSpec] = Field(default_factory=lambda: [])
+    cohorts: list[PeerCohortDefinitionConfig] = Field(default_factory=lambda: [])
 
 
 class TimeseriesMetricSpec(BaseModel):
@@ -1191,6 +1214,58 @@ class DomainConfig(BaseModel):
                                 f"'{time_def.type.value}'."
                             )
 
+        # --- peerstats cohort references ---
+        if self.peer_stats is not None:
+            feeds_by_record_type: dict[str, list[RecordFeedConfig]] = {}
+            for feed in records_config.feeds:
+                feeds_by_record_type.setdefault(feed.record_type, []).append(feed)
+            peer_metrics = {metric.name: metric for metric in self.peer_stats.metrics}
+            cohort_ids: set[str] = set()
+            for cohort in self.peer_stats.cohorts:
+                if cohort.id in cohort_ids:
+                    errors.append(f"Duplicate peer cohort id: '{cohort.id}'")
+                cohort_ids.add(cohort.id)
+
+                metric = peer_metrics.get(cohort.peer_metric)
+                if metric is None:
+                    errors.append(
+                        f"Peer cohort '{cohort.id}' references unknown peer metric "
+                        f"'{cohort.peer_metric}'."
+                    )
+                    continue
+                if cohort.entity_type != metric.entity_type:
+                    errors.append(
+                        f"Peer cohort '{cohort.id}' entity_type "
+                        f"'{cohort.entity_type}' does not match peer metric "
+                        f"'{metric.name}' entity_type '{metric.entity_type}'."
+                    )
+                matching = feeds_by_record_type.get(metric.record_type, [])
+                if not matching:
+                    errors.append(
+                        f"Peer cohort '{cohort.id}' metric '{metric.name}' "
+                        f"references record_type '{metric.record_type}' not "
+                        f"declared by any records feed."
+                    )
+                    continue
+                for feed in matching:
+                    schema_fields = feed.record_schema
+                    label = (
+                        f"Peer cohort '{cohort.id}' on records feed "
+                        f"'{feed.name}'"
+                    )
+                    for field_name in cohort.group_by:
+                        if field_name not in schema_fields:
+                            errors.append(
+                                f"{label}: group_by field '{field_name}' is not "
+                                f"in record_schema."
+                            )
+                    for exclusion in cohort.exclusions:
+                        if exclusion.field not in schema_fields:
+                            errors.append(
+                                f"{label}: exclusion field '{exclusion.field}' is "
+                                f"not in record_schema."
+                            )
+
         # --- scorecard template references ---
         feed_schemas = {
             feed.name: set(feed.record_schema.keys())
@@ -1295,6 +1370,8 @@ __all__ = [
     "LlmConfig",
     "MonitoringConfig",
     "ObjectStoreConfig",
+    "PeerCohortDefinitionConfig",
+    "PeerCohortExclusionConfig",
     "PolicyCitationRef",
     "PolicyPredicate",
     "PolicyPredicateValue",

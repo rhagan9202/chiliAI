@@ -1449,6 +1449,123 @@ def test_domain_config_accepts_valid_timeseries_spec() -> None:
     assert cfg.timeseries.metrics[0].detection_strategy == "z_score"
 
 
+def _config_payload_with_peer_metric() -> dict[str, object]:
+    config = _make_config(entities=[_minimal_entity("provider")])
+    payload = config.model_dump()
+    payload["records"] = {
+        "feeds": [
+            {
+                "name": "claim_feed",
+                "record_type": "claim_record",
+                "source": "file_upload",
+                "id_field": "claim_id",
+                "record_schema": {
+                    "claim_id": {
+                        "type": "string",
+                        "display": "Claim ID",
+                        "required": True,
+                    },
+                    "npi": {"type": "string", "display": "NPI"},
+                    "specialty": {"type": "string", "display": "Specialty"},
+                    "amount": {"type": "decimal", "display": "Amount"},
+                    "service_date": {"type": "date", "display": "Service Date"},
+                },
+            }
+        ]
+    }
+    payload["peer_stats"] = {
+        "metrics": [
+            {
+                "name": "weekly_billing",
+                "record_type": "claim_record",
+                "entity_type": "provider",
+                "entity_id_field": "npi",
+                "value_column": "amount",
+                "time_column": "service_date",
+                "aggregation": "sum",
+                "interval": "week",
+            }
+        ],
+        "cohorts": [
+            {
+                "id": "provider_specialty_billing",
+                "label": "Provider specialty billing",
+                "entity_type": "provider",
+                "peer_metric": "weekly_billing",
+                "group_by": ["specialty"],
+                "version": "v1",
+            }
+        ],
+    }
+    return payload
+
+
+def test_domain_config_accepts_valid_peer_cohort_definition() -> None:
+    config = DomainConfig.model_validate(_config_payload_with_peer_metric())
+
+    assert config.peer_stats is not None
+    cohort = config.peer_stats.cohorts[0]
+    assert cohort.id == "provider_specialty_billing"
+    assert cohort.peer_metric == "weekly_billing"
+    assert cohort.group_by == ["specialty"]
+
+
+def test_domain_config_rejects_duplicate_peer_cohort_ids() -> None:
+    payload = _config_payload_with_peer_metric()
+    peer_stats = payload["peer_stats"]
+    assert isinstance(peer_stats, dict)
+    cohorts = peer_stats["cohorts"]
+    assert isinstance(cohorts, list)
+    peer_stats["cohorts"] = [cohorts[0], cohorts[0]]
+
+    with pytest.raises(ValidationError, match="Duplicate peer cohort id"):
+        DomainConfig.model_validate(payload)
+
+
+def test_domain_config_rejects_peer_cohort_unknown_metric() -> None:
+    payload = _config_payload_with_peer_metric()
+    peer_stats = payload["peer_stats"]
+    assert isinstance(peer_stats, dict)
+    cohorts = peer_stats["cohorts"]
+    assert isinstance(cohorts, list)
+    cohort = cohorts[0]
+    assert isinstance(cohort, dict)
+    cohort["peer_metric"] = "missing_metric"
+
+    with pytest.raises(ValidationError, match="unknown peer metric 'missing_metric'"):
+        DomainConfig.model_validate(payload)
+
+
+def test_domain_config_rejects_peer_cohort_entity_type_mismatch() -> None:
+    payload = _config_payload_with_peer_metric()
+    peer_stats = payload["peer_stats"]
+    assert isinstance(peer_stats, dict)
+    cohorts = peer_stats["cohorts"]
+    assert isinstance(cohorts, list)
+    cohort = cohorts[0]
+    assert isinstance(cohort, dict)
+    cohort["entity_type"] = "claim"
+
+    with pytest.raises(ValidationError, match="entity_type 'claim' does not match"):
+        DomainConfig.model_validate(payload)
+
+
+def test_domain_config_rejects_peer_cohort_group_field_missing_from_schema() -> None:
+    payload = _config_payload_with_peer_metric()
+    peer_stats = payload["peer_stats"]
+    assert isinstance(peer_stats, dict)
+    cohorts = peer_stats["cohorts"]
+    assert isinstance(cohorts, list)
+    cohort = cohorts[0]
+    assert isinstance(cohort, dict)
+    cohort["group_by"] = ["missing_field"]
+
+    with pytest.raises(
+        ValidationError, match="group_by field 'missing_field' is not in record_schema"
+    ):
+        DomainConfig.model_validate(payload)
+
+
 class TestRecordsAnalyticsTriggerConfig:
     def test_defaults_off(self) -> None:
         config = RecordsConfig()

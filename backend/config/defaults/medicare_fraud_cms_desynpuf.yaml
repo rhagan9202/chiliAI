@@ -249,6 +249,9 @@ records:
         CLM_FROM_DT: { type: date, display: "Claim From Date" }
         CLM_THRU_DT: { type: date, display: "Claim Through Date" }
         PRF_PHYSN_NPI_1: { type: string, display: "Performing Physician NPI 1" }
+        provider_specialty: { type: string, display: "Provider Specialty" }
+        provider_state: { type: string, display: "Provider State" }
+        service_mix: { type: string, display: "Service Mix" }
         LINE_NCH_PMT_AMT_1: { type: decimal, display: "Line Payment Amount 1", min_value: 0 }
       entities:
         - entity_type: claim
@@ -285,6 +288,9 @@ records:
         CLM_FROM_DT: { type: date, display: "Claim From Date" }
         CLM_THRU_DT: { type: date, display: "Claim Through Date" }
         PRF_PHYSN_NPI_1: { type: string, display: "Performing Physician NPI 1" }
+        provider_specialty: { type: string, display: "Provider Specialty" }
+        provider_state: { type: string, display: "Provider State" }
+        service_mix: { type: string, display: "Service Mix" }
         LINE_NCH_PMT_AMT_1: { type: decimal, display: "Line Payment Amount 1", min_value: 0 }
       entities:
         - entity_type: claim
@@ -331,6 +337,9 @@ records:
         CLM_THRU_DT: { type: date, display: "Claim Through Date" }
         PRVDR_NUM: { type: string, display: "Provider Number" }
         AT_PHYSN_NPI: { type: string, display: "Attending Physician NPI" }
+        provider_specialty: { type: string, display: "Provider Specialty" }
+        provider_state: { type: string, display: "Provider State" }
+        service_mix: { type: string, display: "Service Mix" }
         CLM_PMT_AMT: { type: decimal, display: "Claim Payment Amount", min_value: 0 }
       entities:
         - entity_type: claim
@@ -513,6 +522,28 @@ peer_stats:
       z_cap: 4.0
       weight: 1.5
       min_peers: 5
+  cohorts:
+    - id: provider_specialty_carrier_billing
+      label: "Provider specialty carrier billing peers"
+      entity_type: provider
+      peer_metric: weekly_carrier_billing
+      group_by: [provider_specialty]
+      min_cohort_size: 5
+      version: v1
+    - id: provider_geography_carrier_billing
+      label: "Provider geography carrier billing peers"
+      entity_type: provider
+      peer_metric: weekly_carrier_billing
+      group_by: [provider_state]
+      min_cohort_size: 5
+      version: v1
+    - id: provider_service_mix_inpatient_billing
+      label: "Provider service-mix inpatient billing peers"
+      entity_type: provider
+      peer_metric: monthly_inpatient_billing
+      group_by: [service_mix]
+      min_cohort_size: 5
+      version: v1
 
 timeseries:
   metrics:
