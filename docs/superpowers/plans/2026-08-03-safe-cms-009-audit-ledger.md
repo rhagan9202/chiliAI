@@ -47,9 +47,23 @@ SAFE-CMS-009 adds an immutable audit ledger for material analyst, system, and ag
 - Modify: `backend/api/contracts.py`
 - Create/modify: `backend/tests/api/test_audit_router.py`
 
-- [ ] Register `GET /audit/events` with admin-only access and filters for KB/tenant, actor, action prefix, resource, time range, and pagination.
-- [ ] Return typed response contracts and prove wrong-scope events are not returned.
-- [ ] Export OpenAPI and regenerate frontend contracts.
+- [x] Register `GET /audit/events` with admin-only access and filters for KB/tenant, actor, action prefix, resource, time range, and pagination.
+- [x] Return typed response contracts and prove wrong-scope events are not returned.
+- [x] Export OpenAPI and regenerate frontend contracts.
+
+**Notes:**
+- RED: `uv run --project backend pytest backend/tests/api/test_audit_router.py -q` failed with `404` because `/audit/events` did not exist.
+- Added `AuditEventResponse`/`AuditEventListResponse`, per-app `get_audit_log_service`, `get_audit_event_list_payload`, and `backend/api/routers/audit.py` registered from `create_app()`.
+- RED: tightened filter coverage showed `from`/`to` query params were ignored until the dependency accepted them as aliases for the domain query time range.
+- GREEN:
+  - `uv run --project backend pytest backend/tests/api/test_audit_router.py backend/tests/auditlog/test_service.py -q`: 9 passed.
+  - `uv run --project backend pyright api/routers/audit.py api/dependencies.py api/contracts.py auditlog tests/api/test_audit_router.py tests/auditlog`: 0 errors.
+  - `uv run --project backend ruff check --no-cache api/routers/audit.py api/dependencies.py api/contracts.py auditlog tests/api/test_audit_router.py tests/auditlog`: passed.
+  - `PYTHONPATH=backend backend/.venv/bin/python -m tools.export_openapi --output chili_app/openapi.json`: passed.
+  - `npm run codegen:api`: passed.
+  - `pnpm build`: passed with the existing Vite large-chunk warning.
+  - `backend/.venv/bin/python scripts/backlog_consistency.py --check`: passed.
+  - `git diff --check`: passed.
 
 ## Task 3: Durable Postgres Adapter
 

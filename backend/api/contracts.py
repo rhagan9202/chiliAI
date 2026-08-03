@@ -18,6 +18,38 @@ class PageInfo(BaseModel):
     total_items: int = Field(ge=0)
 
 
+class AuditEventResponse(BaseModel):
+    """One immutable audit ledger event."""
+
+    event_id: str
+    occurred_at: datetime
+    tenant_id: str
+    knowledge_base_id: str | None = None
+    actor_user_id: str
+    actor_email: str | None = None
+    actor_roles: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    action: str
+    resource_type: str
+    resource_id: str
+    before: dict[str, object | None] | None = None
+    after: dict[str, object | None] | None = None
+    correlation_id: str
+    client_ip: str | None = None
+    user_agent: str | None = None
+    outcome: Literal["success", "failure"]
+    failure_reason: str | None = None
+    metadata: dict[str, object | None] = Field(default_factory=dict)
+
+
+class AuditEventListResponse(BaseModel):
+    """Paginated audit ledger query response."""
+
+    items: list[AuditEventResponse] = Field(
+        default_factory=lambda: cast(list[AuditEventResponse], [])
+    )
+    page: PageInfo
+
+
 class DomainFeaturesResponse(BaseModel):
     """Feature flags and role/navigation metadata derived from DomainConfig."""
 
@@ -1214,6 +1246,8 @@ class ChatMessageCreateRequest(BaseModel):
 
 
 __all__ = [
+    "AuditEventListResponse",
+    "AuditEventResponse",
     "AlertAssignmentRequest",
     "AlertBulkRejection",
     "AlertBulkStatusUpdateRequest",

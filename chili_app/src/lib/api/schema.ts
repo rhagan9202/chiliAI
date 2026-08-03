@@ -309,6 +309,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/audit/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Audit Events
+         * @description Return a filtered page of immutable audit ledger events.
+         */
+        get: operations["list_audit_events_audit_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/callback": {
         parameters: {
             query?: never;
@@ -1924,6 +1944,69 @@ export interface components {
              * @description Pack name or path within the allowed config directories; defaults to the currently active pack.
              */
             pack?: string | null;
+        };
+        /**
+         * AuditEventListResponse
+         * @description Paginated audit ledger query response.
+         */
+        AuditEventListResponse: {
+            /** Items */
+            items?: components["schemas"]["AuditEventResponse"][];
+            page: components["schemas"]["PageInfo"];
+        };
+        /**
+         * AuditEventResponse
+         * @description One immutable audit ledger event.
+         */
+        AuditEventResponse: {
+            /** Action */
+            action: string;
+            /** Actor Email */
+            actor_email?: string | null;
+            /** Actor Roles */
+            actor_roles?: string[];
+            /** Actor User Id */
+            actor_user_id: string;
+            /** After */
+            after?: {
+                [key: string]: unknown | null;
+            } | null;
+            /** Before */
+            before?: {
+                [key: string]: unknown | null;
+            } | null;
+            /** Client Ip */
+            client_ip?: string | null;
+            /** Correlation Id */
+            correlation_id: string;
+            /** Event Id */
+            event_id: string;
+            /** Failure Reason */
+            failure_reason?: string | null;
+            /** Knowledge Base Id */
+            knowledge_base_id?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown | null;
+            };
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "success" | "failure";
+            /** Resource Id */
+            resource_id: string;
+            /** Resource Type */
+            resource_type: string;
+            /** Tenant Id */
+            tenant_id: string;
+            /** User Agent */
+            user_agent?: string | null;
         };
         /**
          * AuthConfig
@@ -6220,6 +6303,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityTimeseriesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_audit_events_audit_events_get: {
+        parameters: {
+            query: {
+                tenant_id: string;
+                knowledge_base_id?: string | null;
+                actor_user_id?: string | null;
+                action_prefix?: string | null;
+                resource_type?: string | null;
+                resource_id?: string | null;
+                outcome?: ("success" | "failure") | null;
+                from?: string | null;
+                to?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEventListResponse"];
                 };
             };
             /** @description Validation Error */

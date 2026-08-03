@@ -24,6 +24,8 @@ from api.contracts import (
     AlertOperationResponse,
     AlertStatusUpdateRequest,
     AlertTriageEventResponse,
+    AuditEventListResponse,
+    AuditEventResponse,
     CaseCreateRequest,
     CaseDossierExportMetadataResponse,
     CaseDossierExportResponse,
@@ -61,6 +63,9 @@ from api.contracts import (
     RiskFactorResponse,
     RiskScoreResponse,
 )
+from auditlog.adapters.in_memory import InMemoryAuditLogRepository
+from auditlog.models import AuditEvent, AuditEventQuery
+from auditlog.service import AuditLogService
 from api._analytics_overview import build_analytics_overview
 from api._graph_entity_payload import build_graph_entity_detail
 from api._conversation_payloads import (
@@ -646,6 +651,80 @@ def get_case_service(
 ) -> CaseService:
     """Return the case service over the configured repository."""
     return create_case_service(repository)
+
+
+def get_audit_log_service(request: Request) -> AuditLogService:
+    """Return the per-app audit ledger service."""
+
+    service = getattr(request.app.state, "audit_log_service", None)
+    if isinstance(service, AuditLogService):
+        return service
+    service = AuditLogService(InMemoryAuditLogRepository())
+    request.app.state.audit_log_service = service
+    return service
+
+
+def _audit_event_to_response(event: AuditEvent) -> AuditEventResponse:
+    return AuditEventResponse(
+        event_id=event.event_id,
+        occurred_at=event.occurred_at,
+        tenant_id=event.tenant_id,
+        knowledge_base_id=event.knowledge_base_id,
+        actor_user_id=event.actor_user_id,
+        actor_email=event.actor_email,
+        actor_roles=list(event.actor_roles),
+        action=event.action,
+        resource_type=event.resource_type,
+        resource_id=event.resource_id,
+        before=event.before,
+        after=event.after,
+        correlation_id=event.correlation_id,
+        client_ip=event.client_ip,
+        user_agent=event.user_agent,
+        outcome=event.outcome,
+        failure_reason=event.failure_reason,
+        metadata=dict(event.metadata),
+    )
+
+
+def get_audit_event_list_payload(
+    tenant_id: str = Query(..., min_length=1),
+    knowledge_base_id: str | None = Query(default=None, min_length=1),
+    actor_user_id: str | None = Query(default=None, min_length=1),
+    action_prefix: str | None = Query(default=None, min_length=1),
+    resource_type: str | None = Query(default=None, min_length=1),
+    resource_id: str | None = Query(default=None, min_length=1),
+    outcome: Literal["success", "failure"] | None = Query(default=None),
+    occurred_from: datetime | None = Query(default=None, alias="from"),
+    occurred_to: datetime | None = Query(default=None, alias="to"),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    service: AuditLogService = Depends(get_audit_log_service),
+) -> AuditEventListResponse:
+    """Return a scoped page of audit ledger events."""
+
+    query = AuditEventQuery(
+        tenant_id=tenant_id,
+        knowledge_base_id=knowledge_base_id,
+        actor_user_id=actor_user_id,
+        action_prefix=action_prefix,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        outcome=outcome,
+        occurred_from=occurred_from,
+        occurred_to=occurred_to,
+        limit=limit,
+        offset=offset,
+    )
+    page = service.list_events(query)
+    return AuditEventListResponse(
+        items=[_audit_event_to_response(event) for event in page.items],
+        page=PageInfo(
+            page=(page.offset // page.limit) + 1,
+            page_size=page.limit,
+            total_items=page.total_items,
+        ),
+    )
 
 
 @lru_cache(maxsize=1)

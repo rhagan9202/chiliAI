@@ -18,6 +18,7 @@ from api.middleware.metrics import register_metrics
 from api.middleware.policy_registry import assert_complete
 from api.routers.alerts import router as alerts_router
 from api.routers.analytics import router as analytics_router
+from api.routers.audit import router as audit_router
 from api.routers.auth import router as auth_router
 from api.routers.cases import router as cases_router
 from api.routers.config import router as config_router
@@ -124,6 +125,7 @@ def create_app() -> FastAPI:
     app.include_router(records_router)
     app.include_router(workflows_router)
     app.include_router(analytics_router)
+    app.include_router(audit_router)
     app.include_router(scorecards_router)
     app.include_router(score_runs_router)
     app.include_router(housing_router)
