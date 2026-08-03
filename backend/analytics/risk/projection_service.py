@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
@@ -50,6 +51,13 @@ class RiskProjectionRebuildResult:
     changed: bool
     deleted: int
     upserted: int
+
+
+@runtime_checkable
+class RiskProjectionRebuildSourceProtocol(Protocol):
+    """Loads the authoritative projection rows for a KB rebuild."""
+
+    def load_projection_rows(self, knowledge_base_id: str) -> Sequence[RiskProjectionRow]: ...
 
 
 class RiskProjectionService:
@@ -157,6 +165,7 @@ def _unique_sorted(values: Sequence[str]) -> list[str]:
 
 __all__ = [
     "RiskProjectionRebuildResult",
+    "RiskProjectionRebuildSourceProtocol",
     "RiskProjectionService",
     "RiskProjectionWriteRequest",
     "RiskProjectionWriteResult",

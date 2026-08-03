@@ -109,18 +109,46 @@ Task 2 review notes:
 - Modify: `backend/api/dependencies.py`
 - Test: focused API/router tests
 
-- [ ] **Step 1: Add API tests for paginated/filterable risk projections**
+- [x] **Step 1: Add API tests for paginated/filterable risk projections**
 
 Cover `limit`, `offset`, entity type, risk level, typology id, status, max score age, and stable page metadata.
 
-- [ ] **Step 2: Add projection-backed routes/contracts**
+- [x] **Step 2: Add projection-backed routes/contracts**
 
 Prefer expanding `/analytics/risk-scores` only if backward compatibility is preserved. Otherwise add a new
 projection-specific route and migrate frontend consumers deliberately.
 
-- [ ] **Step 3: Add rebuild command/API seam**
+- [x] **Step 3: Add rebuild command/API seam**
 
 Expose a guarded rebuild service boundary for operators; avoid long-running rebuilds inside request handlers.
+
+Task 3 review notes:
+
+- Added `RiskProjectionItemResponse`, `RiskProjectionListResponse`,
+  `RiskProjectionRebuildRequest`, and `RiskProjectionRebuildResponse`.
+- Added additive `/analytics/risk-projections` and `/analytics/risk-projections/rebuild`
+  routes; `/analytics/risk-scores` remains unchanged for backward compatibility.
+- Projection reads support `knowledge_base_id`, `entity_type`, `risk_level`,
+  `typology_id`, `status`, `max_score_age_hours`, `as_of`, `limit`, and `offset`.
+- Added route tests for projection metadata, offset pagination, operator facets,
+  isolated score-age filtering, OpenAPI query/body/response contracts, route role
+  markers, naive `as_of` rejection, and configured/unconfigured rebuild behavior.
+- Review found the first rebuild route was misleading because it rebuilt from the
+  same repository snapshot. Fixed by adding `RiskProjectionRebuildSourceProtocol`
+  and failing closed with 503 until an authoritative rebuild source is configured.
+- Review found default projection storage could look production-durable while
+  still in-memory. Clarified DI docs and kept rebuild gated so frontend migration
+  cannot assume durable projections before the runtime writer adapter lands.
+- Review found naive `as_of` could escape as a route-body validation error; fixed
+  with explicit 422 handling before constructing `RiskProjectionQuery`.
+- Attempted request-level `TestClient` coverage for the new endpoints, but this
+  checkout still hangs on TestClient request execution for these routes. Replaced
+  the hanging tests with direct route tests plus OpenAPI and role-marker checks.
+- Focused verification passed: 11 projection API tests, 15 projection
+  repository/service tests, non-integration `backend/tests/analytics/risk -m "not
+  integration"` with 53 tests and 2 deselected, `compileall backend/api
+  backend/analytics/risk`, OpenAPI export, frontend codegen, `pnpm build`, `git
+  diff --check`, and `python3 scripts/backlog_consistency.py --check`.
 
 ## Task 4: Frontend Hooks And Consumer Migration
 

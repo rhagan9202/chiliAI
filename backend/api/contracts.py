@@ -619,6 +619,59 @@ class RiskScoreResponse(BaseModel):
     unavailable_reason: str | None = None
 
 
+RiskProjectionLevelValue = Literal["low", "medium", "high", "critical"]
+RiskProjectionStatusValue = Literal["active", "case_open", "resolved", "suppressed", "stale"]
+RiskProjectionRebuildStatusValue = Literal["completed"]
+
+
+class RiskProjectionItemResponse(BaseModel):
+    """Projection-backed risk row for queue/dashboard/entity consumers."""
+
+    knowledge_base_id: str
+    entity_id: str
+    entity_type: str
+    overall_score: float = Field(ge=0.0, le=1.0)
+    risk_level: RiskProjectionLevelValue
+    top_typology_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    alert_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    case_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    evidence_pack_ids: list[str] = Field(default_factory=lambda: cast(list[str], []))
+    score_run_id: str | None = None
+    model_version: str
+    catalog_version: str
+    scored_at: datetime
+    updated_at: datetime
+    status: RiskProjectionStatusValue
+
+
+class RiskProjectionListResponse(BaseModel):
+    """Paginated risk projections for one knowledge base."""
+
+    knowledge_base_id: str
+    items: list[RiskProjectionItemResponse] = Field(
+        default_factory=lambda: cast(list[RiskProjectionItemResponse], [])
+    )
+    total: int = Field(ge=0)
+    limit: int = Field(ge=0)
+    offset: int = Field(ge=0)
+
+
+class RiskProjectionRebuildRequest(BaseModel):
+    """Operator request to rebuild risk projections for one knowledge base."""
+
+    knowledge_base_id: str = Field(min_length=1)
+
+
+class RiskProjectionRebuildResponse(BaseModel):
+    """Outcome of an in-process projection rebuild request."""
+
+    knowledge_base_id: str
+    changed: bool
+    deleted: int = Field(ge=0)
+    upserted: int = Field(ge=0)
+    status: RiskProjectionRebuildStatusValue = "completed"
+
+
 class EntityTimeseriesPointResponse(BaseModel):
     """One point in an entity timeseries chart."""
 
@@ -1089,6 +1142,13 @@ __all__ = [
     "PolicyTriageRequest",
     "RealtimeSnapshotResponse",
     "RiskFactorResponse",
+    "RiskProjectionItemResponse",
+    "RiskProjectionLevelValue",
+    "RiskProjectionListResponse",
+    "RiskProjectionRebuildRequest",
+    "RiskProjectionRebuildResponse",
+    "RiskProjectionRebuildStatusValue",
+    "RiskProjectionStatusValue",
     "RiskScoreResponse",
     "ScoreBatchResponse",
     "ScorecardCitationResponse",

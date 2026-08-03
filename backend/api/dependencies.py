@@ -121,6 +121,14 @@ from analytics.risk.adapters.postgres import (
 )
 from analytics.risk.adapters.protocols import RiskHistoryWriter, RiskSignalSourceProtocol
 from analytics.risk.exceptions import RiskConfigurationError, RiskInsufficientSignalsError
+from analytics.risk.projection_service import (
+    RiskProjectionRebuildSourceProtocol,
+    RiskProjectionService,
+)
+from analytics.risk.projections import (
+    InMemoryRiskProjectionRepository,
+    RiskProjectionRepositoryProtocol,
+)
 from analytics.risk.protocols import RiskServiceProtocol
 from analytics.risk.service import create_risk_service
 from analytics.risk.service_models import RiskAssessmentRequest
@@ -309,6 +317,9 @@ __all__ = [
     "get_policy_repository",
     "get_policy_service",
     "get_remote_fetcher",
+    "get_risk_projection_repository",
+    "get_risk_projection_rebuild_source",
+    "get_risk_projection_service",
     "get_risk_score_payload",
     "get_timeseries_payload",
     "get_session_store",
@@ -1770,6 +1781,36 @@ def get_score_run_service(
     return create_score_run_service(repository, event_bus=event_bus)
 
 
+def get_risk_projection_repository(request: Request) -> RiskProjectionRepositoryProtocol:
+    """Return the risk projection repository.
+
+    The current implementation is in-memory until a durable projection adapter
+    lands. Operator rebuilds are therefore gated behind an explicit rebuild
+    source instead of pretending process-local rows are authoritative.
+    """
+
+    return _memoize_config_derived(
+        request.app,
+        "risk_projection_repository",
+        lambda: InMemoryRiskProjectionRepository(),
+        guard=lambda value: isinstance(value, RiskProjectionRepositoryProtocol),
+    )
+
+
+def get_risk_projection_rebuild_source() -> RiskProjectionRebuildSourceProtocol | None:
+    """Return the authoritative source for rebuilding risk projections, if configured."""
+
+    return None
+
+
+def get_risk_projection_service(
+    repository: RiskProjectionRepositoryProtocol = Depends(get_risk_projection_repository),
+) -> RiskProjectionService:
+    """Return the risk projection writer/rebuild service."""
+
+    return RiskProjectionService(repository)
+
+
 class RecordFeedSourceLoader:
     """Bridge the raw-records store into the scorecard evaluator's read model.
 
@@ -2257,6 +2298,8 @@ _CONFIG_DERIVED_APP_STATE_ATTRS: tuple[str, ...] = (
     "conversation_repository",
     "policy_repository",
     "scorecard_run_repository",
+    "score_run_repository",
+    "risk_projection_repository",
 )
 
 _CONFIG_SWAP_LOCK = threading.Lock()

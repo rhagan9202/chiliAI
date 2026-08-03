@@ -129,6 +129,8 @@ class TestOpenApiSchema:
             "/investigation/search",
             "/chat/conversations/{conversation_id}/messages",
             "/analytics/risk-scores",
+            "/analytics/risk-projections",
+            "/analytics/risk-projections/rebuild",
             "/analytics/timeseries",
             "/analytics/gnn/clusters",
         }

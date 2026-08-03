@@ -129,6 +129,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/analytics/risk-projections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Risk Projections
+         * @description Return projection-backed risk rows for queue/dashboard consumers.
+         */
+        get: operations["list_risk_projections_analytics_risk_projections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/analytics/risk-projections/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rebuild Risk Projections
+         * @description Run the configured in-process risk projection rebuild seam for one KB.
+         */
+        post: operations["rebuild_risk_projections_analytics_risk_projections_rebuild_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/analytics/risk-scores": {
         parameters: {
             query?: never;
@@ -4304,6 +4344,98 @@ export interface components {
             rationale?: string | null;
         };
         /**
+         * RiskProjectionItemResponse
+         * @description Projection-backed risk row for queue/dashboard/entity consumers.
+         */
+        RiskProjectionItemResponse: {
+            /** Alert Ids */
+            alert_ids?: string[];
+            /** Case Ids */
+            case_ids?: string[];
+            /** Catalog Version */
+            catalog_version: string;
+            /** Entity Id */
+            entity_id: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Evidence Pack Ids */
+            evidence_pack_ids?: string[];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Model Version */
+            model_version: string;
+            /** Overall Score */
+            overall_score: number;
+            /**
+             * Risk Level
+             * @enum {string}
+             */
+            risk_level: "low" | "medium" | "high" | "critical";
+            /** Score Run Id */
+            score_run_id?: string | null;
+            /**
+             * Scored At
+             * Format: date-time
+             */
+            scored_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "case_open" | "resolved" | "suppressed" | "stale";
+            /** Top Typology Ids */
+            top_typology_ids?: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * RiskProjectionListResponse
+         * @description Paginated risk projections for one knowledge base.
+         */
+        RiskProjectionListResponse: {
+            /** Items */
+            items?: components["schemas"]["RiskProjectionItemResponse"][];
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * RiskProjectionRebuildRequest
+         * @description Operator request to rebuild risk projections for one knowledge base.
+         */
+        RiskProjectionRebuildRequest: {
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+        };
+        /**
+         * RiskProjectionRebuildResponse
+         * @description Outcome of an in-process projection rebuild request.
+         */
+        RiskProjectionRebuildResponse: {
+            /** Changed */
+            changed: boolean;
+            /** Deleted */
+            deleted: number;
+            /** Knowledge Base Id */
+            knowledge_base_id: string;
+            /**
+             * Status
+             * @default completed
+             * @constant
+             */
+            status: "completed";
+            /** Upserted */
+            upserted: number;
+        };
+        /**
          * RiskScore
          * @description A single ranked risk score entry.
          */
@@ -5434,6 +5566,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalyticsOverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_risk_projections_analytics_risk_projections_get: {
+        parameters: {
+            query: {
+                knowledge_base_id: string;
+                entity_type?: string | null;
+                risk_level?: ("low" | "medium" | "high" | "critical") | null;
+                typology_id?: string | null;
+                status?: ("active" | "case_open" | "resolved" | "suppressed" | "stale") | null;
+                max_score_age_hours?: number | null;
+                as_of?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RiskProjectionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rebuild_risk_projections_analytics_risk_projections_rebuild_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RiskProjectionRebuildRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RiskProjectionRebuildResponse"];
                 };
             };
             /** @description Validation Error */
