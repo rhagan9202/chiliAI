@@ -65,7 +65,13 @@ from api.contracts import (
 )
 from auditlog.adapters.in_memory import InMemoryAuditLogRepository
 from auditlog.adapters.postgres import PostgresAuditLogRepository
-from auditlog.models import AuditEvent, AuditEventCreate, AuditEventQuery, JsonSummary
+from auditlog.models import (
+    AuditEvent,
+    AuditEventCreate,
+    AuditEventQuery,
+    AuditOutcome,
+    JsonSummary,
+)
 from auditlog.service import AuditLogService
 from api._analytics_overview import build_analytics_overview
 from api._graph_entity_payload import build_graph_entity_detail
@@ -1095,6 +1101,42 @@ def record_alert_audit_event(
                 "severity": alert.severity,
                 **dict(metadata or {}),
             },
+        )
+    )
+
+
+def record_knowledge_base_audit_event(
+    audit_service: AuditLogService,
+    *,
+    knowledge_base_id: str,
+    actor_user_id: str,
+    actor_email: str | None,
+    actor_roles: list[str],
+    action: str,
+    before: JsonSummary | None,
+    after: JsonSummary | None,
+    metadata: JsonSummary | None = None,
+    outcome: AuditOutcome = "success",
+    failure_reason: str | None = None,
+) -> None:
+    """Append a summarized knowledge-base audit event without raw document data."""
+
+    audit_service.record(
+        AuditEventCreate(
+            tenant_id=knowledge_base_id,
+            knowledge_base_id=knowledge_base_id,
+            actor_user_id=actor_user_id,
+            actor_email=actor_email,
+            actor_roles=list(actor_roles),
+            action=action,
+            resource_type="knowledge_base",
+            resource_id=knowledge_base_id,
+            before=before,
+            after=after,
+            correlation_id=f"knowledgebases:{knowledge_base_id}:{action}",
+            outcome=outcome,
+            failure_reason=failure_reason,
+            metadata={"source": "api.knowledgebases", **dict(metadata or {})},
         )
     )
 

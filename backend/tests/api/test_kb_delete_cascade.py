@@ -36,6 +36,9 @@ from api.dependencies import (
     get_vectorstore_service,
     get_workflow_tracker,
 )
+from auditlog.adapters.in_memory import InMemoryAuditLogRepository
+from auditlog.models import AuditEventQuery
+from auditlog.service import AuditLogService
 from config.schema import (
     AlertsConfig,
     AuthConfig,
@@ -275,6 +278,8 @@ def test_delete_kb_returns_207_on_partial_failure(
         raw_record_store,
         _,
     ) = cascade_harness
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    cast(FastAPI, client.app).state.audit_log_service = audit_service
 
     created = client.post("/knowledgebases", json={"name": "partial-fail", "description": ""})
     assert created.status_code == 201
@@ -312,6 +317,22 @@ def test_delete_kb_returns_207_on_partial_failure(
     ]
     assert len(deletion_events) == 1
     assert deletion_events[0].cleanup_pending is True
+
+    audit_page = audit_service.list_events(
+        AuditEventQuery(
+            tenant_id=kb_id,
+            knowledge_base_id=kb_id,
+            action_prefix="knowledge_base.delete",
+        )
+    )
+    assert [event.action for event in audit_page.items] == ["knowledge_base.delete"]
+    audit_event = audit_page.items[0]
+    assert audit_event.outcome == "failure"
+    assert audit_event.failure_reason == "cleanup_pending"
+    assert audit_event.after == {"pending_cleanup": True}
+    assert audit_event.metadata["cleanup_pending"] is True
+    assert audit_event.metadata["failed_step_count"] == 1
+    assert "simulated vectorstore outage" not in str(audit_event.metadata)
 
 
 def test_delete_kb_returns_409_when_workflow_busy(

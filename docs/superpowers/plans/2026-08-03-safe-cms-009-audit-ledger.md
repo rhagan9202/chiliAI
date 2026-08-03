@@ -104,6 +104,15 @@ SAFE-CMS-009 adds an immutable audit ledger for material analyst, system, and ag
 - [ ] Preserve primary response behavior when audit recording fails; expose failure counters/buffer status.
 
 **Notes:**
+- Partial KB-mutation slice complete: knowledge base create and delete routes now emit summarized `knowledge_base.*` audit events with actor, tenant/KB scope, before/after summaries, and cleanup status metadata. A 207 partial cleanup records a failure outcome with `failure_reason="cleanup_pending"` while omitting raw cascade error text from metadata.
+- Evidence router currently exposes read-only GET endpoints only, so no evidence mutation hooks were added in this slice.
+- RED: `uv run --project backend pytest backend/tests/api/test_knowledgebases_router.py::test_create_knowledge_base_records_audit_event backend/tests/api/test_knowledgebases_router.py::test_delete_knowledge_base_records_audit_event backend/tests/api/test_knowledgebases_router.py::test_knowledge_base_mutation_still_succeeds_when_audit_sink_fails` failed with empty audit event pages and zero failed-write count.
+- GREEN:
+  - `uv run --project backend pytest backend/tests/api/test_knowledgebases_router.py::test_create_knowledge_base_records_audit_event backend/tests/api/test_knowledgebases_router.py::test_delete_knowledge_base_records_audit_event backend/tests/api/test_knowledgebases_router.py::test_knowledge_base_mutation_still_succeeds_when_audit_sink_fails`: 3 passed.
+  - `uv run --project backend pytest backend/tests/api/test_kb_delete_cascade.py::test_delete_kb_returns_207_on_partial_failure`: 1 passed.
+  - `uv run --project backend pytest backend/tests/api/test_knowledgebases_router.py backend/tests/api/test_kb_delete_cascade.py backend/tests/api/test_policy_registry.py backend/tests/api/test_audit_router.py`: 62 passed.
+  - `uv run --project backend ruff check backend/api/dependencies.py backend/api/routers/knowledgebases.py backend/tests/api/test_knowledgebases_router.py backend/tests/api/test_kb_delete_cascade.py`: passed.
+  - `uv run --project backend pyright backend/api/dependencies.py backend/api/routers/knowledgebases.py backend/tests/api/test_knowledgebases_router.py backend/tests/api/test_kb_delete_cascade.py`: 0 errors.
 - Partial case-mutation slice complete: create, update, feedback, promote, and attach-alert routes now emit summarized `case.*` audit events with actor, KB scope, before/after summaries, and no raw analyst notes.
 - Audit failures remain non-blocking for case mutations through `AuditLogService.record()` failure capture.
 - RED: `uv run --project backend pytest backend/tests/api/test_phase5_stateful_routes.py::test_case_create_update_and_feedback_record_audit_events backend/tests/api/test_phase5_stateful_routes.py::test_case_promote_and_attach_record_audit_events backend/tests/api/test_phase5_stateful_routes.py::test_case_mutation_still_succeeds_when_audit_sink_fails` failed with empty audit event pages and zero failed-write count.

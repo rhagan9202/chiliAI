@@ -16,6 +16,7 @@ from knowledgebases.adapters.object_store import ObjectStoreKnowledgeBaseReposit
 from knowledgebases.models import DocumentRecord
 from api.app import create_app
 from api.dependencies import (
+    get_audit_log_service,
     get_alert_history_writer,
     get_document_status_store,
     get_event_bus,
@@ -26,6 +27,10 @@ from api.dependencies import (
     get_object_store,
     get_vector_service,
 )
+from api.middleware.auth import User, get_current_user
+from auditlog.adapters.in_memory import InMemoryAuditLogRepository
+from auditlog.models import AuditEvent, AuditEventQuery
+from auditlog.service import AuditLogService
 from monitoring.adapters.in_memory import InMemoryAlertHistoryWriter
 from monitoring.models import AlertHistoryRecord
 from analytics.features.service import FeatureCatalogService
@@ -181,8 +186,31 @@ class _RecordingReplacementVectorService:
         return VectorDeleteResponse(knowledge_base_id=knowledge_base_id, deleted_count=1)
 
 
+class _FailingAuditRepository(InMemoryAuditLogRepository):
+    def append(self, event: AuditEvent) -> None:
+        raise RuntimeError("audit sink unavailable")
+
+
 def _skip_policy_audit(app: FastAPI) -> None:
     del app
+
+
+def _install_audit_user(
+    client: TestClient,
+    audit_service: AuditLogService,
+    *,
+    user_id: str = "analyst-42",
+    roles: list[str] | None = None,
+    email: str | None = "analyst42@example.test",
+) -> None:
+    app = cast(FastAPI, client.app)
+    app.state.audit_log_service = audit_service
+    app.dependency_overrides[get_audit_log_service] = lambda: audit_service
+    app.dependency_overrides[get_current_user] = lambda: User(
+        user_id=user_id,
+        roles=roles or ["analyst"],
+        email=email,
+    )
 
 
 @pytest.fixture()
@@ -242,6 +270,43 @@ def test_create_knowledge_base_returns_201_and_publishes_event(
     ]
     assert len(created_events) == 1
     assert created_events[0].knowledge_base_id == payload["id"]
+
+
+def test_create_knowledge_base_records_audit_event(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, _, _ = harness
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    _install_audit_user(client, audit_service)
+
+    response = client.post(
+        "/knowledgebases",
+        json={"name": "Audited KB", "description": "Initial KB"},
+    )
+
+    assert response.status_code == 201
+    kb_id = response.json()["id"]
+    page = audit_service.list_events(
+        AuditEventQuery(tenant_id=kb_id, knowledge_base_id=kb_id)
+    )
+    assert [event.action for event in page.items] == ["knowledge_base.create"]
+    event = page.items[0]
+    assert event.actor_user_id == "analyst-42"
+    assert event.actor_email == "analyst42@example.test"
+    assert event.resource_type == "knowledge_base"
+    assert event.resource_id == kb_id
+    assert event.before is None
+    assert event.after == {
+        "name": "Audited KB",
+        "domain": "test",
+        "pending_cleanup": False,
+    }
+    assert event.metadata["source"] == "api.knowledgebases"
 
 
 def test_create_knowledge_base_allows_duplicate_names(
@@ -634,6 +699,82 @@ def test_delete_knowledge_base_removes_artifacts_and_publishes_event(
     # Subsequent GET / DELETE should both be 404.
     assert client.get(f"/knowledgebases/{kb_id}").status_code == 404
     assert client.delete(f"/knowledgebases/{kb_id}").status_code == 404
+
+
+def test_delete_knowledge_base_records_audit_event(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, object_store, _ = harness
+    audit_service = AuditLogService(InMemoryAuditLogRepository())
+    _install_audit_user(
+        client,
+        audit_service,
+        user_id="admin-42",
+        roles=["admin"],
+        email="admin42@example.test",
+    )
+
+    created = client.post(
+        "/knowledgebases", json={"name": "ToDelete", "description": ""}
+    )
+    assert created.status_code == 201
+    kb_id = created.json()["id"]
+    object_store.put_bytes(
+        f"knowledgebases/{kb_id}/documents/doc-1/file.json",
+        b"{}",
+        media_type="application/json",
+    )
+
+    response = client.delete(f"/knowledgebases/{kb_id}")
+
+    assert response.status_code == 204
+    page = audit_service.list_events(
+        AuditEventQuery(
+            tenant_id=kb_id,
+            knowledge_base_id=kb_id,
+            action_prefix="knowledge_base.delete",
+        )
+    )
+    assert [event.action for event in page.items] == ["knowledge_base.delete"]
+    event = page.items[0]
+    assert event.actor_user_id == "admin-42"
+    assert event.actor_email == "admin42@example.test"
+    assert event.resource_type == "knowledge_base"
+    assert event.resource_id == kb_id
+    assert event.before == {
+        "name": "ToDelete",
+        "domain": "test",
+        "pending_cleanup": False,
+    }
+    assert event.after is None
+    assert event.metadata["cleanup_pending"] is False
+    assert event.metadata["source"] == "api.knowledgebases"
+
+
+def test_knowledge_base_mutation_still_succeeds_when_audit_sink_fails(
+    harness: tuple[
+        TestClient,
+        InMemoryEventBus,
+        InMemoryObjectStore,
+        InMemoryKnowledgeBaseRepository,
+    ],
+) -> None:
+    client, _, _, _ = harness
+    audit_service = AuditLogService(_FailingAuditRepository())
+    _install_audit_user(client, audit_service)
+
+    response = client.post(
+        "/knowledgebases",
+        json={"name": "Audit Failure Tolerated", "description": ""},
+    )
+
+    assert response.status_code == 201
+    assert audit_service.failed_write_count == 1
 
 
 def test_delete_knowledge_base_prunes_alert_history(
